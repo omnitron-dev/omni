@@ -12,7 +12,7 @@
  * That pid is also what the ghost check asks the OS about, so an app whose
  * http process died stayed `online` for as long as its last child lived.
  *
- * These drive the real `launchTopology` / `launchSingleProcess` with a
+ * These drive the real `launchTopology` with a
  * supervisor that starts nothing on its own: the test says which child came
  * up, and when.
  */
@@ -69,7 +69,9 @@ function orchestratorWith(workers: Record<string, number>) {
   const emitted: string[] = [];
   Object.assign(self, {
     ownerOptions: {},
+    installedLaunches: new WeakMap(),
     pm: {
+      pool: async () => Object.assign(new EventEmitter(), { getWorkerIds: () => [], getWorkerHandle: () => undefined }),
       createSupervisor: (cfg: { children: Array<{ name: string }> }) => (supervisor = new ScriptedSupervisor(cfg)),
       getWorkerHandle: (id: string) => (id in workers ? { pid: workers[id] } : undefined),
       getProcess: (id: string) => (id in workers ? { pid: workers[id], startTime: Date.now() - 1_000 } : undefined),
@@ -216,29 +218,29 @@ describe('an app of one process', () => {
 
   async function launchSingle(workers: Record<string, number>, instances = 1) {
     const o = orchestratorWith(workers);
-    const handle = new AppHandle({ ...geo, instances }, 'bootstrap');
+    const handle = new AppHandle(geo, 'bootstrap');
     handle.markStarting();
     const launch = (OrchestratorService.prototype as unknown as Record<string, (...a: unknown[]) => Promise<void>>)[
-      'launchSingleProcess'
+      'launchTopology'
     ]!;
-    await launch.call(o.self, { ...geo, instances }, handle, config, '/app/bootstrap.ts');
+    await launch.call(o.self, geo, handle, config, '/app/bootstrap.ts', [
+      { name: 'main', module: './main.js', instances,
+        ...(instances === 1 && { transports: { http: { port: 3001 } } }) },
+    ]);
     return { handle, sup: o.supervisor() };
   }
 
   it('is online with its one process, under that process\'s pid', async () => {
     const { handle, sup } = await launchSingle({ 'p-geo': 31504 });
 
-    sup.started('sample/dev/geo', 'p-geo');
+    sup.started('sample/dev/geo/main', 'p-geo');
 
     expect(handle.status).toBe('online');
     expect(handle.pid).toBe(31504);
   });
 
   it('has no pid when that process is a pool, rather than the daemon\'s', async () => {
-    const { handle, sup } = await launchSingle({}, 2);
-
-    // A pool proxy answers `__processId` with a function, like any property.
-    sup.started('sample/dev/geo', async () => undefined);
+    const { handle } = await launchSingle({}, 2);
 
     expect(handle.status).toBe('online');
     expect(handle.pid).not.toBe(process.pid);

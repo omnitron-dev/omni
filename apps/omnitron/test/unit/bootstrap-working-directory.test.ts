@@ -62,18 +62,20 @@ export default Worker;
 it.each([
   { instances: 1, explicit: true }, { instances: 2, explicit: true },
   { instances: 1, explicit: false }, { instances: 2, explicit: false },
-])('uses the app directory for native bootstrap instances=$instances explicit=$explicit', async ({ instances, explicit }) => {
+])('uses the app directory for native topology instances=$instances explicit=$explicit', async ({ instances, explicit }) => {
   const { service, application, owner, worker } = setup();
   if (explicit) service.cwd = owner;
-  const entry: IEcosystemAppEntry = { name: 'cwd-proof', bootstrap: worker, instances,
+  const entry: IEcosystemAppEntry = { name: 'cwd-proof', bootstrap: worker,
     ...(explicit && { cwd: application }), env: { CWD_MARKER: 'app-environment' } };
   const handle = new AppHandle(entry, 'bootstrap'); handle.markStarting();
-  await service.launchSingleProcess(entry, handle, config, worker);
+  await service.launchTopology(entry, handle, config, worker, [{ name: 'main', module: worker, instances }]);
   supervisor = handle.supervisor!;
-  const proxy = handle.supervisor!.getChildProxy('cwd-proof') as any;
-  expect(proxy, JSON.stringify(handle.lastExit)).not.toBeNull();
+  const proxies = instances > 1
+    ? handle.topologyPools.get('main')!.getWorkerIds().map(id => pm.getWorkerHandle(id)!.proxy)
+    : [handle.supervisor!.getChildProxy('cwd-proof/main')];
+  expect(proxies, JSON.stringify(handle.lastExit)).toHaveLength(instances);
   const ids = new Set<number>();
-  for (let index = 0; index < instances; index++) {
+  for (const proxy of proxies) {
     const observed = await proxy.inspect();
     expect(observed.cwd).toBe(application);
     expect(observed.marker).toBe('app-environment');
@@ -81,7 +83,7 @@ it.each([
     ids.add(observed.pid);
   }
   expect(ids.size).toBe(instances);
-  expect(await proxy.write()).toBe(application);
+  expect(await proxies[0].write()).toBe(application);
   expect(readFileSync(join(application, 'application-state.txt'), 'utf8')).toBe('owned by the application');
   expect(readdirSync(owner)).toEqual([]);
 }, 60000);
@@ -90,8 +92,10 @@ it('preserves explicit child shutdown and RPC visibility options without grantin
   const { application, worker } = setup();
   const restricted = await pm.spawn(worker, { name: 'restricted', cwd: application }) as any;
   await expect(restricted.unmarked()).rejects.toThrow();
+  const beforeSpawn = vi.fn(async () => {});
   const declared = await pm.spawn(worker, { name: 'declared', cwd: application,
-    shutdownTimeout: 12000, allMethodsPublic: true }) as any;
+    shutdownTimeout: 12000, allMethodsPublic: true, beforeSpawn }) as any;
+  expect(beforeSpawn).toHaveBeenCalledOnce();
   expect(await declared.unmarked()).toBe('explicit-public');
   const observation = await declared.inspect();
   expect(observation.cwd).toBe(application);

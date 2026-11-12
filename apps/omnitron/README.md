@@ -38,6 +38,8 @@ Backend preflight loads the actual daemon dependency graph with a 30-second chil
 
 Stops use durable execution intent. Starting a stack does not silently clear a separately stopped child application's fence. Native process lifetimes and generations distinguish a current process from a reused PID.
 
+Installed bootstrap applications repeat release and runtime verification before every supervised spawn, including pool recycling and resizing. A refused replacement leaves the old pool worker in place. Membership changes make the release observation unreported until the owner re-verifies the artifact and a stable set of live process handles. A late check cannot confirm a changed definition, stopped generation or different membership. Confirmation identifies the actual verified composition; it does not assert that a failed resize reached its requested count. Bootstrap applications declare their processes explicitly, with pools selected by each process's `instances` field.
+
 ## Starting with existing infrastructure
 
 Runtime-only recovery uses `--infrastructure preserve`. Review the intended release and current resources before stopping applications:

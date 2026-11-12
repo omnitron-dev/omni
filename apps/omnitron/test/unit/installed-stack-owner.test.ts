@@ -8,7 +8,7 @@ import type { ChildProcess } from 'node:child_process';
 import { defineEcosystem } from '../../src/config/define-ecosystem.js';
 import { OrchestratorService } from '../../src/orchestrator/orchestrator.service.js';
 import { waitForReady } from '../../src/orchestrator/classic-launcher.js';
-import type { IEcosystemAppEntry, IProcessEntry } from '../../src/config/types.js';
+import { ProcessManager, ProcessStatus, type ISpawnOptions, type IWorkerHandle } from '@omnitron-dev/titan-pm';
 import { AppHandle } from '../../src/orchestrator/app-handle.js';
 import { ExecutionClient } from '../../src/daemon/execution-client.js';
 import { recoveryState } from '../../src/daemon/recovery-state.js';
@@ -27,18 +27,27 @@ async function fixture(bootstrapWorker = false) {
   const store = new DaemonStateStore(logger as never, path.join(dir, 'state.db'));
   const state = new StateStore(store);
   const handles = new Map<string, AppHandle>();
-  const owner = new OrchestratorService(logger as never, {} as never, state, dir, { reapForeignOrphans: false });
+  const pm = new ProcessManager(logger as never, { livenessSweepIntervalMs: 0 });
+  // Keep the real bootstrap topology, supervisor and release admission. Only
+  // native process effects are substituted; the classic fixture below forks.
+  Object.assign(pm, { spawner: { spawn: async (_source: unknown, options: ISpawnOptions) => {
+    let alive = true;
+    const listeners = new Set<Parameters<NonNullable<IWorkerHandle['onExit']>>[0]>();
+    return { id: options.processId, status: ProcessStatus.RUNNING, isAlive: () => alive,
+      proxy: { __processId: options.processId },
+      onExit: (listener: Parameters<NonNullable<IWorkerHandle['onExit']>>[0]) => {
+        listeners.add(listener); return () => listeners.delete(listener);
+      },
+      terminate: async () => { alive = false; for (const listener of listeners)
+        listener({ workerId: options.processId!, serviceName: 'worker', code: 0, signal: null, expected: true }); },
+    };
+  } } });
+  const owner = new OrchestratorService(logger as never, pm, state, dir, { reapForeignOrphans: false });
   Object.assign(owner, { handles, ensureBootReconciled: vi.fn(), ensureMetricsPolling: vi.fn(), persistState: vi.fn() });
-  if (bootstrapWorker) Object.assign(owner, {
-    launchTopology: async (_entry: IEcosystemAppEntry, handle: AppHandle, _config: unknown, _bootstrap: string, children: IProcessEntry[]) => {
-      handle.topologyProcesses = children;
-      handle.declareChildren(children.map(child => child.name), 'server');
-      for (const child of children) handle.childStarted(child.name, null);
-    },
-  });
   const config = defineEcosystem({ apps: [] });
   cleanups.push(async () => {
     for (const handle of handles.values()) {
+      await handle.supervisor?.stop();
       const child = handle.childProcess;
       if (child?.pid && child.exitCode === null && child.signalCode === null) {
         handle.markStopping();
@@ -47,6 +56,7 @@ async function fixture(bootstrapWorker = false) {
         await done;
       }
     }
+    await pm.shutdown();
     await store.dispose();
     await fs.rm(dir, { recursive: true, force: true });
   });
@@ -62,7 +72,7 @@ async function fixture(bootstrapWorker = false) {
       await fs.writeFile(path.join(source, 'bootstrap.mjs'), "export default {name:'worker',version:'1',processes:[{name:'server',module:'./server.mjs'},{name:'jobs',module:'./jobs.mjs'}]}");
       for (const filename of ['server.mjs', 'jobs.mjs']) await fs.writeFile(path.join(source, filename), 'export default class Worker {}');
     }
-    // Package the real classic child; topology execution above is a unit-test double.
+    // Package real immutable inputs for both launch modes.
     await stageApplicationClosure(source, root, { name: app, script: 'main.cjs', env: { NODE_OPTIONS: '' } }, [dir]);
     const origin = { app, releaseId: 'r1', manifestSha256: 'a'.repeat(64), artifactSha256: 'b'.repeat(64),
       artifactBytes: 100, frameworkCommit: 'c'.repeat(40) };
@@ -74,8 +84,8 @@ async function fixture(bootstrapWorker = false) {
       env: { NODE_OPTIONS: '', NODE_PATH: '', OMNITRON_STACK: 'prod' } };
     const handle = await owner.startApp(appEntry, config);
     if (bootstrap) {
-      handle.childGone('jobs');
-      handle.childStarted('jobs', null);
+      handle.childGone(`${handle.name}/jobs`);
+      handle.childStarted(`${handle.name}/jobs`, null);
       expect(handle.release.state).toBe('unreported');
     }
   }

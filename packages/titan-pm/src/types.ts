@@ -34,6 +34,10 @@ import type { EventEmitter } from '@omnitron-dev/eventemitter';
  * pool options that `process-pool.ts` actually reads.
  */
 export interface IProcessOptions {
+  /** Parent-only admission, awaited before a process is registered or spawned.
+   * Kept in supervisor/pool restart options; never sent to the child.
+   * A rejection prevents this spawn without consuming a native process identity. */
+  beforeSpawn?: () => void | Promise<void>;
   /**
    * Total budget for stopping this child, in milliseconds.
    *
@@ -328,7 +332,7 @@ export interface IProcessPoolOptions {
   /**
    * Factory function for per-worker spawn options.
    * Called with the worker's sequential index (0, 1, 2, ...).
-   * Return value is merged with spawnOptions (factory takes precedence).
+   * The result is merged with spawnOptions (factory takes precedence).
    *
    * Use this when each worker needs unique configuration, e.g.:
    * - Different port offsets for HTTP server instances
@@ -448,6 +452,8 @@ export type PoolStrategy = (typeof PoolStrategy)[keyof typeof PoolStrategy];
  */
 export type IProcessPool<T> = ServiceProxy<T> & {
   size: number;
+  /** True while membership is changing or a retirement remains unconfirmed. */
+  readonly membershipChanging: boolean;
   active: number;
   pending: number;
   metrics: IPoolMetrics;

@@ -203,7 +203,13 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
     }
 
     const processMetadata = ProcessClass ? this.getProcessMetadata(ProcessClass) : undefined;
-    const mergedOptions = this.mergeOptions(processMetadata, options);
+    // Admission belongs to the parent. Do not serialize its closure into the
+    // worker options/config or announce a process that has not been admitted.
+    const { beforeSpawn, ...mergedOptions } = this.mergeOptions(processMetadata, options);
+    if (beforeSpawn) {
+      await beforeSpawn();
+      this.assertOpen();
+    }
 
     // Create process info
     const processInfo: IProcessInfo = {
@@ -378,6 +384,16 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
         await pool.destroy();
         this.assertOpen();
       }
+    } catch (error) {
+      // A rejected caller never receives the pool. Retire every worker already
+      // admitted by partial initialization; keep the PM's ownership on failure.
+      try { await pool.destroy(); }
+      catch (cleanupError) {
+        throw new AggregateError([error, cleanupError],
+          `Pool initialization failed and worker cleanup is unconfirmed: ${String(error)}; ${String(cleanupError)}`,
+          { cause: cleanupError });
+      }
+      throw error;
     } finally { this.initializingPools.delete(initializing); }
 
     // Create a proxy that allows direct method calls on the pool

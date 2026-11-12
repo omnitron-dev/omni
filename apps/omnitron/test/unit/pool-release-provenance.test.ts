@@ -10,11 +10,13 @@ function observePool() {
     artifactSha256: 'b'.repeat(64), launchId: handle.generation, observedAt: new Date().toISOString(), basis: 'verified-launch' };
   const pool = new EventEmitter();
   const exits = new EventEmitter();
-  const workers = new Map([['worker-1', { onExit: (listener: () => void) => exits.on('exit', listener) }]]);
+  const workers = new Map([['worker-1', { isAlive: () => true, onExit: (listener: () => void) => exits.on('exit', listener) }]]);
   // pm.pool() completes initial worker creation before returning the pool.
   pool.emit('worker:spawned', { workerId: 'worker-1' });
   const source = Object.assign(pool, { getWorkerIds: () => [...workers.keys()], getWorkerHandle: (id: string) => workers.get(id) });
-  const orchestrator = Object.create(OrchestratorService.prototype) as {
+  const orchestrator = Object.assign(Object.create(OrchestratorService.prototype), {
+    installedLaunches: new WeakMap(), persistState: () => {}, pm: { getWorkerHandle: (id: string) => workers.get(id) },
+  }) as {
     observePoolReleaseMembership(handle: AppHandle, pool: typeof source): void;
   };
   return { handle, pool, exits, workers, attach: () => orchestrator.observePoolReleaseMembership(handle, source) };

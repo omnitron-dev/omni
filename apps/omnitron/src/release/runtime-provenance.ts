@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { resolveInstalledDependency } from './package-resolution.js';
 import { fileURLToPath } from 'node:url';
-import { targetRuntime, releaseNodeOptions, type TargetRuntime } from './target-runtime.js';
+import { targetRuntime, releaseNodeOptions, assertReleaseLoaderEnvironment, type TargetRuntime } from './target-runtime.js';
 import { shellEscape } from '../shared/shell-escape.js';
 import { readInstalledReleaseReceipt, writeInstalledReleaseReceipt, validOrigin, type ReleaseArtifactOrigin, type InstalledReleaseReceipt } from './installed-origin.js';
 export { validOrigin } from './installed-origin.js';
@@ -150,6 +150,12 @@ if(await (${releaseTreeDigest.toString()})(root)!==r.treeSha256)throw Error();co
 /** A fresh launch may verify a receipt; a surviving legacy process may not. */
 export async function verifyLaunchRelease(entry: IEcosystemAppEntry, launchId: string, executionPaths: readonly string[] = []): Promise<RuntimeReleaseEvidence> {
   const unavailable = (reason: string): RuntimeReleaseEvidence => ({ state: 'unreported', reason });
+  try {
+    // Repeat the canonical ambient-loader check on recovery too. Closure-owned
+    // library paths are added by the launcher only after this admission.
+    assertReleaseLoaderEnvironment(process.env);
+    assertReleaseLoaderEnvironment(entry.env);
+  } catch (error) { return unavailable(String(error)); }
   const effective = (key: string): unknown => entry.env && Object.hasOwn(entry.env, key) ? entry.env[key] : process.env[key];
   if (effective('NODE_PATH')) return unavailable('Additional Node module paths are outside the release boundary.');
   if (!entry.releaseRoot || !path.isAbsolute(entry.releaseRoot)) return unavailable('No installed release boundary was recorded for this launch.');

@@ -324,6 +324,12 @@ export class ProcessPool<T> {
     return this.workers.size;
   }
 
+  /** Derived from the same lifecycle state that owns spawning and retirement. */
+  get membershipChanging(): boolean {
+    return this.membership.isBusy('pool') || this.pendingSpawns.size > 0 || this.replacements.size > 0 ||
+      this.isShuttingDown || this.isDraining || [...this.workers.values()].some(worker => worker.retiring);
+  }
+
   /**
    * Get active worker count
    */
@@ -463,7 +469,11 @@ export class ProcessPool<T> {
     // Zero is a supported low-level pool size; callers such as Omnitron can
     // require a positive minimum for their declared workload.
     assertPoolSize(newSize);
-    return this.membership.enqueue('pool', 'restart', () => this.scaleNow(newSize));
+    try { await this.membership.enqueue('pool', 'restart', () => this.scaleNow(newSize)); }
+    // Unlike pool:scaled (emitted inside the operation), this notification is
+    // after the lifecycle queue has settled. Observers still check the live
+    // membershipChanging flag: a queued successor may already be running.
+    finally { this.emit('pool:membership-settled'); }
   }
 
   private async scaleNow(newSize: number): Promise<void> {
@@ -726,6 +736,7 @@ export class ProcessPool<T> {
       const factoryOptions = this.poolOptions.spawnOptionsFactory
         ? this.poolOptions.spawnOptionsFactory(workerIndex)
         : {};
+      const beforeSpawn = factoryOptions.beforeSpawn ?? baseOptions.beforeSpawn;
 
       const proxy = await this.manager.spawn(this.processPathOrClass, {
         name: `${this.processName}-pool-${workerIndex}`,
@@ -739,6 +750,13 @@ export class ProcessPool<T> {
         }),
         ...baseOptions,
         ...factoryOptions,
+        // A teardown may begin while parent admission awaits verification.
+        // The old worker remains owned until a replacement is actually ready.
+        beforeSpawn: async () => {
+          await beforeSpawn?.();
+          if (this.isShuttingDown || this.isDraining)
+            throw Errors.conflict('Pool stopped accepting workers during spawn admission');
+        },
         // Merge dependencies from both sources
         dependencies: {
           ...baseOptions.dependencies,
@@ -1957,7 +1975,8 @@ export class ProcessPool<T> {
    * Private: Replace a worker
    */
   private async replaceWorker(workerId: string): Promise<void> {
-    return this.membership.enqueue('pool', 'crash-restart', () => this.replaceWorkerNow(workerId));
+    try { await this.membership.enqueue('pool', 'crash-restart', () => this.replaceWorkerNow(workerId)); }
+    finally { this.emit('pool:membership-settled'); }
   }
 
   private async replaceWorkerNow(workerId: string): Promise<void> {

@@ -49,9 +49,14 @@ export class AppHandle {
   /** Captured for this launch; changing the next-start definition never rewrites it. */
   public release: RuntimeReleaseEvidence = { state: 'unreported', reason: 'No verified release receipt was captured for this launch.' };
 
+  /** Monotonic even while unreported: late asynchronous checks cannot bless an
+   * intervening membership change, including a change back to the same IDs. */
+  public releaseRevision = 0;
+
   invalidateRelease(): void {
+    this.releaseRevision++;
     if (this.release.state === 'confirmed') this.release = { state: 'unreported', releaseId: this.release.releaseId,
-      reason: 'Application process membership changed after its verified launch; a fresh launch verification is required.' };
+      reason: 'Application process membership changed; verification of the current membership is pending.' };
   }
   public bootstrapMetadata: BootstrapMetadata | null = null;
   public pid: number | null = null;

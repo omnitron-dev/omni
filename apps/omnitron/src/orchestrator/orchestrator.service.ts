@@ -63,6 +63,7 @@ import {
   type IProcessPool,
   type IProcessPoolOptions,
   type ProcessPool,
+  type IWorkerHandle,
 } from '@omnitron-dev/titan-pm';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 
@@ -134,6 +135,25 @@ import { combineProcessTraffic } from './app-traffic.js';
 import type { StateStore } from '../daemon/state-store.js';
 import { CLI_VERSION } from '../config/defaults.js';
 import { applicationBootstrapRuntime } from './application-runtime.js';
+
+interface InstalledLaunch {
+  binding: InstalledAppBinding;
+  config: IEcosystemConfig;
+  membership?: {
+    entry: IEcosystemAppEntry;
+    paths: string[];
+    active: boolean;
+    requested: boolean;
+    checking?: Promise<void>;
+    observedPools: WeakSet<object>;
+    observedWorkers: WeakSet<object>;
+  };
+}
+
+interface ReleaseMembership {
+  pools: Array<{ name: string; pool: IProcessPool<unknown>; ids: string[] }>;
+  workers: Array<{ id: string; worker: IWorkerHandle }>;
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1019,7 +1039,8 @@ export class OrchestratorService extends EventEmitter {
       // millisecond as a child's «Process failed to start», for an app whose
       // processes never all came up.
       if (handle.status === 'online') {
-        if (launch) this.installedLaunches.set(handle, { binding: Object.freeze(launch), config: cfg });
+        if (launch && !this.installedLaunches.has(handle))
+          this.installedLaunches.set(handle, { binding: Object.freeze(launch), config: cfg });
         this.logger.info({ app: entry.name, pid: handle.pid, mode }, 'App started');
       } else {
         this.logger.error(
@@ -1118,7 +1139,7 @@ export class OrchestratorService extends EventEmitter {
   }
 
   /** Historical launch identity stays private to the handle; membership changes can invalidate its live release observation. */
-  private readonly installedLaunches = new WeakMap<AppHandle, { binding: InstalledAppBinding; config: IEcosystemConfig }>();
+  private readonly installedLaunches = new WeakMap<AppHandle, InstalledLaunch>();
   private readonly executionOperations = new Map<string, { id: string; fingerprint: string; promise: Promise<unknown> }>();
 
   getExecutionCapabilities() { return OWNER_CAPABILITIES; }
@@ -2349,9 +2370,8 @@ export class OrchestratorService extends EventEmitter {
   /**
    * Launch bootstrap app via PM ProcessSupervisor.
    *
-   * If the app's defineSystem() declares a `processes` topology, Omnitron creates
-   * all topology children (server + worker pools) and wires IPC relay between them.
-   * Otherwise, creates a single bootstrap-process as before.
+   * Every defineSystem() has a nonempty process topology. Omnitron creates
+   * its supervised children and worker pools in the declared startup order.
    */
   private async launchBootstrapMode(
     entry: IEcosystemAppEntry,
@@ -2371,8 +2391,8 @@ export class OrchestratorService extends EventEmitter {
     // back is data, which is all the daemon reads of it — here, in the build
     // service and in the stack resolver; the app's own processes load the
     // definition themselves, functions and all.
-    let topology: IProcessEntry[] | undefined;
-    let definition: IAppDefinition | undefined;
+    let topology: IProcessEntry[];
+    let definition: IAppDefinition;
     try {
       const captured = await readBootstrapMetadata(bootstrapAbsPath, this.devMode && !entry.releaseRoot, 60_000, entry.releaseRoot);
       definition = captured.definition;
@@ -2466,22 +2486,28 @@ export class OrchestratorService extends EventEmitter {
     if (installed && this.buildResults.has(entry.name)) {
       throw new Error('Installed stack start cannot use a development build');
     }
-    if (definition && !installed) await this.prepareBootstrapBuild(entry, bootstrapAbsPath, definition);
+    if (!installed) await this.prepareBootstrapBuild(entry, bootstrapAbsPath, definition);
 
     const buildResult = this.buildResults.get(entry.name);
     // Use bundled bootstrap path for topology import when available
     const effectiveBootstrapPath = buildResult?.bootstrapPath ?? bootstrapAbsPath;
+    const executionPaths = [bootstrapAbsPath,
+      ...topology.map(process => path.resolve(path.dirname(bootstrapAbsPath), process.module))];
     handle.release = buildResult
       ? { state: 'unreported', reason: 'This launch uses a generated build; an installed release receipt cannot identify that executable.' }
-      : await verifyLaunchRelease(entry, handle.generation,
-        [bootstrapAbsPath, ...(topology ?? []).map(process => path.resolve(path.dirname(bootstrapAbsPath), process.module))]);
+      : await verifyLaunchRelease(entry, handle.generation, executionPaths);
     const launch = entry.releaseRoot || installed || handle.release.state === 'confirmed'
       ? requireInstalledBinding(handle.release, installedEntryRevision(entry, config, this.cwd), installed) : undefined;
+    // The next-start definition may change while this generation is alive.
+    // Its automatic recovery must keep using the original verified executable.
+    const admission = launch ? this.installedSpawnAdmission(handle, entry, config, executionPaths, launch) : undefined;
 
-    if (topology && topology.length > 0) {
-      await this.launchTopology(entry, handle, config, effectiveBootstrapPath, topology, buildResult);
-    } else {
-      await this.launchSingleProcess(entry, handle, config, effectiveBootstrapPath, buildResult);
+    await this.launchTopology(entry, handle, config, effectiveBootstrapPath, topology, buildResult, admission);
+    const retained = this.installedLaunches.get(handle);
+    if (retained?.membership) {
+      retained.membership.active = true;
+      await this.refreshInstalledMembership(handle);
+      if (handle.status === 'online') requireInstalledBinding(handle.release, retained.binding.entrySha256, retained.binding);
     }
     return launch;
   }
@@ -2549,7 +2575,8 @@ export class OrchestratorService extends EventEmitter {
     config: IEcosystemConfig,
     bootstrapAbsPath: string,
     topology: IProcessEntry[],
-    buildResult?: BuildResult
+    buildResult?: BuildResult,
+    beforeSpawn?: () => Promise<void>,
   ): Promise<void> {
     // One fresh, aligned adapter for every pool and single process in this
     // application generation. Resolve before allocating topology resources.
@@ -2596,6 +2623,7 @@ export class OrchestratorService extends EventEmitter {
         requestTimeout: CHILD_REQUEST_TIMEOUT,
         maxQueueSize: 200,
         spawnOptions: {
+          ...(beforeSpawn && { beforeSpawn }),
           name: `${entry.name}/${procEntry.name}`,
           version: '1.0.0',
           allMethodsPublic: true,
@@ -2696,6 +2724,7 @@ export class OrchestratorService extends EventEmitter {
       const bundledModulePath = buildResult?.modulePaths.get(procEntry.name);
 
       const spawnOpts = {
+        ...(beforeSpawn && { beforeSpawn }),
         name: `${entry.name}/${procEntry.name}`,
         version: '1.0.0',
         allMethodsPublic: true,
@@ -2835,119 +2864,8 @@ export class OrchestratorService extends EventEmitter {
   /**
    * Launch single-process bootstrap app (no topology — original behavior).
    */
-  private async launchSingleProcess(
-    entry: IEcosystemAppEntry,
-    handle: AppHandle,
-    config: IEcosystemConfig,
-    bootstrapAbsPath: string,
-    buildResult?: BuildResult
-  ): Promise<void> {
-    const instances = entry.instances ?? 1;
-    const policy = buildRestartPolicy(entry, config);
-    const spawnEnv = withClosureLibraryPath(entry.env, entry.releaseRoot
-      ? { verifiedRoot: entry.releaseRoot } : [entry.cwd, bootstrapAbsPath]);
-
-    // For single-process apps, use the first (only) process entry's bundled module
-    const firstProcessName = buildResult?.modulePaths.keys().next().value;
-    const bundledModulePath = firstProcessName
-      ? buildResult?.modulePaths.get(firstProcessName)
-      : undefined;
-
-    const spawnOpts = {
-      name: entry.name,
-      version: '1.0.0',
-      // The execution owner's sealed runtime is never the application's
-      // implicit working directory. Titan PM forwards this to native fork.
-      cwd: entry.cwd ?? this.cwd,
-      // As above: a single child's client otherwise runs on netron's default.
-      requestTimeout: CHILD_REQUEST_TIMEOUT,
-      ...(spawnEnv && { env: spawnEnv }),
-      dependencies: {
-        bootstrapPath: bootstrapAbsPath,
-        ...(bundledModulePath && { bundledModulePath }),
-      },
-      // Omitted when unset, which delegates the budget to titan-pm —
-      // `process-spawner.ts`: `options.startupTimeout ?? resources?.timeout ??
-      // 30_000`. Worth naming, because it is otherwise invisible from here:
-      // an APP that declares nothing gets 30s while its CHILD processes get
-      // `DEFAULT_CHILD_STARTUP_TIMEOUT`, 60s. Backwards if anything, since the
-      // app usually does the heavier work — and the downstream project's own
-      // config carries a note about a 30s default that kept a whole stack from
-      // starting. Left as delegation rather than changed here: raising it is a
-      // decision about titan-pm's contract, not about this call site.
-      ...(entry.startupTimeout != null && { startupTimeout: entry.startupTimeout }),
-      health: {
-        enabled: true,
-        interval: config.monitoring.healthCheck.interval,
-        timeout: config.monitoring.healthCheck.timeout,
-      },
-      observability: { metrics: true },
-      ...(handle.appLogLevel && { logLevel: handle.appLogLevel }),
-    };
-
-    const childConfig: ISupervisorChildConfig = {
-      name: entry.name,
-      process: await this.bootstrapRuntime(bootstrapAbsPath),
-      spawnOptions: spawnOpts,
-      critical: entry.critical ?? false,
-    };
-
-    if (instances > 1) {
-      childConfig.poolOptions = {
-        size: instances,
-        strategy: PoolStrategy.ROUND_ROBIN,
-        metrics: true,
-        spawnOptions: spawnOpts,
-        // See the note on the other pool: `replaceUnhealthy` is declared by
-        // titan-pm and read by nothing.
-        healthCheck: {
-          enabled: true,
-          interval: config.monitoring.healthCheck.interval,
-        },
-        spawnOptionsFactory: (index: number) => ({
-          name: `${entry.name}-${index}`,
-          dependencies: {
-            ...spawnOpts.dependencies,
-            portOffset: index,
-          },
-        }),
-      };
-    }
-
-    const supervisorConfig: ISupervisorConfig = {
-      strategy: mapStrategy(config.supervision.strategy),
-      maxRestarts: policy.enabled === false ? 0 : policy.maxRestarts ?? config.supervision.maxRestarts,
-      window: policy.window ?? config.supervision.window,
-      backoff: policy.backoff ?? config.supervision.backoff,
-      children: [childConfig],
-      // No custom onChildCrash — supervisor's built-in budget gate
-      // (process-supervisor.ts:524-531) does what we want:
-      //   * within maxRestarts/window → RESTART
-      //   * over budget → ESCALATE (if child is critical) or IGNORE
-      // Wiring an unconditional RESTART here masked the budget and
-      // turned every crashing child into an infinite respawn storm.
-    };
-
-    // Create supervisor WITHOUT starting — wire events first to avoid race condition
-    const supervisor = this.pm.createSupervisor(supervisorConfig);
-
-    // Wire supervisor events BEFORE start so we catch the initial child:started.
-    // One child, and it is the whole app — so it is the server too.
-    handle.declareChildren([childConfig.name], childConfig.name);
-    this.onChildStarted(entry, handle, supervisor);
-
-    // Set supervisor on handle BEFORE start so attachLogCapture can access it
-    handle.supervisor = supervisor;
-    handle.instanceCount = instances;
-
-    this.wireSupervisorEvents(entry, handle, supervisor);
-
-    // Now start — events will be captured correctly
-    await supervisor.start();
-  }
-
   /**
-   * A child's start, for both launch paths: the app is online when the start
+   * A topology child's start: the app is online when the start
    * completes it, and not before (`AppHandle.childStarted`).
    *
    * Each path had its own copy of this handler, and both marked the app
@@ -2992,6 +2910,9 @@ export class OrchestratorService extends EventEmitter {
     supervisor.on('child:started', (childName: string) => {
       this.attachLogCapture(entry.name, childName, handle);
       this.attachExitCapture(entry.name, childName, handle);
+      const id = handle.supervisor?.getChildProcessId(childName);
+      if (typeof id === 'string') this.observeReleaseWorker(handle, this.pm.getWorkerHandle(id));
+      void this.refreshInstalledMembership(handle);
       // The app re-entered a live state — drop the previous crash
       // context so a future `omnitron inspect` shows the *next*
       // crash, not the last one.
@@ -3147,22 +3068,158 @@ export class OrchestratorService extends EventEmitter {
     workerHandle.onLog(this.childLogForwarder(appName, handle));
   }
 
-  /** Pool initialization is complete; every later membership change supersedes this launch proof. */
+  /** Every PM spawn, including automatic recovery, repeats the original launch
+   * verifier before any native effects. Only the later membership observation
+   * can publish a receipt; successful admission alone cannot confirm an app. */
+  private installedSpawnAdmission(handle: AppHandle, entry: IEcosystemAppEntry, config: IEcosystemConfig,
+    paths: string[], binding: InstalledAppBinding): () => Promise<void> {
+    const launch: InstalledLaunch = {
+      binding: Object.freeze(binding), config: structuredClone(config),
+      membership: { entry: structuredClone(entry), paths: [...paths], active: false, requested: false,
+        observedPools: new WeakSet(), observedWorkers: new WeakSet() },
+    };
+    this.installedLaunches.set(handle, launch);
+    return async () => {
+      const assertCurrent = this.releaseObservationFence(handle);
+      assertCurrent();
+      handle.invalidateRelease();
+      const revision = handle.releaseRevision;
+      try {
+        const evidence = await verifyLaunchRelease(launch.membership!.entry, handle.generation, launch.membership!.paths);
+        assertCurrent();
+        requireInstalledBinding(evidence, binding.entrySha256, binding);
+      } catch (error) {
+        if (this.handles.get(handle.name) === handle && revision === handle.releaseRevision) {
+          handle.release = { state: 'unreported', releaseId: binding.releaseId,
+            reason: `Replacement admission failed: ${String(error)}` };
+          this.persistState();
+        }
+        throw error;
+      }
+    };
+  }
+
+  /** Captures lifecycle intent as well as generation. ABA redefinitions and a
+   * stop followed by a later start must revoke an already awaiting check. */
+  private releaseObservationFence(handle: AppHandle): () => void {
+    const definition = handle.definitionRevision;
+    const stopGeneration = this.stopGeneration;
+    const intent = this.appStopIntents.get(handle.name);
+    return () => {
+      if (this.handles.get(handle.name) !== handle || handle.definitionRevision !== definition ||
+          this.stopGeneration !== stopGeneration || this.stoppingApps ||
+          this.appStopIntents.get(handle.name) !== intent || intent?.stopped ||
+          handle.status === 'stopping' || handle.status === 'stopped')
+        throw new Error('Application lifecycle changed during release verification');
+    };
+  }
+
+  /** No cached membership catalog: resolve the actual pools, supervisor and
+   * native handles each time, with exact PM identities and physical liveness. */
+  private releaseMembership(handle: AppHandle, settled: boolean): ReleaseMembership {
+    const pools = [...handle.topologyPools].map(([name, pool]) => ({ name, pool, ids: pool.getWorkerIds().sort() }));
+    const supervisor = handle.supervisor;
+    if (!supervisor) throw new Error('Application supervisor is unavailable');
+    const topology = handle.topologyProcesses;
+    if (!topology?.length) throw new Error('Application process topology is unavailable');
+    const singleNames = topology.filter(item => (item.instances ?? 1) <= 1).map(item => `${handle.name}/${item.name}`);
+    if (pools.length !== topology.filter(item => (item.instances ?? 1) > 1).length)
+      throw new Error('Application pool inventory is incomplete');
+    pools.sort((left, right) => left.name.localeCompare(right.name));
+    for (const { pool, ids } of pools) {
+      if (typeof pool.membershipChanging !== 'boolean' || (settled && pool.membershipChanging))
+        throw new Error('Pool membership has not settled');
+      if (!ids.length) throw new Error('Application pool has no live members');
+    }
+    const ids = [...pools.flatMap(pool => pool.ids), ...singleNames.map(name => {
+      const id = supervisor.getChildProcessId(name);
+      if (typeof id !== 'string') throw new Error(`Application child '${name}' is unavailable`);
+      return id;
+    })].sort();
+    if (new Set(ids).size !== ids.length || !ids.length) throw new Error('Application process identities are incomplete');
+    const workers = ids.map(id => {
+      const worker = this.pm.getWorkerHandle(id);
+      if (!worker || !worker.isAlive() || this.pm.getProcess(id)?.status !== 'running' || !worker.onExit)
+        throw new Error(`Application worker '${id}' is not observably running`);
+      return { id, worker };
+    });
+    return { pools, workers };
+  }
+
+  /** Coalesces observations, never lifecycle effects. A new event during the
+   * hash requests another pass; an outdated pass cannot publish a receipt. */
+  private async refreshInstalledMembership(handle: AppHandle): Promise<void> {
+    const launch = this.installedLaunches.get(handle);
+    const observation = launch?.membership;
+    if (!launch || !observation?.active) return;
+    observation.requested = true;
+    if (observation.checking) { await observation.checking; return; }
+    const checking = (async () => {
+      while (observation.requested) {
+        observation.requested = false;
+        if (this.handles.get(handle.name) !== handle || handle.status !== 'online') return;
+        const revision = handle.releaseRevision;
+        const assertCurrent = this.releaseObservationFence(handle);
+        try {
+          assertCurrent();
+          const before = this.releaseMembership(handle, false);
+          const evidence = await verifyLaunchRelease(observation.entry, handle.generation, observation.paths);
+          assertCurrent();
+          if (revision !== handle.releaseRevision) continue;
+          const after = this.releaseMembership(handle, true);
+          if (before.workers.length !== after.workers.length || before.pools.length !== after.pools.length ||
+              before.workers.some((item, index) => item.id !== after.workers[index]!.id || item.worker !== after.workers[index]!.worker) ||
+              before.pools.some((item, index) => item.pool !== after.pools[index]!.pool ||
+                item.ids.join('\0') !== after.pools[index]!.ids.join('\0')))
+            throw new Error('Application membership changed during release verification');
+          requireInstalledBinding(evidence, launch.binding.entrySha256, launch.binding);
+          handle.release = evidence;
+          this.persistState();
+        } catch (error) {
+          if (this.handles.get(handle.name) === handle && revision === handle.releaseRevision) {
+            handle.release = { state: 'unreported', releaseId: launch.binding.releaseId,
+              reason: `Current application membership is not verified: ${String(error)}` };
+            this.persistState();
+          }
+        }
+      }
+    })();
+    observation.checking = checking;
+    try { await checking; } finally {
+      delete observation.checking;
+      // A settled event may arrive between the loop's last read and this
+      // continuation. It must not be lost behind a just-completed promise.
+      if (observation.requested) await this.refreshInstalledMembership(handle);
+    }
+  }
+
+  private observeReleaseWorker(handle: AppHandle, worker: IWorkerHandle | undefined,
+    observed = this.installedLaunches.get(handle)?.membership?.observedWorkers): void {
+    if (worker && observed?.has(worker)) return;
+    const invalidate = () => { handle.invalidateRelease(); this.persistState(); };
+    if (!worker?.onExit) { invalidate(); return; }
+    observed?.add(worker);
+    worker.onExit(invalidate);
+    // onExit is not replayed for an exit that preceded subscription.
+    if (!worker.isAlive()) invalidate();
+  }
+
+  /** Subscribe each new native handle, including replacements of replacements. */
   private observePoolReleaseMembership(handle: AppHandle, pool: {
     on(event: string, listener: () => void): void;
     getWorkerIds(): string[];
-    getWorkerHandle(id: string): unknown;
   }): void {
-    const invalidate = () => handle.invalidateRelease();
+    const observed = this.installedLaunches.get(handle)?.membership?.observedPools;
+    if (observed?.has(pool)) return;
+    observed?.add(pool);
+    const invalidate = () => { handle.invalidateRelease(); this.persistState(); };
     for (const event of ['worker:spawned', 'worker:shutdown', 'worker:replaced', 'pool:scaled', 'pool:destroyed'])
       pool.on(event, invalidate);
-    // A crash precedes the pool's health check and replacement; stop confirming
-    // the old membership as soon as the initial worker reports its exit.
-    for (const id of pool.getWorkerIds()) {
-      const worker = pool.getWorkerHandle(id) as { onExit?: (listener: () => void) => unknown } | null;
-      if (worker?.onExit) worker.onExit(invalidate);
-      else invalidate();
-    }
+    const workers = this.installedLaunches.get(handle)?.membership?.observedWorkers ?? new WeakSet<object>();
+    const observe = () => { for (const id of pool.getWorkerIds()) this.observeReleaseWorker(handle, this.pm.getWorkerHandle(id), workers); };
+    pool.on('worker:spawned', observe);
+    pool.on('pool:membership-settled', () => { void this.refreshInstalledMembership(handle); });
+    observe();
   }
 
   /**

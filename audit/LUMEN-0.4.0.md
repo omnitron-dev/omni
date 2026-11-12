@@ -214,6 +214,30 @@ release gates.
 
 ## Release evidence boundaries
 
+The `08271086` GitHub run did not qualify the release. Lint passed, but the
+standing scanner imported unbuilt browser fixtures, recovery fixtures omitted
+the sealed application closure, and full-suite search assertions depended on
+wall-clock sleeps. The scanner now defers runtime imports until fixture startup;
+recovery fixtures use the actual closure builder; search assertions await the
+observable adapter/RPC result. Independent Turbo test branches continue after
+a failure so their outcomes remain visible, while the overall command still
+fails and cleans its own resources.
+
+The corrected source checks pass on a clean Linux Node 22.23.4 build: 29 recovery,
+workspace-resolution and migration checks, and all 52 Lumen UI checks. This is
+scoped acceptance, not a replacement for complete exact-commit CI. The offline
+SDK-bootstrap fixture and the intermittent SDK-archive mismatch from that run
+remain under investigation at this checkpoint. Neither is waived because a
+developer machine or one later pair of builds passed.
+
+The reference website also passes a fresh SDK `08271086` acceptance through the
+ordinary SDK and Lumen commands: 239 pages, 236 preserved original routes, 2,855
+content anchors, 46,121 link/asset checks and twelve Chromium scenarios. Desktop
+and 320-pixel mobile screenshots were inspected. The website remains on its
+migration branch until a frozen installation from published 0.4.0 registry
+packages passes the same gates. Its development SDK receipt does not qualify
+the registry lockfile or authorize a production Console update.
+
 The final release review found three separate gaps in the preparation recipe:
 
 - Read-only publication reconstructed the qualification key using the publisher's

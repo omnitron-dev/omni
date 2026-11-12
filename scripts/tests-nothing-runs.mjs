@@ -25,8 +25,8 @@
  *     product of a directory named `test` next to one named `tests`, or a
  *     rename, or a file dropped a level too high. That is the finding.
  *
- * Coverage is asked of the runners themselves — `vitest list` per config, and
- * playwright's testDir/testMatch — rather than by re-implementing their glob
+ * Coverage is asked of the runners themselves — `vitest list` per config and
+ * `playwright test --list` for configs and direct package scripts — rather than re-implementing their glob
  * semantics, because a scan that models a runner eventually disagrees with it,
  * and then it is measuring its own model.
  *
@@ -53,6 +53,7 @@
 
 import { execSync, execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, join, relative, resolve } from 'node:path';
 
 import { stripComments } from './lib/strip-comments.mjs';
@@ -149,20 +150,51 @@ function vitestCollects(pkg, config) {
   }
 }
 
-/** Playwright is asked by its own two fields rather than by starting a browser. */
-function playwrightCollects(pkg, config) {
-  const src = stripComments(readFileSync(join(ROOT, pkg, config), 'utf8'));
-  const dir = src.match(/testDir\s*:\s*['"`]([^'"`]+)['"`]/)?.[1];
-  if (!dir) return null;
-  const match = src.match(/testMatch\s*:\s*['"`]([^'"`]+)['"`]/)?.[1] ?? '**/*.spec.ts';
-  const base = join(pkg, dir.replace(/^\.\//, ''));
-  const tail = match.replace(/^\*\*\//, '');
-  const re = new RegExp(
-    '^' + tail.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*').replace(/\?/g, '.') + '$',
-  );
-  return (byPackage.get(pkg) ?? []).filter(
-    (f) => f.startsWith(base + '/') && re.test(f.split('/').pop()),
-  );
+/** Direct argv commands only: shell programs are not safe collection requests. */
+function playwrightCommands(pkg, configs) {
+  const commands = configs.map(config => ({ label: config, args: ['--config', config] }));
+  const manifest = JSON.parse(readFileSync(join(ROOT, pkg, 'package.json'), 'utf8'));
+  for (const [name, command] of Object.entries(manifest.scripts ?? {})) {
+    if (typeof command !== 'string' || !/\bplaywright\s+test(?:\s|$)/.test(command)) continue;
+    const label = `package.json#scripts.${name}`;
+    if (!/^\s*playwright\s+test(?:\s|$)/.test(command) || /[;&|$<>`'"~*?\[\]{}\\\r\n]/.test(command)) {
+      commands.push({ label, error: 'Use a direct Playwright command for collection; shell syntax is unsupported' });
+      continue;
+    }
+    const args = command.trim().split(/\s+/).slice(2);
+    // Interactive variants do not define another collection surface.
+    if (args.some(arg => /^--(?:ui|debug)(?:=|$)/.test(arg))) continue;
+    commands.push({ label, args });
+  }
+  return commands;
+}
+
+/** --list imports declarations but starts neither tests nor browser fixtures. */
+function playwrightCollects(pkg, command) {
+  if (command.error) return { error: command.error };
+  try {
+    const cwd = join(ROOT, pkg);
+    const cli = createRequire(join(cwd, 'package.json')).resolve('@playwright/test/cli');
+    const out = execFileSync(process.execPath, [cli, 'test', ...command.args, '--list', '--reporter=json'], {
+      cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 300_000, maxBuffer: 16 * 1024 * 1024,
+    });
+    const report = JSON.parse(out);
+    if (!Array.isArray(report.suites) || report.errors?.length) throw new Error('Playwright did not return a successful collection');
+    const files = new Set();
+    const visit = suites => {
+      for (const suite of suites) {
+        for (const spec of suite.specs ?? []) {
+          if (typeof spec.file !== 'string') throw new Error('Playwright returned a test without a source file');
+          files.add(relative(ROOT, resolve(report.config.rootDir, spec.file)));
+        }
+        visit(suite.suites ?? []);
+      }
+    };
+    visit(report.suites);
+    return { files: [...files] };
+  } catch (error) {
+    return { error: String(error.stderr || error.message).trim().slice(0, 1000) };
+  }
 }
 
 /** Paths a config names in `exclude` — a decision, read through the stripper. */
@@ -191,7 +223,6 @@ const globToRe = (g) =>
 // A scan that silently skips is the thing this scan is about. Both ways of
 // not being checked are counted and printed.
 const selfCheck = [];
-const notAnchored = [];
 {
   // Exercise the parser independently of a package's changing test inventory.
   // Removing an obsolete exclusion must improve coverage, not fail this scan.
@@ -206,16 +237,6 @@ const notAnchored = [];
     || excludedPatterns('test: { include: ["test/**/*.ts"], exclude: [] }').length !== 0) {
     selfCheck.push('the exclude reader confuses active, commented or empty exclusions');
   }
-  // Repository-specific anchors below are reported as untested when absent.
-  // The playwright reader must find a testDir. prism runs its e2e and its
-  // accessibility suites from one; if this returns nothing, 56 prism files
-  // become orphans at once.
-  if (existsSync(join(ROOT, 'packages/prism/playwright.config.ts'))) {
-    const got = playwrightCollects('packages/prism', 'playwright.config.ts');
-    if (!got || got.length === 0) selfCheck.push('the playwright reader found no tests under prism’s testDir');
-  } else {
-    notAnchored.push('the playwright reader (no packages/prism/playwright.config.ts under this root)');
-  }
   // The glob translation must actually match what it is given. This one needs
   // no repository and so always runs.
   if (!globToRe('test/runtime/**/*.ts').test('test/runtime/a/b.ts') || globToRe('test/*.ts').test('test/a/b.ts')) {
@@ -225,11 +246,6 @@ const notAnchored = [];
 if (selfCheck.length) {
   console.error(`SELF-CHECK FAILED: ${selfCheck.join('; ')}`);
   process.exit(2);
-}
-if (notAnchored.length && !JSON_OUT) {
-  console.error(
-    `note: ${notAnchored.length} self-check(s) had nothing to anchor on here — ${notAnchored.join('; ')}`,
-  );
 }
 
 const orphans = [];
@@ -241,7 +257,9 @@ let packagesAsked = 0;
 for (const [pkg, files] of [...byPackage].sort()) {
   const vitestConfigs = configsIn(pkg, /^vitest.*\.config\.(ts|js|mts|mjs)$/);
   const pwConfigs = configsIn(pkg, /^playwright.*\.config\.(ts|js|mts|mjs)$/);
-  if (vitestConfigs.length === 0 && pwConfigs.length === 0) {
+  const pwCommands = playwrightCommands(pkg, pwConfigs);
+  const runnerNames = [...vitestConfigs, ...pwCommands.map(command => command.label)];
+  if (runnerNames.length === 0) {
     // No config of its own: vitest's default include collects every
     // `*.{test,spec}.*` under the package, so nothing can hide. Counted
     // rather than skipped in silence — if a config appears later with a
@@ -259,19 +277,20 @@ for (const [pkg, files] of [...byPackage].sort()) {
     anyAnswered = true;
     for (const f of got) covered.add(f);
   }
-  for (const c of pwConfigs) {
-    const got = playwrightCollects(pkg, c);
-    if (got === null) continue;
+  let playwrightFailed = false;
+  for (const command of pwCommands) {
+    const got = playwrightCollects(pkg, command);
+    if (got.error) {
+      playwrightFailed = true;
+      collectionFailures.push({ pkg, files: files.length, configs: [command.label], error: got.error });
+      continue;
+    }
     anyAnswered = true;
-    for (const f of got) covered.add(f);
+    for (const f of got.files) covered.add(f);
   }
 
   if (!anyAnswered || (covered.size === 0 && files.length > 0)) {
-    collectionFailures.push({
-      pkg,
-      files: files.length,
-      configs: [...vitestConfigs, ...pwConfigs],
-    });
+    if (!playwrightFailed) collectionFailures.push({ pkg, files: files.length, configs: runnerNames });
     continue;
   }
 
@@ -287,7 +306,7 @@ for (const [pkg, files] of [...byPackage].sort()) {
       excluded.push(f);
       continue;
     }
-    orphans.push({ pkg, file: f, configs: [...vitestConfigs, ...pwConfigs] });
+    orphans.push({ pkg, file: f, configs: runnerNames });
   }
 }
 
@@ -302,6 +321,7 @@ if (JSON_OUT) {
     console.log('=== COLLECTION FAILED — the runner did not answer, so this package was NOT checked ===');
     for (const c of collectionFailures) {
       console.log(`  ${c.pkg}  (${c.files} test files, configs: ${c.configs.join(', ')})`);
+      if (c.error) console.log(`    ${c.error.replace(/\n/g, '\n    ')}`);
     }
     console.log('');
   }

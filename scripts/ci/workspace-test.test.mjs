@@ -1,11 +1,99 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, mkdir, copyFile, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, copyFile, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+
+async function collectionFixture(t, files, scripts = {}) {
+  const directory = await mkdtemp(join(tmpdir(), 'omni-test-collection-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const pkg = join(directory, 'packages/ui');
+  await mkdir(pkg, { recursive: true });
+  await symlink(fileURLToPath(new URL('../../node_modules', import.meta.url)), join(directory, 'node_modules'), 'dir');
+  const manifest = next => writeFile(join(pkg, 'package.json'), JSON.stringify({ name: 'collection-fixture', type: 'module', scripts: next }));
+  await manifest(scripts);
+  for (const [name, source] of Object.entries(files)) {
+    const file = join(pkg, name);
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, source);
+  }
+  for (const args of [['init', '-q'], ['add', 'packages']]) {
+    const result = spawnSync('git', args, { cwd: directory, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+  }
+  return {
+    pkg, manifest,
+    scan() {
+      const result = spawnSync(process.execPath, [fileURLToPath(new URL('../tests-nothing-runs.mjs', import.meta.url)), '--root', directory, '--json'], {
+        encoding: 'utf8', timeout: 30_000, maxBuffer: 4 * 1024 * 1024,
+      });
+      assert.ok([0, 1].includes(result.status), result.stderr || result.error?.message);
+      return { status: result.status, ...JSON.parse(result.stdout) };
+    },
+  };
+}
+
+const collectedTest = "import { test } from '@playwright/test';\n" +
+  "test.beforeAll(() => { throw new Error('Collection must not start hooks or browsers'); });\n" +
+  "test('declared test', async ({ page }) => { throw new Error('Collection must not run test bodies'); });\n";
+
+test('collection follows a direct Playwright script filter and refuses shell programs', async t => {
+  const fixture = await collectionFixture(t, {
+    'tests/browser/collected.spec.js': collectedTest,
+    'tests/outside/orphan.spec.js': collectedTest,
+  }, { 'test:browser': 'playwright test tests/browser --workers=1' });
+  const filtered = fixture.scan();
+  assert.equal(filtered.status, 1);
+  assert.deepEqual(filtered.orphans.map(value => value.file), ['packages/ui/tests/outside/orphan.spec.js']);
+  assert.deepEqual(filtered.collectionFailures, []);
+  await fixture.manifest({ 'test:browser': 'playwright test tests --workers=1' });
+  assert.equal(fixture.scan().status, 0);
+  for (const command of ['playwright test tests && echo unsupported', 'CI=1 playwright test tests', 'playwright test tests/*.spec.js']) {
+    await fixture.manifest({ 'test:browser': command });
+    const refused = fixture.scan();
+    assert.equal(refused.status, 1);
+    assert.match(refused.collectionFailures[0].error, /shell syntax is unsupported/);
+  }
+});
+
+test('Playwright collection preserves project arguments and deduplicates shared files', async t => {
+  const fixture = await collectionFixture(t, {
+    'browser.runner.js': "export default { projects: [" +
+      "{ name: 'selected', testDir: './tests/selected' }," +
+      "{ name: 'duplicate', testDir: './tests/selected' }," +
+      "{ name: 'other', testDir: './tests/other' }] };\n",
+    'tests/selected/a.spec.js': collectedTest,
+    'tests/other/b.spec.js': collectedTest,
+  }, { 'test:browser': 'playwright test --config browser.runner.js --project=selected --project=duplicate' });
+  const filtered = fixture.scan();
+  assert.equal(filtered.status, 1);
+  assert.deepEqual(filtered.orphans.map(value => value.file), ['packages/ui/tests/other/b.spec.js']);
+  assert.deepEqual(filtered.collectionFailures, []);
+  await fixture.manifest({ 'test:browser': 'playwright test --config browser.runner.js --project=selected --project=duplicate --project=other' });
+  assert.equal(fixture.scan().status, 0);
+});
+
+test('Playwright resolves computed config paths and collection errors remain failures', async t => {
+  const fixture = await collectionFixture(t, {
+    'playwright.config.js': "const directory = './tests/' + 'browser'; export default { testDir: directory, testMatch: [/\\.spec\\.js$/] };\n",
+    'tests/browser/good.spec.js': collectedTest,
+  });
+  assert.equal(fixture.scan().status, 0);
+  await fixture.manifest({ 'test:missing': 'playwright test never-collected.spec.js' });
+  const missing = fixture.scan();
+  assert.equal(missing.status, 1);
+  assert.equal(missing.collectionFailures.length, 1, 'a passing config must not hide a refused script collection');
+  assert.deepEqual(missing.orphans, []);
+  await fixture.manifest({});
+  await writeFile(join(fixture.pkg, 'tests/browser/good.spec.js'), "throw new Error('Declaration refused intentionally');\n");
+  const refused = fixture.scan();
+  assert.equal(refused.status, 1);
+  assert.equal(refused.collectionFailures.length, 1);
+  assert.deepEqual(refused.orphans, []);
+});
 
 test('strict Turbo mode carries the isolated test endpoints and home into the test cache key', () => {
   const turbo = createRequire(import.meta.url).resolve('turbo/bin/turbo');

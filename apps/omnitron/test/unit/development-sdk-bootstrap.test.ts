@@ -6,7 +6,7 @@ import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import { promisify } from 'node:util';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { parseAllDocuments } from 'yaml';
 import { create } from 'tar';
 import { sdkCommand, inspectSdk } from '../../bin/sdk.js';
@@ -14,6 +14,7 @@ import { sdkCommand, inspectSdk } from '../../bin/sdk.js';
 const exec = promisify(execFile), require = createRequire(import.meta.url);
 const turbo = path.join(path.dirname(require.resolve('turbo/package.json')), 'bin/turbo');
 let root: string, consumer: string, source: string;
+let packageManager: string;
 let registry: Server | undefined;
 const json = async (file: string) => JSON.parse(await fs.readFile(file, 'utf8'));
 const write = (file: string, value: unknown) => fs.writeFile(file, JSON.stringify(value));
@@ -23,17 +24,32 @@ const exists = (file: string) => fs.stat(file).then(() => true, error => {
   if (error.code === 'ENOENT') return false;
   throw error;
 });
+const distribution = () => fs.readFile(path.join(consumer, 'pnpm-lock.yaml'), 'utf8').catch(error => {
+  if (error.code === 'ENOENT') return null;
+  throw error;
+});
 
 // Real pnpm/Turbo on tiny local workspaces. Registry cases use only a loopback
 // fixture server; no public registry, daemon or live SDK is used or modified.
+// The harness supplies the exact repository-pinned pnpm. Its version is checked
+// before any fixture runs; pnpm must not resolve itself from a global cache.
+beforeAll(async () => {
+  packageManager = (await json(path.resolve(import.meta.dirname, '../../../../package.json'))).packageManager;
+  expect(packageManager).toMatch(/^pnpm@\d+\.\d+\.\d+$/);
+  const { stdout } = await exec('pnpm', ['--version'], { cwd: os.tmpdir(), timeout: 10_000 });
+  expect(stdout.trim()).toBe(packageManager.slice('pnpm@'.length));
+});
+
 async function workspace(directory: string) {
   await fs.mkdir(directory, { recursive: true });
   await exec('git', ['init', '--quiet', directory]);
   await write(path.join(directory, 'package.json'), {
-    name: path.basename(directory), private: true, packageManager: 'pnpm@12.16.1',
+    name: path.basename(directory), private: true, packageManager,
   });
   await fs.writeFile(path.join(directory, 'pnpm-workspace.yaml'),
-    `packages:\n  - packages/*\noffline: true\nverifyDepsBeforeRun: error\nstoreDir: ${path.join(root, 'store')}\n`);
+    // Standard externally managed tool mode: the prerequisite above owns the
+    // strict version check. This mode does not generate a manager boot document.
+    `packages:\n  - packages/*\noffline: true\npmOnFail: ignore\nverifyDepsBeforeRun: error\nstoreDir: ${path.join(root, 'store')}\ncacheDir: ${path.join(root, 'cache')}\n`);
   await fs.writeFile(path.join(directory, '.gitignore'), 'node_modules/\n.omnitron/\n.turbo/\n');
 }
 async function sdk(directory: string) {
@@ -206,14 +222,14 @@ it('retains the last successful build checkpoint when a repeated SDK build fails
   const checkpoint = path.join(consumer, '.omnitron/dev-sdk/built.json');
   const before = await fs.readFile(checkpoint, 'utf8');
   const profile = await fs.readFile(active(), 'utf8');
-  const rootLock = await fs.readFile(path.join(consumer, 'pnpm-lock.yaml'), 'utf8');
+  const rootLock = await distribution();
   const script = path.join(source, 'packages/lumen-ast/build.js');
   const original = await fs.readFile(script, 'utf8');
   await fs.writeFile(script, 'throw Error("Build was not completed");\n');
   await expect(select()).rejects.toThrow(/pnpm exec exited/);
   expect(await fs.readFile(checkpoint, 'utf8')).toBe(before);
   expect(await fs.readFile(active(), 'utf8')).toBe(profile);
-  expect(await fs.readFile(path.join(consumer, 'pnpm-lock.yaml'), 'utf8')).toBe(rootLock);
+  expect(await distribution()).toBe(rootLock);
   await fs.writeFile(script, original.replace('value = 42', 'value = 100'));
   await select();
   expect((await exec('pnpm', ['run', 'build'], { cwd: consumer })).stdout).toContain('Built with SDK value 100');
@@ -227,11 +243,9 @@ it.each([false, true])('bootstraps a standalone Lumen consumer with absent/stale
   expect(await exists(path.join(consumer, 'pnpm-lock.yaml'))).toBe(stale);
   await select(source);
   expect(await inspectSdk(consumer)).toMatchObject({ mode: 'development', source, verifiedImports: 1,
-    distributionLock: stale ? 'present' : 'manager-only', distributionLockChanged: false });
-  const baseline = await fs.readFile(path.join(consumer, 'pnpm-lock.yaml'), 'utf8');
-  expect(parseAllDocuments(baseline).at(-1)!.toJS()).toEqual(stale ? parseAllDocuments(lock).at(-1)!.toJS() : null);
-  expect(parseAllDocuments(baseline)[0]!.toJS().importers['.'].packageManagerDependencies.pnpm.version).toBe('12.16.1');
-  if (stale) expect(baseline).toContain(lock);
+    distributionLock: stale ? 'present' : 'absent', distributionLockChanged: false });
+  const baseline = await distribution();
+  expect(baseline).toBe(stale ? lock : null);
   const profile = await json(active());
   expect(Object.keys(profile.links).sort()).toEqual(['@omnitron-dev/lumen', '@omnitron-dev/lumen-ast']);
   expect(profile.versions).toEqual({ '@omnitron-dev/lumen': '0.3.5', '@omnitron-dev/lumen-ast': '0.3.5' });
@@ -240,11 +254,34 @@ it.each([false, true])('bootstraps a standalone Lumen consumer with absent/stale
   expect(await exists(path.join(consumer, '.omnitron/dev-sdk/pnpm-lock.yaml'))).toBe(true);
   const built = await exec('pnpm', ['run', 'build'], { cwd: consumer });
   expect(built.stdout).toContain('Built with SDK value 42');
-  expect(await fs.readFile(path.join(consumer, 'pnpm-lock.yaml'), 'utf8')).toBe(baseline);
+  expect(await distribution()).toBe(baseline);
   const before = await fs.readFile(selected(), 'utf8');
-  await expect(sdkCommand(['registry', '--project-dir', consumer])).rejects.toThrow(stale ? /stale/ : /package-manager metadata only/);
+  await expect(sdkCommand(['registry', '--project-dir', consumer])).rejects.toThrow(stale ? /stale/ : /No distribution lock/);
   expect(await fs.readFile(selected(), 'utf8')).toBe(before);
   expect(await inspectSdk(consumer)).toMatchObject({ mode: 'development' });
+}, 90_000);
+
+it('preserves an existing manager-only lock without treating it as a registry baseline', async () => {
+  // An existing input state, taken from the repository's genuine pnpm lock.
+  // This does not claim that the externally managed fixture generates it.
+  const repositoryLock = await fs.readFile(path.resolve(import.meta.dirname, '../../../../pnpm-lock.yaml'), 'utf8');
+  const boot = parseAllDocuments(repositoryLock)[0]!;
+  expect(boot.toJS().importers['.'].packageManagerDependencies.pnpm.version).toBe(packageManager.slice('pnpm@'.length));
+  const original = boot.toString() + '---\n';
+  await fs.writeFile(path.join(consumer, 'pnpm-lock.yaml'), original);
+  await initialize();
+  await select(source);
+  expect(await distribution()).toBe(original);
+  expect(await inspectSdk(consumer)).toMatchObject({ mode: 'development', source, verifiedImports: 1,
+    distributionLock: 'manager-only', distributionLockChanged: false });
+  const profile = await fs.readFile(selected(), 'utf8');
+  await expect(sdkCommand(['registry', '--project-dir', consumer])).rejects.toThrow('package-manager metadata only');
+  expect(await fs.readFile(selected(), 'utf8')).toBe(profile);
+  expect(await fs.readFile(active(), 'utf8')).toBe(profile);
+  expect(await distribution()).toBe(original);
+  expect(await inspectSdk(consumer)).toMatchObject({ mode: 'development', source });
+  expect((await exec('pnpm', ['run', 'build'], { cwd: consumer })).stdout).toContain('Built with SDK value 42');
+  expect(await distribution()).toBe(original);
 }, 90_000);
 
 it.each([false, true])('restores the original root lock after failed bootstrap and resumes without a fake registry rollback: %s', async stale => {
@@ -263,14 +300,14 @@ it.each([false, true])('restores the original root lock after failed bootstrap a
   delete manifest.scripts;
   await write(file, manifest);
   await select();
-  expect(await inspectSdk(consumer)).toMatchObject({ mode: 'development', source, distributionLock: stale ? 'present' : 'manager-only' });
+  expect(await inspectSdk(consumer)).toMatchObject({ mode: 'development', source, distributionLock: stale ? 'present' : 'absent' });
 }, 90_000);
 
 it('restores the accepted SDK after a failed switch without needing registry packages', async () => {
   await initialize();
   await select(source);
   const previous = await fs.readFile(active(), 'utf8');
-  const previousRootLock = await fs.readFile(path.join(consumer, 'pnpm-lock.yaml'), 'utf8');
+  const previousRootLock = await distribution();
   const alternative = path.join(root, 'alternative');
   await sdk(alternative);
   const manifest = await json(path.join(consumer, 'package.json'));
@@ -282,7 +319,7 @@ it('restores the accepted SDK after a failed switch without needing registry pac
   expect(await fs.readFile(active(), 'utf8')).toBe(previous);
   expect(await fs.readFile(selected(), 'utf8')).toBe(previous);
   expect(await inspectSdk(consumer)).toMatchObject({ mode: 'development', source });
-  expect(await fs.readFile(path.join(consumer, 'pnpm-lock.yaml'), 'utf8')).toBe(previousRootLock);
+  expect(await distribution()).toBe(previousRootLock);
 }, 90_000);
 
 it('preserves a concurrent root lock edit instead of hiding it during failed bootstrap recovery', async () => {
@@ -293,9 +330,12 @@ it('preserves a concurrent root lock edit instead of hiding it during failed boo
   const concurrent = '# changed by another writer while pnpm was installing\nlockfileVersion: \'9.0\'\nimporters:\n  .: {}\n';
   await fs.writeFile(path.join(consumer, 'concurrent.js'),
     `require('node:fs').writeFileSync('pnpm-lock.yaml', ${JSON.stringify(concurrent)}); process.exit(23);\n`);
-  await expect(select(source)).rejects.toThrow('a changed distribution lock was preserved');
+  await expect(select(source)).rejects.toThrow(
+    'pnpm install exited with 1. No verified registry baseline is available; the SDK installation is incomplete. Run sdk dev again to finish it.'
+  );
   expect(await fs.readFile(path.join(consumer, 'pnpm-lock.yaml'), 'utf8')).toBe(concurrent);
   expect(await exists(active())).toBe(false);
+  expect(await exists(path.join(consumer, '.omnitron/dev-sdk/built.json'))).toBe(false);
   expect((await json(selected())).installing).toBe(true);
   await expect(inspectSdk(consumer)).rejects.toThrow('interrupted');
 }, 90_000);

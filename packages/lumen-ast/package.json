@@ -7,14 +7,19 @@
     "entry": [
       "src/index.ts",
       "src/execution/index.ts",
-      "src/execution/limits.ts"
+      "src/execution/limits.ts",
+      "src/typst/index.ts"
     ],
-    "format": ["esm"],
+    "format": [
+      "esm"
+    ],
     "dts": true,
     "sourcemap": true,
     "clean": true,
     "treeshake": true,
-    "noExternal": ["micromark-extension-math"]
+    "noExternal": [
+      "micromark-extension-math"
+    ]
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -33,11 +38,16 @@
       "types": "./dist/execution/limits.d.ts",
       "import": "./dist/execution/limits.js",
       "default": "./dist/execution/limits.js"
+    },
+    "./typst": {
+      "types": "./dist/typst/index.d.ts",
+      "node": "./dist/typst/index.js"
     }
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "fonts"
   ],
   "scripts": {
     "build": "tsup",
@@ -66,7 +76,10 @@
     "@types/hast": "^3.0.5",
     "mdast-util-to-hast": "^13.2.1",
     "quickjs-emscripten-core": "0.32.0",
-    "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0"
+    "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0",
+    "@myriaddreamin/typst-ts-web-compiler": "0.7.0",
+    "tex2typst": "0.6.2",
+    "fontkit": "3.0.0"
   },
   "devDependencies": {
     "micromark-extension-math": "^3.1.0",
@@ -74,7 +87,8 @@
     "@types/katex": "^0.16.7",
     "@types/node": "26.6.6",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "vitest": "^5.0.5"
+    "vitest": "^5.0.5",
+    "pdfjs-dist": "6.5.438"
   },
   "engines": {
     "node": ">=22.12.0"

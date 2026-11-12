@@ -1,6 +1,6 @@
+import { compileTypst } from './typst/index.js';
 import { describe, expect, it } from 'vitest';
 import {
-  compileTypst,
   LumenFrontmatterSchema,
   LumenMacroRegistry,
   parseDocument,

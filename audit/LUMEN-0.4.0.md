@@ -17,8 +17,8 @@ Baseline: `3ea505ad` (2026-11-11). This is a verification ledger, not a release 
 | L40-01 | Malformed frontmatter can become public; migration uses a second parser; cyclic metadata survives. | One bounded data-only parser, fail-closed metadata, browser compatibility, regression tests. | Closed in source: five baseline failures reproduced; 78 AST and 29 migration tests, typechecks and both package builds pass. YAML/JSON share the browser-compatible bounded parser; plural `tests/` directories now receive the common lint policy. |
 | L40-02 | SSG and Titan re-parse raw source with independent access algorithms and incompatible role defaults. | One AST projection, one configurable permission policy, consistent exports and section semantics. | Closed in source: 96 AST, 49 site and 44 Titan-Lumen tests pass, including three reproduced mixed HTML/Markdown leaks and configurable SSG grants. Three builds/typechecks and changed-file lint pass. Roughly 1,000 duplicated lines removed. |
 | L40-03 | RPC controller trusts caller-supplied session roles, uses the HTTP auth decorator instead of Netron publication metadata, and retains mutable auth state. | Authoritative invocation context and actual HTTP/WS tests with concurrent identities. | Native backend and HTTP MCP corrected: one `LumenService`, class-based DI and one wire contract. No controller, session arguments, duplicate tokens or handwritten HTTP/SSE MCP transport. Official MCP client works through a real Netron HTTP listener; verified authors and concurrent caller isolation are tested. Browser integration and the separate static-corpus stdio MCP implementation remain under audit. |
-| L40-04 | Server JavaScript execution uses node:vm inside a Worker; browser execution uses host JavaScript with an ambient-global denylist. | Capability-free interpreter, resource limits and no host fallback. | Shared interpreter and server path corrected: six interpreter checks and all 37 Titan-Lumen tests pass, including real Netron authorization and worker admission. Browser integration is being replaced and remains a release gate. |
-| L40-05 | PDF is an ASCII-only handwritten PDF writer; it does not compile Typst and truncates long words. | Real typesetter with Unicode, mathematics, layout and independently decoded output checks. | Open |
+| L40-04 | Server JavaScript execution uses node:vm inside a Worker; browser execution uses host JavaScript with an ambient-global denylist. | Capability-free interpreter, resource limits and no host fallback. | Closed in source: six interpreter checks, all 37 Titan-Lumen tests, 43 UI tests and six real Chromium worker checks pass. The compiled module worker runs under CSP without unsafe-eval, rejects host access, excessive aggregate memory/output and endless execution, and has no host/snapshot fallback. Final release archive qualification remains required. |
+| L40-05 | PDF is an ASCII-only handwritten PDF writer; it does not compile Typst and truncates long words. | Real typesetter with Unicode, mathematics, layout and independently decoded output checks. | Replaced in source by real offline Typst WASM in a terminable Node worker. Unicode/mathematical geometry, multi-page content, projection, cancellation and injection tests use an independent PDF reader. Missing font glyphs now fail explicitly; packaged-entry-point tests are in progress. |
 | L40-06 | SSG emits a second island runtime which reports hydration without mounting a component. | Built client assets using the actual lumen-ui runtime; interaction tests against generated output. | Open |
 | L40-07 | Pagefind is a handwritten compatibility layer; Mermaid/ELK implementation needs semantic verification. | Use real declared engines or expose accurately scoped alternatives, with representative fixtures. | Open |
 | L40-08 | Runtime starts with synthetic seed documents; live edits, persistence, missing-directory handling and KB authorization need end-to-end verification. | No synthetic production data or successful fallback; consistent durable state and authorization. | Synthetic documents, symbol contracts and theorem-graph fallback removed. Missing configured corpus now fails search/graph reads explicitly. Durable editing, KB/source visibility, scan failure handling and traversal bounds remain open. |
@@ -97,3 +97,19 @@ rejects that same finite allocation and then verifies a fresh successful call.
 The ordinary server path also rejects dynamic imports, host access, unbounded
 loops and oversized output. These are local source/package-boundary checks;
 the final published archives and browser worker still require qualification.
+
+## PDF acceptance
+
+The handwritten PDF serializer and its embedded-source tests were removed.
+The actual typesetter exposed two further defects which those tests could not
+find: references targeted non-referenceable styled text, and unsupported glyphs
+were silently rendered as empty squares. Internal references now use typed
+Typst label links, and font coverage is checked against the actual bundled or
+explicitly supplied font bytes. No filesystem or network font discovery occurs.
+
+A five-page document was rendered with Poppler and visually inspected: Cyrillic,
+Greek, a fraction, integrals, a table, code and a theorem crossing pages remain
+readable and uncut. PDF.js independently decodes page text and fraction geometry.
+Source export stays isomorphic; PDF generation is explicitly a Node-only subpath.
+Document compilation does not claim a hard WASM RSS quota: a service operator
+must use process/container limits for adversarial multi-tenant workloads.

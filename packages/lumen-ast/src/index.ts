@@ -26,4 +26,3 @@ export * from './compiler/index.js';
 export * from './transformers/index.js';
 
 // 8. Typst Academic PDF Compiler
-export * from './typst/index.js';

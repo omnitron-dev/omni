@@ -2,39 +2,27 @@
  * Typst 0.12+ Academic Markup Transformer (Typed AST Walker + Injection Hardening)
  */
 
+import { tex2typst } from 'tex2typst';
 import type { LumenDocumentAst, LumenNode } from '../ast/types.js';
 
 export interface TypstOptions {
   paperSize?: string;
-  documentClass?: string;
   title?: string;
   author?: string;
   date?: string;
   lang?: string;
+  /** Font families available in the bundled fonts or supplied PDF font bytes. */
+  fonts?: string[];
   abstract?: string;
-  bibliography?: string;
 }
 
 export function escapeTypst(str: string): string {
-  return String(str)
-    .replace(/\\/g, '\\\\')
-    .replace(/#/g, '\\#')
-    .replace(/\$/g, '\\$')
-    .replace(/\[/g, '\\[')
-    .replace(/\]/g, '\\]')
-    .replace(/</g, '\\<')
-    .replace(/>/g, '\\>')
-    .replace(/@/g, '\\@');
+  return String(str).replace(/[\\#$[\]<>@_*`=+/:{}~^&-]/g, '\\$&');
 }
 
 export function sanitizeTypstPaperSize(paperSize?: string): string {
   const raw = String(paperSize ?? 'a4').trim();
   return /^[a-z0-9-]+$/i.test(raw) ? raw : 'a4';
-}
-
-export function sanitizeTypstLabel(id?: string): string {
-  if (!id) return '';
-  return String(id).replace(/[^a-zA-Z0-9_:-]/g, '');
 }
 
 function stripTypstControlChars(input: string): string {
@@ -49,10 +37,13 @@ function stripTypstControlChars(input: string): string {
   return out;
 }
 
-function sanitizeTypstMath(tex: string): string {
-  return String(tex)
-    .replace(/(?<!\\)#/g, '\\#')
-    .replace(/(?<!\\)\$/g, '\\$');
+function convertTypstMath(tex: string): string {
+  if (tex.length > 32_768) throw new RangeError('A PDF equation exceeds 32 KiB');
+  const converted = tex2typst(tex, { nonStrict: false });
+  // TeX is data. Code escapes and math delimiters are not part of this output
+  // contract, including inside text arguments emitted by the converter.
+  if (/[#$]/.test(converted)) throw new Error('PDF mathematics cannot contain Typst code escapes');
+  return converted;
 }
 
 function formatTypstInlineRaw(val: string): string {
@@ -121,7 +112,7 @@ function serializeTypstInlineNodes(nodes: LumenNode[]): string {
           return formatTypstInlineRaw(String(node.value ?? ''));
 
         case 'mathInline':
-          return `$${sanitizeTypstMath(String(node.tex ?? node.value ?? ''))}$`;
+          return `$${convertTypstMath(String(node.tex ?? node.value ?? ''))}$`;
 
         case 'link': {
           const rawUrl = stripTypstControlChars(String(node['url'] ?? '#'))
@@ -132,9 +123,8 @@ function serializeTypstInlineNodes(nodes: LumenNode[]): string {
         }
 
         case 'smartRef': {
-          const cleanTarget = sanitizeTypstLabel(node.target ? String(node.target) : undefined);
-          if (cleanTarget) {
-            return `#ref(<${cleanTarget}>)`;
+          if (node.target) {
+            return `#link(label(${JSON.stringify(String(node.target))}))[${escapeTypst(String(node.raw ?? node.target))}]`;
           }
           return escapeTypst(String(node.raw ?? ''));
         }
@@ -176,7 +166,7 @@ function serializeSingleTypstNode(node: LumenNode): string {
       const escapedHeading = serializeTypstInlineNodes(children)
         .replace(/[\r\n]+/g, ' ')
         .trim();
-      return `// Section: ${'#'.repeat(depth)} ${rawHeadingText}\n${'='.repeat(depth)} ${escapedHeading}\n\n`;
+      return `// Section: ${'#'.repeat(depth)} ${rawHeadingText}\n${'='.repeat(depth)} ${escapedHeading}${node.id ? ` #label(${JSON.stringify(String(node.id))})` : ''}\n\n`;
     }
 
     case 'paragraph': {
@@ -202,17 +192,16 @@ function serializeSingleTypstNode(node: LumenNode): string {
       return formatTypstBlockRaw(String(node.code ?? ''), 'mermaid');
 
     case 'mathInline':
-      return `$${sanitizeTypstMath(String(node.tex ?? node.value ?? ''))}$\n\n`;
+      return `$${convertTypstMath(String(node.tex ?? node.value ?? ''))}$\n\n`;
 
     case 'mathBlock':
-      return `$ ${sanitizeTypstMath(String(node.tex ?? node.value ?? ''))} $\n\n`;
+      return `$ ${convertTypstMath(String(node.tex ?? node.value ?? ''))} $\n\n`;
 
     case 'mathEnvironment': {
       const rawKind = String(node.envKind ?? 'theorem').replace(/[^a-zA-Z0-9_-]/g, '') || 'theorem';
-      const cleanId = sanitizeTypstLabel(node.id ? String(node.id) : undefined);
+      const labelPart = node.id ? ` #label(${JSON.stringify(String(node.id))})` : '';
       const numPart = node.number ? ` ${escapeTypst(String(node.number))}` : '';
       const titlePart = node.title ? ` (${escapeTypst(String(node.title).replace(/[\r\n]+/g, ' '))})` : '';
-      const labelPart = cleanId ? ` <${cleanId}>` : '';
       const children = Array.isArray(node.children) ? node.children : [];
       const body = serializeTypstBlockNodes(children).trim();
 
@@ -222,7 +211,7 @@ function serializeSingleTypstNode(node: LumenNode): string {
   inset: (x: 10pt, y: 8pt),
   radius: (right: 4pt)
 )[
-  #text(weight: "bold")[${capitalize(rawKind)}${numPart}${titlePart}]${labelPart}
+  #block(sticky: true)[#text(weight: "bold")[${capitalize(rawKind)}${numPart}${titlePart}]${labelPart}]
 
   ${body}
 ]\n\n`;
@@ -241,7 +230,7 @@ function serializeSingleTypstNode(node: LumenNode): string {
   inset: (x: 10pt, y: 8pt),
   radius: (right: 4pt)
 )[
-  #text(weight: "bold")[${escapedTitle}]
+  #block(sticky: true)[#text(weight: "bold")[${escapedTitle}]]
 
   ${body}
 ]\n\n`;
@@ -348,79 +337,6 @@ function serializeSingleTypstNode(node: LumenNode): string {
   }
 }
 
-function serializeSanitizedRawFallback(rawContent: string): string {
-  const lines = rawContent.split('\n');
-  let out = '';
-  let inTheorem = false;
-  let theoremEnv = '';
-  let theoremTitle = '';
-  let theoremId = '';
-  let theoremContent: string[] = [];
-
-  const flushTheorem = () => {
-    const displayTitle = theoremTitle ? ` (${escapeTypst(theoremTitle)})` : '';
-    const cleanId = sanitizeTypstLabel(theoremId);
-    const label = cleanId ? ` <${cleanId}>` : '';
-    const body = theoremContent.map((l) => escapeTypst(l)).join('\n');
-    out += `#block(
-  fill: rgb("f8fafc"),
-  stroke: (left: 3pt + rgb("2563eb")),
-  inset: (x: 10pt, y: 8pt),
-  radius: (right: 4pt)
-)[
-  #text(weight: "bold")[${capitalize(theoremEnv)}${displayTitle}]${label}
-
-  ${body}
-]\n\n`;
-  };
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i] ?? '';
-
-    const dirOpen = line.match(
-      /^:::(axiom|definition|theorem|lemma|proposition|corollary|proof|remark|example|hypothesis|conjecture|postulate)(?:\{([^}]*)\})?/
-    );
-    if (dirOpen) {
-      inTheorem = true;
-      theoremEnv = dirOpen[1] ?? 'theorem';
-      const attrStr = dirOpen[2] ?? '';
-      const idMatch = attrStr.match(/id="([^"]+)"/);
-      const titleMatch = attrStr.match(/title="([^"]+)"/);
-      theoremId = idMatch ? (idMatch[1] ?? '') : '';
-      theoremTitle = titleMatch ? (titleMatch[1] ?? '') : '';
-      theoremContent = [];
-      continue;
-    }
-
-    if (inTheorem && line.trim() === ':::') {
-      inTheorem = false;
-      flushTheorem();
-      continue;
-    }
-
-    if (inTheorem) {
-      theoremContent.push(line);
-      continue;
-    }
-
-    const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
-    if (headingMatch && headingMatch[1] && headingMatch[2]) {
-      const depth = headingMatch[1].length;
-      const text = headingMatch[2].trim();
-      out += `// Section: ${'#'.repeat(depth)} ${text}\n${'='.repeat(depth)} ${escapeTypst(text)}\n\n`;
-      continue;
-    }
-
-    out += `${escapeTypst(line)}\n`;
-  }
-
-  if (inTheorem) {
-    flushTheorem();
-  }
-
-  return out;
-}
-
 export function toTypst(ast: LumenDocumentAst, options?: TypstOptions): string {
   const rawTitle = String(options?.title ?? ast.frontmatter?.title ?? 'Document')
     .replace(/[\r\n]+/g, ' ')
@@ -429,6 +345,16 @@ export function toTypst(ast: LumenDocumentAst, options?: TypstOptions): string {
   const paper = sanitizeTypstPaperSize(options?.paperSize);
 
   let typst = `#set page(paper: "${paper}")\n`;
+  typst += '#set document(date: none)\n';
+  const fonts = options?.fonts ?? ['New Computer Modern'];
+  if (fonts.length === 0 || fonts.length > 16 || fonts.some((font) => typeof font !== 'string' || font.length > 128)) {
+    throw new TypeError('PDF fonts must name between one and sixteen font families');
+  }
+  const language = options?.lang ?? 'en';
+  if (!/^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(language)) throw new TypeError('Invalid PDF language tag');
+  typst += `#set text(font: (${fonts.map((font) => JSON.stringify(font)).join(', ')},), lang: ${JSON.stringify(language)}, size: 10.5pt)\n`;
+  typst += '#show raw: set text(font: "DejaVu Sans Mono", size: 9pt)\n';
+  typst += '#set par(justify: true)\n';
   typst += `#show heading: set text(weight: "bold")\n`;
   typst += `= ${title}\n\n`;
 
@@ -449,8 +375,6 @@ export function toTypst(ast: LumenDocumentAst, options?: TypstOptions): string {
   let bodyMarkup = '';
   if (Array.isArray(ast.children)) {
     bodyMarkup = serializeTypstBlockNodes(ast.children);
-  } else if (ast.rawContent) {
-    bodyMarkup = serializeSanitizedRawFallback(ast.rawContent);
   }
 
   typst += bodyMarkup;

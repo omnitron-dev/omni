@@ -68,3 +68,46 @@ The WASM memory maximum enforces the aggregate ceiling independently of the
 interpreter allocator's quota. The module does not evaluate code in the host or
 retry errors through another engine. Import the pure `/execution/limits` subpath
 for admission checks without loading the interpreter in the UI thread.
+
+## Offline PDF export
+
+The root entry remains isomorphic. Node applications and the Lumen CLI use the
+separate `@omnitron-dev/lumen-ast/typst` entry for PDF generation:
+
+```ts
+import { parseDocument, projectDocumentAccess, createDocumentAccessPredicate } from '@omnitron-dev/lumen-ast';
+import { compileTypst } from '@omnitron-dev/lumen-ast/typst';
+
+const parsed = await parseDocument(markdown, 'paper.pdx');
+const projected = projectDocumentAccess(parsed, createDocumentAccessPredicate(verifiedRoles));
+if (!projected.allowed) throw new Error('Document access denied');
+const pdf = await compileTypst(projected.ast, {
+  paperSize: 'a4', author: 'Research group', lang: 'ru', signal,
+});
+```
+
+PDFs are typeset by Typst 0.14.2 through the pinned WASM compiler. They contain
+embedded fonts, selectable Unicode text, mathematical layout, real pagination,
+links and tagged PDF structure. LaTeX mathematics uses a strict `tex2typst`
+conversion; unsupported commands and code escapes fail explicitly. `toTypst`
+returns the editable markup separately. The PDF does not embed an unfiltered
+copy of the source and never substitutes `rawContent` for a redacted AST.
+
+The packaged New Computer Modern and DejaVu Sans Mono fonts cover Latin,
+Cyrillic, Greek and mathematics. Missing glyphs are errors, not successful empty
+squares. For another script, supply trusted OpenType/TrueType bytes with
+`fontData` and select the family with `fonts`; the compiler never discovers
+system fonts or downloads fonts/packages. Asset revisions, checksums and their
+original licenses are included under `fonts/`.
+
+Compilation runs in a disposable Worker with an in-memory document filesystem
+and no Typst package registry. Source is limited to 2 MiB, extra fonts to 16
+files/32 MiB, output to 64 MiB and simultaneous jobs to four. `timeoutMs` defaults
+to 30 seconds and can be set between 1 and 120,000 ms. Cancellation and timeout
+terminate the worker before its slot is released. V8 resource limits do not
+constitute a hard RSS quota for the WASM engine; enforce process/container memory
+limits when exposing document compilation as a multi-tenant service.
+
+PDF generation is a Node API; it is not imported into the browser's AST bundle.
+Interactive widgets export their document content, and Mermaid blocks currently
+export their source. The HTML path supplies their interactive visual rendering.

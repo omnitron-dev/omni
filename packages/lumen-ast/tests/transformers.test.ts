@@ -1,3 +1,4 @@
+import { compileTypst } from '../src/typst/index.js';
 import { describe, it, expect } from 'vitest';
 import {
   parseDocument,
@@ -5,7 +6,6 @@ import {
   toCleanMarkdown,
   toTipTapDoc,
   toTypst,
-  compileTypst,
   type LumenDocumentAst,
 } from '../src/index.js';
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { compileTypst } from '@omnitron-dev/lumen-ast/typst';
 /**
  * Lumen SSG CLI dispatcher
  * Platforms: Vite 8, Rolldown, Pagefind WASM, Typst, MCP.
@@ -6,7 +7,7 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, watch, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
-import { compileTypst, parseDocument, type LumenNode } from '@omnitron-dev/lumen-ast';
+import { parseDocument, type LumenNode } from '@omnitron-dev/lumen-ast';
 import { loadLumenConfig } from '../config/loader.js';
 import type { LumenConfig } from '../config/schema.js';
 import { CorpusGraph } from '../corpus/graph.js';

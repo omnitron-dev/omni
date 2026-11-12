@@ -502,12 +502,15 @@ export class BackupService {
 
     this.logger.info({ database: name, ...from, filename, compress }, 'Creating backup');
 
+    let publicationConfirmed = false;
+    let indexConfirmed = false;
     try {
       if (isDocker) {
         await this.pgDumpDocker(containerName, dbConfig, filepath, compress);
       } else {
         await this.pgDumpLocal(dbConfig, filepath, compress);
       }
+      publicationConfirmed = true;
 
       // Before it is indexed, and therefore before anything else can learn
       // the path: a pg_dump redirected into a file lands at whatever the
@@ -537,13 +540,20 @@ export class BackupService {
         created_at: info.createdAt,
         metadata: { filename: info.filename, compressed: info.compressed, type: 'postgres', ...from },
       });
+      indexConfirmed = true;
 
       this.logger.info({ database: name, ...from, filename, size: stats.size }, 'Backup created');
       return info;
     } catch (err) {
-      // Cleanup failed backup
-      try { fs.unlinkSync(filepath); } catch { /* ignore */ }
-      throw new Error(`Backup failed for '${database}': ${(err as Error).message}`, { cause: err });
+      // The pipeline owns its private staging. A final path may belong to a
+      // concurrent writer, or hold a complete backup whose fsync/index receipt
+      // was lost. Never turn that uncertainty into destructive cleanup.
+      const recovery = publicationConfirmed
+        ? `Complete backup file retained at ${filepath}; ${indexConfirmed
+          ? 'index insertion completed'
+          : 'index completion was not confirmed; inspect the file and backup index before retrying'}.`
+        : `Publication was not confirmed; any file at ${filepath} was left in place.`;
+      throw new Error(`Backup failed for '${database}': ${(err as Error).message}. ${recovery}`, { cause: err });
     }
   }
 

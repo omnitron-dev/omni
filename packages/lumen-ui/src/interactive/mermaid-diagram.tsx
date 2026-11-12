@@ -31,10 +31,10 @@ export function MermaidDiagram({ code }: MermaidDiagramProps): React.JSX.Element
   return <>
     {state.status === 'loading' && <p role="status">Rendering diagram…</p>}
     {state.status === 'error' && <p role="alert">Diagram unavailable: {state.message}</p>}
-    {state.status === 'ready' && <div className="lumen-diagram-content" style={{ overflowX: 'auto' }} dangerouslySetInnerHTML={{ __html: state.svg }} />}
+    {state.status === 'ready' && <div className="lumen-diagram-content" tabIndex={0} role="group" aria-label="Diagram" style={{ overflowX: 'auto' }} dangerouslySetInnerHTML={{ __html: state.svg }} />}
     <details open={state.status === 'error'} className="lumen-diagram-source">
       <summary>Diagram source</summary>
-      <pre><code>{code}</code></pre>
+      <pre tabIndex={0}><code>{code}</code></pre>
     </details>
   </>;
 }

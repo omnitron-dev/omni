@@ -118,7 +118,7 @@ export function ResearchDiagram({
         <summary>
           {labels.source} · {engine}
         </summary>
-        <pre>{source}</pre>
+        <pre tabIndex={0}>{source}</pre>
       </details>
     </figure>
   );

@@ -315,7 +315,7 @@ function renderSingleNodeToHtml(node: LumenNode, context: SsrContext): string {
 
     case 'table': {
       const children = (node.children ?? []) as LumenNode[];
-      return `<table>${renderNodesToHtml(children, context)}</table>`;
+      return `<table tabindex="0">${renderNodesToHtml(children, context)}</table>`;
     }
 
     case 'tableRow': {

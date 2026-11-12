@@ -150,5 +150,5 @@ export function renderCodeBlockHtml(code: string, language?: string, meta?: stri
   const escapedLang = escapeHtml(cleanLang);
   const codeClasses = `shiki language-${escapedLang}${hasFocusedLines ? ' has-focused-lines' : ''}`;
 
-  return `<pre class="lumen-code-block language-${escapedLang}" data-language="${escapedLang}" data-code="${escapeHtml(cleanCodeText)}" style="${escapeHtml(rootStyle)}"><code class="${codeClasses}">${linesHtml}</code></pre>`;
+  return `<pre class="lumen-code-block language-${escapedLang}"${cleanCodeText ? ' tabindex="0"' : ''} data-language="${escapedLang}" data-code="${escapeHtml(cleanCodeText)}" style="${escapeHtml(rootStyle)}"><code class="${codeClasses}">${linesHtml}</code></pre>`;
 }

@@ -50,6 +50,7 @@ describe('Documentation Content Blocks', () => {
 
     const withCode = renderToStaticMarkup(CodeBlock({ code: 'const x = 10;', language: 'typescript' }));
     expect(withCode).toContain('class="lumen-code-block language-typescript"');
+    expect(withCode).toContain('tabindex="0"');
     expect(withCode).toContain('<code>const x = 10;</code>');
   });
 

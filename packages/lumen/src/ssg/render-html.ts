@@ -48,7 +48,7 @@ export function renderDocumentHtml(ast: LumenDocumentAst, options?: RenderDocume
       CacheProvider,
       { value: cache },
       React.createElement(Global, { styles: {
-        ':is(.lumen-code-block,.lumen-doc pre,.lumen-doc table,.lumen-file-tree,.lumen-diagram-content)':
+        ':is(.lumen-code-block,.lumen-doc pre,.lumen-doc table,.lumen-file-tree,.lumen-diagram-content,.lumen-api-explorer-list-container)':
           mixins.scrollbarStyles(undefined, {
             thumbColor: 'color-mix(in srgb,var(--lumen-muted) 55%,transparent)',
             hoverThumbColor: 'var(--lumen-muted)',

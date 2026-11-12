@@ -56,6 +56,9 @@ test('filetree disclosures, markers and annotations work without client JavaScri
     expect(await tree.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
     const marker = await tree.locator('svg').first().boundingBox();
     expect(marker.width).toBe(16); expect(marker.height).toBe(16);
+    await expect(page.locator('.lumen-code-block')).toHaveAttribute('tabindex', '0');
+    await expect(page.getByRole('table')).toHaveAttribute('tabindex', '0');
+    await expect(page.locator('pre.lumen-diagram-source')).toHaveAttribute('tabindex', '0');
   } finally { await context.close(); }
 });
 
@@ -69,23 +72,27 @@ test('filetree content is present in the built Pagefind index', async ({ page, c
   expect(results).toEqual(['/docs']);
 });
 
-const scrollports = '.lumen-code-block,.lumen-doc table,.lumen-file-tree,.lumen-diagram-content';
+const scrollports = '.lumen-code-block,.lumen-doc table,.lumen-file-tree,.lumen-diagram-content,.lumen-api-explorer-list-container';
 const transparentThumb = 'rgba(0, 0, 0, 0) rgba(0, 0, 0, 0)';
 
-async function prepareScrollports(page, url) {
+async function prepareScrollports(page, url, includeApi = false) {
   await page.goto(url);
   await expect(page.locator('.lumen-diagram-content svg')).toBeVisible();
+  if (includeApi) {
+    await page.getByRole('button', { name: 'Open API explorer' }).click();
+    await expect(page.getByRole('listbox', { name: 'API symbols' })).toBeVisible();
+  }
   // Constrain ordinary emitted blocks, without supplying any scrollbar rules.
   // The file tree normally wraps, but consumers can bound a long tree's height.
   await page.locator(scrollports).evaluateAll(elements => {
     for (const element of elements) {
-      element.style.cssText += ';display:block;max-width:200px;max-height:100px;overflow:auto';
+      element.style.cssText += ';display:block;max-width:200px;max-height:40px;overflow:auto';
     }
   });
 }
 
 test('internal scrollbars reveal on hover and keyboard focus without resizing their scrollports', async ({ page, cliSiteUrl }) => {
-  await prepareScrollports(page, cliSiteUrl);
+  await prepareScrollports(page, cliSiteUrl, true);
   for (const mode of ['light', 'dark']) {
     await page.locator('.lumen-shell').evaluateAll((elements, value) => {
       for (const element of elements) element.setAttribute('data-theme', value);
@@ -108,6 +115,11 @@ test('internal scrollbars reveal on hover and keyboard focus without resizing th
     await expect(tree.locator('summary').nth(1)).toBeFocused();
     await page.locator('button').first().focus();
     await expect(tree).toHaveCSS('scrollbar-color', transparentThumb);
+    const symbols = page.getByRole('listbox', { name: 'API symbols' });
+    await symbols.focus();
+    await expect(symbols).not.toHaveCSS('scrollbar-color', transparentThumb);
+    expect(await symbols.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
+    await page.locator('button').first().focus();
   }
 });
 
@@ -115,7 +127,7 @@ test('touch and forced-colors keep visible native scrollbar indications', async 
   const context = await browser.newContext({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
   try {
     const page = await context.newPage();
-    await prepareScrollports(page, cliSiteUrl);
+    await prepareScrollports(page, cliSiteUrl, true);
     expect(await page.evaluate(() => matchMedia('(hover: hover) and (pointer: fine)').matches)).toBe(false);
     for (const block of await page.locator(scrollports).all()) {
       await expect(block).toHaveCSS('scrollbar-width', 'thin');
@@ -127,4 +139,31 @@ test('touch and forced-colors keep visible native scrollbar indications', async 
       await expect(block).toHaveCSS('scrollbar-width', 'auto');
     }
   } finally { await context.close(); }
+});
+
+test('Tab reaches native code, table and diagram scrollports and arrow keys scroll their content', async ({ page, cliSiteUrl }) => {
+  await prepareScrollports(page, cliSiteUrl);
+  await page.addStyleTag({ content: '.lumen-doc td{white-space:nowrap}.lumen-diagram-content>svg{min-width:600px}.client-code{overflow:auto}' });
+  const selector = '.lumen-code-block,.lumen-doc table,.lumen-diagram-content';
+  const blocks = page.locator(selector);
+  await expect(blocks).toHaveCount(4); // SSR code, client CodeBlock, table, diagram.
+  for (const block of await blocks.all()) {
+    await expect(block).toHaveAttribute('tabindex', '0');
+    expect(await block.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
+  }
+  const visited = new Set();
+  for (let tabs = 0; tabs < 30 && visited.size < 4; tabs++) {
+    await page.keyboard.press('Tab');
+    const index = await page.evaluate(query => [...document.querySelectorAll(query)].indexOf(document.activeElement), selector);
+    if (index < 0 || visited.has(index)) continue;
+    const block = blocks.nth(index);
+    await expect(block).toBeFocused();
+    expect(await block.evaluate(element => getComputedStyle(element).outlineStyle)).not.toBe('none');
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(() => block.evaluate(element => element.scrollLeft)).toBeGreaterThan(0);
+    visited.add(index);
+  }
+  expect(visited.size).toBe(4);
+  await expect(page.getByRole('table')).toHaveCount(1);
+  await expect(page.getByRole('group', { name: 'Diagram', exact: true })).toHaveCount(1);
 });

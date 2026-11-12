@@ -22,7 +22,7 @@ function CopyCode({ code }: { code: string }): React.JSX.Element {
 
 export function CodeBlock({ code = '', language = 'ts', copyable = false, className }: CodeBlockProps): React.JSX.Element {
   const source = (
-    <pre className={clsx(`lumen-code-block language-${language}`, className)}>
+    <pre tabIndex={code ? 0 : undefined} className={clsx(`lumen-code-block language-${language}`, className)}>
       <code>{code}</code>
     </pre>
   );

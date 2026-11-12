@@ -212,6 +212,45 @@ unsupported remote execution is rejected explicitly. Final clean archives,
 exact-commit CI and native transition/rollback qualification remain separate
 release gates.
 
+## Release evidence boundaries
+
+The final release review found three separate gaps in the preparation recipe:
+
+- Read-only publication reconstructed the qualification key using the publisher's
+  Node version. It must instead verify the selected producer identity, including
+  its exact commit, policy and Node, without dispatching jobs or writing receipts.
+  A new qualification still belongs to the Node that actually builds it.
+- Runtime verification imported its implementation from the payload before
+  checking that payload's bytes. Qualification and native artifact packaging now
+  use the existing builtins-only verifier from the reviewed source checkout.
+  Retained native bytes use that same implementation; downloaded code is never
+  used to verify itself.
+- Prepared npm archives and two independently reproduced SDK builds were checked
+  separately. The qualification now binds both complete inventories through the
+  existing bounded archive parser, comparing every file and executable flag.
+  Only the canonical ordering of the five dependency maps and a verified root
+  `gitHead` can differ. Export-condition order, bundled metadata, dependency edges
+  and additional files remain significant. Publication repeats this read-only
+  comparison; it does not rebuild, extract or execute npm payloads.
+
+The archive comparator passes 40 checks across four suites on Node 24.13.0 and
+26.12.1, plus source typecheck and lint. Its ordinary Xec invocation also matches
+all 35 retained `1ede1aea` archive pairs and 6,804 files. This confirms the older
+draft's bytes; it does not certify the replacement candidate. Evidence is in
+`/Volumes/AGI-Dev/work/omnitron/archive-equivalence-qa/retained-35-pairs.log`.
+The qualification/native-delivery profile passes 35 checks on both Node 24.13.0
+and 26.12.1. A replay of the old implementation rejects a different publisher
+Node and executes a tampered verifier; the corrected implementation preserves
+the recorded producer identity and rejects the modified bytes before import.
+The newly compiled archive inspector also matches all 35 retained pairs under
+Node 26.12.1. All fifteen standing source gates pass. The separate full
+release/loopback-registry, update and package-import profile passes all fifteen
+checks under Node 26.12.1 in an isolated frozen dependency installation. An
+earlier primary-checkout run stopped before publication on its stale TypeScript
+resolution; the live-sensitive primary dependency tree was not changed.
+The exact final candidate still requires clean preparation, independent builds,
+CI and native transition/rollback on each release-policy Node version.
+
 ## Installed archive acceptance
 
 The mandatory package-export gate now installs a separate declared Lumen

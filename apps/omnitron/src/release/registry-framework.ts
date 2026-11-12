@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createGunzip } from 'node:zlib';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { sha256File } from './portable-archive.js';
+import { normalizePackedManifest, sha256File } from './portable-archive.js';
 import { list } from 'tar';
 import { parseBuildStamp } from '../shared/build-stamp.js';
 import type { RegistryPackage } from './layout.js';
@@ -19,7 +20,13 @@ const CORE = '@omnitron-dev/omnitron';
 const SHA = /^[a-f0-9]{40}$/;
 type FileEvidence = { digest: string; size: number; executable: boolean };
 type ArchiveNode = { files: Map<string, FileEvidence>; dependencies: Map<string, string> };
-type PackageEvidence = { commit: string; files: Map<string, FileEvidence>; nodes: Map<string, ArchiveNode>; repository?: unknown };
+type PackageEvidence = {
+  commit: string;
+  files: Map<string, FileEvidence>;
+  nodes: Map<string, ArchiveNode>;
+  metadata: PackageManifest;
+  repository?: unknown;
+};
 type PackageManifest = {
   name: string; version: string; gitHead?: string; bin?: string | Record<string, string>; repository?: unknown;
   dependencies?: Record<string, string>; optionalDependencies?: Record<string, string>; peerDependencies?: Record<string, string>;
@@ -73,7 +80,9 @@ function archiveNodes(files: Map<string, FileEvidence>, records: Map<string, Buf
         manifests.set(directory, manifest);
       }
     }
-    nodes.get(directory)!.files.set(file, evidence);
+    // Installation may make declared binaries executable. Keep the original
+    // archive evidence intact for comparisons between independent builds.
+    nodes.get(directory)!.files.set(file, { ...evidence });
   }
   const declaration = metadata.bundledDependencies ?? metadata.bundleDependencies ?? [];
   if (metadata.bundledDependencies !== undefined && metadata.bundleDependencies !== undefined)
@@ -191,7 +200,59 @@ export async function inspectFrameworkArchive(
       throw Error('The Omnitron build stamp does not confirm its clean release commit: ' + label);
   }
   const nodes = archiveNodes(files, records, metadata);
-  return { commit, files, nodes, ...(metadata.repository !== undefined && { repository: metadata.repository }) };
+  return { commit, files, nodes, metadata, ...(metadata.repository !== undefined && { repository: metadata.repository }) };
+}
+
+export interface FrameworkArchive {
+  readonly name: string;
+  readonly version: string;
+  readonly integrity: string;
+  readonly file: string;
+}
+
+/** The root gitHead is checked against the release commit before removal. */
+function reproducedManifest(metadata: PackageManifest): string {
+  const normalized = normalizePackedManifest({ ...metadata });
+  delete normalized['gitHead'];
+  return JSON.stringify(normalized);
+}
+
+/** Bind the archives selected for publication to the independently reproduced
+ * SDK. Reuse the bounded archive parser; never extract or execute package code. */
+export async function assertReproducedFrameworkArchives(
+  prepared: readonly FrameworkArchive[], reproduced: readonly FrameworkArchive[], commit: string, signal?: AbortSignal,
+): Promise<{ packages: number; files: number }> {
+  if (!SHA.test(commit)) throw Error('Archive comparison requires the exact release commit');
+  const inventory = (archives: readonly FrameworkArchive[], label: string): Map<string, FrameworkArchive> => {
+    const result = new Map<string, FrameworkArchive>();
+    for (const archive of archives) {
+      if (!packageName(archive.name) || !archive.version || result.has(archive.name))
+        throw Error('Invalid or duplicate ' + label + ' archive: ' + archive.name);
+      result.set(archive.name, archive);
+    }
+    return result;
+  };
+  const published = inventory(prepared, 'prepared'), rebuilt = inventory(reproduced, 'reproduced');
+  if (!published.size || published.size !== rebuilt.size || [...published].some(([name, archive]) => rebuilt.get(name)?.version !== archive.version))
+    throw Error('Prepared and reproduced SDK inventories differ');
+  let files = 0;
+  for (const [name, archive] of published) {
+    signal?.throwIfAborted();
+    const candidate = rebuilt.get(name)!;
+    const original = await inspectFrameworkArchive(archive, createReadStream(archive.file), signal);
+    const independent = await inspectFrameworkArchive(candidate, createReadStream(candidate.file), signal, commit);
+    if (original.commit !== commit) throw Error('Prepared archive names a different release commit: ' + name);
+    if (original.files.size !== independent.files.size) throw Error('Prepared and reproduced archive files differ: ' + name);
+    for (const [file, expected] of independent.files) {
+      const actual = original.files.get(file);
+      const matches = actual && actual.executable === expected.executable && (file === 'package.json'
+        ? reproducedManifest(original.metadata) === reproducedManifest(independent.metadata)
+        : actual.digest === expected.digest && actual.size === expected.size);
+      if (!matches) throw Error('Prepared archive differs from the independently reproduced SDK: ' + name + '/' + file);
+    }
+    files += original.files.size;
+  }
+  return { packages: published.size, files };
 }
 
 /** Compare real files in the installation or staged artifact with the archive.

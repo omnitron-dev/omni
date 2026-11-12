@@ -64,6 +64,19 @@ export async function writePortableArchive(directory: string, destination: strin
   } finally { await fs.rm(temporary, { force: true }); }
 }
 
+/** Canonicalize only unordered dependency maps. Export conditions and every
+ * other metadata field retain their original order and value. */
+export function normalizePackedManifest(metadata: Record<string, unknown>): Record<string, unknown> {
+  const normalized = { ...metadata };
+  for (const key of ['dependencies', 'optionalDependencies', 'peerDependencies', 'peerDependenciesMeta', 'devDependencies']) {
+    const map = normalized[key];
+    if (map && typeof map === 'object' && !Array.isArray(map)) {
+      normalized[key] = Object.fromEntries(Object.keys(map).sort().map(name => [name, (map as Record<string, unknown>)[name]]));
+    }
+  }
+  return normalized;
+}
+
 /** pnpm resolves workspace ranges before packing. Canonicalize only unordered
  * dependency maps; export conditions and all executable bytes keep their order. */
 export async function normalizePackedWorkspace(archive: string): Promise<void> {
@@ -71,13 +84,7 @@ export async function normalizePackedWorkspace(archive: string): Promise<void> {
   try {
     await extract({ cwd: temp, file: archive, strict: true });
     const manifest = path.join(temp, 'package/package.json');
-    const meta = JSON.parse(await fs.readFile(manifest, 'utf8')) as Record<string, unknown>;
-    for (const key of ['dependencies', 'optionalDependencies', 'peerDependencies', 'peerDependenciesMeta', 'devDependencies']) {
-      const map = meta[key];
-      if (map && typeof map === 'object' && !Array.isArray(map)) {
-        meta[key] = Object.fromEntries(Object.keys(map).sort().map(name => [name, (map as Record<string, unknown>)[name]]));
-      }
-    }
+    const meta = normalizePackedManifest(JSON.parse(await fs.readFile(manifest, 'utf8')) as Record<string, unknown>);
     await fs.writeFile(manifest, JSON.stringify(meta, null, 2) + '\n');
     await writePortableArchive(temp, archive);
   } finally { await fs.rm(temp, { recursive: true, force: true }); }

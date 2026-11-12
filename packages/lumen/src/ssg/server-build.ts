@@ -1,4 +1,5 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { builtinModules } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, extname, isAbsolute, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -27,6 +28,7 @@ export async function withProjectBuild<T>(
     const entry = 'virtual:lumen-server';
     const resolverEntry = 'virtual:lumen-source-resolve';
     const sourceResolver = import.meta.resolve('import-meta-resolve');
+    const nativeModules = new Set([sourceResolver]);
     const result = await build({
       configFile: false,
       root: rootDir,
@@ -42,7 +44,9 @@ export async function withProjectBuild<T>(
           if (NODE_PACKAGES.some(name => id === name || id.startsWith(`${name}/`))) {
             const resolved = await this.resolve(id, importer, { skipSelf: true });
             if (!resolved) throw new Error(`Cannot resolve Lumen Node dependency: ${id}`);
-            return { id: resolved.id.startsWith('file:') ? resolved.id : pathToFileURL(resolved.id).href, external: true };
+            const nativeId = resolved.id.startsWith('file:') ? resolved.id : pathToFileURL(resolved.id).href;
+            nativeModules.add(nativeId);
+            return { id: nativeId, external: true };
           }
           return null;
         },
@@ -130,6 +134,10 @@ export async function withProjectBuild<T>(
       publicDir: false,
       cacheDir: join(directory, 'cache'),
       appType: 'custom',
+      // Vite's runner transforms file URLs unless the environment marks them
+      // native. Transforming the Vite compiler itself corrupts browser code it
+      // generates from functions containing import.meta.
+      resolve: { builtins: [...builtinModules, /^node:/, ...nativeModules] },
       server: { middlewareMode: true, hmr: false, watch: null },
       optimizeDeps: { noDiscovery: true, include: [] },
       ssr: { external: true, optimizeDeps: { noDiscovery: true, include: [] } },

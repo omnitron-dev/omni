@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { createHash } from 'node:crypto';
 import { Application } from '@omnitron-dev/titan';
+import { LoggerModule } from '@omnitron-dev/titan/module/logger';
+import { TitanDatabaseModule } from '@omnitron-dev/titan-database';
+import { admin, hash, createAuthoringFixture } from '../../packages/titan-lumen/tests/authoring-fixture.js';
 import { LumenModule, LumenService, LiveEditService } from '@omnitron-dev/titan-lumen';
 import { asUser, createLumenFixture, mcpFor, mcpRequest } from '../../packages/titan-lumen/tests/netron-fixture.js';
 
@@ -8,18 +11,20 @@ import { asUser, createLumenFixture, mcpFor, mcpRequest } from '../../packages/t
 // module/protocol paths instead of reimplementing authorization in test subclasses.
 describe('Lumen native integration under concurrency and failure', () => {
   it('keeps configuration and live state separate across concurrent Titan applications', async () => {
+    const stores = await Promise.all(Array.from({ length: 12 }, () => createAuthoringFixture()));
     const apps = await Promise.all(Array.from({ length: 12 }, (_, i) => Application.create({
       name: `LumenTenant${i}`, disableCoreModules: true,
-      modules: [LumenModule.forRootAsync({ useFactory: async () => ({ docsDir: `tenant-${i}/docs` }) })],
+      modules: [LoggerModule.forRoot({ level: 'silent' }), TitanDatabaseModule.forRoot({ connection: { dialect: 'sqlite', connection: stores[i]!.filename } }),
+        LumenModule.forRootAsync({ useFactory: async () => ({ docsDir: `tenant-${i}/docs`, liveEdit: stores[i]!.options }) })],
     })));
     try {
-      apps.forEach((app, i) => {
+      await Promise.all(apps.map(async (app, i) => {
         const service = app.resolve(LumenService);
         expect(service.getOptions().docsDir).toBe(`tenant-${i}/docs`);
         expect(service.getLiveEditService()).toBe(app.resolve(LiveEditService));
-        service.getLiveEditService().setDocument('same.pdx', `tenant-${i}`, 1);
-      });
-      apps.forEach((app, i) => expect(app.resolve(LiveEditService).getDocument('same.pdx')?.content).toBe(`tenant-${i}`));
+        expect(await service.getLiveEditService().applyEdit({ docId: 'same.pdx', patch: `tenant-${i}`, baseRevision: 0, baseHash: hash('') }, admin)).toMatchObject({ success: true });
+      }));
+      await Promise.all(apps.map(async (app, i) => expect((await app.resolve(LiveEditService).getDocument('same.pdx'))?.content).toBe(`tenant-${i}`)));
     } finally { await Promise.all(apps.map(app => app.stop())); }
   });
 
@@ -30,24 +35,25 @@ describe('Lumen native integration under concurrency and failure', () => {
   });
 
   it('accepts exactly one of fifty conflicting writes through native Netron admission', async () => {
-    const service = createLumenFixture();
-    service.getLiveEditService().setDocument('concurrent.pdx', 'Initial', 1);
+    const state = await createAuthoringFixture();
+    const service = createLumenFixture({ 'concurrent.pdx': 'Initial' }, { liveEdit: state.options }, state.live);
     const client = await asUser(service, 'admin');
     const results = await Promise.all(Array.from({ length: 50 }, (_, i) => client.saveLiveEdit({
-      docId: 'concurrent.pdx', patch: `patch-${i}`, baseRevision: 1,
+      docId: 'concurrent.pdx', patch: `patch-${i}`, baseRevision: 0, baseHash: hash('Initial'),
     })));
     expect(results.filter(r => r.success)).toHaveLength(1);
     expect(results.filter(r => r.conflict)).toHaveLength(49);
-    expect(service.getLiveEditService().getDocument('concurrent.pdx')?.revision).toBe(2);
+    expect((await service.getLiveEditService().getDocument('concurrent.pdx'))?.revision).toBe(1);
   });
 
   it('preserves revision/hash integrity over twenty-five admitted writes and reads', async () => {
-    const service = createLumenFixture();
-    service.getLiveEditService().setDocument('chain.pdx', 'Start', 1);
+    const state = await createAuthoringFixture();
+    const service = createLumenFixture({ 'chain.pdx': 'Start' }, { liveEdit: state.options }, state.live);
     const client = await asUser(service, 'admin');
     for (let i = 1; i <= 25; i++) {
-      const result = await client.saveLiveEdit({ docId: 'chain.pdx', patch: `Step ${i}`, baseRevision: i });
-      expect(result).toMatchObject({ success: true, revision: i + 1 });
+      const revision = await client.getEditableDocument('chain.pdx');
+      const result = await client.saveLiveEdit({ docId: 'chain.pdx', patch: `Step ${i}`, baseRevision: revision!.revision, baseHash: revision!.hash });
+      expect(result).toMatchObject({ success: true, revision: i });
       const content = await client.getDocument('chain.pdx');
       expect(content).toContain(`Step ${i}`);
       expect(result.hash).toBe(createHash('sha256').update(content!).digest('hex'));
@@ -63,12 +69,23 @@ describe('Lumen native integration under concurrency and failure', () => {
       const token = i % 2 ? 'admin' : undefined;
       return mcp.call({ id: i, method: 'tools/call', params: { name: 'get_document', arguments: { path: 'secret.pdx' } } }, token);
     }));
-    responses.forEach((response, i) => {
+    let throttled = 0;
+    for (const [i, response] of responses.entries()) {
       expect(response).toMatchObject({ id: i, jsonrpc: '2.0', status: 200 });
       expect(response.error).toBeUndefined();
-      if (i % 2) expect(response.result.content).toContain('private-canary');
+      if (response.result?.isError) {
+        throttled++;
+        expect(JSON.stringify(response.result)).not.toContain('private-canary');
+        const retry = await mcp.call({ id: i, method: 'tools/call', params: {
+          name: 'get_document', arguments: { path: 'secret.pdx' },
+        } }, i % 2 ? 'admin' : undefined);
+        expect(retry.result.isError).not.toBe(true);
+        if (i % 2) expect(retry.result.content).toContain('private-canary');
+        else expect(retry.result.content).toBeNull();
+      } else if (i % 2) expect(response.result.content).toContain('private-canary');
       else expect(response.result.content).toBeNull();
-    });
+    }
+    expect(throttled).toBeGreaterThan(0);
   });
 
   it('preserves standard SDK error envelopes and strict tool arguments', async () => {

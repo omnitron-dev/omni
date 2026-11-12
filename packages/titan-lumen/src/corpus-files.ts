@@ -14,7 +14,7 @@ function inside(root: string, target: string): boolean {
 }
 
 export function isCanonicalDocumentPath(path: unknown, extensions: ReadonlySet<string>): path is string {
-  if (typeof path !== 'string' || !path || path.length > 4096 || /[\\%]/.test(path) || isAbsolute(path) || /^[a-z]:/i.test(path)) return false;
+  if (typeof path !== 'string' || !path || Buffer.byteLength(path) > 1024 || /[\\%:?#]/.test(path) || isAbsolute(path)) return false;
   if ([...path].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) return false;
   if (path.split('/').some((part) => !part || part.startsWith('.') || ['~', 'node_modules', 'dist'].includes(part))) return false;
   const extension = extname(path).toLowerCase();
@@ -64,14 +64,16 @@ export async function readCorpusFile(root: string, path: string, maxBytes: numbe
 
 /** A deterministic, bounded corpus inventory. Read failures never become a successful partial corpus. */
 export async function scanCorpusFiles(
-  root: string, extensions: ReadonlySet<string>, maxFileBytes: number, options: CorpusScanLimits = {}
+  root: string, extensions: ReadonlySet<string>, maxFileBytes: number, options: CorpusScanLimits = {},
+  ownedPaths: ReadonlySet<string> = new Set()
 ): Promise<Array<{ path: string; content: string }>> {
   const maxEntries = options.maxEntries ?? 10_000;
   const maxBytes = options.maxBytes ?? 64 * 1024 * 1024;
   const maxDepth = options.maxDepth ?? 32;
   if (!Number.isSafeInteger(maxFileBytes) || maxFileBytes < 1) throw new TypeError('Corpus file limit must be a positive safe integer');
-  if ([maxEntries, maxBytes, maxDepth].some((value) => !Number.isSafeInteger(value) || value < 1)) {
-    throw new TypeError('Corpus scan limits must be positive safe integers');
+  if ([maxEntries, maxDepth].some((value) => !Number.isSafeInteger(value) || value < 1) ||
+      !Number.isSafeInteger(maxBytes) || maxBytes < 0) {
+    throw new TypeError('Corpus entry/depth limits must be positive and byte budget non-negative safe integers');
   }
   const files: Array<{ path: string; content: string }> = [];
   const directories = [{ path: root, depth: 0 }];
@@ -88,6 +90,7 @@ export async function scanCorpusFiles(
       if (entry.isDirectory()) directories.push({ path: target, depth: directory.depth + 1 });
       else if (entry.isFile() && extensions.has(extname(entry.name).toLowerCase())) {
         const path = relative(root, target).split(sep).join('/');
+        if (ownedPaths.has(path)) continue;
         const content = await readCorpusFile(root, path, Math.min(maxFileBytes, maxBytes - bytes));
         if (content === null) throw new Error('Corpus file changed during scan');
         bytes += Buffer.byteLength(content);

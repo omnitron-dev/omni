@@ -1,5 +1,6 @@
 import { Module } from '@omnitron-dev/titan';
 import type { DynamicModule } from '@omnitron-dev/titan/nexus';
+import { DATABASE_MANAGER, type DatabaseManager } from '@omnitron-dev/titan-database';
 import { LUMEN_OPTIONS_TOKEN } from './constants.js';
 import { AccessFilterService } from './access/access-filter.service.js';
 import { LiveEditService } from './live/live-edit.service.js';
@@ -15,8 +16,9 @@ const providers = [
   },
   {
     provide: LiveEditService,
-    useFactory: (options: LumenModuleOptions) => new LiveEditService(options.liveEdit),
-    inject: [LUMEN_OPTIONS_TOKEN],
+    useFactory: (options: LumenModuleOptions, database: DatabaseManager | undefined, access: AccessFilterService) =>
+      new LiveEditService(options.liveEdit, database, access),
+    inject: [LUMEN_OPTIONS_TOKEN, { token: DATABASE_MANAGER, optional: true }, AccessFilterService],
   },
   {
     provide: LumenService,

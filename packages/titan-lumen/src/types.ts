@@ -55,11 +55,22 @@ export interface LiveEditPayload {
   docId: string;
   patch: string;
   baseRevision: number;
-  author?: string;
+  /** SHA-256 of the exact revision read by the editor, including a revision-zero disk seed. */
+  baseHash: string;
   mode?: LiveEditMode;
   startLine?: number;
   endLine?: number;
-  access?: string;
+}
+
+/** Supplied by the admitted Netron invocation, never by the edit payload. */
+export interface LiveEditActor { userId: string; roles: readonly string[] }
+
+export interface LumenEditableDocument {
+  docId: string;
+  content: string;
+  revision: number;
+  hash: string;
+  access: string;
 }
 
 export interface LiveEditResult {
@@ -82,7 +93,10 @@ export interface LiveEditEvent {
 }
 
 export interface LiveEditServiceOptions {
-  maxDocuments?: number;
+  /** Stable identity shared by all instances serving the same document corpus. */
+  corpusId: string;
+  /** Connection owned by the application's TitanDatabaseModule. Defaults to default. */
+  connectionName?: string;
   maxPatchBytes?: number;
   maxDocumentBytes?: number;
 }
@@ -115,6 +129,7 @@ export interface LumenServiceContract {
   search(query: string, options?: SearchOptions): Promise<SearchResult[]>;
   executePlayground(code: string): Promise<PlaygroundResult>;
   getDocument(path: string): Promise<string | null>;
+  getEditableDocument(path: string): Promise<LumenEditableDocument | null>;
   getSymbolContract(symbol: string): Promise<SymbolContract | null>;
   getTheoremGraph(): Promise<TheoremGraphData>;
   saveLiveEdit(payload: LiveEditPayload): Promise<LiveEditResult>;

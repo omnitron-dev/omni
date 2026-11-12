@@ -9,6 +9,7 @@ import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import { decodeHttpError, TitanError } from '@omnitron-dev/netron-protocol';
 import { LATEST_PROTOCOL_VERSION } from '@modelcontextprotocol/server';
 import { LumenService } from '../src/lumen.service.js';
+import type { LiveEditService } from '../src/live/live-edit.service.js';
 import { LumenMcpAdapter, type LumenMcpOptions } from '../src/mcp.js';
 import type { LumenModuleOptions, LumenServiceContract } from '../src/types.js';
 
@@ -21,14 +22,14 @@ afterEach(async () => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-export function createLumenFixture(documents: Record<string, string> = {}, options: LumenModuleOptions = {}) {
+export function createLumenFixture(documents: Record<string, string> = {}, options: LumenModuleOptions = {}, live?: LiveEditService) {
   const docsDir = mkdtempSync(join(tmpdir(), 'lumen-native-')); roots.push(docsDir);
   for (const [path, content] of Object.entries(documents)) {
     const target = join(docsDir, path);
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, content);
   }
-  return new LumenService({ ...options, docsDir });
+  return new LumenService({ ...options, docsDir }, undefined, live);
 }
 
 export async function hostFor(service: LumenService) {
@@ -39,9 +40,9 @@ export async function hostFor(service: LumenService) {
   netron.configureAuth(new AuthenticationManager(logger, {
     authenticate: () => { throw new Error('Token required'); },
     validateToken: (token) => {
-      if (!['admin', 'staff', 'reader', 'security_officer'].includes(token)) throw new Error('Invalid token');
-      return { userId: `verified-${token}`, roles: [token === 'reader' ? 'anonymous' : token],
-        permissions: token === 'admin' ? ['lumen.playground.execute', 'lumen.documents.write'] : [] };
+      if (!['admin', 'staff', 'reader', 'security_officer', 'editor'].includes(token)) throw new Error('Invalid token');
+      return { userId: `verified-${token}`, roles: [token === 'reader' ? 'anonymous' : token === 'editor' ? 'staff' : token],
+        permissions: token === 'admin' ? ['lumen.playground.execute', 'lumen.documents.write'] : token === 'editor' ? ['lumen.documents.write'] : [] };
     }, tokenCache: { enabled: false },
   }));
   await netron.start();

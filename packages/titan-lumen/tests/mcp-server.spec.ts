@@ -47,9 +47,23 @@ describe('official MCP protocol through native Netron admission', () => {
 
   it('does not mix concurrent caller credentials or accept roles from tool arguments', async () => {
     const mcp = await fixture();
-    const calls = await Promise.all(Array.from({ length: 12 }, (_, i) => mcp.call({ method: 'tools/call',
-      params: { name: 'get_document', arguments: { path: 'secret.pdx' } } }, i % 2 ? 'admin' : undefined)));
-    calls.forEach((result, i) => expect(result.result.content === null).toBe(i % 2 === 0));
+    const read = (index: number) => mcp.call({ method: 'tools/call',
+      params: { name: 'get_document', arguments: { path: 'secret.pdx' } } }, index % 2 ? 'admin' : undefined);
+    const calls = await Promise.all(Array.from({ length: 12 }, (_, i) => read(i)));
+    expect(calls.some(result => result.result?.isError)).toBe(true);
+    expect(calls.some(result => !result.result?.isError)).toBe(true);
+    for (const [index, initial] of calls.entries()) {
+      let result = initial;
+      if (result.result?.isError) {
+        expect(JSON.stringify(result.result)).toContain('Too many requests');
+        expect(JSON.stringify(result)).not.toContain('private canary');
+        result = await read(index);
+      }
+      expect(result.error).toBeUndefined();
+      expect(result.result.isError).toBeUndefined();
+      expect(result.result.content === null).toBe(index % 2 === 0);
+      if (index % 2) expect(result.result.content).toContain('private canary');
+    }
     const forged = await mcp.call({ method: 'tools/call', params: { name: 'search_corpus', arguments: { query: 'corpus', roles: ['admin'] } } });
     expect(forged.error ?? forged.result?.isError).toBeTruthy();
     expect(JSON.stringify(forged)).not.toContain('private canary');

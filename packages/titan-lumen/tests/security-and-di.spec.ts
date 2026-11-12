@@ -7,6 +7,7 @@ import { parseDocument, toCleanMarkdown, toHtmlSsr, toTypst } from '@omnitron-de
 import type { KnowledgeBase } from '@omnitron-dev/kb';
 import { AccessFilterService, LiveEditService, LumenModule, LumenService } from '../src/index.js';
 import { asUser, mcpFor } from './netron-fixture.js';
+import { createAuthoringFixture, admin, hash } from './authoring-fixture.js';
 
 describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
   const createdDirs: string[] = [];
@@ -206,57 +207,51 @@ describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
   });
 
   describe('SEC-05: LiveEditService bounds', () => {
-    it('enforces maxDocuments eviction, maxPatchBytes, maxDocumentBytes, and replace/line-range modes in LiveEditService', async () => {
-      const live = new LiveEditService({
-        maxDocuments: 2,
-        maxPatchBytes: 64,
-        maxDocumentBytes: 120,
-      });
-
-      live.setDocument('doc-1', 'Alpha', 1);
-      live.setDocument('doc-2', 'Beta', 1);
-      // Inserting doc-3 evicts oldest entry (doc-1)
-      live.setDocument('doc-3', 'Gamma', 1);
-      expect(live.hasDocument('doc-1')).toBe(false);
-      expect(live.hasDocument('doc-2')).toBe(true);
-      expect(live.hasDocument('doc-3')).toBe(true);
+    it('retains accepted documents and enforces write budgets with replace and line-range edits', async () => {
+      const { live } = await createAuthoringFixture({ maxPatchBytes: 64, maxDocumentBytes: 120 });
+      for (const [docId, patch] of [['doc-1.pdx', 'Alpha'], ['doc-2.pdx', 'Beta'], ['doc-3.pdx', 'Gamma']] as const)
+        expect(await live.applyEdit({ docId, patch, mode: 'replace', baseRevision: 0, baseHash: hash('') }, admin)).toMatchObject({ success: true });
+      expect((await live.readCorpus()).map(document => document.docId)).toEqual(['doc-1.pdx', 'doc-2.pdx', 'doc-3.pdx']);
 
       // Oversized patch rejected
       const bigPatch = await live.applyEdit({
-        docId: 'doc-2',
+        docId: 'doc-2.pdx',
         patch: 'x'.repeat(80),
         baseRevision: 1,
-      });
+        baseHash: hash('Beta'),
+      }, admin);
       expect(bigPatch.success).toBe(false);
-      expect(bigPatch.error).toMatch(/Patch size/i);
+      expect(bigPatch.error).toMatch(/Patch exceeds/i);
 
       // Replace mode
       const replaced = await live.applyEdit({
-        docId: 'doc-2',
+        docId: 'doc-2.pdx',
         patch: 'Line A\nLine B\nLine C',
         baseRevision: 1,
+        baseHash: hash('Beta'),
         mode: 'replace',
-      });
+      }, admin);
       expect(replaced.success).toBe(true);
       expect(replaced.content).toBe('Line A\nLine B\nLine C');
 
       // Line-range mode (replace Line B at line 2)
       const ranged = await live.applyEdit({
-        docId: 'doc-2',
+        docId: 'doc-2.pdx',
         patch: 'Line B Updated',
         baseRevision: 2,
+        baseHash: replaced.hash!,
         mode: 'line-range',
         startLine: 2,
         endLine: 2,
-      });
+      }, admin);
       expect(ranged.success).toBe(true);
       expect(ranged.content).toBe('Line A\nLine B Updated\nLine C');
 
       // Oversized resulting document rejected
-      await live.applyEdit({ docId: 'doc-2', patch: 'y'.repeat(60), baseRevision: 3 });
-      const overflowDoc = await live.applyEdit({ docId: 'doc-2', patch: 'z'.repeat(60), baseRevision: 4 });
+      const appended = await live.applyEdit({ docId: 'doc-2.pdx', patch: 'y'.repeat(60), baseRevision: 3, baseHash: ranged.hash! }, admin);
+      const overflowDoc = await live.applyEdit({ docId: 'doc-2.pdx', patch: 'z'.repeat(60), baseRevision: 4, baseHash: appended.hash! }, admin);
       expect(overflowDoc.success).toBe(false);
-      expect(overflowDoc.error).toMatch(/Document size/i);
+      expect(overflowDoc.error).toMatch(/Document exceeds/i);
     });
   });
 

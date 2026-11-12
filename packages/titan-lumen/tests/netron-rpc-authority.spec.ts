@@ -9,6 +9,7 @@ import { WebSocketTransport } from '@omnitron-dev/titan/netron/transport/websock
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import { LumenService } from '../src/lumen.service.js';
 import type { LumenServiceContract, LiveEditEvent } from '../src/types.js';
+import { createAuthoringFixture, hash } from './authoring-fixture.js';
 
 describe('Lumen through the published Netron HTTP and WebSocket surface', () => {
   let server: Netron;
@@ -20,11 +21,12 @@ describe('Lumen through the published Netron HTTP and WebSocket surface', () => 
   let wsPort: number;
   const clients: Netron[] = [];
   const forged = { valid: true, roles: ['admin'], userId: 'forged' };
-  const payload = { docId: 'public.pdx', patch: 'change', baseRevision: 1, author: 'forged-author' };
+  const publicSource = '---\ntitle: Public\n---\nCorpus public.';
+  const payload = { docId: 'public.pdx', patch: 'change', baseRevision: 0, baseHash: hash(publicSource) };
 
   beforeEach(async () => {
     root = mkdtempSync(join(tmpdir(), 'lumen-authority-'));
-    writeFileSync(join(root, 'public.pdx'), '---\ntitle: Public\n---\nCorpus public.');
+    writeFileSync(join(root, 'public.pdx'), publicSource);
     writeFileSync(join(root, 'secret.pdx'), '---\ntitle: Secret\naccess: confidential\n---\nCorpus classified.');
     const logger = createNullLogger();
     server = new Netron(logger, { id: crypto.randomUUID() });
@@ -40,7 +42,8 @@ describe('Lumen through the published Netron HTTP and WebSocket surface', () => 
     server.registerTransport('ws', () => new WebSocketTransport());
     server.registerTransportServer('ws', { name: 'ws', options: { host: '127.0.0.1', port: 0 } });
     await server.start();
-    service = new LumenService({ docsDir: root });
+    const authoring = await createAuthoringFixture();
+    service = new LumenService({ docsDir: root, liveEdit: authoring.options }, undefined, authoring.live);
     edits = []; service.getLiveEditService().on('live-edit', (event: LiveEditEvent) => edits.push(event));
     await server.peer.exposeService(service);
     wsPort = (server.transportServers.get('ws') as { port: number }).port;
@@ -74,7 +77,7 @@ describe('Lumen through the published Netron HTTP and WebSocket surface', () => 
     return peer.queryInterface<LumenServiceContract>('Lumen');
   }
 
-  it('exposes the six intended methods and hides internal service configuration', async () => {
+  it('exposes the intended methods and hides internal service configuration', async () => {
     expect((await invoke('getDocument', ['public.pdx'])).body.data).toContain('Corpus public');
     expect((await invoke('getOptions', [], 'editor')).status).toBe(404);
     expect((await invoke('getAccessFilterService', [], 'editor')).status).toBe(404);
@@ -116,5 +119,15 @@ describe('Lumen through the published Netron HTTP and WebSocket surface', () => 
     expect(results[2]).toMatchObject({ status: 200, body: { data: { result: 42 } } });
     expect(results[3]).toMatchObject({ success: true });
     expect(edits).toMatchObject([{ author: 'trusted-editor' }]);
+  });
+
+  it('rejects client-supplied authors and access and returns the canonical editor revision', async () => {
+    const editor = await socket('editor');
+    expect(await editor.getEditableDocument('public.pdx')).toMatchObject({ revision: 0, hash: payload.baseHash, content: publicSource });
+    for (const spoofed of [{ ...payload, author: 'forged' }, { ...payload, access: 'public' }])
+      expect((await invoke('saveLiveEdit', [spoofed], 'editor')).body.data).toMatchObject({ success: false });
+    expect(edits).toEqual([]);
+    expect(await editor.saveLiveEdit(payload)).toMatchObject({ success: true, revision: 1 });
+    expect(await editor.getEditableDocument('public.pdx')).toMatchObject({ revision: 1, hash: hash(publicSource + '\nchange') });
   });
 });

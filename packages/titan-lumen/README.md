@@ -32,12 +32,13 @@ accept a role list or `valid: true` in a request as proof of identity.
 
 ## Published RPC surface
 
-The service name is `Lumen`. `LumenServiceContract` describes the six network methods:
+The service name is `Lumen`. `LumenServiceContract` describes its network methods:
 
 | Method | Result | Authorization |
 | --- | --- | --- |
 | `search(query, options?)` | Ranked document hits | Public projection or verified caller's document access |
 | `getDocument(path)` | Authorized Markdown or `null` | Document and node access |
+| `getEditableDocument(path)` | Whole document, revision, hash and access or `null` | `lumen.documents.write` and access to every section |
 | `getSymbolContract(symbol)` | Symbol contract or `null` | Configured source access, internal by default |
 | `getTheoremGraph()` | Theorem nodes and edges | Authorized document projection |
 | `executePlayground(code)` | Execution result or error | `lumen.playground.execute` |
@@ -64,6 +65,82 @@ its `AccessFilterService` and `LiveEditService` collaborators by their classes.
 An empty corpus returns empty results. A missing configured corpus reports an
 error on document, search and graph reads; it never substitutes demonstration
 documents or symbol contracts.
+
+## Durable authoring
+
+Without `liveEdit`, Lumen reads the filesystem and refuses edits. Enable authoring
+with `liveEdit: { corpusId: 'product-docs', connectionName: 'default' }` and the
+application's `TitanDatabaseModule`. Both synchronous and asynchronous Lumen
+module providers resolve that module's `DATABASE_MANAGER`; they do not create
+another pool. The connection must use PostgreSQL or file-backed SQLite with its
+native driver installed. Choose a stable `corpusId` shared by every instance that
+serves the same corpus. Different corpus IDs have independent document identities.
+
+Apply the exported migration through the application's explicit migration workflow
+before enabling authoring. Runtime dependency injection never creates tables:
+
+```ts
+import { MigrationRunner } from '@omnitron-dev/titan-database/migration';
+import { lumenAuthoringMigration, type LumenAuthoringDatabase } from '@omnitron-dev/titan-lumen';
+
+const db = await databaseManager.getConnection<LumenAuthoringDatabase>('default');
+await new MigrationRunner(db, [lumenAuthoringMigration], {
+  useTransactions: true,
+  enforceChecksums: true,
+}).up();
+```
+
+An unavailable database or missing migration is an error for enabled authoring,
+including document reads, search and graph operations. No in-memory store or
+stale filesystem substitute is used.
+
+Editors first call `getEditableDocument('guides/start.pdx')`, then send its exact
+`revision` and SHA-256 `hash` as `baseRevision` and `baseHash` with each edit:
+
+```ts
+const document = await lumen.getEditableDocument('guides/start.pdx');
+if (document) {
+  const saved = await lumen.saveLiveEdit({
+    docId: document.docId,
+    baseRevision: document.revision,
+    baseHash: document.hash,
+    mode: 'replace',
+    patch: updatedMarkdown,
+  });
+  if (saved.conflict) {
+    // Reload the current revision and let the editor reconcile its changes.
+  }
+}
+```
+
+Paths include their `.pdx`, `.md` or `.mdx` extension and must be canonical relative
+paths. A disk document starts at revision zero. Its first successful edit stores
+that exact seed, provenance and hash as history revision zero and the edit as
+revision one, in the same transaction. The database then owns that path: later
+filesystem changes cannot replace it. A new document uses revision zero and the
+SHA-256 of the empty string as its base. `append`, `replace` and one-based
+`line-range` edits preserve submitted whitespace.
+
+Current content and append-only revision history commit atomically. A database
+compare-and-swap checks both revision and hash. Competing editors receive a
+conflict; SQLite snapshot conflicts and PostgreSQL serialization/deadlock errors
+use TitanDatabase's bounded whole-transaction retry. Connection failures are
+reported. Success and `live-edit` notifications occur only after commit. The
+author comes from the verified Netron invocation; client `author` and `access`
+fields are rejected. Existing content is authorized before conflict details are
+returned; every section of edited content is authorized before commit. Reads and
+edits verify stored revision numbers, UTF-8 byte lengths and content hashes;
+corruption is an explicit error.
+
+Accepted documents are never evicted. Writes default to 256 KiB per patch and
+2 MiB per document, configurable up to 8 MiB. `readCorpus` checks entry and byte
+metadata in one consistent database snapshot before reading content, then the
+service merges unowned filesystem documents within the remaining corpus budget.
+Document reads, search and graph therefore share the same durable source.
+Internal `getHistory` requires an authenticated actor and access to both the
+current document and each returned revision; it defaults to 50 versions and
+8 MiB per page, with hard bounds of 100 versions and 64 MiB. History is not an
+additional public RPC.
 
 ## MCP on the existing Netron HTTP host
 
@@ -121,9 +198,9 @@ unnecessary; public read access never grants execution permission.
 
 The 0.4.0 audit is in progress. Do not infer that a test with a PDF header,
 hydration flag or mock request establishes production readiness. The repository's
-`audit/LUMEN-0.4.0.md` records remaining sandbox, document projection, persistence,
-and browser integration work. Live edits currently use bounded in-memory state;
-durable authoring is still a release blocker. The isolated execution engine has
+`audit/LUMEN-0.4.0.md` records release qualification work. Durable authoring is
+covered by real SQLite transactions, independent connection races, commit failure,
+restart, native RPC and shared document/search/graph tests. The isolated execution engine has
 local negative tests through actual Netron, including memory exhaustion,
 constructor escapes and concurrent admission. Browser and final package checks
 remain part of the release gate. Nothing in this package's audit
@@ -140,6 +217,11 @@ The default inventory budget is 10,000 entries, 64 MiB and 32 directory levels;
 files to 2 MiB. Exceeding a bound fails the request rather than returning a
 successful partial corpus. Search accepts limits from 0 to 100 and queries of
 at most 4 KiB.
+
+Each service admits at most four concurrent corpus reads, independently of its
+four playground workers. Read admission covers the complete operation through
+authorization and projection; excess calls receive 429 and can retry after the
+current operations finish. An overload is an error, not an empty search result.
 
 `sourceAccess` and `knowledgeBaseAccess` default to `internal`, independently of
 public Markdown. Set either to `public` only when that entire configured source

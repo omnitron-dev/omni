@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { parseDocument, toHtmlSsr, toCleanMarkdown } from '@omnitron-dev/lumen-ast';
 import { CorpusGraph, type CorpusDocument } from '@omnitron-dev/lumen';
 import type { LiveEditEvent } from '@omnitron-dev/titan-lumen';
+import { createAuthoringFixture } from '../../../packages/titan-lumen/tests/authoring-fixture.js';
 import { asUser, createLumenFixture } from '../../../packages/titan-lumen/tests/netron-fixture.js';
 
 describe('Tier 4: Scenario 15 — Live Collaborative Editing Ingestion', () => {
@@ -84,17 +85,18 @@ For any normal operator $T$ on a Hilbert space, $\\rho(T) = \\|T\\|$.
   });
 
   it('emits the verified author and accepted revision after an admitted RPC edit', async () => {
-    const service = createLumenFixture();
+    const state = await createAuthoringFixture();
+    const service = createLumenFixture({}, { liveEdit: state.options }, state.live);
     const events: LiveEditEvent[] = [];
     service.getLiveEditService().on('live-edit', event => events.push(event));
     const client = await asUser(service, 'admin');
     const result = await client.saveLiveEdit({
-      docId: 'collab.pdx', patch: '# Accepted draft', baseRevision: 1, author: 'forged',
+      docId: 'collab.pdx', patch: '# Accepted draft', baseRevision: 0, baseHash: hash(''),
     });
-    expect(result).toMatchObject({ success: true, revision: 2 });
-    expect(events).toMatchObject([{ docId: 'collab.pdx', revision: 2, author: 'verified-admin' }]);
+    expect(result).toMatchObject({ success: true, revision: 1 });
+    expect(events).toMatchObject([{ docId: 'collab.pdx', revision: 1, author: 'verified-admin' }]);
     expect(await client.getDocument('collab.pdx')).toContain('# Accepted draft');
-    const conflict = await client.saveLiveEdit({ docId: 'collab.pdx', patch: 'stale', baseRevision: 1 });
+    const conflict = await client.saveLiveEdit({ docId: 'collab.pdx', patch: 'stale', baseRevision: 0, baseHash: hash('') });
     expect(conflict.conflict).toBe(true);
     expect(events).toHaveLength(1);
   });

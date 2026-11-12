@@ -75,6 +75,18 @@ describe('bounded corpus reads through the service', () => {
     expect(await service.search('query', { limit: 0 })).toEqual([]);
   });
 
+  it('rejects conflicting declared document and mathematical identities', async () => {
+    const root = await corpus();
+    await writeFile(join(root, 'a.md'), '---\nid: same\n---\nquery');
+    await writeFile(join(root, 'b.md'), '---\nid: same\n---\nquery');
+    const service = new LumenService({ docsDir: root });
+    await expect(service.search('query')).rejects.toThrow('configured documentation corpus');
+    const theorem = ':::theorem{id="duplicated"}\nStatement.\n:::';
+    await writeFile(join(root, 'a.md'), theorem);
+    await writeFile(join(root, 'b.md'), theorem);
+    await expect(service.getTheoremGraph()).rejects.toThrow('configured documentation corpus');
+  });
+
   it('does not collapse different document paths into the same synthetic ID', async () => {
     const root = await corpus();
     await mkdir(join(root, 'a'));
@@ -112,6 +124,28 @@ describe('source visibility and failures', () => {
     await expect(staff.search('query')).rejects.toThrow('configured knowledge base');
     await expect(staff.getSymbolContract('Secret')).rejects.toThrow('configured knowledge base');
     expect(calls).toBe(2);
+  });
+
+  it('bounds concurrent corpus work through Netron and releases capacity after failure', async () => {
+    const root = await corpus();
+    const ready = Promise.withResolvers<void>();
+    const gate = Promise.withResolvers<void>();
+    let admitted = 0;
+    const knowledgeBase = {
+      query: async () => {
+        if (++admitted === 4) ready.resolve();
+        await gate.promise;
+        throw new Error('Isolated unavailable store');
+      },
+    } as unknown as KnowledgeBase;
+    const client = await asUser(new LumenService({ docsDir: root, knowledgeBase, knowledgeBaseAccess: 'public' }));
+    const pending = Promise.allSettled(Array.from({ length: 4 }, () => client.search('query')));
+    try {
+      await ready.promise;
+      await expect(client.getTheoremGraph()).rejects.toMatchObject({ code: 429 });
+    } finally { gate.resolve(); }
+    expect((await pending).filter(result => result.status === 'rejected')).toHaveLength(4);
+    expect(await client.getTheoremGraph()).toEqual({ nodes: [], edges: [] });
   });
 
   it('surfaces a missing source directory for authorized users', async () => {

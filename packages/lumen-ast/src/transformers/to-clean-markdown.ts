@@ -3,14 +3,12 @@
  */
 
 import { normalizeLumenHtml } from '../compiler/html.js';
-import { renderSafeHtmlElement } from './safe-html.js';
+import { isInteractiveHtmlElement, renderSafeHtmlElement } from './safe-html.js';
 import type { LumenDocumentAst, LumenNode } from '../ast/types.js';
 
 export interface CleanMarkdownOptions {
   includeFrontmatter?: boolean;
   expandSmartRefs?: boolean;
-  preserveDirectives?: boolean;
-  stripInternalProps?: boolean;
 }
 
 export function toCleanMarkdown(ast: LumenDocumentAst, options?: CleanMarkdownOptions): string {
@@ -30,22 +28,7 @@ export function toCleanMarkdown(ast: LumenDocumentAst, options?: CleanMarkdownOp
     }
   }
 
-  // 2. Body serialization (strictly derived from ast.children when present; never resurrects rawContent)
-  let bodyText = '';
-  if (Array.isArray(ast.children)) {
-    bodyText = serializeNodesToCleanMarkdown(ast.children, options);
-  } else if (ast.rawContent) {
-    let clean = ast.rawContent.trim();
-    // Strip YAML frontmatter block if present
-    clean = clean.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
-    // Strip UI island tags, JSX components, and HTML comments generically
-    clean = clean
-      .replace(/<div\s+data-lumen-island[\s\S]*?<\/div>/g, '')
-      .replace(/<[A-Z][A-Za-z0-9_]*[\s\S]*?(?:\/>|<\/[A-Z][A-Za-z0-9_]*>)/g, '')
-      .replace(/<!--[\s\S]*?-->/g, '')
-      .trim();
-    bodyText = clean;
-  }
+  const bodyText = serializeNodesToCleanMarkdown(ast.children, options);
 
   if (bodyText) {
     parts.push(bodyText);
@@ -162,6 +145,9 @@ function serializeSingleNode(node: LumenNode, options?: CleanMarkdownOptions): s
     }
 
     case 'htmlElement': {
+      if (isInteractiveHtmlElement(String(node.tagName), node.attributes ?? {})) {
+        return serializeNodesToCleanMarkdown(node.children ?? [], options);
+      }
       return renderSafeHtmlElement(String(node.tagName), node.attributes ?? {}, serializeNodesToCleanMarkdown(node.children ?? [], options));
     }
 

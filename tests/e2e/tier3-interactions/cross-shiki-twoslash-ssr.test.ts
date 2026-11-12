@@ -67,25 +67,23 @@ def evaluate_eigenvalues(matrix):
 `;
 
     const ast = await parseDocument(doc, 'docs/python.pdx');
-    const darkHtml = toHtmlSsr(ast, { theme: 'dark' });
-    const lightHtml = toHtmlSsr(ast, { theme: 'light' });
-
-    expect(darkHtml).toContain('evaluate_eigenvalues');
-    expect(lightHtml).toContain('evaluate_eigenvalues');
+    const html = toHtmlSsr(ast);
+    expect(html).toContain('evaluate_eigenvalues');
+    expect(html).toContain('--shiki-dark');
 
     // Embed within LumenShell theme containers
     const darkShell = renderToStaticMarkup(
       React.createElement(
         LumenShell,
         { theme: 'dark' },
-        React.createElement('div', { dangerouslySetInnerHTML: { __html: darkHtml } })
+        React.createElement('div', { dangerouslySetInnerHTML: { __html: html } })
       )
     );
     const lightShell = renderToStaticMarkup(
       React.createElement(
         LumenShell,
         { theme: 'light' },
-        React.createElement('div', { dangerouslySetInnerHTML: { __html: lightHtml } })
+        React.createElement('div', { dangerouslySetInnerHTML: { __html: html } })
       )
     );
 

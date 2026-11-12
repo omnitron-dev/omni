@@ -27,6 +27,32 @@ Baseline: `3ea505ad` (2026-11-11). This is a verification ledger, not a release 
 | L40-11 | Docusaurus migration can replace an existing/source directory and verifies parity only after replacement; crawler silently omits failures. | New disjoint destination, complete bounded inventory, pre-publication parity and non-clobbering concurrent behavior. | Closed in source (`6202559e`): complete physical inventory, bounded data-only parsing, mandatory parity before exclusive target claim and exclusive file creation. Existing targets are never replaced. A partial copy remains visible with its exact recovery paths; this is not atomic directory publication. Sixty-six package tests include 36 real CLI cases, plus 58 E2E checks. The report now has one measured routes/anchors contract; phantom link counts and compatibility duplicates are removed. |
 | L40-12 | SSR and hydration accept different metadata and can replace malformed props with an empty object. | One bounded lossless JSON contract, local error handling and recovery after metadata changes. | Closed in source (`fa947b57`): one browser-safe codec, 256 KiB and depth 64 limits, strict data-only values, reactive props/triggers and local recovery. Five codec, 52 UI and two real Chromium hydration tests pass. |
 | L40-13 | Several configuration fields are accepted without behavior; warning modes skip validation. | Remove unsupported surface or connect it to the real implementation, validate configuration and emit truthful diagnostics. | Closed in source (`e384f4ff`): strict config removes unsupported Titan/PDF switches, KaTeX macros reach actual HTML/Pagefind output, warning modes emit diagnostics and failed custom gates block publication. Mermaid-only documents obtain the default client. Seventy-nine Lumen tests, types and lint pass; final archive/website qualification remains required. |
+| L40-14 | Exporters recover missing AST children from raw authoring text, accept unused options, and retain interactive metadata in Markdown. | Require the projected tree, remove inactive API fields/callers, preserve useful content through the shared HTML policy. | Closed in source: all four emitters reject a missing tree; inactive options and their callers are removed. An independent review reproduced an island-marker bypass on prohibited HTML tags; Markdown unwrapping now uses the same allowed container set as HTML sanitization, including nested adversarial checks. All 113 AST tests, both package typechecks and 462 canonical Lumen E2E checks pass at this checkpoint. |
+| L40-15 | A custom site layout with React hooks fails when a linked SDK and its consumer load separate React instances. | One SSR module graph for renderer, layout and React peers; actual ordinary-CLI fixture and website build. | Open: reproduced with a real consumer child component using hooks. Client-side deduplication alone does not close the server-rendering defect. |
+| L40-16 | Handwritten Markdown emission can turn literal HTML into markup and mishandles fences, nested lists and tables; projected extension containers can retain cached text after child removal. | Standard Markdown serialization with parsed round-trip oracles, and one projection that removes invalidated content caches. | Open: literal `&lt;script&gt;` becomes an active raw tag on Markdown export; a programmatic container's `value` survives removal of its confidential child. Both reproduced independently; the fix must cover the ordinary exporters, not only the fixtures. |
+
+## Installed archive acceptance
+
+The mandatory package-export gate now installs a separate declared Lumen
+dependency closure from 15 real tarballs, independently of the installation of
+all public workspaces. It checks every nested platform package against the
+prepared archive integrity, so a registry copy cannot silently replace a local
+candidate. This consumer has no workspace aliases or SDK links.
+
+The checkpoint in `ae4f2e3e` passed npm install/ci and audit (zero known
+vulnerabilities), actual Typst PDF/Cyrillic/A4 output, QuickJS execution,
+Node-only browser import refusal, three official MCP-client checks and fourteen
+Chromium checks. The latter include an ordinary Mermaid-only site build with
+its default client, ELK geometry and Pagefind WASM search. These checks run in
+the existing release preparation and required CI gate; this checkpoint does
+not certify the final 35-package 0.4.0 archives.
+
+Lumen E2E no longer invokes the same whole-workspace export and undeclared-import
+scanners a second time. Both remain required root gates; the Lumen-specific
+metadata, real CLI and installed-consumer tests remain. The scanner also verifies
+type-only imports satisfied by declared DefinitelyTyped packages without letting
+runtime imports use that exception. It found and prompted correction of a real
+missing Omnitron runtime dependency on `@omnitron-dev/common` (`54942a6d`).
 
 ## Comparative evidence
 

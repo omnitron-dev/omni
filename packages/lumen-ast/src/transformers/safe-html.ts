@@ -3,6 +3,12 @@ import { toHtml } from 'hast-util-to-html';
 import type { Element, Properties, Root } from 'hast';
 
 const ISLAND_TAGS = new Set(['div', 'section', 'aside', 'span']);
+
+/** Only containers admitted by the HTML policy can expose island content. */
+export function isInteractiveHtmlElement(tagName: string, attributes: Record<string, unknown>): boolean {
+  return ISLAND_TAGS.has(tagName) && (Object.hasOwn(attributes, 'dataLumenIsland') || Object.hasOwn(attributes, 'dataWidget'));
+}
+
 const schema: Schema = {
   ...defaultSchema,
   tagNames: [...(defaultSchema.tagNames ?? []), 'section', 'aside'],

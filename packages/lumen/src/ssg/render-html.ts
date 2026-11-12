@@ -36,7 +36,7 @@ export function renderDocumentHtml(ast: LumenDocumentAst, options?: RenderDocume
   );
 
   const articleHtml = docAllowed
-    ? toHtmlSsr(effectiveAst, { theme, macros: options?.macros })
+    ? toHtmlSsr(effectiveAst, { macros: options?.macros })
     : '<article class="lumen-doc"><h1>Restricted</h1></article>';
 
   const cache = createCache({ key: 'css' });

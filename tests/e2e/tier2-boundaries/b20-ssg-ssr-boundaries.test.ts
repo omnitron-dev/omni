@@ -18,12 +18,12 @@ Standard paragraph with basic CommonMark formatting.
     expect(html).toContain('Standard paragraph');
   });
 
-  it('TC-B20-02: sanitizes and escapes raw unclosed HTML tags in markdown body content', async () => {
+  it('TC-B20-02: normalizes authored HTML and removes active content while retaining document text', async () => {
     const rawHtmlDoc = `---
 title: Unclosed HTML Tags
 ---
 
-<div class="unclosed">
+<div class="unclosed" onclick="alert('handler')">
   <span>Text inside unclosed tag
 <script>alert("injection")</script>
 `;
@@ -31,10 +31,10 @@ title: Unclosed HTML Tags
     const ast = await parseDocument(rawHtmlDoc, 'docs/raw-html.pdx');
     const html = toHtmlSsr(ast);
 
-    // Raw unescaped HTML tags should be escaped to prevent injection
-    expect(html).not.toContain('<script>alert("injection")</script>');
-    expect(html).toContain('&lt;div');
-    expect(html).toContain('&lt;script&gt;');
+    expect(html).toContain('<div class="unclosed">');
+    expect(html).toContain('Text inside unclosed tag');
+    expect(html).toContain('</span></div>');
+    expect(html).not.toMatch(/<script|onclick|alert\(/);
   });
 
   it('TC-B20-03: renders 100 documents concurrently via Promise.all without state corruption', async () => {

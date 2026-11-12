@@ -48,6 +48,14 @@ contains neither the original raw document nor authoring diagnostics. It can be
 passed to HTML, Markdown, Typst, search and MCP consumers without reimplementing
 filtering. Authorized Markdown exports retain document classification metadata.
 
+All emitters require the parsed `children` tree. They never recover content from
+`rawContent`: that field belongs to authoring, not to an authorized output.
+HTML, Markdown, TipTap and Typst reject an object without the tree. Markdown
+unwraps interactive island containers while retaining their projected document
+content, so runtime IDs and serialized widget properties do not leak into exports.
+HTML math rendering accepts `macros`; light/dark mode belongs to the page shell
+and its shared CSS, including Shiki's dual-theme tokens.
+
 Authored HTML is parsed using `hast-util-raw` and rendered with
 `hast-util-sanitize`; scripts, event handlers and unsafe URLs are not executable.
 Code examples remain literal, including nested fences and directive attributes.

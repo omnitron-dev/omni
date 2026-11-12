@@ -70,7 +70,7 @@ Unitary evolution is reversible.
     expect(buffer.length).toBeGreaterThan(0);
   });
 
-  it('never resurrects rawContent when ast.children is an array (IA-01 redaction safety), and strips frontmatter only when children is absent', () => {
+  it('never resurrects rawContent and rejects documents without their required AST children', () => {
     const redactedAst: LumenDocumentAst = {
       frontmatter: { title: 'Restricted', access: 'confidential' },
       children: [],
@@ -84,7 +84,7 @@ Unitary evolution is reversible.
     expect(toTipTapDoc(redactedAst)).toEqual({ type: 'doc', content: [] });
     expect(toTypst(redactedAst)).not.toContain('CONFIDENTIAL PAYLOAD');
 
-    const unparsedLegacyAst = {
+    const invalidAst = {
       frontmatter: { title: 'Arbitrary Metadata Document' },
       children: undefined as unknown as LumenDocumentAst['children'],
       toc: [],
@@ -98,12 +98,28 @@ arbitraryInternalTag: 9999
 Recovered body text after generic frontmatter stripping.`,
     } satisfies LumenDocumentAst;
 
-    const clean = toCleanMarkdown(unparsedLegacyAst);
-    expect(clean).toContain('# Recovered Title');
-    expect(clean).toContain('Recovered body text after generic frontmatter stripping.');
-    expect(clean).not.toContain('customMetadataKey');
-    expect(clean).not.toContain('arbitraryInternalTag');
+    for (const transform of [toCleanMarkdown, toHtmlSsr, toTipTapDoc, toTypst]) {
+      expect(() => transform(invalidAst)).toThrow(TypeError);
+    }
   });
+
+  it('keeps projected island content without serializing interaction metadata into Markdown', async () => {
+    const ast = await parseDocument('<section data-lumen-island="private-runtime-id" data-props="{&quot;token&quot;:&quot;canary&quot;}"><span>Document fallback</span><script data-lumen-island="nested">NESTED_CANARY</script></section>');
+    const markdown = toCleanMarkdown(ast);
+    expect(markdown).toContain('Document fallback');
+    expect(markdown).not.toMatch(/private-runtime-id|data-props|canary|NESTED_CANARY|data-lumen-island/);
+  });
+
+  it.each(['script', 'style', 'textarea', 'template', 'noscript', 'iframe', 'svg'])(
+    'does not unwrap prohibited %s content disguised as an island', async (tag) => {
+      const content = tag === 'svg' ? '<text>HIDDEN_CANARY</text>' : '<img src="x" onerror="CANARY()">HIDDEN_CANARY';
+      const ast = await parseDocument(`Before\n\n<${tag} data-lumen-island="widget">${content}</${tag}>\n\nAfter`);
+      const markdown = toCleanMarkdown(ast);
+      expect(markdown).toContain('Before');
+      expect(markdown).toContain('After');
+      expect(markdown).not.toMatch(/CANARY|onerror|<img/);
+    }
+  );
 
   it('supports node.raw in custom or unsupported AST nodes', () => {
     const rawNodeAst: LumenDocumentAst = {

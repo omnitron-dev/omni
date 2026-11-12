@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { defineLumenConfig } from '@omnitron-dev/lumen';
+import { defineLumenConfig, CorpusGraph, generateLlmsTxt, generateLlmsFullTxt } from '@omnitron-dev/lumen';
 import { parseDocument, toCleanMarkdown } from '@omnitron-dev/lumen-ast';
 import { expectValidLlmsTxt } from '../harness/assertions.js';
 
@@ -29,7 +29,7 @@ Here is the substantive theoretical description of the engine.
     expect(cleanMd).not.toContain('interactive-demo');
   });
 
-  it('TC-X09-02: /llms.txt manifest lists all canonical documentation URLs matching configuration', () => {
+  it('TC-X09-02: /llms.txt manifest lists canonical public documentation URLs', async () => {
     const config = defineLumenConfig({
       title: 'Quantum Theory Documentation',
       url: 'https://docs.luxquant.io',
@@ -37,16 +37,15 @@ Here is the substantive theoretical description of the engine.
     });
 
     const docRoutes = ['intro.md', 'foundations/algebra.md', 'foundations/operators.md'];
-    const lines = [
-      `# ${config.title}`,
-      '',
-      '> Agent and LLM documentation index.',
-      '',
-      '## Available Documentation',
-      ...docRoutes.map((r) => `- [${r}](${config.url}${config.baseUrl}${r})`),
-    ];
-
-    const llmsTxt = lines.join('\n');
+    const graph = new CorpusGraph();
+    for (const path of docRoutes) {
+      const ast = await parseDocument('# ' + path, 'docs/' + path);
+      graph.addDocument({ id: path, path: 'docs/' + path, title: path, hash: path, anchors: [], mathObjects: [], backlinks: [], ast });
+    }
+    const restricted = await parseDocument('---\naccess: confidential\n---\n# Secret');
+    graph.addDocument({ id: 'secret', path: 'docs/secret.md', title: 'Secret', hash: 'secret', anchors: [], mathObjects: [], backlinks: [], ast: restricted });
+    const llmsTxt = generateLlmsTxt(graph, config);
+    expect(llmsTxt).not.toContain('Secret');
     expectValidLlmsTxt(llmsTxt);
     expect(llmsTxt).toContain('https://docs.luxquant.io/theory/intro.md');
     expect(llmsTxt).toContain('https://docs.luxquant.io/theory/foundations/algebra.md');
@@ -69,10 +68,10 @@ Extended theorems built on Module 1.
     const ast1 = await parseDocument(doc1, 'docs/mod1.pdx');
     const ast2 = await parseDocument(doc2, 'docs/mod2.pdx');
 
-    const clean1 = toCleanMarkdown(ast1);
-    const clean2 = toCleanMarkdown(ast2);
-
-    const fullAggregate = ['# Complete Knowledge Corpus', '', clean1, '', '---', '', clean2].join('\n');
+    const graph = new CorpusGraph();
+    graph.addDocument({ id: 'extension', path: 'docs/mod2.pdx', title: 'Extension', hash: '2', anchors: [], mathObjects: [], backlinks: [], ast: ast2, relations: { dependsOn: ['base'] } });
+    graph.addDocument({ id: 'base', path: 'docs/mod1.pdx', title: 'Base', hash: '1', anchors: [], mathObjects: [], backlinks: [], ast: ast1 });
+    const fullAggregate = generateLlmsFullTxt(graph, defineLumenConfig({ title: 'Corpus' }));
 
     expect(fullAggregate).toContain('# Module 1');
     expect(fullAggregate).toContain('# Module 2');

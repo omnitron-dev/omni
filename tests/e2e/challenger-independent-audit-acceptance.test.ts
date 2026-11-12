@@ -281,7 +281,7 @@ describe('IA-08 & CLI Probes: Corpus Integrity, Built-in CLI & Stdio MCP Project
       mkdirSync(join(scratch, 'docs'));
       writeFileSync(
         join(scratch, 'lumen.config.ts'),
-        'export default { title: "Independent CLI fixture", docsDir: "docs", outDir: "dist" };\n'
+        'export default { title: "Independent CLI fixture", srcDir: "docs", outDir: "dist" };\n'
       );
       writeFileSync(
         join(scratch, 'docs/index.pdx'),
@@ -299,21 +299,30 @@ describe('IA-08 & CLI Probes: Corpus Integrity, Built-in CLI & Stdio MCP Project
         timeout: 20_000,
         encoding: 'utf8',
       });
-      expect(checkRun.status).toBe(1);
+      expect(checkRun.status, checkRun.stderr).toBe(1);
+      expect(checkRun.stdout, checkRun.stderr).not.toBe('');
       const diagnostics = JSON.parse(checkRun.stdout);
       expect(Array.isArray(diagnostics)).toBe(true);
       expect(diagnostics.length).toBeGreaterThan(0);
 
+      // The check command must reject the broken link; a publishable fixture
+      // then exercises the real builder and its public access projection.
+      writeFileSync(
+        join(scratch, 'docs/index.pdx'),
+        `---\ntitle: Public Home\naccess: public\n---\n\n# Real fixture\n\n${PUBLIC_CANARY}\n`
+      );
       const buildRun = spawnSync(process.execPath, [lumenBin, 'build'], {
         cwd: scratch,
         timeout: 20_000,
         encoding: 'utf8',
       });
-      expect(buildRun.status).toBe(0);
+      expect(buildRun.status, buildRun.stderr).toBe(0);
       expect(existsSync(join(scratch, 'dist'))).toBe(true);
       expect(existsSync(join(scratch, 'dist/llms.txt'))).toBe(true);
       expect(existsSync(join(scratch, 'dist/asset-manifest.json'))).toBe(true);
-      expect(readFileSync(join(scratch, 'dist/llms.txt'), 'utf8')).toContain(PUBLIC_CANARY);
+      expect(readFileSync(join(scratch, 'dist/llms.txt'), 'utf8')).toContain('Public Home');
+      expect(readFileSync(join(scratch, 'dist/llms-full.txt'), 'utf8')).toContain(PUBLIC_CANARY);
+      expect(readFileSync(join(scratch, 'dist/llms-full.txt'), 'utf8')).not.toContain(SECRET_CANARY);
       expect(readFileSync(join(scratch, 'dist/llms.txt'), 'utf8')).not.toContain(SECRET_CANARY);
 
       const unknownRun = spawnSync(process.execPath, [lumenBin, 'unknown-audit-command'], {

@@ -4,11 +4,6 @@
 
 import type { LumenDocumentAst, LumenNode } from '../ast/types.js';
 
-export interface TipTapOptions {
-  prefix?: string;
-  sourceProfile?: 'research' | 'docusaurus';
-}
-
 export interface TipTapNode {
   type: string;
   attrs?: Record<string, unknown>;
@@ -22,28 +17,8 @@ export interface TipTapDoc {
   content: TipTapNode[];
 }
 
-export function toTipTapDoc(ast: LumenDocumentAst, _options?: TipTapOptions): TipTapDoc {
-  if (Array.isArray(ast.children)) {
-    return {
-      type: 'doc',
-      content: convertAstNodesToTipTap(ast.children),
-    };
-  }
-
-  return {
-    type: 'doc',
-    content: createFallbackParagraph(ast.rawContent),
-  };
-}
-
-function createFallbackParagraph(rawContent?: string): TipTapNode[] {
-  if (!rawContent || !rawContent.trim()) return [];
-  return [
-    {
-      type: 'paragraph',
-      content: [{ type: 'text', text: rawContent.trim() }],
-    },
-  ];
+export function toTipTapDoc(ast: LumenDocumentAst): TipTapDoc {
+  return { type: 'doc', content: convertAstNodesToTipTap(ast.children) };
 }
 
 function convertAstNodesToTipTap(nodes: LumenNode[]): TipTapNode[] {

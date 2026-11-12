@@ -13,9 +13,6 @@ import { escapeHtml, renderKaTeX } from '../katex/render-math.js';
 
 export interface SsrOptions {
   macros?: Record<string, string> | LumenMacroRegistry;
-  theme?: 'light' | 'dark' | string;
-  sanitize?: boolean;
-  prefix?: string;
 }
 
 interface SsrContext {
@@ -136,12 +133,7 @@ export function toHtmlSsr(ast: LumenDocumentAst, options?: SsrOptions): string {
     widgetCounter: 0,
   };
 
-  let bodyHtml = '';
-  if (Array.isArray(ast.children)) {
-    bodyHtml = renderNodesToHtml(ast.children, context);
-  } else if (ast.rawContent) {
-    bodyHtml = `<div class="lumen-body">${escapeHtml(ast.rawContent)}</div>`;
-  }
+  const bodyHtml = renderNodesToHtml(ast.children, context);
 
   return `<article class="lumen-doc" data-status="${status}">${title}${bodyHtml}</article>`;
 }

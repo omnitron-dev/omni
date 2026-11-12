@@ -16,7 +16,6 @@ export function generateRouteMirrors(
     const cleanMd = doc.ast
       ? toCleanMarkdown(doc.ast, {
           includeFrontmatter: true,
-          stripInternalProps: true,
         })
       : `# ${doc.title}\n\n${doc.path}`;
 

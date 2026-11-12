@@ -372,12 +372,7 @@ export function toTypst(ast: LumenDocumentAst, options?: TypstOptions): string {
     typst += `#pad(x: 2em)[#strong[Abstract:] ${escapeTypst(String(options.abstract))}]\n\n`;
   }
 
-  let bodyMarkup = '';
-  if (Array.isArray(ast.children)) {
-    bodyMarkup = serializeTypstBlockNodes(ast.children);
-  }
-
-  typst += bodyMarkup;
+  typst += serializeTypstBlockNodes(ast.children);
 
   return typst.trim() + '\n';
 }

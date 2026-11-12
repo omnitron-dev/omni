@@ -86,9 +86,10 @@ schema.command('apply <plan>').description('Apply or resume a reviewed expansion
   });
 const guardian = backend.command('guardian').description('Update independent service supervision while preserving the execution owner');
 guardian.command('prepare <runtime>').description('Install a sealed management runtime and save a private guardian transition plan')
-  .structuredAction(async (runtime: string) => {
+  .option('--recovery-checkpoint <file>', 'Review current ownership after a failed activation whose previous backend has retired; never edit the original checkpoint')
+  .structuredAction(async (runtime: string, options: { recoveryCheckpoint?: string }) => {
     const { backendSupervisorPrepareCommand } = await import('../commands/backend.js');
-    await backendSupervisorPrepareCommand(runtime);
+    await backendSupervisorPrepareCommand(runtime, options);
   });
 guardian.command('apply <plan>').description('Apply or resume a prepared guardian transition; preserve execution ownership')
   .option('--check', 'Recheck a prepared transition against the current host before approval')

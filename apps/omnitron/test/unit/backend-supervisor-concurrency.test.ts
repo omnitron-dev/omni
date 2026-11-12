@@ -10,6 +10,7 @@ vi.mock('../../src/config/saved.js', () => ({ readSavedDaemonConfig: () => ({}),
 import { BackendSupervisorService } from '../../src/daemon/backend-supervisor.js';
 import { PidManager } from '../../src/daemon/pid-manager.js';
 import type { ManagedRuntime } from '../../src/daemon/managed-runtime.js';
+import { RuntimeInstallation } from '../../src/daemon/runtime-installation.js';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -84,4 +85,19 @@ it('does not queue behind a recovery operation or bypass failed isolation', asyn
   observation.release(); await observation.tick;
   expect(await result).toMatchObject({ message: 'Owner isolation cannot be verified' });
   expect(mocks.replace).not.toHaveBeenCalled();
+});
+
+it.each(['held', 'applying', 'unconfirmed'] as const)('retains durable %s recovery on restart instead of automatic adoption or a second operator path', async phase => {
+  const service = fixture();
+  const close = vi.fn();
+  vi.spyOn(RuntimeInstallation, 'openReadOnly').mockResolvedValue({
+    activation: () => ({ reviewedRecovery: { planId: 'reviewed-plan', phase } }), close,
+  } as unknown as RuntimeInstallation);
+  await (service as unknown as { tick(): Promise<void> }).tick();
+  expect(await service.status()).toMatchObject({ state: 'blocked', reviewedRecovery: 1,
+    reason: expect.stringContaining(`reviewed-plan (${phase})`) });
+  expect(mocks.isolation).not.toHaveBeenCalled();
+  await expect(service.recover({ checkpoint: '/ignored-original' })).rejects.toThrow('held for reviewed plan');
+  await expect(service.upgrade({ directory: '/candidate' })).rejects.toThrow('held for reviewed plan');
+  expect(mocks.replace).not.toHaveBeenCalled(); expect(close).toHaveBeenCalledTimes(3);
 });

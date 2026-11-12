@@ -25,6 +25,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
+import { openSqliteDatabase } from '@omnitron-dev/titan-database/sqlite';
 import type { ISeedProject, IProjectRegistry } from '../config/types.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import { CONFIG_FILE_NAMES } from '../config/loader.js';
@@ -50,6 +51,25 @@ function configurationState(value: ConfigurationState | null): ConfigurationStat
     validateConfigurationNames(source.configuration.name, source.configuration.stacks);
   }
   return value;
+}
+
+type RecoveryReader = Pick<DaemonStateStore, 'selectProjectsSync' | 'kvGetSync'>;
+function recoveryRegistrations(store: RecoveryReader): ISeedProject[] {
+  const enabled = (name: string): string[] => {
+    const value = store.kvGetSync<unknown>(ENABLED_STACKS_KV_KEY(name), { strict: true });
+    if (value !== null && (!Array.isArray(value) || value.some(stack => typeof stack !== 'string'))) throw Error('Corrupt enabled-stack intent');
+    return value as string[] | null ?? [];
+  };
+  return store.selectProjectsSync().flatMap(row => [{ name: row.name, path: row.path, registeredAt: row.added_at,
+    enabledStacks: enabled(row.name),
+  }, ...configurationState(store.kvGetSync<ConfigurationState>(CONFIGURATIONS_KEY(row.name), { strict: true })).sources.map(source => ({ ...source,
+    enabledStacks: enabled(source.name),
+  }))]);
+}
+function normalizedRecoveryRegistrations(projects: ISeedProject[]): string {
+  return JSON.stringify(projects.map(project => ({ name: project.name, path: project.path, registeredAt: project.registeredAt,
+    enabledStacks: [...(project.enabledStacks ?? [])].sort(), ...(project.configuration ? { configuration: project.configuration } : {}),
+  })).sort((a, b) => a.name.localeCompare(b.name)));
 }
 
 function isWithin(parent: string, child: string): boolean {
@@ -81,6 +101,27 @@ function findProjectConfig(dir: string): string | null {
 }
 
 export class ProjectRegistry {
+  /** Existing durable catalogue only: no initialization, imports, migrations or cache mutation. */
+  static readRecoveryDigest(file: string): string {
+    for (const suffix of ['', '-wal', '-shm', '-journal']) {
+      try {
+        const stat = fs.lstatSync(file + suffix);
+        if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o077) || process.getuid && stat.uid !== process.getuid())
+          throw Error('Project registry must be a private regular file');
+      } catch (error) { if (suffix === '' || (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    }
+    const db = openSqliteDatabase(file, { readonly: true, fileMustExist: true });
+    try { return db.transaction(() => {
+      const reader: RecoveryReader = {
+        selectProjectsSync: () => db.prepare('SELECT name, path, config_hash, added_at, last_seen FROM projects ORDER BY added_at ASC').all() as ReturnType<DaemonStateStore['selectProjectsSync']>,
+        kvGetSync: <T>(key: string): T | null => {
+          const row = db.prepare('SELECT value FROM state_kv WHERE key = ?').get(key) as { value: string } | undefined;
+          return row ? JSON.parse(row.value) as T : null;
+        },
+      };
+      return createHash('sha256').update(normalizedRecoveryRegistrations(recoveryRegistrations(reader))).digest('hex');
+    }).deferred(); } finally { db.close(); }
+  }
   /**
    * In-memory cache mirroring the persisted state. Reads (list/get)
    * serve from here so legacy callers don't pay an SQLite round-
@@ -330,18 +371,8 @@ export class ProjectRegistry {
 
   /** Detect external registry edits instead of certifying a stale in-memory cache. */
   recoveryDigest(): string {
-    const normalize = (projects: ISeedProject[]) => JSON.stringify(projects.map(project => ({
-      name: project.name, path: project.path, registeredAt: project.registeredAt,
-      enabledStacks: [...(project.enabledStacks ?? [])].sort(),
-      ...(project.configuration ? { configuration: project.configuration } : {}),
-    })).sort((a, b) => a.name.localeCompare(b.name)));
-    const stored = this.store.selectProjectsSync().flatMap(row => [{ name: row.name, path: row.path, registeredAt: row.added_at,
-      enabledStacks: this.store.kvGetSync<string[]>(ENABLED_STACKS_KV_KEY(row.name)) ?? [],
-    }, ...configurationState(this.store.kvGetSync<ConfigurationState>(CONFIGURATIONS_KEY(row.name), { strict: true })).sources.map(source => ({ ...source,
-      enabledStacks: this.store.kvGetSync<string[]>(ENABLED_STACKS_KV_KEY(source.name)) ?? [],
-    }))]);
-    const durable = normalize(stored);
-    if (normalize(this.listRegistrations()) !== durable) throw new Error('Project registry changed outside this controller; refresh it before certifying recovery');
+    const durable = normalizedRecoveryRegistrations(recoveryRegistrations(this.store));
+    if (normalizedRecoveryRegistrations(this.listRegistrations()) !== durable) throw new Error('Project registry changed outside this controller; refresh it before certifying recovery');
     return createHash('sha256').update(durable).digest('hex');
   }
 

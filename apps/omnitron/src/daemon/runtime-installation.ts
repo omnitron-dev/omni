@@ -22,7 +22,18 @@ export interface RuntimeSelection {
 }
 
 interface InstallationLease { token: string; pid: number; acquiredAt: string }
-export interface RuntimeActivation { candidate: string; previous: string; checkpoint: string; startedAt: string }
+export interface ReviewedRecoveryHold {
+  planId: string;
+  planFile: string;
+  /** Stable supervisor transition intent digest, not mutable plan-file bytes. */
+  planSha256: string;
+  phase: 'held' | 'applying' | 'unconfirmed';
+  checkpoint?: string;
+}
+export interface RuntimeActivation {
+  candidate: string; previous: string; checkpoint: string; startedAt: string;
+  reviewedRecovery?: ReviewedRecoveryHold;
+}
 const HASH = /^[a-f0-9]{64}$/;
 
 async function privateDirectory(directory: string, create: boolean): Promise<void> {
@@ -106,7 +117,51 @@ export class RuntimeInstallation {
         typeof value.checkpoint !== 'string' || !path.isAbsolute(value.checkpoint) || !Number.isFinite(Date.parse(value.startedAt)))) {
       throw new Error('Invalid runtime activation journal; automatic startup is refused');
     }
+    const hold = value?.reviewedRecovery;
+    if (hold !== undefined && (!hold || !/^[a-f0-9-]{36}$/.test(hold.planId) || !HASH.test(hold.planSha256) ||
+        hold.planFile !== path.join(this.directory, `supervisor-transition-${hold.planId}.json`) ||
+        !['held', 'applying', 'unconfirmed'].includes(hold.phase) ||
+        (hold.checkpoint !== undefined && !path.isAbsolute(hold.checkpoint)))) {
+      throw new Error('Invalid reviewed recovery hold; automatic startup is refused');
+    }
     return value;
+  }
+
+  /** Approved native transition pins its reviewed intent before stopping the old guardian. */
+  holdReviewedRecovery(expectedActivation: RuntimeActivation, expectedSelection: RuntimeSelection,
+    plan: Pick<ReviewedRecoveryHold, 'planId' | 'planFile' | 'planSha256'>): void {
+    if (!this.lease || expectedActivation.reviewedRecovery || !/^[a-f0-9-]{36}$/.test(plan.planId) ||
+        !HASH.test(plan.planSha256) || plan.planFile !== path.join(this.directory, `supervisor-transition-${plan.planId}.json`)) {
+      throw new Error('Reviewed recovery requires a leased, validated native transition');
+    }
+    this.store.initSync().transaction(() => {
+      const actual = this.activation();
+      if (!actual || JSON.stringify(this.selection()) !== JSON.stringify(expectedSelection)) throw Error('Runtime selection changed before reviewed recovery');
+      const { reviewedRecovery, ...original } = actual;
+      if (JSON.stringify(original) !== JSON.stringify(expectedActivation)) throw Error('Runtime activation changed before reviewed recovery');
+      if (reviewedRecovery) {
+        if (reviewedRecovery.phase === 'held' && reviewedRecovery.planId === plan.planId &&
+            reviewedRecovery.planFile === plan.planFile && reviewedRecovery.planSha256 === plan.planSha256) return;
+        throw Error('Another reviewed recovery already owns the runtime activation');
+      }
+      this.store.kvSetSync('runtime.activation', { ...original, reviewedRecovery: { ...plan, phase: 'held' } });
+    }).immediate();
+  }
+
+  /** A failed or interrupted attempt stays held; it can never become an automatic retry. */
+  advanceReviewedRecovery(expected: ReviewedRecoveryHold, next: { phase: 'applying' | 'unconfirmed'; checkpoint?: string }): ReviewedRecoveryHold {
+    if (!this.lease || (next.checkpoint !== undefined && !path.isAbsolute(next.checkpoint)) ||
+        (expected.checkpoint !== undefined && next.checkpoint !== undefined && expected.checkpoint !== next.checkpoint) ||
+        !(expected.phase === 'held' && next.phase === 'applying' || expected.phase === 'applying' && ['applying', 'unconfirmed'].includes(next.phase))) {
+      throw Error('Invalid reviewed recovery transition');
+    }
+    return this.store.initSync().transaction(() => {
+      const activation = this.activation();
+      if (!activation || JSON.stringify(activation.reviewedRecovery) !== JSON.stringify(expected)) throw Error('Reviewed recovery hold changed');
+      const hold = { ...expected, ...next };
+      this.store.kvSetSync('runtime.activation', { ...activation, reviewedRecovery: hold });
+      return hold;
+    }).immediate();
   }
 
   beginActivation(candidate: string, previous: string, checkpoint: string): void {
@@ -119,6 +174,7 @@ export class RuntimeInstallation {
 
   abortActivation(): void {
     if (!this.lease) throw new Error('Aborting activation requires the installation lease');
+    if (this.activation()?.reviewedRecovery) throw Error('Reviewed recovery cannot be discarded by ordinary activation rollback');
     this.store.kvDeleteSync('runtime.activation');
   }
 
@@ -214,16 +270,25 @@ export class RuntimeInstallation {
     }
   }
 
-  async select(id: string, expectedRevision: number, promoteManagement = false): Promise<RuntimeSelection> {
+  async select(id: string, expectedRevision: number, promoteManagement = false,
+    reviewedRecovery?: { hold: ReviewedRecoveryHold; selection: RuntimeSelection; activation: RuntimeActivation; beforeCommit: () => Promise<void> }): Promise<RuntimeSelection> {
     if (!this.lease) throw new Error('Runtime selection requires an exclusive operation');
+    if (this.activation()?.reviewedRecovery && !reviewedRecovery) throw Error('Runtime selection is held for reviewed recovery');
     const artifact = await this.artifact(id);
     let hasLauncher = false;
     try { hasLauncher = (await fs.lstat(path.join(artifact.directory, 'cli/installed.js'))).isFile(); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    await reviewedRecovery?.beforeCommit();
     return this.store.initSync().transaction(() => {
       const previous = this.selection();
       if ((previous?.revision ?? 0) !== expectedRevision) throw new Error('Runtime selection changed; review the active installation before retrying');
       const activation = this.activation();
+      if (reviewedRecovery) {
+        const { reviewedRecovery: held, ...original } = activation ?? {};
+        if (!activation || reviewedRecovery.hold.phase !== 'applying' || JSON.stringify(held) !== JSON.stringify(reviewedRecovery.hold) ||
+            JSON.stringify(previous) !== JSON.stringify(reviewedRecovery.selection) || JSON.stringify(original) !== JSON.stringify(reviewedRecovery.activation) ||
+            id !== activation.previous) throw Error('Reviewed recovery requires its exact held attempt before selecting the previous runtime');
+      } else if (activation?.reviewedRecovery) throw Error('Runtime selection is held for reviewed recovery');
       if (activation && id !== activation.candidate && id !== activation.previous) throw new Error('The selected release does not belong to the pending activation');
       const value: RuntimeSelection = {
         protocol: 1, revision: expectedRevision + 1, current: id,

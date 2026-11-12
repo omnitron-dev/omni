@@ -168,6 +168,12 @@ export class ExecutionClient {
     return (await this.rpc().prepare({ grant: snapshot.status.controller, candidateId })).ticket;
   }
 
+  /** Reviewed recovery submits exactly the approved grant. Never repairs a
+   * pending handoff or substitutes a newer grant observed after approval. */
+  async prepareReviewedReplacement(expectedGrant: ControllerGrant, candidateId: string): Promise<{ ticket: HandoffTicket; snapshot: ExecutionSnapshot }> {
+    return this.rpc().prepare({ grant: expectedGrant, candidateId });
+  }
+
   /** Undo an uncommitted local recovery when its journal could not be persisted. */
   async cancelReplacement(ticket: HandoffTicket): Promise<void> {
     await this.rpc().abort({ grant: ticket.from, ticket });

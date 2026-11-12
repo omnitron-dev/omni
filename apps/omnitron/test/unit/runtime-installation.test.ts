@@ -3,6 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
 import { afterEach, expect, it } from 'vitest';
 import { RuntimeInstallation, selectedBackend } from '../../src/daemon/runtime-installation.js';
 import { runtimeArtifactDigest } from '../../src/shared/runtime-artifact.js';
@@ -123,6 +124,45 @@ it('serializes different registry connections and rejects stale selection revisi
   });
   await expect(other.exclusive(() => other.select(first.hash, 0))).rejects.toThrow('selection changed');
   await expect(other.exclusive(() => other.select(first.hash, 1))).resolves.toMatchObject({ revision: 2 });
+});
+
+it('durably holds the original activation for one reviewed plan and refuses ordinary abort or selection', async () => {
+  const { store, home, root, make } = await fixture(); const first = await make('first'), next = await make('next');
+  await store.exclusive(async () => {
+    await store.install(first.source); await store.install(next.source); await store.select(first.hash, 0);
+    store.beginActivation(next.hash, first.hash, path.join(root, 'original.json'));
+  });
+  const original = store.activation()!, selection = store.selection()!, planId = randomUUID();
+  const plan = { planId, planFile: path.join(home, 'runtime', `supervisor-transition-${planId}.json`), planSha256: 'a'.repeat(64) };
+  expect(() => store.holdReviewedRecovery(original, selection, plan)).toThrow('leased');
+  await store.exclusive(async () => store.holdReviewedRecovery(original, selection, plan));
+  const reader = (await RuntimeInstallation.openReadOnly(home))!;
+  try { expect(reader.activation()).toEqual({ ...original, reviewedRecovery: { ...plan, phase: 'held' } }); }
+  finally { await reader.close(); }
+  await store.exclusive(async () => {
+    expect(() => store.abortActivation()).toThrow('Reviewed recovery');
+    await expect(store.select(first.hash, selection.revision)).rejects.toThrow('held');
+    expect(() => store.holdReviewedRecovery(original, selection, { ...plan, planSha256: 'b'.repeat(64) })).toThrow('Another reviewed');
+    store.holdReviewedRecovery(original, selection, plan);
+    const applying = store.advanceReviewedRecovery(store.activation()!.reviewedRecovery!, { phase: 'applying' });
+    store.advanceReviewedRecovery(applying, { phase: 'unconfirmed' });
+    expect(() => store.holdReviewedRecovery(original, selection, plan)).toThrow('Another reviewed');
+  });
+  expect(store.activation()?.checkpoint).toBe(original.checkpoint);
+  expect(store.selection()).toEqual(selection);
+});
+
+it('checks selection and original activation atomically before publishing a reviewed hold', async () => {
+  const { store, home, root, make } = await fixture(); const first = await make('first'), next = await make('next');
+  await store.exclusive(async () => {
+    await store.install(first.source); await store.install(next.source); await store.select(first.hash, 0);
+    store.beginActivation(next.hash, first.hash, path.join(root, 'original.json'));
+    const activation = store.activation()!, selection = store.selection()!, planId = randomUUID();
+    const plan = { planId, planFile: path.join(home, 'runtime', `supervisor-transition-${planId}.json`), planSha256: 'a'.repeat(64) };
+    expect(() => store.holdReviewedRecovery(activation, { ...selection, revision: selection.revision + 1 }, plan)).toThrow('selection changed');
+    expect(() => store.holdReviewedRecovery({ ...activation, checkpoint: path.join(root, 'unrelated.json') }, selection, plan)).toThrow('activation changed');
+    expect(store.activation()).toEqual(activation);
+  });
 });
 
 it('refuses modified artifacts and does not replace an installed directory with a link', async () => {

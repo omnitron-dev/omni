@@ -14,7 +14,7 @@ import type { BackendRpcService } from './backend.rpc-service.js';
 import type { BackendControlService } from './backend-control.js';
 import type { BackendSupervisorService } from './backend-supervisor.js';
 import { checkBackendCandidate } from './backend-candidate.js';
-import { readBackendBootRecord } from './backend-handoff-types.js';
+import { checkpointInstanceHome, readBackendBootRecord } from './backend-handoff-types.js';
 import { readPrivateRecord, writePrivateRecord } from './execution-journal.js';
 import { ExecutionClient } from './execution-client.js';
 import { PidManager } from './pid-manager.js';
@@ -22,8 +22,9 @@ import { checkSystemGuardian, guardianUnitProperties, replaceGuardianExec } from
 import type { GuardianStopFence } from './system-guardian-cgroup.js';
 import { expandPath } from '../shared/paths.js';
 import { projectExecutionIdentity, compareExecutionIdentityEvidence, describeExecutionIdentityDrift, type ExecutionIdentityEvidence } from '../shared/execution-identity.js';
+import { assertReviewedBackendRecoveryFence, checkReviewedBackendRecovery, prepareReviewedBackendRecovery, type ReviewedBackendRecoveryFence } from './reviewed-backend-recovery.js';
 
-interface SupervisorTransition {
+export interface SupervisorTransition {
   protocol: 1;
   id: string;
   phase: 'prepared' | 'preparing' | 'retired' | 'stopped' | 'configured' | 'started' | 'complete';
@@ -37,10 +38,19 @@ interface SupervisorTransition {
   selectionRevision?: number;
   linuxStop?: GuardianStopFence;
   checkpoint?: string;
+  recovery?: ReviewedBackendRecoveryFence;
   result?: { backendPid: number; guardianPid: number; ownerPid: number };
 }
 
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+/** All authority-bearing fields are sealed; progress and the observed result
+ * can advance without changing the operator's reviewed intent. */
+export function supervisorTransitionIntentDigest(plan: SupervisorTransition): string {
+  const { protocol, id, createdAt, before, after, unit, backend, owner, guardianPid,
+    selectionRevision, linuxStop, recovery } = plan;
+  return hash({ protocol, id, createdAt, before, after, unit, backend, owner, guardianPid,
+    selectionRevision, linuxStop, recovery });
+}
 const execute = promisify(execFile);
 async function native(command: string, args: string[]): Promise<string> {
   return (await execute(command, args, { encoding: 'utf8', timeout: 40_000, maxBuffer: 1024 * 1024 })).stdout;
@@ -117,7 +127,7 @@ function assertSameOwner(plan: SupervisorTransition, current: Awaited<ReturnType
   }
 }
 
-async function readPlan(file: string): Promise<SupervisorTransition> {
+export async function readSupervisorTransition(file: string): Promise<SupervisorTransition> {
   const stat = await fs.lstat(file);
   if (stat.size > 1024 * 1024) throw new Error('Supervisor transition record exceeds its size limit');
   const plan = await readPrivateRecord<SupervisorTransition>(file);
@@ -143,26 +153,44 @@ async function readPlan(file: string): Promise<SupervisorTransition> {
   if (path.resolve(file) !== path.join(plan.before.instanceHome, 'runtime', `supervisor-transition-${plan.id}.json`)) {
     throw new Error('Supervisor transition record is outside its instance');
   }
+  if (plan.recovery) assertReviewedBackendRecoveryFence(plan.recovery);
+  if (plan.recovery && (plan.recovery.instanceHome !== plan.before.instanceHome ||
+      plan.checkpoint !== plan.recovery.activation?.checkpoint || plan.backend.runtime !== plan.recovery.activation.previous ||
+      plan.selectionRevision !== plan.recovery.selection?.revision || plan.owner.id !== plan.recovery.owner?.id ||
+      plan.owner.pid !== plan.recovery.owner.pid || plan.owner.inventory !== plan.recovery.inventoryDigest)) {
+    throw new Error('Reviewed recovery does not match the guardian transition');
+  }
   return plan;
 }
 
 /** Install a management artifact and save a reviewable plan; running services are untouched. */
-export async function prepareSupervisorTransition(directory: string, socket?: string): Promise<{ file: string; plan: ReturnType<typeof summarize> }> {
-  const client = createDaemonClient(socket, 15_000);
+export async function prepareSupervisorTransition(directory: string, socket?: string, options: {
+  recoveryCheckpoint?: string;
+} = {}): Promise<{ file: string; plan: ReturnType<typeof summarize> }> {
   let controlAddress: { socket: string };
   let backendPid: number;
-  try {
-    backendPid = (await client.ping()).pid;
-    controlAddress = await (await client.service<BackendRpcService>('OmnitronBackend')).controlAddress();
+  const recoveryCheckpoint = options.recoveryCheckpoint ? path.resolve(options.recoveryCheckpoint) : undefined;
+  const retired = recoveryCheckpoint ? await readBackendBootRecord(recoveryCheckpoint) : null;
+  if (retired) {
+    if (socket) throw Error('Reviewed recovery derives the instance from its checkpoint, not a public socket');
+    backendPid = retired.previousPid;
+    controlAddress = { socket: path.join(path.dirname(recoveryCheckpoint!), `c-${retired.state.ticket.from.controllerId}.sock`) };
+  } else {
+    const client = createDaemonClient(socket, 15_000);
+    try {
+      backendPid = (await client.ping()).pid;
+      controlAddress = await (await client.service<BackendRpcService>('OmnitronBackend')).controlAddress();
+    } finally { await client.disconnect(); }
   }
-  finally { await client.disconnect(); }
   const control = await privateControlClient<BackendControlService>(controlAddress.socket, 'OmnitronBackendControl');
   let installation: RuntimeInstallation | null = null;
   try {
     const current = await control.service.status();
     const config = await readManagedRuntime(current.instanceHome);
     if (!config || config.scope === 'system' && (process.platform !== 'linux' || process.getuid?.() !== 0)) throw new Error('Automatic guardian replacement requires independent user services or a root-owned Linux system instance');
-    if (path.dirname(controlAddress.socket) !== config.directory || !current.runtime.owner || current.retired || current.ticketId) {
+    if (path.dirname(controlAddress.socket) !== config.directory || !current.runtime.owner ||
+        (retired ? (!current.retired || current.pid !== backendPid || current.ticketId !== retired.state.ticket.id ||
+          current.instanceHome !== checkpointInstanceHome(retired)) : (current.retired || current.ticketId))) {
       throw new Error('The backend is not ready for a guardian transition in this instance');
     }
     const guardianPid = await managedJobPid(config, 'backend');
@@ -172,7 +200,8 @@ export async function prepareSupervisorTransition(directory: string, socket?: st
     installation = await RuntimeInstallation.open(config.instanceHome, { existing: true });
     if (!installation) throw new Error('No permanent installation exists');
     return await installation.exclusive(async () => {
-      if (installation!.activation()) throw new Error('Finish the pending backend activation first');
+      if (!retired && installation!.activation()) throw new Error('Finish the pending backend activation first');
+      const recovery = recoveryCheckpoint ? await prepareReviewedBackendRecovery(recoveryCheckpoint, config.instanceHome) : undefined;
       const selected = installation!.selection();
       const running = await checkBackendCandidate(path.dirname(path.dirname(current.entry)));
       if (selected?.current !== running.runtimeHash) throw new Error('Running backend does not match the startup selection');
@@ -180,6 +209,8 @@ export async function prepareSupervisorTransition(directory: string, socket?: st
       await fs.access(path.join(candidate.directory, 'daemon/managed-entry.js'));
       await fs.access(path.join(candidate.directory, 'daemon/backend-supervisor-entry.js'));
       const view = await inventory(config);
+      if (recovery && (view.inventoryDigest !== recovery.inventoryDigest || view.status.owner.id !== recovery.owner.id ||
+          view.status.owner.pid !== recovery.owner.pid)) throw Error('Reviewed ownership changed while preparing the guardian');
       const identity = projectExecutionIdentity(view);
       const after: ManagedRuntime = { ...config, backend: { ...config.backend, artifact: candidate.runtimeHash } };
       const inputs = { scope: 'user' as const, execPath: candidate.execPath,
@@ -192,10 +223,17 @@ export async function prepareSupervisorTransition(directory: string, socket?: st
         process.platform === 'darwin' ? renderLaunchdPlist(inputs) : renderSystemdUnit(inputs);
       const plan: SupervisorTransition = { protocol: 1, id: randomUUID(), phase: 'prepared', createdAt: new Date().toISOString(),
         before: config, after, unit: { file, before: beforeUnit, after: afterUnit },
-        backend: { runtime: running.runtimeHash, pid: backendPid, control: controlAddress.socket, socket: (await readCertificateSocket(config, backendPid)) },
+        backend: { runtime: running.runtimeHash, pid: backendPid, control: controlAddress.socket,
+          socket: retired ? expandPath(retired.daemonConfig.socketPath) : await readCertificateSocket(config, backendPid) },
         owner: { id: view.status.owner.id, pid: view.status.owner.pid, inventory: view.inventoryDigest, ...(identity ? { identity } : {}) }, guardianPid };
       plan.selectionRevision = selected.revision;
       if (process.platform === 'linux') plan.linuxStop = await managedGuardianStopFence(config, guardianPid, backendPid);
+      if (recovery) {
+        plan.recovery = recovery;
+        plan.checkpoint = recovery.activation.checkpoint;
+        plan.backend.socket = expandPath(retired!.daemonConfig.socketPath);
+        await checkReviewedBackendRecovery(recovery);
+      }
       const record = path.join(installation!.directory, `supervisor-transition-${plan.id}.json`);
       await writePrivateRecord(record, plan);
       return { file: record, plan: summarize(plan) };
@@ -225,13 +263,16 @@ function summarize(plan: SupervisorTransition) {
   return { id: plan.id, phase: plan.phase, instanceHome: plan.before.instanceHome,
     from: plan.before.backend.artifact, to: plan.after.backend.artifact, backendRuntime: plan.backend.runtime,
     ownerPid: plan.owner.pid, backendPid: plan.backend.pid, guardianPid: plan.guardianPid,
-    unit: plan.unit.file, checkpoint: plan.checkpoint ?? null, result: plan.result ?? null };
+    unit: plan.unit.file, checkpoint: plan.checkpoint ?? null, result: plan.result ?? null,
+    ...(plan.recovery ? { reviewedRecovery: { intentSha256: supervisorTransitionIntentDigest(plan),
+      originalCheckpointSha256: plan.recovery.originalCheckpointSha256,
+      acceptedInventory: plan.recovery.inventoryDigest, historicalExecutionDelta: 'unknown' as const } } : {}) };
 }
 
 /** Resume a private plan. Only the backend OS job is stopped; its owner is never signalled. */
 export async function applySupervisorTransition(file: string, options: { checkOnly?: boolean } = {}) {
   file = path.resolve(file);
-  let plan = await readPlan(file);
+  let plan = await readSupervisorTransition(file);
   if (plan.phase === 'complete') return options.checkOnly ? { ...summarize(plan), checked: false } : summarize(plan);
   if (options.checkOnly && plan.phase !== 'prepared') throw Error('Guardian transition already started; reconcile its checkpoint before continuing');
   const installation = options.checkOnly ? await RuntimeInstallation.openReadOnly(plan.before.instanceHome) :
@@ -239,7 +280,7 @@ export async function applySupervisorTransition(file: string, options: { checkOn
   if (!installation) throw new Error('No permanent installation exists');
   try {
     const inspectOrApply = async () => {
-      plan = await readPlan(file);
+      plan = await readSupervisorTransition(file);
       if (options.checkOnly && plan.phase !== 'prepared') throw Error('Guardian transition changed during inspection; reconcile its checkpoint');
       if (plan.phase === 'complete') return;
       const active = await readManagedRuntime(plan.before.instanceHome);
@@ -248,10 +289,18 @@ export async function applySupervisorTransition(file: string, options: { checkOn
       for (const artifact of new Set([plan.backend.runtime, plan.before.backend.artifact, plan.after.backend.artifact])) {
         await installation.artifact(artifact);
       }
-      const selected = options.checkOnly ? installation.settledSelection() : installation.selection();
+      const selected = options.checkOnly && !plan.recovery ? installation.settledSelection() : installation.selection();
       if (selected?.current !== plan.backend.runtime || (['prepared', 'preparing', 'retired'].includes(plan.phase) &&
           plan.selectionRevision !== undefined && selected.revision !== plan.selectionRevision)) throw new Error('Backend selection changed since preparation');
       assertSameOwner(plan, await inventory(plan.before));
+      if (plan.recovery && ['prepared', 'preparing', 'retired'].includes(plan.phase)) {
+        await checkReviewedBackendRecovery(plan.recovery);
+        const hold = installation.activation()?.reviewedRecovery;
+        if (hold && (hold.planId !== plan.id || hold.planFile !== file ||
+            hold.planSha256 !== supervisorTransitionIntentDigest(plan) || hold.phase !== 'held')) {
+          throw Error('Another reviewed recovery or an uncertain attempt owns this installation');
+        }
+      }
       if (plan.before.scope === 'system') {
         await systemGuardianFile(plan.before, ['prepared', 'preparing', 'retired'].includes(plan.phase));
         if (['prepared', 'preparing', 'retired'].includes(plan.phase) && PidManager.isProcessAlive(plan.guardianPid)) {
@@ -276,7 +325,13 @@ export async function applySupervisorTransition(file: string, options: { checkOn
         try {
           const state = await control.service.status();
           if (state.pid !== undefined && state.pid !== plan.backend.pid) throw new Error('The original backend changed');
-          if (plan.phase === 'prepared') {
+          if (plan.recovery) {
+            const record = await readBackendBootRecord(plan.checkpoint);
+            if (!state.retired || state.pid !== plan.backend.pid || state.ticketId !== record.state.ticket.id ||
+                state.instanceHome !== plan.before.instanceHome || record.previousPid !== plan.backend.pid) {
+              throw Error('The checkpoint backend is not the verified retired controller');
+            }
+          } else if (plan.phase === 'prepared') {
             if (intent || state.retired || state.ticketId) throw Error('Another backend transfer has started; reconcile its checkpoint');
             if (state.pid !== plan.backend.pid || state.instanceHome !== plan.before.instanceHome ||
                 state.runtime.owner?.id !== plan.owner.id || state.runtime.owner.pid !== plan.owner.pid ||
@@ -289,51 +344,61 @@ export async function applySupervisorTransition(file: string, options: { checkOn
               throw Error('Active or unknown backend operations block guardian transition');
             }
           }
-          if (process.platform === 'linux') await verifyStopBoundary(plan, false);
+          if (process.platform === 'linux') await verifyStopBoundary(plan, !!plan.recovery);
           if (options.checkOnly) {
-            if (hash(installation.settledSelection()) !== hash(selected) || hash(await readPlan(file)) !== hash(plan)) {
+            const observedSelection = plan.recovery ? installation.selection() : installation.settledSelection();
+            if (hash(observedSelection) !== hash(selected) || hash(await readSupervisorTransition(file)) !== hash(plan)) {
               throw Error('Guardian transition changed during inspection');
             }
             return;
           }
-          plan.phase = 'preparing'; await writePrivateRecord(file, plan);
-          const prepared = state.ticketId ? { ticketId: state.ticketId, file: path.join(plan.before.directory, `handoff-${state.ticketId}.json`) }
-            : await control.service.prepare({ candidateId: plan.id });
-          try {
-            if (!/^[0-9a-f-]{36}$/i.test(prepared.ticketId) ||
-                prepared.file !== path.join(plan.before.directory, `handoff-${prepared.ticketId}.json`)) {
-              throw Error('Unexpected private checkpoint path for this guardian transition');
-            }
-            const record = await readBackendBootRecord(prepared.file), ticket = record.state.ticket;
-            if (ticket.id !== prepared.ticketId || ticket.to.controllerId !== plan.id || ticket.ownerId !== plan.owner.id ||
-                ticket.from.ownerId !== plan.owner.id || ticket.to.ownerId !== plan.owner.id || record.previousPid !== plan.backend.pid ||
-                record.state.executionInventory !== plan.owner.inventory) throw Error('Prepared checkpoint does not match the reviewed guardian transition');
-            plan.checkpoint = prepared.file; await writePrivateRecord(file, plan);
-            const activation = installation.activation();
-            if (activation && (activation.checkpoint !== prepared.file || activation.candidate !== plan.backend.runtime || activation.previous !== plan.backend.runtime)) {
-              throw Error('Another runtime activation is in progress');
-            }
-            // The drain can outlive a child process or a change in cgroup membership.
-            assertSameOwner(plan, await inventory(plan.before));
-            if (process.platform === 'linux') await verifyStopBoundary(plan, false);
-            if (!activation) installation.beginActivation(plan.backend.runtime, plan.backend.runtime, prepared.file);
-          } catch (refusal) {
-            // Only this invocation's new ticket is known not to have been retired.
-            // Preserve any existing or ambiguous activation for reconciliation.
-            if (!state.ticketId && !intent) {
-              try {
-                if (installation.activation()) throw Error('Installation intent requires reconciliation', { cause: refusal });
-                await control.service.abort({ ticketId: prepared.ticketId });
-                plan.phase = 'prepared'; delete plan.checkpoint;
-                await writePrivateRecord(file, plan);
-              } catch (recovery) {
-                throw new AggregateError([refusal, recovery], 'Guardian preflight failed after drain; reconcile the checkpoint before continuing', { cause: recovery });
+          if (plan.recovery) {
+            // The existing controller already retired. The immutable checkpoint
+            // remains the failed activation's evidence; it is never rewritten.
+            installation.holdReviewedRecovery(plan.recovery.activation, plan.recovery.selection,
+              { planId: plan.id, planFile: file, planSha256: supervisorTransitionIntentDigest(plan) });
+            plan.phase = 'retired';
+            await writePrivateRecord(file, plan);
+          } else {
+            plan.phase = 'preparing'; await writePrivateRecord(file, plan);
+            const prepared = state.ticketId ? { ticketId: state.ticketId, file: path.join(plan.before.directory, `handoff-${state.ticketId}.json`) }
+              : await control.service.prepare({ candidateId: plan.id });
+            try {
+              if (!/^[0-9a-f-]{36}$/i.test(prepared.ticketId) ||
+                  prepared.file !== path.join(plan.before.directory, `handoff-${prepared.ticketId}.json`)) {
+                throw Error('Unexpected private checkpoint path for this guardian transition');
               }
+              const record = await readBackendBootRecord(prepared.file), ticket = record.state.ticket;
+              if (ticket.id !== prepared.ticketId || ticket.to.controllerId !== plan.id || ticket.ownerId !== plan.owner.id ||
+                  ticket.from.ownerId !== plan.owner.id || ticket.to.ownerId !== plan.owner.id || record.previousPid !== plan.backend.pid ||
+                  record.state.executionInventory !== plan.owner.inventory) throw Error('Prepared checkpoint does not match the reviewed guardian transition');
+              plan.checkpoint = prepared.file; await writePrivateRecord(file, plan);
+              const activation = installation.activation();
+              if (activation && (activation.checkpoint !== prepared.file || activation.candidate !== plan.backend.runtime || activation.previous !== plan.backend.runtime)) {
+                throw Error('Another runtime activation is in progress');
+              }
+              // The drain can outlive a child process or a change in cgroup membership.
+              assertSameOwner(plan, await inventory(plan.before));
+              if (process.platform === 'linux') await verifyStopBoundary(plan, false);
+              if (!activation) installation.beginActivation(plan.backend.runtime, plan.backend.runtime, prepared.file);
+            } catch (refusal) {
+              // Only this invocation's new ticket is known not to have been retired.
+              // Preserve any existing or ambiguous activation for reconciliation.
+              if (!state.ticketId && !intent) {
+                try {
+                  if (installation.activation()) throw Error('Installation intent requires reconciliation', { cause: refusal });
+                  await control.service.abort({ ticketId: prepared.ticketId });
+                  plan.phase = 'prepared'; delete plan.checkpoint;
+                  await writePrivateRecord(file, plan);
+                } catch (recovery) {
+                  throw new AggregateError([refusal, recovery], 'Guardian preflight failed after drain; reconcile the checkpoint before continuing', { cause: recovery });
+                }
+              }
+              throw refusal;
             }
-            throw refusal;
+            await control.service.retire({ ticketId: prepared.ticketId });
+            plan.phase = 'retired'; await writePrivateRecord(file, plan);
           }
-          await control.service.retire({ ticketId: prepared.ticketId });
-          plan.phase = 'retired'; await writePrivateRecord(file, plan);
         } finally { await control.close(); }
       }
       if (plan.phase === 'retired') {
@@ -380,7 +445,7 @@ export async function applySupervisorTransition(file: string, options: { checkOn
     }
     await installation.exclusive(inspectOrApply);
   } finally { await installation.close(); }
-  plan = await readPlan(file);
+  plan = await readSupervisorTransition(file);
   if (plan.phase === 'complete') return summarize(plan);
   // The installation lease is released before the new guardian recovers the backend.
   let guardianPid = await managedJobPid(plan.after, 'backend').catch(() => null);
@@ -397,8 +462,9 @@ export async function applySupervisorTransition(file: string, options: { checkOn
   }
   const client = createDaemonClient(plan.backend.socket, 4000);
   try {
-    const until = Date.now() + 150_000;
+    let until = Date.now() + 150_000;
     let reason = 'Guardian has not reported readiness';
+    let recoveryRequested = false;
     while (Date.now() < until) {
       let state: Awaited<ReturnType<BackendSupervisorService['status']>> | undefined;
       let supervisor: Awaited<ReturnType<typeof privateControlClient<BackendSupervisorService>>> | undefined;
@@ -411,6 +477,17 @@ export async function applySupervisorTransition(file: string, options: { checkOn
       finally { await supervisor?.close(); }
       if (state) {
         if (state.pid !== guardianPid || guardianPid === plan.guardianPid) throw new Error('Guardian identity disagrees with the replacement OS job');
+        if (plan.recovery && state.state === 'blocked' && !recoveryRequested) {
+          if (state.reviewedRecovery !== 1) throw Error('The installed guardian cannot atomically verify reviewed recovery; no recovery was requested');
+          recoveryRequested = true;
+          // One receiver-owned attempt. A lost response or refusal leaves its
+          // durable hold observable; never replay it with a freshly read grant.
+          const receiver = await privateControlClient<BackendSupervisorService>(managedSupervisorSocket(plan.after), 'OmnitronSupervisor', 600_000);
+          try { await receiver.service.recoverReviewed({ plan: file, sha256: supervisorTransitionIntentDigest(plan) }); }
+          finally { await receiver.close(); }
+          until = Date.now() + 60_000;
+          continue;
+        }
         if (state.state === 'ready' && state.backendPid && state.backendPid !== plan.backend.pid && guardianPid) {
           if (plan.after.scope === 'system') await assertSystemGuardianProcess(plan.after, guardianPid);
           const status = await client.status();

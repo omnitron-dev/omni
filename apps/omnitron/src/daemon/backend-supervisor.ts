@@ -19,11 +19,13 @@ import { readPrivateRecord, writePrivateRecord } from './execution-journal.js';
 import { managedJobPid, verifyManagedIsolation, hostBootIdentity, type ManagedRuntime } from './managed-runtime.js';
 import type { BackendArtifact } from './backend-candidate.js';
 import { checkBackendCandidate, verifyBackendEntry } from './backend-candidate.js';
+import { recoverReviewedBackend } from './reviewed-backend-recovery.js';
 
 export interface SupervisorStatus {
   kernelHandoff?: 1;
   migrationChecksumMetadata?: 1;
   infrastructureAdoptionPreflight?: 1;
+  reviewedRecovery?: 1;
   operationPending?: boolean;
   pid: number;
   backendPid: number | null;
@@ -65,7 +67,8 @@ export class BackendSupervisorService {
 
   @Public({ auth: { roles: ADMIN_ROLES } })
   async status(): Promise<SupervisorStatus> {
-    return { ...this.state, kernelHandoff: 1, migrationChecksumMetadata: 1, infrastructureAdoptionPreflight: 1, operationPending: this.operationClaimed || (this.busy && !this.inspection) };
+    return { ...this.state, kernelHandoff: 1, migrationChecksumMetadata: 1, infrastructureAdoptionPreflight: 1, reviewedRecovery: 1,
+      operationPending: this.operationClaimed || (this.busy && !this.inspection) };
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
@@ -82,6 +85,7 @@ export class BackendSupervisorService {
   private async replace(data: { directory: string; checkOnly?: boolean; schemaPlan?: string; fence?: KernelHandoffFence }): Promise<BackendReplacementResult | { checked: true; build: BackendArtifact['build'] }> {
     if (!path.isAbsolute(data.directory)) throw new Error('An absolute installed candidate path is required');
     return this.exclusive(async () => {
+      await this.assertNoReviewedRecovery();
       await this.isolation();
       const candidate = await checkBackendCandidate(data.directory);
       try { await fs.access(path.join(candidate.directory, 'daemon/managed-entry.js')); }
@@ -97,11 +101,40 @@ export class BackendSupervisorService {
   @Public({ auth: { roles: ADMIN_ROLES } })
   async recover(data: { checkpoint?: string }): Promise<BackendReplacementResult> {
     return this.exclusive(async () => {
+      await this.assertNoReviewedRecovery();
       await this.isolation();
       const result = data.checkpoint ? await recoverBackend(data.checkpoint) : await recoverBackendAfterCrash(this.config.directory);
       await this.ready(result.pid);
       return result;
     });
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async recoverReviewed(data: { plan: string; sha256: string }): Promise<BackendReplacementResult> {
+    return this.exclusive(async () => {
+      await this.isolation();
+      try {
+        const result = await recoverReviewedBackend(this.config, data);
+        await this.ready(result.pid);
+        return result;
+      } catch (error) {
+        try { await this.publish('blocked', 'Reviewed recovery did not complete; inspect its held activation and private checkpoint'); }
+        catch (persistence) { throw new AggregateError([error, persistence],
+          `Reviewed recovery and guardian status persistence failed: ${error instanceof Error ? error.message : String(error)}; ${String(persistence)}`, { cause: persistence }); }
+        throw error;
+      }
+    });
+  }
+
+  private async reviewedRecoveryHold() {
+    const installation = await RuntimeInstallation.openReadOnly(this.config.instanceHome);
+    try { return installation?.activation()?.reviewedRecovery ?? null; }
+    finally { await installation?.close(); }
+  }
+
+  private async assertNoReviewedRecovery(): Promise<void> {
+    const hold = await this.reviewedRecoveryHold();
+    if (hold) throw Error(`Backend recovery is held for reviewed plan ${hold.planId}; ordinary recovery and upgrade are refused`);
   }
 
   private async exclusive<T>(work: () => Promise<T>): Promise<T> {
@@ -198,6 +231,11 @@ export class BackendSupervisorService {
     this.busy = true;
     let finishInspection: (() => void) | undefined;
     try {
+      const hold = await this.reviewedRecoveryHold();
+      if (hold) {
+        await this.publish('blocked', `Pending reviewed recovery ${hold.planId} (${hold.phase}); automatic recovery is disabled`);
+        return;
+      }
       const marker = new PidManager(expandPath(this.daemonConfig.pidFile));
       const pid = marker.getPid();
       const live = pid && marker.isRunning();

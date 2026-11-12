@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, expect, it, vi } from 'vitest';
 import { Netron, Public, Service } from '@omnitron-dev/titan/netron';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
+import { ControllerHandoff, type ControllerGrant } from '@omnitron-dev/titan-pm';
 import { ExecutionClient } from '../../src/daemon/execution-client.js';
 import { recoveryState } from '../../src/daemon/recovery-state.js';
 import { runtimeDiagnostics } from '../../src/monitoring/runtime-diagnostics.js';
@@ -21,6 +22,7 @@ class Owner {
   acknowledgments = 0;
   mutations = 0;
   mutationInputs: unknown[] = [];
+  preparationInputs: unknown[] = [];
   mutationValue: unknown;
   capabilities?: Record<string, number>;
   unavailable = false;
@@ -56,6 +58,15 @@ class Owner {
     this.mutations++;
     this.mutationInputs.push(input);
     return { value: this.mutationValue, snapshot: await this.snapshot() };
+  }
+
+  @Public()
+  async prepare(input: { grant: ControllerGrant; candidateId: string }) {
+    this.preparationInputs.push(input);
+    const owner = { id: this.id, pid: process.pid, startedAt: this.startedAt };
+    const fence = new ControllerHandoff(owner, { ownerId: this.id, controllerId: this.controllerId, epoch: this.epoch }, async () => {});
+    const ticket = await fence.prepare(input.grant, input.candidateId);
+    return { ticket, snapshot: { ...await this.snapshot(), status: fence.status() } };
   }
 }
 
@@ -100,6 +111,17 @@ const runtimeProof = () => ({ build: { commit: 'a'.repeat(40), dirty: false, bui
   packageRoot: '/fixture/owner', executable: '/fixture/node', lifetime: 'native-boot:birth',
   target: { platform: process.platform, arch: process.arch, node: process.version, abi: process.versions.modules,
     executableSha256: 'b'.repeat(64), libc: null } });
+
+it('sends the reviewed grant unchanged over Netron and lets the actual owner fence reject takeover', async () => {
+  const { owner, client } = await fixture();
+  const reviewed = { ownerId: owner.id, controllerId: 'test', epoch: 1 };
+  owner.controllerId = 'foreign'; owner.epoch = 2;
+  await expect(client.prepareReviewedReplacement(reviewed, 'replacement')).rejects.toThrow('no longer owns');
+  expect(owner.preparationInputs).toEqual([{ grant: reviewed, candidateId: 'replacement' }]);
+  expect(owner.mutations).toBe(0);
+  const current = { ownerId: owner.id, controllerId: 'foreign', epoch: 2 };
+  await expect(client.prepareReviewedReplacement(current, 'replacement')).resolves.toMatchObject({ ticket: { from: current, to: { epoch: 3 } } });
+});
 
 it.each(['takeover', 'new-epoch', 'prepared'])('refuses installed execution authority on a stable %s observation before native admission', async change => {
   const { owner, client } = await fixture();

@@ -34,13 +34,17 @@ export async function backendSchemaApplyCommand(file: string): Promise<void> {
   } catch (error) { emitError(error); process.exitCode = 1; }
 }
 
-export async function backendSupervisorPrepareCommand(directory: string): Promise<void> {
+export async function backendSupervisorPrepareCommand(directory: string, options: { recoveryCheckpoint?: string } = {}): Promise<void> {
   try {
     const { prepareSupervisorTransition } = await import('../daemon/supervisor-transition.js');
-    const result = await prepareSupervisorTransition(path.resolve(directory));
+    const result = await prepareSupervisorTransition(path.resolve(directory), undefined, options);
     if (!emitJson(result)) {
       emitInfo(`Guardian plan: ${result.file}`);
       emitInfo(`Owner PID ${result.plan.ownerPid} and the selected backend release will be preserved.`);
+      if (result.plan.reviewedRecovery) {
+        emitInfo('This plan accepts the current owner inventory and the last certified controller configuration. The historical execution difference is unknown; this does not certify that application definitions and every worker stayed unchanged during the failed transition.');
+        emitInfo(`Reviewed intent SHA-256: ${result.plan.reviewedRecovery.intentSha256}`);
+      }
     }
   } catch (error) { emitError(error); process.exitCode = 1; }
 }

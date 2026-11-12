@@ -34,7 +34,15 @@ export class BackendRecoveryMonitor {
     });
   }
 
-  status() { return { ...this.state }; }
+  status() {
+    const pending = recoveryState.pendingOperations();
+    // A completed reconciler tick must not obscure a still-running backup.
+    // This observation changes no journal or admission fence.
+    if (this.state.status === 'pending' && pending.length) return { ...this.state,
+      reason: `Waiting for ownership operations: ${pending.map(({ reason, count }) =>
+        count > 1 ? `${reason} (${count})` : reason).join('; ')}` };
+    return { ...this.state };
+  }
 
   async start(): Promise<void> {
     await this.capture();

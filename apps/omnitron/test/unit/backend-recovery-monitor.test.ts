@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { afterEach, expect, it, vi } from 'vitest';
 import { BackendRecoveryMonitor } from '../../src/daemon/backend-recovery-monitor.js';
 import { BackendRecoveryJournal } from '../../src/daemon/backend-recovery-journal.js';
-import { recoveryState } from '../../src/daemon/recovery-state.js';
+import { RecoveryState, recoveryState } from '../../src/daemon/recovery-state.js';
 
 const fixtures: Array<{ root: string; monitor: BackendRecoveryMonitor; journal: BackendRecoveryJournal }> = [];
 afterEach(async () => {
@@ -61,4 +61,59 @@ it('does not certify a snapshot invalidated by concurrent ownership mutation', a
   await monitor.start();
   expect(monitor.status().status).toBe('pending');
   expect(journal.read()?.status).toBe('invalid');
+});
+
+it('reports the operations still running when a later reconciler invalidation has already finished', async () => {
+  const { monitor, journal, snapshot } = fixture(() => 0);
+  await monitor.start();
+  const outer = Promise.withResolvers<void>(), inner = Promise.withResolvers<void>();
+  const outerRun = recoveryState.run('Backup or restore in progress', () => outer.promise);
+  const innerRun = recoveryState.run('Backup or restore in progress', () => inner.promise);
+  try {
+    recoveryState.run('reconcileEnabledStacks', () => undefined);
+    expect(monitor.status()).toMatchObject({ status: 'pending',
+      reason: 'Waiting for ownership operations: Backup or restore in progress (2)' });
+    await monitor.capture();
+    expect(snapshot).toHaveBeenCalledTimes(1);
+    expect(journal.read()?.status).toBe('invalid');
+    inner.resolve(); await innerRun;
+    expect(monitor.status().reason).toBe('Waiting for ownership operations: Backup or restore in progress');
+    outer.resolve(); await outerRun;
+    await monitor.capture();
+    expect(monitor.status()).toMatchObject({ status: 'ready', reason: null });
+    expect(journal.read()?.status).toBe('ready');
+  } finally {
+    inner.resolve(); outer.resolve(); await Promise.all([innerRun, outerRun]);
+  }
+});
+
+it('releases failed operations without releasing an overlapping ownership fence', async () => {
+  const state = new RecoveryState();
+  const invalidate = vi.fn(); state.attach(invalidate);
+  const pending = Promise.withResolvers<void>();
+  const active = state.run('backup', () => pending.promise);
+  try {
+    expect(() => state.run('read-config', () => { throw Error('invalid config'); })).toThrow('invalid config');
+    await expect(state.run('backup', async () => { throw Error('dump failed'); })).rejects.toThrow('dump failed');
+    const observed = state.pendingOperations();
+    expect(observed).toEqual([{ reason: 'backup', count: 1 }]);
+    observed[0]!.count = 0;
+    expect(state.pendingOperations()).toEqual([{ reason: 'backup', count: 1 }]);
+    expect(state.token()).toBeNull();
+    pending.resolve(); await active;
+    expect(state.pendingOperations()).toEqual([]);
+    expect(state.unchanged(state.token()!)).toBe(true);
+  } finally { pending.resolve(); await active; }
+});
+
+it('refuses a mutation before tracking it when write-ahead invalidation fails', () => {
+  const state = new RecoveryState();
+  const invalidate = vi.fn(); state.attach(invalidate);
+  invalidate.mockImplementation(() => { throw Error('journal unavailable'); });
+  const work = vi.fn();
+  const before = state.token();
+  expect(() => state.run('backup', work)).toThrow('journal unavailable');
+  expect(work).not.toHaveBeenCalled();
+  expect(state.pendingOperations()).toEqual([]);
+  expect(state.token()).toBe(before);
 });

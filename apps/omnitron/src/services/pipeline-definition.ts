@@ -1,4 +1,6 @@
 import type { PipelineDef, PipelineStep } from '../shared/dto/pipelines.js';
+import { assertArtifactIdentity } from '../runtime/identity.js';
+import { assertReleaseLoaderEnvironment } from '../release/target-runtime.js';
 
 export const PIPELINE_LIMITS = {
   steps: 32,
@@ -35,11 +37,31 @@ export function validatePipeline(def: PipelineDef): void {
   for (const step of def.steps) {
     if (!step || typeof step.name !== 'string' || !/^[\w.-]{1,80}$/.test(step.name))
       throw new Error('Invalid step name');
-    if (typeof step.run !== 'string' || !step.run.trim() || Buffer.byteLength(step.run) > PIPELINE_LIMITS.sourceBytes)
-      throw new Error(`Step ${step.name} requires source of at most 128 KiB`);
-    if (step.kind !== undefined && step.kind !== 'shell' && step.kind !== 'xec') throw new Error('Unknown step kind');
-    if (/\{\{\w+\}\}/.test(step.run))
-      throw new Error('Shell interpolation is disabled. Use params in Xec or OMNITRON_PARAMS JSON in shell steps');
+    if (step.kind === 'release') {
+      if (step.run !== undefined) throw new Error('A release step cannot contain shell source');
+      if (step.nodeId !== undefined && step.nodeId !== 'local')
+        throw new Error('Release pipeline steps require the local resident execution owner; remote execution is unsupported');
+      const target = step.target;
+      if (!target || Object.keys(target).sort().join(',') !== 'app,artifact,entry,project,stack' ||
+          [target.project, target.stack, target.app].some(value => typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$/.test(value) || value.includes('..')) ||
+          typeof target.entry !== 'string' || target.entry.length > 4096 || /[\\:\0]/.test(target.entry) ||
+          !target.entry.split('/').every(part => part && part !== '.' && part !== '..') || !/\.[cm]?js$/.test(target.entry))
+        throw new Error('Release steps require a complete project/stack/app target and a package-relative compiled entry');
+      assertArtifactIdentity(target.artifact);
+      if (step.args !== undefined && (!Array.isArray(step.args) || step.args.length > 64 ||
+          step.args.some(value => typeof value !== 'string' || value.length > 8192 || value.includes('\0')) ||
+          Buffer.byteLength(JSON.stringify(step.args)) > 16 * 1024)) throw new Error('Invalid release step arguments');
+      if (['PATH', 'NODE_OPTIONS', 'NODE_PATH'].some(key => Object.hasOwn(step.env ?? {}, key)))
+        throw new Error('Release step PATH and Node options belong to the verified runtime and application, not the pipeline');
+      assertReleaseLoaderEnvironment(step.env);
+    } else {
+      if (step.kind !== undefined && step.kind !== 'shell' && step.kind !== 'xec') throw new Error('Unknown step kind');
+      if (step.target !== undefined || step.args !== undefined) throw new Error('Only release steps accept an artifact target and arguments');
+      if (typeof step.run !== 'string' || !step.run.trim() || Buffer.byteLength(step.run) > PIPELINE_LIMITS.sourceBytes)
+        throw new Error(`Step ${step.name} requires source of at most 128 KiB`);
+      if (/\{\{\w+\}\}/.test(step.run))
+        throw new Error('Shell interpolation is disabled. Use params in Xec or OMNITRON_PARAMS JSON in shell steps');
+    }
     if (
       step.timeout !== undefined &&
       (!Number.isInteger(step.timeout) || step.timeout < 1 || step.timeout > 86_400_000)

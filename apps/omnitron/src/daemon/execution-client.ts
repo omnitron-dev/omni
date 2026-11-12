@@ -96,6 +96,24 @@ export class ExecutionClient {
     return snapshot;
   }
 
+  /** Fresh observation can authorize local effects only while this backend still
+   * holds the exact active grant. An observer connection alone has no authority. */
+  async controlledOwnerSnapshot(expected?: ControllerGrant): Promise<ExecutionSnapshot> {
+    const grant = { ...(expected ?? this.currentGrant()) };
+    const same = (actual: ControllerGrant) => actual.ownerId === grant.ownerId &&
+      actual.controllerId === grant.controllerId && actual.epoch === grant.epoch;
+    if (grant.controllerId !== this.controllerId || !same(this.currentGrant()))
+      throw Error('Application owner or controller changed during admission');
+    const snapshot = await this.recoverySnapshot();
+    const live = this.state();
+    const retained = this.inventory?.status;
+    if (!same(this.currentGrant()) || !same(snapshot.status.controller) || snapshot.status.owner.id !== grant.ownerId ||
+        !retained || !same(retained.controller) || retained.owner.id !== grant.ownerId ||
+        snapshot.status.phase !== 'active' || live?.phase !== 'active' || live.connection.status !== 'connected')
+      throw Error('Application owner or controller changed during admission');
+    return snapshot;
+  }
+
   /** A private-socket administrator explicitly replaces a dead or retiring controller. */
   async acquire(): Promise<ControllerGrant> {
     const snapshot = await this.rpc().snapshot();
@@ -385,15 +403,17 @@ export class ExecutionClient {
     const local: Record<string, unknown> = {
       getExecutionCapabilities: () => this.view().capabilities ?? {},
       getExecutionOwnerPid: () => this.view().status.owner.pid,
-      getExecutionOwnerPackage: async () => {
-        const before = await this.recoverySnapshot();
+      getExecutionOwnerRuntime: async () => {
+        const before = await this.controlledOwnerSnapshot();
         const { attestManagedOwnerRuntime } = await import('./managed-owner-build.js');
         const proof = await attestManagedOwnerRuntime(OMNITRON_HOME, before.status.owner);
-        const after = await this.recoverySnapshot();
+        const after = await this.controlledOwnerSnapshot(before.status.controller);
         if (JSON.stringify(before.status.owner) !== JSON.stringify(after.status.owner) ||
             before.status.controller.epoch !== after.status.controller.epoch)
           throw Error('Execution owner changed during installed-origin admission');
-        return proof.packageRoot;
+        return { root: proof.packageRoot, executable: proof.executable, commit: proof.build.commit,
+          target: proof.target, execution: { mode: 'resident' as const, protocol: 1 as const,
+            ownerId: after.status.owner.id, pid: after.status.owner.pid, epoch: after.status.controller.epoch, lifetime: proof.lifetime } };
       },
       refreshObservation: async () => { await withControlDeadline(this.recoverySnapshot(), 4000, 'Execution owner observation timed out'); },
       list: (filter?: { prefix?: string }) => this.view().apps.filter(app => !filter?.prefix || app.info.name.startsWith(filter.prefix)).map(app => app.info),

@@ -12,7 +12,8 @@ afterEach(() => vi.clearAllMocks());
 function fixture(appEnv: Record<string, Record<string, string>>) {
   const logger: any = { info() {}, warn() {}, error() {}, debug() {} };
   const state: any = { selectProjectsSync: () => [], kvGetSync: () => null };
-  const owner: any = { getExecutionOwnerPid: () => 123, getExecutionOwnerPackage: () => '/fixture/owner' };
+  const runtime = { platform: 'fixture', arch: 'fixture', node: 'v24', abi: '137', executableSha256: 'a'.repeat(64), libc: null };
+  const owner: any = { getExecutionOwnerRuntime: async () => ({ root: '/fixture/owner', executable: '/fixture/node', commit: 'a'.repeat(40), target: runtime, execution: { mode: 'resident', protocol: 1, ownerId: 'fixture-owner', pid: 123, epoch: 1 } }) };
   const service: any = new ProjectService(logger, owner, state);
   service.registry = { get: () => ({ path: '/fixture/project' }) };
   service.resolveStackApps = () => [{ name: 'api', cwd: 'apps/api' }, { name: 'mail', cwd: 'apps/mail' }];
@@ -26,7 +27,7 @@ it('validates the full stack but admits only the requested migration owner and i
   expect(entries[0].env).not.toHaveProperty('MAIL_ONLY');
   expect(inspectLocalReleasePayloads).toHaveBeenCalledWith({}, [], false);
   expect(inspectLocalReleaseInstallation).toHaveBeenCalledWith({}, 'local', entries, {
-    prepare: false, ownerPid: 123, ownerPackage: '/fixture/owner', requiredFiles: { api: ['dist/database/config.js'] },
+    prepare: false, ownerPid: 123, ownerPackage: '/fixture/owner', runtime: { platform: 'fixture', arch: 'fixture', node: 'v24', abi: '137', executableSha256: 'a'.repeat(64), libc: null }, requiredFiles: { api: ['dist/database/config.js'] },
   });
 });
 

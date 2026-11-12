@@ -6,6 +6,7 @@ import '@testing-library/jest-dom/vitest';
 const { update } = vi.hoisted(() => ({ update: vi.fn() }));
 vi.mock('src/netron/client', () => ({ pipelines: { updatePipeline: update }, nodes: { listNodes: async () => [] } }));
 import { PipelineEditor } from '../../webapp/src/components/pipeline-editor.js';
+import type { PipelineStep } from '../../src/shared/dto/pipelines.js';
 
 const definition = {
   id: 'pipeline', name: 'inspect', description: '', revision: 'a'.repeat(64), conditionalUpdates: true as const,
@@ -13,6 +14,22 @@ const definition = {
 };
 afterEach(() => { cleanup(); vi.resetAllMocks(); });
 describe('pipeline edit review', () => {
+  it('preserves a release target and literal arguments through the editor and JSON round trip', async () => {
+    const step: PipelineStep = { name: 'publish', kind: 'release', target: {
+      project: 'research', stack: 'publication', app: 'publisher', entry: 'dist/publish.mjs',
+      artifact: { releaseId: 'publication-1', manifestSha256: 'a'.repeat(64), artifactSha256: 'b'.repeat(64),
+        producerApp: 'publisher', projectCommit: 'c'.repeat(40), frameworkCommit: 'd'.repeat(40) },
+    }, args: ['literal;$(no-shell)', 'two words'], cwd: '/operator', env: { OPERATOR_ROOT: '/operator' } };
+    render(<PipelineEditor definition={{ ...definition, steps: [step] }} onClose={vi.fn()} onSaved={vi.fn()} />);
+    expect(screen.getByLabelText('Pinned release target')).toHaveAttribute('readonly');
+    fireEvent.click(screen.getByRole('button', { name: 'Advanced JSON' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Step editor' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'renamed' } });
+    fireEvent.click(screen.getByRole('button', { name: /Save/ }));
+    await waitFor(() => expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      definition: expect.objectContaining({ name: 'renamed', steps: [step] }),
+    })));
+  });
   it('preserves loaded trigger declarations when editing the name or steps', async () => {
     const triggers = [{ type: 'manual' as const, config: { label: 'Operator review' } }];
     update.mockResolvedValue({ ...definition, triggers });

@@ -2374,7 +2374,7 @@ export class OrchestratorService extends EventEmitter {
     let topology: IProcessEntry[] | undefined;
     let definition: IAppDefinition | undefined;
     try {
-      const captured = await readBootstrapMetadata(bootstrapAbsPath, this.devMode && !entry.releaseRoot, 60_000);
+      const captured = await readBootstrapMetadata(bootstrapAbsPath, this.devMode && !entry.releaseRoot, 60_000, entry.releaseRoot);
       definition = captured.definition;
       handle.bootstrapMetadata = captured.metadata;
       topology = definition.processes;
@@ -2555,7 +2555,8 @@ export class OrchestratorService extends EventEmitter {
     // application generation. Resolve before allocating topology resources.
     const runtime = await this.bootstrapRuntime(bootstrapAbsPath);
     const policy = buildRestartPolicy(entry, config);
-    const spawnEnv = withClosureLibraryPath(entry.env, [entry.releaseRoot, entry.cwd, bootstrapAbsPath]);
+    const spawnEnv = withClosureLibraryPath(entry.env, entry.releaseRoot
+      ? { verifiedRoot: entry.releaseRoot } : [entry.cwd, bootstrapAbsPath]);
 
     const needsRouting = topology.some(proc => proc.topology?.expose === true || proc.topology?.access?.length);
     handle.deferStartup();
@@ -2843,7 +2844,8 @@ export class OrchestratorService extends EventEmitter {
   ): Promise<void> {
     const instances = entry.instances ?? 1;
     const policy = buildRestartPolicy(entry, config);
-    const spawnEnv = withClosureLibraryPath(entry.env, [entry.releaseRoot, entry.cwd, bootstrapAbsPath]);
+    const spawnEnv = withClosureLibraryPath(entry.env, entry.releaseRoot
+      ? { verifiedRoot: entry.releaseRoot } : [entry.cwd, bootstrapAbsPath]);
 
     // For single-process apps, use the first (only) process entry's bundled module
     const firstProcessName = buildResult?.modulePaths.keys().next().value;

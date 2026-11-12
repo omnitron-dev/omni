@@ -2,7 +2,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   closureLibraryDirectories,
   mergeLibraryPath,
@@ -14,6 +14,7 @@ import { executeLocalMigration, prepareRemoteMigration } from '../../src/service
 const cleanup: string[] = [];
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   for (const dir of cleanup.splice(0)) {
     await fs.rm(dir, { recursive: true, force: true });
   }
@@ -26,6 +27,48 @@ async function makeTempDir(prefix: string): Promise<string> {
 }
 
 describe('closure-library-path', () => {
+  it('does not borrow an ancestor closure for a dependency-free verified release', async () => {
+    const parent = await makeTempDir('omni-closure-parent-');
+    const root = path.join(parent, 'installed-release');
+    const external = path.join(parent, 'node_modules/.omnitron/0/lib');
+    await fs.mkdir(root);
+    await fs.mkdir(external, { recursive: true });
+    await fs.writeFile(path.join(parent, '.omnitron-closure.json'), '{"protocol":1}');
+    await fs.writeFile(path.join(root, '.omnitron-closure.json'), '{"protocol":1}');
+    await fs.writeFile(path.join(external, 'libunverified.so'), 'elf');
+    const env = { PORT: '3100' };
+    expect(closureLibraryDirectories([root])).toEqual([external]);
+    expect(closureLibraryDirectories({ verifiedRoot: root })).toEqual([]);
+    expect(withClosureLibraryPath(env, { verifiedRoot: root }, {}, 'linux')).toBe(env);
+
+    const own = path.join(root, 'node_modules/.omnitron/0/lib');
+    await fs.mkdir(own, { recursive: true });
+    await fs.writeFile(path.join(own, 'libverified.so'), 'elf');
+    expect(withClosureLibraryPath(env, { verifiedRoot: root }, {}, 'linux')).toEqual({ ...env, LD_LIBRARY_PATH: own });
+  });
+
+  it('refuses a nonphysical verified root and a library directory that leaves it', async () => {
+    const parent = await makeTempDir('omni-closure-boundary-');
+    const root = path.join(parent, 'installed-release'), outside = path.join(parent, 'outside');
+    await fs.mkdir(root);
+    await fs.mkdir(outside);
+    await fs.writeFile(path.join(root, '.omnitron-closure.json'), '{"protocol":1}');
+    await fs.symlink(root, path.join(parent, 'alias'));
+    expect(() => closureLibraryDirectories({ verifiedRoot: path.join(parent, 'alias') })).toThrow('physical absolute directory');
+    await fs.symlink(outside, path.join(root, 'node_modules'));
+    expect(() => closureLibraryDirectories({ verifiedRoot: root })).toThrow('library directory must be physical');
+  });
+
+  it.each(['LD_PRELOAD', 'LD_AUDIT', 'LD_LIBRARY_PATH', 'DYLD_INSERT_LIBRARIES', 'DYLD_FRAMEWORK_PATH'])(
+    'refuses explicit and inherited %s before platform or empty-closure shortcuts', async key => {
+      const root = await makeTempDir('omni-closure-environment-');
+      await fs.writeFile(path.join(root, '.omnitron-closure.json'), '{"protocol":1}');
+      for (const platform of ['linux', 'darwin'] as const) {
+        expect(() => withClosureLibraryPath({ [key]: '/unverified' }, { verifiedRoot: root }, {}, platform)).toThrow(key);
+        expect(() => withClosureLibraryPath({}, { verifiedRoot: root }, { [key]: '/unverified' }, platform)).toThrow(key);
+      }
+    });
+
   it('discovers shared-object directories inside .omnitron packages in deterministic index order', async () => {
     const root = await makeTempDir('omni-closure-libs-');
     const outside = await makeTempDir('omni-closure-outside-');
@@ -67,6 +110,18 @@ describe('closure-library-path', () => {
     expect(closureLibraryDirectories([path.join(root, 'dist', 'bootstrap.js')])).toEqual([
       path.join(root, 'node_modules', '.omnitron', '2', 'vendor'),
       path.join(root, 'node_modules', '.omnitron', '10', 'lib'),
+      path.join(root, 'node_modules', '.omnitron', '332', 'lib'),
+    ]);
+    // Strict admission must report the escaping library even when a valid
+    // regular library sorts earlier in the same directory.
+    const escaped = path.join(root, 'node_modules', '.omnitron', '99', 'lib', 'libescape.so.1');
+    await fs.writeFile(path.join(path.dirname(escaped), 'a-valid.so'), 'elf');
+    expect(() => closureLibraryDirectories({ verifiedRoot: root })).toThrow('library leaves its root');
+    await fs.unlink(escaped);
+    expect(closureLibraryDirectories({ verifiedRoot: root })).toEqual([
+      path.join(root, 'node_modules', '.omnitron', '2', 'vendor'),
+      path.join(root, 'node_modules', '.omnitron', '10', 'lib'),
+      path.join(root, 'node_modules', '.omnitron', '99', 'lib'),
       path.join(root, 'node_modules', '.omnitron', '332', 'lib'),
     ]);
   });
@@ -129,26 +184,38 @@ describe('closure-library-path', () => {
         sealed: true,
         nodeOptions: '',
       },
-      { LD_LIBRARY_PATH: '/existing/lib' }
+      {}
     );
     const localParsed = JSON.parse(local.stdout.trim()) as { ld: string | null };
     if (process.platform === 'linux') {
-      expect(localParsed.ld).toBe(`${libDir}:/existing/lib`);
+      expect(localParsed.ld).toBe(libDir);
     } else {
-      expect(localParsed.ld).toBe('/existing/lib');
+      expect(localParsed.ld).toBe(null);
     }
 
     const remote = prepareRemoteMigration(
-      { cwd: root, script, node: process.execPath },
-      { LD_LIBRARY_PATH: '/existing/lib' }
+      { cwd: root, script, node: process.execPath, verifiedRoot: root },
+      {}
     );
     const remoteOut = execFileSync('/bin/sh', ['-c', remote.command], { input: remote.stdin, encoding: 'utf8' });
     const remoteParsed = JSON.parse(remoteOut.trim()) as { ld: string | null };
     if (process.platform === 'linux') {
-      expect(remoteParsed.ld).toBe(`${libDir}:/existing/lib`);
+      expect(remoteParsed.ld).toBe(libDir);
     } else {
-      expect(remoteParsed.ld).toBe('/existing/lib');
+      expect(remoteParsed.ld).toBe(null);
     }
+  });
+
+  it.each(['declared', 'inherited'])('refuses %s loader overrides before a sealed local migration starts', async mode => {
+    const root = await makeTempDir('omni-local-migration-loader-');
+    const script = path.join(root, 'migrate.mjs'), effect = path.join(root, 'effects');
+    await fs.writeFile(path.join(root, '.omnitron-closure.json'), '{"protocol":1}');
+    await fs.writeFile(script, `import fs from 'node:fs';fs.writeFileSync('effects','unexpected');`);
+    if (mode === 'inherited') vi.stubEnv('LD_LIBRARY_PATH', '/unverified/libraries');
+    await expect(executeLocalMigration({ app: 'api', environmentApp: 'api', service: 'postgres', database: 'main',
+      mode: 'script', source: 'src/migrate.ts', release: 'migrate.mjs', script, cwd: root, sealed: true, nodeOptions: '' },
+    mode === 'declared' ? { LD_LIBRARY_PATH: '/unverified/libraries' } : {})).rejects.toThrow('LD_LIBRARY_PATH');
+    await expect(fs.stat(effect)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   const hasLinuxCompiler =
@@ -226,7 +293,7 @@ describe('closure-library-path', () => {
         ].join('\n')
       );
 
-      const definition = await loadBootstrapConfig(bootstrapPath, { freshModuleGraph: true });
+      const definition = await loadBootstrapConfig(bootstrapPath, { freshModuleGraph: true, releaseRoot: root });
       expect(definition.name).toBe('probe-api');
     }
   );

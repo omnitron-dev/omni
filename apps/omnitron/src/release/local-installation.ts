@@ -65,9 +65,9 @@ async function verify(root: string, launch: ReleaseLaunch, entry: IEcosystemAppE
 
 /** Selection is stored by the caller. This only materializes verified immutable inputs;
  * it never installs packages, mutates an owner, or rewrites a developer checkout. */
-export async function inspectLocalReleaseInstallation(release: LoadedRelease, stack: string, entries: readonly IEcosystemAppEntry[], options: { prepare?: boolean; ownerPid?: number; ownerPackage?: string; requiredFiles?: Readonly<Record<string, readonly string[]>> } = {}): Promise<IEcosystemAppEntry[]> {
+export async function inspectLocalReleaseInstallation(release: LoadedRelease, stack: string, entries: readonly IEcosystemAppEntry[], options: { prepare?: boolean; ownerPid?: number; ownerPackage?: string; runtime?: TargetRuntime; requiredFiles?: Readonly<Record<string, readonly string[]>> } = {}): Promise<IEcosystemAppEntry[]> {
   if (!digest(release.manifestSha256)) throw Error('Invalid local release manifest digest');
-  const runtime = await targetRuntime();
+  const runtime = options.runtime ?? await targetRuntime();
   const sources = new Map(releaseArtifactOrigins(release.manifest, release.manifestSha256).map(source => [source.app, source]));
   const selected = entries.map(entry => {
     const unique = release.manifest.artifacts.filter(a => a.app === entry.name), files = release.files.filter(f => f.app === entry.name);

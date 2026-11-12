@@ -9,7 +9,9 @@ export interface ApplicationRuntime {
   /** Measured using this owner's verified executable, never the controller's Node. */
   target?: TargetRuntime;
   /** Authenticated resident execution protocol, not a claim inferred from a build version. */
-  execution?: { mode: 'resident'; protocol: 1; ownerId: string; pid: number; epoch: number };
+  execution?: { mode: 'resident'; protocol: 1; ownerId: string; pid: number; epoch: number;
+    /** Native host-boot/process-birth token when observed on the local host. */
+    lifetime?: string };
 }
 
 export function assertResidentApplicationRuntime(value: ApplicationRuntime | undefined): asserts value is ApplicationRuntime {
@@ -17,7 +19,10 @@ export function assertResidentApplicationRuntime(value: ApplicationRuntime | und
       typeof value.executable !== 'string' || !path.isAbsolute(value.executable) || !/^[a-f0-9]{40}$/.test(value.commit) ||
       value.execution?.mode !== 'resident' || value.execution.protocol !== 1 ||
       typeof value.execution.ownerId !== 'string' || !/^[a-zA-Z0-9-]{1,128}$/.test(value.execution.ownerId) || !Number.isSafeInteger(value.execution.pid) || value.execution.pid < 1 ||
-      !Number.isSafeInteger(value.execution.epoch) || value.execution.epoch < 1)
+      !Number.isSafeInteger(value.execution.epoch) || value.execution.epoch < 1 ||
+      (value.execution.lifetime !== undefined && (typeof value.execution.lifetime !== 'string' ||
+        !value.execution.lifetime || value.execution.lifetime.length > 512 ||
+        [...value.execution.lifetime].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127))))
     throw Error('Verified application deployment requires an authenticated independent execution owner (protocol 1). Prepare an owner transition and rollback before installing this release; no SDK rebinding or dependency installation will be attempted.');
 }
 export interface InstalledBundle {
@@ -517,6 +522,7 @@ export function assertSameApplicationRuntime(expected: ApplicationRuntime, actua
   assertResidentApplicationRuntime(actual);
   if (expected.root !== actual.root || expected.executable !== actual.executable || expected.commit !== actual.commit ||
       expected.execution!.ownerId !== actual.execution!.ownerId || expected.execution!.pid !== actual.execution!.pid ||
-      expected.execution!.epoch !== actual.execution!.epoch)
+      expected.execution!.epoch !== actual.execution!.epoch ||
+      expected.execution!.lifetime !== actual.execution!.lifetime)
     throw Error('Execution owner or controller grant changed during application delivery; inspect the settled owner and retry before starting this release');
 }

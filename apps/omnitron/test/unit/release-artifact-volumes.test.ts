@@ -198,7 +198,7 @@ it('checkRelease prepare verifies the disabled payload but never adds it to exec
     resolveStacks: () => config.stacks, assertStartAuthority: vi.fn(), admitRelease: async () => f.release,
     localSelection: () => ({ read: () => ({ release: null }) }), stackEnvFor: async () => ({}),
     checkLocalOwner: async () => ({ phase: 'stopped', apps: [] }),
-    orchestrator: { getExecutionOwnerPid: () => process.pid, getExecutionOwnerPackage: async () => f.tmp, stopStackExecution: stop },
+    orchestrator: { getExecutionOwnerPid: () => process.pid, getExecutionOwnerRuntime: async () => ({ root: f.tmp, executable: process.execPath, commit: 'b'.repeat(40), target: await targetRuntime(), execution: { mode: 'resident', protocol: 1, ownerId: 'fixture-owner', pid: process.pid, epoch: 1 } }), stopStackExecution: stop },
     infraManager: { provisionStack: provision },
   });
   const unprepared = await service.checkRelease('consumer', 'production', f.consumer.id);
@@ -277,7 +277,7 @@ it('ordinary loader and real admission bind imported public pins before a stoppe
     loadProjectConfig: async () => loaded, resolveStacks: () => loaded.stacks!, assertStartAuthority: vi.fn(),
     registry: { get: () => ({ path: repo }) }, releaseStore: async () => f.store, releaseRunningOn: async () => null,
     localSelection: () => ({ read: () => ({ revision: 0, release: null }) }), stackEnvFor: async () => ({}),
-    orchestrator: { getExecutionOwnerPid: () => process.pid, getExecutionOwnerPackage: async () => f.tmp,
+    orchestrator: { getExecutionOwnerPid: () => process.pid, getExecutionOwnerRuntime: async () => ({ root: f.tmp, executable: process.execPath, commit: 'b'.repeat(40), target: await targetRuntime(), execution: { mode: 'resident', protocol: 1, ownerId: 'fixture-owner', pid: process.pid, epoch: 1 } }),
       inspectStackExecution: async () => ({ phase: 'running', apps: [] }), stopStackExecution: stop },
     infraManager: { provisionStack: provision }, startLocalStack: start, stackStates: new Map(),
     logger: { info: vi.fn() },
@@ -300,7 +300,7 @@ it('diagnoses the verified selected mount and refuses changed bytes without fall
     resolveStacks: () => config.stacks, assertStartAuthority: vi.fn(), stackStates: new Map(),
     localSelection: () => ({ read: () => ({ release: { id: f.release.id, manifestSha256: f.release.manifestSha256 } }) }),
     releaseStore: async () => f.store, stackEnvFor: async () => ({}),
-    orchestrator: { getExecutionOwnerPid: () => process.pid, getExecutionOwnerPackage: async () => f.tmp },
+    orchestrator: { getExecutionOwnerPid: () => process.pid, getExecutionOwnerRuntime: async () => ({ root: f.tmp, executable: process.execPath, commit: 'b'.repeat(40), target: await targetRuntime(), execution: { mode: 'resident', protocol: 1, ownerId: 'fixture-owner', pid: process.pid, epoch: 1 } }) },
     infraManager: { planStack: plan },
   });
   const result = await service['inspectStackReadiness']('consumer', 'production');

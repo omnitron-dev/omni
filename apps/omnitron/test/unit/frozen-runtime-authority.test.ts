@@ -20,6 +20,9 @@ describe('verified application execution authority', () => {
     { ...runtime, execution: { ...runtime.execution, ownerId: '' } },
     { ...runtime, execution: { ...runtime.execution, pid: 0 } },
     { ...runtime, execution: { ...runtime.execution, epoch: 0 } },
+    { ...runtime, execution: { ...runtime.execution, lifetime: '' } },
+    { ...runtime, execution: { ...runtime.execution, lifetime: 'x'.repeat(513) } },
+    { ...runtime, execution: { ...runtime.execution, lifetime: 'unsafe\nidentity' } },
   ])('refuses an unproven resident protocol before delivery: %j', async value => {
     const service = new RemoteDeployer({ info() {}, warn() {}, error() {} } as never, {} as never) as any;
     Object.assign(service, { verifySSH: async () => {}, emitProgress: vi.fn(),
@@ -74,6 +77,13 @@ describe('verified application execution authority', () => {
     expect(() => assertResidentApplicationRuntime(runtime)).not.toThrow();
     expect(runtime.commit).not.toBe(release.frameworkCommit);
     expect(() => assertSameApplicationRuntime(runtime, structuredClone(runtime))).not.toThrow();
+  });
+  it('requires the same native lifetime after admission, including refusal of missing evidence', () => {
+    const observed = { ...runtime, execution: { ...runtime.execution!, lifetime: 'native-boot:birth-1' } };
+    expect(() => assertSameApplicationRuntime(observed, structuredClone(observed))).not.toThrow();
+    expect(() => assertSameApplicationRuntime(observed, runtime)).toThrow('changed during application delivery');
+    expect(() => assertSameApplicationRuntime(observed, { ...observed,
+      execution: { ...observed.execution, lifetime: 'native-boot:birth-2' } })).toThrow('changed during application delivery');
   });
   it.each([
     { ...runtime, root: '/another/packages/0' }, { ...runtime, executable: '/another/node' },

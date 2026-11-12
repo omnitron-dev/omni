@@ -124,6 +124,18 @@ export function PipelineRunDetail({
               SHA-256 {step.sourceHash}
             </Typography>
           )}
+          {step.executions?.map(execution => (
+            <Box key={execution.attempt} sx={{ mt: 1 }}>
+              {execution.state === 'unconfirmed' && (
+                <Alert severity="warning" variant="outlined">
+                  Attempt {execution.attempt} has unconfirmed effects. Automatic retries were refused; inspect the recorded process before running again.
+                </Alert>
+              )}
+              <Box component="pre" aria-label={`${step.name} release attempt ${execution.attempt}`} sx={codeSx}>
+                {JSON.stringify(execution, null, 2)}
+              </Box>
+            </Box>
+          ))}
         </Box>
       ))}
     </Stack>
@@ -350,7 +362,7 @@ export default function PipelinesPage() {
                   {step.name} · {step.kind ?? 'shell'} · {targetLabel(step.nodeId)} · {(step.timeout ?? 300000) / 1000}s
                 </Box>
                 <Box component="pre" sx={{ ...codeSx, mt: 1 }}>
-                  {step.run}
+                  {step.kind === 'release' ? JSON.stringify({ target: step.target, args: step.args ?? [] }, null, 2) : step.run}
                 </Box>
                 <Box component="pre" aria-label={`${step.name} execution settings`} sx={{ ...codeSx, mt: 1 }}>
                   {JSON.stringify(

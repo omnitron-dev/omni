@@ -16,7 +16,7 @@ const native = vi.mocked(attestManagedOwnerBuild);
 beforeEach(() => native.mockReset().mockResolvedValue(stamp));
 
 function fixture() {
-  const execution = { controllerId: 'controller', state: vi.fn(() => ({ phase:'active', connection:{status:'connected'}, ...expected })), recoverySnapshot: vi.fn(async (): Promise<ReturnType<typeof snapshot> & { ownerBuild?: BuildStamp | null }> => snapshot()) };
+  const execution = { controllerId: 'controller', controlledOwnerSnapshot: vi.fn(async (): Promise<ReturnType<typeof snapshot> & { ownerBuild?: BuildStamp | null }> => snapshot()) };
   const daemon = Object.create(OmnitronDaemon.prototype) as OmnitronDaemon;
   Object.assign(daemon, { execution, supervision: { type: 'independent' } });
   return { daemon, execution };
@@ -37,7 +37,7 @@ describe('application release admission using a supervised legacy owner', () => 
     await expect(daemon.attestApplicationOwner({ ...expected, epoch: 9 })).rejects.toThrow('Another owner');
     pending.resolve(stamp);
     await expect(Promise.all([one,two])).resolves.toEqual([stamp,stamp]);
-    expect(execution.recoverySnapshot).toHaveBeenCalledTimes(2);
+    expect(execution.controlledOwnerSnapshot).toHaveBeenCalledTimes(2);
     await expect(daemon.attestApplicationOwner(expected)).resolves.toEqual(stamp);
     expect(native).toHaveBeenCalledTimes(2);
   });
@@ -47,12 +47,12 @@ describe('application release admission using a supervised legacy owner', () => 
     await expect(daemon.attestApplicationOwner({ ...expected, owner: { ...owner, pid: owner.pid+1 } })).rejects.toThrow('changed');
     await expect(daemon.attestApplicationOwner({ ...expected, owner: { ...owner, startedAt: 'earlier' } })).rejects.toThrow('changed');
     expect(native).not.toHaveBeenCalled();
-    execution.state.mockReturnValueOnce({ ...execution.state(), epoch: expected.epoch + 1 });
+    execution.controlledOwnerSnapshot.mockRejectedValueOnce(Error('Application owner or controller changed during admission'));
     await expect(daemon.attestApplicationOwner(expected)).rejects.toThrow('changed');
     expect(native).not.toHaveBeenCalled();
-    execution.recoverySnapshot.mockResolvedValueOnce(snapshot()).mockResolvedValueOnce({ status: { ...snapshot().status, phase:'prepared' } });
+    execution.controlledOwnerSnapshot.mockResolvedValueOnce(snapshot()).mockRejectedValueOnce(Error('Application owner or controller changed during admission'));
     await expect(daemon.attestApplicationOwner(expected)).rejects.toThrow('changed');
-    execution.recoverySnapshot.mockResolvedValueOnce(snapshot()).mockResolvedValueOnce({ status: { ...snapshot().status, controller:{ controllerId:'other', epoch:9 } } });
+    execution.controlledOwnerSnapshot.mockResolvedValueOnce(snapshot()).mockRejectedValueOnce(Error('Application owner or controller changed during admission'));
     await expect(daemon.attestApplicationOwner(expected)).rejects.toThrow('changed');
     native.mockRejectedValueOnce(Error('Native executable changed'));
     await expect(daemon.attestApplicationOwner(expected)).rejects.toThrow('executable changed');
@@ -60,14 +60,14 @@ describe('application release admission using a supervised legacy owner', () => 
 
   it('honors self-reported stamps and refuses absence, dirtiness or disagreement without substituting an OS result', async () => {
     const { daemon, execution } = fixture();
-    execution.recoverySnapshot.mockResolvedValueOnce({ ...snapshot(), ownerBuild: different });
+    execution.controlledOwnerSnapshot.mockResolvedValueOnce({ ...snapshot(), ownerBuild: different });
     await expect(daemon.attestApplicationOwner(expected)).resolves.toEqual(different);
     for (const ownerBuild of [null, { ...stamp, dirty: true }]) {
-      execution.recoverySnapshot.mockResolvedValueOnce({ ...snapshot(), ownerBuild });
+      execution.controlledOwnerSnapshot.mockResolvedValueOnce({ ...snapshot(), ownerBuild });
       await expect(daemon.attestApplicationOwner(expected)).rejects.toThrow('clean');
     }
     expect(native).not.toHaveBeenCalled();
-    execution.recoverySnapshot.mockResolvedValueOnce(snapshot()).mockResolvedValueOnce({ ...snapshot(), ownerBuild: different });
+    execution.controlledOwnerSnapshot.mockResolvedValueOnce(snapshot()).mockResolvedValueOnce({ ...snapshot(), ownerBuild: different });
     await expect(daemon.attestApplicationOwner(expected)).rejects.toThrow('different build');
     Object.assign(daemon,{ supervision:null });
     await expect(daemon.attestApplicationOwner(expected)).rejects.toThrow('independent OS supervision');

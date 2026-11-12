@@ -158,7 +158,7 @@ export type { K8sPod, K8sDeployment, K8sService } from './kubernetes.js';
 export type { HealthCheckResult, HealthReport, PlatformHealthReport } from './health.js';
 export type { OmnitronDiscoveredTarget, DiscoveryScanResult } from './discovery.js';
 
-export type { Pipeline, PipelineDef, PipelineStep, PipelineRun, PipelineRunStepResult, PipelineRunSummary } from './pipelines.js';
+export type { Pipeline, PipelineDef, PipelineStep, PipelineReleaseTarget, PipelineReleaseExecution, PipelineRun, PipelineRunStepResult, PipelineRunSummary } from './pipelines.js';
 export type { Trace, TraceSpan, TraceFilter, ServiceMapEntry } from './traces.js';
 export { readSystemSnapshot, type SystemSnapshot } from './system-info.js';
 

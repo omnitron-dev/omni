@@ -32,8 +32,17 @@ export function releaseNodeOptions(value: unknown): string {
 }
 
 export function releaseOptionsForEnv(env?: Readonly<Record<string, unknown>>): string {
+  assertReleaseLoaderEnvironment(env);
   if (env?.['NODE_PATH']) throw Error('A release cannot extend NODE_PATH');
   return releaseNodeOptions(env?.['NODE_OPTIONS']);
+}
+
+/** ELF and dyld loader-control namespaces may replace code before Node starts.
+ * A caller must refuse ambient overrides, not delete them behind Xec's merging
+ * environment. Verified closure library paths are added only after this check. */
+export function assertReleaseLoaderEnvironment(env?: Readonly<Record<string, unknown>>): void {
+  const key = Object.keys(env ?? {}).find(name => /^(?:LD_|DYLD_)/.test(name) && env?.[name] !== undefined && env[name] !== '');
+  if (key) throw Error('Verified release execution refuses external loader environment: ' + key);
 }
 
 /** Self-contained: run this under the node binary of the actual execution owner. */

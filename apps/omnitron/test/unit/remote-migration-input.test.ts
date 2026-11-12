@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -38,6 +38,19 @@ it('reports a failed migration without retrying it', async () => {
   expect(await readFile(join(cwd, 'attempts'), 'utf8')).toBe('once\n');
 });
 
+it.each(['declared', 'inherited'])('refuses %s loader overrides before the verified remote migration starts', async mode => {
+  const cwd = await realpath(await mkdtemp(join(tmpdir(), 'omni-migration-loader-'))); cleanup.push(cwd);
+  const script = join(cwd, 'migrate.mjs');
+  await writeFile(script, `import fs from 'node:fs';fs.writeFileSync('effects','unexpected');`);
+  const request = prepareRemoteMigration({ cwd, script, node: process.execPath, verifiedRoot: cwd },
+    mode === 'declared' ? { LD_LIBRARY_PATH: '/unverified/libraries' } : {});
+  const result = spawnSync('/bin/sh', ['-c', request.command], { input: request.stdin, encoding: 'utf8',
+    env: { ...process.env, ...(mode === 'inherited' ? { LD_LIBRARY_PATH: '/unverified/libraries' } : {}) } });
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain('Verified release execution refuses external loader environment: LD_LIBRARY_PATH');
+  await expect(readFile(join(cwd, 'effects'))).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
 it('serializes closureLibraryDirectories without bundler or Vitest module-import captures', async () => {
   const root = await mkdtemp(join(tmpdir(), 'omni-migration-closure-')); cleanup.push(root);
   const libDir = join(root, 'node_modules/.omnitron/0/lib');
@@ -50,4 +63,10 @@ it('serializes closureLibraryDirectories without bundler or Vitest module-import
     { encoding: 'utf8', env: { ...process.env, NODE_OPTIONS: '' } },
   );
   expect(JSON.parse(stdout)).toEqual([await realpath(libDir)]);
+  const verified = execFileSync(
+    process.execPath,
+    ['--input-type=module', '-e', `const fn = ${closureLibraryDirectories.toString()}; console.log(JSON.stringify(fn({verifiedRoot:${JSON.stringify(await realpath(root))}})));`],
+    { encoding: 'utf8', env: { ...process.env, NODE_OPTIONS: '' } },
+  );
+  expect(JSON.parse(verified)).toEqual([await realpath(libDir)]);
 });

@@ -1047,7 +1047,7 @@ export class RemoteDeployer {
   ): Promise<Map<string, string>> {
     const failed = new Map<string, string>();
     const planned: Array<{ request: MigrationRequest; directory: string; script: string;
-      node?: string; env: Record<string, string>; verify?: () => Promise<void> }> = [];
+      node?: string; env: Record<string, string>; verify?: () => Promise<void>; verifiedRoot?: string }> = [];
     let runtime: InstalledBundle['applicationRuntime'];
     for (const request of requests) {
       try {
@@ -1080,10 +1080,12 @@ export class RemoteDeployer {
         const env = { ...appEnv[request.app], ...database.env, ...(artifact?.release ? { NODE_OPTIONS: nodeOptions, NODE_PATH: '' } : {}) };
         if (request.mode === 'config') {
           const preflight = prepareRemoteMigration({ cwd: directory, script, mode: 'config', validate: true,
+            ...(artifact?.release ? { verifiedRoot: directory } : {}),
             ...(entry.migrationNode ? { node: entry.migrationNode } : {}) }, env);
           await this.sshExec(target, preflight.command, 60_000, preflight.stdin);
         }
         planned.push({ request, directory, script, ...(entry.migrationNode ? { node: entry.migrationNode } : {}),
+          ...(artifact?.release ? { verifiedRoot: directory } : {}),
           env, ...(verify ? { verify } : {}) });
       } catch (error) {
         const message = redactDiagnosticText((error as Error).message);
@@ -1100,6 +1102,7 @@ export class RemoteDeployer {
       try {
         await item.verify?.();
         const migration = prepareRemoteMigration({ cwd: item.directory, script: item.script, mode: request.mode,
+          ...(item.verifiedRoot ? { verifiedRoot: item.verifiedRoot } : {}),
           ...(item.node ? { node: item.node } : {}) }, item.env);
         const said = await this.sshExec(target, migration.command, 600_000, migration.stdin);
         for (const line of migrationOutput(said).map(redactDiagnosticText))

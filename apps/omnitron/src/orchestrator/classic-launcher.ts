@@ -47,7 +47,8 @@ export async function launchClassic(
 
   handle.healthRunId = randomUUID();
   const heartbeat = entry.readiness?.probes.find((probe) => probe.type === 'heartbeat');
-  const spawnEnv = withClosureLibraryPath(entry.env, [entry.releaseRoot, cwd, scriptPath]);
+  const spawnEnv = withClosureLibraryPath(entry.env, entry.releaseRoot
+    ? { verifiedRoot: entry.releaseRoot } : [cwd, scriptPath]);
   const env: Record<string, string | undefined> = {
     ...process.env,
     ...spawnEnv,

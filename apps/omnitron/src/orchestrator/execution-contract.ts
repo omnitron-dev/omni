@@ -30,7 +30,7 @@ export interface OrchestratorControl extends Methods {
   /** PID from the authenticated resident owner; in-process supervisors do not implement this. */
   getExecutionOwnerPid?(): number;
   /** Native service-manager proof; does not require a new owner protocol. */
-  getExecutionOwnerPackage?(): Promise<string>;
+  getExecutionOwnerRuntime?(): Promise<import('../services/host-upgrade.js').ApplicationRuntime>;
   startApp(...args: Parameters<OrchestratorService['startApp']>): Promise<AppExecutionView>;
   startKnownApp(name: string): Promise<AppExecutionView | undefined>;
   restartApp(name: string): Promise<AppExecutionView>;

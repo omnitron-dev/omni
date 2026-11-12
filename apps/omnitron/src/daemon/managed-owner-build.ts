@@ -8,6 +8,7 @@ import { readHostBootIdentity } from '@omnitron-dev/common/process-identity';
 import { readManagedRuntime, type ManagedRuntime } from './managed-runtime.js';
 import { parseDarwinJob, parseDarwinProcesses } from './darwin-owner-evidence.js';
 import { ExecutionJournal } from './execution-journal.js';
+import { assertReleaseLoaderEnvironment, assertReleaseTarget, targetRuntime, type TargetRuntime } from '../release/target-runtime.js';
 
 const exec = promisify(execFile);
 async function native(file: string, args: string[]) {
@@ -83,7 +84,8 @@ async function linux(config: ManagedRuntime, pid: number, argv: string[], boot: 
 }
 
 /** On explicit legacy release admission, prove what the physical owner actually launched. */
-export async function attestManagedOwnerRuntime(instanceHome: string, expected: { id: string; pid: number; startedAt?: string }): Promise<{ build: BuildStamp; packageRoot: string }> {
+export async function attestManagedOwnerRuntime(instanceHome: string, expected: { id: string; pid: number; startedAt?: string }): Promise<{ build: BuildStamp; packageRoot: string; executable: string; target: TargetRuntime; lifetime: string }> {
+  assertReleaseLoaderEnvironment(process.env);
   requireProof(expected.id && Number.isSafeInteger(expected.pid) && expected.pid > 0, 'invalid owner identity');
   const observe = async () => {
     const config = await readManagedRuntime(instanceHome);
@@ -103,8 +105,18 @@ export async function attestManagedOwnerRuntime(instanceHome: string, expected: 
   await verifyRuntimeArtifact(before.root, before.digest, before.born);
   const stamp = readBuildStamp(path.join(before.root, 'packages/0/dist'));
   requireProof(stamp && /^[a-f0-9]{40}$/.test(stamp.commit) && stamp.dirty === false, 'missing exact clean owner build');
+  const executable = path.join(before.root, 'node');
+  // The backend may run a different Node. Measure the already verified owner
+  // executable, without inheriting loaders or preloads from this controller.
+  const measured = await exec(executable, ['--input-type=module', '-e',
+    `console.log(JSON.stringify(await (${targetRuntime.toString()})()))`], {
+    encoding: 'utf8', timeout: 10_000, maxBuffer: 64 * 1024,
+    env: { ...process.env, NODE_OPTIONS: '', NODE_PATH: '' },
+  });
+  const target: TargetRuntime = JSON.parse(measured.stdout);
+  assertReleaseTarget(target, target);
   requireProof(JSON.stringify(await observe()) === JSON.stringify(before), 'owner or service binding changed during verification');
-  return { build: stamp, packageRoot: path.join(before.root, 'packages/0') };
+  return { build: stamp, packageRoot: path.join(before.root, 'packages/0'), executable, target, lifetime: before.token };
 }
 
 /** Existing admission callers keep the original build-only contract. */

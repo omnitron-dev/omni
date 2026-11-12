@@ -46,12 +46,13 @@ export function metadataSourceChanged(metadata: BootstrapMetadata): boolean {
   catch { return true; }
 }
 
-export async function readBootstrapMetadata(bootstrap: string, devMode = false, timeoutMs = 30_000): Promise<{
+export async function readBootstrapMetadata(bootstrap: string, devMode = false, timeoutMs = 30_000, releaseRoot?: string): Promise<{
   metadata: BootstrapMetadata; definition: IAppDefinition;
 }> {
   const source = bootstrapDefinitionSource(bootstrap, devMode);
   const before = hash(fs.readFileSync(source));
-  const definition = await loadBootstrapConfig(bootstrap, { devMode, freshModuleGraph: { timeoutMs } });
+  const definition = await loadBootstrapConfig(bootstrap, { devMode, freshModuleGraph: { timeoutMs },
+    ...(releaseRoot && { releaseRoot }) });
   const metadata = captureBootstrapMetadata(bootstrap, source, definition);
   if (metadata.source.sha256 !== before || bootstrapDefinitionSource(bootstrap, devMode) !== source)
     throw new Error('Bootstrap changed during declaration capture; retry against a stable revision');

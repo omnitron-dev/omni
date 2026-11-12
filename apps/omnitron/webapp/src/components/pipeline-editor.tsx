@@ -42,8 +42,12 @@ export function PipelineEditor({
   const targets = usePolledResource(() => nodes.listNodes(), { intervalMs: 30_000 });
   const index = Number(active);
   const step = steps[index]!;
-  const edit = (patch: Partial<PipelineStep>) => {
+  const edit = (patch: Partial<Omit<PipelineStep, 'run' | 'kind' | 'target' | 'args'>>) => {
     setSteps((current) => current.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+    setDirty(true);
+  };
+  const editSource = (patch: { run: string } | { kind: 'shell' | 'xec' }) => {
+    setSteps(current => current.map((item, i) => i === index && item.kind !== 'release' ? { ...item, ...patch } : item));
     setDirty(true);
   };
   const close = () => {
@@ -130,7 +134,8 @@ export function PipelineEditor({
                       if (
                         !Array.isArray(parsed) ||
                         !parsed.length ||
-                        parsed.some((s) => typeof s?.name !== 'string' || typeof s?.run !== 'string')
+                        parsed.some((s) => typeof s?.name !== 'string' ||
+                          (s.kind === 'release' ? !s.target || s.run !== undefined : typeof s?.run !== 'string'))
                       )
                         throw Error('A non-empty array of named steps is required');
                       setSteps(parsed);
@@ -207,20 +212,22 @@ export function PipelineEditor({
                   }}
                 >
                   <TextField
-                    label={step.kind === 'xec' ? 'Xec · TypeScript' : 'Shell command'}
+                    label={step.kind === 'release' ? 'Pinned release target' : step.kind === 'xec' ? 'Xec · TypeScript' : 'Shell command'}
                     multiline
                     minRows={13}
                     maxRows={26}
                     fullWidth
-                    value={step.run}
-                    onChange={(e) => edit({ run: e.target.value })}
+                    value={step.kind === 'release' ? JSON.stringify({ target: step.target, args: step.args ?? [] }, null, 2) : step.run}
+                    onChange={(e) => editSource({ run: e.target.value })}
                     helperText={
-                      step.kind === 'xec'
+                      step.kind === 'release'
+                        ? 'Use Advanced JSON to edit the artifact identity, entry and arguments. The daemon resolves and verifies its installation before every attempt.'
+                        : step.kind === 'xec'
                         ? '$ runs locally · $target uses the selected node · params contains run input'
                         : 'Parameters are JSON in OMNITRON_PARAMS; shell interpolation is disabled'
                     }
                     slotProps={{
-                      input: { sx: { fontFamily: 'monospace', fontSize: 13, lineHeight: 1.7 } },
+                      input: { readOnly: step.kind === 'release', sx: { fontFamily: 'monospace', fontSize: 13, lineHeight: 1.7 } },
                       htmlInput: { spellCheck: false, autoCapitalize: 'off', autoCorrect: 'off' },
                     }}
                   />
@@ -234,16 +241,19 @@ export function PipelineEditor({
                     <TextField
                       select
                       label="Executor"
+                      disabled={step.kind === 'release'}
                       size="small"
                       value={step.kind ?? 'shell'}
-                      onChange={(e) => edit({ kind: e.target.value as 'xec' | 'shell' })}
+                      onChange={(e) => editSource({ kind: e.target.value as 'xec' | 'shell' })}
                     >
                       <MenuItem value="xec">Xec · TypeScript</MenuItem>
                       <MenuItem value="shell">Shell</MenuItem>
+                      {step.kind === 'release' && <MenuItem value="release">Verified release</MenuItem>}
                     </TextField>
                     <TextField
                       select
                       label="Target"
+                      disabled={step.kind === 'release'}
                       size="small"
                       value={step.nodeId ?? 'local'}
                       onChange={(e) => edit({ nodeId: e.target.value })}

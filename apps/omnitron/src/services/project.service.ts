@@ -2,6 +2,11 @@ import { readProjectStacks, resolveProjectStacks } from '../config/project-stack
 import { readSavedDaemonConfig } from '../config/saved.js';
 import { observeStackHealth, type HealthAnswers } from '../project/stack-health.js';
 import { LocalReleaseSelection } from '../project/local-release-selection.js';
+import type { Command } from '@xec-sh/core';
+import type { PipelineReleaseTarget, PipelineReleaseExecution } from '../shared/dto/pipelines.js';
+import { assertResidentApplicationRuntime, assertSameApplicationRuntime, type ApplicationRuntime } from './host-upgrade.js';
+import { assertReleaseLoaderEnvironment, assertReleaseTarget, releaseOptionsForEnv } from '../release/target-runtime.js';
+import { withClosureLibraryPath } from '../release/closure-library-path.js';
 import { resolveAppPath } from '../config/app-path.js';
 import { infrastructureOwnership, ownsStackInfrastructure } from '../project/infrastructure-ownership.js';
 import { InstalledStackResume, resumeDestinations, type InstalledResumeExecution, type InstalledResumeRequest, type InstalledResumeReceipt, type ResumeDestination } from '../project/installed-stack-resume.js';
@@ -1464,20 +1469,21 @@ export class ProjectService extends EventEmitter {
     const config = await this.ensureConfig(scope.project);
     const directory = this.registry.get(scope.project)?.path;
     if (!directory) throw new Error('Project is not registered');
-    const bootstraps = new Map<string, string>();
+    const bootstraps = new Map<string, { app: string; releaseRoot?: string }>();
     const stacks = this.resolveStacks(config, scope.project);
     if (scope.stack && !stacks[scope.stack]) throw new Error('Stack is not configured');
     for (const [name, stack] of Object.entries(stacks)) {
       if (scope.stack && scope.stack !== name) continue;
       for (const app of await this.launchEntries(scope.project, name, stack, config))
-        if (app.bootstrap) bootstraps.set(resolveAppPath(directory, app, app.bootstrap), app.name);
+        if (app.bootstrap) bootstraps.set(resolveAppPath(directory, app, app.bootstrap),
+          { app: app.name, ...(app.releaseRoot && { releaseRoot: app.releaseRoot }) });
     }
     const result: import('../shared/dto/project.js').TopologyMetadataRefresh = { refreshed: 0, failures: [] };
-    for (const [bootstrap, app] of bootstraps) {
+    for (const [bootstrap, { app, releaseRoot }] of bootstraps) {
       try {
         const remaining = Math.min(30_000, deadline - Date.now());
         if (remaining <= 0) throw new Error('Declaration refresh deadline exceeded; this application was not read');
-        const { metadata: record } = await readBootstrapMetadata(bootstrap, false, remaining);
+        const { metadata: record } = await readBootstrapMetadata(bootstrap, false, remaining, releaseRoot);
         this.bootstrapMetadata.save(record);
         this.bootstrapTopology.set(bootstrap, record.definition);
         result.refreshed += 1;
@@ -5289,7 +5295,7 @@ export class ProjectService extends EventEmitter {
       if (entry.bootstrap && project) {
         try {
           const bootstrapAbsPath = resolveAppPath(project.path, entry, entry.bootstrap);
-          const { definition: loaded, metadata } = await readBootstrapMetadata(bootstrapAbsPath);
+          const { definition: loaded, metadata } = await readBootstrapMetadata(bootstrapAbsPath, false, 30_000, entry.releaseRoot);
           this.bootstrapMetadata.save(metadata);
           // Preserve only declarative data across backend handoffs, never executable hooks.
           this.bootstrapTopology.set(bootstrapAbsPath, structuredClone({ ...(loaded.requires ? { requires: loaded.requires } : {}), ...(loaded.omnitronConfig ? { omnitronConfig: loaded.omnitronConfig } : {}) }));
@@ -5363,34 +5369,34 @@ export class ProjectService extends EventEmitter {
     return new LocalReleaseSelection(this.daemonStateStore, { project, stack }, registration.registeredAt);
   }
 
-  private async installedEntries(project: string, stack: string, definition: IStackConfig, config: IEcosystemConfig, release: LoadedRelease, prepare = false, requiredMigrations?: readonly string[], migrationFiles?: MigrationRequiredFiles) {
-    return (await this.installedRelease(project, stack, definition, config, release, prepare, requiredMigrations, migrationFiles)).entries;
+  private async installedEntries(project: string, stack: string, definition: IStackConfig, config: IEcosystemConfig, release: LoadedRelease, prepare = false, requiredApps?: readonly string[], requiredFiles?: MigrationRequiredFiles) {
+    return (await this.installedRelease(project, stack, definition, config, release, prepare, requiredApps, requiredFiles)).entries;
   }
 
-  private async installedRelease(project: string, stack: string, definition: IStackConfig, config: IEcosystemConfig, release: LoadedRelease, prepare = false, requiredMigrations?: readonly string[], migrationFiles?: MigrationRequiredFiles) {
+  private async installedRelease(project: string, stack: string, definition: IStackConfig, config: IEcosystemConfig, release: LoadedRelease, prepare = false, requiredApps?: readonly string[], requiredFiles?: MigrationRequiredFiles, admittedOwner?: ApplicationRuntime) {
     const root = this.registry.get(project)?.path;
     if (!root) throw new Error('Project is not registered');
     const { inspectLocalReleaseInstallation, inspectLocalReleasePayloads } = await import('../release/local-installation.js');
     const stackEntries = this.resolveStackApps(definition, config);
     // Validate the complete stack before narrowing executable verification to
-    // migration owners. Other applications still own their declared environment.
+    // requested executable owners. Other applications still own their declared environment.
     const env = await this.stackEnvFor(project, stack, definition, stackEntries.map(entry => entry.name));
-    const configured = stackEntries.filter(entry => !requiredMigrations || requiredMigrations.includes(entry.name));
+    const configured = stackEntries.filter(entry => !requiredApps || requiredApps.includes(entry.name));
     const entries = configured.map(entry => ({
       ...entry, env: { ...entry.env, ...env[entry.name] },
       ...(!entry.releaseFrom || entry.cwd !== undefined ? { cwd: resolveAppPath(root, entry) } : {}),
       ...(entry.bootstrap && { bootstrap: resolveAppPath(root, entry, entry.bootstrap) }),
     }));
-    const ownerPid = this.orchestrator.getExecutionOwnerPid?.();
-    if (!ownerPid) throw new Error('A verified local release requires a connected independent execution owner');
-    const ownerPackage = await this.orchestrator.getExecutionOwnerPackage?.();
-    if (!ownerPackage) throw new Error('Verified runtime origin requires an independently verified execution-owner package');
+    const owner = admittedOwner ?? await this.orchestrator.getExecutionOwnerRuntime?.();
+    assertResidentApplicationRuntime(owner);
+    assertReleaseTarget(owner.target, owner.target);
     const infrastructure = mergeInfrastructure(config, definition);
     const payloads = artifactVolumeEntries(infrastructure, config.apps);
     const roots = await inspectLocalReleasePayloads(release, payloads, prepare);
     const resolved = await bindArtifactVolumes(infrastructure, roots);
-    const installed = await inspectLocalReleaseInstallation(release, stack, entries, { prepare, ownerPid, ownerPackage,
-      ...(requiredMigrations && { requiredFiles: migrationFiles ?? Object.fromEntries(requiredMigrations.map(app => [app, [COMPILED_MIGRATION_ENTRY]])) }),
+    const installed = await inspectLocalReleaseInstallation(release, stack, entries, { prepare,
+      ownerPid: owner.execution!.pid, ownerPackage: owner.root, runtime: owner.target!,
+      ...(requiredApps && { requiredFiles: requiredFiles ?? Object.fromEntries(requiredApps.map(app => [app, [COMPILED_MIGRATION_ENTRY]])) }),
     });
     const preparedArtifactVolumes: import('../shared/dto/project.js').PreparedArtifactVolume[] = artifactVolumeBindings(infrastructure).map(([binding, value]) => {
       const service = resolved?.services?.[value.service];
@@ -5401,6 +5407,83 @@ export class ProjectService extends EventEmitter {
         releaseId: release.id, manifestSha256: release.manifestSha256, artifactSha256: artifact.sha256 };
     });
     return { entries: installed, infrastructure: resolved, preparedArtifactVolumes };
+  }
+
+  /** Read-only admission for an operation in an already selected, prepared release.
+   * The returned fence repeats admission before each Xec attempt; it cannot install,
+   * select a release, run setup, or silently adopt a different owner/registration. */
+  async resolvePipelineRelease(target: PipelineReleaseTarget, options: { cwd?: string; args?: string[]; env: Record<string, string> }): Promise<{
+    command: Command;
+    evidence: Omit<PipelineReleaseExecution, 'attempt' | 'state'>;
+    verify(): Promise<void>;
+  }> {
+    const { readInstalledReleaseReceipt } = await import('../release/installed-origin.js');
+    const { frozenMember } = await import('../release/frozen-installation.js');
+    const inspect = async () => {
+      assertReleaseLoaderEnvironment(process.env);
+      assertReleaseLoaderEnvironment(options.env);
+      const scope = await this.resolveProjectStack({ project: target.project, stack: target.stack }, { readOnly: true });
+      this.assertStackMutable(scope);
+      const registered = this.registry.get(scope.project);
+      const config = this.getLoadedConfig(scope.project);
+      if (!registered || !config) throw Error('Release pipeline target requires a registered, loaded project');
+      const registration = structuredClone(registered);
+      const definition = this.resolveStacks(config, scope.project)[scope.stack];
+      if (!definition || definition.type !== 'local' || definition.managedOrigin)
+        throw Error('Release pipeline target requires an independently owned local stack; remote execution is unsupported');
+      const fingerprint = () => createHash('sha256').update(JSON.stringify({
+        definition: this.resolveStacks(this.getLoadedConfig(scope.project)!, scope.project)[scope.stack],
+        config: this.getLoadedConfig(scope.project),
+      })).digest('hex');
+      const definitionFingerprint = fingerprint();
+      const selection = this.localSelection(scope.project, scope.stack).read();
+      if (!selection.release) throw Error('Release pipeline target has no selected immutable release');
+      const owner = await this.orchestrator.getExecutionOwnerRuntime?.();
+      assertResidentApplicationRuntime(owner);
+      assertReleaseTarget(owner.target, owner.target);
+      if (!owner.execution?.lifetime) throw Error('Release pipeline execution requires native owner lifetime evidence');
+      const release = await this.admitRelease(scope.project, scope.stack, definition, config, selection.release.id, 'check');
+      if (release.manifestSha256 !== selection.release.manifestSha256) throw Error('Selected release manifest changed on disk');
+      const source = releaseArtifactOrigins(release.manifest, release.manifestSha256).find(item => item.app === target.app);
+      const origin = source?.origin;
+      const artifact = origin?.runtimeOrigin && { releaseId: origin.releaseId, manifestSha256: origin.manifestSha256,
+        artifactSha256: origin.artifactSha256, producerApp: origin.runtimeOrigin.producerApp,
+        projectCommit: origin.runtimeOrigin.projectCommit, frameworkCommit: origin.frameworkCommit };
+      if (!artifact || !isDeepStrictEqual(artifact, target.artifact)) throw Error('Selected release does not contain the pinned pipeline artifact');
+      const installed = await this.installedRelease(scope.project, scope.stack, definition, config, release, false,
+        [target.app], { [target.app]: [target.entry] }, owner);
+      if (installed.entries.length !== 1 || !installed.entries[0]?.releaseRoot) throw Error('Pipeline application is absent from the selected stack');
+      const entry = installed.entries[0], root = entry.releaseRoot!;
+      const file = await frozenMember(root, target.entry);
+      const receipt = await readInstalledReleaseReceipt(root);
+      const env = { ...Object.fromEntries(Object.entries(process.env).filter((item): item is [string, string] => typeof item[1] === 'string')),
+        ...entry.env, ...options.env, NODE_OPTIONS: releaseOptionsForEnv(entry.env), NODE_PATH: '',
+        PATH: path.dirname(owner.executable) + path.delimiter + '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin' };
+      const cwd = options.cwd ?? entry.cwd ?? root;
+      if (!path.isAbsolute(cwd) || await fs.promises.realpath(cwd) !== cwd || !(await fs.promises.stat(cwd)).isDirectory())
+        throw Error('A release pipeline working directory must be an absolute physical directory');
+      const command: Command = { command: owner.executable, args: [file, ...options.args ?? []], shell: false,
+        cwd,
+        env: withClosureLibraryPath(env, { verifiedRoot: root }, {}) ?? env };
+      const evidence: Omit<PipelineReleaseExecution, 'attempt' | 'state'> = { artifact,
+        consumer: origin!.runtimeOrigin!.consumer,
+        installationRoot: root, treeSha256: receipt.treeSha256, entry: file, executable: owner.executable, cwd,
+        environmentSha256: createHash('sha256').update(JSON.stringify(Object.entries(command.env!).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0))).digest('hex'), target: owner.target!,
+        owner: { id: owner.execution!.ownerId, pid: owner.execution!.pid, epoch: owner.execution!.epoch,
+          lifetime: owner.execution!.lifetime, frameworkCommit: owner.commit } };
+      const observed = await this.orchestrator.getExecutionOwnerRuntime?.();
+      assertSameApplicationRuntime(owner, observed);
+      assertReleaseTarget(owner.target, observed?.target);
+      this.assertStackMutable(scope);
+      if (!isDeepStrictEqual(registration, this.registry.get(scope.project)) ||
+          !isDeepStrictEqual(selection, this.localSelection(scope.project, scope.stack).read()) || fingerprint() !== definitionFingerprint)
+        throw Error('Pipeline registration, configuration or release selection changed during admission');
+      return { command, evidence, registration, selection, scope, definition: definitionFingerprint };
+    };
+    const admitted = await inspect();
+    return { command: admitted.command, evidence: admitted.evidence, verify: async () => {
+      if (!isDeepStrictEqual(admitted, await inspect())) throw Error('Pipeline release, application environment or execution owner changed after admission');
+    } };
   }
 
   /** All consumers of executable declarations must see the same physical entry as the owner. */

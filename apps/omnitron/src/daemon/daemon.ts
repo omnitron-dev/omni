@@ -371,12 +371,9 @@ export class OmnitronDaemon {
       return this.ownerAdmissionProof.build;
     }
     const observe = async () => {
-      const snapshot = await client.recoverySnapshot();
-      const status = snapshot.status, live = client.state();
-      if (live?.phase !== 'active' || live.connection.status !== 'connected' || live.epoch !== epoch ||
-          live.owner.id !== owner.id || live.owner.pid !== owner.pid || live.owner.startedAt !== owner.startedAt ||
-          this.execution !== client || this.isShuttingDown || this.handingOffBackend || this.preparingBackend ||
-          status.phase !== 'active' || status.controller.controllerId !== client.controllerId || status.controller.epoch !== epoch ||
+      const snapshot = await client.controlledOwnerSnapshot({ ownerId: owner.id, controllerId: client.controllerId, epoch });
+      const status = snapshot.status;
+      if (this.execution !== client || this.isShuttingDown || this.handingOffBackend || this.preparingBackend ||
           status.owner.id !== owner.id || status.owner.pid !== owner.pid || status.owner.startedAt !== owner.startedAt)
         throw new Error('Application owner or controller changed during admission');
       return snapshot;
@@ -1448,7 +1445,19 @@ export class OmnitronDaemon {
       const { PipelineRpcService: PipelineRpc } = await import('../services/pipeline.rpc-service.js');
       const pipelineService = await container.resolveAsync(PIPELINE_SERVICE_TOKEN);
       if (!audit || !this.nodeManagerService) throw new Error('Pipeline execution requires audit and node services');
-      pipelineService.configure(this.nodeManagerService, (status, duration) => this.metricsBridge?.recordPipelineRun(status, duration));
+      pipelineService.configure(this.nodeManagerService, (status, duration) => this.metricsBridge?.recordPipelineRun(status, duration), {
+        projects: projectService,
+        assertLifecycle: async () => {
+          const execution = this.execution;
+          const assertLocal = () => {
+            if (this.isShuttingDown || this.preparingBackend || this.handingOffBackend || this.execution !== execution)
+              throw new Error('Controller handoff or shutdown is in progress');
+          };
+          assertLocal();
+          if (execution) await execution.controlledOwnerSnapshot();
+          assertLocal();
+        },
+      });
       await pipelineService.initialize();
       this.pipelineService = pipelineService;
       const pipelineRpcService = new PipelineRpc(pipelineService, authService, audit);

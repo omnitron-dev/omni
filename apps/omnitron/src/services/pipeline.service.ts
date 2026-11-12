@@ -9,6 +9,7 @@ import { redactDiagnosticText } from '@omnitron-dev/titan/diagnostics';
 import type { OmnitronDatabase, PipelinesTable, PipelineRunsTable } from '../database/schema.js';
 import { sshConfig } from '../execution/execution.service.js';
 import type { NodeManagerService } from './node-manager.service.js';
+import type { ProjectService } from './project.service.js';
 import {
   PIPELINE_LIMITS,
   pipelineCondition,
@@ -22,6 +23,7 @@ import type {
   PipelineRunStepResult,
   PipelineRun,
   PipelineRunSummary,
+  PipelineReleaseExecution,
 } from '../shared/dto/pipelines.js';
 export type {
   PipelineDef,
@@ -38,6 +40,14 @@ interface ActiveRun {
   done: Promise<void>;
 }
 type Nodes = Pick<NodeManagerService, 'getNode' | 'nodeToSshTarget'>;
+type ReleaseOperation = Awaited<ReturnType<ProjectService['resolvePipelineRelease']>>;
+interface ReleaseCommand {
+  name: string;
+  operation: ReleaseOperation;
+  evidence?: PipelineReleaseExecution;
+  spawned: boolean;
+  unconfirmed: boolean;
+}
 const live = ['pending', 'running', 'cancelling'];
 const secretKey = /password|passphrase|secret|token|credential|private.?key|api.?key/i;
 
@@ -112,23 +122,37 @@ export class PipelineService {
   private initialization?: Promise<void>;
   private stopped = false;
   private nodes?: Nodes;
+  private projects: Pick<ProjectService, 'resolvePipelineRelease'> | undefined;
+  private assertLifecycle: (() => void | Promise<void>) | undefined;
   private observe: ((status: PipelineRun['status'], duration: number) => void) | undefined;
   constructor(
     private readonly db: Kysely<OmnitronDatabase>,
     private readonly logger: ILogger
   ) {}
 
-  configure(nodes: Nodes, observe?: (status: PipelineRun['status'], duration: number) => void): void {
+  configure(nodes: Nodes, observe?: (status: PipelineRun['status'], duration: number) => void,
+    releases?: { projects: Pick<ProjectService, 'resolvePipelineRelease'>; assertLifecycle(): void | Promise<void> }): void {
     this.nodes = nodes;
     this.observe = observe;
+    this.projects = releases?.projects;
+    this.assertLifecycle = releases?.assertLifecycle;
   }
   async initialize(): Promise<void> {
-    this.initialization ??= this.db
-      .updateTable('pipeline_runs')
-      .set({ status: 'interrupted', completedAt: new Date() })
-      .where('status', 'in', live)
-      .execute()
-      .then(() => undefined);
+    this.initialization ??= this.db.transaction().execute(async trx => {
+      const unfinished = await trx.selectFrom('pipeline_runs').selectAll().where('status', 'in', live).execute();
+      for (const row of unfinished) {
+        const run = this.mapRun(row);
+        for (const step of run.steps) {
+          if (live.includes(step.status)) step.status = 'interrupted';
+          // Spawn and its acknowledgement cannot be one database transaction.
+          // A prepared record therefore does not prove that effects never began.
+          for (const attempt of step.executions ?? [])
+            if (attempt.state === 'prepared' || attempt.state === 'started') attempt.state = 'unconfirmed';
+        }
+        await trx.updateTable('pipeline_runs').set({ status: 'interrupted', steps: JSON.stringify(run.steps), completedAt: new Date() })
+          .where('id', '=', row.id).where('status', 'in', live).execute();
+      }
+    });
     return this.initialization;
   }
   async dispose(): Promise<void> {
@@ -141,7 +165,8 @@ export class PipelineService {
     const { Pipeline: XecPipeline } = await import('@xec-sh/ops');
     const graph = XecPipeline.create(def.name);
     for (const step of def.steps)
-      graph.step(step.name, { run: step.run, ...(step.dependsOn ? { dependsOn: step.dependsOn } : {}) });
+      graph.step(step.name, { run: step.kind === 'release' ? async () => {} : step.run,
+        ...(step.dependsOn ? { dependsOn: step.dependsOn } : {}) });
     graph.validate();
   }
   async createPipeline(def: PipelineDef): Promise<Pipeline> {
@@ -219,7 +244,9 @@ export class PipelineService {
     const handle: ActiveRun = { pipelineId: id, abort, done: admission };
     this.activeRuns.set(runId, handle);
     const prepared: PreparedScript[] = [];
+    const commands = new Map<NonNullable<Command['onSpawn']>, ReleaseCommand | null>();
     try {
+      await this.assertLifecycle?.();
       const definition = await this.getPipeline(id);
       if (!definition) throw new Error(`Pipeline '${id}' not found`);
       if (expectedRevision !== undefined && expectedRevision !== definition.revision)
@@ -238,7 +265,22 @@ export class PipelineService {
           target = { type: 'ssh', ...sshConfig(ssh) };
         }
         let command: Command;
-        if (step.kind === 'xec') {
+        if (step.kind === 'release') {
+          if (!this.projects || !this.assertLifecycle) throw new Error('Release pipeline admission is unavailable on this daemon');
+          const operation = await this.projects.resolvePipelineRelease(step.target, {
+            ...(step.cwd ? { cwd: step.cwd } : {}), ...(step.args ? { args: step.args } : {}), env,
+          });
+          const binding: ReleaseCommand = { name: step.name, operation, spawned: false, unconfirmed: false };
+          // Xec preserves this ordinary Command callback in every attempt. Its
+          // identity correlates equal commands without argv guesses or global state.
+          const onSpawn: NonNullable<Command['onSpawn']> = child => {
+            binding.spawned = true;
+            if (child.pid) binding.evidence!.pid = child.pid;
+            binding.evidence!.state = 'started';
+          };
+          commands.set(onSpawn, binding);
+          command = { ...operation.command, onSpawn };
+        } else if (step.kind === 'xec') {
           const script = await prepareScript(step.run, {
             ...(step.cwd ? { cwd: step.cwd } : {}),
             env,
@@ -255,6 +297,12 @@ export class PipelineService {
             env,
             ...(target ? { adapter: 'ssh', adapterOptions: target } : {}),
           };
+        if (step.kind !== 'release') {
+          const original = command.onSpawn;
+          const onSpawn: NonNullable<Command['onSpawn']> = child => original?.(child);
+          commands.set(onSpawn, null);
+          command = { ...command, onSpawn };
+        }
         graph.step(step.name, {
           run: command,
           ...(step.dependsOn ? { dependsOn: step.dependsOn } : {}),
@@ -264,6 +312,7 @@ export class PipelineService {
         });
       }
       abort.signal.throwIfAborted();
+      await this.assertLifecycle?.();
       const startedAt = new Date().toISOString();
       const steps: PipelineRunStepResult[] = definition.steps.map((step) => ({
         name: step.name,
@@ -295,12 +344,13 @@ export class PipelineService {
       const secrets = [
         ...new Set([
           ...Object.values(params).filter((value): value is string => typeof value === 'string' && value.length > 0),
-          ...Object.entries({ ...process.env, ...Object.assign({}, ...definition.steps.map((step) => step.env)) })
+          ...[process.env, ...definition.steps.map((step) => step.env),
+            ...[...commands.values()].flatMap(binding => binding ? [binding.operation.command.env] : [])].flatMap(env => Object.entries(env ?? {}))
             .filter(([key, value]) => secretKey.test(key) && typeof value === 'string' && value.length > 0)
             .map(([, value]) => value as string),
         ]),
       ].sort((a, b) => b.length - a.length);
-      handle.done = this.executeRun(run, graph, abort.signal, secrets, prepared).finally(() =>
+      handle.done = this.executeRun(run, graph, abort.signal, secrets, prepared, commands).finally(() =>
         this.activeRuns.delete(runId)
       );
       finishAdmission();
@@ -324,7 +374,8 @@ export class PipelineService {
     graph: import('@xec-sh/ops').Pipeline,
     signal: AbortSignal,
     secrets: string[],
-    prepared: PreparedScript[]
+    prepared: PreparedScript[],
+    commands: Map<NonNullable<Command['onSpawn']>, ReleaseCommand | null>,
   ): Promise<void> {
     const safeError = (error: unknown) => {
       const text = new PipelineOutput(secrets);
@@ -381,10 +432,49 @@ export class PipelineService {
       }
       await save();
     };
+    // Xec retains ownership of streams, output limits, retry and cancellation.
+    // Its execute hook fences the exact Command before each ordinary attempt.
+    const { ExecutionEngine } = await import('@xec-sh/core');
+    const engine = new ExecutionEngine();
+    const execute = async (command: Command) => {
+      await this.assertLifecycle?.();
+      command.signal?.throwIfAborted();
+      if (!command.onSpawn || !commands.has(command.onSpawn)) throw Error('Xec did not retain the admitted pipeline command binding');
+      const binding = commands.get(command.onSpawn);
+      if (!binding) return engine.execute(command);
+      if (binding.unconfirmed) throw new Error('Prior release execution is unconfirmed; inspect its evidence before retrying');
+      const { operation } = binding;
+      const step = run.steps.find(item => item.name === binding.name)!;
+      binding.spawned = false;
+      binding.evidence = { ...structuredClone(operation.evidence), attempt: step.attempts!, state: 'prepared' };
+      (step.executions ??= []).push(binding.evidence);
+      await save();
+      await operation.verify();
+      await this.assertLifecycle?.();
+      command.signal?.throwIfAborted();
+      try {
+        const result = await engine.execute(command);
+        // A changed owner after effects is an unconfirmed attempt, never a
+        // successful receipt or a reason to run those effects again automatically.
+        await operation.verify();
+        binding.evidence.state = 'completed';
+        await save();
+        return result;
+      } catch (error) {
+        if (binding.spawned) { binding.unconfirmed = true; binding.evidence.state = 'unconfirmed'; }
+        throw error;
+      } finally {
+        // A failed completion write must not escape the catch and let Xec retry
+        // already executed effects. A failed journal stays failed, not repaired
+        // by silently dropping the rejected write from its queue.
+        if (binding.evidence.state !== 'completed') await save();
+      }
+    };
     try {
       const result = await graph.run(
         {},
-        { signal, concurrency: PIPELINE_LIMITS.concurrency, outputLimit: PIPELINE_LIMITS.outputBytes, onEvent }
+        { signal, concurrency: PIPELINE_LIMITS.concurrency, outputLimit: PIPELINE_LIMITS.outputBytes, onEvent,
+          execute }
       );
       run.status = result.status;
     } catch (error) {
@@ -397,6 +487,7 @@ export class PipelineService {
         }
     } finally {
       try {
+        await engine.dispose();
         await Promise.all(prepared.map((script) => script.dispose()));
       } catch (error) {
         run.status = 'failed';

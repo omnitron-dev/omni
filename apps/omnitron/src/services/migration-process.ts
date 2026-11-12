@@ -3,6 +3,7 @@ import { shellEscape } from '../shared/shell-escape.js';
 import type { LocalMigrationTarget } from './migration-target.js';
 import { prepareMigrationConfiguration } from '../migration/configuration.js';
 import { closureLibraryDirectories, withClosureLibraryPath } from '../release/closure-library-path.js';
+import { assertReleaseLoaderEnvironment } from '../release/target-runtime.js';
 
 /** The same config adapter on local and remote nodes. The program is resolved from
  * the admitted application's own dependency closure; it uses the public operation
@@ -20,14 +21,15 @@ ${validate ? "console.log(JSON.stringify({name:prepared.name??null,validated:tru
 
 /** SSH carries credentials on stdin; the remote process receives them only as its environment.
  * The deployment execution fence owns the timeout and process group. Do not retry this command. */
-export function prepareRemoteMigration(target: { cwd: string; script: string; node?: string; mode?: 'script' | 'config'; validate?: boolean }, env: Record<string, string>) {
+export function prepareRemoteMigration(target: { cwd: string; script: string; node?: string; mode?: 'script' | 'config'; validate?: boolean; verifiedRoot?: string }, env: Record<string, string>) {
   const source = `import {spawn} from 'node:child_process';
     const closureLibraryDirectories=${closureLibraryDirectories.toString()};
     let size=0;const chunks=[];
     for await(const chunk of process.stdin){size+=chunk.length;if(size>1024*1024)throw Error('Migration environment input exceeds 1 MiB');chunks.push(chunk)}
     let env;try{env=JSON.parse(Buffer.concat(chunks).toString('utf8'))}catch{throw Error('Invalid migration environment input')}
     if(!env||typeof env!=='object'||Array.isArray(env)||Object.entries(env).some(([key,value])=>!/^[_A-Za-z][_A-Za-z0-9]*$/.test(key)||typeof value!=='string'||value.includes('\\0')))throw Error('Invalid migration environment input');
-    const libs=process.platform==='linux'?closureLibraryDirectories([${JSON.stringify(target.cwd)},${JSON.stringify(target.script)}]):[];
+    ${target.verifiedRoot ? `const assertReleaseLoaderEnvironment=${assertReleaseLoaderEnvironment.toString()};assertReleaseLoaderEnvironment(env);assertReleaseLoaderEnvironment(process.env);` : ''}
+    const libs=process.platform==='linux'?closureLibraryDirectories(${JSON.stringify(target.verifiedRoot ? { verifiedRoot: target.verifiedRoot } : [target.cwd, target.script])}):[];
     const ld=libs.length?[...new Set([...libs,...(env.LD_LIBRARY_PATH||'').split(':'),...(process.env.LD_LIBRARY_PATH||'').split(':')].filter(Boolean))].join(':'):undefined;
     const child=spawn(process.execPath,${JSON.stringify(migrationProcessArguments(target, target.validate))},{
       cwd:${JSON.stringify(target.cwd)},env:{...process.env,...env,...(ld?{LD_LIBRARY_PATH:ld}:{})},stdio:['ignore','inherit','inherit']});
@@ -44,8 +46,8 @@ export async function executeLocalMigration(target: LocalMigrationTarget, env: N
   options: { signal?: AbortSignal; timeoutMs?: number; validate?: boolean } = {}) {
   const deadline = AbortSignal.timeout(options.timeoutMs ?? 600_000);
   const signal = options.signal ? AbortSignal.any([options.signal, deadline]) : deadline;
+  const closureEnv = target.sealed ? withClosureLibraryPath(env, { verifiedRoot: target.cwd }, process.env) : undefined;
   const engine = new ExecutionEngine({ defaultTimeout: 0, adapters: { local: { killSignal: 'SIGKILL' } } });
-  const closureEnv = target.sealed ? withClosureLibraryPath(env, [target.cwd, target.script], process.env) : undefined;
   try {
     const result = await engine.execute({ command: process.execPath,
       args: [...(target.sealed ? [] : ['--import', 'tsx/esm']), ...migrationProcessArguments(target, options.validate)],

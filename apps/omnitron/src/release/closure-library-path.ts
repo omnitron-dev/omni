@@ -1,4 +1,7 @@
 import type { Dirent } from 'node:fs';
+import { assertReleaseLoaderEnvironment } from './target-runtime.js';
+
+export type ClosureLibrarySource = Iterable<string | undefined> | { verifiedRoot: string };
 
 /**
  * Locate shared-object directories packaged inside an application's `.omnitron`
@@ -11,15 +14,37 @@ import type { Dirent } from 'node:fs';
  * shared-library directories to `LD_LIBRARY_PATH` when spawning child processes
  * on Linux restores dynamic-linker resolution without mutating the verified
  * `.installed` payload tree on disk.
+ * Pass `{ verifiedRoot }` for an admitted installation: dependency-free roots
+ * never borrow a parent's closure, and invalid library paths fail closed.
+ * Candidate arrays retain ancestor discovery for development sources.
  *
  * Self-contained (`process.getBuiltinModule` only, zero module-scope value imports)
  * so Vitest/Rolldown/esbuild never rewrite identifiers inside `.toString()`.
  */
-export function closureLibraryDirectories(candidates: Iterable<string | undefined>): string[] {
+export function closureLibraryDirectories(source: ClosureLibrarySource): string[] {
   const fs = process.getBuiltinModule('node:fs');
   const path = process.getBuiltinModule('node:path');
+  const verified = typeof source === 'object' && source !== null && 'verifiedRoot' in source;
   let closureRoot: string | null = null;
-  for (const candidate of candidates) {
+  if (verified) {
+    const root = source.verifiedRoot;
+    if (typeof root !== 'string' || !path.isAbsolute(root) || fs.realpathSync(root) !== root || !fs.lstatSync(root).isDirectory())
+      throw Error('Verified closure root must be a physical absolute directory: ' + root);
+    if (!fs.lstatSync(path.join(root, '.omnitron-closure.json')).isFile())
+      throw Error('Verified closure record must be a physical file: ' + root);
+    // A dependency-free release is valid. Its parent directory is never an
+    // alternative source of libraries, even if that parent is another closure.
+    for (const directory of [path.join(root, 'node_modules'), path.join(root, 'node_modules', '.omnitron')]) {
+      try {
+        if (!fs.lstatSync(directory).isDirectory() || fs.realpathSync(directory) !== directory)
+          throw Error('Verified closure library directory must be physical: ' + directory);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+        throw error;
+      }
+    }
+    closureRoot = root;
+  } else for (const candidate of source) {
     if (!candidate) continue;
     let current = path.resolve(candidate);
     for (;;) {
@@ -59,8 +84,11 @@ export function closureLibraryDirectories(candidates: Iterable<string | undefine
     if (depth > 8) return;
     let entries: Dirent[];
     try {
+      if (verified && fs.realpathSync(dir) !== dir)
+        throw Error('Verified closure library directory must be physical: ' + dir);
       entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
+    } catch (error) {
+      if (verified) throw error;
       return;
     }
     entries.sort((a, b) => compareNames(a.name, b.name));
@@ -69,16 +97,20 @@ export function closureLibraryDirectories(candidates: Iterable<string | undefine
       if (!sharedObject.test(entry.name)) continue;
       if (entry.isFile()) {
         hasSharedObject = true;
-        break;
+        if (!verified) break;
       }
       if (entry.isSymbolicLink()) {
         try {
           const resolved = fs.realpathSync(path.join(dir, entry.name));
-          if (resolved.startsWith(rootPrefix) && fs.statSync(resolved).isFile()) {
+          const containedFile = resolved.startsWith(rootPrefix) && fs.statSync(resolved).isFile();
+          if (verified && !containedFile)
+            throw Error('Verified closure library leaves its root or is not a file: ' + path.join(dir, entry.name));
+          if (containedFile) {
             hasSharedObject = true;
-            break;
+            if (!verified) break;
           }
-        } catch {
+        } catch (error) {
+          if (verified) throw error;
           // Ignore broken or escaping links.
         }
       }
@@ -96,7 +128,8 @@ export function closureLibraryDirectories(candidates: Iterable<string | undefine
   let packages: Dirent[];
   try {
     packages = fs.readdirSync(omnitronDir, { withFileTypes: true });
-  } catch {
+  } catch (error) {
+    if (verified) throw error;
     return [];
   }
   packages.sort((a, b) => compareNames(a.name, b.name));
@@ -135,12 +168,16 @@ export function mergeLibraryPath(
  */
 export function withClosureLibraryPath(
   env: Readonly<Record<string, string | undefined>> | undefined,
-  candidates: Iterable<string | undefined>,
+  source: ClosureLibrarySource,
   inheritedEnv: NodeJS.ProcessEnv = process.env,
   platform: NodeJS.Platform = process.platform
 ): Record<string, string> | undefined {
+  if (typeof source === 'object' && source !== null && 'verifiedRoot' in source) {
+    assertReleaseLoaderEnvironment(env);
+    assertReleaseLoaderEnvironment(inheritedEnv);
+  }
   if (platform !== 'linux') return env as Record<string, string> | undefined;
-  const directories = closureLibraryDirectories(candidates);
+  const directories = closureLibraryDirectories(source);
   if (directories.length === 0) return env as Record<string, string> | undefined;
   const libraryPath = mergeLibraryPath(directories, env?.['LD_LIBRARY_PATH'], inheritedEnv['LD_LIBRARY_PATH']);
   if (!libraryPath) return env as Record<string, string> | undefined;

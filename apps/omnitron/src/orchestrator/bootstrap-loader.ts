@@ -91,6 +91,8 @@ function canLoadTypeScript(): boolean {
 }
 
 export interface LoadBootstrapOptions {
+  /** An admitted installed release; library discovery cannot leave this root. */
+  releaseRoot?: string;
   /** Skip cache and prefer source .ts over compiled dist/ */
   devMode?: boolean;
   /**
@@ -132,7 +134,8 @@ export async function loadBootstrapConfig(
     const timeoutMs =
       (typeof options.freshModuleGraph === 'object' ? options.freshModuleGraph.timeoutMs : undefined) ??
       FRESH_GRAPH_TIMEOUT_MS;
-    const env = withClosureLibraryPath(undefined, [resolved]);
+    const env = withClosureLibraryPath(undefined, options.releaseRoot
+      ? { verifiedRoot: options.releaseRoot } : [resolved]);
     const definition = await readInFreshProcess({ entryPath: moduleReaderEntry(import.meta.url, 'bootstrap-loader-child'),
       args: [resolved, options.devMode ? 'development' : 'production'], timeoutMs, label: 'the definition',
       ...(env && { env }) });

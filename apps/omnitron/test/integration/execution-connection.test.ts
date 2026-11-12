@@ -1,15 +1,22 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { Netron, Public, Service } from '@omnitron-dev/titan/netron';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import { ExecutionClient } from '../../src/daemon/execution-client.js';
 import { recoveryState } from '../../src/daemon/recovery-state.js';
 import { runtimeDiagnostics } from '../../src/monitoring/runtime-diagnostics.js';
+import { attestManagedOwnerRuntime } from '../../src/daemon/managed-owner-build.js';
+
+vi.mock('../../src/daemon/managed-owner-build.js', () => ({ attestManagedOwnerRuntime: vi.fn() }));
 
 @Service({ name: 'OmnitronExecution' })
 class Owner {
+  readonly startedAt = new Date().toISOString();
+  controllerId = 'test';
+  epoch = 1;
+  phase = 'active';
   snapshots: unknown[] = [];
   acknowledgments = 0;
   mutations = 0;
@@ -19,6 +26,7 @@ class Owner {
   unavailable = false;
   rejectAck = false;
   beforeObservation?: () => Promise<void>;
+  afterObservation?: () => Promise<void>;
   revision = 0;
   constructor(readonly id: string) {}
 
@@ -27,12 +35,14 @@ class Owner {
     this.snapshots.push(input);
     if (input?.afterEvent !== undefined) await this.beforeObservation?.();
     if (this.unavailable) throw new Error('Owner observation fixture is unavailable');
-    return { protocol: 1, revision: ++this.revision,
+    const snapshot = { protocol: 1, revision: ++this.revision,
       ...(this.capabilities === undefined ? {} : { capabilities: this.capabilities }),
-      status: { owner: { id: this.id, pid: process.pid, startedAt: new Date().toISOString() },
-        controller: { ownerId: this.id, controllerId: 'test', epoch: 1 }, phase: 'active' },
+      status: { owner: { id: this.id, pid: process.pid, startedAt: this.startedAt },
+        controller: { ownerId: this.id, controllerId: this.controllerId, epoch: this.epoch }, phase: this.phase },
       apps: [], workers: [], events: [], acknowledgedEvent: 0, lastEvent: 0, droppedEvents: 0,
       inventoryDigest: 'fixture', devMode: false, watchedApps: [], watchEnabled: false };
+    if (input?.afterEvent !== undefined) await this.afterObservation?.();
+    return snapshot;
   }
 
   @Public()
@@ -54,6 +64,7 @@ afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close();
   runtimeDiagnostics.resolve('execution.observation-unavailable');
   runtimeDiagnostics.resolve('execution.acknowledgment-unavailable');
+  vi.mocked(attestManagedOwnerRuntime).mockReset();
 });
 
 async function fixture() {
@@ -70,7 +81,7 @@ async function fixture() {
     return { owner, server };
   };
   const first = await serve();
-  const client = new ExecutionClient(socket, createNullLogger());
+  const client = new ExecutionClient(socket, createNullLogger(), 'test');
   cleanup.push(() => client.close());
   await client.connect();
   // White-box access is confined to the fixture: no diagnostic API can drop
@@ -84,6 +95,62 @@ async function fixture() {
   internals.grant = { ownerId: first.owner.id, controllerId: 'test', epoch: 1 };
   return { ...first, client, internals, serve, socket };
 }
+
+const runtimeProof = () => ({ build: { commit: 'a'.repeat(40), dirty: false, builtAt: '2026-11-12T00:00:00Z' },
+  packageRoot: '/fixture/owner', executable: '/fixture/node', lifetime: 'native-boot:birth',
+  target: { platform: process.platform, arch: process.arch, node: process.version, abi: process.versions.modules,
+    executableSha256: 'b'.repeat(64), libc: null } });
+
+it.each(['takeover', 'new-epoch', 'prepared'])('refuses installed execution authority on a stable %s observation before native admission', async change => {
+  const { owner, client } = await fixture();
+  if (change === 'takeover') { owner.controllerId = 'foreign'; owner.epoch = 2; }
+  if (change === 'new-epoch') owner.epoch = 2;
+  if (change === 'prepared') owner.phase = 'prepared';
+  await expect(client.orchestrator.getExecutionOwnerRuntime!()).rejects.toThrow('controller changed');
+  expect(attestManagedOwnerRuntime).not.toHaveBeenCalled();
+  expect(owner.mutations).toBe(0);
+});
+
+it('binds native runtime proof to the held grant before and after its asynchronous inspection', async () => {
+  const { owner, client } = await fixture();
+  vi.mocked(attestManagedOwnerRuntime).mockResolvedValue(runtimeProof());
+  await expect(client.orchestrator.getExecutionOwnerRuntime!()).resolves.toMatchObject({
+    root: '/fixture/owner', executable: '/fixture/node', execution: { ownerId: owner.id, pid: process.pid, epoch: 1, lifetime: 'native-boot:birth' },
+  });
+  vi.mocked(attestManagedOwnerRuntime).mockImplementationOnce(async () => {
+    owner.controllerId = 'foreign'; owner.epoch = 2;
+    return runtimeProof();
+  });
+  await expect(client.orchestrator.getExecutionOwnerRuntime!()).rejects.toThrow('controller changed');
+  expect(owner.mutations).toBe(0);
+});
+
+it('refuses an older controlled response after a newer observation has already recorded takeover', async () => {
+  const { owner, client } = await fixture();
+  const captured = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  let held = false;
+  owner.afterObservation = async () => {
+    if (held) return;
+    held = true;
+    captured.resolve();
+    await release.promise;
+  };
+  const admission = client.controlledOwnerSnapshot();
+  const refusal = expect(admission).rejects.toThrow('controller changed');
+  try {
+    await captured.promise;
+    owner.controllerId = 'foreign'; owner.epoch = 2;
+    await client.recoverySnapshot();
+    expect(client.state()!.epoch).toBe(2);
+  } finally {
+    release.resolve();
+  }
+  await refusal;
+  expect(attestManagedOwnerRuntime).not.toHaveBeenCalled();
+  expect(client.state()!.epoch).toBe(2);
+  expect(owner.mutations).toBe(0);
+});
 
 it('waits for an in-flight observation before reporting replay activation complete', async () => {
   const { owner, client, internals } = await fixture();

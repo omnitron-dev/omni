@@ -5,6 +5,8 @@
  * `./auth.ts`: a DTO that imports from an implementation drags decorators and
  * the server's dependency graph into the console's build.
  */
+import type { ArtifactIdentity } from '../../runtime/identity.js';
+import type { TargetRuntime } from '../../release/target-runtime.js';
 
 export interface PipelineDef {
   name: string;
@@ -13,11 +15,8 @@ export interface PipelineDef {
   triggers?: PipelineTrigger[];
 }
 
-export interface PipelineStep {
+interface PipelineStepOptions {
   name: string;
-  /** shell commands or a TypeScript script with $, $target and params. */
-  kind?: 'shell' | 'xec';
-  run: string;
   cwd?: string;
   /** Registered node ID. Omission or local executes locally. */
   nodeId?: string;
@@ -26,6 +25,47 @@ export interface PipelineStep {
   timeout?: number;
   retries?: number;
   condition?: string;
+}
+
+/** Logical producer identity is independent of the owner's installation directory. */
+export interface PipelineReleaseTarget {
+  project: string;
+  stack: string;
+  app: string;
+  artifact: ArtifactIdentity;
+  /** Physical compiled JavaScript member of the verified application closure. */
+  entry: string;
+}
+
+export type PipelineStep = PipelineStepOptions & ({
+  /** Shell command or a TypeScript script with $, $target and params. */
+  kind?: 'shell' | 'xec';
+  run: string;
+  target?: never;
+  args?: never;
+} | {
+  kind: 'release';
+  target: PipelineReleaseTarget;
+  args?: string[];
+  run?: never;
+});
+
+/** Per-attempt observations, never part of the registered semantic definition. */
+export interface PipelineReleaseExecution {
+  attempt: number;
+  artifact: ArtifactIdentity;
+  consumer: { releaseId: string; manifestSha256: string; app: string };
+  installationRoot: string;
+  treeSha256: string;
+  entry: string;
+  executable: string;
+  cwd: string;
+  /** Fingerprint only: environment values can contain credentials. */
+  environmentSha256: string;
+  target: TargetRuntime;
+  owner: { id: string; pid: number; epoch: number; lifetime: string; frameworkCommit: string };
+  pid?: number;
+  state: 'prepared' | 'started' | 'completed' | 'unconfirmed';
 }
 
 export interface PipelineTrigger {
@@ -62,7 +102,8 @@ export interface PipelineRunStepResult {
   stderr?: string;
   outputTruncated?: boolean;
   nodeId?: string;
-  kind?: 'shell' | 'xec';
+  kind?: 'shell' | 'xec' | 'release';
+  executions?: PipelineReleaseExecution[];
 }
 
 export interface PipelineRun {

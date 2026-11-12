@@ -57,6 +57,101 @@ omnitron logs --status
 
 Ranked levels in the CLI are minimum severities. Use `--level unknown` for records without a recognized level, or specify the exact stored spelling of a custom level. In Console, the level chips and the custom-level selector match exact values in both live and historical logs. Share the main log view with one `level` URL parameter per selected level.
 
+## Pipelines pinned to installed releases
+
+A `kind: 'release'` step identifies a registered project, stack, application and
+immutable producer artifact. It executes a package-relative compiled JavaScript
+member using the verified resident owner's Node. It does not store a physical
+installation path, Node path or generated `PATH` in the pipeline definition.
+Changing the owner package can therefore create a different, correctly bound
+installation without changing the pipeline's ID, revision or run history.
+
+For a new caller running at the registered compiled launch entry, the existing
+runtime-origin API supplies the producer identity:
+
+```ts
+import { verifyInstalledRuntime } from '@omnitron-dev/omnitron/runtime';
+import type { PipelineDef } from '@omnitron-dev/omnitron/dto/services';
+
+const runtime = await verifyInstalledRuntime(new URL(import.meta.url));
+if (runtime.state !== 'verified') throw Error(runtime.reason);
+const definition: PipelineDef = {
+  name: 'publish-results',
+  steps: [{
+    name: 'publish',
+    kind: 'release',
+    target: {
+      project: 'research', stack: 'publication', app: 'publisher',
+      artifact: runtime.producer,
+      entry: 'dist/publish.mjs',
+    },
+    cwd: '/srv/research-operator',
+    env: { OPERATOR_ROOT: '/srv/research-operator' },
+    args: ['--checked'],
+    timeout: 180000,
+    retries: 0,
+  }],
+  triggers: [{ type: 'manual', config: {} }],
+};
+```
+
+`artifact` contains `releaseId`, `manifestSha256`, `artifactSha256`, `producerApp`,
+`projectCommit` and `frameworkCommit`. Imported artifacts retain their producer
+identity; the run records the selected consumer release separately. The entry may
+be another compiled member of that same verified closure. This does not change
+`verifyInstalledRuntime`'s stricter contract for the registered launch entry.
+Arguments are literal array elements, and parameters remain JSON in
+`OMNITRON_PARAMS`; no shell interpolation occurs.
+
+Use the existing administrator-only `OmnitronPipelines` API, or save the definition
+as JSON and use the ordinary CLI:
+
+```sh
+omnitron pipeline save publication.json
+omnitron pipeline run <pipeline-id>
+omnitron pipeline status <run-id> --output
+# An intentional definition change requires the reviewed current revision:
+omnitron pipeline save publication.json --id <pipeline-id> --expected-revision <sha256>
+```
+
+Console's Advanced JSON editor accepts the same definition. Opening and saving a
+release step preserves its target and arguments. Run details show each attempt's
+artifact, installed tree, actual executable/target, native owner lifetime, process
+ID and environment fingerprint; environment values are not copied into evidence.
+
+Prepare and select the immutable release through the ordinary stack release
+lifecycle first. Pipeline admission never installs dependencies, prepares a missing
+installation, changes selection, starts applications, or provisions infrastructure.
+Only independently owned local stacks are supported; remote targets explicitly
+refuse execution. Registration lifetime, release selection, declaration, environment,
+full frozen payload and native owner binding are checked again before every Xec
+attempt. This repeats full verification and may be expensive for large closures.
+The current operation keeps the admitted owner; it never retargets mid-run.
+
+`PATH`, `NODE_OPTIONS` and `NODE_PATH` cannot be set by the release step. The app's
+recorded resource-only Node options apply, while Node search paths are empty.
+Nonempty inherited or declared `LD_*` and `DYLD_*` loader controls are refused;
+Linux shared-library paths may only be derived from the verified closure. The
+working directory must be an absolute physical directory. Application output must
+be written outside the immutable installation.
+
+Xec owns output limits, retries, timeouts and cancellation. Backend handoff refuses
+active pipeline work. The owner proof is an observation, not an OS process lease:
+if execution starts and its binding cannot subsequently be confirmed, the attempt
+is marked `unconfirmed` and automatic retries are refused. Inspect effects before
+explicitly running again. Failed durable completion also makes an executed attempt
+unconfirmed. A daemon restart marks unfinished runs interrupted and their prepared
+or started attempts unconfirmed; missing spawn acknowledgement does not prove that
+effects never began. Completed attempts remain completed. Recovery never replays
+these runs or promises exactly-once execution.
+
+Existing frozen callers that compare absolute shell commands or generated `PATH`
+values do not acquire this contract automatically. In particular, the saved Synarc
+publication owner-transition failure requires a separately reviewed publication
+artifact and an explicit conditional update of its existing pipeline definition.
+This framework change neither rewrites that caller nor re-registers scientific
+experiments or results.
+
 ## Scoped backups
 
 `omnitron backup artifact storage-objects --project acme --stack prod --bucket uploads`

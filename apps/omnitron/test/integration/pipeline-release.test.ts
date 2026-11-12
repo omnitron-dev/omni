@@ -27,7 +27,7 @@ import { targetRuntime } from '../../src/release/target-runtime.js';
 import { CLOSURE_FILE } from '../../src/release/application-closure.js';
 import { releaseTreeDigest } from '../../src/release/runtime-provenance.js';
 import { loadRelease } from '../../src/release/load.js';
-import saved from '../fixtures/publication-owner-transition.json' with { type: 'json' };
+import transition from '../fixtures/publication-owner-transition.json' with { type: 'json' };
 
 const hash = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
 const logger = { info() {}, error() {}, warn() {}, debug() {}, child() { return this; } };
@@ -57,7 +57,7 @@ console.log('release completed');
   });
   const runtime = await targetRuntime();
   const owners: ApplicationRuntime[] = [];
-  for (const artifact of [saved.oldReceipt.ownerArtifact, saved.newReceipt.ownerArtifact]) {
+  for (const artifact of [transition.oldReceipt.ownerArtifact, transition.newReceipt.ownerArtifact]) {
     const directory = path.join(root, 'runtime', artifact), packageRoot = path.join(directory, 'packages/0');
     await fs.mkdir(packageRoot, { recursive: true });
     // A system Node may depend on its installation's rpath libraries. Execute
@@ -144,14 +144,14 @@ console.log('release completed');
     noEffects: async () => expect(await fs.stat(app.env.WITNESS).then(() => true, () => false)).toBe(false) };
 }
 
-it('preserves the saved defect: same artifact bytes and runtime, different valid owner installation binding', () => {
-  expect(saved.oldReceipt.origin).toEqual(saved.newReceipt.origin);
-  expect(saved.oldReceipt.target).toEqual(saved.newReceipt.target);
-  expect(saved.oldReceipt.nodeOptions).toBe(saved.newReceipt.nodeOptions);
-  expect(saved.matches).toEqual({ old: true, candidate: false });
-  expect(saved.binding.old).not.toBe(saved.binding.candidate);
-  expect(saved.oldReceipt.ownerArtifact).not.toBe(saved.newReceipt.ownerArtifact);
-  expect(saved.oldReceipt.origin.artifactSha256).toBe('ad5a177ccb4c5c86dc5e46a36efff249a98569b849669ef0b4b3cf318f9c65c4');
+it('models the owner transition: unchanged artifact and runtime, different installation binding', () => {
+  expect(transition.oldReceipt.origin).toEqual(transition.newReceipt.origin);
+  expect(transition.oldReceipt.target).toEqual(transition.newReceipt.target);
+  expect(transition.oldReceipt.nodeOptions).toBe(transition.newReceipt.nodeOptions);
+  expect(transition.matches).toEqual({ old: true, candidate: false });
+  expect(transition.binding.old).not.toBe(transition.binding.candidate);
+  expect(transition.oldReceipt.ownerArtifact).not.toBe(transition.newReceipt.ownerArtifact);
+  expect(transition.oldReceipt.origin.artifactSha256).toBe('b'.repeat(64));
 });
 
 it('executes one registered definition through Xec under two owner roots without rewriting identity or history', async () => {

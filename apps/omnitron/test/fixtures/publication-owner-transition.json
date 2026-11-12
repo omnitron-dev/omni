@@ -1,36 +1,32 @@
 {
+  "description": "Synthetic identities model unchanged application and Node bytes under a different owner installation binding. Real private incident evidence is retained outside public source.",
   "binding": {
-    "old": "aa5b4ac39741958488d07dd55e5f489ade4af8dbfd4c1371fc9b525e49afcfbb",
-    "candidate": "ca6d2d898fcd0c766d265551b3ec91de4a7efb460af3bc7a304e00356f16fe5f"
+    "old": "3333333333333333333333333333333333333333333333333333333333333333",
+    "candidate": "4444444444444444444444444444444444444444444444444444444444444444"
   },
   "bundleSha256": {
-    "old": "d07e8511d4906658c5ae73785021633c6429b01c202adeb0877f1e1a9fa42c1d",
-    "candidate": "d07e8511d4906658c5ae73785021633c6429b01c202adeb0877f1e1a9fa42c1d"
+    "old": "5555555555555555555555555555555555555555555555555555555555555555",
+    "candidate": "5555555555555555555555555555555555555555555555555555555555555555"
   },
   "matches": {
     "old": true,
     "candidate": false
   },
-  "unchanged": {
-    "origin": true,
-    "target": true,
-    "nodeOptions": true
-  },
   "oldReceipt": {
     "origin": {
-      "releaseId": "synarc-publication-202611032355-d77e7e2f-bc297fe1",
-      "manifestSha256": "c42c7dff21eb7c32e50f438aaf2171fec3cd5998c8c64c3466632053e64d8af0",
-      "artifactSha256": "ad5a177ccb4c5c86dc5e46a36efff249a98569b849669ef0b4b3cf318f9c65c4",
-      "artifactBytes": 64555199,
-      "app": "benchmark-publication",
-      "frameworkCommit": "bc297fe1bec8d1a35a3ce3752ac3c215c3809313",
+      "releaseId": "publication-fixture",
+      "manifestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "artifactSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "artifactBytes": 4096,
+      "app": "publisher",
+      "frameworkCommit": "cccccccccccccccccccccccccccccccccccccccc",
       "runtimeOrigin": {
-        "projectCommit": "d77e7e2f259e03c5726d15a59a5c5afaed00d24f",
-        "producerApp": "benchmark-publication",
+        "projectCommit": "dddddddddddddddddddddddddddddddddddddddd",
+        "producerApp": "publisher",
         "consumer": {
-          "releaseId": "synarc-publication-202611032355-d77e7e2f-bc297fe1",
-          "manifestSha256": "c42c7dff21eb7c32e50f438aaf2171fec3cd5998c8c64c3466632053e64d8af0",
-          "app": "benchmark-publication"
+          "releaseId": "publication-fixture",
+          "manifestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "app": "publisher"
         },
         "entry": {
           "relativeFile": "dist/watch.mjs",
@@ -43,30 +39,30 @@
       "arch": "arm64",
       "node": "v24.13.0",
       "abi": "137",
-      "executableSha256": "6f2e835e57feb7a29ffcd53a4d4eb60224ec264a1e002c3ba6d99999ea29807d",
+      "executableSha256": "6666666666666666666666666666666666666666666666666666666666666666",
       "libc": null
     },
     "nodeOptions": "",
-    "treeSha256": "337ba904beb74567007109fee5e0785ca8ac2e49ff7f25dcd751cac821073d03",
     "frameworkContentUnchanged": true,
     "artifactPayloadUnchanged": true,
-    "ownerArtifact": "ff0b3d719e8150660cf3579d1ddea4ce291393f409f9454a8da3b01a6763679b"
+    "treeSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "ownerArtifact": "1111111111111111111111111111111111111111111111111111111111111111"
   },
   "newReceipt": {
     "origin": {
-      "releaseId": "synarc-publication-202611032355-d77e7e2f-bc297fe1",
-      "manifestSha256": "c42c7dff21eb7c32e50f438aaf2171fec3cd5998c8c64c3466632053e64d8af0",
-      "artifactSha256": "ad5a177ccb4c5c86dc5e46a36efff249a98569b849669ef0b4b3cf318f9c65c4",
-      "artifactBytes": 64555199,
-      "app": "benchmark-publication",
-      "frameworkCommit": "bc297fe1bec8d1a35a3ce3752ac3c215c3809313",
+      "releaseId": "publication-fixture",
+      "manifestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "artifactSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "artifactBytes": 4096,
+      "app": "publisher",
+      "frameworkCommit": "cccccccccccccccccccccccccccccccccccccccc",
       "runtimeOrigin": {
-        "projectCommit": "d77e7e2f259e03c5726d15a59a5c5afaed00d24f",
-        "producerApp": "benchmark-publication",
+        "projectCommit": "dddddddddddddddddddddddddddddddddddddddd",
+        "producerApp": "publisher",
         "consumer": {
-          "releaseId": "synarc-publication-202611032355-d77e7e2f-bc297fe1",
-          "manifestSha256": "c42c7dff21eb7c32e50f438aaf2171fec3cd5998c8c64c3466632053e64d8af0",
-          "app": "benchmark-publication"
+          "releaseId": "publication-fixture",
+          "manifestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "app": "publisher"
         },
         "entry": {
           "relativeFile": "dist/watch.mjs",
@@ -79,15 +75,13 @@
       "arch": "arm64",
       "node": "v24.13.0",
       "abi": "137",
-      "executableSha256": "6f2e835e57feb7a29ffcd53a4d4eb60224ec264a1e002c3ba6d99999ea29807d",
+      "executableSha256": "6666666666666666666666666666666666666666666666666666666666666666",
       "libc": null
     },
     "nodeOptions": "",
-    "treeSha256": "297a3094b2524920de3f7589e1b1559187614026f0cea1247fa6a3ff271379e7",
     "frameworkContentUnchanged": true,
     "artifactPayloadUnchanged": true,
-    "ownerArtifact": "dcee199b67b9a3815b0d46b272e7cdf5f300b36ddcec2a478df60aee6a747eb5"
-  },
-  "pipelineId": "6cec63d3-9359-4746-99e7-2d5f4006eebc",
-  "pipelineRevision": "01bee18c979dac44487d136c88ddda8f6d9fdc87ee16967fc12aa786cfb08798"
+    "treeSha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "ownerArtifact": "2222222222222222222222222222222222222222222222222222222222222222"
+  }
 }

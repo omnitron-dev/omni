@@ -146,9 +146,9 @@ effects never began. Completed attempts remain completed. Recovery never replays
 these runs or promises exactly-once execution.
 
 Existing frozen callers that compare absolute shell commands or generated `PATH`
-values do not acquire this contract automatically. In particular, the saved Synarc
-publication owner-transition failure requires a separately reviewed publication
-artifact and an explicit conditional update of its existing pipeline definition.
+values do not acquire this contract automatically. A publication watcher using
+such comparisons requires a separately reviewed publication artifact and an
+explicit conditional update of its existing pipeline definition.
 This framework change neither rewrites that caller nor re-registers scientific
 experiments or results.
 

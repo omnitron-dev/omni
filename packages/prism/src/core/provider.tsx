@@ -2,7 +2,7 @@
  * Prism Provider
  *
  * Root provider for the Prism design system.
- * Uses useSettingsStore (Zustand) as the single source of truth for settings.
+ * Uses useSettingsStore for persisted settings, with an explicit mode for SSR or controlled trees.
  *
  * @module core/provider
  */
@@ -18,7 +18,7 @@ import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import rtlPlugin from 'stylis-plugin-rtl';
 
 import type { PrismConfig, PartialPrismConfig } from '../types/config.js';
-import type { PrismTheme } from '../types/theme.js';
+import type { PrismTheme, ThemeMode } from '../types/theme.js';
 import { defaultPrismConfig } from '../types/config.js';
 import { PrismContext } from './context.js';
 import type { PrismSettingsState } from './context.js';
@@ -43,6 +43,10 @@ export interface PrismProviderProps {
   children: ReactNode;
   /** Configuration overrides */
   config?: PartialPrismConfig;
+  /** Controlled mode, applied during SSR and the first client render without writing the settings store. */
+  mode?: ThemeMode;
+  /** Receives mode changes requested through Prism context. With mode set, the owner updates that prop. */
+  onModeChange?: (mode: ThemeMode) => void;
   /** Default settings (overrides defaults but not persisted values) */
   defaultSettings?: Partial<PrismSettingsState>;
   /** Disable CSS baseline */
@@ -97,7 +101,7 @@ const noOpDrawerWarning = () => {
  * PrismProvider - Root provider for Prism design system.
  *
  * Provides theme, settings, and configuration to all child components.
- * Uses Zustand's useSettingsStore as the single source of truth for settings.
+ * An explicit mode belongs to this provider; otherwise mode follows the persisted settings store.
  *
  * @example
  * ```tsx
@@ -106,8 +110,9 @@ const noOpDrawerWarning = () => {
  * function App() {
  *   return (
  *     <PrismProvider
+ *       mode="dark"
  *       config={{
- *         theme: { preset: 'luxury', mode: 'dark' },
+ *         theme: { preset: 'luxury' },
  *         features: { darkMode: true, rtl: true },
  *       }}
  *     >
@@ -120,6 +125,8 @@ const noOpDrawerWarning = () => {
 export function PrismProvider({
   children,
   config: configOverrides,
+  mode: controlledMode,
+  onModeChange,
   defaultSettings,
   disableCssBaseline = false,
   themeOverrides,
@@ -144,17 +151,22 @@ export function PrismProvider({
     navLayout: storeNavLayout,
     navColor: storeNavColor,
     // Actions (stable references from Zustand)
-    setMode,
-    toggleMode,
+    setMode: setStoreMode,
     setPreset,
     setDirection,
     setCompactSidebar,
     reset: resetSettings,
   } = useSettingsStore();
 
+  const mode = controlledMode ?? storeMode;
+  const setMode = useCallback((nextMode: ThemeMode) => {
+    if (controlledMode === undefined) setStoreMode(nextMode);
+    onModeChange?.(nextMode);
+  }, [controlledMode, setStoreMode, onModeChange]);
+
   // Initialize store with config values on first mount
   useEffect(() => {
-    if (defaultSettings?.mode) setMode(defaultSettings.mode);
+    if (controlledMode === undefined && defaultSettings?.mode) setStoreMode(defaultSettings.mode);
     if (defaultSettings?.preset) setPreset(defaultSettings.preset);
     if (defaultSettings?.direction) setDirection(defaultSettings.direction);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -163,7 +175,7 @@ export function PrismProvider({
   // Create settings object for context (backwards compatibility)
   const settings = useMemo<PrismSettingsState>(
     () => ({
-      mode: storeMode,
+      mode,
       preset: storePreset,
       direction: storeDirection,
       sidebarCollapsed: compactSidebar,
@@ -176,7 +188,7 @@ export function PrismProvider({
       navColor: storeNavColor,
     }),
     [
-      storeMode,
+      mode,
       storePreset,
       storeDirection,
       compactSidebar,
@@ -226,7 +238,10 @@ export function PrismProvider({
   }, [storeFontSize]);
 
   // Resolve 'system' mode to actual 'light' or 'dark' based on OS preference
-  const resolvedMode = useResolvedMode(storeMode);
+  const resolvedMode = useResolvedMode(mode);
+  const toggleMode = useCallback(() => {
+    setMode(resolvedMode === 'dark' ? 'light' : 'dark');
+  }, [resolvedMode, setMode]);
 
   // Create theme based on current settings
   const theme = useMemo<PrismTheme>(

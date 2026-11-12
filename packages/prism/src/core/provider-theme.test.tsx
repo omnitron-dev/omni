@@ -1,9 +1,13 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useState } from 'react';
+import { renderToString } from 'react-dom/server';
+import { hydrateRoot } from 'react-dom/client';
 import { useTheme } from '@mui/material/styles';
 import { PrismProvider } from './provider.js';
 import { usePrismContext } from './context.js';
 import { useSettingsStore } from '../state/stores/settings.js';
+import { omnitronTheme } from '../identity/theme.js';
 
 function Probe() {
   const { toggleMode, settings } = usePrismContext();
@@ -44,5 +48,50 @@ describe('mode-aware application themes at the provider boundary', () => {
     expect(modes.every(mode => mode === 'light' || mode === 'dark')).toBe(true);
     expect(state().requested).toBe('system');
     expect(modes.at(-1)).toBe(state().mode);
+  });
+  it('renders independent explicit modes on the server without changing the shared store', () => {
+    const theme = (mode: 'dark' | 'light') => renderToString(
+      <PrismProvider mode={mode} themeOverrides={omnitronTheme} disableCssBaseline><Probe /></PrismProvider>
+    );
+    expect(theme('dark')).toContain('&quot;mode&quot;:&quot;dark&quot;');
+    expect(theme('light')).toContain('&quot;mode&quot;:&quot;light&quot;');
+    expect(theme('dark')).toContain('&quot;primary&quot;:&quot;#71DDE3&quot;');
+    expect(useSettingsStore.getState().mode).toBe('light');
+  });
+  it('routes controlled mode changes to the owner and ignores unrelated store changes', () => {
+    const onChange = vi.fn();
+    function ControlledTheme() {
+      const [mode, setMode] = useState<'dark' | 'light' | 'system'>('dark');
+      return <PrismProvider mode={mode} defaultSettings={{ mode: 'dark' }}
+        onModeChange={next => { onChange(next); setMode(next); }} themeOverrides={omnitronTheme}><Probe /></PrismProvider>;
+    }
+    render(<ControlledTheme />);
+    expect(state().mode).toBe('dark');
+    expect(useSettingsStore.getState().mode).toBe('light');
+    fireEvent.click(screen.getByText('Switch theme'));
+    expect(onChange).toHaveBeenCalledExactlyOnceWith('light');
+    expect(state().requested).toBe('light');
+    expect(state().mode).toBe('light');
+    expect(useSettingsStore.getState().mode).toBe('light');
+    act(() => useSettingsStore.setState({ mode: 'dark' }));
+    expect(state().mode).toBe('light');
+  });
+  it('hydrates the explicit server mode while the persisted store requests a different palette', async () => {
+    const recoverableErrors: unknown[] = [];
+    const tree = <PrismProvider mode="dark" themeOverrides={omnitronTheme} disableCssBaseline><Probe /></PrismProvider>;
+    const container = document.createElement('div');
+    container.innerHTML = renderToString(tree);
+    document.body.append(container);
+    const root = hydrateRoot(container, tree, { onRecoverableError: error => recoverableErrors.push(error) });
+    try {
+      await act(async () => {});
+      expect(state().requested).toBe('dark');
+      expect(state().mode).toBe('dark');
+      expect(recoverableErrors).toEqual([]);
+      expect(useSettingsStore.getState().mode).toBe('light');
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+    }
   });
 });

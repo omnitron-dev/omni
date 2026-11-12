@@ -2,6 +2,8 @@
 
 Console and the Lumen website consume `@omnitron-dev/prism/identity`. The module extends Prism's existing MUI theme; it does not create another provider or state store. Pass `omnitronTheme` to `PrismProvider.themeOverrides`. Inter is the common interface and heading face; load its 400, 500, 600 and 700 weights in the application. Native monospace is reserved for code, identifiers and measurements.
 
+For server-rendered pages, pass the same explicit mode to `PrismProvider.mode` and `omnitronCssVariables(mode)`. Use `onModeChange` to update that prop when a visitor changes the theme. Controlled providers render their mode from the first server and client frame independently of the persisted mode and leave it unchanged. Console can omit `mode` to keep using its native settings store.
+
 `omnitronTokens` is the source for light/dark surfaces, foregrounds, semantic colours and geometry. `omnitronCssVariables(mode)` exposes the same values to server-rendered page CSS. Use `--omni-text-muted` for secondary content, `--omni-border` for surface separation and `--omni-control-border` for controls. `--omni-focus-ring` is a two-pixel accent outline with a three-pixel offset. Surfaces have six-pixel corners and one-pixel borders. Avoid gradients, glow, ornamental grids and additional accent palettes.
 
 Use `OmnitronBrand` for the text lockup and `OmnitronMark` when space is limited. The mark is four interlocking triangular planes around a stable core. Its geometry is exported as `omnitronMarkGeometry`; the standalone asset is `omnitronMarkSvg`. Text remains text in the lockup. Set `label={null}` when adjacent text already supplies the accessible name. A single mark works from 16 pixels upward; navigation uses 36 pixels and app loading uses 72 pixels.

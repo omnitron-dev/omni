@@ -71,13 +71,23 @@ it.each([
   [{ ...runtime, arch: 'another-architecture' }, /is incompatible with owner Node/],
 ] as const)('refuses an unknown or incompatible owner runtime before changing dependencies: %j', async (ownerRuntime, reason) => {
   rpc.status.mockResolvedValue({ execution: {
-    ownerCapabilities: { applicationRuntimeResolution: 1 }, connection: { status: 'connected' }, ownerRuntime,
+    ownerCapabilities: { applicationRuntimeResolution: 1, sourceRefresh: 1 }, connection: { status: 'connected' }, ownerRuntime,
   } });
   await expect(sdkCommand(['registry', '--project-dir', root, '--stack', 'dev'])).rejects.toThrow(reason);
   await expect(watchSdk(JSON.parse(profile), 'dev', new AbortController().signal)).rejects.toThrow(reason);
   expect(await fs.readFile(path.join(state, 'install.json'), 'utf8')).toBe(profile);
   expect(await fs.readFile(path.join(state, 'active.json'), 'utf8')).toBe(profile);
   expect(rpc.disconnect).toHaveBeenCalledTimes(2);
+});
+
+it('refuses SDK refresh on an owner that cannot fence source observations', async () => {
+  rpc.status.mockResolvedValue({ execution: {
+    ownerCapabilities: { applicationRuntimeResolution: 1 }, connection: { status: 'connected' }, ownerRuntime: runtime,
+  } });
+  await expect(watchSdk(JSON.parse(profile), 'dev', new AbortController().signal)).rejects.toThrow('sourceRefresh@1');
+  expect(await fs.readFile(path.join(state, 'install.json'), 'utf8')).toBe(profile);
+  expect(await fs.readFile(path.join(state, 'active.json'), 'utf8')).toBe(profile);
+  expect(rpc.disconnect).toHaveBeenCalledOnce();
 });
 
 it.each([undefined, 'unavailable', 'owner-changed'])('refuses stale owner runtime observations: %s', async connection => {

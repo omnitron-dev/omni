@@ -19,7 +19,8 @@ omnitron sdk status [--project-dir PATH]
 init installs the pnpm bridge without resolving registry dependencies.
 dev selects the local SDK and watches its sources. Start again without a path to
 reuse the selection. --no-watch builds the selected graph once without watching.
---stack also refreshes running, watched applications in that local source stack.
+--stack confirms refresh of running applications in that local source stack.
+Excluded or unavailable watchers are reported as failures, never as a ready SDK.
 registry restores the frozen distribution dependencies. Releases always read Git.`;
 
 const scope = '@omnitron-dev/';
@@ -395,11 +396,11 @@ async function profileStatus(root) {
   return active;
 }
 
-async function requireApplicationRuntime(client) {
+async function requireApplicationRuntime(client, refresh = false) {
   const { assertExecutionCapabilities } = await import('@omnitron-dev/omnitron/operations');
   const status = await client.status();
   assertExecutionCapabilities(status.execution?.ownerCapabilities,
-    { applicationRuntimeResolution: 1 }, 'Development SDK activation');
+    { applicationRuntimeResolution: 1, ...(refresh && { sourceRefresh: 1 }) }, 'Development SDK activation');
   if (status.execution.connection?.status !== 'connected')
     throw Error('Development SDK activation requires a current execution owner observation; restore the owner connection first');
   const runtime = status.execution.ownerRuntime;
@@ -423,7 +424,7 @@ async function localStack(root, stack) {
     const state = await projects.getStack({ project: candidates[0], stack });
     if (state.type !== 'local' || state.selectedRelease || state.config.watch === false)
       throw Error('SDK refresh requires an unpinned local development stack with watching enabled');
-    await requireApplicationRuntime(client);
+    await requireApplicationRuntime(client, true);
     return { client, state, project: candidates[0] };
   } catch (error) {
     await client.disconnect();
@@ -481,40 +482,126 @@ function dependsOn(manifest, changed, packages, seen = new Set()) {
   }
   return false;
 }
-async function refresh(root, stack, changed, packages) {
-  if (!stack) return;
+function applicationBuildIdentity(manifest, hashes, packages) {
+  // A local tool can execute a package declared as a development dependency.
+  // SDK package traversal still follows its normal runtime dependency graph.
+  const application = { ...manifest, dependencies: { ...manifest.devDependencies, ...manifest.dependencies } };
+  const dependencies = Object.entries(hashes)
+    .filter(([name]) => dependsOn(application, new Set([name]), packages))
+    .sort(([left], [right]) => left.localeCompare(right));
+  return dependencies.length ? sha256(JSON.stringify(dependencies)) : null;
+}
+
+async function refresh(root, stack, checkpoint, packages, save, signal) {
   const { client, state, project } = await localStack(root, stack);
   try {
-    const watched = await client.getWatchStatus();
-    if (!watched.enabled || !watched.watching) return;
+    const scopeName = project + '/' + stack;
+    const previous = checkpoint.applications[scopeName];
+    const applied = previous && typeof previous === 'object' && !Array.isArray(previous) ? previous : {};
+    checkpoint.applications[scopeName] = applied;
+    const inactive = new Set(['stopped', 'offline', 'not-started']);
+    // Reject known unavailable applications before refreshing any sibling.
     for (const app of state.apps) {
-      if (app.status !== 'online' || !app.handleKey) continue;
+      if (inactive.has(app.status)) continue;
+      if (app.status !== 'online')
+        throw Error(`SDK refresh was not applied to ${scopeName}/${app.name}: application is ${app.status}`);
+      if (typeof app.handleKey !== 'string' || !app.handleKey)
+        throw Error(`SDK refresh was not applied to ${scopeName}/${app.name}: application has no owned handle`);
+    }
+    const membership = apps => JSON.stringify(apps.map(app => [app.name, app.handleKey, app.status])
+      .sort(([left], [right]) => String(left).localeCompare(String(right))));
+    const admittedMembership = membership(state.apps);
+    const confirmedSources = new Map();
+    const activeNames = new Set(state.apps.filter(app => !inactive.has(app.status)).map(app => app.handleKey));
+    for (const name of Object.keys(applied)) if (!activeNames.has(name)) delete applied[name];
+    await save();
+    const watched = await client.getWatchStatus();
+    if (activeNames.size && (!watched.enabled || !watched.watching))
+      throw Error('SDK refresh was not applied: ' + (watched.reason ?? 'application watching is unavailable'));
+    let confirmed = 0;
+    let skipped = 0;
+    for (const app of state.apps) {
+      signal?.throwIfAborted();
+      if (inactive.has(app.status)) {
+        console.log(`Inactive ${scopeName}/${app.name}: no SDK application receipt`);
+        skipped++;
+        continue;
+      }
       const info = watched.apps.find((entry) => entry.name === app.handleKey);
-      if (!info) continue;
+      if (!info) throw Error(`SDK refresh was not applied to ${app.handleKey}: the application has no active watcher. Check its watch policy and owner diagnostics`);
+      if (typeof info.generation !== 'string' || !info.generation || !Number.isSafeInteger(info.definitionRevision) || info.definitionRevision < 0)
+        throw Error(`Execution owner did not report a source binding for ${app.handleKey}`);
       const directory = await fs.realpath(info.directory).catch(() => null);
-      if (!directory || !inside(root, directory)) continue;
+      if (!directory || !inside(root, directory)) throw Error(`Watched source for ${app.handleKey} is outside the selected project or unavailable`);
       const pkg = [...packages.values()]
         .filter((p) => inside(p.directory, directory))
         .sort((a, b) => b.directory.length - a.directory.length)[0];
-      if (!pkg || !dependsOn(pkg.manifest, changed, packages)) continue;
+      if (!pkg) throw Error(`No workspace package owns the watched source of ${app.handleKey}`);
+      const buildIdentity = applicationBuildIdentity(pkg.manifest, checkpoint.hashes, packages);
+      if (!buildIdentity) {
+        delete applied[app.handleKey];
+        await save();
+        confirmedSources.set(app.handleKey, info);
+        console.log(`Unaffected ${app.handleKey}: no dependency on the selected SDK`);
+        continue;
+      }
       const current = await client.service('OmnitronProject').then((s) => s.getStack({ project, stack }));
       const latestWatch = await client.getWatchStatus();
       if (
         !latestWatch.enabled ||
         !latestWatch.watching ||
-        !latestWatch.apps.some((w) => w.name === app.handleKey && w.directory === info.directory)
+        !latestWatch.apps.some((w) => w.name === app.handleKey && w.directory === info.directory &&
+          w.generation === info.generation && w.definitionRevision === info.definitionRevision)
       )
-        continue;
+        throw Error(`Watch policy or source binding changed before refreshing ${app.handleKey}; SDK readiness is not confirmed`);
       if (
         current.selectedRelease ||
         current.type !== 'local' ||
         current.config.watch === false ||
-        !current.apps.some((a) => a.handleKey === app.handleKey && a.status === 'online')
+        !current.apps.some((a) => a.handleKey === app.handleKey && a.status === 'online' && a.generation === info.generation)
       )
+        throw Error(`Stack changed before refreshing ${app.handleKey}; SDK readiness is not confirmed`);
+      const receipt = applied[app.handleKey];
+      if (receipt?.generation === info.generation && receipt.definitionRevision === info.definitionRevision &&
+          receipt.directory === directory && receipt.buildIdentity === buildIdentity) {
+        confirmedSources.set(app.handleKey, info);
+        confirmed++;
         continue;
-      await client.restartApp({ name: app.handleKey });
+      }
+      const refreshed = await client.restartAfterChange({ name: app.handleKey,
+        generation: info.generation, definitionRevision: info.definitionRevision });
+      const source = refreshed?.source;
+      if (refreshed?.process?.name !== app.handleKey || refreshed.process.status !== 'online' ||
+          typeof refreshed.process.generation !== 'string' || !refreshed.process.generation ||
+          refreshed.process.generation === info.generation || source?.name !== app.handleKey ||
+          source.generation !== refreshed.process.generation || source.directory !== info.directory ||
+          !Number.isSafeInteger(source.definitionRevision) || source.definitionRevision < 0)
+        throw Error(`Execution owner did not confirm a new online generation for ${app.handleKey}`);
+      applied[app.handleKey] = { generation: source.generation, definitionRevision: source.definitionRevision,
+        directory, buildIdentity };
+      // Persist each exact owner acknowledgement so a later application's
+      // failure does not cause successful applications to restart again.
+      await save();
+      confirmedSources.set(app.handleKey, source);
+      confirmed++;
       console.log('Refreshed ' + app.handleKey);
     }
+    signal?.throwIfAborted();
+    await requireApplicationRuntime(client, true);
+    const finalState = await client.service('OmnitronProject').then(service => service.getStack({ project, stack }));
+    const finalWatch = await client.getWatchStatus();
+    if (finalState.selectedRelease || finalState.type !== 'local' || finalState.config.watch === false ||
+        membership(finalState.apps) !== admittedMembership || finalWatch.enabled !== watched.enabled)
+      throw Error(`Stack changed while confirming ${scopeName}; SDK readiness is not confirmed`);
+    for (const [name, source] of confirmedSources) {
+      if (!finalWatch.enabled || !finalWatch.watching ||
+          !finalState.apps.some(app => app.handleKey === name && app.status === 'online' && app.generation === source.generation) ||
+          !finalWatch.apps.some(app => app.name === name && app.directory === source.directory &&
+            app.generation === source.generation && app.definitionRevision === source.definitionRevision))
+        throw Error(`Source binding changed while confirming ${name}; SDK readiness is not confirmed`);
+    }
+    await save();
+    console.log(`Development SDK refresh confirmed for ${scopeName}: ${confirmed} applications, ${skipped} inactive`);
   } finally {
     await client.disconnect();
   }
@@ -524,7 +611,11 @@ async function buildDigest(directory) {
   const root = path.join(directory, 'dist'),
     hash = createHash('sha256');
   async function visit(relative) {
-    const entries = await fs.readdir(path.join(root, relative), { withFileTypes: true });
+    const current = path.join(root, relative);
+    const stat = await fs.lstat(current);
+    if (!stat.isDirectory() || stat.isSymbolicLink())
+      throw Error('SDK build output must be a physical directory: ' + current);
+    const entries = await fs.readdir(current, { withFileTypes: true });
     for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
       const file = path.join(relative, e.name);
       if (e.isDirectory()) await visit(file);
@@ -539,7 +630,7 @@ async function buildDigest(directory) {
               .update(await fs.readFile(path.join(root, file)))
               .digest()
           );
-      }
+      } else throw Error('Unsupported SDK build output entry (expected a regular file or directory): ' + path.join(root, file));
     }
   }
   await visit('');
@@ -557,12 +648,29 @@ async function checkpointSdkBuild(profile, names, stack, signal, packages) {
     if (hashes[name] !== next[name]) changed.add(name);
   }
   signal?.throwIfAborted();
-  if (changed.size && stack) {
+  const nextCheckpoint = { schema: 2, source: profile.source, hashes: next,
+    applications: prior?.schema === 2 && prior.source === profile.source && prior.applications &&
+      typeof prior.applications === 'object' && !Array.isArray(prior.applications) ? prior.applications : {} };
+  const sourceState = await prepareState(profile.source);
+  const save = () => exclusively(sourceState, async () => {
+    // Other consumers can build the same SDK while this consumer refreshes.
+    // Recheck under the existing build mutex, without holding it across RPC.
+    for (const [name, digest] of Object.entries(next)) {
+      if (await buildDigest(profile.links[name]) !== digest)
+        throw Error(`SDK output changed while confirming ${name}; application readiness was not recorded. Run sdk dev again`);
+    }
+    signal?.throwIfAborted();
+    await atomic(checkpoint, JSON.stringify(nextCheckpoint) + '\n');
+  }, signal);
+  // A completed build is a separate fact from any application's loaded modules.
+  // Build-only use and another stack's receipt cannot certify this stack.
+  await save();
+  if (stack) {
     packages ??= new Map([...(await inventory(profile.source)), ...(await inventory(profile.root))]);
-    await refresh(profile.root, stack, changed, packages);
+    await refresh(profile.root, stack, nextCheckpoint, packages, save, signal);
+  } else {
+    console.log(changed.size ? 'Development SDK build ready: ' + [...changed].join(', ') : 'Development SDK build is current');
   }
-  await atomic(checkpoint, JSON.stringify({ source: profile.source, hashes: next }) + '\n');
-  console.log(changed.size ? 'Development SDK ready: ' + [...changed].join(', ') : 'Development SDK is current');
 }
 
 export async function watchSdk(profile, stack, signal) {

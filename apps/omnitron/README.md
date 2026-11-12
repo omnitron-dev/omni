@@ -713,13 +713,44 @@ watcher alone do not establish that the project uses the current SDK. Leave
 consumers. Every `sdk dev --no-watch`, including an unchanged checkout path and
 package version, runs the normal Turbo build graph. Turbo decides which tasks
 are cached. After success, the SDK verifies imports and updates the same output
-checkpoint used by the watcher, refreshing affected watched consumers when
-`--stack` is supplied. A failed build leaves the last successful checkpoint intact.
+checkpoint used by the watcher. Its `hashes` record successful SDK output;
+`applications` separately records each stack/application's acknowledged source
+generation, definition revision, directory and dependent build identity. A
+build-only command reports `Development SDK build ready` or `build is current`;
+it does not certify an application's loaded modules.
+
+With `--stack`, every pass reconciles the selected stack, including unchanged
+builds. This requires `sourceRefresh@1` on the owner. The CLI
+uses the same automatic restart path as source watching, bound to the observed
+application generation and definition revision. It never substitutes a manual
+restart when watching is disabled, a source is retargeted or a release is pinned.
+Every running application in the selected stack must have an active watcher;
+an excluded or unavailable watcher, starting application or missing owned handle
+is an explicit failure. Stopped applications receive no application receipt;
+their next online generation must be reconciled on the next `--stack` pass.
+Application receipts come from the owner's exact restart response and are reused
+only for the same generation, definition and dependent SDK output. A legacy
+build-only checkpoint or another stack's receipt cannot establish that.
+
+A failed build leaves the whole checkpoint unchanged. If a successful build is
+followed by a partial refresh failure, the checkpoint retains its build hashes
+and individually acknowledged applications; a retry refreshes the remaining
+bindings. The CLI reports `Development SDK refresh confirmed for <project>/<stack>`
+only after checking the final stack membership, application generations and
+watch policy. Before recording a receipt, it rechecks output digests under the
+existing short build lock; a concurrent output change is an explicit failure.
+Symlinks and other unsupported output entries are rejected. These checks record
+a build snapshot and process lifecycle acknowledgement, not byte attestation of
+future lazy imports or an application's HTTP readiness. Declared readiness
+probes provide the latter evidence.
 
 Build caches must include `.omnitron/dev-sdk/*.json` as inputs. For Turbo, add
 this glob to the project's `globalDependencies`. It binds cached tasks to the
 selected SDK and the successful build checkpoint, including declarations and
 static assets. The distribution lock alone cannot identify locally linked code.
+Application receipt changes also invalidate that consumer cache. The SDK watcher
+observes SDK source/build inputs, so writing these consumer receipts does not
+trigger another SDK build.
 These private files stay outside Git and are absent in clean registry builds.
 
 One owner can supervise development applications and installed releases together.
@@ -729,7 +760,16 @@ or either watcher, even when development mode is enabled. Launch receipts and
 artifact integrity still determine whether an installed executable is trusted;
 setting `releaseRoot` does not grant that trust.
 
-Enabling watch reconciles edits made while watch was disabled. Disabling watch
+The owner derives both watcher inventories from its actual application handles,
+including classic applications added by registered projects after daemon startup.
+A classic source subscription survives its internal child replacement, so edits
+received during startup are processed after the current restart. Explicit stop,
+redefinition, retirement and watch-policy changes revoke pending source events.
+
+Enabling bootstrap watch rebuilds changes made while it was disabled. Enabling
+classic watch subscribes to subsequent filesystem changes; it does not infer
+past edits. Use `sdk dev --stack` to build and confirm changed SDK output.
+Disabling watch
 awaits disposal and cancels queued automatic restarts. A restart already stopping an
 application may finish when only global watching is disabled. Explicitly
 redefining that application revokes its pending restart, including an identical

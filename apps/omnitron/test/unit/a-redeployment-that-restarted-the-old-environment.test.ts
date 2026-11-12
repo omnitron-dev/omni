@@ -37,14 +37,17 @@ describe('a restart starts from the definition the app was last given', () => {
       devMode: false,
       assertAppStartAllowed: vi.fn(),
       appStopIntents: new Map(),
-      stopApp: vi.fn(async () => undefined),
+      stopGeneration: 0,
+      stoppingApps: false,
+      stopAppQueued: vi.fn(async () => undefined),
       startApp: vi.fn(async (entry: unknown) => entry),
     };
     handle.redefine(NEW as never);
 
     await (OrchestratorService.prototype as any).restartAppNow.call(self, OLD.name);
 
-    expect(self.startApp).toHaveBeenCalledWith(NEW);
+    expect(self.stopAppQueued).toHaveBeenCalledExactlyOnceWith(OLD.name, false, 10_000, true);
+    expect(self.startApp).toHaveBeenCalledExactlyOnceWith(NEW);
   });
 
   it('refuses a definition for another app', () => {

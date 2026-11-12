@@ -27,8 +27,10 @@ vi.mock('@xec-sh/kit', () => ({
 
 let containers: Array<Record<string, unknown>> = [];
 const getContainerLogs = vi.fn(async (name: string) => `log of ${name}`);
+const inspectStackContainers = vi.fn(() => { throw new Error('Unexpected Docker stack inspection in infrastructure command test'); });
 vi.mock('../../src/infrastructure/container-runtime.js', () => ({
   listManagedContainers: async () => containers,
+  inspectStackContainers,
   getContainerLogs: (name: string) => getContainerLogs(name),
   isDockerAvailable: vi.fn(async () => true),
   stopContainer: vi.fn(),
@@ -76,6 +78,7 @@ beforeEach(() => {
   containers = [dev('postgres'), dev('tor'), { name: 'omnitron-pg', service: 'omnitron-pg', status: 'running', image: 'postgres:17-alpine' }];
   getStack.mockClear();
   getContainerLogs.mockClear();
+  inspectStackContainers.mockClear();
   const spy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
     written.push(String(chunk));
     return true;
@@ -86,6 +89,7 @@ beforeEach(() => {
 afterEach(() => {
   restore();
   process.exitCode = undefined;
+  expect(inspectStackContainers).not.toHaveBeenCalled();
 });
 
 describe('infra status', () => {

@@ -38,8 +38,10 @@ vi.mock('@xec-sh/kit', () => ({
 }));
 
 const listManagedContainers = vi.fn();
+const inspectStackContainers = vi.fn(() => { throw new Error('Unexpected Docker stack inspection in container selection test'); });
 vi.mock('../../src/infrastructure/container-runtime.js', () => ({
   listManagedContainers: () => listManagedContainers(),
+  inspectStackContainers,
   getContainerLogs: vi.fn(),
   isDockerAvailable: vi.fn(async () => true),
   stopContainer: vi.fn(),
@@ -47,7 +49,8 @@ vi.mock('../../src/infrastructure/container-runtime.js', () => ({
 }));
 
 const execFileSync = vi.fn();
-vi.mock('node:child_process', () => ({ execFileSync: (...a: unknown[]) => execFileSync(...a) }));
+const execFile = vi.fn(() => { throw new Error('Unexpected asynchronous process execution in container selection test'); });
+vi.mock('node:child_process', () => ({ execFile, execFileSync: (...a: unknown[]) => execFileSync(...a) }));
 
 const { infraPsqlCommand, infraRedisCliCommand } = await import('../../src/commands/infra.js');
 
@@ -59,7 +62,11 @@ const onTheTestNode = [
 ];
 
 const previousExitCode = process.exitCode;
-afterEach(() => { process.exitCode = previousExitCode; });
+afterEach(() => {
+  process.exitCode = previousExitCode;
+  expect(execFile).not.toHaveBeenCalled();
+  expect(inspectStackContainers).not.toHaveBeenCalled();
+});
 
 const said = () => logged.map((l) => l.text).join('\n');
 const dockerArgs = () => (execFileSync.mock.calls[0]?.[1] ?? []) as string[];
@@ -67,6 +74,8 @@ const dockerArgs = () => (execFileSync.mock.calls[0]?.[1] ?? []) as string[];
 beforeEach(() => {
   logged.length = 0;
   execFileSync.mockReset();
+  execFile.mockClear();
+  inspectStackContainers.mockClear();
   listManagedContainers.mockReset();
 });
 

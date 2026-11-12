@@ -1,6 +1,6 @@
 import path from 'node:path';
 import os from 'node:os';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import { OMNITRON_HOME } from '../../src/config/defaults.js';
 import { consoleContainerName, assertConsoleOwnership, CONSOLE_INSTANCE_LABEL } from '../../src/webapp/console-container.js';
@@ -8,9 +8,11 @@ import { resolveOmnitronNginx, withInfrastructureScope } from '../../src/infrast
 import type { ContainerState } from '../../src/infrastructure/types.js';
 
 const runtime = vi.hoisted(() => ({ state: null as ContainerState | null,
+  inspect: vi.fn(() => { throw new Error('Unexpected Docker stack inspection in ownership test'); }),
   remove: vi.fn(), stop: vi.fn(), create: vi.fn() }));
 vi.mock('../../src/infrastructure/container-runtime.js', () => ({
   readDockerInventory: vi.fn(() => { throw new Error('Unexpected Docker inventory read in ownership test'); }),
+  inspectStackContainers: runtime.inspect,
   getContainerState: async () => runtime.state, removeContainer: runtime.remove,
   stopContainer: runtime.stop, createContainer: runtime.create,
   containerSpecHash: () => 'fixture', ensureImage: vi.fn(), waitForHealthy: vi.fn(),
@@ -24,6 +26,7 @@ const state = (changes: Partial<ContainerState> = {}): ContainerState => ({
   health: 'healthy', ports: {}, labels: { [CONSOLE_INSTANCE_LABEL]: path.resolve(OMNITRON_HOME) }, ...changes,
 });
 beforeEach(() => { vi.clearAllMocks(); runtime.state = null; });
+afterEach(() => { expect(runtime.inspect).not.toHaveBeenCalled(); });
 
 describe('Console belongs to an instance', () => {
   it('keeps the default name and isolates other homes, regardless of stack scope', () => {
@@ -59,7 +62,7 @@ describe('Console belongs to an instance', () => {
   it('an instance without a configured Console never removes a shared container at shutdown', async () => {
     runtime.state = state();
     const tasks = new Map<string, () => Promise<void>>();
-    const app = { container: {}, on: vi.fn(), registerShutdownTask: (name: string, task: () => Promise<void>) => tasks.set(name, task) };
+    const app = { container: { has: vi.fn(() => false) }, on: vi.fn(), registerShutdownTask: (name: string, task: () => Promise<void>) => tasks.set(name, task) };
     const daemon = { execution: null, handingOffBackend: false };
     (OmnitronDaemon.prototype as unknown as { registerShutdownTasks: Function }).registerShutdownTasks.call(daemon, app, createNullLogger());
     await tasks.get('stop-file-watcher-and-webapp')!();

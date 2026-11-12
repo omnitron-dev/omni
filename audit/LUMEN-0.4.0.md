@@ -250,6 +250,18 @@ input with that Rollup pass stays stable. The JavaScript defect is in the
 esbuild splitting stage, independently of declaration emission.
 
 Neither difference is excluded from the equality gate or normalized away.
+`23461a6c` replaces both unstable stages with ordinary ESM and declarations
+emitted by one TypeScript program. Public subpaths share their actual modules
+and state. Only the mathematical syntax tokenizer remains bundled, excluding
+its unused legacy renderer and vulnerable transitive KaTeX range. Three package
+builds in two physical roots produce identical 124-file inventories; two packed
+archives also match byte for byte. All 145 AST tests, typecheck and lint pass.
+A fresh npm installation and `npm ci` pass with audit 0; actual consumer checks
+cover all seven public type exports, shared module identity, PDF, QuickJS,
+mathematics and Twoslash. This scoped consumer uses the corrected AST and the
+unchanged earlier Lumen dependency closure; full qualification must rebuild all
+35 packages from the final source commit. Exact evidence is recorded in
+`lumen-ast-repro-72cc/native-build-receipt.json` under the directory below.
 The candidate remains unqualified. CI retains bounded per-file evidence and
 affected public archives, including the [Linux failure artifact](https://github.com/omnitron-dev/omni/actions/runs/43217732489/artifacts/13943709847).
 Local reproductions are under

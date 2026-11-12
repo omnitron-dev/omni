@@ -1,42 +1,15 @@
 /**
- * Running a dump or restore without a shell.
- *
- * Every one of these was `execFile('/bin/sh', ['-c', "pg_dump … | gzip > file"])`,
- * which has three faults and the first is the serious one:
- *
- *   1. **A shell pipeline reports only the LAST command's exit status.**
- *      `pg_dump … | gzip > file` exits 0 when pg_dump fails, because gzip
- *      succeeded in writing its (empty) output. Verified: a pipeline whose
- *      first command does not exist exits 0 and leaves a 20-byte file. So a
- *      backup that dumped nothing was recorded as a backup — with a row in
- *      the store, a size, and a timestamp — and the operator found out when
- *      they tried to restore it.
- *   2. Names and paths were interpolated into a command string. A container,
- *      user or database name containing a space or a quote breaks the
- *      command; the values come from a project's own config, so this is a
- *      correctness problem before it is anything else.
- *   3. The uncompressed local path buffered the entire dump in memory with a
- *      100 MB ceiling, which an ordinary database exceeds.
- *
- * Streaming through `spawn` fixes all three: both ends of the pipe are real
- * processes whose exit codes are observed, arguments are passed as an array
- * so nothing is parsed, and nothing is held in memory.
- *
- * ## …and the file only takes its name once it is whole
- *
- * All of that catches a dump that FAILS. None of it catches a dump that is
- * never allowed to finish: the process killed, the host disk full, the VM
- * stopped mid-write. There no catch of ours runs, and the stream has been
- * writing under the FINAL name since its first byte.
- *
- * Measured in `~/.omnitron/backups` after this host filled on 2026-09-14 —
- * `main_…07-51….sql.gz` at 98 304 bytes and `quotes_…sql.gz` at 1.5 MB,
- * both a gzip header with the body cut off, both sitting under their final
- * names where a restore would have taken them. So the write goes to
- * `<name>.partial` and is renamed once the exit code has been checked.
+ * Streaming backup transfers with one deadline for the local command, streams
+ * and durable file publication. Partial files never take the final backup name;
+ * uncertain cleanup retains private staging and reports the unresolved state.
+ * Container exec ownership must be verified by its caller: closing the local
+ * Docker client alone is not evidence that its remote process has stopped.
  */
 
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import path from 'node:path';
+import type { FileHandle } from 'node:fs/promises';
 import { createGzip, createGunzip } from 'node:zlib';
 import fs from 'node:fs';
 import { pipeline } from 'node:stream/promises';
@@ -122,198 +95,246 @@ export function resolveBackupId<T extends { id: string }>(
 }
 
 export interface PipelineOptions {
-  /** Milliseconds before both processes are killed. */
+  /** Total time for process execution, streams and file publication, in milliseconds. */
   timeoutMs?: number;
-  /** Extra environment for the spawned command (e.g. PGPASSWORD). */
+  /** Environment for the spawned command (e.g. PGPASSWORD). */
   env?: NodeJS.ProcessEnv;
 }
 
 const DEFAULT_TIMEOUT_MS = 600_000;
+const MAX_TIMEOUT_MS = 86_400_000;
+const CLEANUP_TIMEOUT_MS = 3_000;
 
-/**
- * What to say about a child our own timer killed.
- *
- * It closes with `code === null`, and the only message this produced was
- * "docker exited with code null". Measured on the master, 2026-09-23:
- * «Creating backup main» at 06:04:08Z, the next line 603 s later, and a pass
- * summary of `{"total":6,"ok":5}` — the one reason anybody needed, that the
- * 600 s timeout had fired, was never written down in words.
- */
-function killedByTimer(command: string, timeoutMs: number, stderr: string): string {
-  const limit = timeoutMs >= 1000 ? `${Math.round(timeoutMs / 1000)} s` : `${timeoutMs} ms`;
-  return `${command} did not finish within ${limit} and was killed` + (stderr ? `: ${stderr.trim()}` : '');
+type ProcessResult = { code: number | null; signal: NodeJS.Signals | null };
+
+interface FileTransfer {
+  direction: 'dump' | 'restore';
+  location: string;
+  prepare?(): Promise<void>;
+  pipe(child: ChildProcess, signal: AbortSignal): Promise<void>;
+  publish?(checkDeadline: () => void): Promise<void>;
+  cleanup?(settled: boolean): Promise<void>;
 }
 
-/**
- * Run `command args…`, sending stdout to `outputPath`, optionally gzipped.
- *
- * @throws when the command exits non-zero, carrying its stderr — which the
- *         shell version discarded along with the exit status.
- */
+async function withinCleanup<T>(task: Promise<T>, deadline: number, location: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([task, new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`Pipeline cleanup did not settle within ${CLEANUP_TIMEOUT_MS} ms; inspect ${location}`)),
+        Math.max(0, deadline - performance.now()));
+    })]);
+  } finally { clearTimeout(timer); }
+}
+
+/** One lifecycle for a local child and its streams; remote exec ownership is separate. */
+async function runFileTransfer(command: string, args: string[], options: PipelineOptions, transfer: FileTransfer): Promise<void> {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > MAX_TIMEOUT_MS)
+    throw new Error(`Backup pipeline timeout must be an integer between 1 and ${MAX_TIMEOUT_MS} ms`);
+
+  const deadline = performance.now() + timeoutMs;
+  const controller = new AbortController();
+  let stderr = '';
+  const expire = () => {
+    const limit = timeoutMs >= 1000 ? `${timeoutMs / 1000} s` : `${timeoutMs} ms`;
+    controller.abort(new Error(`${command} pipeline exceeded its ${limit} deadline${stderr ? `: ${stderr.trim()}` : ''}`));
+  };
+  const timer = setTimeout(expire, timeoutMs);
+  const checkDeadline = () => {
+    if (performance.now() >= deadline && !controller.signal.aborted) expire();
+    controller.signal.throwIfAborted();
+  };
+  const aborted = new Promise<never>((_, reject) => {
+    controller.signal.addEventListener('abort', () => reject(controller.signal.reason), { once: true });
+  });
+  // A deadline can expire during setup, before the execution race is awaited.
+  void aborted.catch(() => undefined);
+
+  let child: ChildProcess | undefined;
+  let stopChild: ((graceMs: number) => Promise<boolean>) | undefined;
+  const pending = new Set<Promise<unknown>>();
+  const track = <T>(task: Promise<T>): Promise<T> => {
+    pending.add(task);
+    void task.then(() => pending.delete(task), () => pending.delete(task));
+    return task;
+  };
+  const wait = <T>(task: Promise<T>) => Promise.race([track(task), aborted]);
+  let cleanupDeadline: number | undefined;
+  let failure: unknown;
+  const cleanupErrors: unknown[] = [];
+  try {
+    // Keep the CLI formatting/read path free of the PM graph. Load the existing
+    // verified shutdown primitive before spawning, never only after a failure.
+    const [{ killChildAndVerify }, { createNullLogger }] = await Promise.race([Promise.all([
+      import('@omnitron-dev/titan-pm'), import('@omnitron-dev/titan/module/logger'),
+    ]), aborted]);
+    checkDeadline();
+    const preparation = transfer.prepare?.();
+    if (preparation) await wait(preparation);
+    checkDeadline();
+    const processGroup = process.platform !== 'win32';
+    child = spawn(command, args, {
+      env: options.env ?? process.env,
+      detached: processGroup,
+      stdio: transfer.direction === 'dump' ? ['ignore', 'pipe', 'pipe'] : ['pipe', 'ignore', 'pipe'],
+    });
+    const ownedChild = child;
+    stopChild = graceMs => killChildAndVerify(ownedChild, createNullLogger(), { command }, 0,
+      { force: true, processGroup, killGraceMs: graceMs });
+    child.stderr!.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString().slice(0, Math.max(0, 8192 - stderr.length));
+    });
+    const started = new Promise<void>((resolve, reject) => {
+      ownedChild.once('spawn', resolve);
+      ownedChild.once('error', reject);
+    });
+    const exited = new Promise<ProcessResult>((resolve, reject) => {
+      ownedChild.once('exit', (code, signal) => resolve({ code, signal }));
+      ownedChild.once('error', reject);
+    });
+    const closed = track(new Promise<void>(resolve => ownedChild.once('close', () => resolve())));
+    void exited.catch(() => undefined);
+    await wait(started);
+    checkDeadline();
+    const pumping = track(transfer.pipe(child, controller.signal));
+    const successfulExit = exited.then(({ code, signal }) => {
+      if (code !== 0) throw new Error(`${command} exited with ${signal ? `signal ${signal}` : `code ${code}`}${stderr ? `: ${stderr.trim()}` : ''}`);
+    });
+    await wait(Promise.all([pumping, successfulExit, closed]));
+    checkDeadline();
+    const publication = transfer.publish?.(checkDeadline);
+    if (publication) await wait(publication);
+    checkDeadline();
+  } catch (error) {
+    failure = controller.signal.aborted ? controller.signal.reason : error;
+    controller.abort(failure);
+    cleanupDeadline = performance.now() + CLEANUP_TIMEOUT_MS;
+    if (child) {
+      // Abort the transfer as well as its process. A dead producer does not
+      // settle a blocked gzip/file stream, and a broken output does not kill
+      // a producer that ignores a closed pipe.
+      child.stdin?.destroy();
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+      try {
+        const stopped = await withinCleanup(stopChild!(Math.max(0, cleanupDeadline - performance.now())), cleanupDeadline, transfer.location);
+        if (!stopped) throw new Error(`Local process cleanup was not confirmed for ${command} (pid ${child.pid})`, { cause: error });
+      } catch (cleanupError) { cleanupErrors.push(cleanupError); }
+    }
+    try { await withinCleanup(Promise.allSettled([...pending]), cleanupDeadline, transfer.location); }
+    catch (cleanupError) { cleanupErrors.push(cleanupError); }
+  } finally {
+    clearTimeout(timer);
+    try {
+      const cleanup = transfer.cleanup?.(pending.size === 0);
+      if (cleanup) await withinCleanup(cleanup, cleanupDeadline ?? performance.now() + CLEANUP_TIMEOUT_MS, transfer.location);
+    } catch (cleanupError) { cleanupErrors.push(cleanupError); }
+  }
+  if (cleanupErrors.length) {
+    throw new AggregateError(failure === undefined ? cleanupErrors : [failure, ...cleanupErrors],
+      `${failure === undefined ? 'Backup pipeline' : failure instanceof Error ? failure.message : String(failure)}; cleanup failed: ${cleanupErrors.map(error => error instanceof Error ? error.message : String(error)).join('; ')}`,
+      failure === undefined ? undefined : { cause: failure });
+  }
+  if (failure !== undefined) throw failure;
+}
+
+/** Stream a command into a private file, then durably publish it without replacing any destination. */
 export async function dumpToFile(
   command: string,
   args: string[],
   outputPath: string,
   compress: boolean,
-  options: PipelineOptions = {}
+  options: PipelineOptions = {},
 ): Promise<void> {
-  // Written under a name that is not a backup, and renamed once it is one.
-  const staging = `${outputPath}.partial`;
-  await fs.promises.rm(staging, { force: true });
-
-  const child = spawn(command, args, {
-    env: options.env ?? process.env,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-
-  let stderr = '';
-  child.stderr.on('data', (chunk) => {
-    // Bounded: a failing pg_dump can be talkative, and the reason is at the
-    // start rather than the end.
-    if (stderr.length < 8192) stderr += String(chunk);
-  });
-
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    child.kill('SIGKILL');
-  }, timeoutMs);
-
-  // Attached before anything is awaited, so neither event can be missed and
-  // no 'error' arrives without a listener.
-  const started = new Promise<void>((resolve, reject) => {
-    child.once('spawn', resolve);
-    child.once('error', reject);
-  });
-  const exited = new Promise<number>((resolve, reject) => {
-    child.once('close', resolve);
-    child.once('error', reject);
-  });
-  // A spawn failure rejects both promises, and only `started` is awaited on
-  // that path — leaving `exited` rejected with nobody listening, which under
-  // Node's default is a crash of the whole process. Marking it handled here
-  // costs nothing and is not a swallowed error: the same failure still
-  // arrives through `started`.
-  exited.catch(() => undefined);
-
-  let pumping: Promise<void> | undefined;
-
+  const staging = `${outputPath}.${randomUUID()}.partial`;
+  let file: FileHandle | undefined;
+  let output: fs.WriteStream | undefined;
+  let owned: { dev: number; ino: number } | undefined;
+  let created = false;
+  let published = false;
+  const closeFile = async () => {
+    output?.destroy();
+    await file?.close();
+    file = undefined;
+  };
   try {
-    // Wait for the process to exist before creating the file. `spawn` reports
-    // ENOENT asynchronously, so the previous version had already opened the
-    // write stream by then: the catch below removed the file, and the stream
-    // — still opening — recreated it a moment later. A failed dump left an
-    // empty file on disk, which is the one thing this module's own comment
-    // says must not happen. It showed up as a test failing only in a loaded
-    // full run, because load is what decides which side of the race wins.
-    await started;
-
-    const out = fs.createWriteStream(staging);
-    pumping = compress ? pipeline(child.stdout, createGzip(), out) : pipeline(child.stdout, out);
-
-    // Both of these must be awaited together. Awaiting only the stream would
-    // resolve on a clean EOF from a command that then exits non-zero — which
-    // is exactly the failure the shell version could not see.
-    const [, code] = await Promise.all([pumping, exited]);
-
-    if (code !== 0) {
-      if (timedOut) throw new Error(killedByTimer(command, timeoutMs, stderr));
-      throw new Error(`${command} exited with code ${code}${stderr ? `: ${stderr.trim()}` : ''}`);
-    }
-
-    // Only now does the name exist. Rename within a directory is atomic, so
-    // the visible state is binary: either no file, or a complete one. The
-    // guard above covers a dump that FAILED; this covers one that was never
-    // allowed to finish — the process killed, the host disk full — where no
-    // catch of ours runs at all.
-    await fs.promises.rename(staging, outputPath);
-  } catch (err) {
-    // Let the pipeline finish failing before removing the file. Otherwise the
-    // same race returns by the other door: `Promise.all` rejects on the exit
-    // code while the stream is still writing, and the write lands after the
-    // removal. Its rejection is also the one nothing else is waiting on.
-    if (pumping) await pumping.catch(() => undefined);
-    // A partial file is worse than none: it has a plausible size and restores
-    // nothing. Both names, because the rename may have happened before a
-    // later step threw.
-    await fs.promises.rm(staging, { force: true });
-    await fs.promises.rm(outputPath, { force: true });
-    throw err;
-  } finally {
-    clearTimeout(timer);
+    await runFileTransfer(command, args, options, {
+      direction: 'dump',
+      location: staging,
+      async prepare() {
+        // Refuse before spawning, and independently protect the publication race
+        // with link(), which atomically refuses an occupied final name.
+        try {
+          await fs.promises.lstat(outputPath);
+          throw new Error(`Backup destination already exists: ${outputPath}`);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        }
+        file = await fs.promises.open(staging, 'wx', 0o600);
+        created = true;
+        const { dev, ino } = await file.stat();
+        owned = { dev, ino };
+      },
+      pipe(child, signal) {
+        output = file!.createWriteStream({ autoClose: false });
+        return compress
+          ? pipeline(child.stdout!, createGzip(), output, { signal })
+          : pipeline(child.stdout!, output, { signal });
+      },
+      async publish(checkDeadline) {
+        await file!.sync();
+        checkDeadline();
+        await closeFile();
+        checkDeadline();
+        await fs.promises.link(staging, outputPath);
+        published = true;
+        // The complete file may already be visible if fsync/deadline fails. Never
+        // unlink that name: another writer could have replaced it in the meantime.
+        checkDeadline();
+        await fs.promises.unlink(staging);
+        owned = undefined;
+        created = false;
+        checkDeadline();
+        const directory = await fs.promises.open(path.dirname(outputPath), 'r');
+        try { checkDeadline(); await directory.sync(); } finally { await directory.close(); }
+        checkDeadline();
+      },
+      async cleanup(settled) {
+        // Closing a FileHandle waits for its pending kernel I/O. Even if the
+        // bounded caller stops waiting, this continuation only closes our handle
+        // and retains the staging name; it can never publish or unlink a final.
+        await closeFile();
+        if (!settled) throw new Error(`Transfer settlement was not confirmed; retained backup staging ${staging}`);
+        if (!created) return;
+        if (!owned) throw new Error(`Backup staging identity was not confirmed; retained ${staging}`);
+        const current = await fs.promises.lstat(staging);
+        if (current.dev !== owned.dev || current.ino !== owned.ino)
+          throw new Error(`Backup staging identity changed; retained ${staging}`);
+        await fs.promises.unlink(staging);
+      },
+    });
+  } catch (error) {
+    if (published) throw new Error(`Backup publication was not confirmed; destination left at ${outputPath}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+    throw error;
   }
 }
 
-/**
- * Feed `inputPath` into `command args…` on stdin, optionally gunzipping.
- *
- * @throws when the command exits non-zero, carrying its stderr.
- */
+/** Stream a file into a command; report explicitly if local cleanup cannot be confirmed. */
 export async function restoreFromFile(
   command: string,
   args: string[],
   inputPath: string,
   compressed: boolean,
-  options: PipelineOptions = {}
+  options: PipelineOptions = {},
 ): Promise<void> {
-  const child = spawn(command, args, {
-    env: options.env ?? process.env,
-    stdio: ['pipe', 'ignore', 'pipe'],
+  await runFileTransfer(command, args, options, {
+    direction: 'restore',
+    location: inputPath,
+    pipe(child, signal) {
+      const input = fs.createReadStream(inputPath);
+      return compressed
+        ? pipeline(input, createGunzip(), child.stdin!, { signal })
+        : pipeline(input, child.stdin!, { signal });
+    },
   });
-
-  let stderr = '';
-  child.stderr.on('data', (chunk) => {
-    if (stderr.length < 8192) stderr += String(chunk);
-  });
-
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    child.kill('SIGKILL');
-  }, timeoutMs);
-
-  const started = new Promise<void>((resolve, reject) => {
-    child.once('spawn', resolve);
-    child.once('error', reject);
-  });
-  const exited = new Promise<number>((resolve, reject) => {
-    child.once('close', resolve);
-    child.once('error', reject);
-  });
-  // A spawn failure rejects both promises, and only `started` is awaited on
-  // that path — leaving `exited` rejected with nobody listening, which under
-  // Node's default is a crash of the whole process. Marking it handled here
-  // costs nothing and is not a swallowed error: the same failure still
-  // arrives through `started`.
-  exited.catch(() => undefined);
-
-  let pumping: Promise<void> | undefined;
-
-  try {
-    // Same reason as `dumpToFile`: nothing is opened until the process is
-    // known to exist. Here it costs less — a read stream on a missing command
-    // leaves no artefact — but a file handle opened for a process that never
-    // started is still a handle nobody closes.
-    await started;
-
-    const input = fs.createReadStream(inputPath);
-    pumping = compressed ? pipeline(input, createGunzip(), child.stdin) : pipeline(input, child.stdin);
-
-    const [, code] = await Promise.all([pumping, exited]);
-
-    if (code !== 0) {
-      if (timedOut) throw new Error(killedByTimer(command, timeoutMs, stderr));
-      throw new Error(`${command} exited with code ${code}${stderr ? `: ${stderr.trim()}` : ''}`);
-    }
-  } catch (err) {
-    if (pumping) await pumping.catch(() => undefined);
-    // Killing the reader breaks the pipe into it, and that EPIPE can reach
-    // here before the exit code does — the timeout is still the reason.
-    if (timedOut) throw new Error(killedByTimer(command, timeoutMs, stderr), { cause: err });
-    throw err;
-  } finally {
-    clearTimeout(timer);
-  }
 }

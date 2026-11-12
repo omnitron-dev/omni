@@ -21,9 +21,8 @@
  *
  * Two changes, and they answer two different questions:
  *
- *   - the write goes to `<name>.partial` and is renamed after the exit code
- *     is checked, so the visible state is binary — rename within a directory
- *     is atomic;
+ *   - the write goes to a unique private `.partial` file and is linked to an
+ *     unoccupied final name after process, stream and fsync completion;
  *   - `execToFile` OPENS the result (`gzip -t`, `PRAGMA integrity_check`)
  *     before the rename, so a command that exits zero having produced
  *     nonsense does not publish it.
@@ -36,7 +35,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, existsSync, writeFileSync, readFileSync, statSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, writeFileSync, readFileSync, statSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { gunzipSync } from 'node:zlib';
@@ -58,12 +57,7 @@ describe('the final name appears only when the file is whole', () => {
     await dumpToFile('/bin/sh', ['-c', 'printf "CREATE TABLE t();"'], out, true);
     expect(existsSync(out)).toBe(true);
     expect(gunzipSync(readFileSync(out)).toString()).toBe('CREATE TABLE t();');
-  });
-
-  it('and nothing is left beside it', () => {
-    // The staging name is an implementation detail; a leftover would sit in
-    // the backup directory forever, in no listing.
-    expect(existsSync(path.join(dir, 'ok.sql.gz.partial'))).toBe(false);
+    expect(readdirSync(dir)).toEqual(['ok.sql.gz']);
   });
 
   it('a dump killed mid-write leaves no file under the backup name', async () => {
@@ -75,7 +69,7 @@ describe('the final name appears only when the file is whole', () => {
       dumpToFile('/bin/sh', ['-c', 'printf "PARTIAL DATA…"; sleep 5'], out, true, { timeoutMs: 300 }),
     ).rejects.toThrow();
     expect(existsSync(out), 'a truncated dump took the backup name').toBe(false);
-    expect(existsSync(`${out}.partial`), 'and left its staging file behind').toBe(false);
+    expect(readdirSync(dir).filter(name => name.endsWith('.partial')), 'left its staging file behind').toEqual([]);
   });
 
   it('a command that fails after writing output leaves nothing either', async () => {
@@ -120,57 +114,23 @@ describe('the final name appears only when the file is whole', () => {
     await expect(
       dumpToFile('/bin/sh', ['-c', 'printf "X"; exit 1'], out, true),
     ).rejects.toThrow();
-    expect(existsSync(`${out}.partial`)).toBe(false);
+    expect(readdirSync(dir).filter(name => name.endsWith('.partial'))).toEqual([]);
   });
 
   it('a command that does not exist leaves nothing', async () => {
     const out = path.join(dir, 'enoent.sql.gz');
     await expect(dumpToFile('/nonexistent/command', [], out, false)).rejects.toThrow();
     expect(existsSync(out)).toBe(false);
-    expect(existsSync(`${out}.partial`)).toBe(false);
+    expect(readdirSync(dir).filter(name => name.endsWith('.partial'))).toEqual([]);
   });
 
-  it('a stale staging file from an earlier attempt is not what gets published', async () => {
+  it("a different attempt's staging file is neither published nor removed", async () => {
     const out = path.join(dir, 'retry.sql.gz');
     writeFileSync(`${out}.partial`, 'LEFTOVER FROM A KILLED RUN');
 
     await dumpToFile('/bin/sh', ['-c', 'printf "FRESH"'], out, true);
     expect(gunzipSync(readFileSync(out)).toString()).toBe('FRESH');
     expect(statSync(out).size).toBeLessThan(100);
-  });
-});
-
-/**
- * Two of these are ORDER, and order is not fully observable from behaviour.
- *
- * Renaming before the exit code is checked, rather than after, publishes a
- * complete-looking archive of a failed dump — and then the catch removes it.
- * At rest the two orders are indistinguishable: no file either way. The
- * difference is a window of microseconds in which a restore reads a
- * truncated archive, and a mutation of that order passes every behavioural
- * assertion above, measured.
- *
- * The same holds for clearing a stale staging file before the run: the catch
- * clears it too, and `createWriteStream` truncates, so only a process killed
- * between the two leaves anything behind.
- *
- * Both are worth keeping and neither is worth pretending a behaviour test
- * pins. So they are pinned as what they are — the shape of the code — with
- * this note saying why, rather than by an assertion that reads as behavioural
- * and is not.
- */
-describe('the order, which behaviour cannot distinguish', () => {
-  const SRC = readFileSync(new URL('../../src/services/backup-pipeline.ts', import.meta.url), 'utf8');
-  const FN = SRC.slice(
-    SRC.indexOf('export async function dumpToFile('),
-    SRC.indexOf('export async function', SRC.indexOf('export async function dumpToFile(') + 10),
-  );
-
-  it('the rename comes after the exit code is checked', () => {
-    expect(FN.indexOf('exited with code')).toBeLessThan(FN.indexOf('rename(staging, outputPath)'));
-  });
-
-  it('and the staging file is cleared before the process starts', () => {
-    expect(FN.indexOf('rm(staging')).toBeLessThan(FN.indexOf('spawn(command'));
+    expect(readFileSync(`${out}.partial`, 'utf8')).toBe('LEFTOVER FROM A KILLED RUN');
   });
 });

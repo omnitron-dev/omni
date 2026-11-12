@@ -205,11 +205,11 @@ describe('the failure is written down where it happens', () => {
 });
 
 describe('the dump says why it was killed', () => {
-  it('a dump our timer killed reports the timeout, not "exited with code null"', async () => {
+  it('a deadline refusal reports the budget, without claiming remote process termination', async () => {
     const out = path.join(dir, 'slow.sql.gz');
     await expect(
       dumpToFile('/bin/sh', ['-c', 'printf HEADER; sleep 5'], out, true, { timeoutMs: 300 }),
-    ).rejects.toThrow('/bin/sh did not finish within 300 ms and was killed');
+    ).rejects.toThrow('/bin/sh pipeline exceeded its 300 ms deadline');
   });
 });
 

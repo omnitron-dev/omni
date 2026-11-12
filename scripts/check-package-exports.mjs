@@ -146,9 +146,9 @@ try {
       path.join(root, 'packages/lumen-ast/test/runtime/bundle-consumer.js'), lumenConsumer,
     ], { stdio: 'inherit' });
     const consumerEnv = { ...process.env, LUMEN_CONSUMER_ROOT: lumenConsumer };
-    // Reuse the official-client and real-browser suites against this installation.
+    // Reuse the official-client, native SSR and real-browser suites against this installation.
     // Fixtures are copied into the consumer; no source/dist aliases satisfy imports.
-    execFileSync('pnpm', ['exec', 'vitest', 'run', 'tests/mcp-stdio.test.ts', '--maxWorkers', '1',
+    execFileSync('pnpm', ['exec', 'vitest', 'run', 'tests/mcp-stdio.test.ts', 'tests/ssr-consumer-peers.test.ts', '--maxWorkers', '1',
       '--no-cache', '--fsModuleCachePath', path.join(temporary, 'mcp-cache')], {
       cwd: path.join(root, 'packages/lumen'), env: consumerEnv, stdio: 'inherit', timeout: 120_000,
     });

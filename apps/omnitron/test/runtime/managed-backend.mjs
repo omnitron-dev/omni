@@ -343,8 +343,10 @@ try {
       try { capable = (await supervisor.service.status()).migrationChecksumMetadata === 1; } finally { await supervisor.close(); }
       if (!capable) {
         const baselinePid = (await status()).pid;
+        // Full sealed-artifact admission uses the same outer CLI budget as
+        // upgrade below; this does not relax native or application readiness.
         await assert.rejects(run(path.resolve(managementDist, '../../../node'), [path.join(managementDist, 'cli/omnitron.js'),
-          '--json', 'backend', 'upgrade', managementDist, '--check'], { cwd: root, env: process.env, timeout: 90_000 }), /backend guardian transition/);
+          '--json', 'backend', 'upgrade', managementDist, '--check'], { cwd: root, env: process.env, timeout: 300_000 }), /backend guardian transition/);
         assert.equal((await status()).pid, baselinePid, 'Unsupported guardian check changed the backend');
         assert.equal((await probe()).pid, applicationPid);
         assertHistoryPreserved('legacy-guardian-refusal');
@@ -366,8 +368,9 @@ try {
     const checkPlan = async (file, expected, backendPid) => {
       if (!supportsCheck) return;
       const planBeforeCheck = await fs.readFile(file);
+      // A plan can inspect three distinct sealed runtimes before any drain.
       const { stdout } = await run(runner, [path.join(managementDist, 'cli/omnitron.js'), 'backend', 'guardian', 'apply', file, '--check', '--json'], {
-        env: { ...process.env, OMNITRON_HOME: instance }, cwd: root, timeout: 90_000, maxBuffer: 1024 * 1024,
+        env: { ...process.env, OMNITRON_HOME: instance }, cwd: root, timeout: 300_000, maxBuffer: 1024 * 1024,
       });
       assert.equal(JSON.parse(stdout).data.checked, expected);
       assert.deepEqual(await fs.readFile(file), planBeforeCheck, 'Readiness check changed the saved plan');
@@ -563,10 +566,13 @@ try {
   assert.ok(after.value > before.value); assert.equal(failures, 0);
   if (linux && process.env.OMNITRON_RUNTIME_PROBE) {
     const { runtimeProbeCommand } = await import(pathToFileURL(process.env.OMNITRON_RUNTIME_PROBE).href);
-    const bundle = { root: path.dirname(initialBackend.directory), version: first.version, commit: initialBackend.build.commit };
+    // Probe from the independent input bundle so the installed runtime must be
+    // identified through its managed selection, not as a direct bundle fork.
+    const bundle = { root: path.dirname(initialBackendDist), version: first.version, commit: initialBackend.build.commit };
     const options = { env: { ...process.env, OMNITRON_HOME: instance }, timeout: 60_000, maxBuffer: 1024 * 1024 };
     const detected = JSON.parse((await run('/bin/sh', ['-c', runtimeProbeCommand(bundle, (await status()).pid)], options)).stdout);
     assert.equal(detected.kind, 'managed'); assert.equal(detected.ownerPid, ownerPid);
+    assert.equal(detected.applicationRuntime.commit, artifact.build.commit, 'Runtime probe confused the owner and backend builds');
     await assert.rejects(run('/bin/sh', ['-c', runtimeProbeCommand(bundle, applicationPid)], options), /no recognized entry/);
     console.log(JSON.stringify({ stage: 'remote-inspection-verified', ownerPid, backendPid: afterGuardian.pid }));
   }

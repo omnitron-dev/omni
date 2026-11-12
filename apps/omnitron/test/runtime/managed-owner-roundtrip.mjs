@@ -22,6 +22,19 @@ export async function stopPrivateFixtureStack(project) {
   assert.equal(stopped.status, 'stopped'); assert.equal(stopped.stopOperation.phase, 'stopped');
 }
 
+/** Keep the read-only CLI admission and mutation on the same backend artifact. */
+export async function upgradePrivateFixtureBackend({ cli, runtimeRoot, commit, status }) {
+  const before = await status();
+  const directory = path.join(runtimeRoot, 'packages/0/dist');
+  const checked = await cli('backend', 'upgrade', directory, '--check');
+  assert.equal(checked.checked, true);
+  assert.equal(checked.build.commit, commit);
+  assert.equal((await status()).pid, before.pid, 'Backend check changed the running backend');
+  const changed = await cli('backend', 'upgrade', directory);
+  assert.equal(changed.build.commit, commit);
+  return { before, changed };
+}
+
 /** Cold owner qualification shares the managed-backend fixture and its private OS jobs. */
 export async function managedOwnerRoundtrip(context) {
   const { root, projectDirectory, instance, execution, config, units, first, artifact, initialBackend, initialGuardian, managementDist, fixtureId,
@@ -43,17 +56,18 @@ export async function managedOwnerRoundtrip(context) {
   const cli = async (...args) => {
     const result = await run(path.join(candidateRoot, 'node'),
       [path.join(managementDist, 'cli/omnitron.js'), '--json', ...args], {
-        cwd: root, env: { ...process.env, OMNITRON_HOME: instance }, timeout: 180_000, maxBuffer: 2 * 1024 * 1024,
+        cwd: root, env: { ...process.env, OMNITRON_HOME: instance }, timeout: LONG_REQUEST_TIMEOUT, maxBuffer: 2 * 1024 * 1024,
       });
     const envelope = JSON.parse(result.stdout);
-    assert.notEqual(envelope.success, false, result.stdout);
+    assert.equal(envelope.ok, true, result.stdout);
     assert.ok(envelope.data, result.stdout);
     return envelope.data;
   };
   const candidate = await cli('backend', 'install', candidateRoot);
   assert.equal(candidate.build.dirty, false);
+  assert.equal(first.build.commit, initialBackend.build.commit, 'Initial status does not identify the selected backend');
   const previous = { owner: artifact.runtimeHash, guardian: initialGuardian.runtimeHash,
-    backend: initialBackend.runtimeHash, commit: first.build.commit };
+    backend: initialBackend.runtimeHash, commit: initialBackend.build.commit };
   const installed = hash => path.join(instance, 'runtime/releases', hash);
   const probe = async () => {
     const address = JSON.parse(await fs.readFile(path.join(root, 'address.json'), 'utf8'));
@@ -115,12 +129,9 @@ export async function managedOwnerRoundtrip(context) {
       { phase: 'source-watch-backend-restore', id: candidate.id, commit: candidate.build.commit },
     ]) {
       await certificate();
-      const before = await status();
-      const checked = await cli('backend', 'upgrade', installed(target.id), '--check');
-      assert.equal(checked.checked, true);
-      assert.equal(checked.build.commit, target.commit);
-      assert.equal((await status()).pid, before.pid, 'Backend check changed the running backend');
-      const changed = await cli('backend', 'upgrade', installed(target.id));
+      const { before, changed } = await upgradePrivateFixtureBackend({
+        cli, runtimeRoot: installed(target.id), commit: target.commit, status,
+      });
       const settled = await until(async () => {
         const observed = await status();
         return observed.pid === changed.pid && observed.build.commit === target.commit &&

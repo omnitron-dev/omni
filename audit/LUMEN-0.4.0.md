@@ -309,6 +309,23 @@ part of final native qualification. The final commit still
 requires fresh archive preparation, complete CI and native acceptance. The old
 archives and failed receipts remain diagnostic evidence, never release evidence.
 
+Candidate `0ae455c0` subsequently passes all 35 archive/consumer gates, both
+independent local builds and all five Linux CI jobs, including the full workspace
+suite. Both Node 22.23.4 and 24.10.0 native jobs pass the backend transition and
+rollback, but fail in the later owner-roundtrip fixture: its source-watch check
+passes an installation root to `backend upgrade`, whose public argument is the
+sealed `packages/0/dist` directory. The candidate correctly refuses that input.
+These failed jobs do not establish a successful owner transition. The fixture
+correction must exercise the public CLI contract and keep the distinct previous
+backend identity when the initial owner and backend use different builds.
+
+The exact local-role rehearsal also exposes a fixture-only timing mismatch:
+full artifact verification takes about 57 seconds on the external development
+volume, before copying, fsync or repeated installation verification. Read-only
+CLI admission must fit within the same bounded lifecycle envelope as its public
+command. Changing that test envelope does not change application readiness,
+owner recovery or product RPC deadlines, and does not certify a live update.
+
 The reference website also passes a fresh SDK `08271086` acceptance through the
 ordinary SDK and Lumen commands: 239 pages, 236 preserved original routes, 2,855
 content anchors, 46,121 link/asset checks and twelve Chromium scenarios. Desktop

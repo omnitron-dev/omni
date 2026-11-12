@@ -6,11 +6,49 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { stopPrivateFixtureStack } from './managed-owner-roundtrip.mjs';
+import { stopPrivateFixtureStack, upgradePrivateFixtureBackend } from './managed-owner-roundtrip.mjs';
 import { applicationSdkOption } from './managed-project-runtime.mjs';
 
 const managementDist = fileURLToPath(new URL('../../dist/', import.meta.url));
 const execute = promisify(execFile);
+
+test('backend replacement passes the installed dist to both CLI phases for rollback and restore', async () => {
+  for (const commit of ['b'.repeat(40), 'c'.repeat(40)]) {
+    const runtimeRoot = path.join(os.tmpdir(), 'omnitron-handoff-contract', 'runtime/releases', commit.padEnd(64, '0'));
+    const directory = path.join(runtimeRoot, 'packages/0/dist');
+    const calls = [];
+    let pid = 101;
+    const result = await upgradePrivateFixtureBackend({ runtimeRoot, commit, status: async () => ({ pid }),
+      cli: async (...args) => {
+        calls.push(args);
+        assert.equal(args[2], directory, 'backend upgrade accepts dist, unlike backend install');
+        if (args.includes('--check')) return { checked: true, build: { commit } };
+        pid = 202;
+        return { pid, build: { commit } };
+      },
+    });
+    assert.deepEqual(calls, [['backend', 'upgrade', directory, '--check'], ['backend', 'upgrade', directory]]);
+    assert.equal(result.before.pid, 101); assert.equal(result.changed.pid, 202);
+    assert.equal(result.changed.build.commit, commit);
+  }
+});
+
+for (const failure of ['not checked', 'wrong backend commit', 'changed running backend']) {
+  test(`backend replacement refuses ${failure} before the CLI mutation`, async () => {
+    const commit = 'b'.repeat(40), calls = [];
+    let pid = 101;
+    await assert.rejects(upgradePrivateFixtureBackend({
+      runtimeRoot: path.join(os.tmpdir(), 'omnitron-handoff-contract'), commit, status: async () => ({ pid }),
+      cli: async (...args) => {
+        calls.push(args);
+        assert.ok(args.includes('--check'), 'Failed admission must not reach backend replacement');
+        if (failure === 'changed running backend') pid = 202;
+        return { checked: failure !== 'not checked', build: { commit: failure === 'wrong backend commit' ? 'a'.repeat(40) : commit } };
+      },
+    }));
+    assert.equal(calls.length, 1);
+  });
+}
 
 async function applicationProject(t) {
   const checkout = await fs.mkdtemp(path.join(os.tmpdir(), 'omni-sdk-input-'));

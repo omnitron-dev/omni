@@ -406,7 +406,11 @@ fs.rmSync = function(path) { throw Object.assign(new Error('Injected cleanup EPE
     mkdirSync(target);
     const absentParity = run(base, ['verify', source, target, '--json']);
     expect(absentParity.status).toBe(1);
-    expect(JSON.parse(absentParity.stdout)).toMatchObject({ passed: false, totalRoutes: 1 });
+    expect(JSON.parse(absentParity.stdout)).toMatchObject({
+      passed: false,
+      routes: { total: 1, preserved: 0, missing: ['/docs/intro'], matched: {} },
+      parityScore: 0,
+    });
     const emptyParity = run(base, ['verify', target, target, '--json']);
     expect(emptyParity.status).toBe(1);
     expect(JSON.parse(emptyParity.stdout)).toMatchObject({ passed: false, parityScore: 0 });

@@ -4,7 +4,7 @@
  */
 
 import ts from 'typescript';
-import libraries from 'virtual:lumen-typescript-libraries';
+import libraries from './typescript-libraries.js';
 
 export interface TwoslashAnnotation {
   lineIndex: number;

@@ -9,7 +9,7 @@ import { gfmFromMarkdown } from 'mdast-util-gfm';
 import { mathFromMarkdown } from 'mdast-util-math';
 import { directive } from 'micromark-extension-directive';
 import { gfm } from 'micromark-extension-gfm';
-import { math } from 'micromark-extension-math';
+import { math } from './math-syntax.js';
 
 import type { LumenDiagnostic } from '../ast/diagnostics.js';
 import { createDiagnostic } from '../ast/diagnostics.js';

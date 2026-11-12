@@ -1,8 +1,10 @@
-import { readFileSync } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import ts from 'typescript';
 
-const id = 'virtual:lumen-typescript-libraries';
+const sourceModule = fileURLToPath(new URL('../src/highlight/typescript-libraries.js', import.meta.url));
+const id = '\0' + sourceModule;
 let source;
 
 /** Embed the declared compiler's real library closure, never an imitation lib.d.ts. */
@@ -34,21 +36,20 @@ export function typescriptLibrariesSource() {
 export function typescriptLibrariesVitePlugin() {
   return {
     name: 'lumen-typescript-libraries',
-    resolveId(request) {
-      return request === id ? '\0' + id : null;
+    resolveId(request, importer) {
+      return importer && request === './typescript-libraries.js' &&
+        resolve(dirname(importer.split('?')[0]), request) === sourceModule ? id : null;
     },
     load(request) {
-      return request === '\0' + id ? typescriptLibrariesSource() : null;
+      return request === id ? typescriptLibrariesSource() : null;
     },
   };
 }
 
-export function typescriptLibrariesEsbuildPlugin() {
-  return {
-    name: 'lumen-typescript-libraries',
-    setup(build) {
-      build.onResolve({ filter: /^virtual:lumen-typescript-libraries$/ }, () => ({ path: id, namespace: id }));
-      build.onLoad({ filter: /.*/, namespace: id }, () => ({ contents: typescriptLibrariesSource(), loader: 'js' }));
-    },
-  };
+// The package build emits ordinary ESM. Only this generated asset needs a
+// separate write; source tests resolve the same generator through Vite above.
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  const target = resolve('dist/highlight/typescript-libraries.js');
+  mkdirSync(dirname(target), { recursive: true });
+  writeFileSync(target, typescriptLibrariesSource());
 }

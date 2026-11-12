@@ -52,7 +52,7 @@
     "licenses"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && tsup && node build/typescript-libraries.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "clean": "rm -rf dist"

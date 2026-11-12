@@ -2,12 +2,18 @@
 
 Pure isomorphic prism-doc/2 AST compiler, math environments, KaTeX macro registry, Shiki/Twoslash highlighter, and multi-target emitters for Omnitron Lumen.
 
-## Published math dependencies
+## Build and published dependencies
 
-The build includes the upstream `micromark-extension-math` syntax tokenizer,
-using the same `tsup.noExternal` publication contract as Prism. Its unused HTML
-renderer is removed; consumers do not install the extension's separate legacy
-KaTeX dependency. Rendering uses this package's direct, patched KaTeX version.
+TypeScript emits the AST's ESM modules and declarations in one compiler pass.
+Public subpaths share the same modules; the build does not duplicate their state
+or roll declarations into hashed chunks. Node and browser consumers use normal
+relative module imports.
+
+Only the upstream `micromark-extension-math` syntax tokenizer is bundled, through
+one entry without code splitting and the same `tsup.noExternal` publication
+contract as Prism. Its unused HTML renderer is removed; consumers do not install
+the extension's separate legacy KaTeX dependency. Rendering uses this package's
+direct, patched KaTeX version.
 The archive gate rejects retained imports of bundled build inputs and installs
 and audits the packages with npm, without workspace overrides.
 

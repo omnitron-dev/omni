@@ -1,22 +1,15 @@
 import { defineConfig } from 'tsup';
-import { typescriptLibrariesEsbuildPlugin } from './build/typescript-libraries.js';
 import manifest from './package.json';
 
+// Bundle only the syntax tokenizer, excluding its unused legacy HTML renderer.
+// The AST itself is ordinary ESM emitted once by TypeScript.
 export default defineConfig({
   ...manifest.tsup,
-  entry: [
-    'src/index.ts',
-    'src/execution/index.ts',
-    'src/execution/limits.ts',
-    'src/islands/index.ts',
-    'src/typst/index.ts',
-    'src/mcp/index.ts',
-    'src/diagrams/index.ts',
-  ],
+  entry: { 'compiler/math-syntax': 'src/compiler/math-syntax.ts' },
   format: ['esm'],
-  dts: true,
+  splitting: false,
+  dts: false,
   sourcemap: true,
-  clean: true,
+  clean: false,
   treeshake: true,
-  esbuildPlugins: [typescriptLibrariesEsbuildPlugin()],
 });

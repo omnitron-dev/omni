@@ -90,6 +90,11 @@ export interface LiveEditServiceOptions {
 export interface LumenModuleOptions {
   docsDir?: string;
   sourceDir?: string;
+  /** Source-level floor; individual document rules can only restrict it further. Defaults to internal. */
+  sourceAccess?: string;
+  knowledgeBaseAccess?: string;
+  /** Bound complete inventories; exceeding a limit fails instead of returning partial results. */
+  corpusLimits?: { maxEntries?: number; maxBytes?: number; maxDepth?: number };
   kbEnabled?: boolean;
   knowledgeBase?: KnowledgeBase;
   global?: boolean;

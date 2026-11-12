@@ -1,6 +1,6 @@
 import { Worker } from 'node:worker_threads';
-import { extname, relative, resolve, sep as pathSep } from 'node:path';
-import { readdir, readFile, realpath, stat } from 'node:fs/promises';
+import { extname, resolve } from 'node:path';
+import { realpath, stat } from 'node:fs/promises';
 import ts from 'typescript';
 import { Injectable, Service } from '@omnitron-dev/titan';
 import { Public, getCurrentInvocationContext } from '@omnitron-dev/titan/netron';
@@ -8,6 +8,7 @@ import { Errors } from '@omnitron-dev/titan/errors';
 import { parseDocument, type LumenNode } from '@omnitron-dev/lumen-ast';
 import { PLAYGROUND_LIMITS } from '@omnitron-dev/lumen-ast/execution/limits';
 import { DEFAULT_DOCS_DIR } from './constants.js';
+import { isCanonicalDocumentPath, readCorpusFile, scanCorpusFiles } from './corpus-files.js';
 import {
   AccessFilterService,
   extractDocumentAccess,
@@ -56,47 +57,11 @@ function cloneModuleOptions(opts: LumenModuleOptions): LumenModuleOptions {
       ...(opts.accessFilter.grants ? { grants: { ...opts.accessFilter.grants } } : {}),
     };
   }
+  if (opts.corpusLimits) cloned.corpusLimits = { ...opts.corpusLimits };
   if (opts.liveEdit) {
     cloned.liveEdit = { ...opts.liveEdit };
   }
   return cloned;
-}
-
-function isDisallowedDocumentPath(rawPath: string): boolean {
-  if (!rawPath || typeof rawPath !== 'string' || rawPath.trim().length === 0) {
-    return true;
-  }
-
-  if (
-    rawPath.includes('\0') ||
-    rawPath.includes('\\') ||
-    rawPath.includes('\uFF0E') ||
-    rawPath.includes('..') ||
-    rawPath.startsWith('/') ||
-    rawPath.startsWith('~') ||
-    /^[a-zA-Z]:/.test(rawPath) ||
-    rawPath.includes('/var/') ||
-    rawPath.includes('/etc/') ||
-    rawPath.includes('/dev/') ||
-    rawPath.includes('/proc/') ||
-    rawPath.includes('/sys/') ||
-    rawPath.includes('/windows/') ||
-    rawPath.includes('package.json')
-  ) {
-    return true;
-  }
-
-  // Reject single- or multi-URL-encoded dot, slash, backslash, or null-byte sequences
-  if (/%(?:2e|2f|5c|00|25(?:2e|2f|5c|00))/i.test(rawPath)) {
-    return true;
-  }
-
-  const ext = extname(rawPath).toLowerCase();
-  if (ext !== '' && !ALLOWED_DOC_EXTENSIONS.has(ext)) {
-    return true;
-  }
-
-  return false;
 }
 
 function extractFirstHeading(content: string): string | undefined {
@@ -155,7 +120,7 @@ function extractSymbolFromSourceFile(
               .getModifiers(member)
               ?.some((m) => m.kind === ts.SyntaxKind.PrivateKeyword || m.kind === ts.SyntaxKind.ProtectedKeyword)
           );
-        if (isPrivateOrProtected) {
+        if (isPrivateOrProtected || (member.name && ts.isPrivateIdentifier(member.name))) {
           continue;
         }
         if ((ts.isMethodDeclaration(member) || ts.isPropertyDeclaration(member)) && member.name) {
@@ -284,75 +249,23 @@ export class LumenService implements LumenServiceContract {
     return invocation.auth;
   }
 
-  private async scanDocsDirectory(
-    realDocsBase: string,
-    currentDir: string,
-    collected: Array<{ id: string; title: string; path: string; content: string; access: string }>
-  ): Promise<void> {
-    let entries;
-    try {
-      entries = await readdir(currentDir, { withFileTypes: true });
-    } catch {
-      return;
-    }
+  private async corpusRoot(directory: string): Promise<string> {
+    const root = await realpath(resolve(directory));
+    if (!(await stat(root)).isDirectory()) throw new Error('Configured corpus root is not a directory');
+    return root;
+  }
 
-    for (const entry of entries) {
-      if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'dist') {
-        continue;
-      }
-
-      const candidatePath = resolve(currentDir, entry.name);
-      let realTarget: string;
-      try {
-        realTarget = await realpath(candidatePath);
-      } catch {
-        continue;
-      }
-
-      // Symlink containment check inside realDocsBase
-      if (!realTarget.startsWith(realDocsBase + pathSep)) {
-        continue;
-      }
-
-      let targetStat;
-      try {
-        targetStat = await stat(realTarget);
-      } catch {
-        continue;
-      }
-
-      if (targetStat.isDirectory()) {
-        await this.scanDocsDirectory(realDocsBase, realTarget, collected);
-        continue;
-      }
-
-      if (!targetStat.isFile() || targetStat.size > MAX_DOC_FILE_BYTES) {
-        continue;
-      }
-
-      const ext = extname(realTarget).toLowerCase();
-      if (!ALLOWED_DOC_EXTENSIONS.has(ext)) {
-        continue;
-      }
-
-      try {
-        const content = await readFile(realTarget, 'utf8');
-        const relPath = relative(realDocsBase, realTarget).split(pathSep).join('/');
-        const meta = extractDocumentMetadata(content);
-        const fallbackTitle = extractFirstHeading(stripFrontmatter(content)) ?? relPath.replace(/\.(pdx|mdx?)$/i, '');
-        const docId = meta.id ?? relPath.replace(/\.(pdx|mdx?)$/i, '').replace(/\//g, '-');
-
-        collected.push({
-          id: docId,
-          title: meta.title ?? fallbackTitle,
-          path: relPath,
-          content,
-          access: meta.access,
-        });
-      } catch {
-        // Ignore unreadable files during corpus scan
-      }
-    }
+  private async readDocuments() {
+    const root = await this.corpusRoot(this.options.docsDir ?? DEFAULT_DOCS_DIR);
+    const files = await scanCorpusFiles(root, ALLOWED_DOC_EXTENSIONS, MAX_DOC_FILE_BYTES, this.options.corpusLimits);
+    return files.map(({ path, content }) => {
+      const meta = extractDocumentMetadata(content);
+      return {
+        id: meta.id ?? path,
+        title: meta.title ?? extractFirstHeading(stripFrontmatter(content)) ?? path.replace(/\.(pdx|mdx?)$/i, ''),
+        path, content, access: meta.access,
+      };
+    });
   }
 
   @Public({ auth: { allowAnonymous: true } })
@@ -361,11 +274,12 @@ export class LumenService implements LumenServiceContract {
       return [];
     }
 
-    if (searchOptions?.limit !== undefined && searchOptions.limit <= 0) {
-      return [];
-    }
-
+    if (Buffer.byteLength(query) > 4096) throw Errors.badRequest('Search query exceeds 4096 bytes');
     const limit = searchOptions?.limit ?? 10;
+    if (!Number.isSafeInteger(limit) || limit < 0 || limit > 100) {
+      throw Errors.badRequest('Search limit must be an integer from 0 to 100');
+    }
+    if (limit === 0) return [];
     const effectiveRoles = this.callerRoles();
     const trimmedQuery = query.trim();
     const lowerQuery = trimmedQuery.toLowerCase();
@@ -373,7 +287,7 @@ export class LumenService implements LumenServiceContract {
     const seenIds = new Set<string>();
 
     // 1. Merge results from @omnitron-dev/kb KnowledgeBase when configured
-    if (this.options.knowledgeBase) {
+    if (this.options.knowledgeBase && this.accessFilter.isAllowed(effectiveRoles, this.options.knowledgeBaseAccess ?? 'internal')) {
       try {
         const kbResult = await this.options.knowledgeBase.query(trimmedQuery, { maxResults: limit });
         for (const entry of kbResult.entries ?? []) {
@@ -407,55 +321,47 @@ export class LumenService implements LumenServiceContract {
             return results;
           }
         }
-      } catch {
-        // Degrade gracefully to filesystem / in-memory corpus search if KB store fails
+      } catch (error) {
+        throw Errors.internal('Unable to search the configured knowledge base', error as Error);
       }
     }
 
-    // 2. Scan real .pdx / .md / .mdx files from options.docsDir when docsDir exists on disk
-    const docsBase = resolve(process.cwd(), this.options.docsDir ?? DEFAULT_DOCS_DIR);
     try {
-      const realDocsBase = await realpath(docsBase);
-      const baseStat = await stat(realDocsBase);
-      if (baseStat.isDirectory()) {
-        const diskDocs: Array<{ id: string; title: string; path: string; content: string; access: string }> = [];
-        await this.scanDocsDirectory(realDocsBase, realDocsBase, diskDocs);
+      const diskDocs = await this.readDocuments();
+      for (const doc of diskDocs) {
+        const projectedContent = this.accessFilter.filterRawMarkdownContent(
+          doc.content,
+          effectiveRoles,
+          doc.access
+        );
+        if (projectedContent === null) {
+          continue;
+        }
 
-        for (const doc of diskDocs) {
-          const projectedContent = this.accessFilter.filterRawMarkdownContent(
-            doc.content,
-            effectiveRoles,
-            doc.access
-          );
-          if (projectedContent === null) {
-            continue;
-          }
+        const bodyText = stripFrontmatter(projectedContent);
+        const matchTitle = doc.title.toLowerCase().includes(lowerQuery);
+        const matchContent = bodyText.toLowerCase().includes(lowerQuery);
+        const matchPath = doc.path.toLowerCase().includes(lowerQuery);
 
-          const bodyText = stripFrontmatter(projectedContent);
-          const matchTitle = doc.title.toLowerCase().includes(lowerQuery);
-          const matchContent = bodyText.toLowerCase().includes(lowerQuery);
-          const matchPath = doc.path.toLowerCase().includes(lowerQuery);
-
-          if (matchTitle || matchContent || matchPath) {
-            if (!seenIds.has(doc.id)) {
-              seenIds.add(doc.id);
-              results.push({
-                documentId: doc.id,
-                title: doc.title,
-                path: doc.path,
-                snippet: bodyText.trim().slice(0, 160),
-                score: matchTitle ? 1.0 : 0.85,
-              });
-            }
-          }
-
-          if (results.length >= limit) {
-            return results;
+        if (matchTitle || matchContent || matchPath) {
+          if (!seenIds.has(doc.id)) {
+            seenIds.add(doc.id);
+            results.push({
+              documentId: doc.id,
+              title: doc.title,
+              path: doc.path,
+              snippet: bodyText.trim().slice(0, 160),
+              score: matchTitle ? 1.0 : 0.85,
+            });
           }
         }
+
+        if (results.length >= limit) {
+          return results;
+        }
       }
-    } catch {
-      throw Errors.internal('Unable to read the configured documentation corpus');
+    } catch (error) {
+      throw Errors.internal('Unable to read the configured documentation corpus', error as Error);
     }
 
     return results;
@@ -516,6 +422,7 @@ export class LumenService implements LumenServiceContract {
       try {
         worker = new Worker(PLAYGROUND_WORKER_SCRIPT, {
           eval: true,
+          execArgv: [],
           workerData: {
             code,
             engine: import.meta.resolve('@omnitron-dev/lumen-ast/execution'),
@@ -577,7 +484,7 @@ export class LumenService implements LumenServiceContract {
 
   @Public({ auth: { allowAnonymous: true } })
   async getDocument(docPath: string): Promise<string | null> {
-    if (isDisallowedDocumentPath(docPath)) {
+    if (!isCanonicalDocumentPath(docPath, ALLOWED_DOC_EXTENSIONS)) {
       return null;
     }
 
@@ -595,117 +502,15 @@ export class LumenService implements LumenServiceContract {
       }
     }
 
-    // Symlink-safe canonical realpath check within docsDir.
     try {
-      const docsBase = resolve(process.cwd(), this.options.docsDir ?? DEFAULT_DOCS_DIR);
-      const realDocsBase = await realpath(docsBase);
-
+      const root = await this.corpusRoot(this.options.docsDir ?? DEFAULT_DOCS_DIR);
       for (const candidate of fileCandidates) {
-        const resolvedTarget = resolve(docsBase, candidate);
-        if (!resolvedTarget.startsWith(docsBase + pathSep)) {
-          continue;
-        }
-
-        let realTarget: string;
-        try {
-          realTarget = await realpath(resolvedTarget);
-        } catch {
-          continue;
-        }
-
-        if (!realTarget.startsWith(realDocsBase + pathSep)) {
-          return null;
-        }
-
-        const realExt = extname(realTarget).toLowerCase();
-        if (!ALLOWED_DOC_EXTENSIONS.has(realExt)) {
-          return null;
-        }
-
-        const fileStat = await stat(realTarget);
-        if (!fileStat.isFile() || fileStat.size > MAX_DOC_FILE_BYTES) {
-          return null;
-        }
-
-        const content = await readFile(realTarget, 'utf8');
-        return this.accessFilter.filterRawMarkdownContent(content, effectiveRoles);
+        const content = await readCorpusFile(root, candidate, MAX_DOC_FILE_BYTES);
+        if (content !== null) return this.accessFilter.filterRawMarkdownContent(content, effectiveRoles);
       }
-    } catch {
-      return null;
+    } catch (error) {
+      throw Errors.internal('Unable to read the configured documentation corpus', error as Error);
     }
-
-    return null;
-  }
-
-  private async scanSourceDirectoryForSymbol(
-    realSourceBase: string,
-    currentDir: string,
-    targetSymbol: string
-  ): Promise<SymbolContract | null> {
-    let entries;
-    try {
-      entries = await readdir(currentDir, { withFileTypes: true });
-    } catch {
-      return null;
-    }
-
-    for (const entry of entries) {
-      if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'dist') {
-        continue;
-      }
-
-      const candidatePath = resolve(currentDir, entry.name);
-      let realTarget: string;
-      try {
-        realTarget = await realpath(candidatePath);
-      } catch {
-        continue;
-      }
-
-      if (!realTarget.startsWith(realSourceBase + pathSep)) {
-        continue;
-      }
-
-      let targetStat;
-      try {
-        targetStat = await stat(realTarget);
-      } catch {
-        continue;
-      }
-
-      if (targetStat.isDirectory()) {
-        const nested = await this.scanSourceDirectoryForSymbol(realSourceBase, realTarget, targetSymbol);
-        if (nested) {
-          return nested;
-        }
-        continue;
-      }
-
-      if (!targetStat.isFile() || targetStat.size > MAX_SOURCE_FILE_BYTES) {
-        continue;
-      }
-
-      const ext = extname(realTarget).toLowerCase();
-      if (!ALLOWED_TS_EXTENSIONS.has(ext)) {
-        continue;
-      }
-
-      try {
-        const rawCode = await readFile(realTarget, 'utf8');
-        if (!rawCode.includes(targetSymbol)) {
-          continue;
-        }
-        const relFile = relative(realSourceBase, realTarget).split(pathSep).join('/');
-        const sourceFile = ts.createSourceFile(relFile, rawCode, ts.ScriptTarget.Latest, true);
-        const found = extractSymbolFromSourceFile(sourceFile, targetSymbol, relFile);
-        if (found) {
-          return found;
-        }
-      } catch {
-        // Ignore individual file parse errors
-      }
-    }
-
     return null;
   }
 
@@ -715,10 +520,12 @@ export class LumenService implements LumenServiceContract {
       return null;
     }
 
+    if (symbol.length > 512) throw Errors.badRequest('Symbol name exceeds 512 characters');
     const trimmed = symbol.trim();
+    const effectiveRoles = this.callerRoles();
 
     // 1. Check @omnitron-dev/kb KnowledgeBase first when provided
-    if (this.options.knowledgeBase) {
+    if (this.options.knowledgeBase && this.accessFilter.isAllowed(effectiveRoles, this.options.knowledgeBaseAccess ?? 'internal')) {
       try {
         const kbSymbol = await this.options.knowledgeBase.getApi(trimmed);
         if (kbSymbol) {
@@ -736,25 +543,23 @@ export class LumenService implements LumenServiceContract {
             ...(Object.keys(methods).length > 0 ? { methods } : {}),
           };
         }
-      } catch {
-        // Fall through to TypeScript declaration scan and built-in contracts
+      } catch (error) {
+        throw Errors.internal('Unable to inspect the configured knowledge base', error as Error);
       }
     }
 
-    // 2. Scan TypeScript declarations in options.sourceDir when configured
-    if (this.options.sourceDir) {
+    if (this.options.sourceDir && this.accessFilter.isAllowed(effectiveRoles, this.options.sourceAccess ?? 'internal')) {
       try {
-        const sourceBase = resolve(process.cwd(), this.options.sourceDir);
-        const realSourceBase = await realpath(sourceBase);
-        const baseStat = await stat(realSourceBase);
-        if (baseStat.isDirectory()) {
-          const scanned = await this.scanSourceDirectoryForSymbol(realSourceBase, realSourceBase, trimmed);
-          if (scanned) {
-            return scanned;
-          }
+        const root = await this.corpusRoot(this.options.sourceDir);
+        const files = await scanCorpusFiles(root, ALLOWED_TS_EXTENSIONS, MAX_SOURCE_FILE_BYTES, this.options.corpusLimits);
+        for (const { path, content } of files) {
+          if (!content.includes(trimmed)) continue;
+          const sourceFile = ts.createSourceFile(path, content, ts.ScriptTarget.Latest, true);
+          const found = extractSymbolFromSourceFile(sourceFile, trimmed, path);
+          if (found) return found;
         }
-      } catch {
-        // Fall through to built-in contracts
+      } catch (error) {
+        throw Errors.internal('Unable to inspect the configured source corpus', error as Error);
       }
     }
 
@@ -766,106 +571,99 @@ export class LumenService implements LumenServiceContract {
     const effectiveRoles = this.callerRoles();
 
     try {
-      const docsBase = resolve(process.cwd(), this.options.docsDir ?? DEFAULT_DOCS_DIR);
-      const realDocsBase = await realpath(docsBase);
-      const baseStat = await stat(realDocsBase);
-      if (baseStat.isDirectory()) {
-        const diskDocs: Array<{ id: string; title: string; path: string; content: string; access: string }> = [];
-        await this.scanDocsDirectory(realDocsBase, realDocsBase, diskDocs);
+      const diskDocs = await this.readDocuments();
+      const nodes: TheoremGraphData['nodes'] = [];
+      const edges: TheoremGraphData['edges'] = [];
+      const nodeIds = new Set<string>();
 
-        const nodes: TheoremGraphData['nodes'] = [];
-        const edges: TheoremGraphData['edges'] = [];
-        const nodeIds = new Set<string>();
-
-        const collectSmartRefs = (subNodes: LumenNode[], out: Set<string>): void => {
-          for (const child of subNodes) {
-            if (!child || typeof child !== 'object') continue;
-            if (child.type === 'smartRef') {
-              const target = String((child as Record<string, unknown>)['target'] ?? '').trim();
-              if (target.length > 0) {
-                out.add(target);
-              }
-            }
-            if (Array.isArray(child.children)) {
-              collectSmartRefs(child.children, out);
+      const collectSmartRefs = (subNodes: LumenNode[], out: Set<string>): void => {
+        for (const child of subNodes) {
+          if (!child || typeof child !== 'object') continue;
+          if (child.type === 'smartRef') {
+            const target = String((child as Record<string, unknown>)['target'] ?? '').trim();
+            if (target.length > 0) {
+              out.add(target);
             }
           }
-        };
+          if (Array.isArray(child.children)) {
+            collectSmartRefs(child.children, out);
+          }
+        }
+      };
 
-        const VALID_THEOREM_TYPES = new Set<TheoremGraphData['nodes'][number]['type']>([
-          'axiom',
-          'theorem',
-          'definition',
-          'lemma',
-          'proposition',
-          'corollary',
-          'hypothesis',
-          'remark',
-          'example',
-        ]);
+      const VALID_THEOREM_TYPES = new Set<TheoremGraphData['nodes'][number]['type']>([
+        'axiom',
+        'theorem',
+        'definition',
+        'lemma',
+        'proposition',
+        'corollary',
+        'hypothesis',
+        'remark',
+        'example',
+      ]);
 
-        const normalizeTheoremType = (raw: string): TheoremGraphData['nodes'][number]['type'] => {
-          const lower = raw.toLowerCase() as TheoremGraphData['nodes'][number]['type'];
-          return VALID_THEOREM_TYPES.has(lower) ? lower : 'theorem';
-        };
+      const normalizeTheoremType = (raw: string): TheoremGraphData['nodes'][number]['type'] => {
+        const lower = raw.toLowerCase() as TheoremGraphData['nodes'][number]['type'];
+        return VALID_THEOREM_TYPES.has(lower) ? lower : 'theorem';
+      };
 
-        const walkMathEnvs = (astNodes: LumenNode[], defaultStatus: string, docPath: string): void => {
-          for (const node of astNodes) {
-            if (!node || typeof node !== 'object') continue;
-            if (node.type === 'mathEnvironment') {
-              const rec = node as Record<string, unknown>;
-              const envKind = String(rec['envKind'] ?? 'theorem');
-              const id = typeof rec['id'] === 'string' && rec['id'].trim().length > 0 ? rec['id'].trim() : undefined;
-              const title =
-                typeof rec['title'] === 'string' && rec['title'].trim().length > 0
-                  ? rec['title'].trim()
-                  : (id ?? envKind);
-              const attrs = (rec['attributes'] as Record<string, unknown> | undefined) ?? {};
-              const status = typeof attrs['status'] === 'string' ? attrs['status'] : defaultStatus;
-              const ofTarget =
-                (typeof rec['of'] === 'string' ? rec['of'] : undefined) ??
-                (typeof attrs['of'] === 'string' ? attrs['of'] : undefined);
+      const walkMathEnvs = (astNodes: LumenNode[], defaultStatus: string, docPath: string): void => {
+        for (const node of astNodes) {
+          if (!node || typeof node !== 'object') continue;
+          if (node.type === 'mathEnvironment') {
+            const rec = node as Record<string, unknown>;
+            const envKind = String(rec['envKind'] ?? 'theorem');
+            const id = typeof rec['id'] === 'string' && rec['id'].trim().length > 0 ? rec['id'].trim() : undefined;
+            const title =
+              typeof rec['title'] === 'string' && rec['title'].trim().length > 0
+                ? rec['title'].trim()
+                : (id ?? envKind);
+            const attrs = (rec['attributes'] as Record<string, unknown> | undefined) ?? {};
+            const status = typeof attrs['status'] === 'string' ? attrs['status'] : defaultStatus;
+            const ofTarget =
+              (typeof rec['of'] === 'string' ? rec['of'] : undefined) ??
+              (typeof attrs['of'] === 'string' ? attrs['of'] : undefined);
 
-              if (envKind !== 'proof' && id && !nodeIds.has(id)) {
-                nodeIds.add(id);
-                nodes.push({ id, type: normalizeTheoremType(envKind), title, status, path: docPath });
-              }
+            if (envKind !== 'proof' && id && !nodeIds.has(id)) {
+              nodeIds.add(id);
+              nodes.push({ id, type: normalizeTheoremType(envKind), title, status, path: docPath });
+            }
 
-              // For :::proof{of="thm-x"} containing @lem:lem-y, record thm-x dependsOn lem-y
-              const dependencyOwner = envKind === 'proof' ? ofTarget : id;
-              if (dependencyOwner && Array.isArray(node.children)) {
-                const refs = new Set<string>();
-                collectSmartRefs(node.children, refs);
-                for (const refTarget of refs) {
-                  if (refTarget !== dependencyOwner) {
-                    edges.push({ source: dependencyOwner, target: refTarget, relation: 'dependsOn' });
-                  }
+            // For :::proof{of="thm-x"} containing @lem:lem-y, record thm-x dependsOn lem-y
+            const dependencyOwner = envKind === 'proof' ? ofTarget : id;
+            if (dependencyOwner && Array.isArray(node.children)) {
+              const refs = new Set<string>();
+              collectSmartRefs(node.children, refs);
+              for (const refTarget of refs) {
+                if (refTarget !== dependencyOwner) {
+                  edges.push({ source: dependencyOwner, target: refTarget, relation: 'dependsOn' });
                 }
               }
             }
-            if (Array.isArray(node.children)) {
-              walkMathEnvs(node.children, defaultStatus, docPath);
-            }
           }
-        };
-
-        for (const doc of diskDocs) {
-          if (!this.accessFilter.isAllowed(effectiveRoles, doc.access)) {
-            continue;
+          if (Array.isArray(node.children)) {
+            walkMathEnvs(node.children, defaultStatus, docPath);
           }
-          const ast = await parseDocument(doc.content, doc.path);
-          const filtered = this.accessFilter.filterAst(ast, effectiveRoles);
-          const docStatus = typeof filtered.frontmatter.status === 'string' ? filtered.frontmatter.status : 'canonical';
-          walkMathEnvs(filtered.children, docStatus, doc.path);
         }
+      };
 
-        if (nodes.length > 0) {
-          const validEdges = edges.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target));
-          return { nodes, edges: validEdges };
+      for (const doc of diskDocs) {
+        if (!this.accessFilter.isAllowed(effectiveRoles, doc.access)) {
+          continue;
         }
+        const ast = await parseDocument(doc.content, doc.path);
+        const filtered = this.accessFilter.filterAst(ast, effectiveRoles);
+        const docStatus = typeof filtered.frontmatter.status === 'string' ? filtered.frontmatter.status : 'canonical';
+        walkMathEnvs(filtered.children, docStatus, doc.path);
       }
-    } catch {
-      throw Errors.internal('Unable to read the configured documentation corpus');
+
+      if (nodes.length > 0) {
+        const validEdges = edges.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target));
+        return { nodes, edges: validEdges };
+      }
+    } catch (error) {
+      throw Errors.internal('Unable to read the configured documentation corpus', error as Error);
     }
 
     return { nodes: [], edges: [] };

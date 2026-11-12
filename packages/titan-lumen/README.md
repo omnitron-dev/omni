@@ -38,7 +38,7 @@ The service name is `Lumen`. `LumenServiceContract` describes the six network me
 | --- | --- | --- |
 | `search(query, options?)` | Ranked document hits | Public projection or verified caller's document access |
 | `getDocument(path)` | Authorized Markdown or `null` | Document and node access |
-| `getSymbolContract(symbol)` | Symbol contract or `null` | Read operation; source projection qualification is ongoing |
+| `getSymbolContract(symbol)` | Symbol contract or `null` | Configured source access, internal by default |
 | `getTheoremGraph()` | Theorem nodes and edges | Authorized document projection |
 | `executePlayground(code)` | Execution result or error | `lumen.playground.execute` |
 | `saveLiveEdit(payload)` | Revision or conflict | `lumen.documents.write` |
@@ -62,7 +62,7 @@ its `AccessFilterService` and `LiveEditService` collaborators by their classes.
 `LUMEN_OPTIONS_TOKEN` is the configuration token.
 
 An empty corpus returns empty results. A missing configured corpus reports an
-error when searching or loading the graph; it never substitutes demonstration
+error on document, search and graph reads; it never substitutes demonstration
 documents or symbol contracts.
 
 ## MCP on the existing Netron HTTP host
@@ -128,3 +128,21 @@ local negative tests through actual Netron, including memory exhaustion,
 constructor escapes and concurrent admission. Browser and final package checks
 remain part of the release gate. Nothing in this package's audit
 activates changes on running Omnitron controllers or applications.
+
+## Corpus bounds and source visibility
+
+Filesystem documents use canonical relative paths. Symlinks, hidden paths,
+`node_modules` and generated `dist` trees are excluded. A missing document is
+`null`; a missing configured directory, invalid UTF-8 or failed read is an error.
+Search and theorem graphs consume the same complete, deterministic inventory.
+The default inventory budget is 10,000 entries, 64 MiB and 32 directory levels;
+`corpusLimits` configures these bounds. Documents are limited to 5 MiB and source
+files to 2 MiB. Exceeding a bound fails the request rather than returning a
+successful partial corpus. Search accepts limits from 0 to 100 and queries of
+at most 4 KiB.
+
+`sourceAccess` and `knowledgeBaseAccess` default to `internal`, independently of
+public Markdown. Set either to `public` only when that entire configured source
+is intended for anonymous readers. Per-entry and section restrictions still
+apply to knowledge-base search results. A failed KB query or source scan is
+reported explicitly; it does not silently fall back to a different corpus.

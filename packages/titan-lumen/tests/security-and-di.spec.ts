@@ -323,6 +323,8 @@ describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
 
       const service = new LumenService({
         knowledgeBase: mockKb,
+        knowledgeBaseAccess: 'public',
+        sourceAccess: 'public',
         docsDir: makeTempDir('kb-docs'),
         sourceDir,
       });

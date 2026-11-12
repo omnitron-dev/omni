@@ -6,6 +6,7 @@ import { Injectable, Service } from '@omnitron-dev/titan';
 import { Public, getCurrentInvocationContext } from '@omnitron-dev/titan/netron';
 import { Errors } from '@omnitron-dev/titan/errors';
 import { parseDocument, type LumenNode } from '@omnitron-dev/lumen-ast';
+import { PLAYGROUND_LIMITS } from '@omnitron-dev/lumen-ast/execution/limits';
 import { DEFAULT_DOCS_DIR } from './constants.js';
 import {
   AccessFilterService,
@@ -25,82 +26,26 @@ import type {
   TheoremGraphData,
 } from './types.js';
 
-export const MAX_PLAYGROUND_CODE_BYTES = 64 * 1024; // 64 KiB
-export const PLAYGROUND_VM_TIMEOUT_MS = 1850;
-export const PLAYGROUND_WALL_TIMEOUT_MS = 2050;
+export const MAX_PLAYGROUND_CODE_BYTES = PLAYGROUND_LIMITS.codeBytes;
+export const PLAYGROUND_EXECUTION_TIMEOUT_MS = PLAYGROUND_LIMITS.timeoutMs;
+export const PLAYGROUND_WALL_TIMEOUT_MS = 5000;
+const MAX_ACTIVE_PLAYGROUNDS = 4;
 export const MAX_DOC_FILE_BYTES = 5 * 1024 * 1024; // 5 MiB
 const MAX_SOURCE_FILE_BYTES = 2 * 1024 * 1024; // 2 MiB
 
 const ALLOWED_DOC_EXTENSIONS = new Set(['.pdx', '.md', '.mdx']);
 const ALLOWED_TS_EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts']);
 
+// The bootstrap is trusted host code; user code is data evaluated only by WASM.
 const PLAYGROUND_WORKER_SCRIPT = `
-'use strict';
-const vm = require('node:vm');
 const { parentPort, workerData } = require('node:worker_threads');
-
-const userCode = workerData && typeof workerData.code === 'string' ? workerData.code : '';
-const vmTimeoutMs = workerData && typeof workerData.vmTimeoutMs === 'number' ? workerData.vmTimeoutMs : 1850;
-
-function sendOutcome(payload) {
-  if (!parentPort) return;
+import(workerData.engine).then(async ({ evaluatePlayground }) => {
   try {
-    parentPort.postMessage(payload);
-  } catch (_cloneErr) {
-    if (payload && payload.ok) {
-      let fallback = null;
-      try {
-        if (typeof payload.result === 'function') {
-          fallback = '[Function]';
-        } else if (typeof payload.result === 'object' && payload.result !== null) {
-          fallback = JSON.parse(JSON.stringify(payload.result));
-        } else if (payload.result !== undefined) {
-          fallback = String(payload.result);
-        }
-      } catch (_jsonErr) {
-        fallback = String(payload.result);
-      }
-      parentPort.postMessage({ ok: true, result: fallback });
-    } else {
-      parentPort.postMessage({ ok: false, error: 'Execution error' });
-    }
+    parentPort.postMessage({ ok: true, result: await evaluatePlayground(workerData.code) });
+  } catch (error) {
+    parentPort.postMessage({ ok: false, error: String(error?.message ?? error).slice(0, 2048) });
   }
-}
-
-try {
-  let script;
-  try {
-    script = new vm.Script(userCode);
-  } catch (compileErr) {
-    if (
-      compileErr &&
-      compileErr.name === 'SyntaxError' &&
-      typeof compileErr.message === 'string' &&
-      compileErr.message.includes('Illegal return statement')
-    ) {
-      script = new vm.Script('(() => {\\n' + userCode + '\\n})()');
-    } else {
-      throw compileErr;
-    }
-  }
-
-  const sandbox = Object.create(null);
-  const context = vm.createContext(sandbox, {
-    codeGeneration: { strings: false, wasm: false },
-  });
-
-  vm.runInContext(
-    'this.console = Object.freeze({ __proto__: null, log() {}, warn() {}, error() {}, info() {} });',
-    context,
-    { timeout: 200 }
-  );
-
-  const executionResult = script.runInContext(context, { timeout: vmTimeoutMs });
-  sendOutcome({ ok: true, result: executionResult !== undefined ? executionResult : null });
-} catch (err) {
-  const errMsg = err && typeof err.message === 'string' ? err.message : String(err || 'Execution error');
-  sendOutcome({ ok: false, error: errMsg });
-}
+}).catch(error => parentPort.postMessage({ ok: false, error: String(error?.message ?? error).slice(0, 2048) }));
 `;
 
 function cloneModuleOptions(opts: LumenModuleOptions): LumenModuleOptions {
@@ -516,6 +461,8 @@ export class LumenService implements LumenServiceContract {
     return results;
   }
 
+  private activePlaygrounds = 0;
+
   @Public({ auth: { permissions: ['lumen.playground.execute'] } })
   async executePlayground(code: string): Promise<PlaygroundResult> {
     this.requireMutation('executePlayground');
@@ -539,6 +486,8 @@ export class LumenService implements LumenServiceContract {
       };
     }
 
+    if (this.activePlaygrounds >= MAX_ACTIVE_PLAYGROUNDS) throw Errors.tooManyRequests(Math.ceil(PLAYGROUND_WALL_TIMEOUT_MS / 1000));
+    this.activePlaygrounds++;
     return new Promise<PlaygroundResult>((resolvePromise) => {
       let settled = false;
       let worker: Worker | undefined;
@@ -549,10 +498,10 @@ export class LumenService implements LumenServiceContract {
         }
         settled = true;
         clearTimeout(wallClockTimer);
-        if (worker) {
-          void worker.terminate().catch(() => {});
-        }
-        resolvePromise(outcome);
+        // Capacity is released only after the physical worker has exited.
+        const release = () => { this.activePlaygrounds--; resolvePromise(outcome); };
+        if (worker) void worker.terminate().then(release, release);
+        else release();
       };
 
       const wallClockTimer = setTimeout(() => {
@@ -569,8 +518,9 @@ export class LumenService implements LumenServiceContract {
           eval: true,
           workerData: {
             code,
-            vmTimeoutMs: PLAYGROUND_VM_TIMEOUT_MS,
+            engine: import.meta.resolve('@omnitron-dev/lumen-ast/execution'),
           },
+          env: {},
           resourceLimits: {
             maxOldGenerationSizeMb: 32,
             maxYoungGenerationSizeMb: 8,

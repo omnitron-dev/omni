@@ -78,7 +78,7 @@ describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
       expect(loopRes.result).toBeNull();
       expect(loopRes.error).toMatch(/timed out/i);
 
-      // Memory allocation bomb hits worker V8 resourceLimits without crashing host process
+      // Guest allocations hit the interpreter memory budget without crashing the host.
       const memBombCode = `
         const chunks = [];
         for (let i = 0; i < 500; i++) {
@@ -93,6 +93,27 @@ describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
       // Host process and subsequent sandbox invocations remain healthy
       const recovery = await service.executePlayground('return 7 * 6;');
       expect(recovery.result).toBe(42);
+    }, 15_000);
+
+    it('denies constructor escapes and dynamic imports through the ordinary Netron entry point', async () => {
+      const client = await asUser(new LumenService(), 'admin');
+      expect(await client.executePlayground('Function("return [typeof process,typeof require,typeof fetch]")()'))
+        .toMatchObject({ result: ['undefined', 'undefined', 'undefined'] });
+      expect(await client.executePlayground('import("node:fs")'))
+        .toMatchObject({ result: null, error: expect.any(String) });
+      expect(await client.executePlayground('"x".repeat(100000)'))
+        .toMatchObject({ result: null, error: expect.any(String) });
+    });
+
+    it('bounds concurrent workers and releases admission after physical termination', async () => {
+      const client = await asUser(new LumenService(), 'admin');
+      const results = await Promise.allSettled(Array.from({ length: 8 }, () => client.executePlayground('while(true) {}')));
+      expect(results.filter(result => result.status === 'rejected')).toHaveLength(4);
+      for (const result of results) {
+        if (result.status === 'rejected') expect(result.reason).toMatchObject({ code: 429 });
+        else expect(result.value).toMatchObject({ result: null, error: expect.stringMatching(/timed out/i) });
+      }
+      expect(await client.executePlayground('42')).toMatchObject({ result: 42 });
     }, 15_000);
   });
 

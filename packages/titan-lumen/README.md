@@ -110,10 +110,21 @@ See the [official TypeScript MCP SDK](https://github.com/modelcontextprotocol/ty
 
 ## Qualification status
 
+Server playground calls use the shared Lumen WASM interpreter in a fresh Node
+Worker with an empty environment. Netron checks `lumen.playground.execute`
+before admitting a call. At most four workers run per service; excess calls
+receive 429, and capacity is released only after worker termination. The outer
+five-second timer includes initialization. Execution, memory, source and result
+limits are enforced by `@omnitron-dev/lumen-ast/execution`; no `node:vm` or host
+JavaScript fallback is used. Keep `enablePlayground: false` when execution is
+unnecessary; public read access never grants execution permission.
+
 The 0.4.0 audit is in progress. Do not infer that a test with a PDF header,
 hydration flag or mock request establishes production readiness. The repository's
 `audit/LUMEN-0.4.0.md` records remaining sandbox, document projection, persistence,
 and browser integration work. Live edits currently use bounded in-memory state;
-durable authoring is still a release blocker. Keep remote playground execution disabled until
-the isolated execution engine is qualified. Nothing in this package's audit
+durable authoring is still a release blocker. The isolated execution engine has
+local negative tests through actual Netron, including memory exhaustion,
+constructor escapes and concurrent admission. Browser and final package checks
+remain part of the release gate. Nothing in this package's audit
 activates changes on running Omnitron controllers or applications.

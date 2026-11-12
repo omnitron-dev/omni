@@ -17,7 +17,7 @@ Baseline: `3ea505ad` (2026-11-11). This is a verification ledger, not a release 
 | L40-01 | Malformed frontmatter can become public; migration uses a second parser; cyclic metadata survives. | One bounded data-only parser, fail-closed metadata, browser compatibility, regression tests. | Closed in source: five baseline failures reproduced; 78 AST and 29 migration tests, typechecks and both package builds pass. YAML/JSON share the browser-compatible bounded parser; plural `tests/` directories now receive the common lint policy. |
 | L40-02 | SSG and Titan re-parse raw source with independent access algorithms and incompatible role defaults. | One AST projection, one configurable permission policy, consistent exports and section semantics. | Closed in source: 96 AST, 49 site and 44 Titan-Lumen tests pass, including three reproduced mixed HTML/Markdown leaks and configurable SSG grants. Three builds/typechecks and changed-file lint pass. Roughly 1,000 duplicated lines removed. |
 | L40-03 | RPC controller trusts caller-supplied session roles, uses the HTTP auth decorator instead of Netron publication metadata, and retains mutable auth state. | Authoritative invocation context and actual HTTP/WS tests with concurrent identities. | Native backend and HTTP MCP corrected: one `LumenService`, class-based DI and one wire contract. No controller, session arguments, duplicate tokens or handwritten HTTP/SSE MCP transport. Official MCP client works through a real Netron HTTP listener; verified authors and concurrent caller isolation are tested. Browser integration and the separate static-corpus stdio MCP implementation remain under audit. |
-| L40-04 | Server JavaScript execution still uses node:vm inside a Worker; browser execution uses host JavaScript with an ambient-global denylist. | Capability-free interpreter, resource limits and no host fallback. | Open |
+| L40-04 | Server JavaScript execution uses node:vm inside a Worker; browser execution uses host JavaScript with an ambient-global denylist. | Capability-free interpreter, resource limits and no host fallback. | Shared interpreter and server path corrected: six interpreter checks and all 37 Titan-Lumen tests pass, including real Netron authorization and worker admission. Browser integration is being replaced and remains a release gate. |
 | L40-05 | PDF is an ASCII-only handwritten PDF writer; it does not compile Typst and truncates long words. | Real typesetter with Unicode, mathematics, layout and independently decoded output checks. | Open |
 | L40-06 | SSG emits a second island runtime which reports hydration without mounting a component. | Built client assets using the actual lumen-ui runtime; interaction tests against generated output. | Open |
 | L40-07 | Pagefind is a handwritten compatibility layer; Mermaid/ELK implementation needs semantic verification. | Use real declared engines or expose accurately scoped alternatives, with representative fixtures. | Open |
@@ -76,7 +76,24 @@ Pending comparison: VitePress, Rspress, Mintlify, MyST, Sphinx and Material for 
   Their useful coverage is exercised through real module lifecycle, HTTP/WS,
   official MCP-client, document-projection and live-edit tests. Test subclasses
   implementing their own role filtering were replaced by actual service calls.
-- These checks do not certify the worker sandbox or durable authoring. The
-  worker still uses `node:vm`, edits are still in memory, and the static-corpus
+- These checks do not certify durable authoring. Edits are still in memory, and the static-corpus
   stdio adapter remains separate. Those release blockers must be closed before
   claiming a production-ready 0.4.0.
+
+## Interpreter acceptance
+
+The shared `/execution` entry uses a fresh QuickJS WASM instance, without host
+callbacks or a module loader. Constructor chains remain inside that interpreter.
+Server requests enter through Netron permissions and run in terminable Workers;
+four workers are admitted per service and excess calls receive 429. Source,
+result, stack, time and promise-job limits are explicit. No host fallback exists
+in the server path.
+
+An aggregate allocation probe exposed a dependency limitation: setting the
+allocator quota to 16 MiB still allowed approximately 1 GiB of arrays. The fix
+uses a supplied `WebAssembly.Memory` with equal initial and maximum sizes and
+verifies that the engine uses that exact memory. A dedicated regression test
+rejects that same finite allocation and then verifies a fresh successful call.
+The ordinary server path also rejects dynamic imports, host access, unbounded
+loops and oversized output. These are local source/package-boundary checks;
+the final published archives and browser worker still require qualification.

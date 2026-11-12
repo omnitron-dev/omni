@@ -51,3 +51,20 @@ filtering. Authorized Markdown exports retain document classification metadata.
 Authored HTML is parsed using `hast-util-raw` and rendered with
 `hast-util-sanitize`; scripts, event handlers and unsafe URLs are not executable.
 Code examples remain literal, including nested fences and directive attributes.
+
+## Executable examples
+
+`@omnitron-dev/lumen-ast/execution` provides `evaluatePlayground(code, timeoutMs)`
+for documentation examples. It creates a fresh QuickJS WASM instance with no
+host callbacks, filesystem, network, DOM or module loader. Function constructors
+remain inside the guest interpreter. Expressions, function-body snippets with
+`return`/`await`, JSON results and bounded console output are supported. A promise
+that needs an unavailable host capability fails explicitly.
+
+Run this API inside a terminable Worker, as the Lumen browser and Titan adapters
+do. Limits are 64 KiB source and output, a fixed 16 MiB WASM heap, 512 KiB guest
+stack, 10,000 promise jobs and 1,850 ms execution by default (maximum 5,000 ms).
+The WASM memory maximum enforces the aggregate ceiling independently of the
+interpreter allocator's quota. The module does not evaluate code in the host or
+retry errors through another engine. Import the pure `/execution/limits` subpath
+for admission checks without loading the interpreter in the UI thread.

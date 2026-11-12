@@ -4,7 +4,11 @@
   "description": "Pure isomorphic prism-doc/2 AST compiler, math environments, Shiki/Twoslash highlighter, and multi-target emitters",
   "type": "module",
   "tsup": {
-    "entry": ["src/index.ts"],
+    "entry": [
+      "src/index.ts",
+      "src/execution/index.ts",
+      "src/execution/limits.ts"
+    ],
     "format": ["esm"],
     "dts": true,
     "sourcemap": true,
@@ -19,6 +23,16 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./execution": {
+      "types": "./dist/execution/index.d.ts",
+      "import": "./dist/execution/index.js",
+      "default": "./dist/execution/index.js"
+    },
+    "./execution/limits": {
+      "types": "./dist/execution/limits.d.ts",
+      "import": "./dist/execution/limits.js",
+      "default": "./dist/execution/limits.js"
     }
   },
   "files": [
@@ -50,7 +64,9 @@
     "hast-util-sanitize": "^5.0.2",
     "hast-util-to-html": "^9.0.6",
     "@types/hast": "^3.0.5",
-    "mdast-util-to-hast": "^13.2.1"
+    "mdast-util-to-hast": "^13.2.1",
+    "quickjs-emscripten-core": "0.32.0",
+    "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0"
   },
   "devDependencies": {
     "micromark-extension-math": "^3.1.0",

@@ -203,8 +203,8 @@ Module({providers:[[createToken('mixed-watch-proof'),{useFactory:()=>{fs.appendF
     assert.equal(unchanged.pid,proof.pid);assert.equal(unchangedCollector.pid,collectorProof.pid);
     await client.refresh();
     assert.equal(client.orchestrator.devMode,true);
-    assert.ok(client.orchestrator.getBuildWatchedApps().some(app=>app.name===sourceWatch.name));
-    assert.ok(!client.orchestrator.getBuildWatchedApps().some(app=>app.name===runtimeEntry.name));
+    assert.ok(client.orchestrator.getWatchedApps().some(app=>app.name===sourceWatch.name));
+    assert.ok(!client.orchestrator.getWatchedApps().some(app=>app.name===runtimeEntry.name));
     report.mixedWatch={source:sourceWatch.name,first:sourceWatch.first,second,installedPidUnchanged:proof.pid};
   }
   report.collectorPid = collectorProof.pid;

@@ -13,6 +13,8 @@ class Owner {
   snapshots: unknown[] = [];
   acknowledgments = 0;
   mutations = 0;
+  mutationInputs: unknown[] = [];
+  capabilities?: Record<string, number>;
   unavailable = false;
   rejectAck = false;
   beforeObservation?: () => Promise<void>;
@@ -25,6 +27,7 @@ class Owner {
     if (input?.afterEvent !== undefined) await this.beforeObservation?.();
     if (this.unavailable) throw new Error('Owner observation fixture is unavailable');
     return { protocol: 1, revision: ++this.revision,
+      ...(this.capabilities === undefined ? {} : { capabilities: this.capabilities }),
       status: { owner: { id: this.id, pid: process.pid, startedAt: new Date().toISOString() },
         controller: { ownerId: this.id, controllerId: 'test', epoch: 1 }, phase: 'active' },
       apps: [], workers: [], events: [], acknowledgedEvent: 0, lastEvent: 0, droppedEvents: 0,
@@ -38,7 +41,11 @@ class Owner {
   }
 
   @Public()
-  async mutate() { this.mutations++; return { value: null, snapshot: await this.snapshot() }; }
+  async mutate(input: unknown) {
+    this.mutations++;
+    this.mutationInputs.push(input);
+    return { value: null, snapshot: await this.snapshot() };
+  }
 }
 
 const cleanup: Array<() => Promise<unknown>> = [];
@@ -162,4 +169,35 @@ it('refuses pool resize on an older owner before mutation and recovery invalidat
   const before = recoveryState.token();
   await expect(client.orchestrator.scaleApp('fixture', 2, 'workers')).rejects.toThrow('does not support declared process pool resizing');
   expect(owner.mutations).toBe(0); expect(recoveryState.token()).toBe(before);
+});
+
+it.each([undefined, { applicationRuntimeResolution: 1 }, { sourceRefresh: 2 }])(
+  'refuses confirmed source refresh before an incompatible owner receives new arguments: %j', async capabilities => {
+    const { client, owner, internals } = await fixture();
+    if (capabilities === undefined) delete owner.capabilities;
+    else owner.capabilities = capabilities;
+    await internals.refresh();
+    const before = recoveryState.token();
+    await expect(client.orchestrator.restartAfterChange('fixture/local/site', {
+      generation: 'observed-generation', definitionRevision: 4,
+    })).rejects.toThrow('does not support confirmed source refresh');
+    expect(owner.mutations).toBe(0);
+    expect(owner.mutationInputs).toEqual([]);
+    expect(recoveryState.token()).toBe(before);
+  });
+
+it('sends the exact source binding through the existing owner mutation channel only when supported', async () => {
+  const { client, owner, internals } = await fixture();
+  owner.capabilities = { sourceRefresh: 1 };
+  await internals.refresh();
+  const before = recoveryState.token();
+  const binding = { generation: 'observed-generation', definitionRevision: 4 };
+  // This transport fixture has no applications; receipt validation belongs to
+  // source-refresh-http and source-refresh owner tests, not an invented handle.
+  await expect(client.orchestrator.restartAfterChange('fixture/local/site', binding)).resolves.toBeUndefined();
+  expect(owner.mutations).toBe(1);
+  expect(owner.mutationInputs).toEqual([{ grant: internals.grant, sequence: 1,
+    method: 'restartAfterChange', args: ['fixture/local/site', binding] }]);
+  expect(recoveryState.token()).not.toBe(before);
+  expect(client.state()?.owner.id).toBe(owner.id);
 });

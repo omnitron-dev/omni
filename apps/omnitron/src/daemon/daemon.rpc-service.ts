@@ -10,7 +10,7 @@ import { parsePoolScaleRequest, assertPoolScaleTarget } from '../shared/pool-sca
  * RBAC roles:
  *   - Public (anonymous): ping
  *   - Viewer (admin+operator+viewer): list, status, getApp, getMetrics, getHealth, getLogs, inspect, getEnv, getWatchStatus
- *   - Operator (admin+operator): startApp, stopApp, restartApp, reloadApp, startAll, stopAll, restartAll, scale, enableWatch, disableWatch
+ *   - Operator (admin+operator): startApp, stopApp, restartApp, restartAfterChange, reloadApp, startAll, stopAll, restartAll, scale, enableWatch, disableWatch
  *   - Admin (admin only): shutdown, reloadConfig, exec
  */
 
@@ -134,6 +134,23 @@ export class DaemonRpcService implements IDaemonService {
     this.assertLifecycleMutable?.();
     await this.orchestrator.restartApp(data.name);
     return this.orchestrator.getApp(data.name)!;
+  }
+
+  @Public({ auth: { roles: OPERATOR_ROLES } })
+  async restartAfterChange(data: Parameters<IDaemonService['restartAfterChange']>[0]): Promise<ProcessInfoDto> {
+    this.assertLifecycleMutable?.();
+    if (!data || typeof data.name !== 'string' || !data.name || data.name.length > 1024 ||
+        typeof data.generation !== 'string' || !data.generation || data.generation.length > 128 ||
+        !Number.isSafeInteger(data.definitionRevision) || data.definitionRevision < 0) {
+      throw Errors.badRequest('Source refresh requires an observed application generation and definition revision');
+    }
+    const result = await this.orchestrator.restartAfterChange(data.name, {
+      generation: data.generation, definitionRevision: data.definitionRevision,
+    });
+    const observed = result && this.orchestrator.getApp(result.name);
+    if (!observed || observed.status !== 'online' || !observed.generation || observed.generation === data.generation)
+      throw Errors.conflict(`Source refresh of '${data.name}' was not confirmed by the execution owner`);
+    return observed;
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
@@ -674,7 +691,7 @@ export class DaemonRpcService implements IDaemonService {
   // ============================================================================
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
-  async enableWatch(data: { apps?: string[] }): Promise<{ watching: Array<{ name: string; directory: string }> }> {
+  async enableWatch(data: { apps?: string[] }): ReturnType<IDaemonService['enableWatch']> {
     this.assertLifecycleMutable?.();
     const watching = await this.daemon.enableWatch(data.apps);
     return { watching };
@@ -687,7 +704,7 @@ export class DaemonRpcService implements IDaemonService {
   }
 
   @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
-  async getWatchStatus(): Promise<{ enabled: boolean; watching: boolean; reason?: string; apps: Array<{ name: string; directory: string }> }> {
+  async getWatchStatus(): ReturnType<IDaemonService['getWatchStatus']> {
     return this.daemon.getWatchStatus();
   }
 }

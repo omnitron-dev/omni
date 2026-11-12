@@ -2,7 +2,7 @@
  * FileWatcher — Watches app source directories for file changes
  *
  * Uses Node.js native `fs.watch({ recursive: true })` (stable since Node 20+).
- * On file change → debounce → orchestrator.restartApp() which handles
+ * On file change → debounce → orchestrator.restartAfterChange() which handles
  * any topology: single-process, multi-process (server + worker pools), classic fork.
  *
  * Platform note (macOS): `{ recursive: true }` is backed by FSEvents, which
@@ -21,14 +21,14 @@
  *   - Debounce: 300ms per app (accumulates changes, then triggers single restart)
  *   - Ignore: node_modules, dist, .git, build, coverage, test fixtures
  *   - Restart-aware: won't trigger new restart while one is in progress
- *   - Topology-transparent: orchestrator.restartApp() handles full topology teardown/startup
+ *   - Owner policy and coalescing govern automatic topology teardown/startup
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import type { IEcosystemConfig, IEcosystemAppEntry, IWatchConfig } from '../config/types.js';
-import type { OrchestratorControl as OrchestratorService } from './execution-contract.js';
+import type { OrchestratorService } from './orchestrator.service.js';
 
 /** Directories/patterns to always ignore */
 /**
@@ -86,6 +86,7 @@ const WATCH_EXTENSIONS = new Set([
 
 interface WatchedApp {
   entry: IEcosystemAppEntry;
+  observationRevision: number;
   watchDir: string;
   watchers: fs.FSWatcher[];
   debounceTimer: NodeJS.Timeout | null;
@@ -98,7 +99,6 @@ interface WatchedApp {
 export class FileWatcher {
   private readonly apps = new Map<string, WatchedApp>();
   private running = false;
-  private selection: string[] | undefined;
 
   constructor(
     private readonly logger: ILogger,
@@ -108,20 +108,11 @@ export class FileWatcher {
     private readonly debounceMs: number = 300
   ) {}
 
-  /**
-   * Start watching all (or specific) apps.
-   * @param appNames - If provided, only watch these apps. Otherwise watch all.
-   */
-  start(appNames?: string[]): void {
+  /** Subscribe to the authoritative inventory selected by the owner. */
+  start(): void {
     if (this.running) return;
     this.running = true;
-    this.selection = appNames;
-
-    const entries = appNames
-      ? this.config.apps.filter((a) => appNames.includes(a.name))
-      : this.config.apps.filter((a) => a.enabled !== false);
-
-    for (const entry of entries) {
+    for (const entry of this.config.apps) {
       this.watchApp(entry);
     }
   }
@@ -160,27 +151,23 @@ export class FileWatcher {
     this.logger.debug({ app: name }, 'Stopped watching app');
   }
 
-  /**
-   * Bring the watch set in line with a reloaded config.
-   *
-   * `addApp` and `removeApp` existed for exactly this and had no caller
-   * outside their test, so a config reload — `omnitron reload`, or SIGHUP —
-   * updated the orchestrator and the daemon's RPC snapshot and left the
-   * watcher on the old set. An app added to the config was never watched
-   * until the next daemon restart, and an app removed from it kept its
-   * watchers: edits to a file under a deleted app went on restarting
-   * something the config no longer describes.
-   *
-   * Renaming counts as both, which is the case that makes doing this by hand
-   * at the call site error-prone.
-   */
+  /** Revoke observations made before a canonical definition change. */
+  revokePending(name: string): void {
+    const app = this.apps.get(name);
+    if (!app) return;
+    if (app.debounceTimer) clearTimeout(app.debounceTimer);
+    app.debounceTimer = null;
+    app.pendingFiles.clear();
+    app.observationRevision++;
+  }
+
+  /** Reconcile subscriptions against the owner's current application handles. */
   applyConfig(config: IEcosystemConfig): void {
     this.config = config;
     if (!this.running) return;
 
     const desired = new Map(
-      config.apps.filter((a) => a.enabled !== false && a.watch !== false && !a.releaseRoot &&
-        (!this.selection || this.selection.includes(a.name))).map((a) => [a.name, a] as const)
+      config.apps.filter((a) => a.watch !== false && !a.releaseRoot).map((a) => [a.name, a] as const)
     );
 
     for (const name of [...this.apps.keys()]) {
@@ -190,7 +177,21 @@ export class FileWatcher {
     }
     for (const [name, entry] of desired) {
       if (!this.apps.has(name)) this.addApp(entry);
+      else {
+        const app = this.apps.get(name)!;
+        if (app.entry !== entry) {
+          // A redefinition revokes events observed under the previous launch
+          // definition, even when the native source paths can stay subscribed.
+          this.revokePending(name);
+          app.entry = entry;
+        }
+      }
     }
+  }
+
+  /** Keep a source subscription across child replacement, never across retargeting. */
+  isWatching(entry: IEcosystemAppEntry): boolean {
+    return this.apps.get(entry.name)?.entry === entry;
   }
 
   /** Get list of watched apps and their directories */
@@ -253,6 +254,7 @@ export class FileWatcher {
 
     const watched: WatchedApp = {
       entry,
+      observationRevision: 0,
       watchDir: dirs[0]!, // primary directory for display
       watchers: [],
       debounceTimer: null,
@@ -269,11 +271,7 @@ export class FileWatcher {
           // dev-mode hot reload is silently broken for this app. Misconfig
           // (relative path resolved against the wrong base) used to slip
           // through unnoticed; surface it loudly.
-          this.logger.error(
-            { app: entry.name, directory: dir, base: entry.cwd ?? this.cwd },
-            'Watch directory does not exist — file watching disabled for this path'
-          );
-          continue;
+          throw new Error(`Watch directory does not exist: ${dir}`);
         }
 
         const w = this.watchDirectory(dir, (eventType, filename) => {
@@ -283,6 +281,7 @@ export class FileWatcher {
 
         w.on('error', (err) => {
           this.logger.error({ app: entry.name, error: (err as Error).message }, 'File watcher error');
+          if (this.apps.get(entry.name) === watched) this.removeApp(entry.name);
         });
 
         watched.watchers.push(w);
@@ -305,6 +304,7 @@ export class FileWatcher {
         this.logger.info({ app: entry.name, directories: allDirs }, 'Watching for file changes');
       }
     } catch (err) {
+      for (const watcher of watched.watchers) watcher.close();
       this.logger.error({ app: entry.name, error: (err as Error).message }, 'Failed to start file watcher');
     }
   }
@@ -398,6 +398,8 @@ export class FileWatcher {
     }
 
     const changedFiles = [...app.pendingFiles];
+    const observedEntry = app.entry;
+    const observedRevision = app.observationRevision;
     app.pendingFiles.clear();
     app.restarting = true;
 
@@ -416,12 +418,9 @@ export class FileWatcher {
         // ts-compiler not available — non-critical
       }
 
-      // Skip restart if the app hasn't been started yet (initial boot in progress)
-      const appStatus = this.orchestrator.getAppStatus?.(app.entry.name);
-      if (appStatus === 'stopped' || appStatus === 'starting') {
-        this.logger.debug({ app: app.entry.name }, 'Skipping restart — app still starting');
-        return;
-      }
+      if (app.entry !== observedEntry || app.observationRevision !== observedRevision) return;
+      // Initial starts have no subscription. Retained subscriptions during an
+      // internal restart feed the owner's coalescer, including its stop phase.
 
       this.logger.info({ app: app.entry.name, files: filesDisplay, count: changedFiles.length }, 'File change detected — restarting');
 

@@ -54,7 +54,7 @@ import { SystemInfoRpcService } from '../services/system-info.rpc-service.js';
 import { PidManager } from './pid-manager.js';
 import { prepareDaemonDatabase } from './database-startup.js';
 import type { OrchestratorControl as OrchestratorService } from '../orchestrator/execution-contract.js';
-import { FileWatcher } from '../orchestrator/file-watcher.js';
+import type { WatchedApplication } from '../shared/dto/services.js';
 import { InfrastructureService } from '../infrastructure/infrastructure.service.js';
 import type { InfrastructureGate } from '../infrastructure/infrastructure-gate.js';
 import { DockerHealthIndicator } from '../monitoring/docker-health.indicator.js';
@@ -267,7 +267,6 @@ export class OmnitronDaemon {
   /** Port this daemon serves `/netron/invoke` on; advertised to fleet peers. */
   private rpcHttpPort: number | null = null;
 
-  private fileWatcher: FileWatcher | null = null;
   /** Last boot/reload configuration, which may come from a registered project outside CWD. */
   private watchConfig: IEcosystemConfig | null = null;
   private infraService: InfrastructureService | null = null;
@@ -610,7 +609,7 @@ export class OmnitronDaemon {
     this.startupAbort.signal.throwIfAborted();
 
     // 8. File watching (dev mode)
-    if (!options?.backendHandoff) await this.startFileWatcher(config, options, logger);
+    if (!options?.backendHandoff) await this.configureWatch(options, logger);
     this.startupAbort.signal.throwIfAborted();
 
     // 8.5. Configure application-owned topology listeners for in-process ownership.
@@ -1812,8 +1811,7 @@ export class OmnitronDaemon {
   // File Watching (dev mode)
   // ============================================================================
 
-  private async startFileWatcher(
-    config: IEcosystemConfig,
+  private async configureWatch(
     options: DaemonStartOptions | undefined,
     logger: import('@omnitron-dev/titan/module/logger').ILogger,
   ): Promise<void> {
@@ -1823,10 +1821,6 @@ export class OmnitronDaemon {
     if (options?.watch && !options.noWatch && this.dc?.cluster?.enabled) logger.warn('File-triggered restarts require standalone lifecycle authority');
     orchestrator.devMode = enabled;
     await orchestrator.setWatchMode(enabled, options?.watchApps);
-    if (this.execution) return;
-    if (!enabled) return;
-    this.fileWatcher = new FileWatcher(logger, orchestrator, config, process.cwd());
-    this.fileWatcher.start(options?.watchApps);
   }
 
   // ============================================================================
@@ -2491,29 +2485,15 @@ export class OmnitronDaemon {
   // ============================================================================
 
   @RecoveryMutation()
-  async enableWatch(apps?: string[]): Promise<Array<{ name: string; directory: string }>> {
+  async enableWatch(apps?: string[]): Promise<WatchedApplication[]> {
     if (!this.app) throw new Error('Daemon not started');
     const config = this.watchConfig;
     if (!config) throw new Error('Daemon watch configuration is unavailable');
 
     const orchestrator = await this.app.container.resolveAsync<OrchestratorService>(ORCHESTRATOR_TOKEN);
-    const loggerModule = await this.app.container.resolveAsync<ILoggerModule>(LOGGER_SERVICE_TOKEN);
-
-    if (this.execution) {
-      orchestrator.devMode = true;
-      await orchestrator.setWatchMode(true, apps);
-      return orchestrator.getBuildWatchedApps();
-    }
-
-    if (this.fileWatcher) {
-      this.fileWatcher.stop();
-    }
-
-    this.fileWatcher = new FileWatcher(loggerModule.logger, orchestrator, config, process.cwd());
     orchestrator.devMode = true;
     await orchestrator.setWatchMode(true, apps);
-    this.fileWatcher.start(apps);
-    return [...this.fileWatcher.getWatchedApps(), ...orchestrator.getBuildWatchedApps()];
+    return orchestrator.getWatchedApps();
   }
 
   /**
@@ -2527,7 +2507,6 @@ export class OmnitronDaemon {
   @RecoveryMutation()
   async applyWatchConfig(config: IEcosystemConfig): Promise<void> {
     this.watchConfig = config;
-    this.fileWatcher?.applyConfig(config);
     if (!this.app) return;
     const orchestrator = await this.app.container.resolveAsync<OrchestratorService>(ORCHESTRATOR_TOKEN);
     for (const entry of config.apps) {
@@ -2547,28 +2526,26 @@ export class OmnitronDaemon {
 
   @RecoveryMutation()
   async disableWatch(): Promise<void> {
-    this.fileWatcher?.stop();
-    this.fileWatcher = null;
     if (this.app) {
       const orchestrator = await this.app.container.resolveAsync<OrchestratorService>(ORCHESTRATOR_TOKEN);
       await orchestrator.setWatchMode(false);
     }
   }
 
-  /** Reports both watcher engines, including registered bootstrap projects. */
+  /** Reports the owner's native and esbuild registrations for every project. */
   async getWatchStatus(): Promise<{
     enabled: boolean;
     watching: boolean;
     reason?: string;
-    apps: Array<{ name: string; directory: string }>;
+    apps: WatchedApplication[];
   }> {
     const orchestrator = this.app
       ? await this.app.container.resolveAsync<OrchestratorService>(ORCHESTRATOR_TOKEN) : null;
-    const apps = [...(this.fileWatcher?.getWatchedApps() ?? []), ...(orchestrator?.getBuildWatchedApps() ?? [])];
+    const apps = orchestrator?.getWatchedApps() ?? [];
     return {
-      enabled: this.execution ? !!orchestrator?.devMode : !!this.fileWatcher,
+      enabled: !!orchestrator?.devMode,
       watching: apps.length > 0,
-      ...(apps.length ? {} : { reason: (this.execution ? orchestrator?.devMode : this.fileWatcher) ? 'no enabled app matches the watch policy' : 'watching is disabled' }),
+      ...(apps.length ? {} : { reason: orchestrator?.devMode ? 'no enabled app matches the watch policy' : 'watching is disabled' }),
       apps,
     };
   }
@@ -2743,9 +2720,10 @@ export class OmnitronDaemon {
       this.pipelineService = null;
       this.terminalRpcService?.dispose();
       this.terminalRpcService = null;
-      if (this.fileWatcher) {
-        this.fileWatcher.stop();
-        this.fileWatcher = null;
+      // Resident watching belongs to the owner and survives backend replacement.
+      if (!this.execution && container.has(ORCHESTRATOR_TOKEN)) {
+        const orchestrator = await container.resolveAsync<OrchestratorService>(ORCHESTRATOR_TOKEN);
+        await orchestrator.setWatchMode(false);
       }
       if (this.eventBroadcaster) {
         this.eventBroadcaster.clear();

@@ -33,6 +33,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { EventEmitter } from 'node:events';
 import { FileWatcher } from '../../src/orchestrator/file-watcher.js';
 import type { IEcosystemConfig, IEcosystemAppEntry } from '../../src/config/types.js';
 import type { OrchestratorService } from '../../src/orchestrator/orchestrator.service.js';
@@ -75,6 +76,7 @@ function createTestConfig(apps: IEcosystemAppEntry[]): IEcosystemConfig {
  */
 class TestFileWatcher extends FileWatcher {
   public watchedDirs: string[] = [];
+  public resources: Array<{ emitter: EventEmitter; close: ReturnType<typeof vi.fn> }> = [];
   private handlers = new Map<string, (eventType: string, filename: string | null) => void>();
 
   protected override watchDirectory(
@@ -83,7 +85,10 @@ class TestFileWatcher extends FileWatcher {
   ): fs.FSWatcher {
     this.watchedDirs.push(dir);
     this.handlers.set(dir, onEvent);
-    return { close: () => this.handlers.delete(dir), on: () => undefined } as unknown as fs.FSWatcher;
+    const emitter = new EventEmitter();
+    const close = vi.fn(() => this.handlers.delete(dir));
+    this.resources.push({ emitter, close });
+    return Object.assign(emitter, { close }) as unknown as fs.FSWatcher;
   }
 
   /** Deliver a change for `relativePath` under the first watched directory. */
@@ -283,7 +288,7 @@ describe('FileWatcher', () => {
     expect(() => w.emit('src/late.ts')).toThrow(/no directory is being watched/);
   });
 
-  it('watches only the named apps when a filter is given', () => {
+  it('watches every application in the owner-selected inventory', () => {
     const app2Dir = path.join(tmpDir, 'other-app');
     const app2Src = path.join(app2Dir, 'src');
     fs.mkdirSync(app2Src, { recursive: true });
@@ -296,10 +301,9 @@ describe('FileWatcher', () => {
     ]);
     const w = new TestFileWatcher(logger as any, orchestrator as any, config, tmpDir, 50);
     watcher = w;
-    w.start(['test-app']);
+    w.start();
 
-    expect(w.getWatchedApps()).toHaveLength(1);
-    expect(w.getWatchedApps()[0]!.name).toBe('test-app');
+    expect(w.getWatchedApps().map(app => app.name)).toEqual(['test-app', 'other-app']);
   });
 
   it('skips apps with no entry point and says so', () => {
@@ -312,11 +316,11 @@ describe('FileWatcher', () => {
     );
   });
 
-  it('skips disabled apps', () => {
+  it('watches owned apps independently of their autostart setting', () => {
     startWatcher(50, [
       { name: 'test-app', script: path.join(appDir, 'src', 'bootstrap.ts'), enabled: false },
     ]);
-    expect(watcher.getWatchedApps()).toHaveLength(0);
+    expect(watcher.getWatchedApps()).toEqual([{ name: 'test-app', directory: appDir }]);
   });
 
   it('adds and removes apps at runtime', () => {
@@ -381,13 +385,34 @@ describe('FileWatcher', () => {
       expect(w.getWatchedApps().map((a) => a.name)).toEqual(['test-app']);
     });
 
-    it('skips a disabled app', () => {
+    it('does not revoke an owned app when only autostart is disabled', () => {
       const w = startWatcher(50, [entry('test-app')]);
 
       w.applyConfig(createTestConfig([{ ...entry('test-app'), enabled: false }]));
 
-      expect(w.getWatchedApps()).toHaveLength(0);
+      expect(w.getWatchedApps()).toEqual([{ name: 'test-app', directory: appDir }]);
     });
+  });
+
+  it('closes partial subscriptions when a required include directory is missing', () => {
+    const w = startWatcher(50, [{ name: 'test-app', script: path.join(srcDir, 'bootstrap.ts'),
+      watch: { directory: srcDir, include: [path.join(appDir, 'missing')] } }]);
+    expect(w.resources).toHaveLength(1);
+    expect(w.resources[0]!.close).toHaveBeenCalledTimes(1);
+    expect(w.getWatchedApps()).toEqual([]);
+    expect(logger.error).toHaveBeenCalledWith(expect.objectContaining({
+      error: expect.stringContaining('Watch directory does not exist'),
+    }), 'Failed to start file watcher');
+  });
+
+  it('revokes the whole registration on a native error and cancels pending edits', async () => {
+    const w = startWatcher();
+    w.emit('src/changed.ts');
+    w.resources[0]!.emitter.emit('error', new Error('watch descriptor lost'));
+    expect(w.resources[0]!.close).toHaveBeenCalledTimes(1);
+    expect(w.getWatchedApps()).toEqual([]);
+    await settle();
+    expect(restartMock()).not.toHaveBeenCalled();
   });
 
   it('drops every watcher on stop()', () => {

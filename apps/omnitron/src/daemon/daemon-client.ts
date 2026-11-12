@@ -145,6 +145,11 @@ export class DaemonClient implements IDaemonService {
     return this.proxy!.restartApp(data);
   }
 
+  async restartAfterChange(data: Parameters<IDaemonService['restartAfterChange']>[0]): Promise<ProcessInfoDto> {
+    await this.ensureConnected();
+    return this.proxy!.restartAfterChange(data);
+  }
+
   async restartAll(): Promise<ProcessInfoDto[]> {
     await this.ensureConnected();
     return this.proxy!.restartAll();
@@ -248,7 +253,7 @@ export class DaemonClient implements IDaemonService {
     return this.proxy!.revealEnv(data);
   }
 
-  async enableWatch(data: { apps?: string[] }): Promise<{ watching: Array<{ name: string; directory: string }> }> {
+  async enableWatch(data: { apps?: string[] }): ReturnType<IDaemonService['enableWatch']> {
     await this.ensureConnected();
     return this.proxy!.enableWatch(data);
   }
@@ -258,7 +263,7 @@ export class DaemonClient implements IDaemonService {
     return this.proxy!.disableWatch();
   }
 
-  async getWatchStatus(): Promise<{ enabled: boolean; watching: boolean; reason?: string; apps: Array<{ name: string; directory: string }> }> {
+  async getWatchStatus(): ReturnType<IDaemonService['getWatchStatus']> {
     await this.ensureConnected();
     return this.proxy!.getWatchStatus();
   }

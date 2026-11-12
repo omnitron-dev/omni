@@ -8,7 +8,6 @@ import { ProcessManager, ControllerHandoff } from '@omnitron-dev/titan-pm';
 import type { ILogger, LogSinkHealth } from '@omnitron-dev/titan/module/logger';
 import type { IEcosystemConfig, IDaemonConfig } from '../config/types.js';
 import { OrchestratorService } from '../orchestrator/orchestrator.service.js';
-import { FileWatcher } from '../orchestrator/file-watcher.js';
 import { StateStore } from './state-store.js';
 import { DaemonStateStore } from './daemon-state-store.service.js';
 import { PidManager } from './pid-manager.js';
@@ -27,7 +26,7 @@ export async function startExecutionOwner(options: {
   onShutdownRequested?: () => void;
 }): Promise<{ stop(): Promise<void>; service: ExecutionHostService }> {
   const { directory, logger, daemonConfig } = options;
-  let config = options.config;
+  const config = options.config;
   await fs.mkdir(directory, { recursive: true, mode: 0o700 });
   const stat = await fs.lstat(directory);
   if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0 ||
@@ -53,7 +52,6 @@ export async function startExecutionOwner(options: {
   orchestrator.setConfig(config);
   const logs = executionLogManager(config, daemonConfig, orchestrator);
   orchestrator.onAppLog((app, line, context) => logs.appendToFile(app, line, context));
-  let watcher: FileWatcher | null = null;
 
   const netron = new Netron(logger, { id: `execution-${identity.id}` });
   netron.registerTransport('unix', () => new UnixSocketTransport());
@@ -70,17 +68,6 @@ export async function startExecutionOwner(options: {
     logs,
     statePersistence: () => state.persistenceStatus(),
     ...(options.loggerHealth && { loggerHealth: options.loggerHealth }),
-    watch(enabled, apps) {
-      watcher?.stop();
-      watcher = null;
-      if (enabled) {
-        watcher = new FileWatcher(logger, orchestrator, config, process.cwd());
-        watcher.start(apps);
-      }
-    },
-    retireWatches(apps) { for (const name of apps) watcher?.removeApp(name); },
-    watchConfig(next) { config = next; watcher?.applyConfig(next); },
-    watchedApps: () => watcher?.getWatchedApps() ?? [],
     ...(options.onShutdownRequested && { shutdown: options.onShutdownRequested }),
   });
   await netron.peer.exposeService(service);
@@ -90,7 +77,7 @@ export async function startExecutionOwner(options: {
   return { service, stop() {
     stopping ??= Promise.resolve().then(() => shutdownExecutionOwner({
       phase: stage => logger.info({ stage }, 'Execution owner shutdown stage'),
-      stopWatching: () => { watcher?.stop(); },
+      stopWatching: () => orchestrator.setWatchMode(false),
       stopApplications: () => orchestrator.stopAll(false),
       stopProcesses: () => pm.shutdown({ timeout: 30_000 }),
       flushState: () => state.flush(),

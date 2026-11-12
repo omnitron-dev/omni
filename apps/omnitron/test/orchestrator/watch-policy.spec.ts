@@ -195,7 +195,7 @@ describe('shared source edits, real esbuild and real child processes', () => {
     const frozenPid = workers.get('frozen')!.child.pid;
     const frozenBundle = internals.buildResults.get('frozen').modulePaths.get('worker');
     const frozenBytes = fs.readFileSync(frozenBundle, 'utf8');
-    expect(service.getBuildWatchedApps().map((a) => a.name).sort()).toEqual(['live', 'switchable']);
+    expect(service.getWatchedApps().map((a) => a.name).sort()).toEqual(['live', 'switchable']);
     await pause(400); // initial watch builds; positive control below proves event delivery
     fs.writeFileSync(path.join(root, 'source.ts'), 'export const value = 2;');
     await vi.waitFor(() => {
@@ -220,10 +220,10 @@ describe('shared source edits, real esbuild and real child processes', () => {
     await service.restartApp('frozen');
     expect(workers.get('frozen')!.value).toBe(3);
     expect(workers.get('frozen')!.child.pid).not.toBe(frozenPid);
-    expect(service.getBuildWatchedApps().map((a) => a.name)).toEqual(['live']);
+    expect(service.getWatchedApps().map((a) => a.name)).toEqual(['live']);
 
     await service.setWatchMode(false);
-    expect(service.getBuildWatchedApps()).toEqual([]);
+    expect(service.getWatchedApps()).toEqual([]);
     const livePid = workers.get('live')!.child.pid;
     const liveBundle = internals.buildResults.get('live').modulePaths.get('worker');
     const liveBytes = fs.readFileSync(liveBundle, 'utf8');
@@ -253,21 +253,21 @@ describe('shared source edits, real esbuild and real child processes', () => {
     const definition = { name: 'source', processes: [] };
     await internals.prepareBootstrapBuild(entry, bootstrap, definition);
     const buildService = internals.buildService;
-    expect(service.getBuildWatchedApps()).toEqual([]);
+    expect(service.getWatchedApps()).toEqual([]);
     const restart = vi.fn(async () => handle);
     internals.restartAppNow = restart;
     fs.writeFileSync(bootstrap, 'export default {name:"changed",processes:[]};');
     await service.setWatchMode(true);
     await vi.waitFor(() => expect(restart).toHaveBeenCalledTimes(1), { timeout: 10000 });
     expect(internals.buildService).toBe(buildService);
-    expect(service.getBuildWatchedApps().map(app => app.name)).toEqual(['source']);
+    expect(service.getWatchedApps().map(app => app.name)).toEqual(['source']);
     expect(fs.existsSync(path.join(root, '.omnitron-build/bootstrap.js.map'))).toBe(true);
     const sealed = add({ name: 'sealed', script: 'main.js', releaseRoot: '/installed/release' });
     await service.restartAfterChange(sealed.name);
     expect(restart).toHaveBeenCalledTimes(1);
     await service.setWatchMode(false);
     expect(service.devMode).toBe(false);
-    expect(service.getBuildWatchedApps()).toEqual([]);
+    expect(service.getWatchedApps()).toEqual([]);
   }, 15000);
 
   it('cancels an already scheduled debounce and an unfinished watch registration', async () => {

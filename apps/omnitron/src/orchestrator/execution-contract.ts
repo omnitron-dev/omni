@@ -33,7 +33,7 @@ export interface OrchestratorControl extends Methods {
   getExecutionOwnerPackage?(): Promise<string>;
   startApp(...args: Parameters<OrchestratorService['startApp']>): Promise<AppExecutionView>;
   startKnownApp(name: string): Promise<AppExecutionView | undefined>;
-  restartAfterChange(name: string): Promise<AppExecutionView | undefined>;
+  restartAfterChange(...args: Parameters<OrchestratorService['restartAfterChange']>): Promise<AppExecutionView | undefined>;
   restartApp(name: string): Promise<AppExecutionView>;
   reloadApp(name: string): Promise<AppExecutionView>;
   scaleApp(name: string, instances: number, process?: string): Promise<AppExecutionView>;

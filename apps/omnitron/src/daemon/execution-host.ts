@@ -15,6 +15,7 @@ import type { ExecutionMetricsSink } from '../observability/metrics-bridge.js';
 import { OWNER_CAPABILITIES, type ExecutionCapabilities } from './execution-capabilities.js';
 import { OWN_BUILD, type BuildStamp } from '../shared/build-stamp.js';
 import type { BackendRuntimeStatus } from '../shared/dto/backend.js';
+import type { WatchedApplication } from '../shared/dto/services.js';
 
 // Only a private, owner-only Unix listener may expose this service. The
 // backend authenticates end users with Omnitron RBAC before entering it.
@@ -52,7 +53,7 @@ export interface ExecutionSnapshot {
   apps: ExecutionAppSnapshot[];
   workers: Array<{ info: IProcessInfo; pid?: number; serviceName?: string; serviceVersion?: string }>;
   devMode: boolean;
-  watchedApps: Array<{ name: string; directory: string }>;
+  watchedApps: WatchedApplication[];
   watchEnabled: boolean;
   events: ExecutionEvent[];
   lastEvent: number;
@@ -77,15 +78,10 @@ export class ExecutionHostService {
       logs?: LogManager;
       statePersistence?: () => StatePersistenceStatus;
       loggerHealth?: () => LogSinkHealth[];
-      watch?: (enabled: boolean, apps?: string[]) => void;
-      retireWatches?: (apps: string[]) => void;
-      watchConfig?: (config: Parameters<OrchestratorService['setConfig']>[0]) => void;
-      watchedApps?: () => Array<{ name: string; directory: string }>;
       shutdown?: () => void;
     } = {},
   ) {
     if (!hooks.logs?.journal) orchestrator.onAppLog((app, line) => this.record('log', app, line));
-    orchestrator.on('app:retired', (app: string) => this.hooks.retireWatches?.([app]));
     orchestrator.on('app:online', (app: string) => this.record('online', app, null));
     orchestrator.on('app:crash', (app: string, error: Error) => this.record('crash', app, error.message));
     orchestrator.on('app:restart', (app: string, attempt: number) => this.record('restart', app, attempt));
@@ -151,7 +147,7 @@ export class ExecutionHostService {
       protocol: 1, ownerBuild: OWN_BUILD, capabilities: OWNER_CAPABILITIES, revision: ++this.revision, status: this.fence.status(), apps, workers,
       runtime: { node: process.version, abi: process.versions.modules, platform: process.platform, arch: process.arch },
       devMode: this.orchestrator.devMode, watchEnabled: this.orchestrator.devMode,
-      watchedApps: [...this.orchestrator.getBuildWatchedApps(), ...(this.hooks.watchedApps?.() ?? [])],
+      watchedApps: this.orchestrator.getWatchedApps(),
       events: this.events.filter(event => event.sequence > afterEvent), lastEvent: this.lastEvent,
       acknowledgedEvent: this.acknowledgedEvent,
       droppedEvents: Math.max(0, oldest - afterEvent - 1),
@@ -265,11 +261,6 @@ export class ExecutionHostService {
     if (!(EXECUTION_MUTATIONS as readonly string[]).includes(method)) throw new Error('Unsupported execution mutation');
     const fn = this.orchestrator[method as typeof EXECUTION_MUTATIONS[number]] as (...values: unknown[]) => unknown;
     const result = await fn.apply(this.orchestrator, args);
-    if (method === 'setWatchMode') {
-      const [enabled, apps] = args as [boolean, string[] | undefined];
-      this.hooks.watch?.(enabled, apps);
-    }
-    if (method === 'setConfig') this.hooks.watchConfig?.(args[0] as Parameters<OrchestratorService['setConfig']>[0]);
     if (['startApp', 'startKnownApp', 'restartApp', 'restartAfterChange', 'reloadApp', 'scaleApp'].includes(method)) {
       return result ? { appName: (result as { name: string }).name } : undefined;
     }

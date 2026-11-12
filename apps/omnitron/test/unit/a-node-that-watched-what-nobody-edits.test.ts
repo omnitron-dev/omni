@@ -72,5 +72,5 @@ describe('a node does not watch', () => {
 });
 
 // The startup policy and actual watch cancellation are exercised through
-// daemon.startFileWatcher in daemon-watch-control.spec.ts and through real
+// daemon.configureWatch in daemon-watch-control.spec.ts and through real
 // esbuild/child processes in watch-policy.spec.ts (not source-pattern matches).

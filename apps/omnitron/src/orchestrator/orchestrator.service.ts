@@ -37,6 +37,8 @@ import type { ProcessOutputContext } from '@omnitron-dev/titan-pm';
  */
 
 import { ReadinessMonitor } from '../health/readiness.js';
+import { FileWatcher } from './file-watcher.js';
+import type { WatchedApplication } from '../shared/dto/services.js';
 import fs from 'node:fs';
 import { readDeclaredConfig, withDeclaredConfig } from '../project/declared-config.js';
 import path from 'node:path';
@@ -255,6 +257,7 @@ export class OrchestratorService extends EventEmitter {
 
   /** esbuild bundling pipeline — pre-bundles TS entry points for child processes */
   private buildService: BuildService | null = null;
+  private fileWatcher: FileWatcher | null = null;
   private watchDisabled = false;
   private watchSelection: Set<string> | null = null;
   private readonly bootstrapSources = new Map<string, { path: string; definition: IAppDefinition }>();
@@ -272,12 +275,41 @@ export class OrchestratorService extends EventEmitter {
     for (const [name, state] of this.restartCoalescer) {
       if (!enabled || !this.handles.get(name) || !this.allowsWatch(this.handles.get(name)!.entry)) state.watchSerial = 0;
     }
+    this.syncClassicWatches();
     await Promise.all([...this.bootstrapSources.keys()].map((name) => this.syncBootstrapWatch(name)));
   }
 
-  getBuildWatchedApps(): Array<{ name: string; directory: string }> {
-    return [...this.bootstrapSources].filter(([name]) => this.buildService?.isWatching(name))
-      .map(([name, source]) => ({ name, directory: path.dirname(source.path) }));
+  getWatchedApps(): WatchedApplication[] {
+    const registrations = [...(this.fileWatcher?.getWatchedApps() ?? []),
+      ...[...this.bootstrapSources].filter(([name]) => this.buildService?.isWatching(name))
+        .map(([name, source]) => ({ name, directory: path.dirname(source.path) }))];
+    return registrations.flatMap(watch => {
+      const handle = this.handles.get(watch.name);
+      return handle ? [{ ...watch, generation: handle.generation, definitionRevision: handle.definitionRevision }] : [];
+    });
+  }
+
+  /** Native subscriptions follow the same owned handles and policy as esbuild. */
+  private syncClassicWatches(): void {
+    if (!this.devMode || this.watchDisabled || this.stoppingApps || !this.config) {
+      this.fileWatcher?.stop();
+      this.fileWatcher = null;
+      return;
+    }
+    const apps = [...this.handles.values()].filter(handle => {
+      if (handle.entry.bootstrap || !this.allowsWatch(handle.entry) || this.executionBusy(handle.name)) return false;
+      if (handle.status === 'online' && !this.appStopIntents.get(handle.name)?.stopped) return true;
+      // An internal restart keeps its existing source subscription and pending
+      // edits. Re-arming fs.watch on every child generation loses macOS events.
+      return !['crashed', 'errored'].includes(handle.status) &&
+        Boolean(this.restartCoalescer.get(handle.name)?.inFlight) && this.fileWatcher?.isWatching(handle.entry);
+    }).map(handle => handle.entry);
+    const config = { ...this.config, apps };
+    if (this.fileWatcher) this.fileWatcher.applyConfig(config);
+    else {
+      this.fileWatcher = new FileWatcher(this.logger, this, config, this.cwd);
+      this.fileWatcher.start();
+    }
   }
 
   private async syncBootstrapWatch(name: string): Promise<void> {
@@ -300,11 +332,28 @@ export class OrchestratorService extends EventEmitter {
   }
 
   /** Automatic triggers remain revocable while queued; manual restart is independent. */
-  async restartAfterChange(name: string): Promise<AppHandle | undefined> {
+  async restartAfterChange(name: string, expected?: { generation: string; definitionRevision: number }): Promise<AppHandle | undefined> {
     const canonical = this.resolveAppName(name) ?? name;
     const handle = this.handles.get(canonical);
-    if (!handle || !this.allowsWatch(handle.entry)) return handle;
-    return this.restartAppCoalesced(canonical, true, 'watch');
+    if (expected && (!handle || handle.generation !== expected.generation || handle.definitionRevision !== expected.definitionRevision))
+      throw new Error(`Application '${canonical}' source binding changed; observe its watch status before retrying`);
+    if (!handle || !this.allowsWatch(handle.entry)) {
+      if (expected) throw new Error(`Source refresh of '${canonical}' is excluded by the current watch policy`);
+      return handle;
+    }
+    if (expected && !this.getWatchedApps().some(app => app.name === canonical &&
+        app.generation === expected.generation && app.definitionRevision === expected.definitionRevision))
+      throw new Error(`Source watcher for '${canonical}' is unavailable; SDK refresh was not started`);
+    const entry = handle.entry;
+    const definitionRevision = handle.definitionRevision;
+    const result = await this.restartAppCoalesced(canonical, true, 'watch');
+    if (expected && (handle.definitionRevision !== definitionRevision || result.entry !== entry ||
+        result.generation === expected.generation || result.status !== 'online'))
+      throw new Error(`Source refresh of '${canonical}' was cancelled or its source binding changed`);
+    if (expected && !this.getWatchedApps().some(app => app.name === canonical &&
+        app.generation === result.generation && app.definitionRevision === result.definitionRevision))
+      throw new Error(`Source watcher for '${canonical}' is unavailable after restart; SDK readiness is not confirmed`);
+    return result;
   }
 
   /** Cached build results per app name */
@@ -339,6 +388,7 @@ export class OrchestratorService extends EventEmitter {
       firedSerial: number;
       manualSerial: number;
       watchSerial: number;
+      watchBinding: { handle: AppHandle; entry: IEcosystemAppEntry; definitionRevision: number } | null;
       cooldownUntil: number;
     }
   >();
@@ -478,6 +528,7 @@ export class OrchestratorService extends EventEmitter {
    */
   setConfig(config: IEcosystemConfig): void {
     this.config = config;
+    this.syncClassicWatches();
 
     // Metrics polling is armed here rather than in `startAll` alone.
     //
@@ -868,6 +919,7 @@ export class OrchestratorService extends EventEmitter {
             throw new Error(`Cannot replace '${key}' with '${entry.name}': the previous application did not stop`, { cause: err });
           }
           this.handles.delete(key);
+          this.syncClassicWatches();
           if (key !== entry.name) this.metricsBridge?.evictApp(key);
           continue;
         }
@@ -890,6 +942,7 @@ export class OrchestratorService extends EventEmitter {
       // processes still run: an errored app's other children and its pools.
       await this.tearDownApp(h);
       this.handles.delete(key);
+      this.syncClassicWatches();
       // Drop any metrics that were collected under the stale alias so it
       // doesn't haunt future snapshots as a ghost offline app.
       if (key !== entry.name) this.metricsBridge?.evictApp(key);
@@ -924,6 +977,7 @@ export class OrchestratorService extends EventEmitter {
     // window is enforced by the policy, not by forgetting.
     if (existing) { handle.restarts = existing.restarts; handle.restartWindow = existing.restartWindow; }
     this.handles.set(entry.name, handle);
+    this.syncClassicWatches();
 
     // Arm metrics sampling here — the one place an app enters the registry.
     //
@@ -993,6 +1047,8 @@ export class OrchestratorService extends EventEmitter {
       this.persistState();
       if (!installed) this.scheduleRecovery(entry, handle, cfg);
       throw failure;
+    } finally {
+      this.syncClassicWatches();
     }
   }
 
@@ -1075,8 +1131,12 @@ export class OrchestratorService extends EventEmitter {
     if (active?.id === operationId && active.fingerprint === fingerprint) return active.promise as Promise<T>;
     this.assertExecutionIdle(scope);
     // Reserve before invoking work, including its synchronous checks and first write.
-    const promise = Promise.resolve().then(work).finally(() => this.executionOperations.delete(key));
+    const promise = Promise.resolve().then(work).finally(() => {
+      this.executionOperations.delete(key);
+      this.syncClassicWatches();
+    });
     this.executionOperations.set(key, { id: operationId, fingerprint, promise });
+    this.syncClassicWatches();
     return promise;
   }
 
@@ -1148,6 +1208,7 @@ export class OrchestratorService extends EventEmitter {
         }
       }
       this.persistState();
+      this.syncClassicWatches();
       for (const name of retired) {
         this.emit('app:retired', name);
         this.metricsBridge?.evictApp(name);
@@ -1408,7 +1469,12 @@ export class OrchestratorService extends EventEmitter {
   }
 
   async stopApp(name: string, force = false, timeout = 10_000): Promise<void> {
+    return this.stopAppQueued(name, force, timeout);
+  }
+
+  private async stopAppQueued(name: string, force = false, timeout = 10_000, preserveWatch = false): Promise<void> {
     const canonical = this.resolveAppName(name) ?? name;
+    if (!preserveWatch) this.fileWatcher?.removeApp(canonical);
     // Outside the queue on purpose: the operator's intent lands the
     // moment the command arrives, not whenever the queue drains.
     // Unknown names need no retained intent. Start admission registers its
@@ -1446,6 +1512,7 @@ export class OrchestratorService extends EventEmitter {
     for (const name of this.coolDownTimers.keys()) this.clearCoolDown(name);
     const operation = Promise.resolve().then(() => this.stopAllOnce(force));
     this.stoppingApps = operation;
+    this.syncClassicWatches();
     const settled = () => { if (this.stoppingApps === operation) this.stoppingApps = null; };
     void operation.then(settled, settled);
     return operation;
@@ -1544,10 +1611,12 @@ export class OrchestratorService extends EventEmitter {
       throw new Error('An installed stack start is active; its application entry cannot be changed');
     }
     handle.redefine(entry);
-    if (!this.allowsWatch(entry)) {
-      const state = this.restartCoalescer.get(handle.name);
-      if (state) state.watchSerial = 0;
-    }
+    this.fileWatcher?.revokePending(handle.name);
+    // A pending source event belongs to the previous definition, even when
+    // the replacement also enables watching or restores the original path.
+    const state = this.restartCoalescer.get(handle.name);
+    if (state) state.watchSerial = 0;
+    this.syncClassicWatches();
     await this.syncBootstrapWatch(handle.name);
     return true;
   }
@@ -1590,6 +1659,9 @@ export class OrchestratorService extends EventEmitter {
     const canonical = this.resolveAppName(name) ?? name;
     const handle = this.handles.get(canonical);
     if (!handle) {
+      // A queued source event cannot resurrect a registration removed while
+      // awaiting a cooldown or another lifecycle operation.
+      if (!fromExternal || cause === 'watch') throw new Error(`Application '${canonical}' was removed before restart`);
       // A PROJECT-QUALIFIED name with no live handle is not this daemon's to
       // start, and matching it against the daemon's own config starts the
       // WRONG APP.
@@ -1626,10 +1698,15 @@ export class OrchestratorService extends EventEmitter {
     const state = this.getCoalescerState(name);
     if (fromExternal) {
       state.triggerSerial += 1;
-      if (cause === 'watch') state.watchSerial = state.triggerSerial;
-      else state.manualSerial = state.triggerSerial;
+      if (cause === 'watch') {
+        state.watchSerial = state.triggerSerial;
+        state.watchBinding = { handle, entry: handle.entry, definitionRevision: handle.definitionRevision };
+      } else state.manualSerial = state.triggerSerial;
     }
-    if (!this.allowsWatch(handle.entry) || ['errored', 'crashed', 'stopped', 'stopping'].includes(handle.status)) {
+    if (!this.allowsWatch(handle.entry) || ['errored', 'crashed'].includes(handle.status) ||
+        (!state.inFlight && ['stopped', 'stopping'].includes(handle.status)) ||
+        !state.watchBinding || state.watchBinding.entry !== handle.entry ||
+        state.watchBinding.handle.definitionRevision !== state.watchBinding.definitionRevision) {
       state.watchSerial = 0;
     }
     const observedSerial = Math.max(state.manualSerial, state.watchSerial);
@@ -1740,7 +1817,7 @@ export class OrchestratorService extends EventEmitter {
       clearCacheFor(path.resolve(entry.cwd ?? this.cwd, entry.bootstrap));
     }
 
-    const stopped = this.stopApp(name);
+    const stopped = this.stopAppQueued(name, false, 10_000, true);
     const intent = this.appStopIntents.get(name);
     const generation = this.stopGeneration;
     await stopped;
@@ -1756,7 +1833,7 @@ export class OrchestratorService extends EventEmitter {
   private getCoalescerState(name: string) {
     let state = this.restartCoalescer.get(name);
     if (!state) {
-      state = { inFlight: null, triggerSerial: 0, firedSerial: 0, manualSerial: 0, watchSerial: 0, cooldownUntil: 0 };
+      state = { inFlight: null, triggerSerial: 0, firedSerial: 0, manualSerial: 0, watchSerial: 0, watchBinding: null, cooldownUntil: 0 };
       this.restartCoalescer.set(name, state);
     }
     return state;
@@ -2253,6 +2330,7 @@ export class OrchestratorService extends EventEmitter {
         this.scheduleRecovery(entry, handle, config);
       }
       this.persistState();
+      this.syncClassicWatches();
     });
     return launch;
   }
@@ -2398,6 +2476,7 @@ export class OrchestratorService extends EventEmitter {
   }
 
   private async discardSourceBuild(name: string): Promise<void> {
+    this.fileWatcher?.removeApp(name);
     const state = this.restartCoalescer.get(name);
     if (state) state.watchSerial = 0;
     await this.buildService?.unwatchApp(name);
@@ -2889,6 +2968,7 @@ export class OrchestratorService extends EventEmitter {
     handle.clearLastExit();
     this.startPostOnlineCooldown(name);
     this.persistState();
+    this.syncClassicWatches();
     this.emit('app:online', name);
   }
 

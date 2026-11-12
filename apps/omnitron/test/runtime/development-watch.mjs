@@ -120,7 +120,7 @@ try {
   for (const entry of config.apps) await client.orchestrator.startApp(entry, config);
   const initial = {};
   for (const name of sources.keys()) initial[name] = await until(async () => (await rows()).find(row => row.value === name + '-initial'), name + ' initial RPC');
-  await until(async () => { await client.refresh(); return client.orchestrator.getBuildWatchedApps().length === 2; }, 'Both applications watched');
+  await until(async () => { await client.refresh(); return client.orchestrator.getWatchedApps().length === 2; }, 'Both applications watched');
   await change('first', 'updated');
   const changed = await until(async () => (await rows()).find(row => row.value === 'first-updated'), 'Shared-library watch restart');
   assert.notEqual(changed.pid, initial.first.pid);

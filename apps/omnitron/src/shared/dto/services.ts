@@ -36,6 +36,16 @@ export { consolePasswordError } from './auth.js';
 /** Stack lifecycle operations can need several minutes for cold processes to report ready. */
 export const LONG_REQUEST_TIMEOUT = 10 * 60_000;
 
+/** Source binding observed by the process owner, not inferred from a project file. */
+export interface WatchedApplication {
+  name: string;
+  directory: string;
+  generation: string;
+  definitionRevision: number;
+}
+
+export type SourceChangeRequest = Pick<WatchedApplication, 'name' | 'generation' | 'definitionRevision'>;
+
 /** These transport failures cannot attest whether an in-flight mutation took effect. */
 export function isLostRpcAcknowledgement(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
@@ -58,6 +68,8 @@ export interface IDaemonService {
   stopApp(data: { name: string; force?: boolean; timeout?: number }): Promise<{ success: boolean; error?: string }>;
   stopAll(data: { force?: boolean }): Promise<{ count: number }>;
   restartApp(data: { name: string }): Promise<ProcessInfoDto>;
+  /** Automatic source refresh; refuses a changed source binding or revoked watch policy. */
+  restartAfterChange(data: SourceChangeRequest): Promise<ProcessInfoDto>;
   restartAll(): Promise<ProcessInfoDto[]>;
   reloadApp(data: { name: string }): Promise<ProcessInfoDto>;
 
@@ -99,9 +111,9 @@ export interface IDaemonService {
   revealEnv(data: { name: string }): Promise<Record<string, string>>;
 
   // --- Watch Mode ---
-  enableWatch(data: { apps?: string[] }): Promise<{ watching: Array<{ name: string; directory: string }> }>;
+  enableWatch(data: { apps?: string[] }): Promise<{ watching: WatchedApplication[] }>;
   disableWatch(): Promise<{ success: boolean }>;
-  getWatchStatus(): Promise<{ enabled: boolean; watching: boolean; reason?: string; apps: Array<{ name: string; directory: string }> }>;
+  getWatchStatus(): Promise<{ enabled: boolean; watching: boolean; reason?: string; apps: WatchedApplication[] }>;
 }
 
 // ============================================================================

@@ -306,6 +306,8 @@ export class ExecutionClient {
   }
 
   private async submit(method: ExecutionMutation, args: unknown[]): Promise<unknown> {
+    if (method === 'restartAfterChange' && args[1] !== undefined && this.view().capabilities?.['sourceRefresh'] !== 1)
+      throw new Error('Execution owner does not support confirmed source refresh; prepare an owner transition before refreshing the development SDK. Backend updates remain available.');
     if (method === 'reconcileStoppedStack' && this.view().capabilities?.['stoppedStackReconciliation'] !== 1)
       throw new Error('Execution owner does not support stopped stack reconciliation; prepare an owner upgrade with an application restart plan. Backend updates remain available.');
     if (method === 'stopExecution' || method === 'enableExecution') this.requireExecutionScopes();
@@ -402,7 +404,7 @@ export class ExecutionClient {
       getWorkerHandle: (id: string) => this.view().workers.find(worker => worker.info.id === id),
       getChildProcessInfo: (id: string) => this.view().workers.find(worker => worker.info.id === id)?.info,
       getAppStatus: (name: string) => this.registeredApp(name)?.info.status,
-      getBuildWatchedApps: () => this.view().watchedApps,
+      getWatchedApps: () => this.view().watchedApps,
       getLogs: (name?: string, lines = 100) => {
         const measured = name === undefined ? this.view().apps : [this.registeredApp(name)];
         return measured.flatMap(app => app ? [{ app: app.info.name, lines: app.logs.slice(-lines) }] : []);

@@ -13,19 +13,22 @@ function fixture() {
 describe('daemon watch control', () => {
   it.each([{ watch: true, noWatch: true }, { watch: false }, undefined])('does not arm watching with options %j', async (options) => {
     const { daemon, orchestrator, logger } = fixture();
-    await daemon.startFileWatcher({ apps: [] }, options, logger);
+    await daemon.configureWatch(options, logger);
     expect(orchestrator.devMode).toBe(false);
     expect(await daemon.getWatchStatus()).toMatchObject({ enabled: false, watching: false, apps: [] });
   });
   it('reports esbuild watches, and awaits disposal through the native disable control', async () => {
     const { daemon, orchestrator, logger } = fixture();
-    await daemon.startFileWatcher({ apps: [] }, { watch: true }, logger);
+    await daemon.configureWatch({ watch: true }, logger);
     expect(orchestrator.devMode).toBe(true);
     let watching = true;
-    vi.spyOn(orchestrator, 'getBuildWatchedApps').mockImplementation(() => watching ? [{ name: 'registered/local/worker', directory: '/project' }] : []);
+    vi.spyOn(orchestrator, 'getWatchedApps').mockImplementation(() => watching ? [{ name: 'registered/local/worker', directory: '/project', generation: 'generation-1', definitionRevision: 0 }] : []);
     expect(await daemon.getWatchStatus()).toMatchObject({ enabled: true, watching: true, apps: [{ name: 'registered/local/worker', directory: '/project' }] });
     let finish!: () => void;
-    const mode = vi.spyOn(orchestrator, 'setWatchMode').mockImplementation(() => new Promise((r) => { finish = () => { watching = false; r(); }; }));
+    const setWatchMode = orchestrator.setWatchMode.bind(orchestrator);
+    const mode = vi.spyOn(orchestrator, 'setWatchMode').mockImplementation((enabled, apps) => new Promise((r) => {
+      finish = () => { watching = false; void setWatchMode(enabled, apps).then(r); };
+    }));
     let done = false;
     const stopped = daemon.disableWatch().then(() => { done = true; });
     await Promise.resolve();

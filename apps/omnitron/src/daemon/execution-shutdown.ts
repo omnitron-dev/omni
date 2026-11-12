@@ -1,7 +1,7 @@
 /** Shutdown proof used before the managed owner may publish its clean receipt. */
 export async function shutdownExecutionOwner(steps: {
   phase(stage: string): void;
-  stopWatching(): void;
+  stopWatching(): void | Promise<void>;
   stopApplications(): Promise<unknown>;
   stopProcesses(): Promise<void>;
   flushState(): Promise<void>;

@@ -73,7 +73,7 @@ beforeEach(async () => {
   // coordinator remain under test. No signal reaches the test runner itself.
   for (const method of ['initializeRecoveryMonitor', 'registerTransports', 'exposeRpcServices',
     'wireLogPersistence', 'checkCrashRecovery', 'startInfrastructure', 'registerHealthIndicators',
-    'startFileWatcher', 'startHealthMonitorWorker', 'startApps', 'startScheduledTasks',
+    'configureWatch', 'startHealthMonitorWorker', 'startApps', 'startScheduledTasks',
     'startBackgroundServices', 'wireEventBroadcasting'] as const) {
     vi.spyOn(daemon as any, method).mockResolvedValue(undefined);
   }

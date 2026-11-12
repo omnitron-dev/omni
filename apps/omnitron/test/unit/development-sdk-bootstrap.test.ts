@@ -1,8 +1,8 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { execFile } from 'node:child_process';
-import { createRequire } from 'node:module';
+import childProcess, { execFile } from 'node:child_process';
+import { createRequire, syncBuiltinESMExports } from 'node:module';
 import { createHash } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import { promisify } from 'node:util';
@@ -133,6 +133,177 @@ async function installRegistry(virtualStoreDir?: string, nodeLinker = 'isolated'
   await initialize();
   await exec('pnpm', ['install', '--ignore-scripts'], { cwd: consumer, timeout: 45_000 });
 }
+
+// Capture metadata as well as bytes: rewriting an identical manifest or lock
+// would still notify a live project's filesystem watcher.
+async function filesystemSnapshot(directory: string): Promise<Record<string, unknown>> {
+  const result: Record<string, unknown> = {};
+  async function visit(file: string) {
+    const stat = await fs.lstat(file, { bigint: true });
+    result[path.relative(directory, file)] = {
+      inode: stat.ino.toString(), device: stat.dev.toString(), mode: stat.mode.toString(),
+      size: stat.size.toString(), mtime: stat.mtimeNs.toString(), ctime: stat.ctimeNs.toString(),
+      ...(stat.isFile() ? { sha256: createHash('sha256').update(await fs.readFile(file)).digest('hex') } : {}),
+      ...(stat.isSymbolicLink() ? { target: await fs.readlink(file) } : {}),
+    };
+    if (stat.isDirectory()) for (const entry of await fs.readdir(file)) await visit(path.join(file, entry));
+  }
+  await visit(directory);
+  return result;
+}
+
+async function installOverriddenRegistry(selector = '@fixture/kit@1.0.0', framework?: 'file' | 'link') {
+  const manifestFile = path.join(consumer, 'package.json'), manifest = await json(manifestFile);
+  manifest.scripts.preinstall = "node -e \"require('fs').writeFileSync('unexpected-lifecycle', 'ran')\"";
+  await write(manifestFile, manifest);
+  const name = framework ? '@omnitron-dev/lumen' : '@fixture/kit';
+  const version = framework ? '0.3.5' : '1.0.0';
+  const vendor = path.join(consumer, 'vendor'), pkg = path.join(vendor, 'package');
+  await fs.mkdir(pkg, { recursive: true });
+  await write(path.join(pkg, 'package.json'), { name, version, main: 'index.js' });
+  await fs.writeFile(path.join(pkg, 'index.js'), 'module.exports = 1;\n');
+  await create({ cwd: vendor, file: path.join(vendor, 'kit.tgz'), gzip: true, noMtime: true, portable: true }, ['package']);
+  const child = path.join(consumer, 'apps/client');
+  await fs.mkdir(child, { recursive: true });
+  await write(path.join(child, 'package.json'), { name: '@fixture/client', private: true, dependencies: { [name]: version } });
+  const settings = path.join(consumer, 'pnpm-workspace.yaml');
+  const override = framework === 'link' ? 'link:vendor/package' : 'file:vendor/kit.tgz';
+  await fs.writeFile(settings, (await fs.readFile(settings, 'utf8')).replace('  - packages/*', '  - packages/*\n  - apps/*') +
+    `overrides:\n  ${JSON.stringify(framework ? name : selector)}: ${override}\n`);
+  await installRegistry();
+}
+
+it.each(['@fixture/kit@1.0.0', '@fixture/kit@^1.0.0'])(
+  'validates pnpm effective file overrides without changing the installation: %s', async selector => {
+    await installOverriddenRegistry(selector);
+    registry!.closeAllConnections();
+    await new Promise<void>(resolve => registry!.close(() => resolve()));
+    registry = undefined;
+    const graph = parseAllDocuments((await distribution())!).at(-1)!.toJS();
+    expect(graph.importers['apps/client'].dependencies['@fixture/kit'].specifier).toBe('file:../../vendor/kit.tgz');
+    expect((await json(path.join(consumer, 'apps/client/package.json'))).dependencies['@fixture/kit']).toBe('1.0.0');
+    const before = await filesystemSnapshot(root);
+    expect(await inspectSdk(consumer)).toMatchObject({ mode: 'registry', verifiedImports: 1 });
+    expect(await filesystemSnapshot(root)).toEqual(before);
+  }, 45_000);
+
+it.each(['removed override', 'changed override', 'changed selector', 'stale manifest', 'stale importer', 'changed settings'])(
+  'refuses a stale effective registry graph without changing files: %s', async drift => {
+    await installOverriddenRegistry();
+    const settings = path.join(consumer, 'pnpm-workspace.yaml');
+    if (drift === 'removed override')
+      await fs.writeFile(settings, (await fs.readFile(settings, 'utf8')).replace('overrides:\n  "@fixture/kit@1.0.0": file:vendor/kit.tgz\n', ''));
+    if (drift === 'changed override') {
+      await fs.copyFile(path.join(consumer, 'vendor/kit.tgz'), path.join(consumer, 'vendor/other.tgz'));
+      await fs.writeFile(settings, (await fs.readFile(settings, 'utf8')).replace('file:vendor/kit.tgz', 'file:vendor/other.tgz'));
+    }
+    if (drift === 'changed selector')
+      await fs.writeFile(settings, (await fs.readFile(settings, 'utf8')).replace('@fixture/kit@1.0.0', '@fixture/kit@2.0.0'));
+    if (drift === 'changed settings') await fs.appendFile(settings, 'autoInstallPeers: false\n');
+    if (drift === 'stale manifest') {
+      const file = path.join(consumer, 'apps/client/package.json'), manifest = await json(file);
+      manifest.dependencies['@fixture/kit'] = '2.0.0';
+      await write(file, manifest);
+    }
+    if (drift === 'stale importer') {
+      await fs.writeFile(path.join(consumer, 'pnpm-lock.yaml'), (await distribution())!.replace('specifier: file:../../vendor/kit.tgz', 'specifier: ^3.0.0'));
+      // pnpm 12 dry-run exits successfully even when the frozen lock is stale.
+      // Its exit code is not an admission verdict.
+      const { stdout } = await exec('pnpm', ['install', '--dry-run', '--frozen-lockfile', '--lockfile-only',
+        '--ignore-scripts', '--ignore-pnpmfile', '--offline', '--frozen-store'], { cwd: consumer });
+      expect(stdout).toContain('^3.0.0 -> file:../../vendor/kit.tgz');
+    }
+    const before = await filesystemSnapshot(root);
+    await expect(inspectSdk(consumer)).rejects.toThrow(/frozen registry lock validation failed/i);
+    if (drift === 'stale importer') {
+      const failure = await exec(process.execPath, [path.resolve(import.meta.dirname, '../../bin/sdk.js'),
+        'status', '--project-dir', consumer]).then(() => { throw Error('Stale CLI status unexpectedly succeeded'); }, error => error);
+      expect(failure.stderr).toContain('ERR_PNPM_OUTDATED_LOCKFILE');
+      expect(failure.stderr).toContain('apps/client');
+      expect(failure.stderr).toContain('Frozen registry lock validation failed');
+    }
+    expect(await filesystemSnapshot(root)).toEqual(before);
+  }, 45_000);
+
+it.each(['manifest', 'workspace'])('refuses concurrent %s changes and preserves the newer input', async input => {
+  await installOverriddenRegistry();
+  const settings = path.join(consumer, 'pnpm-workspace.yaml');
+  const file = input === 'manifest' ? path.join(consumer, 'apps/client/package.json') : settings;
+  const originalLock = await distribution();
+  const newer = input === 'manifest' ? JSON.stringify({ ...(await json(file)), description: 'Concurrent edit' }) :
+    await fs.readFile(settings, 'utf8') + '# Concurrent edit\n';
+  const read = fs.readFile;
+  let pending = true;
+  const spy = vi.spyOn(fs, 'readFile').mockImplementation(async (...args: Parameters<typeof fs.readFile>) => {
+    const result = await read(...args);
+    if (pending && args[0] === settings) {
+      pending = false;
+      await fs.writeFile(file, newer);
+    }
+    return result;
+  });
+  try {
+    await expect(inspectSdk(consumer)).rejects.toThrow(/changed during registry validation/);
+    expect(pending).toBe(false);
+  } finally { spy.mockRestore(); }
+  expect(await fs.readFile(file, 'utf8')).toBe(newer);
+  expect(await distribution()).toBe(originalLock);
+}, 45_000);
+
+it('refuses a different package-manager pin without bootstrapping or changing files', async () => {
+  await installOverriddenRegistry();
+  const file = path.join(consumer, 'package.json'), manifest = await json(file);
+  manifest.packageManager = 'pnpm@0.0.1';
+  await write(file, manifest);
+  const before = await filesystemSnapshot(root);
+  await expect(inspectSdk(consumer)).rejects.toThrow(/installed pnpm to match an exact project package-manager pin/);
+  expect(await filesystemSnapshot(root)).toEqual(before);
+}, 45_000);
+
+it('refuses pnpm without the read-only frozen-store capability without retrying an install', async () => {
+  await installOverriddenRegistry();
+  const before = await filesystemSnapshot(root);
+  const spawn = childProcess.spawn;
+  let attempts = 0;
+  const spy = vi.spyOn(childProcess, 'spawn').mockImplementation((program, args, options) => {
+    if (program === 'pnpm' && Array.isArray(args) && args.includes('install')) {
+      attempts++;
+      return spawn(process.execPath, ['-e', "process.stderr.write('Unknown option: --frozen-store\\n'); process.exit(2)"], options);
+    }
+    return spawn(program, args, options);
+  });
+  syncBuiltinESMExports();
+  try {
+    await expect(inspectSdk(consumer)).rejects.toThrow(/Frozen registry lock validation failed/);
+    expect(attempts).toBe(1);
+  } finally { spy.mockRestore(); syncBuiltinESMExports(); }
+  expect(await filesystemSnapshot(root)).toEqual(before);
+}, 45_000);
+
+it('does not execute a custom hook to hide a stale manifest', async () => {
+  await installOverriddenRegistry();
+  const file = path.join(consumer, 'apps/client/package.json'), manifest = await json(file);
+  manifest.dependencies['@fixture/kit'] = '2.0.0';
+  await write(file, manifest);
+  await fs.writeFile(path.join(consumer, '.pnpmfile.mjs'), `
+    import fs from 'node:fs';
+    fs.writeFileSync(new URL('./unexpected-hook', import.meta.url), 'ran');
+    export const hooks = { readPackage(pkg) {
+      if (pkg.name === '@fixture/client') pkg.dependencies['@fixture/kit'] = '1.0.0';
+      return pkg;
+    } };
+  `);
+  const before = await filesystemSnapshot(root);
+  await expect(inspectSdk(consumer)).rejects.toThrow(/Custom manifest hooks are not executed/);
+  expect(await filesystemSnapshot(root)).toEqual(before);
+}, 45_000);
+
+it.each(['file', 'link'] as const)('refuses a pnpm-valid %s override for a framework package', async protocol => {
+  await installOverriddenRegistry('@fixture/kit@1.0.0', protocol);
+  const before = await filesystemSnapshot(root);
+  await expect(inspectSdk(consumer)).rejects.toThrow(/must resolve a registry archive for @omnitron-dev\/lumen/);
+  expect(await filesystemSnapshot(root)).toEqual(before);
+}, 45_000);
 
 it.each([{ external: false, nodeLinker: 'isolated' }, { external: true, nodeLinker: 'isolated' },
   { external: false, nodeLinker: 'hoisted' }, { external: true, nodeLinker: 'hoisted' }])(

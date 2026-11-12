@@ -9,6 +9,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { isDeepStrictEqual, parseArgs } from 'node:util';
 import { parseAllDocuments } from 'yaml';
+import { getWantedPackageManager } from '@pnpm/config.reader';
 import { frameworkPackage } from './pnpmfile-sdk.js';
 
 const help = `omnitron sdk init [--project-dir PATH]
@@ -119,14 +120,22 @@ function command(program, args, cwd, capture = false, signal) {
   });
 }
 
+async function readOnlyPnpm(root, args) {
+  // Even `pnpm list` can bootstrap package-manager metadata. Use pnpm's
+  // externally managed mode only after checking the selected executable against
+  // the project's pin. Never download a package manager during SDK inspection.
+  const options = ['--config.pmOnFail=ignore', '--config.ignore-pnpmfile=true', '--config.offline=true'];
+  const version = await command('pnpm', [...options, '--version'], root, true);
+  const { pm, warnings } = getWantedPackageManager(await readJson(path.join(root, 'package.json')));
+  if (warnings.length || pm && (pm.name !== 'pnpm' || pm.version !== version))
+    throw Error('Read-only SDK inspection requires the installed pnpm to match an exact project package-manager pin; ' +
+      `selected pnpm ${version}, requested ${pm?.name ?? 'unknown'}@${pm?.version ?? 'unknown'}`);
+  return command('pnpm', [...options, ...args], root, true);
+}
+
 async function inventory(root) {
   const rows = JSON.parse(
-    await command(
-      'pnpm',
-      ['--config.lockfile=false', '--config.ignore-pnpmfile=true', '-r', 'list', '--depth', '-1', '--json'],
-      root,
-      true
-    )
+    await readOnlyPnpm(root, ['--config.lockfile=false', '-r', 'list', '--depth', '-1', '--json'])
   );
   const entries = new Map();
   for (const row of rows) {
@@ -147,10 +156,18 @@ function frameworkDependencies(manifest, development = false) {
       !manifest.optionalDependencies?.[name] && !(development && manifest.devDependencies?.[name]))).sort();
 }
 async function moduleConfiguration(root) {
-  const settings = await Promise.all(['nodeLinker', 'virtualStoreDir'].map(async key => JSON.parse(await command(
-    'pnpm', ['--config.lockfile=false', '--config.ignore-pnpmfile=true', 'config', 'get', key, '--json'], root, true
+  const settings = await Promise.all(['nodeLinker', 'virtualStoreDir'].map(async key => JSON.parse(await readOnlyPnpm(
+    root, ['--config.lockfile=false', 'config', 'get', key, '--json']
   ))));
   return { nodeLinker: settings[0] ?? 'isolated', virtualStoreDir: path.resolve(root, settings[1] ?? 'node_modules/.pnpm') };
+}
+async function consumerInputs(root, consumers) {
+  const manifests = [...consumers.values()].map(({ directory, manifest }) => [path.relative(root, directory), manifest])
+    .sort(([left], [right]) => left.localeCompare(right));
+  const settings = [];
+  for (const file of ['pnpm-workspace.yaml', '.npmrc']) settings.push([file,
+    await fs.readFile(path.join(root, file), 'utf8').catch(error => { if (error.code === 'ENOENT') return null; throw error; })]);
+  return { manifests, settings };
 }
 async function desiredProfile(root, source, distribution) {
   const packages = await inventory(source), consumers = await inventory(root);
@@ -175,11 +192,7 @@ async function desiredProfile(root, source, distribution) {
     select(name);
   }
   if (!Object.keys(links).length) throw Error('The project declares no framework SDK dependencies');
-  const manifests = [...consumers.values()].map(({ directory, manifest }) => [path.relative(root, directory), manifest])
-    .sort(([left], [right]) => left.localeCompare(right));
-  const settings = [];
-  for (const file of ['pnpm-workspace.yaml', '.npmrc']) settings.push([file,
-    await fs.readFile(path.join(root, file), 'utf8').catch(error => { if (error.code === 'ENOENT') return null; throw error; })]);
+  const { manifests, settings } = await consumerInputs(root, consumers);
   // Environment interpolation and global pnpm configuration can change module
   // placement without changing either workspace file. Bind the effective layout.
   const installation = await moduleConfiguration(root);
@@ -249,12 +262,41 @@ async function installDevelopment(root, profile, expectedDistribution = profile.
 }
 // Development consumers need not be Omnitron applications. Registry restoration
 // checks their own frozen importers; release archive admission remains separate.
+async function validateRegistryLock(root, distribution, consumers) {
+  await assertDistribution(root, lockIdentity(distribution));
+  const inputs = await consumerInputs(root, consumers);
+  const scratch = await fs.mkdtemp(path.join(os.tmpdir(), 'omnitron-sdk-registry-'));
+  try {
+    // pnpm owns effective manifest semantics (overrides, catalogs, patches and
+    // relative file references). A dry-run is insufficient: it exits zero even
+    // when it reports changes to a frozen lock. Frozen + lockfile-only validates
+    // without installing. Trust-lockfile skips a new supply-chain policy lookup,
+    // not frozen importer/config checks. SDK inspection separately verifies the
+    // installed framework's registry integrity/receipts; it is not a fresh audit.
+    // Keep any package-manager cache/state writes outside the consumer.
+    await readOnlyPnpm(root, ['install', '--frozen-lockfile', '--lockfile-only', '--offline', '--frozen-store', '--trust-lockfile',
+      '--ignore-scripts', '--config.ignoreManifestCheck=false',
+      '--config.dryRun=false', '--config.lockfile=true', '--config.cacheDir=' + path.join(scratch, 'cache'),
+      '--state-dir', path.join(scratch, 'state')]);
+    if (!isDeepStrictEqual(inputs, await consumerInputs(root, await inventory(root))))
+      throw Error('Consumer manifests or pnpm configuration changed during registry validation; retry with stable inputs');
+  } catch (error) {
+    throw new Error('Frozen registry lock validation failed: the lock is stale or cannot be verified. ' +
+      `${error.message}. Check the pnpm diagnostic and use a supported pnpm with a current registry lock. ` +
+      'Custom manifest hooks are not executed by SDK validation.', { cause: error });
+  } finally {
+    try { await assertDistribution(root, lockIdentity(distribution)); }
+    finally { await fs.rm(scratch, { recursive: true, force: true }); }
+  }
+}
+
 async function registryBaseline(root, distribution, consumers) {
   if (distribution === null)
     throw Error('No distribution lock is available. Create a registry lock with pnpm install --lockfile-only --config.ignore-pnpmfile=true before sdk registry.');
   if (applicationDocument(distribution) === null)
     throw Error('The distribution lock contains package-manager metadata only; create a current registry application lock before sdk registry');
   consumers ??= await inventory(root);
+  await validateRegistryLock(root, distribution, consumers);
   const importers = {}, packages = {};
   for (const document of lockDocuments(distribution)) {
     const graph = document.toJS();
@@ -266,12 +308,6 @@ async function registryBaseline(root, distribution, consumers) {
     const key = path.relative(root, directory).split(path.sep).join('/') || '.';
     const importer = importers[key];
     if (!importer) throw Error('Distribution lock has no importer for ' + key);
-    for (const section of sections) {
-      const wanted = manifest[section] ?? {}, locked = importer[section] ?? {};
-      if (Object.entries(wanted).some(([name, specifier]) => locked[name]?.specifier !== specifier) ||
-          Object.keys(locked).some(name => !Object.hasOwn(wanted, name) && !Object.hasOwn(manifest.peerDependencies ?? {}, name)))
-        throw Error('Distribution lock is stale for ' + key + ' / ' + section + '; create a current registry lock before sdk registry');
-    }
     for (const name of frameworkDependencies(manifest, true)) {
       const entry = sections.map(section => importer[section]?.[name]).find(Boolean);
       const version = typeof entry?.version === 'string' ? entry.version.split('(')[0] : '';

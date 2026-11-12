@@ -24,7 +24,7 @@ import {
   mathKernelGate,
 } from '../gates/builtins/index.js';
 import { computeContentHash } from '../manifest/hashing.js';
-import { buildStaticSite } from '../ssg/ssg-engine.js';
+import { withProjectBuild } from '../ssg/server-build.js';
 import { captureGeneration, recoverGeneration } from '../ssg/publish-generation.js';
 import { runLumenMcpServer } from '../ai/mcp-server.js';
 import { documentRoute } from '../corpus/routes.js';
@@ -455,33 +455,28 @@ Commands:
       console.log(`Lumen CLI v${VERSION} (command: build)`);
       if (cliOpts.help) break;
 
-      const initialConfig = await loadLumenConfig(cliOpts.rootDir);
-      recoverGeneration(resolve(cliOpts.rootDir, cliOpts.outDir ?? initialConfig.outDir));
-      const { config, graph, docsDirExists, astDiagnostics } = await loadCorpusFromDirectory(cliOpts.rootDir, initialConfig);
-      const gateResult = await runCorpusGates(
-        { documents: graph.getAllDocuments(), graph, config, reportDiagnostic: () => {} },
-        [
-          ...buildReferenceGates(config),
-          ...(config.gates ?? []),
-        ]
-      );
-      const errors = [...astDiagnostics, ...gateResult.diagnostics].filter((item) => item.severity === 'error');
-      if (!gateResult.passed || errors.length)
-        throw new Error(errors.length
-          ? errors.map((item) => `${item.file}: ${item.code}: ${item.message}`).join('\n')
-          : `Corpus gates failed: ${gateResult.results.filter(result => !result.passed).map(result => result.name).join(', ')}`);
-      const targetOutDir = cliOpts.outDir
-        ? resolve(cliOpts.rootDir, cliOpts.outDir)
-        : resolve(cliOpts.rootDir, config.outDir || 'dist');
+      await withProjectBuild(cliOpts.rootDir, async (initialConfig, buildStaticSite) => {
+        recoverGeneration(resolve(cliOpts.rootDir, cliOpts.outDir ?? initialConfig.outDir));
+        const { config, graph, docsDirExists, astDiagnostics } = await loadCorpusFromDirectory(cliOpts.rootDir, initialConfig);
+        const gateResult = await runCorpusGates(
+          { documents: graph.getAllDocuments(), graph, config, reportDiagnostic: () => {} },
+          [...buildReferenceGates(config), ...(config.gates ?? [])]
+        );
+        const errors = [...astDiagnostics, ...gateResult.diagnostics].filter((item) => item.severity === 'error');
+        if (!gateResult.passed || errors.length)
+          throw new Error(errors.length
+            ? errors.map((item) => `${item.file}: ${item.code}: ${item.message}`).join('\n')
+            : `Corpus gates failed: ${gateResult.results.filter(result => !result.passed).map(result => result.name).join(', ')}`);
+        const targetOutDir = cliOpts.outDir
+          ? resolve(cliOpts.rootDir, cliOpts.outDir)
+          : resolve(cliOpts.rootDir, config.outDir || 'dist');
 
-      // Only materialize to disk when --write is explicitly requested OR docsDir exists on disk
-      // (Preserves TC-B23-03 repo cleanliness in repo root where ./docs does not exist)
-      const shouldWriteToDisk = cliOpts.write || docsDirExists;
-
-      await buildStaticSite(graph, config, {
-        rootDir: cliOpts.rootDir,
-        outDir: targetOutDir,
-        writeToDisk: shouldWriteToDisk,
+        const shouldWriteToDisk = cliOpts.write || docsDirExists;
+        await buildStaticSite(graph, config, {
+          rootDir: cliOpts.rootDir,
+          outDir: targetOutDir,
+          writeToDisk: shouldWriteToDisk,
+        });
       });
       break;
     }

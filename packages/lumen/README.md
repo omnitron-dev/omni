@@ -160,6 +160,20 @@ than a second rendering or theme system. See the
 [UI guide](https://github.com/omnitron-dev/omni/blob/main/packages/lumen-ui/README.md)
 for the registry, hydration triggers, search adapter and component props.
 
+The CLI compiles the project configuration, layout and existing renderer in one
+Vite SSR graph. Ordinary imported components, including React-dependent packages,
+share the project's React peers. Layouts are rendered as React components and
+can use state and context hooks during SSR. Each build closes its module runner
+and removes its temporary compilation files, including after a failure. Temporary
+files follow `TMPDIR` on systems that provide it.
+Source `import.meta` file paths and ESM resolution stay anchored to the original
+module, including when its `resolve` function is extracted into a variable.
+
+Put stylesheet, image and font files in `publicDir`, reference stylesheets with
+`stylesheets`, or import browser resources from `clientEntry`. The SSR compiler
+rejects imports that emit separate resource files instead of silently omitting
+them from the published site. Self-contained inline asset values need no files.
+
 SSR emits readable content and island descriptors. The browser runtime mounts
 registered components using the real compiled client bundle. Island props must
 be plain JSON data, validated by the shared `lumen-ast/islands` codec. Missing

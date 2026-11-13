@@ -60,8 +60,12 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function StackDetailPage() {
   const { name } = useParams<{ name: string }>();
-  const navigate = useNavigate();
   const activeProject = useActiveProject();
+  return <StackDetail key={JSON.stringify([activeProject, name])} name={name} activeProject={activeProject} />;
+}
+
+function StackDetail({ name, activeProject }: { name: string | undefined; activeProject: string | null }) {
+  const navigate = useNavigate();
   const stacks = useActiveProjectStacks();
   const known = useProjectStore(s => Boolean(activeProject && s.stacksByProject[activeProject]));
   const readError = useProjectStore(s => activeProject ? s.stackReadErrors[activeProject] : null);

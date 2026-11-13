@@ -1,4 +1,4 @@
-import { stackApps, stackCounts } from 'src/utils/stack-inventory';
+import { stackApps, stackCounts, stacksInScope } from 'src/utils/stack-inventory';
 /**
  * Status Bar — Fixed bottom bar with real-time system health
  *
@@ -218,7 +218,7 @@ function StatusBarReader({ docked, showStatus, showNodes, showStacks, showAlerts
 
   if (!data) return null;
   const showApps = activeProject ? showStacks : showStatus;
-  const selectedApps = inventory ? stackApps(inventory).filter(app => !activeStack || app.stack === activeStack) : null;
+  const selectedApps = inventory ? stackApps(stacksInScope(inventory, activeStack)) : null;
   const unknownApps = selectedApps?.filter(app => app.status === 'unknown').length ?? 0;
   const observedApps = selectedApps ? tally(selectedApps) : null;
   const appCount = activeProject
@@ -376,7 +376,7 @@ function ProjectStackIndicator() {
 
   const stale = useProjectStore(s => activeProject ? s.stackReadErrors?.[activeProject] : null);
   const known = useProjectStore(s => !!activeProject && s.stacksByProject[activeProject] !== undefined);
-  const { runningStacks, totalStacks, unknownStacks } = stackCounts(stacks.filter(s => !activeStack || s.name === activeStack));
+  const { runningStacks, totalStacks, unknownStacks } = stackCounts(stacksInScope(stacks, activeStack));
   if (!activeProject) return null;
 
   return (

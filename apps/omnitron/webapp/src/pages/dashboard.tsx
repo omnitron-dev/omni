@@ -1,4 +1,4 @@
-import { stackApps as inventoryApps, stackCounts } from 'src/utils/stack-inventory';
+import { stackApps as inventoryApps, stackCounts, stacksInScope } from 'src/utils/stack-inventory';
 import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 /** Selected deployments, current resource readings and links to operational detail. */
 
@@ -227,7 +227,7 @@ function DashboardReader() {
 
   const { activeProject, activeStack } = useStackContext();
   const allStacks = useActiveProjectStacks();
-  const stacks = allStacks.filter(stack => !activeStack || stack.name === activeStack);
+  const stacks = stacksInScope(allStacks, activeStack);
   const inventoryKnown = useProjectStore(s => !!activeProject && s.stacksByProject[activeProject] !== undefined);
 
   const fetchData = useCallback(async () => {

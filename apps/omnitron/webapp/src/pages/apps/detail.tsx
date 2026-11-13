@@ -969,7 +969,10 @@ export default function AppDetailPage() {
   const { name } = useParams<{ name: string }>();
   const { activeProject, activeStack } = useStackContext();
   const daemonName = name && daemonNameFor(name, activeProject, activeStack);
+  return <AppDetail key={daemonName} name={name} daemonName={daemonName} activeProject={activeProject} />;
+}
 
+function AppDetail({ name, daemonName, activeProject }: { name: string | undefined; daemonName: string | undefined; activeProject: string | null }) {
   const [app, setApp] = useState<ProcessInfoDto | null>(null);
   const [diagnostics, setDiagnostics] = useState<AppDiagnosticsDto | null>(null);
   const [loading, setLoading] = useState(true);

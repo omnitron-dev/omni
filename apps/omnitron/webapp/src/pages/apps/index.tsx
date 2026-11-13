@@ -1,6 +1,6 @@
 import { ApplicationHealthStatus } from 'src/components/stack-health-status';
 import { Can } from 'src/auth/access';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
@@ -20,7 +20,7 @@ import { formatUptime, formatMemoryMb } from 'src/utils/formatters';
 import { STATUS_COLORS } from 'src/utils/constants';
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { useRealtimeStore } from 'src/stores/realtime.store';
-import { usePollingEffect } from 'src/hooks/use-polled-resource';
+import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { deploymentsIn, detailHref, isLocal } from 'src/utils/app-address';
 
 import type { IProjectAppStatus } from '@omnitron-dev/omnitron/dto/services';
@@ -31,32 +31,23 @@ import type { IProjectAppStatus } from '@omnitron-dev/omnitron/dto/services';
 
 export default function AppsListPage() {
   const navigate = useNavigate();
-  const [allApps, setAllApps] = useState<IProjectAppStatus[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [actionError, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterValues>({ search: '', status: '' });
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   // The route is behind ProjectRoute: there is always a project here.
   const { activeProject, activeStack } = useStackContext();
 
-  const fetchApps = useCallback(async () => {
-    if (!activeProject) return;
-    try {
-      // Every deployment, stopped ones included, each with its stack.
-      setAllApps(await projectRpc.getProjectApps({ project: activeProject }));
-      setError(null);
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to fetch applications');
-    } finally {
-      setLoading(false);
-    }
-  }, [activeProject]);
+  const wsConnected = useRealtimeStore((s) => s.connected);
+  const { data: allApps, loading, error: readError, refresh: fetchApps } = usePolledResource(
+    () => projectRpc.getProjectApps({ project: activeProject! }),
+    { enabled: Boolean(activeProject), resourceKey: activeProject, intervalMs: wsConnected ? 15_000 : 5_000 },
+  );
 
   // One row per deployment. With a stack selected, that stack's; with all of
   // them, the same app appears once per stack and the Stack column tells the
   // rows apart.
-  const apps = deploymentsIn(allApps, activeStack);
+  const apps = deploymentsIn(allApps ?? [], activeStack);
   const visibleApps = apps.filter(
     (app) =>
       `${app.name} ${app.stack}`.toLowerCase().includes(String(filters.search ?? '').toLowerCase()) &&
@@ -67,7 +58,6 @@ export default function AppsListPage() {
   // store's refcount keeps the shared socket alive across page
   // changes; the Apps page no longer has to wait up to 5s for the
   // next poll to surface a crashed/restarted app.
-  const wsConnected = useRealtimeStore((s) => s.connected);
   const lastEvent = useRealtimeStore((s) => s.lastEvent);
   const initializeRealtime = useRealtimeStore((s) => s.initialize);
 
@@ -75,12 +65,6 @@ export default function AppsListPage() {
     const cleanup = initializeRealtime();
     return cleanup;
   }, [initializeRealtime]);
-
-  // When WS is up, push events trigger refreshes — slow the poll down to 15s
-  // as a safety net. When WS is down, fall back to the 5s cadence.
-  usePollingEffect(() => void fetchApps(), {
-    intervalMs: wsConnected ? 15_000 : 5_000,
-  });
 
   // Any app-lifecycle event → refetch immediately so the table
   // reflects the new state without waiting for the next interval.
@@ -281,9 +265,10 @@ export default function AppsListPage() {
           </IconButton>
         }
       />
-      {error && (
+      {readError && <Alert severity="error" variant="outlined" sx={{ mb: 2 }}>Application inventory unavailable · {readError}</Alert>}
+      {actionError && (
         <Alert closable severity="error" variant="outlined" sx={{ mb: 2 }} onClose={() => setError(null)}>
-          {error}
+          {actionError}
         </Alert>
       )}
       {/*

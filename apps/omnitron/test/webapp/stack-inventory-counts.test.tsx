@@ -1,6 +1,7 @@
 import { stackFixture, stackAppFixture } from '../helpers/stack-fixture.js';
 // @vitest-environment happy-dom
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IStackInfo } from '../../src/shared/dto/project.js';
 const rpc = vi.hoisted(() => ({ stacks: vi.fn() }));
@@ -65,7 +66,7 @@ describe('one observed inventory across the console', () => {
 
 it('exposes a keyboard-operable bounded filter and returns from one stack to all stacks', async () => {
   rpc.stacks.mockResolvedValue([stack('dev', false), stack('test', true)]);
-  render(<><StackSelector /><StatusBar /></>);
+  render(<MemoryRouter><StackSelector /><StatusBar /></MemoryRouter>);
   await waitFor(() => expect(screen.getByLabelText(/applications 6\/12,/)).toBeTruthy());
   const filter = screen.getByRole('combobox', { name: 'Stack filter' });
   expect(filter.textContent).toBe('All stacks');
@@ -85,7 +86,7 @@ it('exposes a keyboard-operable bounded filter and returns from one stack to all
 
 it('removes the filter tooltip before a pointer can select All stacks', async () => {
   rpc.stacks.mockResolvedValue([stack('dev', false), stack('test', true)]);
-  render(<><StackSelector /><StatusBar /></>);
+  render(<MemoryRouter><StackSelector /><StatusBar /></MemoryRouter>);
   await waitFor(() => expect(screen.getByLabelText(/applications 6\/12,/)).toBeTruthy());
   act(() => useProjectStore.getState().selectStack('test'));
   const filter = screen.getByRole('combobox', { name: 'Stack filter' });

@@ -111,7 +111,7 @@ export function AccessBoundary({ permission, children }: { permission: PagePermi
 export const PAGE_PERMISSIONS: Record<string, PagePermission> = {
   dashboard: 'OmnitronDaemon.status',
   'dashboard-builder': ['OmnitronDaemon.status', 'OmnitronProject.getProjectApps', 'OmnitronMetrics.querySeries', 'OmnitronAlerts.getSummary'],
-  apps: 'OmnitronDaemon.list',
+  apps: 'OmnitronProject.getProjectApps',
   nodes: 'OmnitronNodes.listNodes',
   terminal: 'OmnitronTerminal.open',
   files: 'OmnitronFiles.roots',
@@ -132,6 +132,6 @@ export const PAGE_PERMISSIONS: Record<string, PagePermission> = {
 };
 export function PageAccess({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
-  const permission = PAGE_PERMISSIONS[pathname.split('/')[1] || 'dashboard'];
+  const permission = pathname.startsWith('/apps/') ? 'OmnitronDaemon.getApp' : PAGE_PERMISSIONS[pathname.split('/')[1] || 'dashboard'];
   return permission ? <AccessBoundary permission={permission}>{children}</AccessBoundary> : children;
 }

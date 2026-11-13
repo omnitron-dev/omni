@@ -49,18 +49,16 @@ export function ProjectSwitcher() {
   }, [fetchProjects, navigate, canList, snapshot?.userId]);
 
   const handleSelectOmnitron = useCallback(() => {
-    const targetRoute = deselectProject(pathname);
-    navigate(targetRoute);
+    if (activeProject) navigate(deselectProject(pathname));
     onClose();
-  }, [deselectProject, navigate, pathname, onClose]);
+  }, [activeProject, deselectProject, navigate, pathname, onClose]);
 
   const handleSelectProject = useCallback(
     (name: string) => {
-      const targetRoute = selectProject(name, pathname);
-      navigate(targetRoute);
+      if (name !== activeProject) navigate(selectProject(name, pathname));
       onClose();
     },
-    [selectProject, navigate, pathname, onClose]
+    [activeProject, selectProject, navigate, pathname, onClose]
   );
 
   const activeInfo = projects.find((p) => p.name === activeProject);

@@ -9,6 +9,12 @@ The management UI for Omnitron. This private workspace application uses React, V
 - Runtime catalogs, reviewed backend rollouts and reconciliation.
 - Shared permission-aware actions and operational receipts.
 
+## Workspace selection
+
+Choose a project in the header, then choose **All stacks** or an individual stack. The stack inventory, applications, logs, metrics, topology, containers and deployment views follow that selection. The Releases page keeps the project's artifact catalog available and narrows deployment observations and the proposed deployment target to the selected stack.
+
+On a stack detail page, selecting another stack opens its details. Selecting **All stacks** opens the inventory. Browser Back, Forward and reload restore the workspace for that history entry. Controller-wide pages such as Audit and System omit the stack filter.
+
 ## Quick start
 
 Install and build the workspace dependencies as described in the [root README](../../../README.md), then run from this directory:

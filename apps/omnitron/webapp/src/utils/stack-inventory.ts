@@ -1,5 +1,10 @@
 import type { IProjectAppStatus, IStackInfo } from '@omnitron-dev/omnitron/dto/services';
 
+/** The selected slice of an observed inventory. Keep the full inventory for the stack picker. */
+export function stacksInScope(stacks: IStackInfo[], selected: string | null) {
+  return selected === null ? stacks : stacks.filter(stack => stack.name === selected);
+}
+
 /** Count configured deployments, including stopped and unobserved stacks. */
 export function stackCounts(stacks: readonly IStackInfo[]) {
   return {

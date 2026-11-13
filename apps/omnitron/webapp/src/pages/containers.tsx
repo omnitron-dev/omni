@@ -33,7 +33,7 @@ import { infra } from 'src/netron/client';
 import { Link as RouterLink } from 'react-router-dom';
 import Link from '@mui/material/Link';
 import { useStackContext } from 'src/hooks/use-stack-context';
-import { useActiveProjectStacks, useProjectStore } from 'src/stores/project.store';
+import { useScopedStacks, useProjectStore } from 'src/stores/project.store';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { isRpcTimeout } from 'src/utils/rpc-error';
 import { isLostRpcAcknowledgement } from '@omnitron-dev/omnitron/dto/services';
@@ -198,9 +198,7 @@ export default function ContainersPage() {
   // two, as though the stack had none, and with all stacks selected test's
   // five were simply not there. Its stack page shows them, as its node
   // reports them.
-  const remoteStacks = useActiveProjectStacks().filter(
-    (s) => canReadStacks && s.type !== 'local' && (!activeStack || s.name === activeStack),
-  );
+  const remoteStacks = useScopedStacks().filter(s => canReadStacks && s.type !== 'local');
   // One shared polling loop (see `use-polled-resource`): no overlapping
   // requests when the daemon is slow, no polling from a hidden tab, and a
   // failed poll no longer blanks the table — it used to set `[]`, so the view

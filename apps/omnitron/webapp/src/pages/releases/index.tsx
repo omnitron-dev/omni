@@ -26,7 +26,7 @@ import { CommitPair, GateCount, GateStrip, bytes, loadWords, ranLoaded, when } f
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { releases as releaseRpc } from 'src/netron/client';
 import { releaseApi, type ReleasePreflightView } from 'src/netron/release-wire';
-import { useActiveProject } from 'src/stores/project.store';
+import { useStackContext } from 'src/hooks/use-stack-context';
 
 import BuildReleaseDialog from './build-release-dialog';
 import PruneReleasesDialog from './prune-releases-dialog';
@@ -76,7 +76,7 @@ async function loadPage(): Promise<PageData> {
 }
 
 export default function ReleasesPage() {
-  const activeProject = useActiveProject();
+  const { activeProject, activeStack, matchesNamespace } = useStackContext();
   const [buildOpen, setBuildOpen] = useState(false);
   const [pruneOpen, setPruneOpen] = useState(false);
   const [deployTarget, setDeployTarget] = useState<ReleaseSummary | null>(null);
@@ -92,7 +92,6 @@ export default function ReleasesPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
-  const [onlyActiveProject, setOnlyActiveProject] = useState(true);
 
   const { data, loading, error, refresh } = usePolledResource(loadPage, { intervalMs: 20_000 });
 
@@ -109,8 +108,8 @@ export default function ReleasesPage() {
   // array each render, and the filter below is keyed on it.
   const all = useMemo(() => data?.releases ?? [], [data?.releases]);
   const rows = useMemo(
-    () => (onlyActiveProject && activeProject ? all.filter((r) => r.project === activeProject) : all),
-    [all, onlyActiveProject, activeProject],
+    () => (activeProject ? all.filter((r) => r.project === activeProject) : all),
+    [all, activeProject],
   );
 
   /** Which stacks last deployed each release — «test», «prod» on the row. */
@@ -137,7 +136,7 @@ export default function ReleasesPage() {
       key: 'id',
       header: 'Release',
       render: (r) => {
-        const targets = deployedBy.get(r.id) ?? [];
+        const targets = (deployedBy.get(r.id) ?? []).filter(target => matchesNamespace(`${target.project}/${target.stack}/_`));
         return (
           <Stack spacing={0.5}>
             <Typography
@@ -202,7 +201,7 @@ export default function ReleasesPage() {
             )}
           </Stack>
           <GateStrip gates={r.gateList} size={8} columns={7} />
-          {r.verified.map((v) => (
+          {r.verified.filter(v => !activeStack || v.stack === activeStack).map((v) => (
             <Tooltip key={v.stack} title={`Recorded probe result on ${v.stack} at ${when(v.at)}. This is historical evidence, not current process identity.`} arrow>
               <Typography
                 variant="caption"
@@ -347,7 +346,7 @@ export default function ReleasesPage() {
         </Stack>
       )}
 
-      {activeProject && <ReleaseDeploymentState key={activeProject} project={activeProject} />}
+      {activeProject && <ReleaseDeploymentState key={activeProject} project={activeProject} {...(activeStack && { stack: activeStack })} />}
 
       <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
         <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', overflowWrap: 'anywhere' }}>
@@ -357,15 +356,6 @@ export default function ReleasesPage() {
           {rows.length} release{rows.length === 1 ? '' : 's'} · {bytes(totalBytes)} · controller storage
         </Typography>
         <Box sx={{ flex: 1 }} />
-        {activeProject && (
-          <Chip
-            size="small"
-            variant={onlyActiveProject ? 'filled' : 'outlined'}
-            label={onlyActiveProject ? `only ${activeProject}` : 'all projects'}
-            onClick={() => setOnlyActiveProject((v) => !v)}
-            sx={{ height: 22, fontSize: 11 }}
-          />
-        )}
       </Stack>
 
       <AdminDataTable<ReleaseSummary>
@@ -376,7 +366,7 @@ export default function ReleasesPage() {
         total={rows.length}
         loading={loading}
         loadError={error ?? null}
-        emptyMessage="Nothing has been built on this master yet"
+        emptyMessage={activeProject ? `No release artifacts for ${activeProject} on this controller` : 'No release artifacts on this controller'}
         rowKey={(r) => r.id}
         page={visiblePage}
         pageSize={pageSize}
@@ -411,6 +401,7 @@ export default function ReleasesPage() {
         onClose={() => setDeployTarget(null)}
         project={deployTarget?.project ?? activeProject ?? ''}
         release={deployTarget}
+        {...(activeStack && deployTarget?.project === activeProject && { stack: activeStack })}
       /></Can>
     </Stack>
   );

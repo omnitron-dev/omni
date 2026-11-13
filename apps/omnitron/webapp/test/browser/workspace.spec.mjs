@@ -1,5 +1,73 @@
 import { test, expect, stubInventory } from './fixtures.mjs';
 
+test('a DAOS stack selection filters inventory, follows details and survives history and reload', async ({ page, url }) => {
+  const stacks = ['dev', 'test'].map(name => ({
+    name, type: name === 'dev' ? 'local' : 'remote', status: 'running', uptime: 60_000,
+    config: { type: name === 'dev' ? 'local' : 'remote' }, nodes: [], apps: [],
+  }));
+  await stubInventory(page, {
+    'OmnitronProject.listProjects': [
+      { name: 'daos', displayName: 'DAOS', path: '/daos', totalStacks: 2, runningStacks: 2 },
+      { name: 'ozar', displayName: 'Ozar', path: '/ozar', totalStacks: 0, runningStacks: 0 },
+    ],
+    'OmnitronProject.listStacks': ({ project }) => project === 'daos' ? stacks : [],
+    'OmnitronAudit.list': [],
+  });
+  await page.addInitScript(() => {
+    if (!localStorage.getItem('omnitron_active_project')) localStorage.setItem('omnitron_active_project', 'daos');
+  });
+  await page.route(/\/stacks(?:\/[^/?]+)?(?:\?.*)?$/, async route => {
+    if (route.request().resourceType() !== 'document') return route.continue();
+    await route.fulfill({ response: await route.fetch({ url: url + '/workspace.html' }) });
+  });
+  await page.route(/\/audit$/, async route => {
+    if (route.request().resourceType() !== 'document') return route.continue();
+    await route.fulfill({ response: await route.fetch({ url: url + '/workspace.html' }) });
+  });
+  await page.goto(url + '/stacks');
+  const filter = page.getByRole('combobox', { name: 'Stack filter' });
+  const card = name => page.getByRole('heading', { name, exact: true });
+  const choose = async name => {
+    await filter.click();
+    await page.getByRole('option', { name: name === 'All stacks' ? name : new RegExp('^' + name + '\\s+running') }).click();
+  };
+  await expect(card('dev')).toBeVisible();
+  await expect(card('test')).toBeVisible();
+  await choose('dev');
+  await expect(card('test')).toHaveCount(0);
+  await choose('test');
+  await expect(card('dev')).toHaveCount(0);
+  await expect(card('test')).toBeVisible();
+  await page.goBack();
+  await expect(filter).toHaveText('Stack: dev');
+  await expect(card('test')).toHaveCount(0);
+  await page.goForward();
+  await page.reload();
+  await expect(filter).toHaveText('Stack: test');
+  await expect(card('dev')).toHaveCount(0);
+  const detailLink = page.getByRole('link', { name: 'test', exact: true });
+  await detailLink.focus();
+  await detailLink.press('Enter');
+  await expect(page).toHaveURL(url + '/stacks/test');
+  await choose('dev');
+  await expect(page).toHaveURL(url + '/stacks/dev');
+  await expect(page.getByRole('button', { name: 'Refresh stack' })).toBeVisible();
+  await choose('All stacks');
+  await expect(page).toHaveURL(url + '/stacks');
+  await expect(card('test')).toBeVisible();
+  await expect(card('dev')).toBeVisible();
+  await page.getByRole('link', { name: 'Audit', exact: true }).click();
+  await expect(filter).toHaveCount(0);
+  await page.goBack();
+  await choose('dev');
+  await page.getByRole('button', { name: 'Switch workspace: DAOS' }).click();
+  await page.getByRole('menuitem', { name: /Ozar/ }).click();
+  await expect(page.getByRole('button', { name: 'Switch workspace: Ozar' })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole('button', { name: 'Switch workspace: DAOS' })).toBeVisible();
+  await expect(filter).toHaveText('Stack: dev');
+});
+
 test('an administrator can prepare a catalog build on a narrow screen before explicitly applying it', async ({ page, url }) => {
   const commit = '4'.repeat(40);
   let receipt = null;

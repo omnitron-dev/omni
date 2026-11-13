@@ -18,7 +18,7 @@ export { isRpcTimeout } from '../utils/rpc-error';
 import { useShallow } from 'zustand/shallow';
 import { invokeStackLifecycle, project as projectRpc } from '../netron/client';
 import { readStored, writeStored, removeStored, readStoredJson, writeStoredJson } from '../utils/storage';
-import { stackCounts } from '../utils/stack-inventory';
+import { stackCounts, stacksInScope } from '../utils/stack-inventory';
 import { restoredProjectScope } from '../utils/project-scope';
 import type {
   IProjectInfo,
@@ -63,6 +63,7 @@ interface ProjectState {
   /** Save the current route for the active workspace (call on navigation) */
   saveCurrentRoute: (path: string) => void;
   selectStack: (name: string | null) => void;
+  restoreWorkspace: (project: string | null, stack: string | null) => void;
   addProject: (name: string, path: string) => Promise<void>;
   updateProject: (name: string, data: { path?: string }) => Promise<void>;
   removeProject: (name: string) => Promise<void>;
@@ -335,6 +336,17 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     persistWorkspace(activeProject, name);
   },
 
+  restoreWorkspace: (project, stack) => {
+    const state = get();
+    const selected = state.projects.length && project ? restoredProjectScope(state.projects, project, stack) : { project, stack };
+    const activeProject = selected?.project ?? null;
+    const activeStack = activeProject ? selected?.stack ?? null : null;
+    if (activeProject === state.activeProject && activeStack === state.activeStack) return;
+    set({ activeProject, activeStack });
+    persistWorkspace(activeProject, activeStack);
+    if (activeProject) void get().fetchStacks(activeProject);
+  },
+
   addProject: async (name: string, path: string) => {
     try {
       set({ loading: true, error: null });
@@ -529,6 +541,12 @@ export function useActiveProjectStacks(): IStackInfo[] {
 
 export function useProjectInfo(name: string) {
   return useProjectStore((s) => s.projects.find((p) => p.name === name));
+}
+
+export function useScopedStacks(): IStackInfo[] {
+  return useProjectStore(useShallow(s => stacksInScope(
+    (s.activeProject ? s.stacksByProject[s.activeProject] : undefined) ?? EMPTY_STACKS, s.activeStack,
+  )));
 }
 
 const EMPTY_STACKS: IStackInfo[] = [];

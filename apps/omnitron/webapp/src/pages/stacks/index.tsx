@@ -11,7 +11,7 @@ import { Can } from 'src/auth/access';
  * app count, and start/stop actions.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 import Grid from '@mui/material/Grid';
@@ -40,7 +40,8 @@ import CreateStackDialog from './create-stack-dialog';
 import {
   useProjectStore,
   useActiveProject,
-  useActiveProjectStacks,
+  useActiveStack,
+  useScopedStacks,
 } from '../../stores/project.store';
 import type { IStackInfo } from '@omnitron-dev/omnitron/dto/services';
 import { inSync, syncFinding } from '@omnitron-dev/omnitron/sync-reading';
@@ -72,7 +73,12 @@ const TYPE_LABEL: Record<string, string> = {
 
 export default function StacksPage() {
   const activeProject = useActiveProject();
-  const stacks = useActiveProjectStacks();
+  const activeStack = useActiveStack();
+  return <StackInventory key={JSON.stringify([activeProject, activeStack])} activeProject={activeProject} activeStack={activeStack} />;
+}
+
+function StackInventory({ activeProject, activeStack }: { activeProject: string | null; activeStack: string | null }) {
+  const stacks = useScopedStacks();
   const loading = useProjectStore((s) => s.loading);
   const notices = useProjectStore(s => s.stackNotices);
   const clearNotice = useProjectStore(s => s.clearStackNotice);
@@ -91,14 +97,9 @@ export default function StacksPage() {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deployTarget, setDeployTarget] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (activeProject) {
-      fetchStacks(activeProject);
-    }
-  }, [activeProject, fetchStacks]);
-
   // Auto-refresh: 3s when operations are in-flight, 10s otherwise
-  const hasPendingOps = Object.keys(pendingOps).length > 0;
+  const inView = (key: string) => activeStack ? key === `${activeProject}/${activeStack}` : key.startsWith(`${activeProject}/`);
+  const hasPendingOps = Object.keys(pendingOps).some(inView);
   usePollingEffect(() => void (activeProject && fetchStacks(activeProject)), {
     intervalMs: hasPendingOps ? 3_000 : 10_000,
     enabled: Boolean(activeProject),
@@ -170,7 +171,7 @@ export default function StacksPage() {
       /></Can>
 
       {readError && <Alert severity="warning">{known ? 'Showing the last stack inventory' : 'Stack inventory unavailable'} · {readError}</Alert>}
-      {Object.entries(notices).filter(([key]) => key.startsWith(`${activeProject}/`)).map(([key,reason]) =>
+      {Object.entries(notices).filter(([key]) => inView(key)).map(([key,reason]) =>
         <Alert key={key} closable severity="warning" onClose={() => clearNotice(key)}>{key} · {reason}</Alert>)}
 
       {!known && readError ? null : (!known || loading) && stacks.length === 0 ? (
@@ -184,14 +185,15 @@ export default function StacksPage() {
       ) : stacks.length === 0 ? (
         <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <EmptyContent
-            title="No stacks"
-            description="Create your first stack to deploy applications."
+            title={activeStack ? 'Stack unavailable' : 'No stacks'}
+            description={activeStack ? `${activeStack} is absent from the last observed inventory.` : 'Create your first stack to deploy applications.'}
           />
         </Box>
       ) : (
         <Grid container spacing={2}>
-          {stacks.map((stack) => (
-            <Grid key={stack.name} size={{ xs: 12, sm: 6, md: 4 }}>
+          {stacks.map((stack) => {
+            const detailPath = `/stacks/${encodeURIComponent(stack.name)}`;
+            return <Grid key={stack.name} size={{ xs: 12, sm: 6, md: 4 }}>
               <StackCard
                 stack={stack}
                 pendingOp={activeProject ? (pendingOps[`${activeProject}/${stack.name}`] ?? null) : null}
@@ -201,10 +203,11 @@ export default function StacksPage() {
                 onDeploy={() => setDeployTarget(stack.name)}
                 onStop={() => setStopTarget({ project: activeProject, stack: stack.name })}
                 onDelete={() => setDeleteTarget(stack.name)}
-                onDetail={() => navigate(`/stacks/${stack.name}`)}
+                detailPath={detailPath}
+                onDetail={() => navigate(detailPath)}
               />
-            </Grid>
-          ))}
+            </Grid>;
+          })}
         </Grid>
       )}
 
@@ -251,6 +254,7 @@ function StackCard({
   onStop,
   onDeploy,
   onDelete,
+  detailPath,
   onDetail,
 }: {
   stack: IStackInfo;
@@ -261,6 +265,7 @@ function StackCard({
   onStop: () => void;
   onDeploy: () => void;
   onDelete: () => void;
+  detailPath: string;
   onDetail: () => void;
 }) {
   const status = STATUS_CHIP[stack.status] ?? { color: 'warning' as const, label: 'Unknown' };
@@ -291,7 +296,8 @@ function StackCard({
         {/* Header */}
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
           <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1.1rem' }}>
-            {stack.name}
+            <Box component={RouterLink} to={detailPath} onClick={event => event.stopPropagation()}
+              sx={{ color: 'inherit', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}>{stack.name}</Box>
           </Typography>
           <Chip
             label={status.label}

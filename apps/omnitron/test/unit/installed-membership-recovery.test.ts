@@ -28,8 +28,10 @@ afterEach(async () => {
 /** Real owner launch, verifier, supervisor and pool. Only the native spawner is
  * substituted so readiness, exit and admission races can be controlled exactly. */
 async function fixture(shape: 'mixed' | 'pool-only' = 'mixed') {
-  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'installed-membership-')));
-  cleanups.push(() => fs.rm(root, { recursive: true, force: true }));
+  const directory = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'installed-membership-')));
+  cleanups.push(() => fs.rm(directory, { recursive: true, force: true }));
+  const root = path.join(directory, 'release');
+  await fs.mkdir(root, { mode: 0o700 });
   const bootstrap = path.join(root, 'bootstrap.mjs');
   const processes = [
     ...(shape === 'mixed' ? [{ name: 'api', module: './worker.mjs', health: { enabled: false } }] : []),
@@ -66,9 +68,8 @@ async function fixture(shape: 'mixed' | 'pool-only' = 'mixed') {
     return worker;
   });
   Object.assign(pm, { spawner: { spawn } });
-  const storePath = path.join(root, '..', path.basename(root) + '.db');
-  const store = new DaemonStateStore(logger as never, storePath);
-  cleanups.push(async () => { await store.dispose(); await fs.rm(storePath, { force: true }); });
+  const store = new DaemonStateStore(logger as never, path.join(directory, 'state.sqlite'));
+  cleanups.push(() => store.dispose());
   const owner = new OrchestratorService(logger as never, pm, new StateStore(store), root);
   Object.assign(owner, { ensureBootReconciled: vi.fn(), ensureMetricsPolling: vi.fn(), persistState: vi.fn(),
     syncClassicWatches: vi.fn(), startPostOnlineCooldown: vi.fn(), bootstrapRuntime: async () => bootstrap });

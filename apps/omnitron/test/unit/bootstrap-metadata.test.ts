@@ -10,6 +10,7 @@ import { AuthenticationManager, AuthorizationManager } from '@omnitron-dev/titan
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import { DaemonStateStore } from '../../src/daemon/daemon-state-store.service.js';
 import { BootstrapMetadataStore, captureBootstrapMetadata, metadataSourceChanged } from '../../src/project/bootstrap-metadata.js';
+import { CLOSURE_FILE } from '../../src/release/application-closure.js';
 import { ProjectService } from '../../src/services/project.service.js';
 import { ProjectRpcService } from '../../src/services/project.rpc-service.js';
 import { METADATA_KEYS } from '@omnitron-dev/titan/decorators';
@@ -17,8 +18,16 @@ import { METADATA_KEYS } from '@omnitron-dev/titan/decorators';
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const fn of cleanup.splice(0)) await fn(); });
 const logger = { info() {}, error() {}, warn() {}, debug() {} } as never;
+
+function installedCandidate(directory: string) {
+  const root = path.join(directory, 'release-b');
+  fs.mkdirSync(root, { mode: 0o700 });
+  fs.writeFileSync(path.join(root, CLOSURE_FILE), JSON.stringify({ protocol: 1 }), { mode: 0o600 });
+  return root;
+}
+
 function fixture() {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'omni-declarations-'));
+  const directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'omni-declarations-')));
   fs.mkdirSync(path.join(directory, 'app/src'), { recursive: true });
   fs.writeFileSync(path.join(directory, 'package.json'), '{"type":"module"}');
   const bootstrap = path.join(directory, 'app/src/bootstrap.js');
@@ -154,8 +163,7 @@ describe('durable bootstrap declaration evidence', () => {
   });
   it('captures the exact prepared candidate before selection while the previous release serves', async () => {
     const f = fixture();
-    const candidate = path.join(f.directory, 'candidate');
-    fs.mkdirSync(candidate);
+    const candidate = installedCandidate(f.directory);
     const bootstrap = path.join(candidate, 'bootstrap.js');
     fs.writeFileSync(bootstrap, "export default {name:'api',version:'2',processes:[{name:'main',module:'./main.js'}],omnitronConfig:{redis:true}};\n");
     const pin = { id: 'release-a', manifestSha256: 'a'.repeat(64) };
@@ -177,8 +185,7 @@ describe('durable bootstrap declaration evidence', () => {
     await expect(f.service.refreshTopologyMetadata({ project: 'sample', stack: 'test', release: 'release-b' })).rejects.toThrow(/local/i);
   });
   it('reports missing and stale installed candidate declarations before a stop, without running candidate code', async () => {
-    const f = fixture(), candidate = path.join(f.directory, 'release-b'), marker = path.join(f.directory, 'executed');
-    fs.mkdirSync(candidate);
+    const f = fixture(), candidate = installedCandidate(f.directory), marker = path.join(f.directory, 'executed');
     const bootstrap = path.join(candidate, 'bootstrap.js');
     const source = `import fs from 'node:fs'; fs.appendFileSync(${JSON.stringify(marker)}, 'import\\n');
       export default {name:'api',version:'2',processes:[{name:'main',module:'./main.js'}]};`;

@@ -9,6 +9,7 @@ import { create } from 'tar';
 import { loadRelease } from '../../src/release/load.js';
 import { readArchiveInfrastructure } from '../../src/release/infrastructure.js';
 import { ProjectService } from '../../src/services/project.service.js';
+import { DaemonStateStore } from '../../src/daemon/daemon-state-store.service.js';
 import * as metadata from '../../src/project/bootstrap-metadata.js';
 
 const cleanup: string[] = [];
@@ -34,8 +35,9 @@ async function fixture(archived?: object | string) {
   await writeFile(path.join(repo, 'omnitron.config.mjs'), 'export default {};');
   await writeFile(
     path.join(repo, 'apps/api/src/bootstrap.mjs'),
-    'export default {name:"api",version:"1",processes:[]};'
+    'export default {name:"api",version:"1",processes:[{name:"main",module:"./main.mjs"}]};'
   );
+  await writeFile(path.join(repo, 'apps/api/src/main.mjs'), 'export default class Main {}');
   await writeFile(path.join(repo, 'apps/api/config/default.json'), JSON.stringify({ omnitron: { redis: true } }));
   await writeFile(
     path.join(pkg, 'dist/bootstrap.js'),
@@ -76,24 +78,36 @@ it('uses archived static infrastructure through actual remote admission, even wi
   const f = await fixture({ database: true });
   const service: any = Object.create(ProjectService.prototype);
   const app = { name: 'api', bootstrap: 'apps/api/src/bootstrap.mjs' };
+  const logger = { warn: vi.fn(), info: vi.fn(), error: vi.fn() };
+  const store = new DaemonStateStore(logger as never, path.join(f.repo, 'state.sqlite'));
+  const declarations = new metadata.BootstrapMetadataStore(store);
   Object.assign(service, {
     registry: { get: () => ({ name: 'project', path: f.repo }) },
     releaseStore: () => f.store,
     releaseRunningOn: () => null,
     resolveStackApps: () => [app],
-    logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
+    logger,
     bootstrapTopology: new Map(),
-    bootstrapMetadata: { save: vi.fn(), fail: vi.fn() },
+    bootstrapMetadata: declarations,
     askReleaseOwners: () => [{ host: 'node', runtime: { root: '/runtime/packages/0', executable: '/runtime/node', commit: f.commit, target,
       execution: { mode: 'resident', protocol: 1, ownerId: 'owner', pid: 42, epoch: 1 } } }],
   });
-  const definition = { name: 'api', version: '1', processes: [] };
-  vi.spyOn(metadata, 'readBootstrapMetadata').mockResolvedValue({ definition, metadata: {} as never });
+  const read = vi.spyOn(metadata, 'readBootstrapMetadata');
   const scope = { type: 'remote', nodes: [{ host: 'node' }] };
-  const release = await service.admitRelease('project', 'test', scope, { apps: [app] }, 'candidate', 'check');
-  expect(release.remoteDefinitions.get('api').omnitronConfig).toEqual({ database: true });
-  expect(JSON.stringify(release.remoteDefinitions.get('api'))).not.toContain('privateSetting');
-  expect(metadata.readBootstrapMetadata).toHaveBeenCalledOnce();
+  try {
+    const check = () => service.admitRelease('project', 'test', scope, { apps: [app] }, 'candidate', 'check');
+    await expect(check()).rejects.toThrow('bootstrap declarations have not been captured');
+    const bootstrap = path.join(f.repo, app.bootstrap);
+    const captured = await metadata.readBootstrapMetadata(bootstrap);
+    declarations.save(captured.metadata);
+    read.mockClear();
+    const release = await check();
+    expect(release.remoteDefinitions.get('api').omnitronConfig).toEqual({ database: true });
+    expect(JSON.stringify(release.remoteDefinitions.get('api'))).not.toContain('privateSetting');
+    expect(read).not.toHaveBeenCalled();
+  } finally {
+    await store.dispose();
+  }
 });
 
 it('preserves archive absence and refuses a changed archive before using its data', async () => {

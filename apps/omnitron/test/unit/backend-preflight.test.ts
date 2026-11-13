@@ -171,7 +171,10 @@ it('never admits a loaded marker without a valid protocol and build response', a
 });
 
 it('keeps output limits and bounds retained stderr without calling overflow a timeout', async () => {
-  const candidate = await fixture('process.stderr.write("x".repeat(1024*1024+1024));setInterval(()=>{},1000);');
+  const candidate = await fixture(`
+    await new Promise((resolve, reject) => process.stderr.write('x'.repeat(1024 * 1024 + 1024),
+      error => error ? reject(error) : resolve()));
+  `);
   const error = await failure(candidate.dist);
   expect(error.domainCode).toBe('BACKEND_PREFLIGHT_PROCESS_FAILED');
   expect(error.details.exitCode).toBe('ERR_CHILD_PROCESS_STDIO_MAXBUFFER');

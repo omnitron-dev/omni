@@ -20,6 +20,23 @@ const cli = path.join(pkg, manifest.bin.omnitron);
 const version = execFileSync(process.execPath, [cli, '--version'], { encoding: 'utf8', cwd: consumer }).trim();
 assert.equal(version, manifest.version);
 
+// Bundling each entry separately used to duplicate these exported classes. A
+// transport error thrown through the root could fail instanceof at a subpath.
+const browserClient = require('@omnitron-dev/netron-browser');
+for (const [suffix, names] of [
+  ['/client', ['NetronClient', 'HttpClient', 'WebSocketClient']],
+  ['/client/websocket', ['WebSocketClient']],
+  ['/client/http', ['HttpClient']],
+  ['/middleware', ['MiddlewarePipeline']],
+  ['/errors', ['TransportError']],
+]) {
+  const subpath = require('@omnitron-dev/netron-browser' + suffix);
+  for (const name of names) {
+    assert.equal(typeof browserClient[name], 'function', name + ' must be a constructor');
+    assert.equal(browserClient[name], subpath[name], suffix + ' must share the ' + name + ' constructor');
+  }
+}
+
 // Use public package resolution from both kinds of consumer. The CJS hook
 // build requires the same ESM browser client that an ESM app imports.
 for (const suffix of ['', '/hooks', '/auth', '/cache', '/devtools', '/test']) {

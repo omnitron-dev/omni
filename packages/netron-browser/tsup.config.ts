@@ -21,7 +21,8 @@ export default defineConfig({
   dts: false,
   sourcemap: true,
   clean: true,
-  splitting: false,
+  // Every public entry must expose the same client, middleware and error constructors.
+  splitting: true,
   treeshake: true,
   minify: false,
   target: 'es2022',

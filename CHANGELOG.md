@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Console applies the selected project and stack to its application, node and infrastructure views, preserves workspace selection during navigation, and uses the shared Prism theme controls.
+- Prism updates its UI dependencies under the workspace supply-chain policy, shares icons for light, dark and system preferences, and packages the MapLibre worker with the map entry.
+- Lumen shares accessible document pagination and component previews through Prism. Document tabs provide readable server-rendered content and keyboard interaction after hydration.
+
+### Fixed
+
+- SDK development checks the selected workspace before building, including when invoked from another pnpm script.
+- Lumen preserves explicit links to published Markdown mirrors and isolates a failing custom island from neighboring content.
+- Static compilation releases development WebSocket and file-watcher resources.
+- Console retains observed application health and verified launch receipts in local stack reviews.
+
 
 ## [0.3.1] - 2026-10-26
 

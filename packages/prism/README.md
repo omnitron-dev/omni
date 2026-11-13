@@ -37,6 +37,16 @@ export function App() {
 
 Public component subpaths provide lazy-loading boundaries. Import the documented CSS entry for components that need it. Unused editor, map and chart modules can be removed from production bundles. UI entries declare a React client boundary; `@omnitron-dev/prism/http` is also available to server code.
 
+## Shared application controls
+
+Use `ThemeModeIcon` from `@omnitron-dev/prism/icons` for the selected `light`, `dark` or `system` preference. The semantic `themeLight`, `themeDark` and `themeSystem` slots can be customized through `PrismIconProvider`. Give the surrounding button an accessible action label and use Prism settings to persist the preference.
+
+`LoadingScreen` accepts a branded progress indicator through `slots.progress`. Its existing layout and motion behavior allow applications to share the loading component while supplying their own identity. Use `EmptyContent` for an empty result with a title, description and optional action.
+
+The map entry includes its matching MapLibre worker. Consumers can use `@omnitron-dev/prism/components/map` without configuring a separate worker asset. An explicit `workerUrl` selects a consumer-managed worker when deployment policy requires one.
+
+The documentation catalog pairs rendered examples with their checked-in TypeScript modules. Examples use the public package entries and cover forms, navigation, tables, charts, maps, editors and research documents.
+
 ## Research documents and authoring
 
 `@omnitron-dev/prism/components/research` exports `ResearchDocument`, `parseResearchMarkdown` and validated widget definitions. Import `@omnitron-dev/prism/components/research/styles.css` once. The renderer supports GFM, heading anchors, admonitions, tabs, KaTeX and strict Mermaid diagrams.

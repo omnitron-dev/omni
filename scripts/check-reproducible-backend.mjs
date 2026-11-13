@@ -8,11 +8,15 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { preserveReproducibilityFailure } from './lib/reproducibility-evidence.mjs';
+import { assertStandaloneNodeConfiguration } from '../apps/omnitron/scripts/standalone-node.js';
 
 const { values } = parseArgs({ args: globalThis.args ?? process.argv.slice(2), options: {
   out: { type: 'string' }, revision: { type: 'string' }, diagnostics: { type: 'string' },
 } });
 if (values.revision && !/^[a-f0-9]{40}$/.test(values.revision)) throw Error('--revision requires a full Git commit');
+// The freezer copies this exact interpreter. Reject an unsuitable producer
+// before creating checkouts and running the two workspace builds.
+assertStandaloneNodeConfiguration(process.config.variables);
 const destination = values.out ? path.resolve(values.out) : null;
 if (destination) {
   try { await fs.lstat(destination); throw Error('Qualification destination already exists'); }

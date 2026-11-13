@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/titan-lumen",
-  "version": "0.4.6",
+  "version": "0.4.8",
   "description": "Titan backend integration module for Lumen documentation and knowledge portal",
   "type": "module",
   "main": "./dist/index.js",

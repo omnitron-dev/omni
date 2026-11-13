@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/testing",
-  "version": "0.4.6",
+  "version": "0.4.8",
   "description": "Cross-runtime testing utilities",
   "author": "LuxQuant",
   "license": "MIT",

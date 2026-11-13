@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/lumen-ast",
-  "version": "0.4.6",
+  "version": "0.4.8",
   "description": "Pure isomorphic prism-doc/2 AST compiler, math environments, Shiki/Twoslash highlighter, and multi-target emitters",
   "type": "module",
   "tsup": {

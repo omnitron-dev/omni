@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/msgpack",
-  "version": "0.4.6",
+  "version": "0.4.8",
   "description": "Extandable MessagePack serializer",
   "author": "LuxQuant",
   "license": "MIT",

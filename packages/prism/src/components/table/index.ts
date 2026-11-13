@@ -14,3 +14,4 @@ export {
   type UseTableReturn,
 } from './table.js';
 export { TableViewport, type TableViewportProps } from './table-viewport.js';
+export { CursorPagination, type CursorPaginationProps } from './cursor-pagination.js';

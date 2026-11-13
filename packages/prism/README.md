@@ -47,6 +47,8 @@ The map entry includes its matching MapLibre worker. Consumers can use `@omnitro
 
 The documentation catalog pairs rendered examples with their checked-in TypeScript modules. Examples use the public package entries and cover forms, navigation, tables, charts, maps, editors and research documents.
 
+`CursorPagination` in `@omnitron-dev/prism/components/table` provides controlled first, previous and next actions for opaque server cursors. The application supplies available actions, pending state, localized labels and observed item counts. Keyboard focus survives a pending request and the final page. Applications can use the same control for page replacement or appending results.
+
 ## Research documents and authoring
 
 `@omnitron-dev/prism/components/research` exports `ResearchDocument`, `parseResearchMarkdown` and validated widget definitions. Import `@omnitron-dev/prism/components/research/styles.css` once. The renderer supports GFM, heading anchors, admonitions, tabs, KaTeX and strict Mermaid diagrams.

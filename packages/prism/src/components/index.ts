@@ -205,6 +205,8 @@ export { SvgColor, createIconComponent, type SvgColorProps, type IconProps } fro
 
 // Table
 export {
+  CursorPagination,
+  type CursorPaginationProps,
   Table,
   useTable,
   type TableProps,

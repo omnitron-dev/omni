@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Console applies the selected project and stack to its application, node and infrastructure views, preserves workspace selection during navigation, and uses the shared Prism theme controls.
 - Prism updates its UI dependencies under the workspace supply-chain policy, shares icons for light, dark and system preferences, and packages the MapLibre worker with the map entry.
+- Shared cursor navigation supports opaque server cursors, pending feedback, keyboard focus and localized controls.
 - Lumen shares accessible document pagination and component previews through Prism. Document tabs provide readable server-rendered content and keyboard interaction after hydration.
 
 ### Fixed

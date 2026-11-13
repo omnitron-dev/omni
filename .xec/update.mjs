@@ -6,28 +6,33 @@ import { Pipeline } from '@xec-sh/ops/pipeline';
 import { UserError } from '@xec-sh/ops';
 import { releaseCommand, ReleaseCommandError } from '@xec-sh/ops/release';
 import { qualifiedRuntimes } from './qualification.mjs';
+import { localRuntime } from './local-runtime.mjs';
 
 /** Xec orchestrates; the daemon remains the authority for pins, roles, locks and recovery. */
 export async function runUpdate(args, options = {}) {
   const { values, positionals } = parseArgs({ args, allowPositionals: true, options: {
     cli: { type: 'string' }, runtime: { type: 'string', multiple: true },
     node: { type: 'string', multiple: true }, 'request-id': { type: 'string' }, help: { type: 'boolean' },
+    'cache-dir': { type: 'string' },
   } });
   const usage = 'xec update plan <commit> [--runtime <sealed-linux-runtime>] --node <registered-node> [--node ...]\n' +
     'xec update apply <plan-id>\nxec update status [plan-id]\nxec update reconcile <plan-id>\n' +
-    'xec update local-check <dist>\nxec update local-apply <dist>\n' +
+    'xec update local-check [dist] [--cache-dir <private-directory>]\nxec update local-apply [dist] [--cache-dir <private-directory>]\n' +
     '  --cli <executable> Select the fleet controller CLI; local updates use the candidate CLI\n' +
     'A plan never activates a backend. Owner transitions remain separate reviewed operations.';
   if (values.help) { console.log(usage); return; }
   const [operation, target] = positionals;
+  const local = operation?.startsWith('local-');
   if (positionals.length > 2 || !['plan', 'apply', 'status', 'reconcile', 'local-check', 'local-apply'].includes(operation) ||
-      (operation !== 'status' && !target)) throw Error(usage);
+      (operation !== 'status' && !local && !target)) throw Error(usage);
   if (operation !== 'plan' && (values.runtime || values.node || values['request-id'])) throw Error('Runtime, node and request ID options belong to plan');
   const root = options.root ?? process.cwd();
   const run = options.run ?? releaseCommand;
   const progress = options.progress ?? console.log;
-  const local = operation.startsWith('local-');
-  const candidate = local ? path.resolve(root, target) : null;
+  if (values['cache-dir'] && (!local || target)) throw Error('--cache-dir applies only when building the current local revision');
+  if (local && values.cli) throw new UserError('Local updates require the candidate and its own CLI');
+  const candidate = local ? (target ? path.resolve(root, target) :
+    await localRuntime(root, values['cache-dir'] && path.resolve(root, values['cache-dir']), run, progress)) : null;
   const runtime = local ? path.resolve(candidate, '../../..') : null;
   if (local && (values.cli || candidate !== path.join(runtime, 'packages/0/dist')))
     throw new UserError('Local updates require the sealed candidate packages/0/dist and its own CLI; --cli selects a fleet controller');
@@ -95,7 +100,7 @@ export async function runUpdate(args, options = {}) {
   }
   if (!operation.startsWith('local-') && target && !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(target)) throw Error('Use the exact rollout UUID');
   const argv = operation.startsWith('local-')
-    ? ['backend', 'upgrade', path.resolve(root, target), ...(operation === 'local-check' ? ['--check'] : [])]
+    ? ['backend', 'upgrade', candidate, ...(operation === 'local-check' ? ['--check'] : [])]
     : ['fleet', 'rollout', operation, ...(target ? [target] : []), ...(['apply', 'status'].includes(operation) ? ['--wait'] : [])];
   const result = await call(argv);
   progress(JSON.stringify(result, null, 2));

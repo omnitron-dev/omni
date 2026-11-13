@@ -63,7 +63,18 @@ separate maintenance operations.
 
 ## Local development rollout
 
-After a qualified batch, pin the intended `main` commit. Record the builds actually
+From a clean local checkout, inspect the current commit with
+`pnpm exec xec update local-check`. Apply a compatible backend update with
+`pnpm exec xec update local-apply`. Set `--cache-dir` to a private directory on
+the development volume to keep builds there. Xec builds each revision once for
+the host and Node version, verifies the backend and Console stamps and reuses the
+sealed runtime. An explicit `<dist>` selects a previously prepared runtime.
+Neither npm publication nor the release test matrix is part of this local build.
+These two commands replace the backend. An owner change restarts its applications
+and requires a managed-service transition. Deploy static Console assets with the
+Console service operation.
+
+Record the builds actually
 running in the guardian, backend, owner and Console. Enumerate running and enabled
 stacks from the owner and each logical project's catalogue. Select by local placement, including imported
 configurations, and record each public project/stack and its `runtimeScope`.

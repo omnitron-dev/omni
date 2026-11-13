@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { ReleaseCommandError } from '@xec-sh/ops/release';
 import { runUpdate } from '../../.xec/update.mjs';
+import { runtimeArtifactDigest } from '../../apps/omnitron/src/shared/runtime-artifact.ts';
 
 test('Xec stages a reviewed candidate through Omnitron without activating or using SSH', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'xec-managed-update-'));
@@ -72,4 +73,39 @@ test('controller refusals preserve structured receipts, nonzero status and the a
   assert.equal(calls.length, 2);
   const transport = new ReleaseCommandError('omnitron', 2, 'incomplete response', 'connection lost');
   await assert.rejects(runUpdate(['apply', id], { ...options, run: async () => { throw transport; } }), error => error === transport);
+});
+
+test('check builds one isolated local revision and apply consumes the same verified bytes', { skip: !['linux', 'darwin'].includes(process.platform) }, async t => {
+  const cache = await fs.mkdtemp(path.join(os.tmpdir(), 'xec-development-'));
+  t.after(() => fs.rm(cache, { recursive: true, force: true }));
+  const commit = 'b'.repeat(40), events = [];
+  let dist, dirty = false;
+  const options = { progress() {}, run: async (_root, executable, args) => {
+    events.push([executable, ...args]);
+    if (args[0] === 'rev-parse') return commit;
+    if (args[0] === 'status') return dirty ? ' M pkg.ts' : '';
+    if (args[0]?.endsWith('/freeze-backend.mjs')) {
+      const directory = args[2];
+      for (const dir of ['dist', 'webapp/dist']) {
+        const target = path.join(directory, 'packages/0', dir);
+        await fs.mkdir(target, { recursive: true });
+        await fs.writeFile(path.join(target, 'BUILD.json'), JSON.stringify({ commit, dirty: false }));
+      }
+      await fs.writeFile(path.join(directory, 'RUNTIME.json'), JSON.stringify({ protocol: 1, platform: process.platform,
+        arch: process.arch, nodeVersion: process.version, sha256: await runtimeArtifactDigest(directory) }));
+    }
+    if (args.includes('upgrade')) { dist = args[args.indexOf('upgrade') + 1]; return '{"ok":true,"data":{}}'; }
+    return '';
+  } };
+  await runUpdate(['local-check', '--cache-dir', cache], options);
+  await runUpdate(['local-apply', '--cache-dir', cache], options);
+  assert.equal(events.filter(([command, arg]) => command === 'pnpm' && arg === 'install').length, 1);
+  assert.equal(events.filter(call => call.includes('upgrade')).length, 2);
+  assert.ok(!events.some(call => call.includes('test') || call.includes('publish')));
+  dirty = true;
+  await assert.rejects(runUpdate(['local-apply', '--cache-dir', cache], options), /Commit the local changes/);
+  dirty = false;
+  await fs.appendFile(path.join(dist, 'BUILD.json'), ' ');
+  await assert.rejects(runUpdate(['local-apply', '--cache-dir', cache], options), /changed after sealing/);
+  assert.equal(events.filter(call => call.includes('upgrade')).length, 2);
 });

@@ -1,3 +1,4 @@
+import { copyFile } from 'node:fs/promises';
 import { defineConfig } from 'tsup';
 import { reactClientEntries } from '../../scripts/react-client-entries.mjs';
 import manifest from './package.json';
@@ -5,6 +6,11 @@ import manifest from './package.json';
 export default defineConfig([
   // Main library build (React components)
   {
+    // MapLibre derives its module worker URL dynamically. Ship its original distribution
+    // beside the browser chunks so consumer bundlers can fingerprint the real asset.
+    onSuccess: async () => {
+      await copyFile(new URL(import.meta.resolve('maplibre-gl/dist/maplibre-gl-worker.mjs')), 'dist/maplibre-gl-worker.mjs');
+    },
     entry: {
       index: 'src/index.ts',
       'theme/index': 'src/theme/index.ts',

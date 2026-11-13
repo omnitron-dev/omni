@@ -24,11 +24,8 @@ import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import { alpha, useTheme } from '@mui/material/styles';
 
-// Icons - using unicode/text since we don't have icon package
-const CloseIcon = () => <span style={{ fontSize: 20 }}>✕</span>;
-const RefreshIcon = () => <span style={{ fontSize: 16 }}>↻</span>;
-const SunIcon = () => <span style={{ fontSize: 18 }}>☀</span>;
-const MoonIcon = () => <span style={{ fontSize: 18 }}>☾</span>;
+import { CloseIcon, RefreshIcon } from '../../icons/controls.js';
+import { ThemeModeIcon } from '../../icons/theme-mode.js';
 
 import { useSettings } from './settings-provider.js';
 import type { ComponentDensity } from '../../types/theme.js';
@@ -125,38 +122,21 @@ function ModeSection(): ReactNode {
         fullWidth
         value={settings.mode}
         onChange={(_, value) => value && actions.setMode(value)}
-        sx={{ gap: 1 }}
+        aria-label="Color mode"
+        sx={{
+          gap: 1,
+          '& > button': {
+            flex: 1, py: 1.5, gap: 1, border: `1px solid ${theme.palette.divider}`,
+            '&.Mui-selected': { bgcolor: alpha(theme.palette.primary.main, 0.08), borderColor: theme.palette.primary.main },
+          },
+        }}
       >
-        <ToggleButton
-          value="light"
-          sx={{
-            flex: 1,
-            py: 1.5,
-            gap: 1,
-            border: `1px solid ${theme.palette.divider}`,
-            '&.Mui-selected': {
-              bgcolor: alpha(theme.palette.primary.main, 0.08),
-              borderColor: theme.palette.primary.main,
-            },
-          }}
-        >
-          <SunIcon /> Light
-        </ToggleButton>
-        <ToggleButton
-          value="dark"
-          sx={{
-            flex: 1,
-            py: 1.5,
-            gap: 1,
-            border: `1px solid ${theme.palette.divider}`,
-            '&.Mui-selected': {
-              bgcolor: alpha(theme.palette.primary.main, 0.08),
-              borderColor: theme.palette.primary.main,
-            },
-          }}
-        >
-          <MoonIcon /> Dark
-        </ToggleButton>
+        {(['light', 'dark', 'system'] as const).map(mode => (
+          <ToggleButton key={mode} value={mode}>
+            <ThemeModeIcon mode={mode} sx={{ fontSize: 18 }} />
+            {{ light: 'Light', dark: 'Dark', system: 'System' }[mode]}
+          </ToggleButton>
+        ))}
       </ToggleButtonGroup>
     </Section>
   );
@@ -375,7 +355,7 @@ function PrimaryColorSection(): ReactNode {
                 },
               }}
             >
-              <RefreshIcon />
+              <RefreshIcon sx={{ fontSize: 16 }} />
             </Box>
           </Tooltip>
         )}
@@ -604,12 +584,12 @@ export function SettingsDrawer({ width = 300, sections = DEFAULT_SECTIONS }: Set
           {canReset && (
             <Tooltip title="Reset to defaults">
               <IconButton size="small" onClick={actions.reset} aria-label="Reset settings to defaults">
-                <RefreshIcon />
+                <RefreshIcon sx={{ fontSize: 16 }} />
               </IconButton>
             </Tooltip>
           )}
           <IconButton size="small" onClick={drawer.onClose} aria-label="Close settings">
-            <CloseIcon />
+            <CloseIcon sx={{ fontSize: 20 }} />
           </IconButton>
         </Stack>
       </Box>

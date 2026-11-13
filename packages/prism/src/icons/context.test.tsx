@@ -1,3 +1,5 @@
+import { renderToStaticMarkup } from 'react-dom/server';
+import { ThemeModeIcon } from './theme-mode.js';
 import { createRef, forwardRef } from 'react';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -26,6 +28,22 @@ const Alternate = artwork('alternate');
 afterEach(cleanup);
 
 describe('application-owned icon family', () => {
+  it('renders three distinct theme modes in SSR and respects the configured icon family', () => {
+    for (const mode of ['light', 'dark', 'system'] as const) {
+      const slot = { light: 'themeLight', dark: 'themeDark', system: 'themeSystem' }[mode];
+      const html = renderToStaticMarkup(<ThemeModeIcon mode={mode} />);
+      expect(html).toContain(`data-prism-icon="${slot}"`);
+      expect(html).toContain(`data-theme-icon="${mode}"`);
+      expect(html).toContain('opacity="0.4"');
+    }
+    const ref = createRef<SVGSVGElement>();
+    render(<PrismIconProvider icons={{ themeSystem: Alternate }}>
+      <ThemeModeIcon ref={ref} mode="system" titleAccess="Use device theme" />
+    </PrismIconProvider>);
+    expect(ref.current?.getAttribute('data-artwork')).toBe('alternate');
+    expect(screen.getByRole('img', { name: 'Use device theme' })).toBe(ref.current);
+  });
+
   it('inherits partial sets through portals, without leaking into neighbouring roots', () => {
     render(
       <>

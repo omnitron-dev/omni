@@ -52,6 +52,7 @@ import { SyncRpcService } from '../services/sync.rpc-service.js';
 import { SystemInfoService } from '../services/system-info.service.js';
 import { SystemInfoRpcService } from '../services/system-info.rpc-service.js';
 import { PidManager } from './pid-manager.js';
+import { readColdBatch } from '../project/cold-stack-start.js';
 import { prepareDaemonDatabase } from './database-startup.js';
 import type { OrchestratorControl as OrchestratorService } from '../orchestrator/execution-contract.js';
 import type { WatchedApplication } from '../shared/dto/services.js';
@@ -497,9 +498,13 @@ export class OmnitronDaemon {
     this.pidManager.remove();
     this.pidManager.write();
 
+    const coldBatch = options?.backendHandoff ? null : await readColdBatch(OMNITRON_HOME);
+    if (coldBatch && !['starting', 'verifying', 'restoring'].includes(coldBatch.phase))
+      throw Error('Cold startup is held by local update ' + coldBatch.digest);
     await prepareDaemonDatabase(this.dc.role, {
       noInfra: Boolean(options?.noInfra),
       handoff: Boolean(options?.backendHandoff),
+      ...(coldBatch && { retainedDatabase: coldBatch.database }),
     });
 
     // 1. Create Titan Application (the daemon itself)
@@ -1603,6 +1608,7 @@ export class OmnitronDaemon {
       (p) => Array.isArray(p.enabledStacks) && p.enabledStacks.length > 0,
     );
 
+    if (!projectModeActive && await readColdBatch(OMNITRON_HOME)) throw Error('The local update requires verified project-owned infrastructure');
     if (projectModeActive) {
       logger.info(
         { projects: projects.length },
@@ -1886,7 +1892,7 @@ export class OmnitronDaemon {
     // that don't belong to current registered projects/stacks (e.g. leftovers from
     // a previous session or auto-restarted by Docker after a system reboot).
     try {
-      if (!this.dc?.cluster?.enabled) await this.reconcileOrphanContainers(logger, allProjects, projectService);
+      if (!this.dc?.cluster?.enabled && !await readColdBatch(OMNITRON_HOME)) await this.reconcileOrphanContainers(logger, allProjects, projectService);
     } catch (err) {
       logger.warn({ error: (err as Error).message }, 'Orphan container reconciliation failed — continuing');
     }

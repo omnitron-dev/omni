@@ -9,8 +9,7 @@ import { ErrorBoundary } from '@omnitron-dev/prism/components/error-boundary';
 import { DashboardLayout, useLayoutConfig } from '@omnitron-dev/prism/layouts';
 import { OmnitronBrand, OmnitronMark, OmnitronSplash } from '@omnitron-dev/prism/identity';
 import { usePrismContext } from '@omnitron-dev/prism/core';
-import { useSettingsStore } from '@omnitron-dev/prism/state';
-import type { ThemeMode } from '@omnitron-dev/prism/theme';
+import { ThemeModeIcon } from '@omnitron-dev/prism/icons';
 import type { LayoutNavData } from '@omnitron-dev/prism/layouts';
 import { StatusBar } from 'src/components/status-bar';
 import { DaemonOfflineBanner } from 'src/components/daemon-offline-banner';
@@ -202,59 +201,7 @@ function ConsoleLogo() {
 // Header
 // =============================================================================
 
-function ThemeModeIcon({ mode }: { mode: string }) {
-  if (mode === 'dark') {
-    return (
-      <Box component="svg" viewBox="0 0 24 24" sx={{ width: 20, height: 20 }}>
-        <path
-          fill="currentColor"
-          opacity="0.4"
-          d="M21.5 14.08C20.31 14.67 18.98 15 17.58 15C12.86 15 9.08 11.22 9.08 6.5C9.08 5.1 9.42 3.77 10 2.58C5.73 3.63 2.58 7.5 2.58 12.08C2.58 17.6 7.06 22.08 12.58 22.08C17.16 22.08 21.04 18.93 22.08 14.67C21.89 14.81 21.7 14.94 21.5 14.08Z"
-        />
-        <path
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M21.5 14.08C20.31 14.67 18.98 15 17.58 15C12.86 15 9.08 11.22 9.08 6.5C9.08 5.1 9.42 3.77 10 2.58C5.73 3.63 2.58 7.5 2.58 12.08C2.58 17.6 7.06 22.08 12.58 22.08C17.16 22.08 21.04 18.93 22.08 14.67"
-        />
-      </Box>
-    );
-  }
-  if (mode === 'light') {
-    return (
-      <Box component="svg" viewBox="0 0 24 24" sx={{ width: 20, height: 20 }}>
-        <circle fill="currentColor" opacity="0.4" cx="12" cy="12" r="5" />
-        <circle fill="none" stroke="currentColor" strokeWidth="1.5" cx="12" cy="12" r="5" />
-        <path
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          d="M12 2V4M12 20V22M4 12H2M22 12H20M19.78 4.22L18.36 5.64M5.64 18.36L4.22 19.78M19.78 19.78L18.36 18.36M5.64 5.64L4.22 4.22"
-        />
-      </Box>
-    );
-  }
-  return (
-    <Box component="svg" viewBox="0 0 24 24" sx={{ width: 20, height: 20 }}>
-      <path
-        fill="currentColor"
-        opacity="0.4"
-        d="M2 10C2 6.23 2 4.34 3.17 3.17C4.34 2 6.23 2 10 2H14C17.77 2 19.66 2 20.83 3.17C22 4.34 22 6.23 22 10V11C22 11.55 21.55 12 21 12H3C2.45 12 2 11.55 2 11V10Z"
-      />
-      <path
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        d="M2 10C2 6.23 2 4.34 3.17 3.17C4.34 2 6.23 2 10 2H14C17.77 2 19.66 2 20.83 3.17C22 4.34 22 6.23 22 10V14C22 17.77 22 19.66 20.83 20.83C19.66 22 17.77 22 14 22H10C6.23 22 4.34 22 3.17 20.83C2 19.66 2 17.77 2 14V10Z"
-      />
-      <path fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" d="M2 12H22" />
-    </Box>
-  );
-}
+const nextThemeMode = { light: 'dark', dark: 'system', system: 'light' } as const;
 
 /** Header controls retain the same quiet hover and focus states as the workspace. */
 const headerIconBtnSx = {
@@ -265,16 +212,9 @@ const headerIconBtnSx = {
 function HeaderRight() {
   const { openCommands, openHelp } = useConsoleKeyboard();
   const signOut = useAuthStore((s) => s.signOut);
-  const { setMode } = usePrismContext();
-  const mode = useSettingsStore((s: any) => s.mode) as string;
-
-  const handleCycleTheme = () => {
-    const cycle: ThemeMode[] = ['light', 'dark', 'system'];
-    const idx = cycle.indexOf(mode as ThemeMode);
-    setMode(cycle[(idx + 1) % cycle.length]!);
-  };
-
-  const themeTooltip = mode === 'light' ? 'Dark mode' : mode === 'dark' ? 'System mode' : 'Light mode';
+  const { settings: { mode }, setMode } = usePrismContext();
+  const nextMode = nextThemeMode[mode];
+  const themeTooltip = `Switch to ${nextMode} mode`;
 
   return (
     <Stack
@@ -297,12 +237,12 @@ function HeaderRight() {
         </IconButton>
       </Tooltip>
       <Tooltip title={themeTooltip}>
-        <IconButton disableRipple onClick={handleCycleTheme} sx={headerIconBtnSx}>
-          <ThemeModeIcon mode={mode} />
+        <IconButton disableRipple aria-label={themeTooltip} onClick={() => setMode(nextMode)} sx={headerIconBtnSx}>
+          <ThemeModeIcon mode={mode} sx={{ fontSize: 20 }} />
         </IconButton>
       </Tooltip>
       <Tooltip title="Sign out">
-        <IconButton disableRipple onClick={() => signOut()} sx={headerIconBtnSx}>
+        <IconButton aria-label="Sign out" disableRipple onClick={() => signOut()} sx={headerIconBtnSx}>
           <LogoutIcon sx={{ fontSize: 20 }} />
         </IconButton>
       </Tooltip>

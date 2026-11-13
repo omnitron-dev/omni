@@ -29,6 +29,19 @@ beforeEach(() => {
 });
 
 describe('control-plane database startup admission', () => {
+  it.each(['create', 'start', 'wait', 'move-network', 'different-id', 'hold'])('holds a reviewed control database on %s before any side effects', async action => {
+    const expected = 'a'.repeat(64);
+    calls.inspect.mockResolvedValue(action === 'different-id' ? { action: 'retain', id: 'b'.repeat(64) } : { action, id: expected });
+    await expect(prepareDaemonDatabase('master', { retainedDatabase: expected })).rejects.toThrow('same running');
+    for (const effect of [calls.move, calls.create, calls.start, calls.remove, calls.migrate]) expect(effect).not.toHaveBeenCalled();
+  });
+
+  it('verifies the approved database ownership model and preserves a matching container', async () => {
+    await expect(prepareDaemonDatabase('master', { retainedDatabase: null })).rejects.toThrow('ownership changed');
+    await prepareDaemonDatabase('master', { retainedDatabase: 'a'.repeat(64) });
+    expect(calls.migrate).toHaveBeenCalledOnce(); expect(calls.inspect).toHaveBeenCalledOnce();
+  });
+
   it('keeps a slave independent of PostgreSQL and Docker', async () => {
     await prepareDaemonDatabase('slave');
     expect(calls.inspect).not.toHaveBeenCalled();

@@ -145,6 +145,7 @@ export const Map = forwardRef<MapRef, MapProps>(function MapView(
         <>
           <ReactMapGL
             {...engine}
+            workerUrl={engine.workerUrl ?? new URL('./maplibre-gl-worker.mjs', import.meta.url).href}
             ref={setMap}
             mapStyle={mapStyle}
             cooperativeGestures={cooperativeGestures}

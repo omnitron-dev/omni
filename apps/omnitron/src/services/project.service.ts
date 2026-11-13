@@ -1,3 +1,4 @@
+import { readColdBatch, reviewedColdStart, claimColdStart, type ColdStartPermit } from '../project/cold-stack-start.js';
 import { readProjectStacks, resolveProjectStacks } from '../config/project-stacks.js';
 import { assertApplicationInstances } from '../config/define-ecosystem.js';
 import { readSavedDaemonConfig } from '../config/saved.js';
@@ -632,6 +633,7 @@ export class ProjectService extends EventEmitter {
 
   @RecoveryMutation()
   async executeNodeStackStop(scope: NodeStackStopExecution): Promise<NodeStackStopReceipt> {
+    await this.requireNoColdBatch();
     if (this.resumingInstalled) throw new Error('An installed allocation is resuming');
     if (this.ownershipFrozen) throw new Error('Project ownership is frozen for backend transfer');
     const receipt = await this.nodeStackStop.execute(scope);
@@ -1124,6 +1126,7 @@ export class ProjectService extends EventEmitter {
 
   @RecoveryMutation()
   async deleteStack(project: string, stackName: string): Promise<void> {
+    await this.requireNoColdBatch();
     // Cannot delete config-defined stacks
     const config = await this.loadProjectConfig(project);
     const configStacks = config.stacks ?? {};
@@ -1558,6 +1561,15 @@ export class ProjectService extends EventEmitter {
   private rereading?: Set<string>;
   private readonly startsInFlight = new Map<string, { selection: string; promise: Promise<IStackInfo> }>();
 
+  private readColdBatch() {
+    const db = this.daemonStateStore?.dbPath;
+    return db ? readColdBatch(path.dirname(path.dirname(db))) : null;
+  }
+
+  private async requireNoColdBatch(): Promise<void> {
+    if (await this.readColdBatch()) throw Error('Stack lifecycle is held by the local platform update');
+  }
+
   private infrastructurePolicyKey(project: string, stack: string): string {
     const registration = this.registry.get(project);
     if (!registration?.registeredAt) throw Error('Infrastructure authority requires a project registration');
@@ -1678,14 +1690,25 @@ export class ProjectService extends EventEmitter {
     if (this.rereading?.has(projectName)) throw new Error('Project definitions are being updated; retry the start');
     if (opts?.workingTree && opts.release) throw new Error('Select either a release or the working tree');
     if (opts?.infrastructure !== undefined && !['reconcile', 'preserve'].includes(opts.infrastructure)) throw Error('Invalid infrastructure start mode');
+    const batch = await this.readColdBatch();
+    let cold: ColdStartPermit | null = null;
+    if (batch) {
+      const scope = { project: projectName, stack: stackName };
+      const record = this.registry.get(projectName);
+      const config = this.getLoadedConfig(projectName);
+      const logical = record?.configuration ? { project: record.configuration.project, stack: record.configuration.stacks?.[stackName] ?? stackName } : scope;
+      cold = await reviewedColdStart(path.dirname(path.dirname(this.daemonStateStore.dbPath)), batch, scope, record, config ? this.resolveStacks(config, projectName)[stackName]?.type : undefined,
+        (opts?.source === 'boot' || opts?.source === 'auto-resume') && !opts?.release && !opts?.reinstall && !opts?.workingTree && !opts?.allowDirty && !opts?.infrastructure && !opts?.review, logical);
+    }
     const policy = this.infrastructurePolicy(projectName, stackName);
     if (policy && opts?.infrastructure === 'reconcile' && (opts.source === 'boot' || opts.source === 'auto-resume'))
       throw Error('Automatic starts cannot expand preserved infrastructure authority');
-    const mode = opts?.infrastructure ?? policy?.mode ?? 'reconcile';
-    const review = opts?.review ?? (mode === 'preserve' ? policy?.review : undefined);
+    if (cold && policy && policy.review !== cold.review) throw Error('Local update cannot expand an existing preserved infrastructure review');
+    const mode = cold ? 'preserve' : opts?.infrastructure ?? policy?.mode ?? 'reconcile';
+    const review = cold?.review ?? opts?.review ?? (mode === 'preserve' ? policy?.review : undefined);
     if (mode === 'preserve' && (!review || !/^[a-f0-9]{64}$/.test(review))) throw Error('Preserved infrastructure requires a successful stack start review; inspect --dry-run --infrastructure preserve');
     if (opts?.review && mode !== 'preserve') throw Error('A preservation review cannot authorize reconciliation');
-    const infrastructure = { mode, review: review ?? undefined, explicitReconcile: opts?.infrastructure === 'reconcile' } as const;
+    const infrastructure = { mode, review: review ?? undefined, explicitReconcile: opts?.infrastructure === 'reconcile', ...(cold && { cold }) } as const;
     const automatic = opts?.source === 'boot' || opts?.source === 'auto-resume';
     const selection = JSON.stringify([opts?.release, opts?.workingTree === true, opts?.reinstall === true, infrastructure, automatic]);
     const running = this.startsInFlight.get(inFlightKey);
@@ -1747,7 +1770,7 @@ export class ProjectService extends EventEmitter {
     releaseId?: string,
     reinstall = false,
     workingTree = false,
-    infrastructure?: { mode: 'reconcile' | 'preserve'; review: string | undefined; explicitReconcile: boolean },
+    infrastructure?: { mode: 'reconcile' | 'preserve'; review: string | undefined; explicitReconcile: boolean; cold?: ColdStartPermit },
   ): Promise<IStackInfo> {
     const known: StackStartKnown = { attach: false };
     try {
@@ -1783,7 +1806,7 @@ export class ProjectService extends EventEmitter {
     known: StackStartKnown,
     reinstall = false,
     workingTree = false,
-    infrastructure?: { mode: 'reconcile' | 'preserve'; review: string | undefined; explicitReconcile: boolean },
+    infrastructure?: { mode: 'reconcile' | 'preserve'; review: string | undefined; explicitReconcile: boolean; cold?: ColdStartPermit },
   ): Promise<IStackInfo> {
     const config = infrastructure?.mode === 'preserve' ? this.getLoadedConfig(projectName) : await this.loadProjectConfig(projectName);
     if (!config) throw Error('Project configuration must be loaded before preservation');
@@ -1806,7 +1829,13 @@ export class ProjectService extends EventEmitter {
     if (infrastructure?.mode === 'preserve') {
       preservation = await this.reviewStackStart(projectName, stackName, { infrastructure: 'preserve', ...(releaseId && { release: releaseId }), ...(workingTree && { workingTree: true }) });
       if (!preservation.digest || preservation.digest !== infrastructure.review) throw Error('Stack launch or native infrastructure changed since review; no startup effects were admitted');
-      this.setInfrastructurePolicy(projectName, stackName, preservation.digest);
+      if (infrastructure.cold) {
+        // A review can take time. Losing the persisted direction before the first effect revokes authority.
+        const intent = await this.readColdBatch();
+        if (!intent || intent.digest !== infrastructure.cold.digest || intent.direction !== infrastructure.cold.direction ||
+          !['starting', 'verifying', 'restoring'].includes(intent.phase)) throw Error('The local update changed during stack start review');
+        claimColdStart(this.daemonStateStore, infrastructure.cold);
+      } else this.setInfrastructurePolicy(projectName, stackName, preservation.digest);
     }
 
     // A release, when one is named — and a stack that takes nothing else.
@@ -2195,6 +2224,7 @@ export class ProjectService extends EventEmitter {
 
   @RecoveryMutation()
   async stopStack(projectName: string, stackName: string, review?: string, keepInfrastructure = false): Promise<IStackInfo> {
+    await this.requireNoColdBatch();
     if (typeof keepInfrastructure !== 'boolean') throw new Error('Invalid infrastructure retention mode');
     const key = stackExecutionKey({ project: projectName, stack: stackName });
     if (this.resumingInstalled) throw new Error('An installed allocation is resuming');

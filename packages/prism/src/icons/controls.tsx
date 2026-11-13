@@ -1,6 +1,8 @@
 import { createPrismIcon } from './context.js';
 import DefaultSearchIcon from '@mui/icons-material/Search';
 export const SearchIcon = createPrismIcon('search', DefaultSearchIcon);
+import DefaultRefreshIcon from '@mui/icons-material/Refresh';
+export const RefreshIcon = createPrismIcon('refresh', DefaultRefreshIcon);
 import DefaultCloseIcon from '@mui/icons-material/Close';
 export const CloseIcon = createPrismIcon('close', DefaultCloseIcon);
 import DefaultChevronDownIcon from '@mui/icons-material/ExpandMore';

@@ -89,6 +89,7 @@ export interface BackendArtifact {
   schemaExpansionProtocol?: number;
   infrastructureAdoptionProtocol?: 1;
   coldInfrastructureProtocol?: 1;
+  coldStackAdmissionProtocol?: 1;
   executionRequirements?: ExecutionCapabilities;
 }
 
@@ -187,6 +188,7 @@ export async function checkBackendCandidate(directory: string, currentEntry?: st
     await assertBackendMigrationsCompatible(currentDist, directory, 'all');
   }
   return { ...artifact, executionRequirements: readExecutionCapabilities(answer.executionRequirements),
+    ...(answer.coldStackAdmissionProtocol === 1 ? { coldStackAdmissionProtocol: 1 } : {}),
     ...(answer.coldInfrastructureProtocol === 1 ? { coldInfrastructureProtocol: 1 } : {}),
     ...(answer.schemaExpansionProtocol === 1 ? { schemaExpansionProtocol: 1 } : {}),
     ...(answer.infrastructureAdoptionProtocol === 1 ? { infrastructureAdoptionProtocol: 1 } : {}) };
@@ -213,7 +215,7 @@ export async function previewBackendColdStart(artifact: BackendArtifact, record:
 
 interface BackendPreflightResponse {
   protocol?: number; schemaExpansionProtocol?: number; infrastructureAdoptionProtocol?: number;
-  coldInfrastructureProtocol?: number; coldInfrastructure?: ColdInfrastructurePreview;
+  coldStackAdmissionProtocol?: number; coldInfrastructureProtocol?: number; coldInfrastructure?: ColdInfrastructurePreview;
   infrastructureAdoption?: { protocol?: number; digest?: string };
   build?: BuildStamp; executionRequirements?: unknown;
 }

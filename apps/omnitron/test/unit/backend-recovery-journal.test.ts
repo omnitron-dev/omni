@@ -41,6 +41,30 @@ it('invalidates before a synchronous side effect and refuses mutation when durab
   expect(called).toBe(false);
 });
 
+it('retains distinct invalidations across reopen and signals when their bounded evidence is incomplete', async () => {
+  const root = await fs.mkdtemp('/tmp/omni-recovery-'); roots.push(root);
+  const first = new BackendRecoveryJournal(root);
+  try {
+    first.invalidate('loadProjectConfig');
+    first.invalidate('startStack');
+    first.invalidate('loadProjectConfig');
+    expect(first.read()).toMatchObject({ reason: 'loadProjectConfig', reasons: ['loadProjectConfig', 'startStack'] });
+  } finally { await first.close(); }
+  const reopened = new BackendRecoveryJournal(root);
+  try {
+    reopened.invalidate('operation-0');
+    const firstAt = reopened.read()!.at;
+    for (let i = 0; i < 16; i++) reopened.invalidate('operation-' + i);
+    const state = reopened.read();
+    expect(state).toMatchObject({ status: 'invalid', reason: 'operation-0', at: firstAt, additionalReasons: true });
+    if (state?.status !== 'invalid') throw Error('Missing invalidation');
+    expect(state.reasons).toHaveLength(16);
+    expect(state.reasons!.slice(0, 2)).toEqual(['loadProjectConfig', 'startStack']);
+    reopened.invalidate('later mutation');
+    expect(reopened.read()).toEqual(state);
+  } finally { await reopened.close(); }
+});
+
 it('does not certify overlapping or failed asynchronous operations as the previous generation', async () => {
   const state = new RecoveryState();
   state.attach(() => {});

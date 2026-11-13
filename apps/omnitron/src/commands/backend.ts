@@ -86,6 +86,11 @@ export async function backendInstallationCommand(): Promise<void> {
       emitInfo(state.selection ? `Cold-start runtime: ${state.selection.current} (revision ${state.selection.revision})` : 'No runtime is selected for cold start');
       if (state.directory) emitInfo(`Installation: ${state.directory}`);
       if (state.activation) emitInfo(`Unfinished activation: ${state.activation.checkpoint}`);
+      const hold = state.activation?.reviewedRecovery;
+      if (hold) {
+        emitInfo(`Reviewed recovery ${hold.phase} (${hold.planFile})`);
+        if (hold.checkpoint) emitInfo(`Admitted checkpoint: ${hold.checkpoint}`);
+      }
     }
   } catch (error) { emitError(error); process.exitCode = 1; }
   finally { await installation?.close(); }

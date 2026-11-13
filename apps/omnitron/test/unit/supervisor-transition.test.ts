@@ -26,7 +26,7 @@ vi.mock('../../src/daemon/private-control-client.js', async original => ({
 }));
 import { checkSystemGuardian, guardianUnitProperties, replaceGuardianExec } from '../../src/daemon/system-guardian-unit.js';
 import type { ManagedRuntime } from '../../src/daemon/managed-runtime.js';
-import { applySupervisorTransition, readSupervisorTransition, supervisorTransitionIntentDigest, type SupervisorTransition } from '../../src/daemon/supervisor-transition.js';
+import { applySupervisorTransition, prepareSupervisorTransition, readSupervisorTransition, supervisorTransitionIntentDigest, type SupervisorTransition } from '../../src/daemon/supervisor-transition.js';
 import { writePrivateRecord } from '../../src/daemon/execution-journal.js';
 import { projectExecutionIdentity } from '../../src/shared/execution-identity.js';
 
@@ -293,6 +293,21 @@ it('refuses changed reviewed ownership before inspecting or stopping OS jobs', a
   fake.recoveryCheck.mockRejectedValue(Error('Reviewed controller grant changed'));
   await expect(applySupervisorTransition(file)).rejects.toThrow('Reviewed controller grant changed');
   expect(fake.job).not.toHaveBeenCalled(); expect(fake.control).not.toHaveBeenCalled(); expect(fake.hold).not.toHaveBeenCalled();
+});
+
+it.each(['original', 'derived'])('reports the durable hold before connecting to a dead writer for the %s checkpoint', async which => {
+  const { file, plan } = await reviewedFixture();
+  const original = plan.checkpoint!;
+  const derived = path.join(plan.before.directory, 'handoff-derived.json');
+  const selected = which === 'original' ? original : derived;
+  fake.activation = { ...fake.activation, reviewedRecovery: { planId: plan.id, planFile: file,
+    planSha256: supervisorTransitionIntentDigest(plan), phase: 'unconfirmed', checkpoint: derived } };
+  fake.readBoot.mockResolvedValue({ environment: { OMNITRON_HOME: plan.before.instanceHome } });
+  await expect(prepareSupervisorTransition('/unused/runtime', undefined, { recoveryCheckpoint: selected }))
+    .rejects.toMatchObject({ details: { phase: 'unconfirmed', plan: file, originalCheckpoint: original, admittedCheckpoint: derived } });
+  expect(fake.opened).toHaveBeenCalledWith(plan.before.instanceHome, { readOnly: true });
+  expect((await fake.opened.mock.results[0]!.value).exclusive).not.toHaveBeenCalled();
+  expect(fake.control).not.toHaveBeenCalled(); expect(fake.job).not.toHaveBeenCalled(); expect(fake.hold).not.toHaveBeenCalled();
 });
 
 it.each(['active', 'ticket', 'foreign-hold', 'uncertain-hold'])('refuses %s recovery state before a native stop', async variant => {

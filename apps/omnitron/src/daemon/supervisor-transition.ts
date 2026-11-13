@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
+import { DomainError } from '@omnitron-dev/titan/errors';
 import { renderLaunchdPlist, renderSystemdUnit } from '../commands/service-units.js';
 import { BACKEND_ACTIVITY_COUNTERS } from '../shared/dto/backend.js';
 import { RuntimeInstallation } from './runtime-installation.js';
@@ -173,6 +174,15 @@ export async function prepareSupervisorTransition(directory: string, socket?: st
   const retired = recoveryCheckpoint ? await readBackendBootRecord(recoveryCheckpoint) : null;
   if (retired) {
     if (socket) throw Error('Reviewed recovery derives the instance from its checkpoint, not a public socket');
+    const installation = await RuntimeInstallation.openReadOnly(checkpointInstanceHome(retired));
+    try {
+      const activation = installation?.activation();
+      const hold = activation?.reviewedRecovery;
+      if (hold) throw new DomainError({ domainCode: 'REVIEWED_RECOVERY_HELD',
+        message: `Reviewed recovery plan ${hold.planId} is ${hold.phase}. Inspect its held activation with backend installation before preparing another transition.`,
+        details: { plan: hold.planFile, phase: hold.phase, originalCheckpoint: activation!.checkpoint,
+          admittedCheckpoint: hold.checkpoint ?? null } });
+    } finally { await installation?.close(); }
     backendPid = retired.previousPid;
     controlAddress = { socket: path.join(path.dirname(recoveryCheckpoint!), `c-${retired.state.ticket.from.controllerId}.sock`) };
   } else {

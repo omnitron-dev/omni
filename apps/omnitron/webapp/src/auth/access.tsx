@@ -124,7 +124,7 @@ export const PAGE_PERMISSIONS: Record<string, PagePermission> = {
   stacks: 'OmnitronProject.listStacks',
   metrics: 'OmnitronMetrics.getSnapshot',
   topology: 'OmnitronNodes.listNodes',
-  containers: 'OmnitronInfra.getState',
+  containers: ['OmnitronInfra.listContainers', 'OmnitronProject.listStacks'],
   deployments: ['OmnitronProject.getDeployProgress', 'OmnitronRelease.deployments', 'OmnitronDeploy.getHistory'],
   alerts: 'OmnitronAlerts.getRules',
   pipelines: 'OmnitronPipelines.listPipelines',

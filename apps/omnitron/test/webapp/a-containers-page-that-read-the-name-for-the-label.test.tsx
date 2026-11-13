@@ -11,12 +11,17 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { MemoryRouter } from 'react-router-dom';
 import '@testing-library/jest-dom/vitest';
 
 import { useProjectStore } from '../../webapp/src/stores/project.store.js';
+import { stackFixture } from '../helpers/stack-fixture.js';
+
+vi.mock('src/auth/access', () => ({
+  useAccess: () => ({ can: () => true }), Can: ({ children }: { children: import('react').ReactNode }) => children,
+}));
 
 const container = (name: string, project?: string, stack?: string) => ({
   name,
@@ -35,7 +40,7 @@ vi.mock('src/netron/client', () => ({
       // Another project whose name begins with this one's.
       container('sample-x-dev-postgres', 'sample-x', 'dev'),
       container('sample-test-postgres', 'sample', 'test'),
-      // The daemon's own, in every scope.
+      // The controller workspace owns this container.
       { ...container('omnitron-pg'), lifecycleRestriction: 'The control plane owns this container.' },
     ]),
   },
@@ -43,8 +48,8 @@ vi.mock('src/netron/client', () => ({
 }));
 
 describe('a containers page that read the name for the label', () => {
-  it("lists the selected stack's containers by their labels, and the daemon's own", async () => {
-    useProjectStore.setState({ activeProject: 'sample', activeStack: 'dev', stacksByProject: {} });
+  it("lists only the selected stack's containers by their labels", async () => {
+    useProjectStore.setState({ activeProject: 'sample', activeStack: 'dev', stacksByProject: { sample: [stackFixture('dev')] } });
     const { default: ContainersPage } = await import('../../webapp/src/pages/containers.js');
     render(
       <ThemeProvider theme={createTheme()}>
@@ -56,11 +61,7 @@ describe('a containers page that read the name for the label', () => {
 
     expect(await screen.findByText('sample-dev-postgres')).toBeInTheDocument();
     expect(screen.getByText('pg-restored-from-backup')).toBeInTheDocument();
-    const protectedRow = within(screen.getByText('omnitron-pg').closest('tr')!);
-    expect(protectedRow.getByLabelText('Read only. The control plane owns this container.')).toHaveTextContent('Read only');
-    expect(protectedRow.getByRole('button', { name: 'Logs for omnitron-pg' })).toBeInTheDocument();
-    expect(protectedRow.queryByLabelText('Remove')).not.toBeInTheDocument();
-    expect(protectedRow.queryByLabelText('Stop')).not.toBeInTheDocument();
+    expect(screen.queryByText('omnitron-pg')).not.toBeInTheDocument();
     expect(screen.queryByText('sample-x-dev-postgres')).not.toBeInTheDocument();
     expect(screen.queryByText('sample-test-postgres')).not.toBeInTheDocument();
   });

@@ -76,6 +76,7 @@ function useNavData(): LayoutNavData {
 
   return useMemo(() => {
     const builder = { id: 'dashboard-builder', title: 'Dashboard Builder', path: '/dashboard-builder', icon: <DashboardBuilderIcon /> };
+    const containers = { id: 'containers', title: 'Containers', path: '/containers', icon: <ContainersIcon /> };
     const alertNav = { id: 'alerts', title: 'Alerts', path: '/alerts', icon: <AlertIcon /> };
     if (!activeProject) {
       // Omnitron system workspace
@@ -95,6 +96,7 @@ function useNavData(): LayoutNavData {
           subheader: 'Infrastructure',
           items: [
             { id: 'projects', title: 'Projects', path: '/projects', icon: <ProjectIcon /> },
+            containers,
             { id: 'nodes', title: 'Nodes', path: '/nodes', icon: <NodesIcon /> },
             { id: 'topology', title: 'Topology', path: '/topology', icon: <TopologyIcon /> },
             { id: 'terminal', title: 'SSH workspace', path: '/terminal', icon: <TerminalIcon /> },
@@ -159,7 +161,7 @@ function useNavData(): LayoutNavData {
           { id: 'nodes', title: 'Nodes', path: '/nodes', icon: <NodesIcon /> },
           { id: 'terminal', title: 'SSH workspace', path: '/terminal', icon: <TerminalIcon /> },
           { id: 'files', title: 'Files', path: '/files', icon: <FolderIcon /> },
-          { id: 'containers', title: 'Containers', path: '/containers', icon: <ContainersIcon /> },
+          containers,
           { id: 'deployments', title: 'Deployments', path: '/deployments', icon: <DeployIcon /> },
           {
             id: 'pipelines',

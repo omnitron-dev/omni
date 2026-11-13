@@ -33,6 +33,7 @@ import { infra } from 'src/netron/client';
 import { Link as RouterLink } from 'react-router-dom';
 import Link from '@mui/material/Link';
 import { useStackContext } from 'src/hooks/use-stack-context';
+import { StackInfrastructure } from 'src/components/stack-infrastructure';
 import { useScopedStacks, useProjectStore } from 'src/stores/project.store';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { isRpcTimeout } from 'src/utils/rpc-error';
@@ -182,7 +183,13 @@ function LogModal({ open, containerName, logs, onClose }: LogModalProps) {
 // ---------------------------------------------------------------------------
 
 export default function ContainersPage() {
-  const { activeProject, activeStack } = useStackContext();
+  const activeProject = useProjectStore(state => state.activeProject);
+  const activeStack = useProjectStore(state => state.activeStack);
+  return <ContainerInventory key={JSON.stringify([activeProject, activeStack])} />;
+}
+
+function ContainerInventory() {
+  const { activeProject, activeStack, visibleStackName } = useStackContext();
   const { can } = useAccess();
   const canReadStacks = can('OmnitronProject.listStacks');
   const fetchStacks = useProjectStore((state) => state.fetchStacks);
@@ -193,11 +200,8 @@ export default function ContainersPage() {
   useEffect(() => {
     if (activeProject && canReadStacks && inventory === undefined) void fetchStacks(activeProject);
   }, [activeProject, canReadStacks, inventory, fetchStacks]);
-  // This page lists THIS machine's Docker. A remote stack's containers run on
-  // its node: with «sample / test» selected the table held only omnitron's own
-  // two, as though the stack had none, and with all stacks selected test's
-  // five were simply not there. Its stack page shows them, as its node
-  // reports them.
+  const selected = activeStack && canReadStacks ? inventory?.find(stack => stack.name === activeStack) : undefined;
+  const readLocal = can('OmnitronInfra.listContainers') && (!activeStack || selected?.type === 'local');
   const remoteStacks = useScopedStacks().filter(s => canReadStacks && s.type !== 'local');
   // One shared polling loop (see `use-polled-resource`): no overlapping
   // requests when the daemon is slow, no polling from a hidden tab, and a
@@ -211,10 +215,12 @@ export default function ContainersPage() {
   } = usePolledResource<Container[]>(
     async () => {
       const result = await infra.listContainers();
-      return Array.isArray(result) ? result : [];
+      if (!Array.isArray(result)) throw Error('The controller returned an invalid container inventory');
+      return result;
     },
     {
       intervalMs: 10_000,
+      enabled: readLocal,
       describeError: (err) =>
         `Could not ask the container runtime: ${err instanceof Error ? err.message : String(err)}`,
     }
@@ -225,7 +231,7 @@ export default function ContainersPage() {
   const pendingRef = useRef(new Set<string>());
   const [pending, setPending] = useState<Record<string, Operation>>({});
   const refresh = async () => {
-    await Promise.all([fetchContainers(), activeProject && canReadStacks ? fetchStacks(activeProject) : null]);
+    await Promise.all([readLocal ? fetchContainers() : null, activeProject && canReadStacks ? fetchStacks(activeProject) : null]);
   };
   const operate = async (name: string, operation: Operation, run: () => Promise<void>, mutates = true) => {
     if (pendingRef.current.has(name)) return;
@@ -252,16 +258,12 @@ export default function ContainersPage() {
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
-  useEffect(() => setPage(0), [activeProject, activeStack]);
-
-  // The selection's containers, by the labels a container carries about
-  // itself (`omnitron.project`, `omnitron.stack`). The name only happens to
-  // start with the same words: `sample-` also began every container of a
-  // project called `sample-x`. The daemon's own carry no project, and are
-  // listed in every scope.
+  // Container names are user-controlled. Resolve the deployment labels through
+  // the same public registration used for releases, stack actions and history.
   const containers = (allContainers ?? []).filter((c: Container) => {
-    if (!activeProject || !c.project) return true;
-    return c.project === activeProject && (!activeStack || c.stack === activeStack);
+    if (!activeProject) return true;
+    if (!c.project || !c.stack) return !activeStack && c.project === activeProject;
+    return visibleStackName(c.project, c.stack) !== null;
   });
 
   // Log modal state
@@ -276,7 +278,7 @@ export default function ContainersPage() {
   const totalCount = containers.length;
   const runningCount = containers.filter((c) => c.status === 'running').length;
   const stoppedCount = containers.filter((c) => c.status === 'exited').length;
-  const unhealthyCount = containers.filter((c) => c.health === 'unhealthy' || c.health === 'starting' || c.error || (c.provisioning && c.provisioning !== 'ready')).length;
+  const unhealthyCount = containers.filter(c => c.status !== 'running' || c.health === 'unhealthy' || c.health === 'starting' || c.error || (c.provisioning && c.provisioning !== 'ready')).length;
 
   const handleStart = (name: string) => operate(name, 'Starting', async () => {
     await infra.startContainer({ name });
@@ -431,8 +433,7 @@ export default function ContainersPage() {
         title="Remove container?"
         content={
           <>
-            <b>{confirmRemove}</b> will be removed. Data outside a named volume is lost, and the
-            daemon recreates the container on the next <code>omnitron up</code>.
+            Removing <b>{confirmRemove}</b> discards its writable layer. Mounted data is retained.
           </>
         }
         confirmLabel="Remove"
@@ -442,21 +443,21 @@ export default function ContainersPage() {
       <Breadcrumbs
         links={[{ name: 'Containers' }]}
         action={
-          <IconButton data-console-command="refresh" size="small" onClick={refresh} title="Refresh" aria-label="Refresh local containers and stack locations">
+          <IconButton data-console-command="refresh" size="small" onClick={refresh} title="Refresh" aria-label="Refresh container inventory">
             <RefreshIcon />
           </IconButton>
         }
       />
-      <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+      {readLocal && <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
         <Chip size="small" variant="outlined" label="Local node" />
         <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-          This controller&apos;s Docker engine. Counts include the visible project, control-plane and unassigned containers, not remote nodes.
+          {activeProject ? `Containers owned by ${[activeProject, activeStack].filter(Boolean).join(' / ')} on this controller.` : "This controller's Docker engine, including control-plane and unassigned containers."}
         </Typography>
-      </Stack>
+      </Stack>}
       {activeProject && (!canReadStacks || inventory === undefined || inventoryError) && (
         <Alert severity={inventoryError ? 'warning' : 'info'} variant="outlined">
           {!canReadStacks ? 'Stack locations are unavailable with your current permissions.'
-            : inventoryError ? `Stack locations unavailable: ${inventoryError}` : 'Loading stack locations… Remote infrastructure is not included in this local inventory.'}
+            : inventoryError ? `Stack locations unavailable: ${inventoryError}` : 'Loading stack locations…'}
           {canReadStacks && inventoryError && <Button size="small" onClick={() => void fetchStacks(activeProject)}>Retry stack locations</Button>}
         </Alert>
       )}
@@ -465,7 +466,8 @@ export default function ContainersPage() {
           {actionError}
         </Alert>
       )}
-      {remoteStacks.length > 0 && (
+      {selected && selected.type !== 'local' && <StackInfrastructure stack={selected} />}
+      {!activeStack && remoteStacks.length > 0 && (
         <Typography variant="body2" sx={{ color: 'text.secondary' }}>
           Remote infrastructure:{' '}
           {remoteStacks.map((s, i) => (
@@ -478,7 +480,8 @@ export default function ContainersPage() {
           ))}
         </Typography>
       )}
-      {/* Summary Cards */}
+      {!readLocal && (!activeStack || selected?.type === 'local') && <Alert severity="info">Your account cannot read this controller&apos;s container inventory.</Alert>}
+      {readLocal && <>
       <Grid container spacing={{ xs: 1.5, sm: 3 }}>
         <Grid size={{ xs: 6, md: 3 }}>
           <StatCard
@@ -526,7 +529,7 @@ export default function ContainersPage() {
         total={containers.length}
         loading={loading}
         loadError={error ?? null}
-        emptyMessage="No local containers in this scope. Remote infrastructure is shown on its stack page."
+        emptyMessage="No local containers in this scope."
         rowKey={(container) => container.name}
         page={page}
         pageSize={pageSize}
@@ -544,6 +547,7 @@ export default function ContainersPage() {
         logs={logModalLines}
         onClose={() => setLogModalOpen(false)}
       />
+      </>}
     </Stack>
   );
 }

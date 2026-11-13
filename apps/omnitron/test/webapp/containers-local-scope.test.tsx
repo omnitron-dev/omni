@@ -6,6 +6,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import '@testing-library/jest-dom/vitest';
 import type { ContainerState, IStackInfo } from '../../src/shared/dto/services.js';
+import { stackFixture } from '../helpers/stack-fixture.js';
 
 const rpc = vi.hoisted(() => ({ list: vi.fn(), stacks: vi.fn(), start: vi.fn(), stop: vi.fn(), readStacks: true }));
 vi.mock('src/netron/client', () => ({
@@ -44,8 +45,8 @@ it('loads unknown stack locations on direct entry and shares the existing reader
   expect(screen.getByText('Local node')).toBeInTheDocument();
   expect(screen.getByText('Local total')).toBeInTheDocument();
   expect(screen.getByText(/Loading stack locations/)).toBeInTheDocument();
-  expect(screen.getByText('Control plane')).toBeInTheDocument();
-  expect(screen.getByText('Unassigned')).toBeInTheDocument();
+  expect(screen.queryByText('Control plane')).not.toBeInTheDocument();
+  expect(screen.queryByText('Unassigned')).not.toBeInTheDocument();
   const sameRequest = useProjectStore.getState().fetchStacks('sample');
   expect(rpc.stacks).toHaveBeenCalledTimes(1);
   await act(async () => { finish([remote]); await sameRequest; });
@@ -53,6 +54,35 @@ it('loads unknown stack locations on direct entry and shares the existing reader
   expect(screen.queryByText(/Loading stack locations/)).not.toBeInTheDocument();
   const row = within(screen.getByText('project-db').closest('tr')!);
   expect(row.getByText('Not reported')).toBeInTheDocument();
+});
+
+it('keeps unlabeled infrastructure in the controller workspace', async () => {
+  useProjectStore.setState({ activeProject: null, activeStack: null });
+  render(view());
+  const protectedRow = within((await screen.findByText('controller-db')).closest('tr')!);
+  expect(protectedRow.getByLabelText('Read only. Owned by the control plane.')).toHaveTextContent('Read only');
+  expect(protectedRow.getByRole('button', { name: 'Logs for controller-db' })).toBeInTheDocument();
+  expect(protectedRow.queryByRole('button', { name: 'Remove container controller-db' })).not.toBeInTheDocument();
+  expect(screen.getByText('unassigned-db')).toBeInTheDocument();
+  expect(screen.getByText('project-db')).toBeInTheDocument();
+  expect(rpc.stacks).not.toHaveBeenCalled();
+});
+
+it('uses the public stack registration and discards an open removal when the stack changes', async () => {
+  useProjectStore.setState({
+    activeStack: 'research', stacksByProject: { sample: [stackFixture('research'), remote] },
+    projects: [{ name: 'sample', displayName: 'Sample', path: '/sample', registeredAt: '', enabledStacks: [], runningStacks: 2, totalStacks: 2,
+      configurations: [{ name: 'research', path: '/sample/research', runtimeProject: 'sample-research', stacks: { local: 'research' } }] }],
+  });
+  rpc.list.mockResolvedValue([...containers, { ...containers[0]!, name: 'inherited-postgres', project: 'sample-research', stack: 'local' }]);
+  render(view());
+  fireEvent.click(await screen.findByRole('button', { name: 'Remove container inherited-postgres' }));
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
+  expect(screen.queryByText('project-db')).not.toBeInTheDocument();
+  await act(async () => { useProjectStore.getState().selectStack('test'); });
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Remove container inherited-postgres' })).not.toBeInTheDocument();
+  expect(screen.queryByText('controller-db')).not.toBeInTheDocument();
 });
 
 it('reports a location read failure and retries through the same store', async () => {
@@ -64,6 +94,13 @@ it('reports a location read failure and retries through the same store', async (
   fireEvent.click(screen.getByRole('button', { name: 'Retry stack locations' }));
   expect(await screen.findByRole('link', { name: 'test' })).toBeInTheDocument();
   expect(rpc.stacks).toHaveBeenCalledTimes(2);
+});
+
+it('reports an invalid runtime answer as unavailable instead of an empty inventory', async () => {
+  rpc.list.mockResolvedValue({ containers: null });
+  render(view());
+  expect(await screen.findByText(/invalid container inventory/)).toBeInTheDocument();
+  expect(screen.getAllByText('—')).toHaveLength(4);
 });
 
 it('does not read stack inventory without permission', async () => {

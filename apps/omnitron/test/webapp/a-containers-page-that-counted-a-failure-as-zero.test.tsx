@@ -16,6 +16,10 @@ import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { MemoryRouter } from 'react-router-dom';
 import '@testing-library/jest-dom/vitest';
 
+vi.mock('src/auth/access', () => ({
+  useAccess: () => ({ can: () => true }), Can: ({ children }: { children: import('react').ReactNode }) => children,
+}));
+
 vi.mock('src/netron/client', () => ({
   infra: {
     listContainers: vi.fn(async () => {

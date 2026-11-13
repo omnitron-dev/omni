@@ -18,6 +18,7 @@ import '@testing-library/jest-dom/vitest';
 import type { IStackInfo } from '../../src/shared/dto/services.js';
 
 import { useProjectStore } from '../../webapp/src/stores/project.store.js';
+import { infra } from 'src/netron/client';
 
 vi.mock('src/auth/access', () => ({ useAccess: () => ({ can: () => true }), Can: ({ children }: { children: import('react').ReactNode }) => children }));
 
@@ -39,12 +40,14 @@ beforeEach(() => {
   useProjectStore.setState({
     activeProject: 'sample',
     activeStack: 'test',
-    stacksByProject: { sample: [stack('dev', 'local'), stack('test', 'remote')] },
+    stacksByProject: { sample: [stack('dev', 'local'), { ...stack('test', 'remote'), infrastructure: {
+      ready: true, services: { postgres: { status: 'running', containerName: 'test-postgres', port: 5432 } },
+    } }] },
   });
 });
 
 describe('a containers page that hid a stack', () => {
-  it('says the list is this machine’s, and where the remote stack’s containers are', async () => {
+  it('reads the remote stack inventory without querying the local Docker engine', async () => {
     const { default: ContainersPage } = await import('../../webapp/src/pages/containers.js');
     render(
       <ThemeProvider theme={createTheme()}>
@@ -54,8 +57,9 @@ describe('a containers page that hid a stack', () => {
       </ThemeProvider>,
     );
 
-    expect(await screen.findByText(/This controller's Docker engine/)).toBeInTheDocument();
-    expect(screen.getByText('Remote infrastructure:')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'test' })).toHaveAttribute('href', '/stacks/test');
+    expect(await screen.findByText(/test-postgres · 5432/)).toBeInTheDocument();
+    expect(screen.queryByText('Local total')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Stop container test-postgres' })).not.toBeInTheDocument();
+    expect(infra.listContainers).not.toHaveBeenCalled();
   });
 });

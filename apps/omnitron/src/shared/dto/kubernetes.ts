@@ -31,7 +31,7 @@ export interface K8sService {
   namespace: string;
   type: string;
   clusterIP: string;
-  ports: Array<{ port: number; targetPort: number; protocol: string }>;
+  ports: Array<{ port: number; targetPort: number | string; protocol: string }>;
 }
 
 export interface PortForwardHandle {
@@ -39,5 +39,5 @@ export interface PortForwardHandle {
   remotePort: number;
   pod: string;
   namespace: string;
-  close: () => void;
+  close: () => Promise<void>;
 }

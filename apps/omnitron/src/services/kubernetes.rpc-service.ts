@@ -6,7 +6,8 @@
 
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { ADMIN_ROLES } from '../shared/roles.js';
-import type { KubernetesService, K8sPod, K8sDeployment, K8sService } from './kubernetes.service.js';
+import type { KubernetesService } from './kubernetes.service.js';
+import type { K8sPod, K8sDeployment, K8sService } from '../shared/dto/kubernetes.js';
 
 import type { IOmnitronKubernetesService } from '../shared/dto/services.js';
 

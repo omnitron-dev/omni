@@ -1,168 +1,105 @@
-/**
- * KubernetesService — Kubernetes cluster management via @xec-sh/core KubernetesAdapter
- *
- * Wraps @xec-sh/core KubernetesAdapter for managing K8s workloads:
- * - Pod lifecycle management (list, get, delete, logs, exec)
- * - Deployment management (list, scale, restart)
- * - Service/Ingress introspection
- * - Port forwarding
- *
- * Uses dynamic import for @xec-sh/core. Falls back to kubectl subprocess
- * when the adapter is not installed.
- */
-
+import { KubernetesAdapter } from '@xec-sh/core';
 import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
 import { LOGGER_SERVICE_TOKEN, type ILoggerModule, type ILogger } from '@omnitron-dev/titan/module/logger';
+import type { K8sPod, K8sDeployment, K8sService, PortForwardHandle } from '../shared/dto/kubernetes.js';
 
-// =============================================================================
-// Types
-// =============================================================================
+interface ResourceMetadata {
+  name: string;
+  namespace: string;
+  creationTimestamp: string;
+  labels?: Record<string, string>;
+}
 
-export type {
-  K8sPod,
-  K8sDeployment,
-  K8sService,
-  PortForwardHandle,
-} from '../shared/dto/kubernetes.js';
+interface PodResource {
+  metadata: ResourceMetadata;
+  spec?: { nodeName?: string };
+  status?: { phase?: string; containerStatuses?: Array<{ ready: boolean; restartCount: number }> };
+}
 
+interface DeploymentResource {
+  metadata: ResourceMetadata;
+  spec?: { replicas?: number };
+  status?: { availableReplicas?: number; readyReplicas?: number };
+}
 
-// =============================================================================
-// @xec-sh/core KubernetesAdapter — loaded dynamically
-// =============================================================================
+interface ServiceResource {
+  metadata: ResourceMetadata;
+  spec?: {
+    type?: string;
+    clusterIP?: string;
+    ports?: Array<{ port: number; targetPort?: number | string; protocol?: string }>;
+  };
+}
 
-import { loadXecCore } from '../shared/xec-loader.js';
-import type {
-  K8sPod,
-  K8sDeployment,
-  K8sService,
-  PortForwardHandle,
-} from '../shared/dto/kubernetes.js';
-
-// =============================================================================
-// kubectl fallback — subprocess-based K8s interaction
-// =============================================================================
-
-async function kubectl(args: string[]): Promise<string> {
-  const { execFile } = await import('node:child_process');
-  const { promisify } = await import('node:util');
-  const execFileAsync = promisify(execFile);
-
-  try {
-    const { stdout } = await execFileAsync('kubectl', args, {
-      timeout: 30_000,
-      maxBuffer: 10 * 1024 * 1024,
-    });
-    return stdout;
-  } catch (err: any) {
-    throw new Error(`kubectl ${args.join(' ')} failed: ${err.stderr ?? err.message}`, { cause: err });
+function resourceName(value: string, field: string, limit = 253): void {
+  if (typeof value !== 'string' || value.length > limit ||
+      !/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(value) ||
+      (field === 'namespace' && value.includes('.'))) {
+    throw new Error('Invalid Kubernetes ' + field);
   }
 }
 
-async function kubectlJson<T>(args: string[]): Promise<T> {
-  const output = await kubectl([...args, '-o', 'json']);
-  return JSON.parse(output) as T;
+function namespaceArgs(namespace?: string): string[] {
+  if (namespace === undefined) return ['--all-namespaces'];
+  resourceName(namespace, 'namespace', 63);
+  return ['--namespace', namespace];
 }
 
 function computeAge(creationTimestamp: string): string {
-  const diff = Date.now() - new Date(creationTimestamp).getTime();
+  const diff = Math.max(0, Date.now() - new Date(creationTimestamp).getTime());
+  if (!Number.isFinite(diff)) return '';
   const days = Math.floor(diff / 86_400_000);
-  const hours = Math.floor((diff % 86_400_000) / 3_600_000);
-  const mins = Math.floor((diff % 3_600_000) / 60_000);
-  if (days > 0) return `${days}d`;
-  if (hours > 0) return `${hours}h`;
-  return `${mins}m`;
+  const hours = Math.floor(diff / 3_600_000);
+  if (days > 0) return days + 'd';
+  if (hours > 0) return hours + 'h';
+  return Math.floor(diff / 60_000) + 'm';
 }
 
-// =============================================================================
-// Service
-// =============================================================================
-
+/** Kubernetes projections for Console; Xec owns every command and forwarding session. */
 @Injectable()
 export class KubernetesService {
-  private adapter: any | null = null;
+  private readonly adapter = new KubernetesAdapter({ kubectlTimeout: 30_000 });
   private readonly logger: ILogger;
 
-  // T-2 — @Injectable + @Inject closes the order-swap drift the
-  // framework arity guard can't catch. The DI container reads
-  // metadata directly from the decorator; no parallel inject:[]
-  // array can drift out of sync with constructor positions.
   constructor(@Inject(LOGGER_SERVICE_TOKEN) loggerModule: ILoggerModule) {
     this.logger = loggerModule.logger;
   }
 
-  private async getAdapter(): Promise<any | null> {
-    if (this.adapter) return this.adapter;
-    const xec = await loadXecCore();
-    if (xec?.KubernetesAdapter) {
-      this.adapter = new xec.KubernetesAdapter();
-      return this.adapter;
-    }
-    return null;
-  }
-
-  // ===========================================================================
-  // Pod management
-  // ===========================================================================
-
   async listPods(namespace?: string, labelSelector?: string): Promise<K8sPod[]> {
-    const adapter = await this.getAdapter();
-    if (adapter?.listPods) {
-      try {
-        const pods = await adapter.listPods({ namespace, labelSelector });
-        return pods.map((p: any) => this.mapPod(p));
-      } catch (err) {
-        this.logger.warn({ error: (err as Error).message }, 'KubernetesAdapter.listPods failed — falling back to kubectl');
-      }
+    const args = ['get', 'pods', ...namespaceArgs(namespace)];
+    if (labelSelector !== undefined) {
+      if (typeof labelSelector !== 'string' || labelSelector.includes('\0')) throw new Error('Invalid Kubernetes label selector');
+      args.push('--selector', labelSelector);
     }
-
-    // kubectl fallback
-    const args = ['get', 'pods'];
-    if (namespace) args.push('-n', namespace);
-    else args.push('--all-namespaces');
-    if (labelSelector) args.push('-l', labelSelector);
-
-    const result = await kubectlJson<any>(args);
-    const items: any[] = result.items ?? [];
-    return items.map((item) => this.mapKubectlPod(item));
+    const result = await this.json<{ items: PodResource[] }>(args);
+    return result.items.map(item => this.mapPod(item));
   }
 
   async getPod(name: string, namespace = 'default'): Promise<K8sPod | null> {
-    try {
-      const result = await kubectlJson<any>(['get', 'pod', name, '-n', namespace]);
-      return this.mapKubectlPod(result);
-    } catch {
-      return null;
-    }
+    resourceName(name, 'pod');
+    const output = await this.run(['get', 'pod', name, ...namespaceArgs(namespace), '--ignore-not-found', '-o', 'json']);
+    return output.trim() ? this.mapPod(JSON.parse(output) as PodResource) : null;
   }
 
   async deletePod(name: string, namespace = 'default'): Promise<void> {
-    await kubectl(['delete', 'pod', name, '-n', namespace, '--grace-period=30']);
+    resourceName(name, 'pod');
+    await this.run(['delete', 'pod', name, ...namespaceArgs(namespace), '--grace-period=30']);
     this.logger.info({ pod: name, namespace }, 'Pod deleted');
   }
 
-  async getPodLogs(
-    name: string,
-    namespace = 'default',
-    options?: { tail?: number; follow?: boolean }
-  ): Promise<string> {
-    const args = ['logs', name, '-n', namespace];
-    if (options?.tail) args.push('--tail', String(options.tail));
-    // Note: follow mode not supported in subprocess mode — would need streaming
-    return kubectl(args);
+  async getPodLogs(name: string, namespace = 'default', options?: { tail?: number }): Promise<string> {
+    resourceName(name, 'pod');
+    const args = ['logs', name, ...namespaceArgs(namespace)];
+    if (options?.tail !== undefined) {
+      if (!Number.isSafeInteger(options.tail) || options.tail < -1) throw new Error('Log tail must be -1 or a nonnegative integer');
+      args.push('--tail', String(options.tail));
+    }
+    return this.run(args);
   }
 
-  // ===========================================================================
-  // Deployment management
-  // ===========================================================================
-
   async listDeployments(namespace?: string): Promise<K8sDeployment[]> {
-    const args = ['get', 'deployments'];
-    if (namespace) args.push('-n', namespace);
-    else args.push('--all-namespaces');
-
-    const result = await kubectlJson<any>(args);
-    const items: any[] = result.items ?? [];
-    return items.map((item) => ({
+    const result = await this.json<{ items: DeploymentResource[] }>(['get', 'deployments', ...namespaceArgs(namespace)]);
+    return result.items.map(item => ({
       name: item.metadata.name,
       namespace: item.metadata.namespace,
       replicas: item.spec?.replicas ?? 0,
@@ -173,129 +110,81 @@ export class KubernetesService {
   }
 
   async scaleDeployment(name: string, replicas: number, namespace = 'default'): Promise<void> {
-    await kubectl(['scale', 'deployment', name, `--replicas=${replicas}`, '-n', namespace]);
+    resourceName(name, 'deployment');
+    if (!Number.isSafeInteger(replicas) || replicas < 0 || replicas > 2_147_483_647) throw new Error('Replicas must be a nonnegative int32');
+    await this.run(['scale', 'deployment', name, '--replicas=' + replicas, ...namespaceArgs(namespace)]);
     this.logger.info({ deployment: name, replicas, namespace }, 'Deployment scaled');
   }
 
   async restartDeployment(name: string, namespace = 'default'): Promise<void> {
-    await kubectl(['rollout', 'restart', 'deployment', name, '-n', namespace]);
+    resourceName(name, 'deployment');
+    await this.run(['rollout', 'restart', 'deployment', name, ...namespaceArgs(namespace)]);
     this.logger.info({ deployment: name, namespace }, 'Deployment restarted');
   }
 
-  // ===========================================================================
-  // Service info
-  // ===========================================================================
-
   async listServices(namespace?: string): Promise<K8sService[]> {
-    const args = ['get', 'services'];
-    if (namespace) args.push('-n', namespace);
-    else args.push('--all-namespaces');
-
-    const result = await kubectlJson<any>(args);
-    const items: any[] = result.items ?? [];
-    return items.map((item) => ({
+    const result = await this.json<{ items: ServiceResource[] }>(['get', 'services', ...namespaceArgs(namespace)]);
+    return result.items.map(item => ({
       name: item.metadata.name,
       namespace: item.metadata.namespace,
       type: item.spec?.type ?? 'ClusterIP',
       clusterIP: item.spec?.clusterIP ?? '',
-      ports: (item.spec?.ports ?? []).map((p: any) => ({
-        port: p.port,
-        targetPort: typeof p.targetPort === 'number' ? p.targetPort : p.port,
-        protocol: p.protocol ?? 'TCP',
+      ports: (item.spec?.ports ?? []).map(port => ({
+        port: port.port,
+        targetPort: port.targetPort ?? port.port,
+        protocol: port.protocol ?? 'TCP',
       })),
     }));
   }
 
-  // ===========================================================================
-  // Port forwarding
-  // ===========================================================================
-
-  async portForward(
-    pod: string,
-    localPort: number,
-    remotePort: number,
-    namespace = 'default'
-  ): Promise<PortForwardHandle> {
-    const { spawn } = await import('node:child_process');
-    const child = spawn('kubectl', ['port-forward', pod, `${localPort}:${remotePort}`, '-n', namespace], {
-      stdio: 'pipe',
-    });
-
-    // Wait for port-forward to be established
-    await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Port-forward timed out')), 10_000);
-      child.stderr?.on('data', (data: Buffer) => {
-        const msg = data.toString();
-        if (msg.includes('Forwarding from')) {
-          clearTimeout(timeout);
-          resolve();
-        }
-      });
-      child.on('error', (err) => {
-        clearTimeout(timeout);
-        reject(err);
-      });
-      child.on('exit', (code) => {
-        if (code !== 0) {
-          clearTimeout(timeout);
-          reject(new Error(`kubectl port-forward exited with code ${code}`));
-        }
-      });
-    });
-
-    this.logger.info({ pod, localPort, remotePort, namespace }, 'Port-forward established');
-
+  async portForward(pod: string, localPort: number, remotePort: number, namespace = 'default'): Promise<PortForwardHandle> {
+    resourceName(pod, 'pod');
+    namespaceArgs(namespace);
+    if (!Number.isSafeInteger(localPort) || localPort < 0 || localPort > 65535 ||
+        !Number.isSafeInteger(remotePort) || remotePort < 1 || remotePort > 65535) throw new Error('Invalid forwarding ports');
+    const forward = await this.adapter.portForward(pod, localPort, remotePort, { namespace, dynamicLocalPort: localPort === 0 });
+    await forward.open();
+    this.logger.info({ pod, localPort: forward.localPort, remotePort, namespace }, 'Port-forward established');
     return {
-      localPort,
-      remotePort,
-      pod,
-      namespace,
-      close: () => {
-        child.kill('SIGTERM');
-        this.logger.info({ pod, localPort }, 'Port-forward closed');
+      localPort: forward.localPort, remotePort, pod, namespace,
+      close: async () => {
+        await forward.close();
+        this.logger.info({ pod, localPort: forward.localPort }, 'Port-forward closed');
       },
     };
   }
 
-  // ===========================================================================
-  // Exec into pod
-  // ===========================================================================
-
   async exec(pod: string, command: string[], namespace = 'default'): Promise<string> {
-    return kubectl(['exec', pod, '-n', namespace, '--', ...command]);
+    resourceName(pod, 'pod');
+    if (!Array.isArray(command) || !command.length || command.some(arg => typeof arg !== 'string' || arg.includes('\0')) || !command[0])
+      throw new Error('A pod command requires a nonempty executable and literal arguments');
+    return this.run(['exec', pod, ...namespaceArgs(namespace), '--', ...command]);
   }
 
-  // ===========================================================================
-  // Helpers
-  // ===========================================================================
-
-  private mapPod(p: any): K8sPod {
-    return {
-      name: p.name ?? p.metadata?.name ?? '',
-      namespace: p.namespace ?? p.metadata?.namespace ?? 'default',
-      status: p.status ?? 'Unknown',
-      ready: p.ready ?? false,
-      restarts: p.restarts ?? 0,
-      age: p.age ?? '',
-      node: p.node ?? '',
-      labels: p.labels ?? p.metadata?.labels ?? {},
-    };
+  async dispose(): Promise<void> {
+    await this.adapter.dispose();
   }
 
-  private mapKubectlPod(item: any): K8sPod {
+  private async run(args: string[]): Promise<string> {
+    const result = await this.adapter.executeKubectl(args, { timeout: 30_000, throwOnNonZeroExit: true });
+    return result.stdout;
+  }
+
+  private async json<T>(args: string[]): Promise<T> {
+    return JSON.parse(await this.run([...args, '-o', 'json'])) as T;
+  }
+
+  private mapPod(item: PodResource): K8sPod {
     const containers = item.status?.containerStatuses ?? [];
-    const totalRestarts = containers.reduce((sum: number, c: any) => sum + (c.restartCount ?? 0), 0);
-    const allReady = containers.length > 0 && containers.every((c: any) => c.ready);
-
     return {
       name: item.metadata.name,
       namespace: item.metadata.namespace,
       status: item.status?.phase ?? 'Unknown',
-      ready: allReady,
-      restarts: totalRestarts,
+      ready: containers.length > 0 && containers.every(container => container.ready),
+      restarts: containers.reduce((sum, container) => sum + (container.restartCount ?? 0), 0),
       age: computeAge(item.metadata.creationTimestamp),
       node: item.spec?.nodeName ?? '',
-      labels: item.metadata?.labels ?? {},
+      labels: item.metadata.labels ?? {},
     };
   }
 }

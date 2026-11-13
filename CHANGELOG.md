@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Static compilation releases development WebSocket and file-watcher resources.
 - Console retains observed application health and verified launch receipts in local stack reviews.
 - Local update admission completes before shutdown intent is recorded, so a refused check preserves the serving installation and its recovery state.
+- Kubernetes operations share Xec's command and forwarding lifecycle, preserve named service ports and zero-valued options, and report authorization or connection failures when reading a pod.
 
 
 ## [0.3.1] - 2026-10-26

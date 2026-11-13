@@ -138,7 +138,7 @@ export async function withProjectBuild<T>(
       // native. Transforming the Vite compiler itself corrupts browser code it
       // generates from functions containing import.meta.
       resolve: { builtins: [...builtinModules, /^node:/, ...nativeModules] },
-      server: { middlewareMode: true, hmr: false, watch: null },
+      server: { middlewareMode: true, hmr: false, ws: false, watch: null },
       optimizeDeps: { noDiscovery: true, include: [] },
       ssr: { external: true, optimizeDeps: { noDiscovery: true, include: [] } },
     });

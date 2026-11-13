@@ -6,16 +6,17 @@ import { createRequire } from 'node:module';
 import { setTimeout as delay } from 'node:timers/promises';
 import { expect, it, vi } from 'vitest';
 
-const rpc = vi.hoisted(() => ({ projects: vi.fn(), stack: vi.fn(), status: vi.fn(), watch: vi.fn(),
+const rpc = vi.hoisted(() => ({ projects: vi.fn(), stacks: vi.fn(), stack: vi.fn(), status: vi.fn(), watch: vi.fn(), review: vi.fn(), start: vi.fn(),
   automatic: vi.fn(), manual: vi.fn(), disconnect: vi.fn() }));
 vi.mock('@omnitron-dev/omnitron/operations', async () => ({
   assertExecutionCapabilities: (await import('../../src/daemon/execution-capabilities.js')).assertExecutionCapabilities,
   LONG_REQUEST_TIMEOUT: 1000,
-  createDaemonClient: () => ({ service: async () => ({ listProjects: rpc.projects, getStack: rpc.stack }),
+  createDaemonClient: () => ({ service: async () => ({ listProjects: rpc.projects, listStacks: rpc.stacks,
+    getStack: rpc.stack, reviewStackStart: rpc.review, startStack: rpc.start }),
     status: rpc.status, getWatchStatus: rpc.watch, restartAfterChange: rpc.automatic,
     restartApp: rpc.manual, disconnect: rpc.disconnect }),
 }));
-const { inspectSdk, watchSdk } = await import('../../bin/sdk.js');
+const { inspectSdk, sdkCommand, watchSdk } = await import('../../bin/sdk.js');
 const require = createRequire(import.meta.url);
 
 interface Application {
@@ -105,6 +106,110 @@ async function fixture() {
   return { app, add, binding, observations, run, source, consumer, pkg, checkpoint, profile,
     close: async () => { errors.mockRestore(); messages.mockRestore(); await fs.rm(root, { recursive: true, force: true }); } };
 }
+
+async function coldFixture() {
+  const f = await fixture();
+  const apps = [f.app, f.add('dev', 'worker')];
+  const digest = 'a'.repeat(64);
+  const target = { project: 'project', stack: 'dev', workingTree: true, infrastructure: 'preserve' };
+  const stop = { id: randomUUID(), phase: 'stopped', intentCommitted: true, supersededAt: undefined as string | undefined };
+  const state = { name: 'dev', type: 'local', status: 'running', config: { watch: true },
+    runtimeScope: { project: 'project', stack: 'dev' }, infrastructureMode: 'preserve', stopOperation: stop, apps };
+  const observe = () => structuredClone(state);
+  rpc.stack.mockImplementation(async () => observe());
+  rpc.stacks.mockImplementation(async () => [observe()]);
+  rpc.review.mockResolvedValue({ ...target, protocol: 1, selection: { workingTree: true }, digest });
+  const start = () => {
+    for (const app of apps) { app.status = 'online'; app.generation = randomUUID(); }
+    state.status = 'running'; stop.supersededAt = new Date().toISOString();
+    return observe();
+  };
+  rpc.start.mockImplementation(async () => start());
+  const halt = () => {
+    for (const app of apps) app.status = 'stopped';
+    state.status = 'stopped'; stop.id = randomUUID(); stop.supersededAt = undefined;
+  };
+  halt();
+  await sdkCommand(['init', '--project-dir', f.consumer]);
+  const command = () => sdkCommand(['dev', f.source, '--project-dir', f.consumer, '--stack', 'dev',
+    '--start-stopped', '--review', digest, '--no-watch']);
+  return { ...f, apps, state, stop, target, digest, start, halt, command };
+}
+
+it('starts a stopped working tree once, records the acknowledged generations and resumes watching without another refresh', async () => {
+  const f = await coldFixture();
+  try {
+    await f.command();
+    expect(rpc.review).toHaveBeenCalledWith(f.target);
+    expect(rpc.start).toHaveBeenCalledExactlyOnceWith({ ...f.target, review: f.digest });
+    expect(rpc.automatic).not.toHaveBeenCalled();
+    const before = await fs.readFile(f.checkpoint, 'utf8');
+    expect((await inspectSdk(f.consumer, 'dev')).refresh?.confirmed).toEqual(f.apps.map(app => app.handleKey));
+    expect(await fs.readFile(f.checkpoint, 'utf8')).toBe(before);
+    expect((await f.run('dev')).errors).toEqual([]);
+    expect(rpc.automatic).not.toHaveBeenCalled();
+    await expect(f.command()).rejects.toThrow('fully stopped');
+    f.halt(); f.app.status = 'online';
+    await expect(f.command()).rejects.toThrow('fully stopped');
+    expect(rpc.start).toHaveBeenCalledTimes(1);
+    f.halt(); await f.command();
+    expect(rpc.start).toHaveBeenCalledTimes(2);
+    expect(rpc.automatic).not.toHaveBeenCalled();
+  } finally { await f.close(); }
+}, 120_000);
+
+it.each(['stale-review', 'late-review', 'lost-reply', 'lost-online-reply', 'changed-output', 'old-generation',
+  'changed-generation', 'changed-binding', 'changed-graph'] as const)(
+  'refuses SDK application receipts after %s and never restarts to manufacture evidence', async fault => {
+    const f = await coldFixture();
+    try {
+      if (fault === 'stale-review' || fault === 'late-review') {
+        const review = { ...f.target, protocol: 1, selection: { workingTree: true }, digest: f.digest };
+        rpc.review.mockResolvedValue({ ...review, digest: 'b'.repeat(64) });
+        if (fault === 'late-review') rpc.review.mockResolvedValueOnce(review);
+      }
+      else rpc.start.mockImplementationOnce(async () => {
+        const prior = f.app.generation;
+        if (fault === 'lost-reply') throw Error('RPC reply lost');
+        const result = f.start();
+        if (fault === 'lost-online-reply') throw Error('acknowledgement lost');
+        if (fault === 'changed-output') await fs.writeFile(path.join(f.pkg, 'dist/index.js'), 'export default 2;');
+        if (fault === 'changed-graph') {
+          const file = path.join(f.consumer, 'package.json');
+          const manifest = JSON.parse(await fs.readFile(file, 'utf8'));
+          await fs.writeFile(file, JSON.stringify({ ...manifest, description: 'changed after start' }));
+        }
+        if (fault === 'old-generation') result.apps[0]!.generation = prior;
+        if (fault === 'changed-generation') f.app.generation = randomUUID();
+        if (fault === 'changed-binding') {
+          const readWatch = rpc.watch.getMockImplementation()!;
+          let calls = 0;
+          rpc.watch.mockImplementation(async () => {
+            if (++calls === 5) f.app.definitionRevision++;
+            return readWatch();
+          });
+        }
+        return result;
+      });
+      const reason = {
+        'stale-review': /reviewed working-tree launch.*changed/, 'late-review': /reviewed working-tree launch.*changed/,
+        'lost-reply': /Current stack: stopped.*RPC reply lost/, 'lost-online-reply': /Current stack: running.*acknowledgement lost/,
+        'changed-output': /SDK output changed/, 'old-generation': /generation/, 'changed-generation': /generation/,
+        'changed-binding': /Source binding changed/, 'changed-graph': /package graph changed/,
+      };
+      await expect(f.command()).rejects.toThrow(reason[fault]);
+      expect(rpc.automatic).not.toHaveBeenCalled(); expect(rpc.manual).not.toHaveBeenCalled();
+      if (fault === 'stale-review' || fault === 'late-review') {
+        expect(rpc.start).not.toHaveBeenCalled();
+        if (fault === 'stale-review') expect(await fs.stat(path.join(path.dirname(f.checkpoint), 'active.json')).catch(() => null)).toBeNull();
+      } else {
+        expect(JSON.parse(await fs.readFile(f.checkpoint, 'utf8')).applications['project/dev'] ?? {}).toEqual({});
+        if (fault === 'lost-reply') await expect(f.command()).rejects.toThrow('already had a start request');
+        if (fault === 'lost-online-reply') await expect(f.command()).rejects.toThrow('fully stopped');
+        expect(rpc.start).toHaveBeenCalledTimes(1);
+      }
+    } finally { await f.close(); }
+  }, 120_000);
 
 it('records completed builds without inventing application receipts after a refused refresh', async () => {
   const f = await fixture();

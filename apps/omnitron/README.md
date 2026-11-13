@@ -102,6 +102,15 @@ Every `--no-watch` invocation refreshes the graph once. Without it, the SDK watc
 
 Keep the consumer's `node_modules` directory physical. Standard pnpm `virtualStoreDir` configuration can place the store on another disk; a symlink replacing the entire directory is refused. Initial selection and registry restoration must satisfy the lifecycle and dependency admission checks. SDK selection does not activate a deployed release.
 
+After a confirmed `stack stop --keep-infrastructure`, the SDK can start the local working tree and keep watching it.
+
+```sh
+omnitron stack start acme dev --working-tree --dry-run --infrastructure preserve
+omnitron sdk dev /path/to/omni --project-dir /path/to/acme --stack dev --start-stopped --review "$digest"
+```
+
+Set `digest` to the digest from the first command. The second builds the selected SDK, checks the stopped applications and retained infrastructure, and sends one start request for that stop ID. The first owner generations become the receipts for those SDK outputs. If the reply is lost, the CLI reports the observed stack state and leaves the SDK receipts unconfirmed. On a confirmed start, the watcher handles later source edits. Add `--no-watch` for a single reviewed start.
+
 Run `omnitron sdk status --project-dir /path/to/project --stack dev` to compare current package outputs and owner generations with the receipts from the last build. The command is read-only. Its JSON result identifies each confirmed application, each explicit opt-out, and the inactive and unaffected applications.
 
 ## Pipelines pinned to releases

@@ -13,7 +13,7 @@ import { getWantedPackageManager } from '@pnpm/config.reader';
 import { frameworkPackage } from './pnpmfile-sdk.js';
 
 const help = `omnitron sdk init [--project-dir PATH]
-omnitron sdk dev [SDK_CHECKOUT] [--project-dir PATH] [--stack NAME] [--no-watch]
+omnitron sdk dev [SDK_CHECKOUT] [--project-dir PATH] [--stack NAME [--start-stopped --review DIGEST]] [--no-watch]
 omnitron sdk registry [--project-dir PATH]
 omnitron sdk status [--project-dir PATH] [--stack NAME]
 
@@ -21,6 +21,8 @@ init installs the pnpm bridge without resolving registry dependencies.
 dev selects the local SDK and watches its sources. Start again without a path to
 reuse the selection. --no-watch builds the selected graph once without watching.
 --stack confirms owner refreshes for watched applications in that local source stack.
+--start-stopped binds the owner's first online generations to the SDK during a reviewed
+working-tree start. Obtain the digest with stack start PROJECT STACK --dry-run --infrastructure preserve.
 Applications declaring watch: false are reported separately. Missing required watchers fail.
 status --stack verifies existing build and application receipts without building or restarting.
 registry restores the frozen distribution dependencies. Releases always read Git.`;
@@ -559,11 +561,12 @@ async function declaredWatchOptOuts(root, state, configurations) {
     .map(app => scope.project + '/' + scope.stack + '/' + app.name));
 }
 
-async function refresh(root, stack, checkpoint, packages, save, signal) {
+async function refresh(root, stack, checkpoint, packages, save, signal, launch) {
   const { client, state, project, configurations } = await localStack(root, stack);
   try {
     const report = message => { if (save) console.log(message); };
     const scopeName = project + '/' + stack;
+    if (launch) assertLaunchedStack(state, launch);
     const previous = checkpoint.applications[scopeName];
     const applied = previous && typeof previous === 'object' && !Array.isArray(previous) ? previous : {};
     checkpoint.applications[scopeName] = applied;
@@ -646,6 +649,15 @@ async function refresh(root, stack, checkpoint, packages, save, signal) {
       )
         throw Error(`Stack changed before refreshing ${app.handleKey}; SDK readiness is not confirmed`);
       const receipt = applied[app.handleKey];
+      if (launch) {
+        if (launch.generations.get(app.handleKey) !== info.generation)
+          throw Error('Source watcher generation differs from the start reply for ' + app.handleKey);
+        applied[app.handleKey] = { generation: info.generation, definitionRevision: info.definitionRevision,
+          directory, buildIdentity };
+        confirmedSources.set(app.handleKey, info);
+        confirmed.push(app.handleKey);
+        continue;
+      }
       if (receipt?.generation === info.generation && receipt.definitionRevision === info.definitionRevision &&
           receipt.directory === directory && receipt.buildIdentity === buildIdentity) {
         confirmedSources.set(app.handleKey, info);
@@ -675,6 +687,7 @@ async function refresh(root, stack, checkpoint, packages, save, signal) {
     await requireApplicationRuntime(client, true);
     const finalState = await client.service('OmnitronProject').then(service => service.getStack({ project, stack }));
     const finalWatch = await client.getWatchStatus();
+    if (launch) assertLaunchedStack(finalState, launch);
     if (finalState.selectedRelease || finalState.type !== 'local' || finalState.config.watch === false ||
         membership(finalState.apps) !== admittedMembership || finalWatch.enabled !== watched.enabled)
       throw Error(`Stack changed while confirming ${scopeName}; SDK readiness is not confirmed`);
@@ -733,7 +746,128 @@ async function buildDigest(directory) {
   return hash.digest('hex');
 }
 
-async function checkpointSdkBuild(profile, names, stack, signal, packages) {
+function stoppedLaunch(state, stack) {
+  const stop = state.stopOperation;
+  if (state.name !== stack || state.type !== 'local' || state.selectedRelease || state.config?.managedOrigin ||
+      state.config?.watch === false || state.status !== 'stopped' || !state.apps.length ||
+      !state.apps.every(app => ['stopped', 'offline', 'not-started'].includes(app.status)))
+    throw Error('A reviewed SDK start requires a fully stopped local working-tree stack: ' + stack);
+  if (!stop?.id || stop.phase !== 'stopped' || !stop.intentCommitted || stop.supersededAt)
+    throw Error('Missing a current completed stack stop for ' + stack + '; inspect stack status');
+  const applications = new Map(state.apps.map(app => [app.handleKey, [app.name, app.generation]]));
+  if (applications.size !== state.apps.length || [...applications.keys()].some(name => typeof name !== 'string' || !name) ||
+      !state.runtimeScope?.project || !state.runtimeScope.stack)
+    throw Error('Owner did not identify every application of the stopped stack');
+  return { stack, scope: state.runtimeScope, stop: stop.id, applications };
+}
+
+function assertLaunchedStack(state, launch) {
+  if (state.name !== launch.stack || state.type !== 'local' || state.config?.managedOrigin || state.selectedRelease ||
+      state.config?.watch === false || state.infrastructureMode !== 'preserve' || state.status !== 'running' ||
+      state.notUp?.length || !isDeepStrictEqual(state.runtimeScope, launch.scope) ||
+      state.stopOperation?.id !== launch.stop || !state.stopOperation.supersededAt ||
+      state.apps.length !== launch.applications.size || new Set(state.apps.map(app => app.handleKey)).size !== state.apps.length)
+    throw Error('Owner did not confirm the reviewed working-tree start of ' + launch.stack);
+  for (const app of state.apps) {
+    const stopped = launch.applications.get(app.handleKey);
+    if (!stopped || stopped[0] !== app.name || app.status !== 'online' || typeof app.generation !== 'string' ||
+        !app.generation || app.generation === stopped[1] || (launch.generations && launch.generations.get(app.handleKey) !== app.generation))
+      throw Error('Owner did not confirm the new generation for ' + app.handleKey);
+  }
+}
+
+async function verifyLaunchReview(service, target, digest) {
+  const current = await service.reviewStackStart(target);
+  if (current?.protocol !== 1 || current.project !== target.project || current.stack !== target.stack ||
+      current.infrastructure !== 'preserve' || !isDeepStrictEqual(current.selection, { workingTree: true }) || current.digest !== digest)
+    throw Error('The reviewed working-tree launch or infrastructure changed for ' + target.project + '/' + target.stack + '; inspect stack start --dry-run');
+}
+
+async function reviewedSdkLaunch(root, stack, digest) {
+  const { client, state, project } = await localStack(root, stack);
+  try {
+    const launch = stoppedLaunch(state, stack);
+    const target = { project, stack, workingTree: true, infrastructure: 'preserve' };
+    await verifyLaunchReview(await client.service('OmnitronProject'), target, digest);
+    return { target, launch, digest };
+  } finally {
+    await client.disconnect();
+  }
+}
+
+async function verifySelectedProfile(profile) {
+  const state = statePath(profile.root);
+  if (!isDeepStrictEqual(await profileStatus(profile.root), profile) ||
+      !isDeepStrictEqual(await optionalJson(path.join(state, 'install.json')), profile) ||
+      !isDeepStrictEqual(await desiredProfile(profile.root, profile.source, await distributionLock(profile.root)), profile))
+    throw Error('SDK selection or package graph changed during reviewed start');
+  await verifyLinks(profile.root, profile);
+}
+
+async function startStoppedStack(profile, stack, review, checkpoint, packages, persist, signal) {
+  const { client, state, project } = await localStack(profile.root, stack);
+  const scope = project + '/' + stack;
+  let requested = false;
+  try {
+    const service = await client.service('OmnitronProject');
+    const { target, launch, digest } = review;
+    if (target.project !== project || !isDeepStrictEqual(stoppedLaunch(state, stack), launch))
+      throw Error('The stopped stack changed during SDK preparation for ' + scope);
+    const stateDir = statePath(profile.root);
+    const attemptFile = path.join(stateDir, 'start-attempts.json');
+    const attempts = (await optionalJson(attemptFile)) ?? {};
+    if (attempts[scope] === launch.stop)
+      throw Error('This stop already had a start request. Inspect stack status and existing SDK receipts for ' + scope);
+    await verifySelectedProfile(profile);
+    await verifyOutputs(profile, checkpoint.hashes);
+    await verifyLaunchReview(service, target, digest);
+    if (!isDeepStrictEqual(stoppedLaunch(await service.getStack({ project, stack }), stack), launch))
+      throw Error('The stopped stack changed before starting ' + scope);
+    signal?.throwIfAborted();
+    // One request per durable stop, even after a crashed CLI or lost RPC reply.
+    await atomic(attemptFile, JSON.stringify({ ...attempts, [scope]: launch.stop }) + '\n');
+    requested = true;
+    const started = await service.startStack({ ...target, review: digest });
+    assertLaunchedStack(started, launch);
+    for (const app of started.apps)
+      if (review.priorReceipts?.[app.handleKey]?.generation === app.generation)
+        throw Error('Owner returned the previously recorded generation for ' + app.handleKey);
+    launch.generations = new Map(started.apps.map(app => [app.handleKey, app.generation]));
+    // Collect into memory; an incomplete launch certifies no application.
+    const result = await refresh(profile.root, stack, checkpoint, packages, undefined, signal, launch);
+    await verifySelectedProfile(profile);
+    await persist(async () => {
+      assertLaunchedStack(await service.getStack({ project, stack }), launch);
+      const observed = await client.getWatchStatus();
+      for (const name of result.confirmed) {
+        const receipt = checkpoint.applications[scope][name];
+        if (!observed.enabled || !observed.watching || !observed.apps.some(app => app.name === name &&
+            app.generation === receipt.generation && app.definitionRevision === receipt.definitionRevision))
+          throw Error('Source binding changed before recording ' + name);
+      }
+    });
+    console.log(`Development SDK start confirmed for ${scope}: ${result.confirmed.length} watched applications, ${result.optedOut.length} opted out of owner refresh`);
+  } catch (error) {
+    if (!requested) throw error;
+    let observed;
+    try {
+      const info = await client.service('OmnitronProject').then(service => service.getStack({ project, stack }));
+      observed = info.status + ' (' + info.apps.map(app => app.name + ': ' + app.status).join(', ') + ')';
+    } catch { observed = 'unavailable'; }
+    throw new Error(`Reviewed start was sent once to ${scope}. Current stack: ${observed}. SDK readiness is unconfirmed: ${error.message}`, { cause: error });
+  } finally {
+    await client.disconnect();
+  }
+}
+
+async function verifyOutputs(profile, hashes) {
+  for (const [name, digest] of Object.entries(hashes)) {
+    if (await buildDigest(profile.links[name]) !== digest)
+      throw Error(`SDK output changed while confirming ${name}; application readiness was not recorded. Run sdk dev again`);
+  }
+}
+
+async function checkpointSdkBuild(profile, names, stack, signal, packages, review) {
   const checkpoint = path.join(statePath(profile.root), 'built.json');
   const prior = await optionalJson(checkpoint);
   const hashes = prior?.source === profile.source ? prior.hashes : {};
@@ -747,23 +881,29 @@ async function checkpointSdkBuild(profile, names, stack, signal, packages) {
   const nextCheckpoint = { schema: 2, source: profile.source, hashes: next,
     applications: prior?.schema === 2 && prior.source === profile.source && prior.applications &&
       typeof prior.applications === 'object' && !Array.isArray(prior.applications) ? prior.applications : {} };
+  if (review) {
+    const scope = review.target.project + '/' + stack;
+    review.priorReceipts = nextCheckpoint.applications[scope];
+    delete nextCheckpoint.applications[scope];
+  }
   const sourceState = await prepareState(profile.source);
-  const save = () => exclusively(sourceState, async () => {
-    // Other consumers can build the same SDK while this consumer refreshes.
-    // Recheck under the existing build mutex, without holding it across RPC.
-    for (const [name, digest] of Object.entries(next)) {
-      if (await buildDigest(profile.links[name]) !== digest)
-        throw Error(`SDK output changed while confirming ${name}; application readiness was not recorded. Run sdk dev again`);
-    }
+  const persist = async (confirmLaunch) => {
+    await verifyOutputs(profile, next);
+    if (confirmLaunch) await confirmLaunch();
     signal?.throwIfAborted();
     await atomic(checkpoint, JSON.stringify(nextCheckpoint) + '\n');
-  }, signal);
+  };
+  const save = () => exclusively(sourceState, persist, signal);
   // A completed build is a separate fact from any application's loaded modules.
   // Build-only use and another stack's receipt cannot certify this stack.
   await save();
   if (stack) {
     packages ??= new Map([...(await inventory(profile.source)), ...(await inventory(profile.root))]);
-    await refresh(profile.root, stack, nextCheckpoint, packages, save, signal);
+    if (review) {
+      // A cold launch must consume one stable build, including during daemon RPC.
+      // persist() already runs under this writer lock and never reacquires it.
+      await exclusively(sourceState, () => startStoppedStack(profile, stack, review, nextCheckpoint, packages, persist, signal), signal);
+    } else await refresh(profile.root, stack, nextCheckpoint, packages, save, signal);
   } else {
     console.log(changed.size ? 'Development SDK build ready: ' + [...changed].join(', ') : 'Development SDK build is current');
   }
@@ -892,6 +1032,8 @@ export async function sdkCommand(argv) {
     options: {
       'project-dir': { type: 'string' },
       stack: { type: 'string' },
+      'start-stopped': { type: 'boolean' },
+      review: { type: 'string' },
       'no-watch': { type: 'boolean' },
       json: { type: 'boolean' },
       help: { type: 'boolean', short: 'h' },
@@ -904,6 +1046,9 @@ export async function sdkCommand(argv) {
   }
   if (!['init', 'dev', 'status', 'registry'].includes(action) || positionals.length > (action === 'dev' ? 2 : 1))
     throw Error(help);
+  if ((values['start-stopped'] || values.review !== undefined) &&
+      (action !== 'dev' || !values.stack || !values['start-stopped'] || !/^[a-f0-9]{64}$/.test(values.review ?? '')))
+    throw Error('Use sdk dev --stack NAME --start-stopped --review DIGEST with the exact preservation review');
   const root = await fs.realpath(values['project-dir'] ?? process.cwd()),
     dir = statePath(root);
   const bridge = path.join(root, '.pnpmfile.mjs');
@@ -983,6 +1128,7 @@ export async function sdkCommand(argv) {
     process.once('SIGINT', stop);
     process.once('SIGTERM', stop);
     try {
+      const launch = values['start-stopped'] ? await reviewedSdkLaunch(root, values.stack, values.review) : undefined;
       if (interrupted || JSON.stringify(previous) !== JSON.stringify(desired)) {
         await requireStopped(root, values.stack);
         let registryAvailable = false;
@@ -1000,7 +1146,7 @@ export async function sdkCommand(argv) {
           desired = { ...desired, lockSha256: lockIdentity(prepared) };
           installationStarted = true;
           await installDevelopment(root, desired);
-          await checkpointSdkBuild(desired, Object.keys(desired.links), undefined, controller.signal);
+          if (!launch) await checkpointSdkBuild(desired, Object.keys(desired.links), undefined, controller.signal);
           await atomic(selection, JSON.stringify(desired, null, 2) + '\n');
           if (prepared !== distribution)
             console.log('Accepted pnpm package-manager metadata in the distribution lock; the application dependency graph is unchanged.');
@@ -1023,8 +1169,8 @@ export async function sdkCommand(argv) {
         }
       } else {
         await verifyLinks(root, desired);
-        if (values['no-watch']) {
-          if (values.stack) {
+        if (values['no-watch'] || launch) {
+          if (values.stack && !launch) {
             const { client } = await localStack(root, values.stack);
             await client.disconnect();
           }
@@ -1034,9 +1180,10 @@ export async function sdkCommand(argv) {
           if (!isDeepStrictEqual(await desiredProfile(root, source, distribution), desired))
             throw Error('Consumer or SDK inputs changed while building; run sdk dev again');
           await verifyLinks(root, desired);
-          await checkpointSdkBuild(desired, Object.keys(desired.links), values.stack, controller.signal);
+          if (!launch) await checkpointSdkBuild(desired, Object.keys(desired.links), values.stack, controller.signal);
         }
       }
+      if (launch) await checkpointSdkBuild(desired, Object.keys(desired.links), values.stack, controller.signal, undefined, launch);
       if (!values['no-watch']) await watchSdk(desired, values.stack, controller.signal);
     } finally {
       process.off('SIGINT', stop);

@@ -63,35 +63,53 @@ separate maintenance operations.
 
 ## Local development rollout
 
-From a clean local checkout, inspect the current commit with
-`pnpm exec xec update local-check`. Apply a compatible backend update with
-`pnpm exec xec update local-apply`. Set `--cache-dir` to a private directory on
-the development volume to keep builds there. Xec builds each revision once for
-the host and Node version, verifies the backend and Console stamps and reuses the
-sealed runtime. An explicit `<dist>` selects a previously prepared runtime.
-Neither npm publication nor the release test matrix is part of this local build.
-These two commands replace the backend. An owner change restarts its applications
-and requires a managed-service transition. Deploy static Console assets with the
-Console service operation.
+Finish a reviewed batch on a macOS development machine from its clean main
+checkout. The build uses local Git, frozen pnpm dependencies and the Turbo
+cache. `OMNITRON_DEV_CACHE` selects a private build cache on the development
+volume. Xec reuses the sealed runtime for the same commit, platform and Node
+version. Each batch has one receipt per Omnitron instance.
 
-Record the builds actually
-running in the guardian, backend, owner and Console. Enumerate running and enabled
-stacks from the owner and each logical project's catalogue. Select by local placement, including imported
-configurations, and record each public project/stack and its `runtimeScope`.
-Keep the launch selection for each stack, including working-tree watches and
-retained application releases. Platform and application SDK versions are separate
-observations.
+```sh
+pnpm exec xec update local-sync
+pnpm exec xec update local-sync --review <plan-sha256>
+pnpm exec xec update local-sync --status
+```
 
-For the maintenance window, review the platform transition and rollback with the
-operator. Use a single lifecycle operator for each stack. When an owner transition
-already restarted a stack on the new runtime, accept it there. For the other
-stacks, run `stack stop` with `--keep-infrastructure --dry-run` and its reviewed
-digest. Review `stack start` against the resulting state using
-`--infrastructure preserve --dry-run`, the recorded launch selection and the
-returned digest. A working-tree build between stop and start belongs to that
-same window. Verify the new launch identities, development watches, health,
-application receipts, fresh logs, and the Console stack page before the next
-dependent stack. A failed stage retains its receipts and its prepared rollback.
+Preparation stages the candidate alongside the running installation. The plan
+names both native process owners, the serving Console, physical container IDs,
+logical project and stack names, application generations, source watches and
+verified release pins. Review the affected stacks and rollback identities with
+their operators. A change to the checkout, launch policy or process inventory
+requires reviewing the new digest. Active work, including backups, is reported
+by the controller.
+
+Application replaces the user launchd services through Omnitron. The resident
+owner restores enabled local stacks with their configured launch selections.
+Acceptance checks new generations, release receipts, the served Console
+`BUILD.json` and retained infrastructure. An accepted digest can be checked
+again without restarting a stack. The instance keeps the previous receipt when
+a new reviewed batch begins.
+
+A failed transition attempts to restore the recorded roles and Console from the
+installed artifacts once clean process retirement is established. For an
+interrupted operation, inspect `--status` and recover the exact receipt with
+`pnpm exec xec update local-sync --review <plan-sha256> --rollback`. The
+receipt records the original error and any recovery failure. An unproven
+execution owner requires inspection before a new installation can start.
+
+The automatic path requires independent supervision and retained containers.
+Both the candidate and rollback must use the reviewed native boot policy for
+each stack. An older controller that only reports the mode cannot prove which
+review it will consume. In that case preparation reports the affected stack
+before it stops any processes.
+A stack running with disabled boot intent needs its intent reconciled before
+a cold restart. A database expansion, Docker resource change or shared research
+data transition has its own Omnitron review. Developer SDK mode and an
+application's installed release remain independent of the platform version.
+
+For a backend-only handoff with resident applications running, use
+`pnpm exec xec update local-check` followed by `pnpm exec xec update local-apply`.
+An explicit sealed `<dist>` is supported for this pair.
 
 The infrastructure preflight reports the container and the first mismatch in
 identity, ownership, enforced limits or specification. A saved Docker label

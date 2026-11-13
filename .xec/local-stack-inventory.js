@@ -128,6 +128,8 @@ export function localStackInventory(projectsReply, stackGroups, status) {
         continue;
       }
       targets.push({ project: project.name, stack: stack.name, path: directory, runtimeScope, enabled, status: stack.status,
+        infrastructureMode: stack.infrastructureMode ?? null,
+        infrastructureReview: stack.infrastructureReview ?? null,
         selection: selection(stack, label), apps });
     }
   }

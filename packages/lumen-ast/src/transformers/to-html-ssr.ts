@@ -253,7 +253,10 @@ function renderSingleNodeToHtml(node: LumenNode, context: SsrContext): string {
       const inner = renderNodesToHtml(children, context);
       const syncKey = node.syncKey ? escapeHtml(String(node.syncKey)) : '';
       const syncAttr = syncKey ? ` data-sync-key="${syncKey}"` : '';
-      return `<div class="lumen-tabs"${syncAttr}>${inner}</div>`;
+      const label = node.attributes?.['label'];
+      const labelAttr = typeof label === 'string' && label.trim() ? ` data-label="${escapeHtml(label.trim())}"` : '';
+      // Only the tab strip hydrates. Document panels and their nested islands keep their original DOM.
+      return `<div class="lumen-tabs"${syncAttr}${labelAttr}><div data-widget="LumenDocumentTabs" data-hydrate="load"></div>${inner}</div>`;
     }
 
     case 'tabItem': {
@@ -261,7 +264,7 @@ function renderSingleNodeToHtml(node: LumenNode, context: SsrContext): string {
       const value = node.value ? escapeHtml(String(node.value)) : label;
       const children = (node.children ?? []) as LumenNode[];
       const inner = renderNodesToHtml(children, context);
-      return `<div class="lumen-tab-item" data-label="${label}" data-value="${value}">${inner}</div>`;
+      return `<section class="lumen-tab-item" data-value="${value}" aria-label="${label}"><h3 class="lumen-tab-label">${label}</h3>${inner}</section>`;
     }
 
     case 'diagram': {

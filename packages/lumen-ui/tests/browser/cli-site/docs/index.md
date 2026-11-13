@@ -25,3 +25,23 @@ const document = { title: 'A deliberately long code line for native horizontal s
 | Source | Result |
 | --- | --- |
 | Ordinary Markdown table | Native overflow retains its scrollbar policy |
+
+:::tabs{label="Installation command" syncKey="manager"}
+:::tab{label="pnpm" value="pnpm"}
+First install command.
+:::
+:::tab{label="npm" value="npm"}
+### Install with npm {#npm-installation}
+
+Second install command.
+:::
+:::
+
+:::tabs{label="Preview command" syncKey="manager"}
+:::tab{label="pnpm" value="pnpm"}
+First preview command.
+:::
+:::tab{label="npm" value="npm"}
+Second preview command.
+:::
+:::

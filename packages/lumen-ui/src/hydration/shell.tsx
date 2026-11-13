@@ -4,6 +4,7 @@ import { PrismProvider } from '@omnitron-dev/prism/core';
 import { parseIslandProps, parseHydrationTrigger } from '@omnitron-dev/lumen-ast/islands';
 import { LumenContext, type LumenContextValue, type IslandComponent, type IslandRegistry } from './context.js';
 import { setupTrigger, type HydrationTrigger } from './triggers.js';
+import { DocumentTabs } from './document-tabs.js';
 
 export interface LumenShellProps {
   children?: ReactNode;
@@ -343,7 +344,7 @@ function LumenShellProvider({
   const [dynamicIslands, setDynamicIslands] = useState<IslandRegistry>({});
   const [activeIslands, setActiveIslands] = useState<Set<string>>(() => new Set());
 
-  const mergedIslands = useMemo<IslandRegistry>(() => ({ ...islands, ...dynamicIslands }), [islands, dynamicIslands]);
+  const mergedIslands = useMemo<IslandRegistry>(() => ({ LumenDocumentTabs: DocumentTabs, ...islands, ...dynamicIslands }), [islands, dynamicIslands]);
 
   // Synchronous ref ensures getIsland() immediately reflects registerIsland() within the same tick
   const latestRegistryRef = useRef<IslandRegistry>(mergedIslands);

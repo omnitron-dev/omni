@@ -70,5 +70,9 @@ npm i @omnitron-dev/lumen
     expect(html).toContain('lumen-tabs');
     expect(html).toContain('data-sync-key="package-managers"');
     expect(html).toContain('lumen-tab-item');
+    expect(html).toContain('<h3 class="lumen-tab-label">pnpm</h3>');
+    expect(html).toContain('<section class="lumen-tab-item" data-value="npm" aria-label="npm">');
+    expect(html).toContain('data-widget="LumenDocumentTabs"');
+    expect(html).not.toMatch(/role="tab(list|panel)?"| hidden[ >]/);
   });
 });

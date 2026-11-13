@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import { watch } from 'node:fs';
@@ -7,7 +7,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
-import { isDeepStrictEqual, parseArgs } from 'node:util';
+import { isDeepStrictEqual, parseArgs, promisify } from 'node:util';
 import { parseAllDocuments } from 'yaml';
 import { getWantedPackageManager } from '@pnpm/config.reader';
 import { frameworkPackage } from './pnpmfile-sdk.js';
@@ -100,14 +100,19 @@ async function atomic(file, value) {
   }
 }
 
+const exec = promisify(execFile);
+
+function nodeEnvironment() {
+  // pnpm and its lifecycle scripts must use the Node selected for this CLI.
+  const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === 'path') ?? 'PATH';
+  return { ...process.env, [pathKey]: path.dirname(process.execPath) + path.delimiter + (process.env[pathKey] ?? '') };
+}
+
 function command(program, args, cwd, capture = false, signal) {
   return new Promise((resolve, reject) => {
-    // pnpm and its lifecycle scripts must use the Node selected for this CLI,
-    // including when it was invoked by absolute path under a different shell.
-    const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === 'path') ?? 'PATH';
     const child = spawn(program, args, {
       cwd,
-      env: { ...process.env, [pathKey]: path.dirname(process.execPath) + path.delimiter + (process.env[pathKey] ?? '') },
+      env: nodeEnvironment(),
       shell: false,
       signal,
       stdio: capture ? ['ignore', 'pipe', 'inherit'] : 'inherit',
@@ -429,18 +434,23 @@ async function frozen(root) {
 async function build(source, names, signal) {
   if (!names.length) return;
   const dir = await prepareState(source);
-  await exclusively(
-    dir,
-    () =>
-      command(
-        'pnpm',
-        ['exec', 'turbo', 'run', 'build', ...names.map((n) => '--filter=' + n + '...')],
-        source,
-        false,
-        signal
-      ),
-    signal
-  );
+  await exclusively(dir, async () => {
+    // pnpm's implicit pre-script install only warns on failure. Ask pnpm to
+    // check its installation first, then require a successful frozen repair.
+    try {
+      await exec('pnpm', ['--reporter=ndjson', '--config.verify-deps-before-run=error', 'exec', process.execPath, '--version'],
+        { cwd: source, env: nodeEnvironment(), signal });
+    } catch (error) {
+      if (error.code !== 1 || !error.stderr?.split('\n').some(line => {
+        try {
+          const event = JSON.parse(line);
+          return event.name === 'pnpm' && event.code === 'ERR_PNPM_VERIFY_DEPS_BEFORE_RUN';
+        } catch { return false; }
+      })) throw error;
+      await command('pnpm', ['install', '--frozen-lockfile'], source, false, signal);
+    }
+    await command('pnpm', ['exec', 'turbo', 'run', 'build', ...names.map((n) => '--filter=' + n + '...')], source, false, signal);
+  }, signal);
 }
 
 async function profileStatus(root) {

@@ -12,7 +12,7 @@ import { create } from 'tar';
 import { sdkCommand, inspectSdk } from '../../bin/sdk.js';
 
 const exec = promisify(execFile), require = createRequire(import.meta.url);
-const turbo = path.join(path.dirname(require.resolve('turbo/package.json')), 'bin/turbo');
+const turbo = path.dirname(require.resolve('turbo/package.json'));
 let root: string, consumer: string, source: string;
 let packageManager: string;
 let registry: Server | undefined;
@@ -54,6 +54,8 @@ async function workspace(directory: string) {
 }
 async function sdk(directory: string) {
   await workspace(directory);
+  const rootManifest = path.join(directory, 'package.json');
+  await write(rootManifest, { ...await json(rootManifest), devDependencies: { turbo: 'link:' + turbo } });
   await write(path.join(directory, 'turbo.json'), { tasks: { build: { dependsOn: ['^build'], outputs: ['dist/**'] } } });
   for (const name of ['lumen', 'lumen-ast', 'titan']) {
     const pkg = path.join(directory, 'packages', name);
@@ -70,8 +72,6 @@ async function sdk(directory: string) {
       `import fs from 'node:fs/promises'; await fs.mkdir('dist', {recursive:true}); await fs.writeFile('dist/index.js', ${JSON.stringify(output)});\n`);
   }
   await exec('pnpm', ['install', '--offline', '--ignore-scripts'], { cwd: directory });
-  await fs.mkdir(path.join(directory, 'node_modules/.bin'), { recursive: true });
-  await fs.symlink(turbo, path.join(directory, 'node_modules/.bin/turbo'));
 }
 beforeEach(async () => {
   root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'sdk-bootstrap-')));
@@ -355,6 +355,40 @@ it.each(['configured-store', 'receipt-store', 'symlink-store', 'installed-lock',
     expect(await fs.readFile(path.join(consumer, 'pnpm-lock.yaml'), 'utf8')).toBe(rootLock);
   }, 90_000
 );
+
+it('repairs a version-only SDK source install once and refuses changes outside its frozen lock', async () => {
+  const manifestFile = path.join(source, 'packages/lumen/package.json');
+  const manifest = await json(manifestFile);
+  const lock = path.join(source, 'pnpm-lock.yaml');
+  const originalLock = await fs.readFile(lock, 'utf8');
+  const rootManifest = path.join(source, 'package.json');
+  await write(rootManifest, { ...await json(rootManifest), scripts: {
+    postinstall: 'node -e "require(\'node:fs\').appendFileSync(\'install-count\', \'1\')"',
+  } });
+  await write(manifestFile, { ...manifest, version: '0.3.6' });
+  await expect(exec('pnpm', ['exec', 'node', '--version'], { cwd: source }))
+    .rejects.toMatchObject({ stderr: expect.stringContaining('ERR_PNPM_VERIFY_DEPS_BEFORE_RUN') });
+  await initialize();
+  await select(source);
+  expect(await fs.readFile(path.join(source, 'install-count'), 'utf8')).toBe('1');
+  await select();
+  expect(await fs.readFile(path.join(source, 'install-count'), 'utf8')).toBe('1');
+  expect(await fs.readFile(lock, 'utf8')).toBe(originalLock);
+
+  const checkpoint = path.join(consumer, '.omnitron/dev-sdk/built.json');
+  const built = await fs.readFile(checkpoint, 'utf8');
+  await write(manifestFile, { ...manifest, version: '0.3.6', dependencies: {
+    ...manifest.dependencies, '@fixture/unlocked': 'link:../unlocked',
+  } });
+  await expect(select()).rejects.toThrow('pnpm install exited with 1');
+  expect(await fs.readFile(lock, 'utf8')).toBe(originalLock);
+  expect(await fs.readFile(checkpoint, 'utf8')).toBe(built);
+  expect(await fs.readFile(path.join(source, 'install-count'), 'utf8')).toBe('1');
+  await write(manifestFile, { ...manifest, version: '0.3.7' });
+  await select();
+  expect(await fs.readFile(path.join(source, 'install-count'), 'utf8')).toBe('11');
+  expect(await fs.readFile(lock, 'utf8')).toBe(originalLock);
+}, 90_000);
 
 it('rebuilds the same SDK selection after source changes with unchanged package versions', async () => {
   await initialize();

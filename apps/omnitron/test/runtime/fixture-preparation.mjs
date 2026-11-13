@@ -11,7 +11,7 @@ const CONSUMED = 'execute.started';
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const fixtureFiles = ['managed-backend.mjs', 'fixture-preparation.mjs', 'fixture-ports.mjs',
   'managed-project-runtime.mjs', 'fixture-master-options.mjs', 'fixture-log-evidence.mjs',
-  'fixture-unit-files.mjs', 'managed-owner-roundtrip.mjs', 'managed-reviewed-recovery.mjs'];
+  'fixture-unit-files.mjs', 'managed-owner-roundtrip.mjs', 'managed-local-sync-roundtrip.mjs', 'managed-reviewed-recovery.mjs'];
 const identity = stat => ({ dev: stat.dev, ino: stat.ino, uid: stat.uid, mode: stat.mode & 0o7777 });
 const host = () => ({ platform: process.platform, arch: process.arch, node: process.version });
 
@@ -61,7 +61,7 @@ export function preparationOption(argv, env = process.env) {
   const index = prepare !== -1 ? prepare : execute;
   assert.equal(index, argv.lastIndexOf(option), 'Preparation option must appear exactly once');
   assert.ok(!['--master-scenario', '--fixture-root', '--master-config', '--application-project', '--application-sdk-commit',
-    '--application-sdk', '--owner-roundtrip', '--backend-only'].some(flag => argv.includes(flag)),
+    '--application-sdk', '--owner-roundtrip', '--local-sync-roundtrip', '--backend-only'].some(flag => argv.includes(flag)),
   'Prepared execution supports the ordinary exact-role scenario only');
   for (const variable of ['OMNITRON_HOME', 'OMNITRON_SOCKET', 'OMNITRON_DATABASE_URL']) {
     assert.equal(env[variable], undefined, `${variable} must not override the private prepared fixture`);

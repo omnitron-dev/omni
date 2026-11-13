@@ -87,13 +87,13 @@ describe('one local cold admission', () => {
     const facts = await batch(), entry = registered(), probe = vi.fn(async () => { throw Error('unit mismatch'); });
     await expect(reviewedColdStart(home, facts, scope, entry, 'local', true, publicScope)).rejects.toThrow('Serving runtime');
     await expect(reviewedColdStart(home, facts, scope, entry, 'local', true, publicScope, probe)).rejects.toThrow('unit mismatch');
-    for (const args of [
+    for (const [key, registration, kind, automatic, logical] of [
       [scope, { ...entry, enabledStacks: [] }, 'local', true, publicScope],
       [scope, entry, 'local', false, publicScope],
       [scope, { ...entry, path: '/different' }, 'local', true, publicScope],
       [scope, entry, 'local', true, { project: 'other', stack: 'test' }],
       [scope, entry, 'remote', true, publicScope],
-    ] as const) await expect(reviewedColdStart(home, facts, ...args, probe)).rejects.toThrow();
+    ] as const) await expect(reviewedColdStart(home, facts, key, registration, kind, automatic, logical, probe)).rejects.toThrow();
     expect(probe).toHaveBeenCalledTimes(1);
     const remote = { project: 'example', stack: 'remote' };
     expect(await reviewedColdStart(home, facts, remote, entry, 'remote', true, remote, probe)).toBeNull();
@@ -109,7 +109,7 @@ describe('one local cold admission', () => {
     try {
       Object.defineProperty(process, 'execPath', { ...original, value: installed });
       vi.spyOn(manager, 'readManagedRuntime').mockResolvedValue({ owner: { artifact: state.ownerArtifact }, directory: home } as any);
-      const installation = { settledSelection: () => ({ current: state.artifact, revision: 9 }), close: vi.fn(async () => {}) };
+      const installation = { startupSelection: () => ({ current: state.artifact, revision: 9 }), close: vi.fn(async () => {}) };
       vi.spyOn(RuntimeInstallation, 'openReadOnly').mockResolvedValue(installation as any);
       const record = vi.spyOn(ExecutionJournal.prototype, 'read').mockResolvedValue({ owner: { id: owner.ownerId, pid: owner.ownerPid } } as any);
       const native = vi.spyOn(manager, 'verifyManagedIsolation').mockResolvedValue();
@@ -119,9 +119,19 @@ describe('one local cold admission', () => {
       expect(native).toHaveBeenCalledTimes(1); expect(installation.close).toHaveBeenCalledTimes(1);
       birth.mockReturnValue({ state: 'unknown' });
       await expect(reviewedColdStart(home, state, scope, registered(), 'local', true, publicScope)).rejects.toThrow('lifetime');
+      birth.mockReturnValue({ state: 'alive', identity: owner.ownerLifetime });
+      await writePrivateRecord(file, { protocol: 1, digest: planHash(makePlan()), plan: makePlan(), phase: 'restoring', rollbackOwner: owner });
+      const recovering = await batch();
+      Object.defineProperty(process, 'execPath', { ...original, value: path.join(home, 'runtime/releases', recovering.artifact, 'node') });
+      vi.mocked(manager.readManagedRuntime).mockResolvedValue({ owner: { artifact: recovering.ownerArtifact }, directory: home } as any);
+      installation.startupSelection = () => ({ current: recovering.artifact, revision: 10 });
+      await expect(reviewedColdStart(home, recovering, scope, registered(), 'local', true, publicScope)).rejects.toThrow('old owner');
+      Object.defineProperty(process, 'execPath', { ...original, value: installed });
+      vi.mocked(manager.readManagedRuntime).mockResolvedValue({ owner: { artifact: state.ownerArtifact }, directory: home } as any);
+      installation.startupSelection = () => ({ current: state.artifact, revision: 9 });
       record.mockResolvedValue({ owner: { id: old.ownerId, pid: old.ownerPid } } as any);
       await expect(reviewedColdStart(home, state, scope, registered(), 'local', true, publicScope)).rejects.toThrow('old owner');
-      installation.settledSelection = () => ({ current: state.artifact, revision: 2 });
+      installation.startupSelection = () => ({ current: state.artifact, revision: 2 });
       await expect(reviewedColdStart(home, state, scope, registered(), 'local', true, publicScope)).rejects.toThrow('selector');
     } finally { Object.defineProperty(process, 'execPath', original); }
   });

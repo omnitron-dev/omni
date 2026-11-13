@@ -72,6 +72,7 @@ export class RuntimeInstallation {
   readonly releases: string;
   private readonly store: DaemonStateStore;
   private lease: InstallationLease | null = null;
+  private static startupLease: { home: string; token: string } | null = null;
   private inspection?: ReturnType<typeof openSqliteDatabase>;
 
   private constructor(readonly home: string) {
@@ -246,6 +247,37 @@ export class RuntimeInstallation {
     return db.transaction(read).deferred();
   }
 
+  /** Read the selected runtime at boot without mistaking this process's own verified startup lease for a competing operator. */
+  startupSelection(): RuntimeSelection {
+    const startup = RuntimeInstallation.startupLease;
+    if (!startup || startup.home !== this.home) return this.settledSelection();
+    const db = this.inspection ?? this.store.initSync();
+    return db.transaction(() => {
+      const lease = this.read<InstallationLease>('runtime.lease');
+      if (lease?.pid !== process.pid || lease.token !== startup.token || this.activation())
+        throw Error('The verified runtime startup lease changed');
+      const selected = this.selection();
+      if (!selected) throw Error('No runtime has been selected');
+      return selected;
+    }).deferred();
+  }
+
+  async startSelected<T>(directory: string, start: () => Promise<T>): Promise<T> {
+    return this.exclusive(async () => {
+      if (this.activation()) throw Error('Runtime activation is unfinished; recover its checkpoint before starting');
+      const selection = this.selection();
+      if (!selection) return start();
+      const root = this.releasePath(selection.current);
+      if (await fs.realpath(directory) !== path.join(root, 'packages/0/dist') ||
+          await fs.realpath(process.execPath) !== path.join(root, 'node')) {
+        throw Error('Runtime selection changed before startup; retry through the installed launcher');
+      }
+      if (RuntimeInstallation.startupLease) throw Error('An installed runtime is already starting in this process');
+      RuntimeInstallation.startupLease = { home: this.home, token: this.lease!.token };
+      try { return await start(); } finally { RuntimeInstallation.startupLease = null; }
+    });
+  }
+
   private assertAvailable(): void {
     const previous = this.read<InstallationLease>('runtime.lease');
     if (previous && (!Number.isSafeInteger(previous.pid) || previous.pid < 1 || !previous.token || PidManager.isProcessAlive(previous.pid))) {
@@ -398,16 +430,5 @@ export async function selectedBackend(home = OMNITRON_HOME, purpose: 'startup' |
 export async function withRuntimeStartup<T>(directory: string, start: () => Promise<T>): Promise<T> {
   const installation = await RuntimeInstallation.open(undefined, { existing: true });
   if (!installation) return start();
-  try { return await installation.exclusive(async () => {
-    if (installation.activation()) throw new Error('Runtime activation is unfinished; recover its checkpoint before starting');
-    const selection = installation.selection();
-    if (selection) {
-      const root = installation.releasePath(selection.current);
-      if (await fs.realpath(directory) !== path.join(root, 'packages/0/dist') ||
-          await fs.realpath(process.execPath) !== path.join(root, 'node')) {
-        throw new Error('Runtime selection changed before startup; retry through the installed launcher');
-      }
-    }
-    return start();
-  }); } finally { await installation.close(); }
+  try { return await installation.startSelected(directory, start); } finally { await installation.close(); }
 }

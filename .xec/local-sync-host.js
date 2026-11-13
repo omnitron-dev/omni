@@ -6,6 +6,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
 import { verifyRuntimeArtifact } from '../apps/omnitron/src/shared/runtime-artifact.ts';
 import { BACKEND_ACTIVITY_COUNTERS } from '../apps/omnitron/src/shared/dto/backend.ts';
+import { LAUNCHD_LABEL, OWNER_LAUNCHD_LABEL } from '../apps/omnitron/src/commands/service-units.ts';
 import { localStackInventory } from './local-stack-inventory.js';
 
 const hash = /^[a-f0-9]{64}$/;
@@ -37,13 +38,28 @@ export function assertLocalIdle(status) {
   if (execution.recovery?.status !== 'ready') throw Error(execution.recovery?.reason || 'Waiting for the current recovery certificate');
 }
 
-// Both directions must admit the exact startup checked by the operator, including legacy boot.
-export function assertReviewedBoot(stack, digest) {
-  if (!stack.enabled || stack.infrastructureMode !== 'preserve' ||
-      !hash.test(digest) || stack.infrastructureReview !== digest) {
+export function stackAdmissionProtocol(candidate, previous) {
+  return candidate.coldStackAdmissionProtocol === 1 && previous.coldStackAdmissionProtocol === 1 ? 1 : undefined;
+}
+
+// A legacy runtime must already have the exact preserve policy saved for automatic boot.
+export function assertReviewedBoot(stack, digest, protocol) {
+  const preserved = stack.infrastructureMode === 'preserve' && stack.infrastructureReview === digest;
+  const once = protocol === 1 && stack.infrastructureMode === 'reconcile' && stack.infrastructureReview === null;
+  if (!stack.enabled || !hash.test(digest) || (!preserved && !once)) {
     throw Error('The local owner cannot prove it will boot ' + stack.project + '/' + stack.stack +
       ' with the reviewed infrastructure and unchanged policy. This host needs reviewed boot support');
   }
+}
+
+export function assertSameSavedSelection(prior, now) {
+  if (!prior.savedSelection) throw Error('The local update plan has no saved launch selection for ' + projectKey(prior));
+  if (!isDeepStrictEqual(prior.savedSelection, now.selection)) throw Error('Saved launch selection changed for ' + projectKey(prior));
+}
+
+export function assertLocalServiceTargets(config) {
+  if (config?.scope !== 'user' || config.owner.label !== OWNER_LAUNCHD_LABEL || config.backend.label !== LAUNCHD_LABEL)
+    throw Error('Local service commands address only the standard Omnitron user services');
 }
 
 /** Keep native supervision, runtime selection and application admission in Omnitron. Xec owns the batch. */
@@ -101,6 +117,7 @@ export async function localSyncActions({ root, runtime, call, run, progress, dir
     if (!config || execution?.mode !== 'resident' || execution.connection?.status !== 'connected' || execution.phase !== 'active' ||
         !Array.isArray(status.apps) || !execution.owner?.id || !Number.isSafeInteger(execution.supervision?.guardianPid)) throw Error('Live native execution identity is incomplete');
     if (process.platform !== 'darwin' || config.scope !== 'user') throw Error('This development rollout requires a macOS user installation. Use the managed fleet workflow for servers');
+    assertLocalServiceTargets(config);
     const selection = await installationState();
     const ownerPid = execution.owner.pid, guardianPid = execution.supervision.guardianPid;
     await verifyManagedIsolation(config, ownerPid, guardianPid, status.pid);
@@ -163,12 +180,13 @@ export async function localSyncActions({ root, runtime, call, run, progress, dir
     if (!response.checked || response.candidate !== id || infra?.coverage !== 'certified-declarations' || !Array.isArray(infra.containers) ||
         !hash.test(infra.digest) || infra.containers.some(v => v.action !== 'retain' || !hash.test(v.id)) ||
         (infra.controlPlaneDatabase && infra.controlPlaneDatabase.action !== 'retain')) throw Error('Automatic local restart requires verified retained infrastructure; inspect backend select ' + id + ' --check for the proposed changes');
-    return { schemaScope: response.schemaScope, digest: infra.digest, containers: infra.containers.map(({ name, id }) => ({ name, id })).sort((a, b) => a.name.localeCompare(b.name)),
+    return { schemaScope: response.schemaScope, ...(response.coldStackAdmissionProtocol === 1 && { coldStackAdmissionProtocol: 1 }), digest: infra.digest, containers: infra.containers.map(({ name, id }) => ({ name, id })).sort((a, b) => a.name.localeCompare(b.name)),
       database: infra.controlPlaneDatabase?.id ?? null };
   };
   const stopped = async previous => {
     const config = await readManagedRuntime(home);
     if (!config || config.scope !== previous.scope) throw Error('Native service instance changed');
+    assertLocalServiceTargets(config);
     assertResidentServicesStopped(config.scope);
     await assertCleanManagedShutdown(config, { pid: previous.ownerPid, lifetime: previous.ownerLifetime }, previous.retiredPids);
   };
@@ -188,16 +206,18 @@ export async function localSyncActions({ root, runtime, call, run, progress, dir
       } else candidate = await call(['backend', 'install', runtime]);
       if (candidate.id !== manifest.sha256 || candidate.directory !== installed(candidate.id) || !cleanBuild(candidate.build) || candidate.build.commit !== await stamp(runtime, true)) throw Error('Installed candidate or Console differs from the sealed checkout');
       const infrastructure = await coldPreview(candidate.id);
+      let previous = infrastructure;
       if (before.backend !== candidate.id) {
         await assertBackendMigrationsCompatible(path.join(installed(candidate.id), cliDist), path.join(installed(before.backend), cliDist), infrastructure.schemaScope);
-        await coldPreview(before.backend);
+        previous = await coldPreview(before.backend);
       }
+      const protocol = stackAdmissionProtocol(infrastructure, previous);
       // Discovery is live. Each dry run checks the same declarations and pinned bytes the normal start path uses.
       const targets = [];
       for (const stack of stacks.targets) {
         const review = await startReview(stack);
-        assertReviewedBoot(stack, review.digest);
-        targets.push({ ...stack, selection: review.selection, startReview: review.digest });
+        assertReviewedBoot(stack, review.digest, protocol);
+        targets.push({ ...stack, savedSelection: stack.selection, selection: review.selection, startReview: review.digest });
       }
       const watching = await watches(stacks.targets);
       for (const id of new Set([before.backend, before.owner, before.guardian, web.artifact].filter(Boolean))) {
@@ -206,7 +226,7 @@ export async function localSyncActions({ root, runtime, call, run, progress, dir
       const after = await identity(await call(['status']));
       if (!isDeepStrictEqual(before, after)) throw Error('Local execution changed during preparation. Inspect the current plan');
       await assertRevision(candidate.build.commit);
-      return { protocol: 1, instance: home, target: { artifact: candidate.id, commit: candidate.build.commit },
+      return { protocol: 1, ...(protocol && { stackAdmissionProtocol: protocol }), instance: home, target: { artifact: candidate.id, commit: candidate.build.commit },
         before: { ...before, console: web.artifact, consoleCommit: web.commit }, stacks: targets, excluded: stacks.excluded, watches: watching, infrastructure };
     },
     async validateStop(previous, plan) {
@@ -227,6 +247,7 @@ export async function localSyncActions({ root, runtime, call, run, progress, dir
       return live;
     },
     async start(destination, plan) {
+      assertLocalServiceTargets(await readManagedRuntime(home));
       const backend = destination.artifact ?? destination.backend, owner = destination.artifact ?? destination.owner;
       const selected = await call(['backend', 'select', backend]);
       if (selected?.selection?.current !== backend) throw Error('Native selector did not confirm the reviewed backend');
@@ -263,8 +284,9 @@ export async function localSyncActions({ root, runtime, call, run, progress, dir
         const observed = new Map(stacks.targets.map(stack => [projectKey(stack), stack]));
         const results = plan.stacks.map(prior => {
           const now = observed.get(projectKey(prior));
-          if (!now || now.enabled !== prior.enabled || now.infrastructureMode !== prior.infrastructureMode || now.status !== 'running' || now.path !== prior.path || !isDeepStrictEqual(now.runtimeScope, prior.runtimeScope) ||
-              now.apps.length !== prior.apps.length || (now.selection.kind === 'release' && !isDeepStrictEqual(prior.selection, now.selection))) throw Error('Waiting for ' + projectKey(prior));
+          if (!now || now.enabled !== prior.enabled || now.infrastructureMode !== prior.infrastructureMode || now.infrastructureReview !== prior.infrastructureReview || now.status !== 'running' || now.path !== prior.path || !isDeepStrictEqual(now.runtimeScope, prior.runtimeScope) ||
+              now.apps.length !== prior.apps.length) throw Error('Waiting for ' + projectKey(prior));
+          assertSameSavedSelection(prior, now);
           for (const app of prior.apps) {
             const current = now.apps.find(v => v.handleKey === app.handleKey);
             if (current?.status !== 'online' || !current.generation || current.generation === app.generation) throw Error('Waiting for a verified new generation of ' + app.handleKey);

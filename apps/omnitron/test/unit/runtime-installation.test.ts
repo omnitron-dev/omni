@@ -281,6 +281,39 @@ it('refuses an abandoned or malformed lease and an unfinished activation during 
   } finally { db.close(); await reader?.close(); }
 });
 
+it('reads a startup selection only inside the verified sealed executable and its own live lease', async () => {
+  const { store, home, make } = await fixture(), source = await make('first');
+  const artifact = await store.exclusive(async () => {
+    const result = await store.install(source.source);
+    await store.select(source.hash, 0);
+    return result;
+  });
+  const observer = (await RuntimeInstallation.openReadOnly(home))!;
+  const previous = Object.getOwnPropertyDescriptor(process, 'execPath')!;
+  try {
+    const during = async () => {
+      expect(() => observer.settledSelection()).toThrow('unsettled');
+      expect(observer.startupSelection().current).toBe(source.hash);
+    };
+    expect(observer.startupSelection().current).toBe(source.hash);
+    await expect(store.startSelected(artifact.directory, during)).rejects.toThrow('selection changed');
+    await store.exclusive(async () => {
+      expect(() => observer.startupSelection()).toThrow('unsettled');
+    });
+    Object.defineProperty(process, 'execPath', { ...previous, value: artifact.execPath });
+    await store.startSelected(artifact.directory, during);
+    await expect(store.startSelected(artifact.directory, async () => {
+      await during();
+      throw Error('Interrupted native startup');
+    })).rejects.toThrow('Interrupted native startup');
+    await store.exclusive(async () => { expect(() => observer.startupSelection()).toThrow('unsettled'); });
+    expect(observer.startupSelection().current).toBe(source.hash);
+  } finally {
+    Object.defineProperty(process, 'execPath', previous);
+    await observer.close();
+  }
+});
+
 it('reads committed WAL state without schema changes, journal entries or a reader-selected runtime', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'guardian-wal-')); roots.push(root);
   const directory = path.join(root, 'runtime'); await fs.mkdir(path.join(directory, 'releases'), { recursive: true, mode: 0o700 });

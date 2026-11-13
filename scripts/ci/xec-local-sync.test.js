@@ -7,7 +7,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { promisify } from 'node:util';
 import { runLocalSync } from '../../.xec/local-sync.js';
-import { assertLocalIdle, assertReviewedBoot } from '../../.xec/local-sync-host.js';
+import { assertLocalIdle, assertReviewedBoot, assertSameSavedSelection, assertLocalServiceTargets, stackAdmissionProtocol } from '../../.xec/local-sync-host.js';
 import { BACKEND_ACTIVITY_COUNTERS } from '../../apps/omnitron/src/shared/dto/backend.ts';
 
 test('only boots with the exact native admission and unchanged desired state', () => {
@@ -17,6 +17,37 @@ test('only boots with the exact native admission and unchanged desired state', (
   for (const change of [{ enabled: false }, { infrastructureMode: 'reconcile' }, { infrastructureReview: null }, { infrastructureReview: 'b'.repeat(64) }]) {
     assert.throws(() => assertReviewedBoot({ ...stack, ...change }, reviewed), /cannot prove/);
   }
+});
+
+test('one-shot admission requires both actual runtimes and preserves native service and boot policy scope', () => {
+  const supported = { coldStackAdmissionProtocol: 1 };
+  const digest = 'a'.repeat(64);
+  const stack = { project: 'example', stack: 'dev', enabled: true, infrastructureMode: 'reconcile', infrastructureReview: null };
+  for (const [candidate, previous] of [[{}, {}], [supported, {}], [{}, supported], [supported, { coldStackAdmissionProtocol: 2 }]]) {
+    assert.throws(() => assertReviewedBoot(stack, digest, stackAdmissionProtocol(candidate, previous)), /cannot prove/);
+  }
+  const protocol = stackAdmissionProtocol(supported, supported);
+  assert.equal(protocol, 1);
+  assert.doesNotThrow(() => assertReviewedBoot(stack, digest, protocol));
+  for (const change of [{ enabled: false }, { infrastructureMode: 'preserve' }, { infrastructureReview: 'b'.repeat(64) }])
+    assert.throws(() => assertReviewedBoot({ ...stack, ...change }, digest, protocol), /cannot prove/);
+  const roles = { scope: 'user', owner: { label: 'dev.omnitron.owner' }, backend: { label: 'dev.omnitron.daemon' } };
+  assert.doesNotThrow(() => assertLocalServiceTargets(roles));
+  for (const changed of [null, { ...roles, scope: 'system' }, { ...roles, owner: { label: 'dev.omnitron.fixture.owner' } },
+    { ...roles, backend: { label: 'dev.omnitron.fixture.backend' } }]) assert.throws(() => assertLocalServiceTargets(changed), /standard Omnitron/);
+});
+
+test('acceptance checks the same complete saved release even if the effective review still resolves to it', () => {
+  const release = { kind: 'release', id: 'first', manifestSha256: 'a'.repeat(64) };
+  const unreported = { kind: 'unreported' };
+  const pinned = { project: 'example', stack: 'prod', selection: release, savedSelection: release };
+  assert.doesNotThrow(() => assertSameSavedSelection(pinned, { selection: { ...release } }));
+  for (const changed of [unreported, { kind: 'working-tree' }, { ...release, id: 'second' }, { ...release, manifestSha256: 'b'.repeat(64) }])
+    assert.throws(() => assertSameSavedSelection(pinned, { selection: changed }), /Saved launch selection changed/);
+  assert.throws(() => assertSameSavedSelection({ ...pinned, savedSelection: undefined }, { selection: release }), /no saved launch selection/);
+  const inferred = { ...pinned, savedSelection: unreported };
+  assert.doesNotThrow(() => assertSameSavedSelection(inferred, { selection: unreported }));
+  assert.throws(() => assertSameSavedSelection(inferred, { selection: release }), /Saved launch selection changed/);
 });
 
 const native = ['darwin', 'linux'].includes(process.platform);

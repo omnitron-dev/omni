@@ -54,10 +54,13 @@ export async function managedOwnerRoundtrip(context) {
     try { return await work(client); } finally { await client.disconnect(); }
   };
   const cli = async (...args) => {
+    const began = performance.now();
+    if (context.localSyncRoundtrip) mark({ stage: 'local-sync-cli-start', command: args.slice(0, 2), at: new Date().toISOString() });
     const result = await run(path.join(candidateRoot, 'node'),
       [path.join(managementDist, 'cli/omnitron.js'), '--json', ...args], {
         cwd: root, env: { ...process.env, OMNITRON_HOME: instance }, timeout: LONG_REQUEST_TIMEOUT, maxBuffer: 2 * 1024 * 1024,
       });
+    if (context.localSyncRoundtrip) mark({ stage: 'local-sync-cli-complete', command: args.slice(0, 2), elapsedMs: Math.round(performance.now() - began) });
     const envelope = JSON.parse(result.stdout);
     assert.equal(envelope.ok, true, result.stdout);
     assert.ok(envelope.data, result.stdout);
@@ -93,6 +96,53 @@ export async function managedOwnerRoundtrip(context) {
     const Database = createRequire(path.join(candidateRoot, 'packages/0/package.json'))('better-sqlite3');
     const db = new Database(path.join(instance, 'data/slave.db'), { readonly: true, fileMustExist: true });
     try { return db.prepare('SELECT * FROM migrations ORDER BY name').all(); } finally { db.close(); }
+  };
+  const retireNative = async (before, priorGuardian) => {
+    const priorOwner = before.execution.owner.pid;
+    const guardianUnit = units.find(u => u.mode === 'backend');
+    await native(linux ? ['stop', guardianUnit.job] : ['bootout', guardianUnit.job]);
+    await until(() => !PidManager.isProcessAlive(before.pid) && !PidManager.isProcessAlive(priorGuardian), 'Guardian or backend survived retirement');
+    const ownerUnit = units.find(u => u.mode === 'owner');
+    if (context.localSyncRoundtrip) {
+      // Same native SIGTERM authority as serviceBootout(), restricted to the UUID jobs.
+      await native(linux ? ['stop', ownerUnit.job] : ['bootout', ownerUnit.job]);
+    } else {
+      const owner = new ExecutionClient(path.join(execution, 'owner.sock'), quiet);
+      try { await owner.connect(); await owner.acquire(); await owner.shutdownOwner(); } finally { await owner.close(); }
+    }
+    await until(() => !PidManager.isProcessAlive(priorOwner), 'Previous owner did not stop cleanly');
+    const receipt = JSON.parse(await fs.readFile(path.join(execution, 'managed-owner.json'), 'utf8'));
+    assert.equal(receipt.clean, true); assert.equal(receipt.pid, priorOwner);
+    if (!context.localSyncRoundtrip) await native(linux ? ['stop', ownerUnit.job] : ['bootout', ownerUnit.job]);
+  };
+  const launchNative = async target => {
+    // The public cold-selection command owns compatibility and the installation lease.
+    const selected = await cli('backend', 'select', target.backend);
+    assert.equal(selected.selection.current, target.backend);
+    config.owner.artifact = target.owner;
+    config.backend.artifact = target.guardian;
+    // Service installation uses the sealed package as its cwd. Qualify that
+    // exact boundary: a fork that drops the application's cwd would write into
+    // the sealed owner, not merely into another disposable project directory.
+    config.cwd = applicationSdk && target.phase !== 'owner-rollback'
+      ? path.join(installed(target.owner), 'packages/0') : root;
+    await fs.writeFile(path.join(instance, 'runtime/supervision.json'), JSON.stringify(config), { mode: 0o600 });
+    for (const unit of units) {
+      const runtime = installed(config[unit.mode].artifact);
+      const contents = render({ scope: config.scope, execPath: path.join(runtime, 'node'),
+        entryPath: path.join(runtime, 'packages/0/dist/daemon/managed-entry.js'), args: [unit.mode], label: config[unit.mode].label,
+        nodeArgs: [], restart: unit.mode === 'backend', ...(context.localSyncRoundtrip && unit.mode === 'owner' && { forceKill: false }), workdir: path.join(runtime, 'packages/0'), path: process.env.PATH,
+        identity: linux ? { user: 'root', home: process.env.HOME } : undefined,
+        environment: { OMNITRON_HOME: instance }, stderrLog: path.join(root, `${unit.mode}.log`) });
+      await authorizeUnitWrite(unit, contents);
+      await fs.writeFile(unit.file, contents);
+      await run(linux ? 'systemd-analyze' : '/usr/bin/plutil', linux ? ['verify', unit.file] : ['-lint', unit.file]);
+    }
+    if (linux) await native(['daemon-reload']);
+    for (const unit of units) {
+      await native(linux ? ['start', unit.job] : ['bootstrap', domain, unit.file]);
+      track(await until(async () => (await jobPid(unit.mode)) || false, 'New private service PID'));
+    }
   };
   const qualifySourceRefresh = async (ownerPid, initialWorker) => {
     const name = 'probe/local/counter', guardianPid = await jobPid('backend');
@@ -182,6 +232,11 @@ export async function managedOwnerRoundtrip(context) {
   });
   let worker = await ready(first.execution.owner.pid);
   track(first.execution.owner.pid, worker.pid, first.pid, await jobPid('backend'));
+  if (context.localSyncRoundtrip) {
+    const { managedLocalSyncRoundtrip } = await import('./managed-local-sync-roundtrip.mjs');
+    return managedLocalSyncRoundtrip({ ...context, candidate, previous, installed, ready, probe, cli, jobPid, certificate, api,
+      retireNative, launchNative, worker, history, load, candidateRoot, lifecycleBudget: LONG_REQUEST_TIMEOUT });
+  }
   const originalHistory = await history(), rounds = [];
   let projects, sourceRefresh;
   for (const target of [
@@ -200,43 +255,8 @@ export async function managedOwnerRoundtrip(context) {
     await api(async client => stopPrivateFixtureStack(await client.service('OmnitronProject')));
     await until(() => !PidManager.isProcessAlive(priorWorker), 'Reviewed application did not stop');
     await certificate();
-    const guardianUnit = units.find(u => u.mode === 'backend');
-    await native(linux ? ['stop', guardianUnit.job] : ['bootout', guardianUnit.job]);
-    await until(() => !PidManager.isProcessAlive(before.pid) && !PidManager.isProcessAlive(priorGuardian), 'Guardian or backend survived retirement');
-    const owner = new ExecutionClient(path.join(execution, 'owner.sock'), quiet);
-    try { await owner.connect(); await owner.acquire(); await owner.shutdownOwner(); } finally { await owner.close(); }
-    await until(() => !PidManager.isProcessAlive(priorOwner), 'Previous owner did not stop cleanly');
-    const receipt = JSON.parse(await fs.readFile(path.join(execution, 'managed-owner.json'), 'utf8'));
-    assert.equal(receipt.clean, true); assert.equal(receipt.pid, priorOwner);
-    const ownerUnit = units.find(u => u.mode === 'owner');
-    await native(linux ? ['stop', ownerUnit.job] : ['bootout', ownerUnit.job]);
-    // The public cold-selection command owns compatibility and the installation lease.
-    const selected = await cli('backend', 'select', target.backend);
-    assert.equal(selected.selection.current, target.backend);
-    config.owner.artifact = target.owner;
-    config.backend.artifact = target.guardian;
-    // Service installation uses the sealed package as its cwd. Qualify that
-    // exact boundary: a fork that drops the application's cwd would write into
-    // the sealed owner, not merely into another disposable project directory.
-    config.cwd = applicationSdk && target.phase !== 'owner-rollback'
-      ? path.join(installed(target.owner), 'packages/0') : root;
-    await fs.writeFile(path.join(instance, 'runtime/supervision.json'), JSON.stringify(config), { mode: 0o600 });
-    for (const unit of units) {
-      const runtime = installed(config[unit.mode].artifact);
-      const contents = render({ scope: config.scope, execPath: path.join(runtime, 'node'),
-        entryPath: path.join(runtime, 'packages/0/dist/daemon/managed-entry.js'), args: [unit.mode], label: config[unit.mode].label,
-        nodeArgs: [], restart: unit.mode === 'backend', workdir: path.join(runtime, 'packages/0'), path: process.env.PATH,
-        identity: linux ? { user: 'root', home: process.env.HOME } : undefined,
-        environment: { OMNITRON_HOME: instance }, stderrLog: path.join(root, `${unit.mode}.log`) });
-      await authorizeUnitWrite(unit, contents);
-      await fs.writeFile(unit.file, contents);
-      await run(linux ? 'systemd-analyze' : '/usr/bin/plutil', linux ? ['verify', unit.file] : ['-lint', unit.file]);
-    }
-    if (linux) await native(['daemon-reload']);
-    for (const unit of units) {
-      await native(linux ? ['start', unit.job] : ['bootstrap', domain, unit.file]);
-      track(await until(async () => (await jobPid(unit.mode)) || false, 'New private service PID'));
-    }
+    await retireNative(before, priorGuardian);
+    await launchNative(target);
     const after = await until(async () => {
       const value = await status();
       return value.build.commit === target.commit && value.execution.owner.pid !== priorOwner ? value : false;

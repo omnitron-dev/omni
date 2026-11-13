@@ -69,7 +69,7 @@ export async function runLocalSync({ actions, directory, review, rollback = fals
     if (!review && record?.phase === 'accepted' && record.plan.target.artifact === plan.target.artifact &&
       plan.before.backend === plan.target.artifact && plan.before.owner === plan.target.artifact && plan.before.guardian === plan.target.artifact) {
       // An operator can request a fresh review by preparing a changed inventory. An availability error cannot authorize another restart.
-      const declarations = snapshot => snapshot.stacks.map(({ project, stack, enabled, startReview }) => [project, stack, enabled, startReview]);
+      const declarations = snapshot => snapshot.stacks.map(({ project, stack, enabled, startReview, selection, savedSelection }) => [project, stack, enabled, startReview, selection, savedSelection]);
       if (JSON.stringify(declarations(plan)) === JSON.stringify(declarations(record.plan)) &&
           JSON.stringify(plan.excluded) === JSON.stringify(record.plan.excluded)) {
         await actions.accept(record.plan, 'target', true); return record;

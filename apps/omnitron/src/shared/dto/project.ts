@@ -265,6 +265,8 @@ export interface StackHealthObservation {
 export interface IStackInfo {
   /** Durable authority for subsequent starts, including automatic resumes. */
   infrastructureMode?: 'reconcile' | 'preserve';
+  /** Stored preserve authority; a null review cannot authorize an automatic boot. */
+  infrastructureReview?: string | null;
   health?: StackHealthObservation;
   /** Desired release for the next local launch. Runtime evidence is reported separately. */
   selectedRelease?: SelectedRelease;

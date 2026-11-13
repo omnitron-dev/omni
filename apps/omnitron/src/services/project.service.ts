@@ -5974,9 +5974,11 @@ export class ProjectService extends EventEmitter {
     }
 
     const selectedRelease = config.type === 'local' && !config.managedOrigin ? this.localSelection(projectName, stackName).read().release : null;
+    const policy = this.infrastructurePolicy(projectName, stackName);
     return {
       name: stackName,
-      infrastructureMode: this.infrastructurePolicy(projectName, stackName)?.mode ?? 'reconcile',
+      infrastructureMode: policy?.mode ?? 'reconcile',
+      infrastructureReview: policy?.review ?? null,
       type: config.type,
       ...(selectedRelease && { selectedRelease }),
       status,

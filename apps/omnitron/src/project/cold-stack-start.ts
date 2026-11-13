@@ -17,7 +17,7 @@ interface Stack extends StackExecutionScope {
 interface Incarnation { ownerId: string; ownerPid: number; ownerLifetime: string }
 interface Before extends Incarnation { owner: string; backend: string; revision: number }
 interface Receipt {
-  protocol: number; phase: string; digest: string;
+  protocol: number; phase: string; digest: string; rollbackOwner?: Incarnation;
   plan: {
     protocol: number; stackAdmissionProtocol?: number; instance: string; target: { artifact: string };
     before: Before; infrastructure: { database: string | null }; stacks: Stack[]; excluded: (StackExecutionScope & { reason: string })[];
@@ -26,7 +26,7 @@ interface Receipt {
 type Direction = 'target' | 'previous';
 export interface ColdBatch {
   digest: string; phase: string; direction: Direction;
-  artifact: string; ownerArtifact: string; before: Before; target: string;
+  artifact: string; ownerArtifact: string; before: Before; retiringOwner: Incarnation; target: string;
   database: string | null; stacks: Stack[]; excluded: Receipt['plan']['excluded'];
 }
 export interface ColdStartPermit extends Incarnation {
@@ -56,7 +56,11 @@ export async function readColdBatch(instance: string): Promise<ColdBatch | null>
     scopes.add(key);
   }
   const direction = previousPhases.has(receipt.phase) ? 'previous' : 'target';
-  return { digest: receipt.digest, phase: receipt.phase, direction, artifact: direction === 'target' ? plan.target.artifact : plan.before.backend,
+  const retiringOwner = direction === 'previous' && receipt.rollbackOwner ? receipt.rollbackOwner : plan.before;
+  if (!retiringOwner.ownerId || !Number.isSafeInteger(retiringOwner.ownerPid) || retiringOwner.ownerPid < 1 ||
+      typeof retiringOwner.ownerLifetime !== 'string' || compareProcessLifetimes(retiringOwner.ownerLifetime, retiringOwner.ownerLifetime) !== 'same')
+    throw Error('Cannot identify the retiring execution owner');
+  return { digest: receipt.digest, phase: receipt.phase, direction, retiringOwner, artifact: direction === 'target' ? plan.target.artifact : plan.before.backend,
     ownerArtifact: direction === 'target' ? plan.target.artifact : plan.before.owner, before: plan.before, target: plan.target.artifact,
     database: plan.infrastructure.database, stacks: plan.stacks, excluded: plan.excluded };
 }
@@ -69,22 +73,24 @@ async function observeOwner(instance: string, batch: ColdBatch): Promise<Incarna
   const installation = await RuntimeInstallation.openReadOnly(instance);
   if (!installation) throw Error('Cannot establish local runtime selection');
   try {
-    const selected = installation.settledSelection();
+    const selected = installation.startupSelection();
     if (selected.current !== batch.artifact || selected.revision < batch.before.revision ||
         selected.revision === batch.before.revision && selected.current !== batch.before.backend) throw Error('The native selector differs from the reviewed startup');
   } finally { await installation.close(); }
   const journal = await new ExecutionJournal(path.join(config.directory, 'controller.json')).read();
-  if (!journal || journal.owner.id === batch.before.ownerId) throw Error('The old owner cannot consume a cold stack review');
+  if (!journal || journal.owner.id === batch.before.ownerId || journal.owner.id === batch.retiringOwner.ownerId)
+    throw Error('The old owner cannot consume a cold stack review');
   await verifyManagedIsolation(config, journal.owner.pid, process.ppid, process.pid);
   const life = readProcessLifetime(journal.owner.pid);
-  if (life.state !== 'alive' || journal.owner.pid === batch.before.ownerPid && compareProcessLifetimes(batch.before.ownerLifetime, life.identity) !== 'different')
+  if (life.state !== 'alive' || [batch.before, batch.retiringOwner].some(retired => journal.owner.pid === retired.ownerPid &&
+    compareProcessLifetimes(retired.ownerLifetime, life.identity) !== 'different'))
     throw Error('Cannot prove a replacement execution owner lifetime');
   return { ownerId: journal.owner.id, ownerPid: journal.owner.pid, ownerLifetime: life.identity };
 }
 
 /** A remote boot may only reattach its declared remote stack. Local admissions never widen a stored policy. */
 export async function reviewedColdStart(instance: string, batch: ColdBatch, scope: StackExecutionScope,
-  registration: { path: string; enabledStacks?: string[] } | null, kind: 'local' | 'remote' | 'cluster' | undefined, automatic: boolean,
+  registration: { path: string; enabledStacks?: readonly string[] } | null, kind: 'local' | 'remote' | 'cluster' | undefined, automatic: boolean,
   logical: StackExecutionScope, observe = observeOwner): Promise<ColdStartPermit | null> {
   if (!automatic || !targetPhases.has(batch.phase) && !previousPhases.has(batch.phase)) throw Error('Stack operation is held by local update ' + batch.digest);
   if (!registration?.enabledStacks?.includes(scope.stack)) throw Error('Disabled stack is excluded from the local update');

@@ -98,10 +98,14 @@ receipt records the original error and any recovery failure. An unproven
 execution owner requires inspection before a new installation can start.
 
 The automatic path requires independent supervision and retained containers.
-Both the candidate and rollback must use the reviewed native boot policy for
-each stack. An older controller that only reports the mode cannot prove which
-review it will consume. In that case preparation reports the affected stack
-before it stops any processes.
+Preparation checks both installed binaries with `backend select <artifact> --check`.
+When both advertise `coldStackAdmissionProtocol: 1`, the plan records
+`stackAdmissionProtocol: 1`. Each replacement owner may consume the exact
+infrastructure review once per enabled local stack in each direction. A retry
+checks the durable claim. The stack keeps its saved boot policy and its full
+release selection. With an older binary, preparation requires an already
+persisted preserve policy and matching review for every affected stack. It
+reports the first unsatisfied review before shutdown.
 A stack running with disabled boot intent needs its intent reconciled before
 a cold restart. A database expansion, Docker resource change or shared research
 data transition has its own Omnitron review. Developer SDK mode and an

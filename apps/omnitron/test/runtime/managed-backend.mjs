@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import http from 'node:http';
 import { reserveDaemonPorts } from './fixture-ports.mjs';
 import { applicationSdkOption } from './managed-project-runtime.mjs';
 import { initialRuntimeDirectories, readMasterFixture, removeOwnedFixtureRoot } from './fixture-master-options.mjs';
@@ -30,7 +31,8 @@ if (managementDist) assert.ok(managementDist.includes('omnitron-handoff-'), 'Use
 // guardian retained. This is the same CLI path used by a backend-only rollout.
 const backendOnly = process.argv.includes('--backend-only');
 if (backendOnly) assert.ok(managementDist, 'Provide the candidate artifact before --backend-only');
-const ownerRoundtrip = process.argv.includes('--owner-roundtrip');
+const localSyncRoundtrip = process.argv.includes('--local-sync-roundtrip');
+const ownerRoundtrip = localSyncRoundtrip || process.argv.includes('--owner-roundtrip');
 const reviewedRecovery = process.argv.includes('--reviewed-recovery');
 const writerExit = process.argv.includes('--writer-exit');
 assert.ok(!writerExit || reviewedRecovery, 'Writer exit requires reviewed recovery');
@@ -120,6 +122,28 @@ const config = { protocol: 1, instanceHome: instance, directory: execution, scop
   owner: { label: `dev.omnitron.fixture.${id}.owner`, unit: `omnitron-fixture-${id}-owner.service`, artifact: artifact.runtimeHash },
   backend: { label: `dev.omnitron.fixture.${id}.backend`, unit: `omnitron-fixture-${id}-backend.service`, artifact: initialGuardian.runtimeHash },
 };
+// The cold counter has no Docker resources. Expose its empty native inventory
+// on a private Unix socket. Any mutation is a test failure and never reaches the host.
+let privateDocker;
+const dockerMutations = [];
+if (localSyncRoundtrip) {
+  const socket = path.join(root, 'docker.sock');
+  privateDocker = http.createServer((request, response) => {
+    const route = new URL(request.url, 'http://localhost').pathname.replace(/^\/v[\d.]+(?=\/)/, '');
+    if (!['GET', 'HEAD'].includes(request.method)) {
+      dockerMutations.push(request.method + ' ' + route);
+      response.writeHead(403).end(); return;
+    }
+    if (route === '/_ping') { response.writeHead(200, { 'API-Version': '1.51', 'OSType': 'linux' }).end('OK'); return; }
+    response.setHeader('content-type', 'application/json');
+    if (route === '/containers/json') response.end('[]');
+    else if (route === '/version') response.end(JSON.stringify({ ApiVersion: '1.51', MinAPIVersion: '1.24', Version: 'fixture', Os: 'linux' }));
+    else response.writeHead(404).end(JSON.stringify({ message: 'Private empty Docker inventory' }));
+  });
+  await new Promise((resolve, reject) => { privateDocker.once('error', reject); privateDocker.listen(socket, resolve); });
+  const docker = { DOCKER_HOST: 'unix://' + socket, DOCKER_CONTEXT: '', DOCKER_TLS_VERIFY: '', DOCKER_CERT_PATH: '' };
+  Object.assign(config.environment, docker); Object.assign(process.env, docker);
+}
 const units = [];
 let nativeActivationStarted = false, unitSetupPromise;
 const socket = path.join(instance, 'daemon.sock');
@@ -167,6 +191,11 @@ const cleanup = () => cleanupPromise ??= (async () => {
   if (applicationPid) assert.equal(PidManager.isProcessAlive(applicationPid), false, 'Fixture app survived normal owner shutdown');
   for (const pid of ownerRoundtripPids) await until(() => !PidManager.isProcessAlive(pid), `Owner-roundtrip fixture process ${pid} survived cleanup`, 35_000);
   await removeFixtureUnitFiles(units);
+  if (privateDocker) {
+    privateDocker.closeAllConnections();
+    await new Promise(resolve => privateDocker.close(resolve));
+    assert.deepEqual(dockerMutations, [], 'Cold automatic boot requested a Docker mutation');
+  }
   if (linux && nativeActivationStarted) {
     await native(['daemon-reload'], true);
     await native(['reset-failed', ...units.map(unit => unit.job)], true).catch(() => {});
@@ -237,7 +266,7 @@ if (process.argv[2] === '--backend-handoff' && path.dirname(target) === ${JSON.s
       const contents = render({ scope: config.scope, execPath: serviceArtifact.execPath,
         entryPath: path.join(serviceArtifact.directory, 'daemon/managed-entry.js'), args: [mode], label: config[mode].label,
         nodeArgs: [],
-        restart: mode === 'backend', workdir: path.dirname(serviceArtifact.directory), path: process.env.PATH,
+        restart: mode === 'backend', ...(localSyncRoundtrip && mode === 'owner' && { forceKill: false }), workdir: path.dirname(serviceArtifact.directory), path: process.env.PATH,
         identity: linux ? { user: 'root', home: os.homedir() } : undefined,
         environment: { OMNITRON_HOME: instance, TMPDIR: applicationTemporary }, stderrLog: path.join(root, `${mode}.log`) });
       definitions.push({ mode, file, job: linux ? config[mode].unit : `${domain}/${config[mode].label}`, contents });
@@ -297,7 +326,7 @@ if (process.argv[2] === '--backend-handoff' && path.dirname(target) === ${JSON.s
   } else if (ownerRoundtrip) {
     const { managedOwnerRoundtrip } = await import('./managed-owner-roundtrip.mjs');
     const result = await managedOwnerRoundtrip({ root, projectDirectory, instance, execution, config, units, first, artifact, initialBackend, initialGuardian, fixtureId: id,
-      managementDist, applicationSdk, run, native, domain, linux, until, status, assertActive, render: linux ? renderSystemdUnit : renderLaunchdPlist,
+      managementDist, applicationSdk, localSyncRoundtrip, run, native, domain, linux, until, status, assertActive, render: linux ? renderSystemdUnit : renderLaunchdPlist,
       track: (...pids) => { for (const pid of pids) { assert.ok(Number.isSafeInteger(pid) && pid > 0); ownerRoundtripPids.add(pid); } }, mark, authorizeUnitWrite: authorizeFixtureUnitWrite });
     ownerPid = result.rounds.at(-1).ownerPid;
     applicationPid = result.rounds.at(-1).applicationPid;

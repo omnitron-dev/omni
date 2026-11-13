@@ -41,3 +41,12 @@ owner-roundtrip and backend-only scenarios continue to use their one-shot invoca
 The HTTP/RPC, readiness and child preflight deadlines are unchanged. Preparation is
 safe to run without native lifecycle authority; execution deliberately performs private
 service transitions and crash recovery and requires that authority separately.
+
+For two sealed runtimes that implement reviewed cold stack admission, run
+`managed-backend.mjs <previous-dist> <candidate-dist> --local-sync-roundtrip`
+with the checkout's Node and `--import tsx`. The private launchd/systemd fixture
+starts an enabled working-tree stack through ordinary automatic boot in both
+directions. Its reviewing Xec client exits after startup and before acceptance.
+The next client reads the incomplete receipt, recovers its digest, then checks
+the same rollback receipt a second time. The fixture records owner lifetimes,
+application generations, native artifact hashes and both durable claims.

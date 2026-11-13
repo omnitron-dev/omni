@@ -174,17 +174,23 @@ export function containerSpecHashMatches(config: ResolvedContainer, actual: Cont
     Object.entries(config.labels).every(([key, value]) => actual.labels?.[key] === value));
 }
 
-/** Admit only the historical schema on the exact container already recorded by its owner. */
+/** A legacy spec binds the static settings and omits the native resource limits. */
+export function hasLegacyContainerSpec(config: ResolvedContainer, actual: ContainerState): boolean {
+  const schema = actual.labels?.[SPEC_HASH_SCHEMA_LABEL];
+  return (schema === undefined || schema === '1') && actual.specHash === specificationHash(config, 1) &&
+    Boolean(actual.containerId && /^[a-f0-9]{64}$/.test(actual.containerId)) &&
+    Object.entries(config.labels).every(([key, value]) => actual.labels?.[key] === value);
+}
+
+/** Bind the migrated observation to the exact container recorded by its owner. */
 export function migrateContainerSpecHash(config: ResolvedContainer, actual: ContainerState,
   previous: ContainerState | undefined): ContainerSpecHashMigration | undefined {
   if (containerSpecHashMatches(config, actual)) return undefined;
   if (containerSpecHashMatches(config, actual, previous?.specHashMigration)) return previous?.specHashMigration;
   const id = actual.containerId, prior = previous?.containerId;
-  if (!id || !/^[a-f0-9]{64}$/.test(id) || !prior ||
+  if (!id || !/^[a-f0-9]{64}$/.test(id) || !prior || !actual.specHash ||
       (prior.length === 12 ? !id.startsWith(prior) : prior !== id) || previous?.specHash !== actual.specHash ||
-      (actual.labels?.[SPEC_HASH_SCHEMA_LABEL] !== undefined && actual.labels[SPEC_HASH_SCHEMA_LABEL] !== '1') ||
-      actual.specHash !== specificationHash(config, 1) || !containerResourcesMatch(config, actual) ||
-      Object.entries(config.labels).some(([key, value]) => actual.labels?.[key] !== value)) return undefined;
+      !hasLegacyContainerSpec(config, actual) || !containerResourcesMatch(config, actual)) return undefined;
   return { fromSchema: 1, toSchema: 2, fromHash: actual.specHash, toHash: containerSpecHash(config), containerId: id };
 }
 

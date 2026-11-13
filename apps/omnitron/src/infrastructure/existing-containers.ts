@@ -148,6 +148,45 @@ function nativeFingerprint(native: Native): string {
     { ...config, Labels: ownership }, native['HostConfig'], native['Mounts'], native['NetworkSettings']]);
 }
 
+/** Old Docker labels omitted limits. Converge memory in place only after proving every other native setting. */
+export async function reconcileLegacyContainer(desired: ResolvedContainer, id: string, probes = existingContainerProbes,
+  update = async (args: string[]) => { await execute('docker', ['container', 'update', ...args], { timeout: 15_000 }); }): Promise<void> {
+  const read = async () => {
+    const [native] = await probes.inspect([id]);
+    if (!native || native['Id'] !== id) throw Error('Historical container identity changed during reconciliation');
+    return native;
+  };
+  const before = await read();
+  const image = await probes.image(desired.image);
+  const mismatch = existingContainerMismatch(desired, before, image);
+  if (!mismatch) return;
+  if (mismatch !== 'resource limits differ') throw Error(`Cannot adopt existing ${desired.name}: ${mismatch}`);
+  const resources = containerResources(desired);
+  const old = before['HostConfig'];
+  const expected = { ...old };
+  const args: string[] = [];
+  if (resources.memoryBytes && old.Memory === 0 && old.MemorySwap === 0) {
+    expected.Memory = resources.memoryBytes;
+    expected.MemorySwap = resources.memoryBytes * 2;
+    if (!Number.isSafeInteger(expected.MemorySwap)) throw Error('Docker memory and swap limit exceeds exact byte representation');
+    args.push('--memory', String(expected.Memory), '--memory-swap', String(expected.MemorySwap));
+  }
+  if (resources.memoryReservationBytes && old.MemoryReservation === 0) {
+    expected.MemoryReservation = resources.memoryReservationBytes;
+    args.push('--memory-reservation', String(expected.MemoryReservation));
+  }
+  const predicted = { ...before, HostConfig: expected };
+  if (!args.length || existingContainerMismatch(desired, predicted, image))
+    throw Error(`Existing ${desired.name} requires a separately reviewed resource transition`);
+  const beforeFingerprint = nativeFingerprint(before), expectedFingerprint = nativeFingerprint(predicted);
+  if (nativeFingerprint(await read()) !== beforeFingerprint)
+    throw Error('Historical container changed before applying memory limits');
+  await update([...args, id]);
+  const observed = await read();
+  if (existingContainerMismatch(desired, observed, image) || expectedFingerprint !== nativeFingerprint(observed))
+    throw Error(`Cannot confirm the in-place memory update for ${desired.name}; inspect the retained container`);
+}
+
 /** Pure observation plus native readers. No container, file, credential or setup writes. */
 export async function reviewExistingContainers(desired: readonly ResolvedContainer[], probes = existingContainerProbes,
   scope?: { project: string; stack: string }): Promise<ExistingInfrastructureReview> {

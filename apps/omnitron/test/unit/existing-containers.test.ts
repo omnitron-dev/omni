@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { existingContainerMismatch, reviewExistingContainers } from '../../src/infrastructure/existing-containers.js';
+import { existingContainerMismatch, reconcileLegacyContainer, reviewExistingContainers } from '../../src/infrastructure/existing-containers.js';
 import type { ResolvedContainer } from '../../src/infrastructure/types.js';
 import { containerSpecHash } from '../../src/infrastructure/container-runtime.js';
 
@@ -22,7 +22,7 @@ function fixture() {
       Healthcheck: { Test: desired.healthCheck!.test, Interval: 3e9, Timeout: 5e9, Retries: 30, StartPeriod: 30e9 } },
     HostConfig: { PortBindings: { '5432/tcp': [{ HostIp: '127.0.0.1', HostPort: '5544' }] },
       RestartPolicy: { Name: 'unless-stopped', MaximumRetryCount: 0 }, NetworkMode: desired.network,
-      ExtraHosts: [], ShmSize: 268435456, Memory: 0, MemoryReservation: 0, NanoCpus: 0, CpuQuota: 0, CpuPeriod: 0 },
+      ExtraHosts: [], ShmSize: 268435456, Memory: 0, MemorySwap: 0, MemoryReservation: 0, NanoCpus: 0, CpuQuota: 0, CpuPeriod: 0 },
     NetworkSettings: { Ports: { '5432/tcp': [{ HostIp: '127.0.0.1', HostPort: '5544' }] },
       Networks: { [desired.network!]: { NetworkID: 'c'.repeat(64), IPAddress: '172.20.0.2' } } },
     Mounts: [{ Type: 'volume', Name: 'sample-dev-postgres-data', Source: '/volumes/sample-dev-postgres-data', Destination: '/var/lib/postgresql/data', RW: true }],
@@ -76,6 +76,32 @@ describe('preservation from actual Docker resources', () => {
     expect(second.digest).not.toBe(first.digest);
     f.native.HostConfig.Memory = 512 * 1024 * 1024;
     expect(existingContainerMismatch(f.desired, f.native, f.image)).toBe('resource limits differ');
+  });
+
+  it('repairs only missing memory limits on the same container and the same image volumes', async () => {
+    const { desired, native, probes, volume } = imageVolume();
+    desired.resources = { memory: '64m', memoryReservation: '32m' };
+    const changed = { Memory: 67108864, MemoryReservation: 33554432, MemorySwap: 134217728 };
+    const update = vi.fn(async () => { Object.assign(native.HostConfig, changed); });
+    await reconcileLegacyContainer(desired, native.Id, probes, update);
+    expect(update).toHaveBeenCalledWith(['--memory', '67108864', '--memory-swap', '134217728', '--memory-reservation', '33554432', native.Id]);
+    await reconcileLegacyContainer(desired, native.Id, probes, update);
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(volume.Name).toBe('7'.repeat(64));
+    native.HostConfig.Memory = 0; native.HostConfig.MemorySwap = 0;
+    native.Config.Healthcheck.Test = ['CMD-SHELL', 'false'];
+    await expect(reconcileLegacyContainer(desired, native.Id, probes, update)).rejects.toThrow('separately reviewed');
+    expect(update).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports an unverified update when the exact native mount changes during it', async () => {
+    const { desired, native, probes, volume } = imageVolume();
+    desired.resources = { memory: '64m' };
+    const update = vi.fn(async () => {
+      native.HostConfig.Memory = 67108864; native.HostConfig.MemorySwap = 134217728; volume.Name = '8'.repeat(64);
+    });
+    await expect(reconcileLegacyContainer(desired, native.Id, probes, update)).rejects.toThrow('Cannot confirm');
+    expect(update).toHaveBeenCalledOnce();
   });
 
   it.each([

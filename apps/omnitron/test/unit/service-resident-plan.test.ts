@@ -156,6 +156,15 @@ it('explicitly prepares a newly selected backend while retaining the paused plan
   expect(next.config.environment).toEqual(previous.config.environment);
 });
 
+it('uses the installed private environment after an intervening guardian transition', async () => {
+  const { prepareResidentService } = await import('../../src/commands/service-resident.js');
+  const initial = await prepareResidentService(inputs());
+  const active = { ...initial.config, environment: { ...initial.config.environment, OMNITRON_CWD: '/new-reviewed-home' } };
+  await fs.writeFile(path.join(state.home, 'runtime/supervision.json'), JSON.stringify(active), { mode: 0o600 });
+  state.pid = null;
+  expect((await prepareResidentService(inputs())).config.environment).toEqual(active.environment);
+});
+
 it('does not rewrite a reviewed plan or active files when installation requests another owner', async () => {
   const { prepareResidentService, installResidentService } = await import('../../src/commands/service-resident.js');
   const previous = await prepareResidentService({ ...inputs(), ownerRuntime: state.oldHash });

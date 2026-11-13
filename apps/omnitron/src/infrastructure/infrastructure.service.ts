@@ -49,6 +49,7 @@ import {
   containerSpecHash,
   containerSpecHashMatches,
   migrateContainerSpecHash,
+  hasLegacyContainerSpec,
   containerResources,
   containerResourcesMatch,
 } from './container-runtime.js';
@@ -1064,10 +1065,22 @@ export class InfrastructureService {
   @RecoveryMutation()
   private async reconcileServiceLocked(desired: ResolvedContainer): Promise<void> {
     if (this.preservation || this.preservationPending) throw new Error('Preserved infrastructure cannot be reconciled');
-    const actual = await getContainerState(desired.name, { orThrow: true, fullId: true });
+    let actual = await getContainerState(desired.name, { orThrow: true, fullId: true });
     if (this.ownershipFrozen || this.definitionChanging || this.retiredStacks.has(this.containerScope(desired))) return;
 
     const id = actual && ownedContainerId(desired, actual);
+    if (id && actual?.status === 'running' && hasLegacyContainerSpec(desired, actual) &&
+        !containerSpecHashMatches(desired, actual, this.state.services[desired.name]?.specHashMigration)) {
+      const { reconcileLegacyContainer } = await import('./existing-containers.js');
+      await reconcileLegacyContainer(desired, id);
+      const confirmed = await getContainerState(desired.name, { orThrow: true, fullId: true });
+      const migration = confirmed && migrateContainerSpecHash(desired, confirmed, actual);
+      if (!confirmed || confirmed.containerId !== id || !migration)
+        throw Error(`Cannot confirm the historical container specification for ${desired.name}`);
+      const next = retainProvisioningObservation(confirmed, this.state.services[desired.name], this.requiresPostProvision(desired));
+      this.state.services[desired.name] = { ...next, specHashMigration: migration };
+      actual = confirmed;
+    }
     const action = this.computeAction(desired, actual);
     // A container that was created, started or recreated is listening on a
     // NEW socket. Applications already running hold pools pointing at the

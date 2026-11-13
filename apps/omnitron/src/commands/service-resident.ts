@@ -98,19 +98,23 @@ async function withPreparedService<T>(inputs: ResidentServiceInputs, mode: 'prep
       let prepared: ManagedRuntime | null;
       try { prepared = await readManagedRuntimeRecord(planFile, OMNITRON_HOME); }
       catch { throw new Error('Invalid saved service plan; inspect its private record before preparing or installing services'); }
-      if (prepared) {
-        if (prepared.instanceHome !== OMNITRON_HOME || prepared.directory !== directory || prepared.scope !== inputs.scope ||
-            prepared.owner.label !== OWNER_LAUNCHD_LABEL || prepared.owner.unit !== OWNER_SYSTEMD_UNIT ||
-            prepared.backend.label !== LAUNCHD_LABEL || prepared.backend.unit !== SYSTEMD_UNIT) {
+      // A guardian transition may have advanced the installed environment since the last installation plan.
+      const installed = mode === 'prepare' ? await readManagedRuntimeRecord(managedRuntimeFile(), OMNITRON_HOME) : null;
+      for (const record of [prepared, installed]) {
+        if (record && (record.instanceHome !== OMNITRON_HOME || record.directory !== directory || record.scope !== inputs.scope ||
+            record.owner.label !== OWNER_LAUNCHD_LABEL || record.owner.unit !== OWNER_SYSTEMD_UNIT ||
+            record.backend.label !== LAUNCHD_LABEL || record.backend.unit !== SYSTEMD_UNIT)) {
           throw new Error('Invalid saved service plan instance, directory, scope or native role identity');
         }
+      }
+      if (prepared) {
         // Explicit preparation can review new sealed role bindings while retaining
         // the paused instance's secrets. Installation must use that reviewed plan.
         if (mode === 'install' && (prepared.owner.artifact !== ownerHash || prepared.backend.artifact !== selection.current)) {
           throw new Error('The saved service plan no longer matches this instance and selected runtime; prepare a matching plan before installation');
         }
-        preparedEnvironment = prepared.environment;
       }
+      preparedEnvironment = (installed ?? prepared)?.environment;
     }
     const config: ManagedRuntime = { protocol: 1, instanceHome: OMNITRON_HOME, directory,
       scope: inputs.scope, cwd: path.dirname(artifact.directory),

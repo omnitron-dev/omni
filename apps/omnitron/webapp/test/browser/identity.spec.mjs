@@ -63,15 +63,26 @@ for (const motion of ['reduce', 'no-preference']) {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(url + '/workspace.html');
     await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible();
-    await page.evaluate(() => {
-      window.mobileFrame = new Promise(resolve => window.addEventListener('resize', () => requestAnimationFrame(() => {
-        const main = document.getElementById('main-content').getBoundingClientRect();
-        const content = document.querySelector('[data-testid="content"]').getBoundingClientRect();
-        resolve({ mainX: main.x, mainWidth: main.width, contentX: content.x, contentWidth: content.width });
-      }), { once: true }));
+    const content = page.getByTestId('content');
+    await expect(content).toBeVisible();
+    expect(await page.locator('#main-content').evaluate(element => element.getBoundingClientRect().x)).toBeGreaterThan(0);
+    // Observe the first frame whose viewport is mobile. Browser resize
+    // events can be coalesced and the navigation shell mounts before its page.
+    await content.evaluate(element => {
+      const main = document.getElementById('main-content');
+      function measure() {
+        if (window.innerWidth !== 320) {
+          requestAnimationFrame(measure);
+          return;
+        }
+        const layout = main.getBoundingClientRect();
+        const bounds = element.getBoundingClientRect();
+        window.mobileFrame = { mainX: layout.x, mainWidth: layout.width, contentX: bounds.x, contentWidth: bounds.width };
+      }
+      requestAnimationFrame(measure);
     });
     await page.setViewportSize({ width: 320, height: 740 });
-    expect(await page.evaluate(() => window.mobileFrame)).toEqual({ mainX: 0, mainWidth: 320, contentX: 8, contentWidth: 304 });
+    await expect.poll(() => page.evaluate(() => window.mobileFrame)).toEqual({ mainX: 0, mainWidth: 320, contentX: 8, contentWidth: 304 });
   });
 }
 

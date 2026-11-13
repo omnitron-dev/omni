@@ -41,7 +41,7 @@ import { getCachedBootstrapDefinition } from '../orchestrator/bootstrap-loader.j
 import { BootstrapMetadataStore, readBootstrapMetadata, metadataSourceChanged, TOPOLOGY_REFRESH_TIMEOUT_MS } from '../project/bootstrap-metadata.js';
 import { appDependencies } from '../project/dependency-topology.js';
 import { isControlPlaneWorkspace } from '../project/workspace-kind.js';
-import { RecoveryMutation, RecoveryBusyError } from '../daemon/recovery-state.js';
+import { recoveryState, RecoveryMutation, RecoveryBusyError } from '../daemon/recovery-state.js';
 /**
  * ProjectService — Manages projects and their stacks
  *
@@ -3522,16 +3522,24 @@ export class ProjectService extends EventEmitter {
   // Config Management
   // ===========================================================================
 
-  @RecoveryMutation()
   async loadProjectConfig(projectName: string): Promise<IEcosystemConfig> {
     const project = this.registry.get(projectName);
     if (!project) throw new Error(`Project '${projectName}' not found`);
 
+    const before = this.configRegistry.get(projectName);
     const { loadEcosystemConfig } = await import('../config/loader.js');
     const config = await loadEcosystemConfig(project.path);
-
-    this.configRegistry.set(projectName, { config, loadedAt: Date.now() });
-    return config;
+    const registration = this.registry.get(projectName);
+    if (!registration || registration.path !== project.path || registration.registeredAt !== project.registeredAt)
+      throw new Error('Project registration changed while loading configuration');
+    const current = this.configRegistry.get(projectName);
+    if (current && isDeepStrictEqual(current.config, config)) return current.config;
+    if (this.ownershipFrozen || current !== before)
+      throw new RecoveryBusyError('Project ownership or cached configuration changed while loading; retry on the current backend');
+    return recoveryState.run('loadProjectConfig', () => {
+      this.configRegistry.set(projectName, { config, loadedAt: Date.now() });
+      return config;
+    });
   }
 
   getLoadedConfig(projectName: string): IEcosystemConfig | null {
@@ -3562,7 +3570,6 @@ export class ProjectService extends EventEmitter {
     return pending;
   }
 
-  @RecoveryMutation()
   async reloadConfig(projectName?: string): Promise<void> {
     if (projectName) {
       await this.loadProjectConfig(projectName);

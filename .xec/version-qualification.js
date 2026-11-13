@@ -12,7 +12,6 @@ const execute = promisify(execFile);
 const SHA = /^[a-f0-9]{40}$/;
 const VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/;
 const CORE = '@omnitron-dev/omnitron';
-const PUBLIC_PACKAGES = 35;
 const CONTROL_FILES = [
   '.xec/release.mjs', '.xec/qualification.mjs', '.xec/version-qualification.js', '.xec/release-registry.js',
   'scripts/ci/version-qualification.test.mjs', 'scripts/ci/release-registry.test.mjs',
@@ -57,7 +56,9 @@ async function sourceEquivalence(root, baseCommit, commit, oldVersion, version, 
     packages.set(original.name, { file, manifest: original });
     versionPaths.add(file);
   }
-  if (packages.size !== PUBLIC_PACKAGES || !packages.has(CORE)) throw Error('Expected the complete 35-package public SDK');
+  // Both archive inventories must independently match every public manifest in this
+  // immutable base tree. Adding or removing a workspace requires full qualification.
+  if (!packages.has(CORE)) throw Error('Public SDK inventory is missing ' + CORE);
   const controls = [];
   for (const file of new Set([...base.keys(), ...candidate.keys()])) {
     const before = base.get(file), after = candidate.get(file);

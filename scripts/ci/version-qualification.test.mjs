@@ -18,7 +18,7 @@ const write = async (file, value) => {
   await fs.writeFile(file, typeof value === 'string' ? value : JSON.stringify(value, null, 2) + '\n');
 };
 
-async function fixture(t) {
+async function fixture(t, packageCount = 35) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'omni-version-qualification-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const git = (...args) => execFileSync('git', ['-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...args], {
@@ -30,7 +30,7 @@ async function fixture(t) {
   await write(path.join(root, '.gitignore'), '.release-artifacts/\n');
   await write(path.join(root, 'package.json'), { private: true, type: 'module' });
   await write(path.join(root, 'pnpm-lock.yaml'), 'lockfileVersion: 9\n');
-  const packages = Array.from({ length: 35 }, (_, index) => ({
+  const packages = Array.from({ length: packageCount }, (_, index) => ({
     name: index ? '@omnitron-dev/fixture-' + String(index).padStart(2, '0') : CORE,
     directory: index ? 'packages/fixture-' + String(index).padStart(2, '0') : 'apps/omnitron',
   }));
@@ -136,6 +136,15 @@ test('fresh 35-package archives receive explicit base attribution; verification 
     await assert.rejects(verifyVersionQualification(f.root, version, f.options), /SHA-512/);
     await fs.writeFile(archive.file, original);
   });
+});
+
+test('the committed public workspace inventory owns version-only qualification as the SDK grows', async t => {
+  const f = await fixture(t, 36);
+  const proof = await prepareVersionQualification(f.root, version, f.options);
+  assert.equal(proof.archiveEquivalence.length, f.packages.length);
+  await assert.rejects(prepareVersionQualification(f.root, version, {
+    ...f.options, prepared: { ...f.prepared, artifacts: f.artifacts.candidate.slice(0, 35) },
+  }), /cover the public SDK/);
 });
 
 test('equal inventory cannot hide executable, declaration, asset, peer or build-stamp changes', async t => {

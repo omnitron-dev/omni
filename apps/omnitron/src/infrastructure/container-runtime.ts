@@ -11,6 +11,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { CONFIG_ROOT_PREFIX } from './shipped-config.js';
 import { nativeHealthCheck } from './health-recovery.js';
+import { DEFAULT_PORT_BIND_HOST } from './types.js';
 import type { ContainerState, ContainerStatus, ContainerSpecHashMigration, ResolvedContainer } from './types.js';
 
 type NativeResources = NonNullable<ContainerState['resources']>;
@@ -498,7 +499,7 @@ export async function getContainerState(name: string, options: { orThrow?: boole
  * that can be forgotten and this one cannot.
  */
 export function portArg(p: { host: number; container: number; bindHost?: string }): string {
-  const bindHost = p.bindHost ?? '127.0.0.1';
+  const bindHost = p.bindHost ?? DEFAULT_PORT_BIND_HOST;
   return `${bindHost}:${p.host}:${p.container}`;
 }
 

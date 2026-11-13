@@ -32,6 +32,68 @@ function fixture() {
 }
 
 describe('preservation from actual Docker resources', () => {
+  it('uses the same command and entrypoint semantics as docker run', () => {
+    const { desired, native, image } = fixture();
+    desired.command = [];
+    native.Config.Cmd = image.Config.Cmd;
+    expect(existingContainerMismatch(desired, native, image)).toBeNull();
+    desired.entrypoint = ['/runner'];
+    native.Config.Entrypoint = ['/runner'];
+    expect(existingContainerMismatch(desired, native, image)).toBe('command or entrypoint differs');
+    Object.assign(native.Config, { Cmd: null });
+    expect(existingContainerMismatch(desired, native, image)).toBeNull();
+    desired.entrypoint = ['/runner', '--verbose'];
+    desired.command = ['serve'];
+    native.Config.Cmd = ['--verbose', 'serve'];
+    expect(existingContainerMismatch(desired, native, image)).toBeNull();
+  });
+
+  it('applies the same loopback default during review as during container creation', () => {
+    const { desired, native, image } = fixture();
+    delete desired.ports[0]!.bindHost;
+    expect(existingContainerMismatch(desired, native, image)).toBeNull();
+    native.HostConfig.PortBindings['5432/tcp'][0]!.HostIp = '0.0.0.0';
+    native.NetworkSettings.Ports['5432/tcp'][0]!.HostIp = '0.0.0.0';
+    expect(existingContainerMismatch(desired, native, image)).toBe('published ports differ');
+  });
+
+  function imageVolume() {
+    const f = fixture();
+    Object.assign(f.image.Config, { Volumes: { '/wal': {}, '/var/lib/postgresql/data': {} } });
+    Object.assign(f.native.HostConfig, { Binds: ['sample-dev-postgres-data:/var/lib/postgresql/data'] });
+    const volume = { Destination: '/wal', Type: 'volume', Driver: 'local', Name: '7'.repeat(64), RW: true, Mode: '', Source: '/volumes/wal' };
+    f.native.Mounts.push(volume);
+    return { ...f, volume };
+  }
+
+  it('preserves the exact anonymous image volume across a stack restart review', async () => {
+    const f = imageVolume();
+    const first = await reviewExistingContainers([f.desired], f.probes);
+    expect(first.digest).toMatch(/^[a-f0-9]{64}$/);
+    f.volume.Name = '8'.repeat(64);
+    const second = await reviewExistingContainers([f.desired], f.probes);
+    expect(second.digest).toMatch(/^[a-f0-9]{64}$/);
+    expect(second.digest).not.toBe(first.digest);
+    f.native.HostConfig.Memory = 512 * 1024 * 1024;
+    expect(existingContainerMismatch(f.desired, f.native, f.image)).toBe('resource limits differ');
+  });
+
+  it.each([
+    ['an explicit bind at an image destination', (f: ReturnType<typeof imageVolume>) => Object.assign(f.native.HostConfig, { Binds: ['sample-dev-postgres-data:/var/lib/postgresql/data', f.volume.Name + ':/wal'] })],
+    ['an explicit mount', (f: ReturnType<typeof imageVolume>) => Object.assign(f.native.HostConfig, { Mounts: [{ Target: '/wal', Source: f.volume.Name }] })],
+    ['a volume inherited from another container', (f: ReturnType<typeof imageVolume>) => Object.assign(f.native.HostConfig, { VolumesFrom: ['another'] })],
+    ['a named replacement', (f: ReturnType<typeof imageVolume>) => { f.volume.Name = 'database'; }],
+    ['another driver', (f: ReturnType<typeof imageVolume>) => { f.volume.Driver = 'other'; }],
+    ['a read-only volume', (f: ReturnType<typeof imageVolume>) => { f.volume.RW = false; }],
+    ['a missing image volume', (f: ReturnType<typeof imageVolume>) => f.native.Mounts.pop()],
+    ['an undeclared destination', (f: ReturnType<typeof imageVolume>) => { f.volume.Destination = '/elsewhere'; }],
+    ['duplicate destinations', (f: ReturnType<typeof imageVolume>) => f.native.Mounts.push(f.volume)],
+  ])('rejects %s while preserving image volumes', (_name, change) => {
+    const f = imageVolume();
+    change(f);
+    expect(existingContainerMismatch(f.desired, f.native, f.image)).toBe('volume identity or mount permissions differ');
+  });
+
   it('accepts unchanged native settings despite a historical spec-hash algorithm', async () => {
     const f = fixture();
     expect(existingContainerMismatch(f.desired, f.native, f.image)).toBeNull();

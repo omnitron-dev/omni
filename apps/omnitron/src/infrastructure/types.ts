@@ -759,13 +759,14 @@ export type ReconcileAction =
   | { type: 'remove'; service: string; containerId: string }
   | { type: 'noop'; service: string };
 
+export const DEFAULT_PORT_BIND_HOST = '127.0.0.1';
+
 export interface ResolvedContainer {
   name: string;
   image: string;
   /**
-   * Published ports. `bindHost` restricts which interface Docker publishes
-   * on — omitted means every interface, which is Docker's default and is
-   * almost never what a control plane wants.
+   * Published ports bind to loopback by default. Set bindHost explicitly to
+   * expose a service through another interface.
    */
   ports: Array<{ host: number; container: number; bindHost?: string }>;
   environment: Record<string, string>;

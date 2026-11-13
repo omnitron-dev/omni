@@ -82,6 +82,15 @@ same window. Verify the new launch identities, development watches, health,
 application receipts, fresh logs, and the Console stack page before the next
 dependent stack. A failed stage retains its receipts and its prepared rollback.
 
+The infrastructure preflight reports the container and the first mismatch in
+identity, ownership, enforced limits or specification. A saved Docker label
+does not establish that a memory limit is enforced. Preservation also checks
+the command produced by the image and any entrypoint override, the published
+interfaces and the mounted volumes. An anonymous volume inherited from an
+image is bound to its exact native identity in the reviewed plan. A change of
+volume or restart generation requires a fresh review. Correct real resource
+drift and qualify the rollback before stopping the stack.
+
 ## Blocker for a writer that exited after a reviewed handoff
 
 An `unconfirmed` hold with an admitted checkpoint can outlive the backend that

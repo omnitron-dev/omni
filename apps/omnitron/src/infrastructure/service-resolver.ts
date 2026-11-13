@@ -17,6 +17,7 @@ import { assertArtifactVolumesBound } from './config-normalizer.js';
 import { gatewayStaticLinkName } from '../services/static-carry-forward.js';
 import { CONFIG_ROOT_PREFIX, shippedMountPath } from './shipped-config.js';
 import { bindService } from './service-binding.js';
+import { DEFAULT_PORT_BIND_HOST } from './types.js';
 import { OMNITRON_HOME } from '../config/defaults.js';
 import { consoleContainerName, CONSOLE_INSTANCE_LABEL } from '../webapp/console-container.js';
 
@@ -250,7 +251,7 @@ export function applyManagedDefaults(spec: ResolvedContainer): ResolvedContainer
   // A container that genuinely must be reachable says so by setting
   // `bindHost` — a deliberate line in a config, reviewable in a diff.
   for (const port of spec.ports ?? []) {
-    if (port.bindHost === undefined) port.bindHost = '127.0.0.1';
+    if (port.bindHost === undefined) port.bindHost = DEFAULT_PORT_BIND_HOST;
   }
 
   return spec;
@@ -925,7 +926,7 @@ export function resolveOmnitronNginx(options?: {
   return applyManagedDefaults({
     name: consoleContainerName(),
     image,
-    ports: [{ host: port, container: 80, bindHost: options?.bindHost ?? '127.0.0.1' }],
+    ports: [{ host: port, container: 80, bindHost: options?.bindHost ?? DEFAULT_PORT_BIND_HOST }],
     environment: {
       OMNITRON_API_HOST: 'host.docker.internal',
       OMNITRON_API_PORT: String(internalPort),

@@ -107,7 +107,7 @@ describe('native monitoring ownership refresh', () => {
     original.state.services.redis = { name: 'redis', image: redis.image, status: 'exited', error: 'Image unavailable' };
     const checkpoint = await original.prepareHandoff();
     runtime.get.mockResolvedValue(actual(redis));
-    await expect(InfrastructureService.adoptHandoff(logger, checkpoint)).rejects.toThrow('identity or specification changed');
+    await expect(InfrastructureService.adoptHandoff(logger, checkpoint)).rejects.toThrow('container identity changed');
     original.dispose();
   });
   it.each([
@@ -115,7 +115,7 @@ describe('native monitoring ownership refresh', () => {
     { status: 'exited' },
   ])('refuses missing running, previously identified or unproven service %j', async previous => {
     const original = service(desired('redis')); original.state.services.redis = { name: 'redis', ...previous };
-    await expect(original.prepareHandoff()).rejects.toThrow('identity or specification changed');
+    await expect(original.prepareHandoff()).rejects.toThrow('container missing');
     expect(original.ownershipFrozen).toBe(false); original.dispose();
   });
   it('does not turn a Docker inspection failure into proof of absence', async () => {
@@ -129,7 +129,7 @@ describe('native monitoring ownership refresh', () => {
     const redis = desired('redis'), original = service(redis); runtime.get.mockResolvedValue(actual(redis));
     const checkpoint = await original.prepareHandoff();
     runtime.get.mockResolvedValue(actual(redis, { containerId: 'a'.repeat(64) }));
-    await expect(InfrastructureService.adoptHandoff(logger, checkpoint)).rejects.toThrow('identity or specification changed');
+    await expect(InfrastructureService.adoptHandoff(logger, checkpoint)).rejects.toThrow('container identity changed');
     original.dispose();
   });
   it('adopts a historical spec fingerprint only with the same native identity and enforced shared-memory size', async () => {
@@ -166,7 +166,11 @@ describe('native monitoring ownership refresh', () => {
     expect(runtime.remove).not.toHaveBeenCalled();
     original.dispose(); restored.dispose();
   });
-  it.each(['identity', 'hash', 'resources', 'labels', 'schema', 'missing-prior', 'prior-hash'])('refuses historical fingerprint migration with changed %s', async change => {
+  it.each([
+    ['identity', 'container identity changed'], ['hash', 'specification receipt differs'], ['resources', 'resource limits differ'],
+    ['labels', 'ownership labels differ'], ['schema', 'specification receipt differs'],
+    ['missing-prior', 'specification receipt differs'], ['prior-hash', 'specification receipt differs'],
+  ])('refuses historical fingerprint migration with changed %s', async (change, reason) => {
     const postgres = { ...desired('postgres'), image: 'postgres:17', shmSize: '256m' };
     const observed = actual(postgres, { specHash: 'd94b439555467d30', resources: {
       memoryBytes: 0, memoryReservationBytes: 0, nanoCpus: 0, shmBytes: 268435456, cpuQuota: 0, cpuPeriod: 0,
@@ -183,7 +187,7 @@ describe('native monitoring ownership refresh', () => {
     if (change === 'missing-prior') delete checkpoint.state.services.postgres.containerId;
     if (change === 'prior-hash') checkpoint.state.services.postgres.specHash = '0'.repeat(16);
     runtime.get.mockResolvedValue(observed);
-    await expect(InfrastructureService.adoptHandoff(logger, checkpoint)).rejects.toThrow('identity or specification changed');
+    await expect(InfrastructureService.adoptHandoff(logger, checkpoint)).rejects.toThrow(reason);
     expect(runtime.create).not.toHaveBeenCalled(); expect(runtime.start).not.toHaveBeenCalled(); expect(runtime.remove).not.toHaveBeenCalled();
     original.dispose();
   });
@@ -192,7 +196,7 @@ describe('native monitoring ownership refresh', () => {
     original.state.services.redis = { name: 'redis', status: 'exited', error: 'Image unavailable' };
     const checkpoint = await original.prepareHandoff();
     const legacy = structuredClone(checkpoint); delete legacy.nativeState;
-    await expect(InfrastructureService.adoptHandoff(logger, legacy)).rejects.toThrow('identity or specification changed');
+    await expect(InfrastructureService.adoptHandoff(logger, legacy)).rejects.toThrow('container missing');
     checkpoint.nativeState!.observations = [];
     await expect(InfrastructureService.adoptHandoff(logger, checkpoint)).rejects.toThrow('Incomplete');
     original.dispose();
@@ -216,13 +220,13 @@ describe('native monitoring ownership refresh', () => {
     runtime.get.mockResolvedValue(actual(redis));
     const checkpoint = await original.prepareHandoff();
     runtime.get.mockResolvedValue(actual(redis, { specHash: 'another-release' }));
-    await expect(InfrastructureService.adoptHandoff(logger, checkpoint)).rejects.toThrow('identity or specification changed');
+    await expect(InfrastructureService.adoptHandoff(logger, checkpoint)).rejects.toThrow('specification receipt differs');
     expect(runtime.create).not.toHaveBeenCalled(); expect(runtime.remove).not.toHaveBeenCalled();
     original.resumeAfterHandoff(); original.dispose();
   });
   it('refuses mismatched native ownership before retiring the existing backend', async () => {
     const original = service(desired('redis'));
-    await expect(original.prepareHandoff()).rejects.toThrow('identity or specification changed');
+    await expect(original.prepareHandoff()).rejects.toThrow('container missing');
     expect(original.ownershipFrozen).toBe(false);
     expect(runtime.create).not.toHaveBeenCalled(); expect(runtime.remove).not.toHaveBeenCalled();
     original.dispose();

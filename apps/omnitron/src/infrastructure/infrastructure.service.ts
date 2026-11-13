@@ -700,7 +700,7 @@ export class InfrastructureService {
         !previous.containerId && typeof previous.error === 'string' && previous.error.length > 0;
       if (!actual) {
         if (!failedCreation || (expected && expected.get(desired.name) !== null))
-          throw new Error(`Infrastructure identity or specification changed during handoff: ${desired.name}`);
+          throw new Error(`Infrastructure container missing during handoff: ${desired.name}`);
         observations.push({ name: desired.name, containerId: null });
         continue;
       }
@@ -708,13 +708,15 @@ export class InfrastructureService {
       // shape for rollback, while comparing a full prior state ID when present.
       const matches = (id: string | null | undefined) => id?.length === 12
         ? actual.containerId?.startsWith(id) : id === actual.containerId;
+      if (!actual.containerId || (expected && !matches(expected.get(desired.name))) || (previous?.containerId && !matches(previous.containerId)))
+        throw new Error(`Infrastructure container identity changed during handoff: ${desired.name}`);
+      if (Object.entries(desired.labels).some(([key, value]) => actual.labels?.[key] !== value))
+        throw new Error(`Infrastructure ownership labels differ during handoff: ${desired.name}`);
+      if (!containerResourcesMatch(desired, actual))
+        throw new Error(`Enforced container resource limits differ during handoff: ${desired.name}`);
       const migration = migrateContainerSpecHash(desired, actual, previous);
-      if (!actual.containerId || !containerSpecHashMatches(desired, actual, migration) || !containerResourcesMatch(desired, actual) ||
-          (expected && !matches(expected.get(desired.name))) ||
-          (previous?.containerId && !matches(previous.containerId)) ||
-          Object.entries(desired.labels).some(([key, value]) => actual.labels?.[key] !== value)) {
-        throw new Error(`Infrastructure identity or specification changed during handoff: ${desired.name}`);
-      }
+      if (!containerSpecHashMatches(desired, actual, migration))
+        throw new Error(`Infrastructure specification receipt differs during handoff: ${desired.name}`);
       if (previous) {
         delete previous.specHashMigration;
         if (migration) previous.specHashMigration = migration;

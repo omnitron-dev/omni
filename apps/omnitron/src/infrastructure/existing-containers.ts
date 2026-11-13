@@ -3,7 +3,7 @@ import { promisify } from 'node:util';
 import { isDeepStrictEqual } from 'node:util';
 import path from 'node:path';
 import { containerResources, containerSpecHash, inspectStackContainers } from './container-runtime.js';
-import type { ResolvedContainer } from './types.js';
+import { DEFAULT_PORT_BIND_HOST, type ResolvedContainer } from './types.js';
 import { stackDefinitionFingerprint } from '../project/node-stack-stop.js';
 import type { ExistingInfrastructureReview } from '../shared/dto/project.js';
 
@@ -51,6 +51,32 @@ const duration = (value: string | undefined): number | undefined => {
 };
 const host = (value: unknown) => value === '' || value === undefined || value === '0.0.0.0' ? '*' : value;
 
+function mountsMatch(volumes: ResolvedContainer['volumes'], mounts: Native[], runtime: Native, imageConfig: Native): boolean {
+  const declared = new Map(volumes.map(volume => [volume.target, volume]));
+  const inherited = Object.keys(imageConfig['Volumes'] ?? {}).filter(target => !declared.has(target));
+  const observed = new Map(mounts.map(mount => [mount['Destination'], mount]));
+  if (declared.size !== volumes.length || observed.size !== mounts.length || observed.size !== declared.size + inherited.length) return false;
+  if (inherited.length) {
+    // Docker creates anonymous volumes for image VOLUME destinations. Prove that
+    // no explicit mount supplied them. Their exact native identities enter the review digest.
+    const binds = volumes.map(v => v.source + ':' + v.target + (v.readonly ? ':ro' : ''));
+    if (!isDeepStrictEqual(sorted(runtime['Binds'] ?? []), sorted(binds)) || runtime['Mounts']?.length || runtime['VolumesFrom']?.length ||
+        Object.keys(runtime['Tmpfs'] ?? {}).length || (runtime['VolumeDriver'] && runtime['VolumeDriver'] !== 'local')) return false;
+    for (const target of inherited) {
+      const actual = observed.get(target);
+      if (actual?.['Type'] !== 'volume' || actual['Driver'] !== 'local' || !/^[a-f0-9]{64}$/.test(actual['Name'] ?? '') ||
+          actual['RW'] !== true || actual['Mode'] !== '') return false;
+    }
+  }
+  return volumes.every(wanted => {
+    const actual = observed.get(wanted.target);
+    const bind = path.isAbsolute(wanted.source) || wanted.source.startsWith('.');
+    return actual?.['RW'] === !wanted.readonly && (bind
+      ? actual['Type'] === 'bind' && actual['Source'] === path.resolve(wanted.source)
+      : actual['Type'] === 'volume' && actual['Name'] === wanted.source);
+  });
+}
+
 /** Compare enforced settings, including image defaults. A historical label is not evidence of drift. */
 export function existingContainerMismatch(desired: ResolvedContainer, native: Native, image: Native): string | null {
   const config = native['Config'], runtime = native['HostConfig'];
@@ -75,23 +101,17 @@ export function existingContainerMismatch(desired: ResolvedContainer, native: Na
     return 'mounted configuration content cannot be proved from this spec receipt';
   if (!isDeepStrictEqual(environment(config.Env), { ...environment(image['Config'].Env ?? []), ...desired.environment })) return 'environment differs';
   const entrypoint = desired.entrypoint ? [desired.entrypoint[0]] : image['Config'].Entrypoint ?? null;
-  const command = desired.entrypoint && desired.entrypoint.length > 1
-    ? [...desired.entrypoint.slice(1), ...(desired.command ?? [])] : desired.command ?? image['Config'].Cmd ?? null;
-  if (!isDeepStrictEqual(config.Entrypoint ?? null, entrypoint) || !isDeepStrictEqual(config.Cmd ?? null, command)) return 'command or entrypoint differs';
-  const wantedPorts = sorted(desired.ports.map(p => [p.container + '/tcp', host(p.bindHost), String(p.host)]));
+  const args = [...(desired.entrypoint?.slice(1) ?? []), ...(desired.command ?? [])];
+  // docker run --entrypoint clears the image CMD, even when no positional arguments follow.
+  const command = args.length || desired.entrypoint ? args : image['Config'].Cmd ?? [];
+  if (!isDeepStrictEqual(config.Entrypoint ?? null, entrypoint) || !isDeepStrictEqual(config.Cmd ?? [], command)) return 'command or entrypoint differs';
+  const wantedPorts = sorted(desired.ports.map(p => [p.container + '/tcp', host(p.bindHost ?? DEFAULT_PORT_BIND_HOST), String(p.host)]));
   const actualPorts = (bindings: Native | undefined) => sorted(Object.entries(bindings ?? {}).flatMap(([port, portBindings]) =>
     (portBindings as Native[] | null)?.map(binding => [port, host(binding['HostIp']), binding['HostPort']]) ?? []));
   if (!isDeepStrictEqual(wantedPorts, actualPorts(runtime.PortBindings)) ||
       !isDeepStrictEqual(wantedPorts, actualPorts(native['NetworkSettings']?.Ports))) return 'published ports differ';
   if (!Array.isArray(native['Mounts'])) return 'native mounts are unavailable';
-  const mounts = native['Mounts'] as Native[];
-  if (mounts.length !== desired.volumes.length || desired.volumes.some(wanted => {
-    const actual = mounts.find(mount => mount['Destination'] === wanted.target);
-    const bind = path.isAbsolute(wanted.source) || wanted.source.startsWith('.');
-    return !actual || actual['RW'] !== !wanted.readonly || (bind
-      ? actual['Type'] !== 'bind' || actual['Source'] !== path.resolve(wanted.source)
-      : actual['Type'] !== 'volume' || actual['Name'] !== wanted.source);
-  })) return 'volume identity or mount permissions differ';
+  if (!mountsMatch(desired.volumes, native['Mounts'], runtime, image['Config'])) return 'volume identity or mount permissions differ';
   const network = desired.network ?? 'bridge';
   if (runtime.NetworkMode !== network || !/^[a-f0-9]{64}$/.test(native['NetworkSettings']?.Networks?.[network]?.NetworkID ?? '') ||
       Object.keys(native['NetworkSettings'].Networks).length !== 1) return 'network attachment differs';

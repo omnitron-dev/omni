@@ -46,7 +46,7 @@ it('checks global and project infrastructure with the actual adoption validator 
   ]);
   expect(state).toEqual(before);
   project.observed.resources!.shmBytes = 67108864;
-  await expect(validateBackendInfrastructureInput(Buffer.from(input))).rejects.toThrow('project-postgres');
+  await expect(validateBackendInfrastructureInput(Buffer.from(input))).rejects.toThrow('Enforced container resource limits differ during handoff: project-postgres');
   expect(runtime.create).not.toHaveBeenCalled(); expect(runtime.start).not.toHaveBeenCalled(); expect(runtime.remove).not.toHaveBeenCalled();
 });
 

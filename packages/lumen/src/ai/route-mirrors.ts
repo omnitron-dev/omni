@@ -2,6 +2,7 @@ import { toCleanMarkdown } from '@omnitron-dev/lumen-ast';
 import type { CorpusGraph } from '../corpus/graph.js';
 import { projectCorpus, type CorpusProjectionOptions } from '../corpus/projection.js';
 import type { LumenConfig } from '../config/schema.js';
+import { markdownMirrorPath } from '../corpus/routes.js';
 
 export function generateRouteMirrors(
   corpus: CorpusGraph,
@@ -23,7 +24,7 @@ export function generateRouteMirrors(
     const normalizedRoute = baseRoute.startsWith('/') ? baseRoute : `/${baseRoute}`;
 
     mirrors.set(normalizedRoute, cleanMd);
-    mirrors.set(`${normalizedRoute === '/' ? '/index' : normalizedRoute}.md`, cleanMd);
+    mirrors.set(markdownMirrorPath(normalizedRoute), cleanMd);
   }
 
   return mirrors;

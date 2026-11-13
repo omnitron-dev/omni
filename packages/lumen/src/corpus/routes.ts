@@ -1,5 +1,9 @@
 import { posix } from 'node:path';
 
+export function markdownMirrorPath(route: string): string {
+  return (route === '/' ? '/index' : route) + '.md';
+}
+
 /** A route is an absolute URL path, not a filesystem path or external URL. */
 export function normalizeRoute(route: string): string {
   if (

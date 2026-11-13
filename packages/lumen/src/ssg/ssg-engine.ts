@@ -11,6 +11,7 @@ import { renderDocumentHtml } from './render-html.js';
 import { generateLlmsTxt } from '../ai/llms-txt.js';
 import { generateLlmsFullTxt } from '../ai/llms-full.js';
 import { generateRouteMirrors } from '../ai/route-mirrors.js';
+import { markdownMirrorPath } from '../corpus/routes.js';
 import { buildSearchIndex } from '../search/index-builder.js';
 import { generateAssetManifest } from '../manifest/generator.js';
 import { computeContentHash, computeSriHash } from '../manifest/hashing.js';
@@ -130,7 +131,9 @@ export async function buildStaticSite(
           const target = resolved.targetDocId ? projectedCorpus.getDocument(resolved.targetDocId) : undefined;
           if (target?.routePath) {
             const hash = node.url.includes('#') ? node.url.slice(node.url.indexOf('#')) : '';
-            next.url = `${normalizedBase}${target.routePath.replace(/^\//, '')}${hash}`;
+            const originalPath = node.url.split('#', 1)[0];
+            const publicPath = originalPath === markdownMirrorPath(target.routePath) ? originalPath : target.routePath;
+            next.url = `${normalizedBase}${publicPath.replace(/^\//, '')}${hash}`;
           }
         }
         return next;

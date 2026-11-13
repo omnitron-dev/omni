@@ -28,6 +28,21 @@ afterEach(() => {
 });
 
 describe('ordinary site build', () => {
+  it('distinguishes source links from the public Markdown mirrors of custom and root routes', async () => {
+    const root = fixture();
+    writeFileSync(join(root, 'docs/guide/index.md'), '# Next\n\n[Reader](./start.mdx)\n\n[Mirror](/manual/start.md)\n\n[Home mirror](/index.md)');
+    const config = defineLumenConfig({ title: 'Site', pagesDir: 'pages', baseUrl: '/product/' });
+    const { graph } = await loadCorpusFromDirectory(root, config);
+    const result = await buildStaticSite(graph, config, { rootDir: root });
+    const html = result.pages.get('/docs/guide');
+    expect(html).toContain('href="/product/manual/start">Reader</a>');
+    expect(html).toContain('href="/product/manual/start.md">Mirror</a>');
+    expect(html).toContain('href="/product/index.md">Home mirror</a>');
+    expect(result.mirrors.get('/docs/guide.md')).toContain('[Mirror](/product/manual/start.md)');
+    expect(result.mirrors.get('/index.md')).toContain('# Home');
+    expect(result.mirrors.get('/manual/start.md')).toContain('# Start');
+  });
+
   it('preserves routes, source-relative links, binary assets and audience boundaries through a custom layout', async () => {
     const root = fixture();
     const observedTitles: string[] = [];

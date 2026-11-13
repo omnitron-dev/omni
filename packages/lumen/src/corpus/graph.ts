@@ -1,4 +1,5 @@
 import { posix } from 'node:path';
+import { markdownMirrorPath } from './routes.js';
 import type {
   CorpusDocument,
   CorpusMathObject,
@@ -217,6 +218,10 @@ export class CorpusGraph {
       (doc) => doc.routePath !== undefined && doc.routePath.replace(/\/$/, '') === slashRef.replace(/\/$/, '')
     );
     if (routeMatch) return routeMatch;
+    if (slashRef.startsWith('/') && slashRef.endsWith('.md')) {
+      const mirror = [...this.documents.values()].find(doc => doc.routePath && markdownMirrorPath(doc.routePath) === slashRef);
+      if (mirror) return mirror;
+    }
     const clean = stripDocExtension(slashRef).replace(/^\.?\//, '');
     if (!clean || clean === '.' || clean.startsWith('..')) {
       return undefined;

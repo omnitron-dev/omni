@@ -81,6 +81,8 @@ Islands mount through portals into static hosts, preserving the shell's context.
 
 Props use the shared Lumen AST JSON codec. Invalid metadata reports an error instead of mounting with empty props; unknown components retain their static fallback. Documents cannot register application code or grant network permissions. Live API and Netron playgrounds require explicit host capabilities and server authorization. Mermaid uses strict configuration and sanitized SVG images.
 
+A component that throws while rendering shows an alert at its own island with its registered name and the error message. Other islands retain their state. Correcting the failed island's props or replacing its registered component retries that island.
+
 ## Documentation
 
 [Public API](src/index.ts) · [Package exports](package.json) · [Lumen](../lumen/README.md)

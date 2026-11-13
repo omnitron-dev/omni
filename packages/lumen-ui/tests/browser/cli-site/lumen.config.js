@@ -14,6 +14,8 @@ function Layout({ children }) {
     createElement(PortalIslandHost, { islandId: 'counter-example', component: 'CounterDemo', hydrate: 'load' },
       createElement(ComponentExample, { title: 'Counter example', code: counterSource, language: 'js', resettable: true },
         createElement(CounterExample))),
+    createElement(PortalIslandHost, { islandId: 'failure-preview', component: 'FailurePreview', hydrate: 'interaction' },
+      createElement('span', null, 'Recorded preview')),
     createElement(DocPagination, { labels: { previous: 'Anterior', next: 'Siguiente', navigation: 'Documentos' },
       prev: { href: '#native-cli-document', label: 'Inicio' }, next: { href: '#native-cli-document', label: 'Detalles' } }),
     ...['both', 'previous', 'next'].map(kind => createElement('section', {

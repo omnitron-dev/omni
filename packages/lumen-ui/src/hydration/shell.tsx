@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { PrismProvider } from '@omnitron-dev/prism/core';
+import { ErrorBoundary } from '@omnitron-dev/prism/components/error-boundary';
 import { parseIslandProps, parseHydrationTrigger } from '@omnitron-dev/lumen-ast/islands';
 import { LumenContext, type LumenContextValue, type IslandComponent, type IslandRegistry } from './context.js';
 import { setupTrigger, type HydrationTrigger } from './triggers.js';
@@ -326,7 +327,15 @@ export function PortalIslandManager({
           clearedSsrElementsRef.current.add(item.element);
           item.element.replaceChildren();
         }
-        portals.push(createPortal(React.createElement(Component, item.props), item.element, item.instanceKey));
+        portals.push(createPortal(
+          <ErrorBoundary resetKeys={[Component, item.islandId, item.rawProps]}
+            fallback={({ error }) => <p className="lumen-island-error" role="alert">
+              {item.componentName} could not render. {error.message}
+            </p>}>
+            {React.createElement(Component, item.props)}
+          </ErrorBoundary>,
+          item.element, item.instanceKey,
+        ));
       }
     }
   }

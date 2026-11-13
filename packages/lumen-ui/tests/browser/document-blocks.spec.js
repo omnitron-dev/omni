@@ -89,6 +89,23 @@ test('the component example exposes its real module without scripting and restor
   }
 });
 
+test('a failing island shows its runtime error while the static document and adjacent interactive island survive', async ({ page, cliSiteUrl }) => {
+  await page.goto(cliSiteUrl);
+  const counter = page.getByRole('figure', { name: 'Counter example' });
+  await expect(counter.getByRole('button', { name: 'Reset example' })).toBeVisible();
+  await counter.getByRole('button', { name: 'Count 0' }).click();
+  const failed = page.locator('[data-lumen-island="failure-preview"]');
+  await expect(failed).toHaveText('Recorded preview');
+  await failed.click();
+  await expect(failed.getByRole('alert')).toHaveText('FailurePreview could not render. Preview data is unavailable');
+  await counter.getByRole('button', { name: 'Count 1' }).click();
+  await expect(counter.getByRole('button', { name: 'Count 2' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'CLI browser boundary' })).toBeVisible();
+  await failed.evaluate(element => { element.dataset.props = JSON.stringify({ ready: true }); });
+  await expect(failed).toHaveText('Data restored');
+  await expect(counter.getByRole('button', { name: 'Count 2' })).toBeVisible();
+});
+
 test('filetree disclosures, markers and annotations work without client JavaScript at 320px', async ({ browser, cliSiteUrl }) => {
   const context = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 320, height: 900 } });
   try {

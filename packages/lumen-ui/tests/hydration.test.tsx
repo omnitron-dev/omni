@@ -179,6 +179,45 @@ describe('Hydration Runtime & Triggers', () => {
     }
   });
 
+  it('isolates a failed component, preserves neighbouring state and recovers on fresh props or registration', async () => {
+    function Counter() {
+      const [count, setCount] = useState(0);
+      return <button onClick={() => setCount(value => value + 1)}>{count}</button>;
+    }
+    function Panel({ text }: { text?: string }) {
+      if (!text) throw Error('Missing series <daily>');
+      return <output>{text}</output>;
+    }
+    container.innerHTML = '<h1>Release notes</h1>' +
+      '<div data-lumen-island="panel" data-component="Panel" data-hydrate="interaction">Server panel</div>' +
+      '<div data-lumen-island="count" data-component="Counter" data-hydrate="interaction">Server count</div>' +
+      '<div data-lumen-island="unknown" data-component="Unknown" data-hydrate="interaction">Server source</div>';
+    const [panel, count, unknown] = container.querySelectorAll<HTMLElement>('[data-lumen-island]');
+    const mount = document.createElement('div'); container.append(mount);
+    const root = createRoot(mount, { onCaughtError: vi.fn() });
+    try {
+      await act(async () => { root.render(<PortalIslandManager registry={{ Panel, Counter }} />); });
+      expect(panel.textContent).toBe('Server panel');
+      await act(async () => { count.dispatchEvent(new Event('click')); });
+      const button = count.querySelector('button')!;
+      await act(async () => { button.click(); panel.dispatchEvent(new Event('click')); unknown.dispatchEvent(new Event('click')); });
+      expect(panel.querySelector('[role="alert"]')?.textContent).toContain('Panel could not render. Missing series <daily>');
+      expect(panel.querySelector('daily')).toBeNull();
+      expect(container.querySelector('h1')?.textContent).toBe('Release notes');
+      expect(unknown.textContent).toBe('Server source');
+      await act(async () => { button.click(); });
+      expect(button.textContent).toBe('2');
+      await act(async () => { panel.dataset.props = '{"text":"Recovered"}'; await new Promise(resolve => setTimeout(resolve, 0)); });
+      expect(panel.querySelector('output')?.textContent).toBe('Recovered');
+      await act(async () => { panel.dataset.props = '{}'; await new Promise(resolve => setTimeout(resolve, 0)); });
+      expect(panel.querySelector('[role="alert"]')).not.toBeNull();
+      await act(async () => { root.render(<PortalIslandManager registry={{ Panel: () => <output>Replaced</output>, Counter }} />); });
+      expect(panel.querySelector('output')?.textContent).toBe('Replaced');
+      expect(count.querySelector('button')).toBe(button);
+      expect(button.textContent).toBe('2');
+    } finally { await act(async () => root.unmount()); }
+  });
+
   it('allows calling LumenShell as a pure function without hook error', () => {
     const result = LumenShell({
       theme: 'dark',

@@ -13,6 +13,11 @@ function CounterDemo() {
   </ComponentExample>;
 }
 
+function FailurePreview({ ready }) {
+  if (!ready) throw new Error('Preview data is unavailable');
+  return <span>Data restored</span>;
+}
+
 function HydrationCanary({ origin = 'diagram-label' }) {
   useEffect(() => {
     window.labelActivations ??= [];
@@ -23,7 +28,7 @@ function HydrationCanary({ origin = 'diagram-label' }) {
 
 function Client() {
   const [open, setOpen] = useState(false);
-  return <LumenShell theme="light" islands={{ MermaidDiagram, HydrationCanary, CounterDemo }}>
+  return <LumenShell theme="light" islands={{ MermaidDiagram, HydrationCanary, CounterDemo, FailurePreview }}>
     <button onClick={() => setOpen(true)}>Open API explorer</button>
     <CodeBlock className="client-code" code="const value = 'A deliberately long client code line with native keyboard scrolling';" />
     {open && <Suspense fallback={<p>Loading API explorer</p>}><LazyApi /></Suspense>}

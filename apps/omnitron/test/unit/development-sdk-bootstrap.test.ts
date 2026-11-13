@@ -432,6 +432,23 @@ it.each([false, true])('bootstraps a standalone Lumen consumer with absent/stale
   expect(await inspectSdk(consumer)).toMatchObject({ mode: 'development' });
 }, 90_000);
 
+it('verifies hoisted SDK imports and rejects a nearer package from a different source', async () => {
+  await initialize();
+  await select(source);
+  const importer = path.join(source, 'packages/lumen');
+  const name = '@omnitron-dev/lumen-ast';
+  const nearer = path.join(importer, 'node_modules', name);
+  const hoisted = path.join(source, 'node_modules', name);
+  await fs.mkdir(path.dirname(hoisted), { recursive: true });
+  await fs.rename(nearer, nearer + '.saved');
+  await fs.symlink(path.join(source, 'packages/lumen-ast'), hoisted, 'dir');
+  expect(await inspectSdk(consumer)).toMatchObject({ mode: 'development', verifiedImports: 1 });
+  expect((await exec(process.execPath, ['--input-type=module', '-e',
+    "import {value} from '@omnitron-dev/lumen'; console.log(value)"], { cwd: consumer })).stdout.trim()).toBe('42');
+  await fs.symlink(path.join(source, 'packages/lumen'), nearer, 'dir');
+  await expect(inspectSdk(consumer)).rejects.toThrow(/lumen-ast/);
+}, 90_000);
+
 it('preserves an existing manager-only lock without treating it as a registry baseline', async () => {
   // An existing input state, taken from the repository's genuine pnpm lock.
   // This does not claim that the externally managed fixture generates it.

@@ -350,6 +350,21 @@ async function registryInstallation(root) {
   return { nodeLinker, modules, store, lock };
 }
 
+// pnpm can hoist a direct dependency to an ancestor of its importer. Check
+// the nearest installed copy, within this workspace, just as Node will use it.
+async function installedWorkspacePackage(root, importer, name) {
+  for (let directory = importer; inside(root, directory); directory = path.dirname(directory)) {
+    const candidate = path.join(directory, 'node_modules', name);
+    const entry = await fs.lstat(candidate).catch(error => {
+      if (error.code === 'ENOENT') return null;
+      throw error;
+    });
+    if (entry) return fs.realpath(candidate);
+    if (directory === root) break;
+  }
+  throw Error('Workspace dependency ' + name + ' is not installed for ' + importer);
+}
+
 async function verifyLinks(root, profile) {
   const importers = await inventory(root);
   const locked = profile ? null : await registryBaseline(root, await distributionLock(root), importers);
@@ -357,7 +372,7 @@ async function verifyLinks(root, profile) {
   let verified = 0;
   for (const { directory, manifest } of importers.values()) {
     for (const name of frameworkDependencies(manifest, true)) {
-      const actual = await fs.realpath(path.join(directory, 'node_modules', name));
+      const actual = await installedWorkspacePackage(root, directory, name);
       if (!profile) {
         const identity = await readJson(path.join(actual, 'package.json'));
         const expected = locked.get(directory + '\0' + name);
@@ -395,7 +410,7 @@ async function verifyLinks(root, profile) {
       throw Error('Invalid Omnitron SDK package location for ' + name);
     const manifest = frameworkPackage(name, directory, profile.versions?.[name]);
     for (const dependency of frameworkDependencies(manifest)) {
-      const actual = await fs.realpath(path.join(directory, 'node_modules', dependency));
+      const actual = await installedWorkspacePackage(profile.source, directory, dependency);
       if (actual !== profile.links[dependency])
         throw Error(`${name} resolves ${dependency} from ${actual}, expected ${profile.links[dependency]}`);
     }

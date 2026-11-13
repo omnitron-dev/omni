@@ -5,6 +5,7 @@ import { statusColor } from 'src/utils/constants';
 import { StackStopDialog } from 'src/components/stack-stop-dialog';
 import { StackDiagnosisDialog } from 'src/components/stack-diagnosis-dialog';
 import { StackStopNotice } from 'src/components/stack-stop-notice';
+import { StackInfrastructure } from 'src/components/stack-infrastructure';
 import { StackStartNotice } from 'src/components/stack-start-notice';
 import { Can } from 'src/auth/access';
 /**
@@ -20,7 +21,6 @@ import { Can } from 'src/auth/access';
 import { useState, useCallback } from 'react';
 import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom';
 import Box from '@mui/material/Box';
-import Stack from '@mui/material/Stack';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import Typography from '@mui/material/Typography';
@@ -47,7 +47,7 @@ import { DeployReleaseDialog } from 'src/components/deploy-release-dialog';
 import { OperationStatus } from 'src/components/operation-status';
 import { StackReleaseCard } from 'src/components/stack-release-card';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
-import type { IStackAppStatus, IStackInfo, IStackNodeStatus } from '@omnitron-dev/omnitron/dto/services';
+import type { IStackAppStatus, IStackNodeStatus } from '@omnitron-dev/omnitron/dto/services';
 import { syncFinding, syncWords, syncSeverity } from '@omnitron-dev/omnitron/sync-reading';
 
 export default function StackDetailPage() {
@@ -379,8 +379,7 @@ function StackDetail({ name, activeProject }: { name: string | undefined; active
           )}
         </CardContent>
       </Card>
-      {/* Infrastructure cards */}
-      <InfrastructureCards stack={stack} />
+      <StackInfrastructure stack={stack} />
       {/* Sync Status (remote/cluster only) */}
       {stack.type !== 'local' && (
         <Card variant="outlined">
@@ -557,140 +556,5 @@ function NodeSyncRow({ node }: { node: IStackNodeStatus }) {
         </Typography>
       )}
     </Box>
-  );
-}
-
-// =============================================================================
-// Infrastructure Section
-// =============================================================================
-
-interface InfraProps { stack: IStackInfo }
-
-function InfrastructureCards({ stack }: InfraProps) {
-  const configInfra = stack.config?.infrastructure as any;
-  const runtimeServices = stack.infrastructure?.services ?? {};
-  const hasConfig = configInfra && Object.keys(configInfra).length > 0;
-  const hasRuntime = Object.keys(runtimeServices).length > 0;
-
-  if (!hasConfig && !hasRuntime) return null;
-
-  const pg = configInfra?.postgres;
-  const redis = configInfra?.redis;
-  const minio = configInfra?.minio;
-
-  return (
-    <>
-      {/* PostgreSQL */}
-      {pg && (
-        <Card variant="outlined">
-          <CardContent>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-              <Typography variant="overline" sx={{ color: 'text.secondary', fontSize: '0.65rem' }}>
-                PostgreSQL
-              </Typography>
-              <RuntimeChip name="postgres" runtime={runtimeServices} />
-            </Box>
-            <InfoRow label="Port" value={String(pg.port ?? 5432)} mono />
-            {pg.databases && Object.keys(pg.databases).length > 0 && (
-              <>
-                <Typography variant="caption" sx={{ color: 'text.secondary', mt: 1, display: 'block' }}>
-                  Databases ({Object.keys(pg.databases).length})
-                </Typography>
-                {Object.entries(pg.databases as Record<string, any>).map(([name, cfg]) => (
-                  <Box key={name} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 0.25, pl: 1 }}>
-                    <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{name}</Typography>
-                    {cfg?.migrate && <Chip label="migrate" size="small" sx={{ height: 16, fontSize: '0.55rem' }} />}
-                  </Box>
-                ))}
-              </>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Redis */}
-      {redis && (
-        <Card variant="outlined">
-          <CardContent>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-              <Typography variant="overline" sx={{ color: 'text.secondary', fontSize: '0.65rem' }}>
-                Redis
-              </Typography>
-              <RuntimeChip name="redis" runtime={runtimeServices} />
-            </Box>
-            <InfoRow label="Port" value={String(redis.port ?? 6379)} mono />
-            {redis.databases && Object.keys(redis.databases).length > 0 && (
-              <>
-                <Typography variant="caption" sx={{ color: 'text.secondary', mt: 1, display: 'block' }}>
-                  DB Allocations ({Object.keys(redis.databases).length})
-                </Typography>
-                {Object.entries(redis.databases as Record<string, number>).map(([name, db]) => {
-                  const isService = name.includes(':');
-                  return (
-                    <Box key={name} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 0.25, pl: 1 }}>
-                      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
-                        {isService ? name.split(':')[1] : name}
-                      </Typography>
-                      <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
-                        {isService && (
-                          <Chip label={name.split(':')[0]} size="small" variant="outlined" sx={{ height: 16, fontSize: '0.5rem' }} />
-                        )}
-                        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'text.secondary', minWidth: 28, textAlign: 'right' }}>
-                          DB {db}
-                        </Typography>
-                      </Box>
-                    </Box>
-                  );
-                })}
-              </>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* MinIO / S3 */}
-      {minio && (
-        <Card variant="outlined">
-          <CardContent>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-              <Typography variant="overline" sx={{ color: 'text.secondary', fontSize: '0.65rem' }}>
-                MinIO / S3
-              </Typography>
-              <RuntimeChip name="minio" runtime={runtimeServices} />
-            </Box>
-            {minio.ports && (
-              <>
-                <InfoRow label="API Port" value={String(minio.ports.api ?? 9000)} mono />
-                <InfoRow label="Console Port" value={String(minio.ports.console ?? 9001)} mono />
-              </>
-            )}
-            {minio.buckets && minio.buckets.length > 0 && (
-              <>
-                <Typography variant="caption" sx={{ color: 'text.secondary', mt: 1, display: 'block' }}>
-                  Buckets ({minio.buckets.length})
-                </Typography>
-                {minio.buckets.map((bucket: string) => (
-                  <Typography key={bucket} variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem', pl: 1, py: 0.25 }}>
-                    {bucket}
-                  </Typography>
-                ))}
-              </>
-            )}
-          </CardContent>
-        </Card>
-      )}
-    </>
-  );
-}
-
-function RuntimeChip({ name, runtime }: { name: string; runtime: Record<string, any> }) {
-  const svc = runtime[name];
-  if (!svc) return <Chip label="Stopped" size="small" sx={{ height: 18, fontSize: '0.6rem' }} />;
-  return (
-    <Stack spacing={0.5} sx={{ alignItems: 'flex-end', minWidth: 0, maxWidth: 320 }}>
-      <Chip label={svc.provisioning === 'pending' ? 'Setup pending' : svc.status}
-        size="small" color={svc.status === 'error' ? 'error' : svc.provisioning === 'pending' ? 'warning' : svc.status === 'running' ? 'success' : 'default'} />
-      {svc.error && <Typography variant="caption" color="error.main" sx={{ overflowWrap: 'anywhere' }}>{svc.error}</Typography>}
-    </Stack>
   );
 }

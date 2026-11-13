@@ -150,6 +150,37 @@ test('changing a reviewed owner generation invalidates the review before any pro
   await assert.rejects(runLocalSync({ ...config, review: reviewed.digest }), error => error.message.includes(replacement.digest));
 });
 
+test('a shutdown admission refusal preserves the original owner without starting recovery', { skip: !native }, async t => {
+  const directory = await privateInstance(t);
+  const owner = await ownerGeneration(t, directory, previous);
+  const plan = planFor(directory, owner.identity);
+  const phases = [];
+  let refusal;
+  const config = {
+    directory,
+    progress: phase => phases.push(phase),
+    actions: {
+      async prepare() { return structuredClone(plan); },
+      async validateStop(before, reviewed) {
+        assert.deepEqual(before, plan.before);
+        assert.deepEqual(reviewed, plan);
+        throw refusal;
+      },
+      async stop() { assert.fail('admission refused before shutdown'); },
+      async canRestore() { assert.fail('an admission refusal cannot start recovery'); },
+    },
+  };
+  const review = await runLocalSync(config);
+  for (const reason of ['source changed', 'worker rotation', 'infrastructure changed']) {
+    refusal = new Error(reason);
+    await assert.rejects(runLocalSync({ ...config, review: review.digest }), error => error === refusal);
+    assert.equal(await runLocalSync({ ...config, status: true }), null);
+    assert.deepEqual(await owner.observe(), owner.identity);
+    assert.equal((await runLocalSync(config)).digest, review.digest);
+  }
+  assert.deepEqual(phases, []);
+});
+
 test('applying the same review twice verifies a new live process generation and starts it once', { skip: !native }, async t => {
   const directory = await privateInstance(t);
   let owner = await ownerGeneration(t, directory, previous);
@@ -158,6 +189,9 @@ test('applying the same review twice verifies a new live process generation and 
   const events = [];
   const actions = {
     async prepare() { return structuredClone(plan); },
+    async validateStop(before) {
+      assert.equal(before.ownerId, owner.identity.generation);
+    },
     async stop(before) {
       assert.equal(before.ownerId, owner.identity.generation);
       events.push('stop');

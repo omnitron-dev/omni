@@ -209,7 +209,7 @@ export async function localSyncActions({ root, runtime, call, run, progress, dir
       return { protocol: 1, instance: home, target: { artifact: candidate.id, commit: candidate.build.commit },
         before: { ...before, console: web.artifact, consoleCommit: web.commit }, stacks: targets, excluded: stacks.excluded, watches: watching, infrastructure };
     },
-    async stop(previous, plan) {
+    async validateStop(previous, plan) {
       if (plan) {
         const infra = await coldPreview(plan.target.artifact);
         if (!isDeepStrictEqual(infra, plan.infrastructure)) throw Error('Cold-start infrastructure changed before shutdown');
@@ -217,8 +217,8 @@ export async function localSyncActions({ root, runtime, call, run, progress, dir
       }
       const observed = await identity(await call(['status']));
       if (!sameOwner(previous, observed) || !isDeepStrictEqual(previous.retiredPids, observed.retiredPids)) throw Error('Native ownership or worker set changed before shutdown');
-      await raw(previous.backend, ['down']);
     },
+    stop: previous => raw(previous.backend, ['down']),
     assertStopped: previous => until('Clean shutdown could not be confirmed', () => stopped(previous), 90_000),
     async canRestore(previous) { try { await stopped(previous); return true; } catch { return false; } },
     async captureForRollback(plan) {

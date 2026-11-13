@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Lumen preserves explicit links to published Markdown mirrors and isolates a failing custom island from neighboring content.
 - Static compilation releases development WebSocket and file-watcher resources.
 - Console retains observed application health and verified launch receipts in local stack reviews.
+- Local update admission completes before shutdown intent is recorded, so a refused check preserves the serving installation and its recovery state.
 
 
 ## [0.3.1] - 2026-10-26

@@ -40,6 +40,7 @@ export async function runLocalSync({ actions, directory, review, rollback = fals
         // A failure before the old operator relinquished the host is not permission to stop it again.
         if (!(await actions.canRestore(record.rollbackOwner ?? plan.before))) {
           const live = await actions.captureForRollback(plan);
+          await actions.validateStop(live);
           await save('stopping-candidate', { rollbackOwner: live });
           await actions.stop(live);
           await actions.assertStopped(live);
@@ -77,11 +78,14 @@ export async function runLocalSync({ actions, directory, review, rollback = fals
     const digest = planDigest(plan);
     if (!review) return { digest, plan };
     if (review !== digest) throw Error('Local placement, roles, launch selection, infrastructure or process identities changed. Inspect the current plan ' + digest);
+    // Admission can refuse while the original installation is still serving.
+    // Record shutdown intent only after these read-only checks have succeeded.
+    await actions.validateStop(plan.before, plan);
     if (record) await writePrivateRecord(path.join(directory, record.digest + '.json'), record);
     record = { protocol: 1, digest, plan };
     await save('stopping');
     try {
-      await actions.stop(plan.before, plan);
+      await actions.stop(plan.before);
       await actions.assertStopped(plan.before);
       await save('starting');
       await actions.start(plan.target, plan);

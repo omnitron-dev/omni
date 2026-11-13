@@ -22,18 +22,20 @@ export function workspaceReferenceFindings(pkg, workspaceNames) {
 export function assertConsumerArchives(directory, archives) {
   const root = realpathSync(directory);
   const lock = JSON.parse(readFileSync(join(root, 'package-lock.json'), 'utf8'));
-  const expected = new Map([...archives].map(([name, archive]) => [name, {
-    integrity: 'sha512-' + createHash('sha512').update(readFileSync(archive.filename)).digest('base64'),
-    version: archive.manifest.version,
-  }]));
+  const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+  for (const name of Object.keys(manifest.dependencies ?? {})) {
+    if (name.startsWith('@omnitron-dev/'))
+      assert.ok(lock.packages?.['node_modules/' + name], `Missing required SDK archive in consumer: ${name}`);
+  }
   let checked = 0;
   for (const [location, installed] of Object.entries(lock.packages ?? {})) {
     const name = location.split('node_modules/').at(-1);
     if (!name.startsWith('@omnitron-dev/')) continue;
-    const archive = expected.get(name);
+    const archive = archives.get(name);
     assert.ok(archive, `Unqualified SDK package in consumer: ${name}`);
-    assert.equal(installed.integrity, archive.integrity, `Consumer did not install the qualified archive: ${location}`);
-    assert.equal(installed.version, archive.version, `Consumer archive version differs: ${location}`);
+    const integrity = 'sha512-' + createHash('sha512').update(readFileSync(archive.filename)).digest('base64');
+    assert.equal(installed.integrity, integrity, `Consumer did not install the qualified archive: ${location}`);
+    assert.equal(installed.version, archive.manifest.version, `Consumer archive version differs: ${location}`);
     assert.equal(installed.link, undefined, `Consumer SDK package is linked: ${location}`);
     assert.ok(installed.resolved?.startsWith('file:'), `Consumer SDK package came from a registry: ${location}`);
     assert.ok(realpathSync(join(root, location)).startsWith(join(root, 'node_modules') + sep), `Consumer SDK package escaped: ${location}`);

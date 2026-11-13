@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -70,6 +70,13 @@ test('an installed archive graph rejects a nested SDK version outside the qualif
   writeFileSync(join(consumer, 'package.json'), JSON.stringify({ private: true, dependencies: { [name]: 'file:' + current.filename } }));
   npm(consumer, ['install']);
   assert.equal(assertConsumerArchives(consumer, archives), 1);
+  const lockfile = join(consumer, 'package-lock.json');
+  const lock = readFileSync(lockfile, 'utf8');
+  const incomplete = JSON.parse(lock);
+  delete incomplete.packages['node_modules/' + name];
+  writeFileSync(lockfile, JSON.stringify(incomplete));
+  assert.throws(() => assertConsumerArchives(consumer, archives), /Missing required SDK archive/);
+  writeFileSync(lockfile, lock);
   npm(consumer, ['install', 'file:' + parent.filename]);
   assert.throws(() => assertConsumerArchives(consumer, archives), /qualified archive.*qualification-parent\/node_modules\/.*qualification-base/);
 });

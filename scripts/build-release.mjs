@@ -5,6 +5,7 @@ import { existsSync, realpathSync, mkdtempSync, rmSync } from 'node:fs';
 import { Pipeline } from '@xec-sh/ops/pipeline';
 import { releaseCommand } from '@xec-sh/ops/release';
 import { assertPipelineSucceeded } from './lib/pipeline-result.mjs';
+import policy from '../.xec/release-policy.mjs';
 
 const [source, commit] = globalThis.args ?? process.argv.slice(2);
 const destination = realpathSync(process.cwd());
@@ -28,7 +29,7 @@ try {
     .step('build', { dependsOn: ['dependency-preflight'], run: { command: 'pnpm', args: ['run', 'build'], shell: false, cwd: destination }, timeout: 30 * 60_000 })
     .step('consumer-install', { dependsOn: ['build'], run: {
       command: process.execPath, args: ['scripts/check-package-exports.mjs', '--install-consumer', consumer], shell: false, cwd: destination,
-    }, timeout: 20 * 60_000 })
+    }, timeout: policy.preparation.consumerTimeoutMs })
     .step('consumer-runtime', { dependsOn: ['consumer-install'], run: {
       command: process.execPath, args: ['scripts/ci/check-runtime-consumer.mjs', consumer], shell: false, cwd: destination,
     }, timeout: 20 * 60_000 });

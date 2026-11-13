@@ -2,6 +2,10 @@
 export default {
   repository: 'omnitron-dev/omni',
   branch: 'main',
+  preparation: {
+    consumerTimeoutMs: 60 * 60_000,
+    recipeTimeoutMs: 120 * 60_000,
+  },
   qualification: {
     provider: 'github',
     workflow: 'ci.yml',

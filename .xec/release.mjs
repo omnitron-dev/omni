@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { isCancel, password, text } from '@xec-sh/kit';
+import { Pipeline } from '@xec-sh/ops/pipeline';
 import {
   acquireReleaseLock, assertCleanReleaseTree, assertReleaseHead, commitReleaseVersion,
   createGithubRelease, discoverReleasePackages, ensureReleaseTag, loadPreparedRelease,
@@ -16,6 +17,7 @@ import { supersedeDraft } from './supersede-draft.mjs';
 import { qualifyRelease, verifyReleaseQualification, verifyQualifiedRevision } from './qualification.mjs';
 import { assertReleaseVersionAvailable } from './release-registry.js';
 import { prepareVersionQualification } from './version-qualification.js';
+import { assertPipelineSucceeded } from '../scripts/lib/pipeline-result.mjs';
 
 const defaultRoot = fileURLToPath(new URL('../', import.meta.url));
 const repository = policy.repository;
@@ -132,11 +134,17 @@ export async function runRelease(args, root = defaultRoot) {
       const commit = await releaseCommand(root, 'git', ['rev-parse', 'HEAD']);
       const prepared = await prepareReleaseArtifacts(root, version, {
         build: { executable: process.execPath, args: [fileURLToPath(new URL('../bin/xec', import.meta.resolve('@xec-sh/cli'))), 'run', 'scripts/build-release.mjs', root, commit] },
-        // This step includes both independent npm consumer installs and clean CI replays.
-        // A cold dependency cache can exceed Xec's default ten-minute command deadline.
-        run: (cwd, executable, args, options) => releaseCommand(cwd, executable, args,
-          args.includes('scripts/build-release.mjs')
-            ? { ...options, timeoutMs: 45 * 60_000 } : options),
+        async run(cwd, executable, args, options) {
+          if (!args.includes('scripts/build-release.mjs')) return releaseCommand(cwd, executable, args, options);
+          const build = Pipeline.create('release-preparation').step('isolated-build', {
+            run: { command: executable, args, cwd, shell: false }, timeout: policy.preparation.recipeTimeoutMs,
+          });
+          const result = await build.run({}, { onEvent(event) {
+            if (event.type === 'step-output') process[event.stream].write(event.text);
+          } });
+          assertPipelineSucceeded(result);
+          return result.steps[0].stdout;
+        },
         // Xec calls this after the clean build and immediately before sealing each archive.
         async preparePackage({ workspace, pkg }) {
           const file = path.join(workspace, pkg.path, 'package.json');

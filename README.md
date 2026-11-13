@@ -50,7 +50,9 @@ pnpm exec xec release <version> --prepare --previous <full-commit> --push-source
 pnpm exec xec release <version> --finish
 ```
 
-Preparation checks registry availability, creates immutable artifacts and records qualification against the exact source commit. Finish verifies the selected evidence and publishes those artifacts. It does not rebuild them. The standalone Node producer, package provenance, independent builds and native transition policy are defined by the release workflow; a different publisher Node does not replace the recorded producer identity.
+Preparation checks registry availability and seals the archives against the exact source commit. Xec reports progress for three npm consumers: the minimal runtime, all public packages together and Lumen on its own. Each replays a fresh lockfile, checks the installed archive identities and runs an audit. The minimal runtime also exercises an ordinary install.
+
+Finish verifies the recorded Node producer, independent builds and native transition evidence, then publishes the sealed archives.
 
 Source development and npm publication do not activate managed applications. Backend and resident-owner updates, application release selection and infrastructure reconciliation have separate reviewed operations. Use the [Omnitron lifecycle documentation](apps/omnitron/README.md) for those boundaries.
 

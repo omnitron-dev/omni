@@ -7,8 +7,10 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { Pipeline } from '@xec-sh/ops/pipeline';
 import semver from 'semver';
 import { assertConsumerArchives, inlinedDevDependencies, retainedBuildImports, workspaceReferenceFindings } from './lib/package-imports.mjs';
+import { assertPipelineSucceeded } from './lib/pipeline-result.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'omni-pack-check-'));
@@ -21,7 +23,7 @@ const strings = value => typeof value === 'string' ? [value]
   : value && typeof value === 'object' ? Object.values(value).flatMap(strings) : [];
 const escape = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-function installConsumer(destination, roots) {
+function prepareConsumer(destination, roots) {
   const consumer = path.resolve(destination);
   fs.mkdirSync(consumer);
   fs.mkdirSync(path.join(consumer, 'archives'));
@@ -41,20 +43,36 @@ function installConsumer(destination, roots) {
     include(name);
   }
   fs.writeFileSync(path.join(consumer, 'package.json'), JSON.stringify({ private: true, dependencies }));
-  execFileSync('npm', ['install', '--omit=dev', '--no-audit', '--no-fund', '--registry=https://registry.npmjs.org/'], {
-    cwd: consumer, stdio: 'inherit',
-  });
-  // npm install can accept a bundled tree with an unsatisfied dependency.
-  // Replay the generated lockfile as a consumer's CI would.
-  execFileSync('npm', ['ci', '--omit=dev', '--no-audit', '--no-fund', '--registry=https://registry.npmjs.org/'], {
-    cwd: consumer, stdio: 'inherit',
-  });
-  assertConsumerArchives(consumer, archives);
-  // Workspace overrides are not inherited by published npm consumers. Audit
-  // the actual installed archives, including bundled dependency trees.
-  execFileSync('npm', ['audit', '--omit=dev', '--audit-level=low', '--registry=https://registry.npmjs.org/'], {
-    cwd: consumer, stdio: 'inherit',
-  });
+}
+
+async function verifyConsumers(runtime) {
+  const lumen = path.join(temporary, 'lumen-runtime');
+  const profiles = [
+    { name: 'runtime', cwd: runtime, roots: ['@omnitron-dev/omnitron', '@omnitron-dev/netron-react'] },
+    { name: 'all-public', cwd: path.join(temporary, 'all-public'), roots: archives.keys() },
+    { name: 'lumen', cwd: lumen, roots: ['@omnitron-dev/lumen'] },
+  ];
+  const pipeline = Pipeline.create('npm-consumers');
+  for (const { name, cwd, roots } of profiles) {
+    prepareConsumer(cwd, roots);
+    const npm = (args) => ({ command: 'npm', args: [...args, '--omit=dev', '--registry=https://registry.npmjs.org/'], cwd, shell: false });
+    // Exercise ordinary installation on the minimal runtime. The other profiles
+    // resolve fresh locks, then install and run their scripts once through npm ci.
+    const install = name === 'runtime' ? ['install'] : ['install', '--package-lock-only', '--ignore-scripts'];
+    pipeline.step(name + '-resolve', { run: npm([...install, '--no-audit', '--no-fund']), timeout: 20 * 60_000 })
+      .step(name + '-install', { dependsOn: [name + '-resolve'], run: npm(['ci', '--no-audit', '--no-fund']), timeout: 30 * 60_000 })
+      .step(name + '-integrity', { dependsOn: [name + '-install'], run: async () => {
+        const verified = assertConsumerArchives(cwd, archives);
+        console.log(`npm consumer ${name}: ${verified} installed SDK archives verified`);
+      } })
+      .step(name + '-audit', { dependsOn: [name + '-integrity'], run: npm(['audit', '--audit-level=low']), timeout: 5 * 60_000 });
+  }
+  const result = await pipeline.run({}, { concurrency: 2, onEvent(event) {
+    if (event.type === 'step-start') console.log('npm consumer ' + event.step);
+    if (event.type === 'step-output') process[event.stream].write(event.text);
+  } });
+  assertPipelineSucceeded(result);
+  return lumen;
 }
 
 try {
@@ -139,15 +157,7 @@ try {
     else fs.rmSync(packed.filename);
   }
   if (!failures.length && values['install-consumer']) {
-    // Keep the runtime probe independent of optional packages: a full install
-    // could hide an undeclared import. Audit the remaining public surface too.
-    installConsumer(values['install-consumer'], ['@omnitron-dev/omnitron', '@omnitron-dev/netron-react']);
-    const allPublic = path.join(temporary, 'all-public');
-    installConsumer(allPublic, archives.keys());
-    // Lumen must also work with only its declared dependency closure. An unrelated
-    // public package in all-public must not satisfy an undeclared runtime import.
-    const lumenConsumer = path.join(temporary, 'lumen-runtime');
-    installConsumer(lumenConsumer, ['@omnitron-dev/lumen']);
+    const lumenConsumer = await verifyConsumers(values['install-consumer']);
     execFileSync(process.execPath, [
       path.join(root, 'packages/lumen-ast/test/runtime/bundle-consumer.js'), lumenConsumer,
     ], { stdio: 'inherit' });

@@ -7,6 +7,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 const run = promisify(execFile);
+// First execution from a development volume can take longer than warm startup.
+const startupTimeoutMs = 120_000;
 const hash = async file => createHash('sha256').update(await fs.readFile(file)).digest('hex');
 const refusal = detail => Error(`Runtime freezing requires a standalone Node producer: ${detail}. Select a standalone Node distribution explicitly; external libraries and loader environment are not copied.`);
 
@@ -54,21 +56,32 @@ const probe = `
     sharedObjects: process.report.getReport().sharedObjects }));
 `;
 
-export async function verifyStandaloneNodeCopy(executable, expected) {
+export async function verifyStandaloneNodeCopy(executable, expected, { timeoutMs = startupTimeoutMs } = {}) {
   const copied = await fs.realpath(executable);
   if (await hash(copied) !== expected.sha256) throw refusal('copied Node bytes differ from the selected producer');
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'omni-node-startup-'));
   try {
-    let result;
+    let completed;
+    const signal = AbortSignal.timeout(timeoutMs);
     try {
       // This is the copied executable, never PATH resolution or another Node.
       // Empty env also excludes NODE_OPTIONS/NODE_PATH and all LD_/DYLD_ inputs.
-      const { stdout } = await run(copied, ['--input-type=commonjs', '-e', probe], {
-        cwd, env: {}, timeout: 15_000, maxBuffer: 1024 * 1024,
+      completed = await run(copied, ['--input-type=commonjs', '-e', probe], {
+        cwd, env: {}, signal, maxBuffer: 1024 * 1024,
       });
-      result = JSON.parse(stdout);
     } catch (error) {
-      throw refusal(`copied Node could not start independently (${String(error.message).slice(0, 2000)})`);
+      if (signal.aborted && error.code === 'ABORT_ERR') {
+        throw Error(`Copied Node startup timed out after ${timeoutMs} ms: ${copied}`, { cause: error });
+      }
+      const status = error.signal ?? error.code ?? error.name;
+      const stderr = error.stderr?.trim().slice(0, 1000);
+      throw Error(`Copied Node startup failed (${status}): ${copied}${stderr ? `\n${stderr}` : ''}`, { cause: error });
+    }
+    let result;
+    try {
+      result = JSON.parse(completed.stdout);
+    } catch (error) {
+      throw Error('Copied Node startup returned an invalid diagnostic report', { cause: error });
     }
     // CoreFoundation can add its own text-encoding metadata after an empty-env
     // spawn. No user environment, including non-loader keys, may survive.

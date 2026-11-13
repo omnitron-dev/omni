@@ -123,3 +123,19 @@ test('copied Node starts with a clean environment and rejects changed bytes or i
   await fs.appendFile(executable, 'changed');
   await assert.rejects(verifyStandaloneNodeCopy(executable, expected), /copied Node bytes differ/);
 });
+
+test('a startup timeout is distinct from a child exit and an invalid report', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'omni-node-startup-errors-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const executable = path.join(root, 'node');
+  async function exercise(script, message, options) {
+    const content = `#!/bin/sh\n${script}\n`;
+    await fs.writeFile(executable, content, { mode: 0o700 });
+    const expected = { sha256: createHash('sha256').update(content).digest('hex'),
+      version: process.version, platform: process.platform, arch: process.arch };
+    await assert.rejects(verifyStandaloneNodeCopy(executable, expected, options), message);
+  }
+  await exercise('exec /bin/sleep 10', /startup timed out after 50 ms/, { timeoutMs: 50 });
+  await exercise('echo missing-library >&2\nexit 23', /startup failed \(23\).*\nmissing-library/);
+  await exercise('echo malformed', /invalid diagnostic report/);
+});

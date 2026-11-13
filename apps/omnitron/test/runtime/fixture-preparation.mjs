@@ -53,6 +53,10 @@ export function preparationOption(argv, env = process.env) {
   if (prepare === -1 && execute === -1) return undefined;
   assert.ok((prepare === -1) !== (execute === -1), 'Choose preparation or execution, not both');
   assert.equal(argv.indexOf('--reviewed-recovery'), argv.lastIndexOf('--reviewed-recovery'), 'Reviewed recovery may be selected only once');
+  if (argv.includes('--writer-exit')) {
+    assert.ok(argv.includes('--reviewed-recovery') && argv.indexOf('--writer-exit') === argv.lastIndexOf('--writer-exit'),
+      'A writer exit requires one reviewed recovery scenario');
+  }
   const option = prepare !== -1 ? '--prepare-only' : '--prepared';
   const index = prepare !== -1 ? prepare : execute;
   assert.equal(index, argv.lastIndexOf(option), 'Preparation option must appear exactly once');
@@ -66,8 +70,8 @@ export function preparationOption(argv, env = process.env) {
     'Prepared fixture requires owner and management runtimes');
   for (let cursor = 2; cursor < argv.length; cursor++) {
     const flag = argv[cursor];
-    assert.ok(['--prepare-only', '--prepared', '--initial-backend', '--initial-guardian', '--reviewed-recovery'].includes(flag), 'Unsupported preparation option');
-    if (flag === '--prepare-only' || flag === '--reviewed-recovery') continue;
+    assert.ok(['--prepare-only', '--prepared', '--initial-backend', '--initial-guardian', '--reviewed-recovery', '--writer-exit'].includes(flag), 'Unsupported preparation option');
+    if (flag === '--prepare-only' || flag === '--reviewed-recovery' || flag === '--writer-exit') continue;
     assert.ok(argv[++cursor] && !argv[cursor].startsWith('--'), `${flag} requires a value`);
   }
   if (prepare !== -1) return { mode: 'prepare' };

@@ -307,6 +307,49 @@ it('detects rotation during final artifact verification, stops only its child an
   expect(f.instance.activation()?.reviewedRecovery).toMatchObject({ phase: 'unconfirmed', checkpoint: expect.any(String) });
 });
 
+it('preserves a committed grant after its writer exits with an invalidated SQLite certificate', async () => {
+  const f = await fixture();
+  const original = await fs.readFile(f.checkpoint);
+  const entered = Promise.withResolvers<void>();
+  const stopped = Promise.withResolvers<void>();
+  fake.launch.mockImplementationOnce(async (child: ChildProcess, file: string) => {
+    const next = JSON.parse(await fs.readFile(file, 'utf8')) as BackendBootRecord;
+    const { ticket, ...state } = next.state;
+    await f.handoff.commit(ticket);
+    const journal = new BackendRecoveryJournal(f.directory);
+    try {
+      journal.publish({ ...next, state, previousPid: child.pid!, previousEntry: fake.artifact!.entry,
+        controller: ticket.to, runtimeHash: fake.artifact!.runtimeHash, registryDigest: f.fence.registryDigest });
+      journal.invalidate('loadProjectConfig');
+      entered.resolve();
+      await stopped.promise;
+    } finally { await journal.close(); }
+  });
+  const failure = expect(f.invoke()).rejects.toThrow('Candidate backend exited');
+  try {
+    await entered.promise;
+    const child = fake.children[0]!;
+    const exited = once(child, 'exit');
+    child.kill('SIGTERM');
+    await exited;
+  } finally { stopped.resolve(); }
+  await failure;
+  const hold = f.instance.activation()?.reviewedRecovery;
+  expect(hold).toMatchObject({ phase: 'unconfirmed', planId: f.plan.id, checkpoint: expect.any(String) });
+  const derived = JSON.parse(await fs.readFile(hold!.checkpoint!, 'utf8')) as BackendBootRecord;
+  const receipt = new BackendRecoveryJournal(f.directory, { readOnly: true });
+  try {
+    expect(receipt.read()).toMatchObject({ status: 'invalid', reason: 'loadProjectConfig', previous: {
+      previousPid: fake.children[0]!.pid, controller: derived.state.ticket.to, registryDigest: f.fence.registryDigest,
+    } });
+  } finally { await receipt.close(); }
+  expect(f.handoff.status()).toMatchObject({ phase: 'active', controller: derived.state.ticket.to, pending: derived.state.ticket });
+  expect(f.instance.selection()).toEqual(f.fence.selection);
+  await expect(f.invoke()).rejects.toThrow('earlier attempt');
+  expect(fake.prepare).toHaveBeenCalledOnce(); expect(fake.children).toHaveLength(1);
+  expect(await fs.readFile(f.checkpoint)).toEqual(original);
+});
+
 it('does not treat a different owner or foreign controller as a reviewable baseline', async () => {
   const f = await fixture();
   const db = new DaemonStateStore(createNullLogger(), path.join(f.home, 'runtime/state.db')); stores.push(db);

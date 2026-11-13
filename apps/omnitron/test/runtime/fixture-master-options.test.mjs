@@ -49,6 +49,9 @@ test('ordinary guardian/backend qualification preserves independently selected i
 test('reviewed recovery preparation is explicit, isolated and cannot be combined with another native scenario', () => {
   const inputs = ['/sealed/omnitron-handoff-owner', '/sealed/omnitron-handoff-candidate'];
   assert.deepEqual(preparationOption([...inputs, '--reviewed-recovery', '--prepare-only'], {}), { mode: 'prepare' });
+  assert.deepEqual(preparationOption([...inputs, '--reviewed-recovery', '--writer-exit', '--prepare-only'], {}), { mode: 'prepare' });
+  assert.throws(() => preparationOption([...inputs, '--writer-exit', '--prepare-only'], {}));
+  assert.throws(() => preparationOption([...inputs, '--reviewed-recovery', '--writer-exit', '--writer-exit', '--prepare-only'], {}));
   assert.deepEqual(preparationOption([...inputs, '--reviewed-recovery', '--prepared', '/private/preparation.json'], {}),
     { mode: 'execute', receipt: '/private/preparation.json' });
   for (const extra of ['--owner-roundtrip', '--backend-only', '--master-scenario', '--reviewed-recovery'])

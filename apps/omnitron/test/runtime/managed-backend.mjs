@@ -32,6 +32,9 @@ const backendOnly = process.argv.includes('--backend-only');
 if (backendOnly) assert.ok(managementDist, 'Provide the candidate artifact before --backend-only');
 const ownerRoundtrip = process.argv.includes('--owner-roundtrip');
 const reviewedRecovery = process.argv.includes('--reviewed-recovery');
+const writerExit = process.argv.includes('--writer-exit');
+assert.ok(!writerExit || reviewedRecovery, 'Writer exit requires reviewed recovery');
+const reviewedScenario = writerExit ? 'reviewed-writer-exit' : 'reviewed-recovery';
 assert.ok(!reviewedRecovery || managementDist && !backendOnly && !ownerRoundtrip && !masterFixture,
   'Reviewed recovery requires its exact isolated guardian scenario');
 assert.ok(!(backendOnly && ownerRoundtrip), 'Choose backend-only or owner-roundtrip qualification');
@@ -43,7 +46,7 @@ const inputs = { owner: path.resolve(dist, '../../..'), backend: path.resolve(in
   guardian: path.resolve(initialGuardianDist, '../../..'), candidate: managementDist ? path.resolve(managementDist, '../../..') : null };
 const prepared = preparation?.mode === 'execute'
   ? await claimPreparedFixture({ file: preparation.receipt, inputs, fixtureDirectory,
-    scenario: reviewedRecovery ? 'reviewed-recovery' : 'ordinary' }) : undefined;
+    scenario: reviewedRecovery ? reviewedScenario : 'ordinary' }) : undefined;
 const root = prepared?.root ?? (masterFixture ? masterFixture.root : await fs.mkdtemp(path.join(os.tmpdir(), 'omni-managed-')));
 if (masterFixture) await fs.mkdir(root, { mode: 0o700 });
 const rootIdentity = prepared?.rootIdentity ?? await fs.lstat(root);
@@ -66,7 +69,7 @@ if (prepared) {
   artifacts = await verifyPreparedFixture(prepared, RuntimeInstallation, reportPreparation);
 } else {
   const result = await prepareFixture({ root, id, inputs, RuntimeInstallation, fixtureDirectory, mark: reportPreparation,
-    scenario: masterFixture ? 'master' : ownerRoundtrip ? 'owner-roundtrip' : backendOnly ? 'backend-only' : reviewedRecovery ? 'reviewed-recovery' : 'ordinary' });
+    scenario: masterFixture ? 'master' : ownerRoundtrip ? 'owner-roundtrip' : backendOnly ? 'backend-only' : reviewedRecovery ? reviewedScenario : 'ordinary' });
   if (preparation?.mode === 'prepare') {
     reportPreparation({ stage: 'fixture-prepared', root, receipt: result.file, elapsedMs: result.receipt.elapsedMs,
       inputs: result.receipt.inputs, servicesStarted: false });
@@ -112,6 +115,7 @@ const readiness = { intervalMs: 1000, timeoutMs: 1000, probes: [
 const config = { protocol: 1, instanceHome: instance, directory: execution, scope: linux ? 'system' : 'user', cwd: root,
   environment: { OMNITRON_HOME: instance, OMNITRON_NO_INFRA: '1', OMNITRON_NO_WATCH: applicationSdk ? '0' : '1', PATH: process.env.PATH,
     TMPDIR: applicationTemporary,
+    ...(writerExit && { NODE_OPTIONS: '--require=' + path.join(root, 'writer-exit.cjs') }),
     ...(masterFixture && { OMNITRON_DATABASE_URL: masterFixture.databaseUrl, ...masterFixture.dockerEnvironment }) },
   owner: { label: `dev.omnitron.fixture.${id}.owner`, unit: `omnitron-fixture-${id}-owner.service`, artifact: artifact.runtimeHash },
   backend: { label: `dev.omnitron.fixture.${id}.backend`, unit: `omnitron-fixture-${id}-backend.service`, artifact: initialGuardian.runtimeHash },
@@ -202,6 +206,26 @@ try {
      server.listen(${counterPort},'127.0.0.1',()=>{fs.writeFileSync(${JSON.stringify(path.join(root, 'address.json'))},JSON.stringify(server.address()));process.send?.({type:'ready'});});
      process.on('SIGTERM',()=>server.close(()=>process.exit(0)));`);
     if (reviewedRecovery) await prepareRecoveryTopology(root, artifact.directory);
+    if (writerExit) {
+      // Loaded only by the fixture's isolated backend service and its descendants.
+      // Fail at the real IPC readiness boundary, after the owner has accepted this writer.
+      const hook = path.join(root, 'writer-exit.cjs');
+      await fs.writeFile(hook, `const fs = require('node:fs');
+const path = require('node:path');
+const target = process.argv[3];
+if (process.argv[2] === '--backend-handoff' && path.dirname(target) === ${JSON.stringify(execution)} &&
+    fs.existsSync(target) && process.env.OMNITRON_HOME === ${JSON.stringify(instance)} &&
+    JSON.parse(fs.readFileSync(target, 'utf8')).reviewedRecovery) {
+  const send = process.send.bind(process);
+  process.send = function(message, ...args) {
+    if (message?.type !== 'backend-ready') return send(message, ...args);
+    fs.writeFileSync(${JSON.stringify(path.join(root, 'writer-exit.json'))}, JSON.stringify({
+      pid: process.pid, owner: message.execution.owner, epoch: message.execution.epoch, checkpoint: target
+    }), {flag: 'wx', mode: 0o600});
+    process.exit(55);
+  };
+}`, { flag: 'wx', mode: 0o600 });
+    }
     await fs.writeFile(path.join(projectDirectory, 'omnitron.config.mjs'), `export default {${ownerRoundtrip ? "project:'probe',stacks:{local:{type:'local',apps:'all',infrastructureOwnership:'external'}}," : ''}apps:[{name:'counter',script:'./counter.mjs',cwd:${JSON.stringify(projectDirectory)},enabled:true,watch:${ownerRoundtrip ? "'source'" : 'false'},readiness:${JSON.stringify(readiness)}}${reviewedRecovery ? ",{name:'topology',bootstrap:'./topology.mjs',enabled:true}" : ''}]};`);
     }
     const definitions = [];
@@ -358,12 +382,13 @@ try {
   };
   if (reviewedRecovery) {
     const result = await managedReviewedRecovery({ root, instance, execution, units, first, initialBackend, initialGuardian,
-      managementDist, ownerClient, applicationPid, probe, status, until, run, mark,
+      managementDist, ownerClient, applicationPid, probe, status, until, run, mark, writerExit,
       authorizeReplacement: authorizeFixtureGuardianReplacement });
     clearInterval(sampler);
     while (inFlight) await new Promise(resolve => setTimeout(resolve, 10));
     assert.equal(failures, 0, 'Reviewed recovery interrupted application HTTP or owner RPC');
-    const verifiedLogs = await verifyFixtureLogs({ root, instance, runtime: initialBackend.runtimeRoot, fixtureId: id, until });
+    const verifiedLogs = result.outcome === 'unconfirmed' ? null :
+      await verifyFixtureLogs({ root, instance, runtime: initialBackend.runtimeRoot, fixtureId: id, until });
     assertHistoryPreserved('reviewed-recovery');
     console.log(JSON.stringify({ test: 'native-reviewed-backend-recovery', root, samples, failures, verifiedLogs,
       preservedMigrationHistoryRows: originalHistory.length, ...result }));

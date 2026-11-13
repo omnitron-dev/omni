@@ -136,6 +136,67 @@ process.exit(55);
     assert.deepEqual(await fs.readFile(plan.file), beforeCheck);
     await authorizeReplacement(units, plan.file, prepared, instance);
     mark({ stage: 'reviewed-guardian-transition', plan: plan.file });
+    if (context.writerExit) {
+      // Run the same CLI as the operator. Every command targets this private instance.
+      const cli = (...args) => run(runner, [path.join(managementDist, 'cli/omnitron.js'), 'backend', ...args, '--json'],
+        { cwd: root, env: process.env, timeout: 360_000, maxBuffer: 1024 * 1024 });
+      const rejection = async (args, pattern) => {
+        let refusal;
+        await assert.rejects(cli(...args), error => {
+          const reply = JSON.parse(error.stderr.trim().split('\n').at(-1));
+          assert.equal(reply.ok, false); assert.match(reply.error, pattern);
+          refusal = reply.error;
+          return error.code === 1;
+        });
+        return refusal;
+      };
+      const firstRefusal = await rejection(['guardian', 'apply', plan.file], /recovery failed/i);
+      const fault = JSON.parse(await fs.readFile(path.join(root, 'writer-exit.json')));
+      assert.ok(fault.pid > 0 && !PidManager.isProcessAlive(fault.pid));
+      assert.equal(fault.owner.id, first.execution.owner.id);
+      assert.equal(fault.owner.pid, first.execution.owner.pid);
+      assert.equal(fault.epoch, prepared.recovery.controller.epoch + 1);
+      const { BackendRecoveryJournal } = await moduleAt(managementDist, 'daemon/backend-recovery-journal.js');
+      const evidence = async () => {
+        const view = await ownerClient.service.snapshot();
+        const installation = await RuntimeInstallation.openReadOnly(instance);
+        const journal = new BackendRecoveryJournal(execution, { readOnly: true });
+        try {
+          const saved = journal.read();
+          const certificate = saved?.status === 'ready' ? saved.record : saved?.previous;
+          const activation = installation.activation();
+          assert.equal(activation.reviewedRecovery.phase, 'unconfirmed');
+          assert.equal(activation.reviewedRecovery.checkpoint, fault.checkpoint);
+          assert.equal(activation.reviewedRecovery.planId, prepared.id);
+          assert.equal(certificate?.previousPid, fault.pid, 'Missing journal certificate from the exited writer');
+          assert.deepEqual(certificate.controller, view.status.controller);
+          assert.equal(certificate.registryDigest, prepared.recovery.registryDigest);
+          assert.equal(certificate.runtimeHash, initialBackend.runtimeHash);
+          const derived = JSON.parse(await fs.readFile(fault.checkpoint));
+          assert.equal(derived.reviewedRecovery.originalCheckpointSha256, sha256(originalBytes));
+          assert.deepEqual(view.status.pending, derived.state.ticket);
+          assert.deepEqual(view.status.controller, derived.state.ticket.to);
+          assert.equal(view.status.phase, 'active');
+          assert.equal(view.inventoryDigest, accepted.inventoryDigest);
+          assert.deepEqual(await fs.readFile(originalFile), originalBytes);
+          assert.equal((await probe()).pid, applicationPid);
+          return { activation, selection: installation.selection(), grant: view.status.controller,
+            owner: view.status.owner, inventory: view.inventoryDigest, journalStatus: saved.status,
+            journalReason: saved.status === 'invalid' ? saved.reason : null, certificate: sha256(JSON.stringify(certificate)),
+            checkpoint: sha256(await fs.readFile(fault.checkpoint)), plan: sha256(await fs.readFile(plan.file)) };
+        } finally { await installation.close(); await journal.close(); }
+      };
+      const before = await evidence();
+      const check = await rejection(['guardian', 'apply', plan.file, '--check'], /already started/i);
+      const repeat = await rejection(['guardian', 'apply', plan.file], /earlier attempt|not held by this exact plan/i);
+      const ordinary = await rejection(['recover', fault.checkpoint], /held|reviewed recovery/i);
+      assert.deepEqual(await evidence(), before, 'A refused command modified ownership or its receipts');
+      return { outcome: 'unconfirmed', ownerPid: before.owner.pid, applicationPid, exitedBackendPid: fault.pid,
+        epoch: fault.epoch, hold: before.activation.reviewedRecovery.phase, revision: before.selection.revision,
+        certificateState: before.journalStatus, certificateReason: before.journalReason,
+        originalCheckpointSha256: sha256(originalBytes), derivedCheckpointSha256: before.checkpoint,
+        firstRefusal, refusals: { check, repeat, ordinary }, preserved: true };
+    }
     const result = await applySupervisorTransition(plan.file);
     assert.equal(result.phase, 'complete');
     const restored = await status();

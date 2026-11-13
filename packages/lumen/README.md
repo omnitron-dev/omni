@@ -59,6 +59,8 @@ The builder validates a staged generation before publishing it. Failed rebuilds 
 
 Configuration is trusted executable code. Documents cannot import arbitrary JavaScript or register host components. Static output uses the anonymous audience projection by default; private hosting still needs server-side authorization. `theme.layout` receives projected documents, and its React dependencies are compiled with the renderer in one SSR graph.
 
+SSR and custom client builds share the consumer's installed React, Emotion, React Hook Form and React Router contexts with linked SDK packages. Install a provider in the website when composing its public API with Prism components. Integrations absent from the website keep their ordinary package resolution.
+
 Use `lumen pdf --outDir pdf` for PDF files, `lumen types --outDir generated` for corpus types, and `lumen mcp --stdio` for a local read-only corpus server. Keep export directories separate from the static generation. The source directory must exist; a missing corpus is an error.
 
 ## Component examples

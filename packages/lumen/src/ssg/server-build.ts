@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { resolveConfigFile } from '../config/loader.js';
 import { defineLumenConfig } from '../config/define.js';
 import { expandEnvVariables } from '../config/env.js';
+import { consumerContextPackages } from './client-build.js';
 import type { LumenConfig, LumenUserConfig } from '../config/schema.js';
 import type { buildStaticSite } from './ssg-engine.js';
 import type { ViteDevServer } from 'vite';
@@ -33,7 +34,7 @@ export async function withProjectBuild<T>(
       configFile: false,
       root: rootDir,
       publicDir: false,
-      resolve: { dedupe: ['react', 'react-dom', '@emotion/react'] },
+      resolve: { dedupe: consumerContextPackages(rootDir) },
       ssr: { noExternal: true },
       plugins: [{
         name: 'lumen-server-entry',

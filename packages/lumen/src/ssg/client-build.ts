@@ -1,6 +1,22 @@
+import { createRequire } from 'node:module';
 import { extname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { LumenConfig } from '../config/schema.js';
+
+/** Context providers and their consumers must share the project's installed instance. */
+export function consumerContextPackages(rootDir: string): string[] {
+  const require = createRequire(resolve(rootDir, 'package.json'));
+  return ['react', 'react-dom', '@emotion/react', 'react-hook-form', 'react-router', 'react-router-dom']
+    .filter(name => {
+      try {
+        require.resolve(name);
+        return true;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'MODULE_NOT_FOUND') return false;
+        throw error;
+      }
+    });
+}
 
 /** Bundle the site's declared client entry through the platform's Vite toolchain. */
 export async function buildClientAssets(
@@ -20,9 +36,9 @@ export async function buildClientAssets(
     root: rootDir,
     publicDir: config.publicDir ? resolve(rootDir, config.publicDir) : false,
     base: config.baseUrl,
-    // A custom client owns its React peers. Linked SDK packages must share those
-    // instances instead of bundling the checkout's separate React dispatcher.
-    resolve: config.clientEntry ? { dedupe: ['react', 'react-dom', '@emotion/react'] } : undefined,
+    // A custom client owns shared provider contexts, including those consumed
+    // by linked SDK packages. Optional providers remain optional for the site.
+    resolve: config.clientEntry ? { dedupe: consumerContextPackages(rootDir) } : undefined,
     worker: { format: 'es' },
     build: {
       write: false,

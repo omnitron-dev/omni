@@ -24,7 +24,7 @@ const provider = await exec(['info', '--format', '{{.ID}}']);
 const image = await exec(['image', 'inspect', 'alpine:3.24', '--format', '{{.Id}}']);
 assert.match(image, /^sha256:[a-f0-9]{64}$/);
 const scope = { type: 'local', apps: [] };
-const config = probe => ({ services: {
+const config = (probe, storageProbe) => ({ services: {
   gateway: { ports: {}, env: {}, docker: {
     image, network: 'none', restart: 'no', resources: { cpus: 0.25, memory: '32m' },
     command: ['sh', '-c', 'touch /probe-one /probe-two; trap "exit 0" TERM; while :; do sleep 1; done'],
@@ -32,7 +32,7 @@ const config = probe => ({ services: {
   storage: { ports: {}, env: {}, docker: {
     image, network: 'none', restart: 'no', resources: { cpus: 0.25, memory: '32m' }, volumes: { data: '/data' },
     command: ['sh', '-c', 'trap "exit 0" TERM; while :; do sleep 1; done'],
-  } },
+  }, ...(storageProbe && { healthCheck: { type: 'command', target: storageProbe, interval: '1s', timeout: '1s', retries: 1 } }) },
 } });
 const inspect = async name => {
   assert(names.includes(name));
@@ -55,6 +55,15 @@ try {
   await exec(['exec', initial[1].Id, 'sh', '-c', `printf '%s' '${project}' > /data/sentinel`]);
   const volumeBefore = await exec(['volume', 'inspect', volume]);
   report.initial = initial.map(item => ({ id: item.Id, name: item.Name, health: item.State.Health?.Status ?? null }));
+  const cold = new StackInfrastructureManager(createNullLogger());
+  try {
+    await assert.rejects(cold.provisionStack(project, stack, scope, config('probe-two'), undefined, undefined, 'automatic'),
+      /Automatic start would replace/);
+    assert.deepEqual((await Promise.all(names.map(inspect))).map(item => item.Id), initial.map(item => item.Id));
+    assert.equal(await exec(['exec', initial[1].Id, 'cat', '/data/sentinel']), project);
+    assert.equal(cold.getInstance(project, stack), null);
+    report.checks.push('Cold automatic boot holds immutable drift before touching either native container');
+  } finally { cold.dispose(); }
   assert.equal(await manager.provisionStack(project, stack, scope, config('probe-two')), owner);
   assert.equal(owner.getState().ready, true);
   const changed = await Promise.all(names.map(inspect));
@@ -69,6 +78,17 @@ try {
   const snapshot = manager.captureRecoveryState();
   assert(snapshot[0].infrastructure.containers.find(item => item.name === names[0]).healthCheck.test.join(' ').includes('/probe-two'));
   report.checks.push('Repeated current configuration is idempotent and recovery metadata retains the new probe');
+  await manager.provisionStack(project, stack, scope, config('probe-two', 'test -f /data/sentinel'), undefined, undefined, 'reconcile');
+  const forward = await inspect(names[1]);
+  assert.notEqual(forward.Id, changed[1].Id); assert.equal(forward.State.Health.Status, 'healthy');
+  assert.equal(await exec(['exec', forward.Id, 'cat', '/data/sentinel']), project);
+  await manager.provisionStack(project, stack, scope, config('probe-two'), undefined, undefined, 'reconcile');
+  const reverse = await inspect(names[1]);
+  assert.notEqual(reverse.Id, forward.Id);
+  assert.equal(await exec(['exec', reverse.Id, 'cat', '/data/sentinel']), project);
+  assert.equal(await exec(['volume', 'inspect', volume]), volumeBefore);
+  assert.equal((await inspect(names[0])).Id, changed[0].Id);
+  report.checks.push('Reviewing the volume-backed service in both directions keeps its original named volume, contents and sibling ID');
   const review = await manager.inspectStopContainers(project, stack);
   await manager.teardownStack(project, stack, review);
   assert.equal(await exec(['volume', 'inspect', volume]), volumeBefore);

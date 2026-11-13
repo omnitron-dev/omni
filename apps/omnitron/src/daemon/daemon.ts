@@ -1617,7 +1617,7 @@ export class OmnitronDaemon {
         // The control-plane database was prepared before DI. This allocator
         // owns application services only, including when PostgreSQL is external.
         this.infraService = new InfrastructureService(logger, config.infrastructure, undefined, undefined, undefined, false);
-        const infraState = await this.infraService.provision();
+        const infraState = await this.infraService.provision(undefined, 'automatic');
 
         const provisionTimeMs = Date.now() - startTime;
         gate.markReady(infraState);

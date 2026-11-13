@@ -22,7 +22,7 @@ import { WebappService } from '../../src/webapp/webapp.service.js';
 import { OmnitronDaemon } from '../../src/daemon/daemon.js';
 
 const state = (changes: Partial<ContainerState> = {}): ContainerState => ({
-  name: consoleContainerName(), containerId: 'original-container', image: 'nginx:alpine', status: 'running',
+  name: consoleContainerName(), containerId: 'a'.repeat(64), image: 'nginx:alpine', status: 'running',
   health: 'healthy', ports: {}, labels: { [CONSOLE_INSTANCE_LABEL]: path.resolve(OMNITRON_HOME) }, ...changes,
 });
 beforeEach(() => { vi.clearAllMocks(); runtime.state = null; });
@@ -55,8 +55,8 @@ describe('Console belongs to an instance', () => {
   it('targets the inspected container ID, so replacing the name cannot redirect removal', async () => {
     runtime.state = state();
     await new WebappService(createNullLogger()).stop();
-    expect(runtime.stop).toHaveBeenCalledWith('original-container', 5);
-    expect(runtime.remove).toHaveBeenCalledWith('original-container');
+    expect(runtime.stop).toHaveBeenCalledWith('a'.repeat(64), 5);
+    expect(runtime.remove).toHaveBeenCalledWith('a'.repeat(64));
   });
 
   it('an instance without a configured Console never removes a shared container at shutdown', async () => {

@@ -102,6 +102,24 @@ image is bound to its exact native identity in the reviewed plan. A change of
 volume or restart generation requires a fresh review. Correct real resource
 drift and qualify the rollback before stopping the stack.
 
+## Cold-start infrastructure preview
+
+Before a cold selection, run `omnitron --json backend select <sha256> --check`.
+The candidate expands its own service presets and compares them with the native
+containers. Each entry reports its current ID, predicted action and the names of
+changed configuration fields. A historical declaration is labelled with its
+capture time. Changes to projects, release mounts or application declarations
+since that capture are checked against the actual definitions when each stack starts.
+An older candidate can report runtime and migration compatibility only.
+
+Boot and automatic stack resume can create missing services, start matching
+stopped containers and apply verified legacy memory limits in place. They hold
+an existing stack container when the effective declaration requires replacement.
+Review that stack in Console or with `omnitron stack diagnose <project> <stack>`
+and apply an intended change with `omnitron stack start <project> <stack> --infrastructure reconcile`.
+A verified unhealthy container restarts with its native Docker ID and mounts.
+Preparing the replacement image precedes graceful removal during reconciliation.
+
 ## Cold recovery after a reviewed writer exits
 
 An `unconfirmed` hold with an admitted checkpoint can outlive the backend that

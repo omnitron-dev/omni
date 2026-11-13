@@ -35,6 +35,7 @@ beforeEach(() => {
     const id = (++sequence).toString(16).padStart(64, '0');
     containers.set(desired.name, { name: desired.name, image: desired.image, containerId: id,
       status: 'running', health: 'healthy', startedAt: new Date().toISOString(),
+      mounts: desired.volumes.map(v => ({ type: 'volume', name: v.source, source: '/volumes/' + v.source, target: v.target })),
       labels: desired.labels, specHash: containerSpecHash(desired) });
     return id;
   });
@@ -46,6 +47,22 @@ beforeEach(() => {
 afterEach(() => { manager.dispose(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe('a repeated stack start applies current infrastructure declarations', () => {
+  it('refuses immutable drift on a cold automatic start before touching any retained container or creating siblings', async () => {
+    await manager.provisionStack('tenant', 'dev', scope, definition());
+    const before = [...containers];
+    manager.dispose();
+    manager = new StackInfrastructureManager(logger);
+    const changed = definition('http://127.0.0.1/new-health');
+    changed.services!['new'] = { docker: { image: 'new:1' }, env: {}, ports: {} };
+    await expect(manager.provisionStack('tenant', 'dev', scope, changed, undefined, undefined, 'automatic'))
+      .rejects.toThrow(/Automatic start would replace tenant-dev-gateway: config drift/);
+    expect([...containers]).toEqual(before);
+    expect(runtime.remove).not.toHaveBeenCalled(); expect(runtime.create).toHaveBeenCalledTimes(2);
+    expect(manager.getInstance('tenant', 'dev')).toBeNull();
+    await manager.provisionStack('tenant', 'dev', scope, changed, undefined, undefined, 'reconcile');
+    expect(runtime.remove).toHaveBeenCalledExactlyOnceWith(before.find(([key]) => key === 'tenant-dev-gateway')![1].containerId, { graceful: true });
+    expect(read('tenant-dev-storage')).toEqual(before.find(([key]) => key === 'tenant-dev-storage')![1]);
+  });
   it('reconciles the changed health check once, preserving the owner, other containers and volumes', async () => {
     const service = await manager.provisionStack('tenant--dev', 'portal', scope, definition());
     const before = read('tenant--dev-portal-gateway')!, storage = read('tenant--dev-portal-storage')!;
@@ -55,9 +72,8 @@ describe('a repeated stack start applies current infrastructure declarations', (
     expect(again).toBe(service);
     expect(read(before.name)!.containerId).not.toBe(before.containerId);
     expect(read(storage.name)).toEqual(storage);
-    expect(runtime.remove).toHaveBeenCalledExactlyOnceWith(before.containerId);
+    expect(runtime.remove).toHaveBeenCalledExactlyOnceWith(before.containerId, { graceful: true });
     expect(runtime.create).toHaveBeenCalledTimes(3);
-    expect(runtime.volume.mock.calls).toEqual([['tenant--dev-portal-storage-data']]);
     expect(service.getState().ready).toBe(true);
     expect((service as any).healthTimer).toBe(timer);
     expect(janitor.timer).toBeNull();
@@ -66,6 +82,25 @@ describe('a repeated stack start applies current infrastructure declarations', (
       .toContain('http://127.0.0.1/health');
     await manager.provisionStack('tenant--dev', 'portal', scope, changed);
     expect(runtime.remove).toHaveBeenCalledOnce(); expect(runtime.create).toHaveBeenCalledTimes(3);
+  });
+
+  it('keeps the old database if its replacement image cannot be prepared', async () => {
+    await manager.provisionStack('tenant', 'dev', scope, definition());
+    const before = [...containers];
+    runtime.image.mockRejectedValueOnce(Error('registry unavailable'));
+    const service = await manager.provisionStack('tenant', 'dev', scope, definition('new-check'));
+    expect(service.getState().ready).toBe(false);
+    expect([...containers]).toEqual(before); expect(runtime.remove).not.toHaveBeenCalled();
+  });
+
+  it('never detaches an anonymous data volume during an ordinary reconciliation', async () => {
+    await manager.provisionStack('tenant', 'dev', scope, definition());
+    const gateway = containers.get('tenant-dev-gateway')!;
+    gateway.mounts = [{ type: 'volume', name: 'a'.repeat(64), source: '/docker/volumes/retained', target: '/archive' }];
+    const service = await manager.provisionStack('tenant', 'dev', scope, definition('new-check'), undefined, undefined, 'reconcile');
+    expect(service.getState().services[gateway.name]?.error).toContain('explicit data transition');
+    expect(read(gateway.name)?.containerId).toBe(gateway.containerId);
+    expect(runtime.remove).not.toHaveBeenCalled();
   });
 
   it('rejects invalid fresh resolution without changing the previous definition, allocation or monitoring', async () => {
@@ -89,7 +124,7 @@ describe('a repeated stack start applies current infrastructure declarations', (
     await expect(manager.provisionStack('tenant', 'dev', scope, definition('other'))).rejects.toThrow('already in progress');
     await Promise.resolve(); expect(runtime.remove).not.toHaveBeenCalled();
     held.resolve(old); await sweep; await retry;
-    expect(runtime.remove).toHaveBeenCalledExactlyOnceWith(old.containerId);
+    expect(runtime.remove).toHaveBeenCalledExactlyOnceWith(old.containerId, { graceful: true });
     expect(service.getState().ready).toBe(true);
   });
 

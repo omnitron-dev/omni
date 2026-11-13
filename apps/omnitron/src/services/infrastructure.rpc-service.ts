@@ -293,7 +293,7 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     return this.trackMutation(data, () => duringPhase(`provisioning ${scope?.project ?? 'omnitron'}/${scope?.stack ?? 'default'} for the master`, () => {
       if (data.infrastructure === 'preserve') return withInfrastructureScope(scope!.project, scope!.stack, () => this.provisionStackNow(data));
       if (this.hostedStacks && scope && !this.getInfra()?.representsStack(scope)) {
-        return this.hostedStacks.provisionHosted(scope.project, scope.stack, apply => this.provisionStackNow(data, apply), this.getInfra(), data.infrastructure === 'reconcile');
+        return this.hostedStacks.provisionHosted(scope.project, scope.stack, apply => this.provisionStackNow(data, apply), this.getInfra(), data.infrastructure === 'reconcile' ? 'reconcile' : 'start');
       }
       if (!scope && this.hostedStacks?.listInstances().length) throw Error('Select the project and stack before provisioning shared host infrastructure');
       return withInfrastructureScope(scope?.project, scope?.stack, () => this.provisionStackNow(data));
@@ -463,7 +463,7 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
         running: preservation.containers.map(container => container.name), failed: [], missing: [], preservation };
     }
     if (apply) service = await apply(config, definition);
-    const state = apply ? service.getState() : await service.provision(reused ? definition : undefined, data.infrastructure === 'reconcile');
+    const state = apply ? service.getState() : await service.provision(reused ? definition : undefined, data.infrastructure === 'reconcile' ? 'reconcile' : 'start');
     const outcome = summariseProvisioning(service.getDesiredServices(), state.services);
 
     // Services that are not containers.

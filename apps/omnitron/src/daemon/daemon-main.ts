@@ -20,14 +20,17 @@ import { REQUIRED_OWNER_CAPABILITIES } from './execution-capabilities.js';
 async function main() {
   // Preflight must never open databases, listeners or start applications.
   if (process.argv[2] === '--check-backend') {
-    if (process.argv.length > 3 && (process.argv.length !== 4 || process.argv[3] !== '--adopt-infrastructure'))
+    if (process.argv.length > 3 && (process.argv.length !== 4 || !['--adopt-infrastructure', '--preview-cold-start'].includes(process.argv[3]!)))
       throw new Error('Unsupported backend preflight mode');
-    const infrastructureAdoption = process.argv[3] === '--adopt-infrastructure'
-      ? await (async () => {
-        const { readBackendInfrastructureInput, validateBackendInfrastructureInput } = await import('./backend-infrastructure-preflight.js');
-        return validateBackendInfrastructureInput(await readBackendInfrastructureInput(process.stdin));
-      })() : undefined;
+    let infrastructureAdoption, coldInfrastructure;
+    if (process.argv[3]) {
+      const { readBackendInfrastructureInput, validateBackendInfrastructureInput, previewColdInfrastructure } = await import('./backend-infrastructure-preflight.js');
+      const input = await readBackendInfrastructureInput(process.stdin);
+      if (process.argv[3] === '--preview-cold-start') coldInfrastructure = await previewColdInfrastructure(input);
+      else infrastructureAdoption = await validateBackendInfrastructureInput(input);
+    }
     process.stdout.write(JSON.stringify({ protocol: 1, schemaExpansionProtocol: 1,
+      coldInfrastructureProtocol: 1, ...(coldInfrastructure && { coldInfrastructure }),
       infrastructureAdoptionProtocol: 1, ...(infrastructureAdoption && { infrastructureAdoption }),
       executionRequirements: REQUIRED_OWNER_CAPABILITIES, build: OWN_BUILD }) + '\n');
     return;

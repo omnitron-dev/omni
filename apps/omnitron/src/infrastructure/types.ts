@@ -249,7 +249,7 @@ export interface ContainerState {
   /** Read-only reason returned by the recipient for direct container lifecycle operations. */
   lifecycleRestriction?: string;
   /** Actual mounts from Docker inspection, used to verify legacy instance ownership. */
-  mounts?: Array<{ source: string; target: string }>;
+  mounts?: Array<{ source: string; target: string; type?: string; name?: string }>;
   /** Native container labels, used to verify explicit ownership adoption. */
   labels?: Record<string, string> | undefined;
   name: string;

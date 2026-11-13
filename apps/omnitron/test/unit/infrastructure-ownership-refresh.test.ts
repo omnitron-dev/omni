@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const runtime = vi.hoisted(() => ({ get: vi.fn(), create: vi.fn(), remove: vi.fn(), start: vi.fn() }));
+const runtime = vi.hoisted(() => ({ get: vi.fn(), create: vi.fn(), remove: vi.fn(), start: vi.fn(), restart: vi.fn() }));
 vi.mock('../../src/infrastructure/container-runtime.js', async original => ({
   ...(await original<Record<string, unknown>>()), getContainerState: runtime.get,
-  createContainer: runtime.create, removeContainer: runtime.remove, startContainer: runtime.start,
+  createContainer: runtime.create, removeContainer: runtime.remove, startContainer: runtime.start, restartContainer: runtime.restart,
 }));
 import { InfrastructureService } from '../../src/infrastructure/infrastructure.service.js';
 import * as normalizer from '../../src/infrastructure/config-normalizer.js';
@@ -262,12 +262,12 @@ describe('native monitoring ownership refresh', () => {
       healthCheck: { completedAt: new Date(now).toISOString(), exitCode: 1 } }));
     svc.unhealthyEvidence.set('origin', { containerId: '1'.repeat(64), startedAt,
       firstObservedAt: now - 60_000, lastProbeAt: now - 30_000, confirmations: 1 });
-    runtime.remove.mockImplementationOnce(() => { removing.resolve(); return removed.promise; });
+    runtime.restart.mockImplementationOnce(() => { removing.resolve(); return removed.promise; });
     svc.createAndStart = vi.fn().mockResolvedValue(undefined);
-    const sweep = svc.healthSweep(); await removing.promise; expect(runtime.remove).toHaveBeenCalledOnce();
+    const sweep = svc.healthSweep(); await removing.promise; expect(runtime.restart).toHaveBeenCalledOnce();
     const refresh = svc.refreshOwnershipFrom(service()); let done = false; void refresh.then(() => { done = true; });
     await Promise.resolve(); expect(done).toBe(false); removed.resolve(); await sweep; await refresh;
-    expect(svc.createAndStart).toHaveBeenCalledOnce(); expect(svc.getDesiredServices()).toEqual([]);
+    expect(runtime.remove).not.toHaveBeenCalled(); expect(svc.createAndStart).not.toHaveBeenCalled(); expect(svc.getDesiredServices()).toEqual([]);
   });
   it('rejects retained spec changes without losing monitoring ownership', async () => {
     const origin = desired('origin'), svc = service(origin);

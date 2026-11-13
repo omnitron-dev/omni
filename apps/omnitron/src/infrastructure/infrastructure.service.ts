@@ -29,12 +29,12 @@ import type {
   ReconcileAction,
 } from './types.js';
 import { resolveInfrastructure, resolveOmnitronPg, getManagedNetwork } from './service-resolver.js';
-import { ownedContainerId } from './owned-container.js';
+import { assertReplacementVolumes, ownedContainerId } from './owned-container.js';
 import { observeUnhealthy, type UnhealthyEvidence } from './health-recovery.js';
 import { normalizeInfraConfig } from './config-normalizer.js';
 import { createDefaultRegistry } from './presets/index.js';
 import { PhantomEndpointJanitor } from './phantom-endpoint-janitor.js';
-import { reviewExistingContainers } from './existing-containers.js';
+import { planLegacyContainer, reviewExistingContainers } from './existing-containers.js';
 import type { ExistingInfrastructureReview } from '../shared/dto/project.js';
 import { LOCAL_INFRA_HOST } from '../shared/local-infra-host.js';
 import {
@@ -42,14 +42,15 @@ import {
   getContainerState,
   createContainer,
   startContainer,
+  restartContainer,
   removeContainer,
   ensureImage,
   waitForHealthy,
-  createVolume,
   containerSpecHash,
   containerSpecHashMatches,
   migrateContainerSpecHash,
   hasLegacyContainerSpec,
+  planContainerAction,
   containerResources,
   containerResourcesMatch,
 } from './container-runtime.js';
@@ -151,6 +152,9 @@ export interface InfrastructureHandoffState {
   unhealthyEvidence?: Array<[string, UnhealthyEvidence]>;
   restartBackoff: Array<[string, { failures: number; nextAttemptAt: number }]>;
 }
+
+/** Boot and background resume can restore missing services but cannot replace retained containers. */
+export type InfrastructureStartMode = 'automatic' | 'start' | 'reconcile';
 
 export class InfrastructureService {
   private preservation: ExistingInfrastructureReview | undefined;
@@ -261,16 +265,16 @@ export class InfrastructureService {
    * runs post-provisioning setup, and starts the health monitor.
    */
   @RecoveryMutation()
-  async provision(definition?: InfrastructureService, reconcile = false): Promise<InfrastructureState> {
+  async provision(definition?: InfrastructureService, mode: InfrastructureStartMode = 'start'): Promise<InfrastructureState> {
     if (this.monitoringRelinquished) throw new Error('Infrastructure monitoring ownership has been relinquished');
     if (this.ownershipFrozen) throw new Error('Infrastructure ownership is frozen');
-    if ((this.preservation || this.preservationPending) && !reconcile) throw new Error('Infrastructure is preserved; an explicit reconcile start is required');
+    if ((this.preservation || this.preservationPending) && mode !== 'reconcile') throw new Error('Infrastructure is preserved; an explicit reconcile start is required');
     if (this.provisioning) {
       if (definition) throw new Error('Infrastructure provisioning is already in progress; retry the new declaration after it finishes');
       return this.provisioning;
     }
-    if (reconcile) { this.preservation = undefined; this.preservationPending = false; }
-    const task = this.provisionDefinition(definition);
+    if (mode === 'reconcile') { this.preservation = undefined; this.preservationPending = false; }
+    const task = this.provisionDefinition(definition, mode);
     this.provisioning = task;
     try { return await task; }
     finally { if (this.provisioning === task) this.provisioning = undefined; }
@@ -285,7 +289,7 @@ export class InfrastructureService {
     return new InfrastructureService(this.logger, config, services, this.presetRegistry, overrides, this.needsControlPlaneDatabase);
   }
 
-  private async provisionDefinition(definition?: InfrastructureService): Promise<InfrastructureState> {
+  private async provisionDefinition(definition: InfrastructureService | undefined, mode: InfrastructureStartMode): Promise<InfrastructureState> {
     const monitored = this.healthTimer !== null;
     this.definitionChanging = true;
     try {
@@ -295,12 +299,26 @@ export class InfrastructureService {
         if (drained.some(result => result.status === 'rejected')) throw new Error('In-flight infrastructure reconciliation failed; inspect it before retrying provisioning');
         await this.phantomJanitor?.drain();
         if (definition && this.ownershipFrozen) throw new Error('Infrastructure ownership changed before the new declaration was applied');
+        if (mode === 'automatic') {
+          const candidate = definition ?? this;
+          // Review the whole allocation before changing its monitor, running hooks or creating siblings.
+          await Promise.all(candidate.desiredContainers.map(async desired => {
+            const actual = await getContainerState(desired.name, { orThrow: true, fullId: true });
+            if (!actual) return;
+            const id = ownedContainerId(desired, actual);
+            if (actual.status === 'running' && hasLegacyContainerSpec(desired, actual) && !containerSpecHashMatches(desired, actual)) {
+              await planLegacyContainer(desired, id);
+              return;
+            }
+            candidate.assertStartAction(candidate.computeAction(desired, actual), mode);
+          }));
+        }
         if (definition) this.replaceDefinitionFrom(definition);
         this.state.ready = false;
       } finally {
         this.definitionChanging = false;
       }
-      return await this.provisionOwned();
+      return await this.provisionOwned(mode);
     } finally {
       // Failed Docker admission must not silently abandon previously owned services.
       if (monitored && !this.ownershipFrozen && !this.monitoringRelinquished) {
@@ -310,7 +328,7 @@ export class InfrastructureService {
     }
   }
 
-  private async provisionOwned(): Promise<InfrastructureState> {
+  private async provisionOwned(mode: InfrastructureStartMode): Promise<InfrastructureState> {
     for (const desired of [...this.desiredContainers, ...this.controlPlaneContainers()]) containerResources(desired);
     // 1. Verify Docker is available
     if (!(await isDockerAvailable())) {
@@ -324,7 +342,7 @@ export class InfrastructureService {
     //    Skip if the global omnitron-pg is already running (avoids port conflict).
     //    The stack-prefixed container (e.g. omni-dev-pg) shares the same port,
     //    so we must not create/start it when the global one is active.
-    const globalOmnitronPg = await getContainerState('omnitron-pg');
+    const globalOmnitronPg = this.needsControlPlaneDatabase ? await getContainerState('omnitron-pg', { orThrow: true, fullId: true }) : null;
     const decision = decideControlPlaneDatabase({
       needsControlPlaneDatabase: this.needsControlPlaneDatabase,
       running: globalOmnitronPg,
@@ -349,7 +367,9 @@ export class InfrastructureService {
       if (this.omnitronPgContainer.name !== decision.reconcileName) {
         const stalePg = await getContainerState(this.omnitronPgContainer.name, { orThrow: true, fullId: true });
         if (stalePg) {
-          await removeContainer(ownedContainerId(this.omnitronPgContainer, stalePg));
+          const id = ownedContainerId(this.omnitronPgContainer, stalePg);
+          if (mode === 'automatic') throw Error(`Automatic start would remove retained PostgreSQL ${stalePg.name}; review its data volume first`);
+          await removeContainer(id, { graceful: true });
           this.logger.info({ service: this.omnitronPgContainer.name }, 'Removed stale stack-prefixed PG container');
         }
       }
@@ -371,10 +391,10 @@ export class InfrastructureService {
           v.target === '/var/lib/postgresql/data' ? { ...v, source: `${decision.reconcileName}-data` } : v,
         );
       }
-      await this.reconcileService(reconciled);
+      await this.reconcileService(reconciled, mode);
     } else {
       try {
-        await this.provisionOmnitronDatabase();
+        await this.provisionOmnitronDatabase(mode);
       } catch (err) {
         this.logger.error(
           { error: (err as Error).message },
@@ -415,7 +435,7 @@ export class InfrastructureService {
     await Promise.all(
       this.desiredContainers.map(async (desired) => {
         try {
-          await this.reconcileService(desired);
+          await this.reconcileService(desired, mode);
         } catch (err) {
           this.logger.error(
             { service: desired.name, error: (err as Error).message },
@@ -1041,8 +1061,13 @@ export class InfrastructureService {
     );
   }
 
-  private reconcileService(desired: ResolvedContainer): Promise<void> {
-    return this.withContainerReconciliation(desired, () => this.reconcileServiceLocked(desired));
+  private reconcileService(desired: ResolvedContainer, mode: InfrastructureStartMode = 'start'): Promise<void> {
+    return this.withContainerReconciliation(desired, () => this.reconcileServiceLocked(desired, mode));
+  }
+
+  private assertStartAction(action: ReconcileAction, mode: InfrastructureStartMode): void {
+    if (mode === 'automatic' && action.type === 'recreate')
+      throw new Error(`Automatic start would replace ${action.service}: ${action.reason}. Review the infrastructure and start the stack with --infrastructure reconcile.`);
   }
 
   private async withContainerReconciliation(desired: ResolvedContainer, operation: () => Promise<void>): Promise<void> {
@@ -1063,7 +1088,7 @@ export class InfrastructureService {
   }
 
   @RecoveryMutation()
-  private async reconcileServiceLocked(desired: ResolvedContainer): Promise<void> {
+  private async reconcileServiceLocked(desired: ResolvedContainer, mode: InfrastructureStartMode): Promise<void> {
     if (this.preservation || this.preservationPending) throw new Error('Preserved infrastructure cannot be reconciled');
     let actual = await getContainerState(desired.name, { orThrow: true, fullId: true });
     if (this.ownershipFrozen || this.definitionChanging || this.retiredStacks.has(this.containerScope(desired))) return;
@@ -1082,6 +1107,7 @@ export class InfrastructureService {
       actual = confirmed;
     }
     const action = this.computeAction(desired, actual);
+    this.assertStartAction(action, mode);
     // A container that was created, started or recreated is listening on a
     // NEW socket. Applications already running hold pools pointing at the
     // old one, and a titan liveness probe does not notice — the app answers
@@ -1107,11 +1133,13 @@ export class InfrastructureService {
         break;
 
       case 'recreate':
+        assertReplacementVolumes(desired, actual!);
+        await ensureImage(desired.image);
         this.logger.info(
           { service: desired.name, reason: action.reason },
           'Recreating service'
         );
-        await removeContainer(id!);
+        await removeContainer(id!, { graceful: true });
         await this.createAndStart(desired);
         break;
 
@@ -1151,8 +1179,7 @@ export class InfrastructureService {
       this.logger.warn({ service: desired.name, nativeCheck: confirmed.healthCheck, failures, backoffMs },
         'Confirmed sustained native health failure — restarting container');
       try {
-        await removeContainer(ownedContainerId(desired, confirmed));
-        await this.createAndStart(desired);
+        await restartContainer(ownedContainerId(desired, confirmed));
       } catch (err) {
         this.logger.error({ service: desired.name, error: describeError(err, 0, Object.values(desired.environment)), failures, backoffMs },
           'Health restart failed; recovery backoff retained');
@@ -1164,111 +1191,10 @@ export class InfrastructureService {
     desired: ResolvedContainer,
     actual: ContainerState | null
   ): ReconcileAction {
-    containerResources(desired);
-    if (!actual) {
-      return { type: 'create', service: desired.name, config: desired };
-    }
-    if (!containerResourcesMatch(desired, actual)) {
-      return { type: 'recreate', service: desired.name, config: desired, reason: 'resource limits differ from Docker inspection' };
-    }
-
-    if (actual.status === 'running') {
-      // Running but detached from all networks (OrbStack/dockerd-restart
-      // artifact): the container is unreachable and its published ports are
-      // gone. 'running' is a lie here — recreate to re-attach + re-publish.
-      if (actual.networkAttached === false) {
-        return {
-          type: 'recreate',
-          service: desired.name,
-          config: desired,
-          reason: 'network-detached (running but on no network)',
-        };
-      }
-      // Check if image changed
-      if (actual.image !== desired.image && !actual.image.startsWith(desired.image)) {
-        return {
-          type: 'recreate',
-          service: desired.name,
-          config: desired,
-          reason: `image changed: ${actual.image} → ${desired.image}`,
-        };
-      }
-      // Config drift: image unchanged but the desired spec (env, ports,
-      // volumes, command, extraHosts) differs from what the running container
-      // was created with. Without this, an omnitron.config.ts edit that only
-      // touches env — e.g. the Tor hidden-service target — is silently ignored
-      // because the container is "running and healthy". Only fires when the
-      // running container carries a spec-hash label; pre-upgrade containers
-      // (no label) are left alone until they recreate for another reason, so
-      // upgrading omnitron never churns an otherwise-healthy stack.
-      if (actual.specHash) {
-        const desiredHash = containerSpecHash(desired);
-        if (!containerSpecHashMatches(desired, actual, this.state.services[desired.name]?.specHashMigration)) {
-          return {
-            type: 'recreate',
-            service: desired.name,
-            config: desired,
-            reason: `config drift (spec ${actual.specHash} → ${desiredHash})`,
-          };
-        }
-      }
-      return { type: 'noop', service: desired.name };
-    }
-
-    if (actual.status === 'exited' || actual.status === 'created') {
-      // A container that is not running still carries the spec it was created
-      // with, and `start` runs THAT spec. The drift checks above were only
-      // asked of a running container, so one created wrong was started wrong
-      // for as long as it existed: Nominatim on sample/test, created at 05:37
-      // with a mount the master had not rewritten, was «started» by every
-      // reconcile after the fix that corrected its desired spec — «exec:
-      // /opt/nominatim-tools/cis-entrypoint.sh: no such file» each time
-      // (2026-09-25). Same questions, same answers, before it is started.
-      if (actual.image !== desired.image && !actual.image.startsWith(desired.image)) {
-        return {
-          type: 'recreate',
-          service: desired.name,
-          config: desired,
-          reason: `image changed while stopped: ${actual.image} → ${desired.image}`,
-        };
-      }
-      if (actual.specHash) {
-        const desiredHash = containerSpecHash(desired);
-        if (!containerSpecHashMatches(desired, actual, this.state.services[desired.name]?.specHashMigration)) {
-          return {
-            type: 'recreate',
-            service: desired.name,
-            config: desired,
-            reason: `config drift while ${actual.status} (spec ${actual.specHash} → ${desiredHash})`,
-          };
-        }
-      }
-      return { type: 'start', service: desired.name, containerId: actual.containerId ?? desired.name };
-    }
-
-    // Dead or other — recreate
-    return {
-      type: 'recreate',
-      service: desired.name,
-      config: desired,
-      reason: `status: ${actual.status}`,
-    };
+    return planContainerAction(desired, actual, this.state.services[desired.name]?.specHashMigration);
   }
 
   private async createAndStart(desired: ResolvedContainer): Promise<void> {
-    containerResources(desired);
-    // Ensure volumes exist
-    for (const vol of desired.volumes) {
-      if (!vol.source.startsWith('/') && !vol.source.startsWith('.')) {
-        // Named volume
-        await createVolume(vol.source);
-      }
-    }
-
-    // Pull image
-    await ensureImage(desired.image);
-
-    // Create container via Docker CLI directly (avoids xec adapter hanging)
     const id = await createContainer(desired);
     this.logger.info({ service: desired.name, containerId: id }, 'Container created');
 
@@ -1287,22 +1213,20 @@ export class InfrastructureService {
     const inspect = promisify(execFile);
     const startTime = Date.now();
     while (Date.now() - startTime < STARTUP_TIMEOUT) {
+      let state: { Status: string; Health?: { Status: string } } | undefined;
       try {
         const { stdout } = await inspect('docker', ['inspect', '--format', '{{json .State}}', '--', name],
           { encoding: 'utf8', timeout: 5000 });
-        const state = JSON.parse(stdout) as { Status: string; Health?: { Status: string } };
-        if (state.Health?.Status === 'healthy' || (state.Status === 'running' && (!state.Health || state.Health.Status === 'none'))) return;
-        if (state.Status === 'exited' || state.Status === 'dead') {
-          this.logger.warn({ service: name, status: state.Status }, 'Container not running');
-          return;
-        }
+        state = JSON.parse(stdout) as typeof state;
       } catch {
         // docker CLI failed — retry
       }
+      if (state?.Status === 'running' && (!state.Health || ['healthy', 'none'].includes(state.Health.Status))) return;
+      if (state?.Status === 'exited' || state?.Status === 'dead') throw Error(`Container ${name} is ${state.Status} before becoming ready`);
       await new Promise((r) => setTimeout(r, 2000));
     }
 
-    this.logger.warn({ service: name, timeout: STARTUP_TIMEOUT }, 'Service did not become healthy within timeout');
+    throw Error(`Container ${name} did not become healthy within ${STARTUP_TIMEOUT}ms`);
   }
 
   // ===========================================================================
@@ -1423,14 +1347,15 @@ export class InfrastructureService {
    * Provision Omnitron's own PostgreSQL container and run migrations.
    * This database stores logs, metrics, alerts, portal users, deployments, etc.
    */
-  private async provisionOmnitronDatabase(): Promise<void> {
+  private async provisionOmnitronDatabase(mode: InfrastructureStartMode): Promise<void> {
     this.logger.info('Provisioning Omnitron internal database (omnitron-pg)');
 
     // 1. Reconcile the omnitron-pg container
-    await this.reconcileService(this.omnitronPgContainer);
+    await this.reconcileService(this.omnitronPgContainer, mode);
 
     // 2. Wait for healthy
-    await waitForHealthy(this.omnitronPgContainer.name, 60_000);
+    if (!await waitForHealthy(this.omnitronPgContainer.name, 60_000))
+      throw Error('Control-plane PostgreSQL did not become healthy before migrations');
 
     // 3. Run Kysely migrations
     await this.runOmnitronMigrations();
@@ -1557,7 +1482,7 @@ export class InfrastructureService {
           'Service not running — auto-restarting'
         );
         try {
-          await this.reconcileService(desired);
+          await this.reconcileService(desired, 'automatic');
         } catch (err) {
           const failures = (this.restartBackoff.get(desired.name)?.failures ?? 0) + 1;
           const backoffMs = restartBackoffMs(failures);

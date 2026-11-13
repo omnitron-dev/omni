@@ -11,7 +11,11 @@ vi.mock('../../src/infrastructure/container-runtime.js', async original => ({
   getContainerState: runtime.inspect, createContainer: runtime.create, startContainer: runtime.start, removeContainer: runtime.remove,
 }));
 import { InfrastructureService } from '../../src/infrastructure/infrastructure.service.js';
-import { backendInfrastructureInput, readBackendInfrastructureInput, validateBackendInfrastructureInput } from '../../src/daemon/backend-infrastructure-preflight.js';
+import { backendInfrastructureInput, readBackendInfrastructureInput, validateBackendInfrastructureInput, previewColdInfrastructure } from '../../src/daemon/backend-infrastructure-preflight.js';
+import { createDefaultRegistry } from '../../src/infrastructure/presets/index.js';
+import { normalizeInfraConfig } from '../../src/infrastructure/config-normalizer.js';
+import { withInfrastructureScope } from '../../src/infrastructure/service-resolver.js';
+import { containerSpecHash } from '../../src/infrastructure/container-runtime.js';
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -57,4 +61,22 @@ it('rejects malformed or oversized input before inspecting Docker', async () => 
   async function* excessive() { yield Buffer.alloc(16 * 1024 * 1024); yield Buffer.from('x'); }
   await expect(readBackendInfrastructureInput(excessive())).rejects.toThrow('16 MiB');
   expect(runtime.inspect).not.toHaveBeenCalled();
+});
+
+it('previews a PostgreSQL preset change using the incoming resolver without operating Docker', async () => {
+  const config = { postgres: { port: 5432, databases: {} } };
+  const historical = normalizeInfraConfig(config, createDefaultRegistry());
+  historical['postgres']!.healthCheck = { type: 'command', target: 'old-probe' };
+  const snapshot = withInfrastructureScope('tenant', 'dev', () => {
+    const service = new InfrastructureService(createNullLogger(), config, historical, undefined, undefined, false);
+    try { return service.captureRecoveryState(); } finally { service.dispose(); }
+  });
+  const old = snapshot.containers[0]!;
+  runtime.inspect.mockResolvedValue({ name: old.name, image: old.image, containerId: 'a'.repeat(64), status: 'running',
+    labels: old.labels, specHash: containerSpecHash(old), mounts: old.volumes.map(v => ({ type: 'volume', name: v.source, source: '/data', target: v.target })),
+    resources: { memoryBytes: 0, memoryReservationBytes: 0,
+      nanoCpus: 0, shmBytes: 268435456, cpuQuota: 0, cpuPeriod: 0 } });
+  const result = await previewColdInfrastructure(Buffer.from(JSON.stringify({ protocol: 1, infrastructure: [snapshot] })));
+  expect(result.containers).toEqual([expect.objectContaining({ name: 'tenant-dev-postgres', action: 'replace', changed: ['healthCheck'] })]);
+  expect(runtime.remove).not.toHaveBeenCalled(); expect(runtime.create).not.toHaveBeenCalled();
 });

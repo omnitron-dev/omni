@@ -109,7 +109,7 @@ backend.command('installation').description('Inspect the cold-start selection an
     await backendInstallationCommand(options);
   });
 backend.command('select <sha256>').description('Select an installed runtime while backend and execution owner are stopped')
-  .option('--check', 'Verify cold selection and rollback compatibility while services are running')
+  .option('--check', 'Verify runtime and migrations and preview the candidate against retained stack declarations and current Docker state')
   .structuredAction(async (sha256: string, options: { check?: boolean }) => {
     const { backendSelectCommand } = await import('../commands/backend.js');
     await backendSelectCommand(sha256, options.check);

@@ -27,7 +27,7 @@ import { usesGatewayTemplate, withInfrastructureScope } from './service-resolver
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import type { InfrastructureConfig } from './types.js';
 import type { IStackConfig, IStackSettings } from '../config/types.js';
-import { InfrastructureService } from './infrastructure.service.js';
+import { InfrastructureService, type InfrastructureStartMode } from './infrastructure.service.js';
 import { reviewExistingContainers } from './existing-containers.js';
 import type { ExistingInfrastructureReview } from '../shared/dto/project.js';
 import { setContainerPrefix, setStackLabels, gatewayHostPort } from './service-resolver.js';
@@ -54,7 +54,7 @@ export class StackInfrastructureManager {
   /** Incoming declarations contain the destination's actual published ports; local stack offsets have already been resolved. */
   async provisionHosted<T>(project: string, stack: string, work: (apply: (
     config: InfrastructureConfig, definition: InfrastructureService
-  ) => Promise<InfrastructureService>) => Promise<T>, legacy?: InfrastructureService | null, reconcile = false): Promise<T> {
+  ) => Promise<InfrastructureService>) => Promise<T>, legacy?: InfrastructureService | null, mode: InfrastructureStartMode = 'start'): Promise<T> {
     const key = `${project}/${stack}`;
     return this.mutateStack(key, () => withInfrastructureScope(project, stack, () => work(async (config, definition) => {
       const allocation = this.computePortAllocation(project, stack, {
@@ -62,7 +62,7 @@ export class StackInfrastructureManager {
       }, config);
       if (legacy) this.checkClaims(key, definition, 'host infrastructure', legacy);
       this.instances.get(key)?.resumeStack({ project, stack });
-      return this.installDefinition(project, stack, definition, allocation, reconcile);
+      return this.installDefinition(project, stack, definition, allocation, mode);
     })));
   }
   captureRecoveryState(): Awaited<ReturnType<StackInfrastructureManager['prepareHandoff']>> {
@@ -141,12 +141,12 @@ export class StackInfrastructureManager {
     baseInfraConfig: InfrastructureConfig,
     appDefinitions?: Map<string, import('../config/types.js').IAppDefinition>,
     projectRoot?: string,
-    reconcile = false,
+    mode: InfrastructureStartMode = 'start',
   ): Promise<InfrastructureService> {
     if (!ownsStackInfrastructure(stackConfig)) throw new Error('This stack does not own infrastructure provisioning');
     const key = `${project}/${stack}`;
     return this.mutateStack(key, () => withInfrastructureScope(project, stack, () =>
-      this.provisionStackScoped(project, stack, stackConfig, baseInfraConfig, appDefinitions, projectRoot, reconcile)
+      this.provisionStackScoped(project, stack, stackConfig, baseInfraConfig, appDefinitions, projectRoot, mode)
     ));
   }
 
@@ -210,15 +210,15 @@ export class StackInfrastructureManager {
     baseInfraConfig: InfrastructureConfig,
     appDefinitions?: Map<string, import('../config/types.js').IAppDefinition>,
     projectRoot?: string,
-    reconcile = false,
+    mode: InfrastructureStartMode = 'start',
   ): Promise<InfrastructureService> {
     // 1. Compute port allocation for this stack
     const portAlloc = this.computePortAllocation(project, stack, stackConfig.settings, baseInfraConfig);
     const definition = await this.resolveStackDefinition(project, stack, stackConfig, baseInfraConfig, portAlloc, appDefinitions, projectRoot);
-    return this.installDefinition(project, stack, definition, portAlloc, reconcile);
+    return this.installDefinition(project, stack, definition, portAlloc, mode);
   }
 
-  private async installDefinition(project: string, stack: string, definition: InfrastructureService, portAlloc: StackPortAllocation, reconcile = false): Promise<InfrastructureService> {
+  private async installDefinition(project: string, stack: string, definition: InfrastructureService, portAlloc: StackPortAllocation, mode: InfrastructureStartMode): Promise<InfrastructureService> {
     const key = `${project}/${stack}`;
     for (const [owner, service] of [...this.instances, ...this.mutations]) {
       if (service && owner !== key) this.checkClaims(key, definition, owner, service);
@@ -232,7 +232,7 @@ export class StackInfrastructureManager {
     this.instances.set(key, infraService);
 
     try {
-      await infraService.provision(existing ? definition : undefined, reconcile);
+      await infraService.provision(existing ? definition : undefined, mode);
       this.portAllocations.set(key, portAlloc);
       return infraService;
     } catch (err) {

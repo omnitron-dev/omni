@@ -11,7 +11,9 @@ import { getEnv } from '../shared/env-config.js';
 import { expandPath } from '../shared/paths.js';
 import { executionDirectory } from '../daemon/execution-launcher.js';
 import { readSavedDaemonConfig, savedDaemonOverrides } from '../config/saved.js';
-import { assertBackendMigrationsCompatible, backendSchemaScope } from '../daemon/backend-candidate.js';
+import { assertBackendMigrationsCompatible, backendSchemaScope, previewBackendColdStart, type BackendArtifact } from '../daemon/backend-candidate.js';
+import { BackendRecoveryJournal } from '../daemon/backend-recovery-journal.js';
+import { checkpointInstanceHome } from '../daemon/backend-handoff-types.js';
 import { readManagedRuntime } from '../daemon/managed-runtime.js';
 import { recoverBackendAfterCrash } from '../daemon/backend-crash-recovery.js';
 
@@ -106,6 +108,26 @@ export async function backendInstallationCommand(options: { recovery?: boolean }
   finally { await installation?.close(); }
 }
 
+async function coldStartPreview(artifact: BackendArtifact, config: typeof DEFAULT_DAEMON_CONFIG, home: string) {
+  if (artifact.coldInfrastructureProtocol !== 1) return { coverage: 'unavailable', reason: 'Candidate predates cold infrastructure preview' } as const;
+  const directory = executionDirectory(config);
+  try { await fs.access(path.join(directory, 'recovery.db')); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    return { coverage: 'unavailable', reason: 'No recorded infrastructure declaration' } as const;
+  }
+  const journal = new BackendRecoveryJournal(directory, { readOnly: true });
+  try {
+    const evidence = journal.read();
+    const record = evidence?.status === 'ready' ? evidence.record : evidence?.previous;
+    if (!record) return { coverage: 'unavailable', reason: 'No recorded infrastructure declaration' } as const;
+    if (checkpointInstanceHome(record) !== home) throw Error('Cold infrastructure preview belongs to another instance');
+    const native = await previewBackendColdStart(artifact, record);
+    return { coverage: evidence?.status === 'ready' ? 'certified-declarations' : 'historical-declarations',
+      capturedAt: record.createdAt, ...native } as const;
+  } finally { await journal.close(); }
+}
+
 export async function backendSelectCommand(id: string, checkOnly = false): Promise<void> {
   let installation: RuntimeInstallation | null = null;
   try {
@@ -128,14 +150,21 @@ export async function backendSelectCommand(id: string, checkOnly = false): Promi
         const previous = await registry.artifact(selected.current);
         await assertBackendMigrationsCompatible(previous.directory, artifact.directory, scope);
       }
-      return { selected, scope, config };
+      return { selected, scope, config, artifact };
     };
     if (checkOnly) {
-      const { selected, scope } = await check();
+      const { selected, scope, artifact, config } = await check();
+      const infrastructure = await coldStartPreview(artifact, config, registry.home);
       const confirmed = registry.settledSelection({ allowEmpty: true });
       if (confirmed?.revision !== selected?.revision || confirmed?.current !== selected?.current) throw new Error('Runtime selection changed during the check');
-      if (!emitJson({ checked: true, current: selected?.current ?? null, candidate: id, schemaScope: scope })) {
-        emitInfo(`Cold selection verified for ${id} (${scope} migrations).`);
+      if (!emitJson({ checked: true, current: selected?.current ?? null, candidate: id, schemaScope: scope, infrastructure })) {
+        emitInfo(`Runtime selection and ${scope} migrations verified for ${id}.`);
+        if ('containers' in infrastructure) {
+          emitInfo(`Cold stack preview from ${infrastructure.coverage} at ${infrastructure.capturedAt}. Startup rechecks current declarations and native containers.`);
+          for (const item of infrastructure.containers) {
+            emitInfo(`${item.name}: ${item.action}${item.changed?.length ? ' (' + item.changed.join(', ') + ')' : ''}${item.reason ? ' — ' + item.reason : ''}`);
+          }
+        } else emitInfo('Stack infrastructure unverified: ' + infrastructure.reason);
       }
       return;
     }

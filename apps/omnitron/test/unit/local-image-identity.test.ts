@@ -31,13 +31,17 @@ it('refuses abbreviated or malformed local IDs before consulting Docker', async 
     await expect(ensureImage(id)).rejects.toThrow('Invalid local image ID');
   expect(dockerAdapter.pullImage).not.toHaveBeenCalled();
 });
-it('retains registry digest handling through the native adapter', async () => {
+it('pulls a missing registry digest and reports a rejected pull', async () => {
   const reference = 'example.invalid/fixture@sha256:' + '1'.repeat(64);
-  dockerAdapter.listImages.mockResolvedValueOnce([reference]);
-  await ensureImage(reference);
-  expect(dockerAdapter.pullImage).not.toHaveBeenCalled();
-  dockerAdapter.listImages.mockResolvedValueOnce([]);
   dockerAdapter.pullImage.mockResolvedValueOnce(undefined);
   await ensureImage(reference);
   expect(dockerAdapter.pullImage).toHaveBeenCalledExactlyOnceWith(reference);
+  dockerAdapter.pullImage.mockRejectedValueOnce(Error('pull refused'));
+  await expect(ensureImage(reference)).rejects.toThrow('pull refused');
+});
+it('does not accept a different tag sharing the requested prefix', async () => {
+  dockerAdapter.listImages.mockResolvedValueOnce(['registry:5000/pg:170']);
+  dockerAdapter.pullImage.mockRejectedValueOnce(Error('pull refused'));
+  await expect(ensureImage('registry:5000/pg:17')).rejects.toThrow('pull refused');
+  expect(dockerAdapter.pullImage).toHaveBeenLastCalledWith('registry:5000/pg:17');
 });

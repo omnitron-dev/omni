@@ -321,8 +321,8 @@ export class WebappService {
     });
     desiredSpec.volumes.push({ source: configPath, target: '/etc/nginx/nginx.conf', readonly: true });
     const desiredHash = containerSpecHash(desiredSpec);
-    const state = await getContainerState(desiredSpec.name);
-    if (state) assertConsoleOwnership(state);
+    const state = await getContainerState(desiredSpec.name, { orThrow: true, fullId: true });
+    const currentId = state && assertConsoleOwnership(state);
 
     // 2. Keep a healthy container only when it is running the current config
     //    AND the current spec.
@@ -362,18 +362,18 @@ export class WebappService {
       await this.build();
     }
 
+    await ensureImage(desiredSpec.image);
     fs.mkdirSync(this.configDir, { recursive: true });
     fs.writeFileSync(configPath, nginxConfig, 'utf-8');
     this.logger.info({ configPath }, 'Generated nginx config');
 
     // 4. Remove existing container if any
-    if (state) await removeContainer(state.containerId ?? state.name);
+    if (currentId) await removeContainer(currentId, { graceful: true });
 
     // 5. Create container
     // Same spec the comparison above used, so what runs is what was compared.
     const containerSpec = desiredSpec;
 
-    await ensureImage(containerSpec.image);
     await createContainer(containerSpec);
 
     // 6. Wait for healthy
@@ -389,10 +389,9 @@ export class WebappService {
    * Stop the omnitron-nginx container.
    */
   async stop(): Promise<void> {
-    const state = await getContainerState(consoleContainerName());
+    const state = await getContainerState(consoleContainerName(), { orThrow: true, fullId: true });
     if (!state) return;
-    assertConsoleOwnership(state);
-    const target = state.containerId ?? state.name;
+    const target = assertConsoleOwnership(state);
     await stopContainer(target, 5);
     await removeContainer(target);
     this.logger.info('Omnitron Console stopped');
@@ -402,7 +401,7 @@ export class WebappService {
    * Get status of the nginx container.
    */
   async status(): Promise<{ running: boolean; port: number; healthy: boolean }> {
-    const state = await getContainerState(consoleContainerName());
+    const state = await getContainerState(consoleContainerName(), { orThrow: true, fullId: true });
     if (state) assertConsoleOwnership(state);
     return {
       running: state?.status === 'running',

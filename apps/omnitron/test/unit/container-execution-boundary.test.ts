@@ -21,7 +21,7 @@ const config = (): ResolvedContainer => ({
   command: ['--rpc-login', 'service:rpc-secret'],
   healthCheck: { test: ['CMD-SHELL', 'curl --user "service:health secret" http://localhost/health'] },
 });
-beforeEach(() => { vi.clearAllMocks(); native.execute.mockResolvedValue({ stdout: 'abcdef1234567890\n' }); });
+beforeEach(() => { vi.clearAllMocks(); native.execute.mockResolvedValue({ stdout: 'abcdef1234567890'.repeat(4) + '\n' }); });
 describe('container execution security boundary', () => {
   it('uses the Xec local argv executor with bounded execution and shared diagnostics', async () => {
     expect(await createContainer(config())).toBe('abcdef123456');
@@ -52,6 +52,30 @@ describe('container execution security boundary', () => {
     expect(await createContainer(config())).toBe('abcdef123456');
     expect(native.remove).toHaveBeenCalledWith('f'.repeat(64), true, {});
     expect(native.execute).toHaveBeenCalledTimes(2);
+  });
+
+  it('checks both port numbers and the bind address on the exact container returned by Docker', async () => {
+    const id = 'abcdef1234567890'.repeat(4);
+    const desired = { ...config(), ports: [{ host: 80, container: 8080, bindHost: '127.0.0.1' }] };
+    native.inspect.mockResolvedValue({ Id: id, NetworkSettings: { Ports: {
+      '8080/tcp': [{ HostPort: '80', HostIp: '127.0.0.1' }],
+    } } });
+    await expect(createContainer(desired)).resolves.toBe(id.slice(0, 12));
+    expect(native.inspect).toHaveBeenCalledWith(id);
+    native.inspect.mockResolvedValue({ Id: 'd'.repeat(64), NetworkSettings: { Ports: {} } });
+    await expect(createContainer(desired)).rejects.toThrow('Cannot verify native port publication');
+    expect(native.remove).not.toHaveBeenCalled();
+    native.inspect.mockImplementation(async (ref: string) => {
+      if (ref === id) return { Id: id, NetworkSettings: { Ports: {
+        '8080/tcp': [{ HostPort: '8080', HostIp: '127.0.0.1' }, { HostPort: '80', HostIp: '0.0.0.0' }],
+        '80/tcp': [{ HostPort: '80', HostIp: '127.0.0.1' }],
+      } } };
+      const run = native.execute.mock.calls.at(-1)![0];
+      const label = run.args.find((arg: string) => arg.startsWith('omnitron.creation='));
+      return { Id: id, Config: { Labels: { 'omnitron.creation': label.split('=')[1] } } };
+    });
+    await expect(createContainer(desired)).rejects.toThrow('Docker did not publish the declared ports');
+    expect(native.remove).toHaveBeenCalledTimes(2);
   });
 
   it('preserves the sanitized executor error instead of rebuilding it from raw argv', async () => {

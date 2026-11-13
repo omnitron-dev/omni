@@ -11,7 +11,7 @@ import type { IDaemonConfig } from '../config/types.js';
 import { compareMigrationChecksumMetadata, type MigrationChecksumChange } from '../database/migration-registry-compatibility.js';
 import type { BackendBootRecord } from './backend-handoff-types.js';
 import type { BackendRecoveryRecord } from './backend-recovery-journal.js';
-import { backendInfrastructureDigest, backendInfrastructureInput } from './backend-infrastructure-preflight.js';
+import { backendInfrastructureDigest, backendInfrastructureInput, type ColdInfrastructurePreview } from './backend-infrastructure-preflight.js';
 
 const execute = promisify(execFile);
 const PREFLIGHT_TIMEOUT_MS = 30_000;
@@ -88,6 +88,7 @@ export interface BackendArtifact {
   runtimeRoot: string; runtimeHash: string; execPath: string;
   schemaExpansionProtocol?: number;
   infrastructureAdoptionProtocol?: 1;
+  coldInfrastructureProtocol?: 1;
   executionRequirements?: ExecutionCapabilities;
 }
 
@@ -186,6 +187,7 @@ export async function checkBackendCandidate(directory: string, currentEntry?: st
     await assertBackendMigrationsCompatible(currentDist, directory, 'all');
   }
   return { ...artifact, executionRequirements: readExecutionCapabilities(answer.executionRequirements),
+    ...(answer.coldInfrastructureProtocol === 1 ? { coldInfrastructureProtocol: 1 } : {}),
     ...(answer.schemaExpansionProtocol === 1 ? { schemaExpansionProtocol: 1 } : {}),
     ...(answer.infrastructureAdoptionProtocol === 1 ? { infrastructureAdoptionProtocol: 1 } : {}) };
 }
@@ -201,16 +203,23 @@ export async function checkBackendAdoption(artifact: BackendArtifact, record: Ba
   await runBackendPreflight(artifact, { input, cwd: record.cwd, environment: record.environment });
 }
 
+export async function previewBackendColdStart(artifact: BackendArtifact, record: BackendBootRecord | BackendRecoveryRecord): Promise<ColdInfrastructurePreview> {
+  const input = backendInfrastructureInput(record.state);
+  const checked = await runBackendPreflight(artifact, { input, cwd: record.cwd, environment: record.environment, cold: true });
+  return checked.coldInfrastructure!;
+}
+
 interface BackendPreflightResponse {
   protocol?: number; schemaExpansionProtocol?: number; infrastructureAdoptionProtocol?: number;
+  coldInfrastructureProtocol?: number; coldInfrastructure?: ColdInfrastructurePreview;
   infrastructureAdoption?: { protocol?: number; digest?: string };
   build?: BuildStamp; executionRequirements?: unknown;
 }
 
 async function runBackendPreflight(artifact: Pick<BackendArtifact, 'entry' | 'execPath' | 'build' | 'runtimeHash'>,
-  adoption?: { input: string; cwd: string; environment: Record<string, string> }): Promise<BackendPreflightResponse> {
+  adoption?: { input: string; cwd: string; environment: Record<string, string>; cold?: boolean }): Promise<BackendPreflightResponse> {
   const started = performance.now();
-  const pending = execute(artifact.execPath, [artifact.entry, '--check-backend', ...(adoption ? ['--adopt-infrastructure'] : [])], {
+  const pending = execute(artifact.execPath, [artifact.entry, '--check-backend', ...(adoption ? [adoption.cold ? '--preview-cold-start' : '--adopt-infrastructure'] : [])], {
     timeout: PREFLIGHT_TIMEOUT_MS, maxBuffer: 1024 * 1024,
     ...(adoption && { cwd: adoption.cwd, env: adoption.environment }),
   });
@@ -237,7 +246,10 @@ async function runBackendPreflight(artifact: Pick<BackendArtifact, 'entry' | 'ex
     answer = JSON.parse(checked.stdout.trim()) as typeof answer;
     readExecutionCapabilities(answer.executionRequirements);
     if (answer.protocol !== 1 || answer.build?.commit !== artifact.build.commit || answer.build.dirty) throw new Error('Candidate execution protocol or build identity does not match');
-    if (adoption && (answer.infrastructureAdoptionProtocol !== 1 || answer.infrastructureAdoption?.protocol !== 1 ||
+    if (adoption?.cold && (answer.coldInfrastructureProtocol !== 1 || answer.coldInfrastructure?.protocol !== 1 ||
+        !Array.isArray(answer.coldInfrastructure.containers) || answer.coldInfrastructure.digest !== backendInfrastructureDigest(adoption.input)))
+      throw new Error('Candidate did not confirm the cold infrastructure preview');
+    if (adoption && !adoption.cold && (answer.infrastructureAdoptionProtocol !== 1 || answer.infrastructureAdoption?.protocol !== 1 ||
         answer.infrastructureAdoption.digest !== backendInfrastructureDigest(adoption.input)))
       throw new Error('Candidate did not confirm the exact infrastructure adoption snapshot');
   } catch (cause) {

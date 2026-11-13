@@ -148,18 +148,14 @@ function nativeFingerprint(native: Native): string {
     { ...config, Labels: ownership }, native['HostConfig'], native['Mounts'], native['NetworkSettings']]);
 }
 
-/** Old Docker labels omitted limits. Converge memory in place only after proving every other native setting. */
-export async function reconcileLegacyContainer(desired: ResolvedContainer, id: string, probes = existingContainerProbes,
-  update = async (args: string[]) => { await execute('docker', ['container', 'update', ...args], { timeout: 15_000 }); }): Promise<void> {
-  const read = async () => {
-    const [native] = await probes.inspect([id]);
-    if (!native || native['Id'] !== id) throw Error('Historical container identity changed during reconciliation');
-    return native;
-  };
-  const before = await read();
+/** Read the same native evidence for preview and apply, including the complete predicted configuration. */
+export async function planLegacyContainer(desired: ResolvedContainer, id: string, probes = existingContainerProbes) {
+  const [before] = await probes.inspect([id]);
+  if (!before || before['Id'] !== id) throw Error('Historical container identity changed during reconciliation');
   const image = await probes.image(desired.image);
   const mismatch = existingContainerMismatch(desired, before, image);
-  if (!mismatch) return;
+  const beforeFingerprint = nativeFingerprint(before);
+  if (!mismatch) return { args: [], beforeFingerprint, expectedFingerprint: beforeFingerprint, image };
   if (mismatch !== 'resource limits differ') throw Error(`Cannot adopt existing ${desired.name}: ${mismatch}`);
   const resources = containerResources(desired);
   const old = before['HostConfig'];
@@ -178,12 +174,20 @@ export async function reconcileLegacyContainer(desired: ResolvedContainer, id: s
   const predicted = { ...before, HostConfig: expected };
   if (!args.length || existingContainerMismatch(desired, predicted, image))
     throw Error(`Existing ${desired.name} requires a separately reviewed resource transition`);
-  const beforeFingerprint = nativeFingerprint(before), expectedFingerprint = nativeFingerprint(predicted);
-  if (nativeFingerprint(await read()) !== beforeFingerprint)
+  return { args, beforeFingerprint, expectedFingerprint: nativeFingerprint(predicted), image };
+}
+
+/** Old Docker labels omitted limits. Converge memory in place only after proving every other native setting. */
+export async function reconcileLegacyContainer(desired: ResolvedContainer, id: string, probes = existingContainerProbes,
+  update = async (args: string[]) => { await execute('docker', ['container', 'update', ...args], { timeout: 15_000 }); }): Promise<void> {
+  const { args, beforeFingerprint, expectedFingerprint, image } = await planLegacyContainer(desired, id, probes);
+  if (!args.length) return;
+  const [confirmed] = await probes.inspect([id]);
+  if (!confirmed || confirmed['Id'] !== id || nativeFingerprint(confirmed) !== beforeFingerprint)
     throw Error('Historical container changed before applying memory limits');
   await update([...args, id]);
-  const observed = await read();
-  if (existingContainerMismatch(desired, observed, image) || expectedFingerprint !== nativeFingerprint(observed))
+  const [observed] = await probes.inspect([id]);
+  if (!observed || observed['Id'] !== id || existingContainerMismatch(desired, observed, image) || expectedFingerprint !== nativeFingerprint(observed))
     throw Error(`Cannot confirm the in-place memory update for ${desired.name}; inspect the retained container`);
 }
 

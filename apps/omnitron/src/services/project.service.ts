@@ -145,7 +145,7 @@ import { releaseArtifactOrigins } from '../release/origin.js';
 import type { DeclaredConfig } from '../project/declared-config.js';
 
 import type { SyncService } from './sync.service.js';
-import type { InfrastructureService } from '../infrastructure/infrastructure.service.js';
+import type { InfrastructureService, InfrastructureStartMode } from '../infrastructure/infrastructure.service.js';
 import type { InfrastructureHealthContext } from '../monitoring/infrastructure-health.js';
 import { ExecutionService, type SSHTarget } from '../execution/execution.service.js';
 
@@ -1666,7 +1666,8 @@ export class ProjectService extends EventEmitter {
     if (mode === 'preserve' && (!review || !/^[a-f0-9]{64}$/.test(review))) throw Error('Preserved infrastructure requires a successful stack start review; inspect --dry-run --infrastructure preserve');
     if (opts?.review && mode !== 'preserve') throw Error('A preservation review cannot authorize reconciliation');
     const infrastructure = { mode, review: review ?? undefined, explicitReconcile: opts?.infrastructure === 'reconcile' } as const;
-    const selection = JSON.stringify([opts?.release, opts?.workingTree === true, opts?.reinstall === true, infrastructure]);
+    const automatic = opts?.source === 'boot' || opts?.source === 'auto-resume';
+    const selection = JSON.stringify([opts?.release, opts?.workingTree === true, opts?.reinstall === true, infrastructure, automatic]);
     const running = this.startsInFlight.get(inFlightKey);
     if (running) {
       this.logger.info(
@@ -1974,7 +1975,9 @@ export class ProjectService extends EventEmitter {
       this.assertStackMutable(stackConfig.managedOrigin ?? { project: projectName, stack: stackName });
       if (stackConfig.type === 'local') {
         const scope = { project: projectName, stack: stackName };
-        const enable = () => this.orchestrator.enableStackExecution(scope, { automatic: source === 'boot' || source === 'auto-resume' });
+        const automatic = source === 'boot' || source === 'auto-resume';
+        const startMode = automatic ? 'automatic' : infrastructure?.explicitReconcile ? 'reconcile' : 'start';
+        const enable = () => this.orchestrator.enableStackExecution(scope, { automatic });
         if (selector && prior) {
           const target = entries ?? this.resolveStackApps(stackConfig, config);
           await this.startLocalStack(projectName, stackName, stackConfig, config, target, async build => {
@@ -1988,9 +1991,9 @@ export class ProjectService extends EventEmitter {
             const plan = await this.checkLocalOwner(projectName, stackName, target, changing);
             if (changing && plan.phase !== 'stopped') throw new LocalReleaseStopRequired('Artifact volume selection requires the owner stop fence');
             return (await this.installedRelease(projectName, stackName, stackConfig, config, release!, false)).infrastructure;
-          } : undefined, preservation, infrastructure?.explicitReconcile);
+          } : undefined, preservation, startMode);
         } else {
-          await this.startLocalStack(projectName, stackName, stackConfig, config, undefined, async () => { await enable(); }, undefined, undefined, preservation, infrastructure?.explicitReconcile);
+          await this.startLocalStack(projectName, stackName, stackConfig, config, undefined, async () => { await enable(); }, undefined, undefined, preservation, startMode);
         }
       } else {
         this.rememberStackTargets(projectName, stackName, stackConfig, config);
@@ -3803,7 +3806,7 @@ export class ProjectService extends EventEmitter {
     verifyMigrations?: VerifyMigrationEntries,
     verifyArtifactInfrastructure?: () => Promise<InfrastructureConfig | undefined>,
     preservation?: StackStartReview,
-    reconcile = false,
+    startMode: InfrastructureStartMode = 'start',
   ): Promise<void> {
     const ownsInfrastructure = ownsStackInfrastructure(stackConfig);
     const stateKey = `${projectName}/${stackName}`;
@@ -3857,7 +3860,7 @@ export class ProjectService extends EventEmitter {
           effectiveInfra as InfrastructureConfig,
           appDefinitions,
           project?.path,
-          reconcile,
+          startMode,
         );
         state.infraService = infraService;
         const outcome = summariseProvisioning(infraService.getDesiredServices(), infraService.getState().services);

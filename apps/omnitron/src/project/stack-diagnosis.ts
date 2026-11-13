@@ -2,7 +2,8 @@ import fs from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
 import type { ResolvedContainer } from '../infrastructure/types.js';
-import { containerSpecHash, hostPortsOverlap, SPEC_HASH_LABEL, readDockerInventory, type DockerInventory } from '../infrastructure/container-runtime.js';
+import { hasLegacyContainerSpec, hostPortsOverlap, planContainerAction, readDockerInventory, type DockerInventory } from '../infrastructure/container-runtime.js';
+import { assertReplacementVolumes, ownedContainerId } from '../infrastructure/owned-container.js';
 import type { StackDiagnosisCheck } from '../shared/dto/stack-diagnosis.js';
 
 /** A successful TCP connection does not establish ownership. Bind and immediately release instead. */
@@ -46,11 +47,24 @@ export async function diagnoseContainers(
     const resource = container.name;
     const add = (code: string, state: StackDiagnosisCheck['state'], message: string, action?: string) => checks.push({ code, resource, state, message, ...(action && { action }) });
     const current = inventory.containers.find(item => item.name === container.name);
-    const owned = current && ['omnitron.managed', 'omnitron.project', 'omnitron.stack', 'omnitron.service']
-      .every(label => container.labels[label] !== undefined && current.labels[label] === container.labels[label]);
+    let owned = false;
+    if (current) {
+      try { ownedContainerId(container, current.observation); owned = true; }
+      catch { /* Occupied names without exact native ownership are reported below. */ }
+    }
+    const action = current && owned ? planContainerAction(container, current.observation) : null;
     if (current && !owned) add('container.foreign', 'blocked', 'The container name is occupied without matching stack ownership.', 'Resolve the naming conflict; diagnosis will not adopt or remove it.');
     else if (!current) add('container.create', 'change', 'Not present. Start will create this service.');
-    else if (current.labels[SPEC_HASH_LABEL] !== containerSpecHash(container)) add('container.recreate', 'change', 'The declared specification differs. Start may recreate this container.', 'Review data volumes and impact before starting.');
+    else if (action?.type === 'recreate' && current.running && hasLegacyContainerSpec(container, current.observation))
+      add('container.adopt', 'unknown', 'Historical container needs native verification before in-place adoption.', 'Inspect the native settings and effective resource limits.');
+    else if (action?.type === 'recreate') {
+      try {
+        assertReplacementVolumes(container, current.observation);
+        add('container.recreate', 'change', `Configured start would replace this container: ${action.reason}. Automatic startup holds the existing container.`, 'Review data volumes and impact before reconciling.');
+      } catch (error) {
+        add('container.volumes', 'blocked', (error as Error).message, 'Verify the current mounts and declare how the replacement will retain the data.');
+      }
+    }
     else if (!current.running) add('container.start', 'change', 'Present but stopped. Start will bring up this service.');
     else if (current.health === 'unhealthy') add('container.unhealthy', 'blocked', 'Docker reports the service unhealthy.', 'Inspect service logs and health details before starting dependent applications.');
     else if (current.health === 'starting') add('container.starting', 'unknown', 'The service health check is still starting.', 'Retry after the service becomes ready.');
@@ -69,7 +83,7 @@ export async function diagnoseContainers(
       reserved.push({ name: resource, ...port });
       if (duplicate || foreign) {
         add('port.conflict', 'blocked', `Host port ${port.host} conflicts with ${duplicate?.name ?? foreign?.name}.`, 'Choose a free port in the stack configuration.');
-      } else if (!(owned && current.running && current.ports.some(overlaps))) {
+      } else if (!(owned && current?.running && current.ports.some(overlaps))) {
         const available = await probes.port(port.host, port.bindHost ?? '0.0.0.0');
         if (available !== true) add('port.unavailable', available === false ? 'blocked' : 'unknown', `Host port ${port.host} ${available === false ? 'is in use' : 'could not be checked'}.`, 'Inspect the host listener or choose another port.');
       }

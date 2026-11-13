@@ -14,7 +14,7 @@ export function consoleContainerName(home = OMNITRON_HOME): string {
 }
 
 /** Old containers prove ownership through their instance-local configuration mount. */
-export function assertConsoleOwnership(state: ContainerState, home = OMNITRON_HOME): void {
+export function assertConsoleOwnership(state: ContainerState, home = OMNITRON_HOME): string {
   const instance = path.resolve(home);
   const owner = state.labels?.[CONSOLE_INSTANCE_LABEL];
   const config = path.join(instance, 'webapp', 'nginx', 'nginx.conf');
@@ -22,4 +22,6 @@ export function assertConsoleOwnership(state: ContainerState, home = OMNITRON_HO
     ? state.mounts?.some(mount => mount.target === '/etc/nginx/nginx.conf' && path.resolve(mount.source) === config)
     : owner === instance;
   if (!owned) throw new Error(`Refusing to change Console container ${state.name}: it does not belong to instance ${instance}`);
+  if (!state.containerId || !/^[a-f0-9]{64}$/.test(state.containerId)) throw new Error('Console container has no immutable native identity');
+  return state.containerId;
 }

@@ -12,7 +12,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { CONFIG_ROOT_PREFIX } from './shipped-config.js';
 import { nativeHealthCheck } from './health-recovery.js';
 import { DEFAULT_PORT_BIND_HOST } from './types.js';
-import type { ContainerState, ContainerStatus, ContainerSpecHashMigration, ResolvedContainer } from './types.js';
+import type { ContainerState, ContainerStatus, ContainerSpecHashMigration, ReconcileAction, ResolvedContainer } from './types.js';
 
 type NativeResources = NonNullable<ContainerState['resources']>;
 
@@ -180,6 +180,24 @@ export function hasLegacyContainerSpec(config: ResolvedContainer, actual: Contai
   return (schema === undefined || schema === '1') && actual.specHash === specificationHash(config, 1) &&
     Boolean(actual.containerId && /^[a-f0-9]{64}$/.test(actual.containerId)) &&
     Object.entries(config.labels).every(([key, value]) => actual.labels?.[key] === value);
+}
+
+/** One decision for inspection, startup and repair. Callers check native ownership before any effect. */
+export function planContainerAction(desired: ResolvedContainer, actual: ContainerState | null,
+  migration?: ContainerSpecHashMigration): ReconcileAction {
+  containerResources(desired);
+  const service = desired.name;
+  const recreate = (reason: string): ReconcileAction => ({ type: 'recreate', service, config: desired, reason });
+  if (!actual) return { type: 'create', service, config: desired };
+  if (!containerResourcesMatch(desired, actual)) return recreate('resource limits differ from Docker inspection');
+  const running = actual.status === 'running';
+  if (!running && actual.status !== 'created' && actual.status !== 'exited') return recreate('status: ' + actual.status);
+  if (running && actual.networkAttached === false) return recreate('network-detached (running but on no network)');
+  if (actual.image !== desired.image)
+    return recreate(`image changed${running ? '' : ' while stopped'}: ${actual.image} → ${desired.image}`);
+  if (actual.specHash && !containerSpecHashMatches(desired, actual, migration))
+    return recreate(`config drift${running ? '' : ' while ' + actual.status} (spec ${actual.specHash} → ${containerSpecHash(desired)})`);
+  return running ? { type: 'noop', service } : { type: 'start', service, containerId: actual.containerId ?? service };
 }
 
 /** Bind the migrated observation to the exact container recorded by its owner. */
@@ -432,6 +450,48 @@ async function inspectContainers(names: string[], strict = false): Promise<any[]
   }
 }
 
+interface NativeContainerObservation {
+  Id?: string;
+  Name?: string;
+  Config?: { Image?: string; Labels?: Record<string, string> };
+  State?: { Status?: string; StartedAt?: string; ExitCode?: number; Error?: string; OOMKilled?: boolean;
+    Health?: { Status?: string; Log?: unknown[] } };
+  HostConfig?: Record<string, unknown>;
+  NetworkSettings?: { Networks?: Record<string, unknown>; Ports?: Record<string, Array<{ HostPort?: string; HostIp?: string }> | null> };
+  Mounts?: Array<{ Source: string; Destination: string; Type?: string; Name?: string }>;
+}
+
+/** Project the same native observation for one container and for a complete inventory. */
+function containerObservation(info: NativeContainerObservation, name: string, fullId: boolean): ContainerState {
+  // Network attachment: an OrbStack/dockerd restart can leave a container
+  // 'running' but detached from every network (empty Networks) with its
+  // published ports gone — reachable by nothing. Surface it so callers can
+  // recreate instead of trusting the 'running' status.
+  const networkAttached = Object.keys(info.NetworkSettings?.Networks ?? {}).length > 0;
+  const failure = describeContainerFailure(info.State);
+  return {
+    name: (info.Name ?? name).replace(/^\//, ''),
+    image: info.Config?.Image ?? '',
+    status: mapInspectStatus(info.State?.Status),
+    containerId: fullId ? info.Id : info.Id?.slice(0, 12),
+    health: mapInspectHealth(info.State?.Health?.Status, info.State?.Status),
+    healthCheck: nativeHealthCheck(info.State?.Health),
+    startedAt: info.State?.StartedAt,
+    ports: publishedPorts(info),
+    resources: observedResources(info),
+    specHash: info.Config?.Labels?.[SPEC_HASH_LABEL],
+    labels: info.Config?.Labels,
+    ...(info.Mounts && { mounts: info.Mounts.map(mount => ({
+      source: mount.Source,
+      target: mount.Destination,
+      ...(mount.Type && { type: mount.Type }), ...(mount.Name && { name: mount.Name }),
+    })) }),
+    service: info.Config?.Labels?.['omnitron.service'],
+    networkAttached,
+    ...(failure && { error: failure }),
+  };
+}
+
 /**
  * Get state of a specific container by name.
  */
@@ -448,32 +508,7 @@ export async function getContainerState(name: string, options: { orThrow?: boole
       if (!exists) return null;
 
       const info = await adapter.inspectContainer(name);
-      // Network attachment: an OrbStack/dockerd restart can leave a container
-      // 'running' but detached from every network (empty Networks) with its
-      // published ports gone — reachable by nothing. Surface it so callers can
-      // recreate instead of trusting the 'running' status.
-      const networkAttached = Object.keys(info.NetworkSettings?.Networks ?? {}).length > 0;
-      const failure = describeContainerFailure(info.State);
-      return {
-        name: (info.Name ?? name).replace(/^\//, ''),
-        image: info.Config?.Image ?? '',
-        status: mapInspectStatus(info.State?.Status),
-        containerId: options.fullId ? info.Id : info.Id?.slice(0, 12),
-        health: mapInspectHealth(info.State?.Health?.Status, info.State?.Status),
-        healthCheck: nativeHealthCheck(info.State?.Health),
-        startedAt: info.State?.StartedAt,
-        ports: publishedPorts(info),
-        resources: observedResources(info),
-        specHash: info.Config?.Labels?.[SPEC_HASH_LABEL],
-        labels: info.Config?.Labels,
-        mounts: (info.Mounts ?? []).map((mount: { Source: string; Destination: string }) => ({
-          source: mount.Source,
-          target: mount.Destination,
-        })),
-        service: info.Config?.Labels?.['omnitron.service'],
-        networkAttached,
-        ...(failure && { error: failure }),
-      };
+      return containerObservation(info, name, options.fullId === true);
     });
   } catch (error) {
     if (options.orThrow) throw error;
@@ -733,15 +768,7 @@ export async function createContainer(config: ResolvedContainer): Promise<string
   // Deliberately narrow. A missing image, a bad flag, or a port genuinely
   // held by something else is permanent, and retrying it turns one clear
   // error into several identical ones separated by delays.
-  const runDocker = async () => {
-    const { ExecutionEngine } = await import('@xec-sh/core');
-    const engine = new ExecutionEngine({ defaultShell: false, enableEvents: false,
-      adapters: { local: { forceImplementation: 'node' } } });
-    try {
-      return await engine.execute({ command: 'docker', args: args.slice(1), shell: false,
-        adapter: 'local', timeout: 60_000, maxBuffer: 1024 * 1024, throwOnNonZeroExit: true });
-    } finally { await engine.dispose(); }
-  };
+  const runDocker = () => executeDocker(args.slice(1));
 
   let stdout: string | undefined;
   let lastError: unknown;
@@ -793,9 +820,20 @@ export async function createContainer(config: ResolvedContainer): Promise<string
   // took Redis offline and cascaded to a login outage. Detect the mismatch and
   // rebuild once from clean state so a successful return always means the
   // declared ports are actually reachable.
-  if (config.ports.length > 0 && !(await arePortsPublished(config.name, config.ports))) {
+  const creationId = (output: string | undefined) => {
+    const id = output?.trim();
+    if (!id || !/^[a-f0-9]{64}$/.test(id)) throw Error(`Docker did not confirm the identity of ${config.name}`);
+    return id;
+  };
+  let id = creationId(stdout);
+  if (config.ports.length && !(await arePortsPublished(id, config.ports))) {
     await cleanFailedCreation(config.name, creation);
     ({ stdout } = await runDocker());
+    id = creationId(stdout);
+    if (!await arePortsPublished(id, config.ports)) {
+      await cleanFailedCreation(config.name, creation);
+      throw Error(`Docker did not publish the declared ports for ${config.name}`);
+    }
   }
 
   if (Object.keys(resources).length) {
@@ -806,10 +844,7 @@ export async function createContainer(config: ResolvedContainer): Promise<string
     }
   }
 
-  const output = (stdout ?? '').trim();
-
-  // Return container ID from docker run output (first line is container ID)
-  return (output || config.name).slice(0, 12);
+  return id.slice(0, 12);
 }
 
 /** A failed docker run may leave its own container in Created. Never follow a reused name. */
@@ -822,25 +857,14 @@ async function cleanFailedCreation(name: string, creation: string): Promise<void
   await removeContainer(actual.containerId);
 }
 
-/**
- * True if every declared host port shows up in `docker port <name>` (i.e.
- * dockerd actually published it). Returns true when the check itself fails,
- * so a transient docker hiccup never triggers a needless rebuild of a
- * container that is in fact fine.
- */
-async function arePortsPublished(name: string, ports: Array<{ host: number; container: number }>): Promise<boolean> {
-  const { execFile } = await import('node:child_process');
-  const { promisify } = await import('node:util');
-  const execFileAsync = promisify(execFile);
-  try {
-    // `docker port` prints one line per published port, e.g.
-    // "6379/tcp -> 0.0.0.0:6379"; an unpublished container prints nothing.
-    const { stdout } = await execFileAsync('docker', ['port', name], { encoding: 'utf-8', timeout: 10_000 });
-    const mapped = stdout ?? '';
-    return ports.every((p) => mapped.includes(`:${p.host}`));
-  } catch {
-    return true;
-  }
+/** An unavailable inspection is not evidence of a missing binding and cannot trigger removal. */
+async function arePortsPublished(id: string, ports: ResolvedContainer['ports']): Promise<boolean> {
+  const adapter = await getAdapter();
+  const info = await adapter.inspectContainer(id) as NativeContainerObservation;
+  const bindings = info.NetworkSettings?.Ports;
+  if (info.Id !== id || !bindings || typeof bindings !== 'object') throw Error('Cannot verify native port publication');
+  return ports.every(port => bindings[`${port.container}/tcp`]?.some(binding =>
+    binding.HostPort === String(port.host) && binding.HostIp === (port.bindHost ?? DEFAULT_PORT_BIND_HOST)));
 }
 
 /**
@@ -849,6 +873,21 @@ async function arePortsPublished(name: string, ports: Array<{ host: number; cont
 export async function startContainer(nameOrId: string): Promise<void> {
   const adapter = await getAdapter();
   await adapter.startContainer(nameOrId);
+}
+
+async function executeDocker(args: string[]) {
+  const { ExecutionEngine } = await import('@xec-sh/core');
+  const engine = new ExecutionEngine({ defaultShell: false, enableEvents: false,
+    adapters: { local: { forceImplementation: 'node' } } });
+  try {
+    return await engine.execute({ command: 'docker', args, shell: false, adapter: 'local',
+      timeout: 60_000, maxBuffer: 1024 * 1024, throwOnNonZeroExit: true });
+  } finally { await engine.dispose(); }
+}
+
+export async function restartContainer(id: string): Promise<void> {
+  if (!/^[a-f0-9]{64}$/.test(id)) throw new Error('Native restart requires an immutable Docker container ID');
+  await executeDocker(['container', 'restart', '--', id]);
 }
 
 /**
@@ -873,31 +912,25 @@ export async function removeContainer(nameOrId: string, options: { graceful?: bo
 export async function ensureImage(image: string): Promise<void> {
   // A local content ID is not a registry reference. Never turn it into a
   // pull of a repository named "sha256", or accept a missing local object.
-  if (image.startsWith('sha256:')) {
-    if (!/^sha256:[a-f0-9]{64}$/.test(image)) throw new Error('Invalid local image ID');
+  const local = image.startsWith('sha256:');
+  if (local && !/^sha256:[a-f0-9]{64}$/.test(image)) throw new Error('Invalid local image ID');
+  if (local || image.includes('@')) {
     const { execFile } = await import('node:child_process');
     const { promisify } = await import('node:util');
-    const { stdout } = await promisify(execFile)('docker', ['image', 'inspect', image, '--format', '{{.Id}}'], {
-      timeout: 15_000,
-      maxBuffer: 4096,
-    });
-    if (stdout.trim() !== image) throw new Error('Local image identity mismatch');
-    return;
+    try {
+      const { stdout } = await promisify(execFile)('docker', ['image', 'inspect', '--format', '{{.Id}}', '--', image], { timeout: 15_000, maxBuffer: 4096 });
+      if (!/^sha256:[a-f0-9]{64}$/.test(stdout.trim()) || (local && stdout.trim() !== image)) throw new Error('Local image identity mismatch');
+      return;
+    } catch (error) { if (local) throw error; }
+  } else {
+    // A registry port belongs to the repository; an omitted tag means latest.
+    const tagged = image.lastIndexOf(':') > image.lastIndexOf('/') ? image : image + ':latest';
+    const adapter = await getAdapter();
+    const images: string[] = await adapter.listImages(tagged);
+    if (images.includes(tagged)) return;
   }
   const adapter = await getAdapter();
-  try {
-    // Check if image exists locally via listImages
-    const images: string[] = await adapter.listImages(image.split(':')[0]);
-    if (images.some((i: string) => i.includes(image))) return;
-  } catch {
-    // Can't check — try to pull
-  }
-
-  try {
-    await adapter.pullImage(image);
-  } catch {
-    // Image may already exist or network unavailable — proceed and let docker handle it
-  }
+  await adapter.pullImage(image);
 }
 
 /**
@@ -1084,7 +1117,7 @@ function mapInspectHealth(health?: string, status?: string): 'healthy' | 'unheal
 export const __test__ = { describeContainerFailure, portArg };
 
 export interface DockerInventory {
-  containers: Array<{ name: string; running: boolean; health?: string; labels: Record<string, string>; ports: Array<{ host: number; bindHost?: string }> }>;
+  containers: Array<{ name: string; running: boolean; health?: string; labels: Record<string, string>; observation: ContainerState; ports: Array<{ host: number; bindHost?: string }> }>;
   images: string[];
   volumes: string[];
 }
@@ -1111,6 +1144,7 @@ async function inspectDockerInventory(): Promise<DockerInventory> {
   return {
     containers: inspected.map(info => ({
       name: String(info.Name).replace(/^\//, ''), running: info.State?.Running === true,
+      observation: containerObservation(info, info.Name, true),
       health: info.State?.Health?.Status, labels: info.Config?.Labels ?? {},
       ports: Object.values(info.NetworkSettings?.Ports ?? {}).flatMap(bindings =>
         (Array.isArray(bindings) ? bindings : []).map(binding => ({ host: Number(binding.HostPort), bindHost: String(binding.HostIp) }))),

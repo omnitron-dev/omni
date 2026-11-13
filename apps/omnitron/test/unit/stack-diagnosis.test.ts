@@ -22,15 +22,25 @@ describe('stack prerequisite evidence', () => {
   });
   it('blocks foreign ownership and conflicting ports', async () => {
     const spec = container(); const data = inventory();
-    data.containers.push({ name: spec.name, running: true, labels: {}, ports: [{ host: 5540 }] });
+    data.containers.push({ name: spec.name, running: true, labels: {}, ports: [{ host: 5540 }], observation: { name: spec.name, status: 'running', image: spec.image, labels: {} } });
     const report = await diagnoseContainers([spec], probes(data));
     expect(report.filter(check => check.state === 'blocked').map(check => check.code)).toEqual(['container.foreign', 'port.conflict']);
   });
   it('accepts healthy owned services without rebinding their ports', async () => {
     const spec = container(); const data = inventory(); data.images.push(spec.image); data.volumes.push('sample-data');
-    data.containers.push({ name: spec.name, running: true, health: 'healthy', labels: { ...spec.labels, [SPEC_HASH_LABEL]: containerSpecHash(spec) }, ports: [{ host: 5540 }] });
+    data.containers.push({ name: spec.name, running: true, health: 'healthy', labels: { ...spec.labels, [SPEC_HASH_LABEL]: containerSpecHash(spec) }, ports: [{ host: 5540 }],
+      observation: { name: spec.name, containerId: 'a'.repeat(64), image: spec.image, status: 'running', health: 'healthy', labels: spec.labels, specHash: containerSpecHash(spec) } });
     const probe = probes(data); const report = await diagnoseContainers([spec], probe);
     expect(diagnosisStatus(report)).toBe('ready'); expect(probe.port).not.toHaveBeenCalled();
+  });
+  it('blocks replacement when retention of a native volume cannot be established', async () => {
+    const spec = container(); const data = inventory();
+    data.containers.push({ name: spec.name, running: true, labels: spec.labels, ports: [],
+      observation: { name: spec.name, containerId: 'a'.repeat(64), image: 'postgres:16', status: 'running', labels: spec.labels,
+        mounts: [{ type: 'volume', name: 'previous-data', source: '/var/lib/docker/volumes/previous-data', target: '/data' }] } });
+    const checks = await diagnoseContainers([spec], probes(data));
+    expect(checks).toContainEqual(expect.objectContaining({ code: 'container.volumes', state: 'blocked' }));
+    expect(checks.some(check => check.code === 'container.recreate')).toBe(false);
   });
   it('blocks missing bind mounts and retains unknown probe outcomes', async () => {
     const spec = container(); spec.volumes = [{ source: '/missing/config', target: '/config' }];

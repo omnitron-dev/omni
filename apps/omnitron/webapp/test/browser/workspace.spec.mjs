@@ -1,20 +1,20 @@
 import { test, expect, stubInventory } from './fixtures.mjs';
 
-test('a DAOS stack selection filters inventory, follows details and survives history and reload', async ({ page, url }) => {
+test('a project stack selection filters inventory, follows details and survives history and reload', async ({ page, url }) => {
   const stacks = ['dev', 'test'].map(name => ({
     name, type: name === 'dev' ? 'local' : 'remote', status: 'running', uptime: 60_000,
     config: { type: name === 'dev' ? 'local' : 'remote' }, nodes: [], apps: [],
   }));
   await stubInventory(page, {
     'OmnitronProject.listProjects': [
-      { name: 'daos', displayName: 'DAOS', path: '/daos', totalStacks: 2, runningStacks: 2 },
-      { name: 'ozar', displayName: 'Ozar', path: '/ozar', totalStacks: 0, runningStacks: 0 },
+      { name: 'sample', displayName: 'Sample', path: '/sample', totalStacks: 2, runningStacks: 2 },
+      { name: 'example', displayName: 'Example', path: '/example', totalStacks: 0, runningStacks: 0 },
     ],
-    'OmnitronProject.listStacks': ({ project }) => project === 'daos' ? stacks : [],
+    'OmnitronProject.listStacks': ({ project }) => project === 'sample' ? stacks : [],
     'OmnitronAudit.list': [],
   });
   await page.addInitScript(() => {
-    if (!localStorage.getItem('omnitron_active_project')) localStorage.setItem('omnitron_active_project', 'daos');
+    if (!localStorage.getItem('omnitron_active_project')) localStorage.setItem('omnitron_active_project', 'sample');
   });
   await page.route(/\/stacks(?:\/[^/?]+)?(?:\?.*)?$/, async route => {
     if (route.request().resourceType() !== 'document') return route.continue();
@@ -60,11 +60,11 @@ test('a DAOS stack selection filters inventory, follows details and survives his
   await expect(filter).toHaveCount(0);
   await page.goBack();
   await choose('dev');
-  await page.getByRole('button', { name: 'Switch workspace: DAOS' }).click();
-  await page.getByRole('menuitem', { name: /Ozar/ }).click();
-  await expect(page.getByRole('button', { name: 'Switch workspace: Ozar' })).toBeVisible();
+  await page.getByRole('button', { name: 'Switch workspace: Sample' }).click();
+  await page.getByRole('menuitem', { name: /Example/ }).click();
+  await expect(page.getByRole('button', { name: 'Switch workspace: Example' })).toBeVisible();
   await page.goBack();
-  await expect(page.getByRole('button', { name: 'Switch workspace: DAOS' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Switch workspace: Sample' })).toBeVisible();
   await expect(filter).toHaveText('Stack: dev');
 });
 
@@ -72,11 +72,11 @@ test('log filters use the selected stack inventory, including remote apps that h
   const filters = [];
   let daemonLists = 0;
   await stubInventory(page, {
-    'OmnitronProject.listProjects': [{ name: 'daos', displayName: 'DAOS', path: '/daos', totalStacks: 3, runningStacks: 3 }],
+    'OmnitronProject.listProjects': [{ name: 'sample', displayName: 'Sample', path: '/sample', totalStacks: 3, runningStacks: 3 }],
     'OmnitronProject.listStacks': ['dev', 'test', 'prod'].map(name => ({
       name, type: name === 'dev' ? 'local' : 'remote', status: 'running', nodes: [{ host: name, port: 9700 }],
-      apps: [{ name: name + '-api', handleKey: 'daos/' + name + '/' + name + '-api', status: 'online' },
-        ...(name === 'dev' ? [] : [{ name: 'mail', handleKey: 'daos/deployed/mail', status: 'online' }])],
+      apps: [{ name: name + '-api', handleKey: 'sample/' + name + '/' + name + '-api', status: 'online' },
+        ...(name === 'dev' ? [] : [{ name: 'mail', handleKey: 'sample/deployed/mail', status: 'online' }])],
     })),
     'OmnitronNodes.listNodes': ['test', 'prod'].map(name => ({ id: name + '-id', name, host: name, daemonPort: 9700, isLocal: false })),
     'OmnitronDaemon.list': () => { daemonLists++; return []; },
@@ -85,7 +85,7 @@ test('log filters use the selected stack inventory, including remote apps that h
     'OmnitronLogs.streamLogs': filter => { filters.push(filter); return []; },
   });
   await page.addInitScript(() => {
-    localStorage.setItem('omnitron_active_project', 'daos');
+    localStorage.setItem('omnitron_active_project', 'sample');
     localStorage.setItem('omnitron_active_stack', 'test');
   });
   await page.route(/\/logs$/, async route => {
@@ -98,21 +98,21 @@ test('log filters use the selected stack inventory, including remote apps that h
   await expect(page.getByRole('option', { name: 'test-api' })).toBeVisible();
   await expect(page.getByRole('option', { name: /dev-api|omnitron|foreign/ })).toHaveCount(0);
   await page.getByRole('option', { name: 'test-api' }).click();
-  await expect.poll(() => filters.at(-1)?.app).toBe('daos/test/test-api');
+  await expect.poll(() => filters.at(-1)?.app).toBe('sample/test/test-api');
   await page.getByRole('combobox', { name: 'Node', exact: true }).click();
   await page.getByRole('option', { name: 'test', exact: true }).click();
   await picker.click();
   await page.getByRole('option', { name: 'mail', exact: true }).click();
-  await expect.poll(() => filters.at(-1)).toMatchObject({ app: 'daos/deployed/mail', nodeId: 'test-id', appPrefixes: ['daos/deployed/'] });
+  await expect.poll(() => filters.at(-1)).toMatchObject({ app: 'sample/deployed/mail', nodeId: 'test-id', appPrefixes: ['sample/deployed/'] });
   await page.getByRole('combobox', { name: 'Node', exact: true }).click();
   await page.getByRole('option', { name: 'prod', exact: true }).click();
-  await expect.poll(() => filters.at(-1)).toMatchObject({ nodeId: 'prod-id', appPrefixes: ['daos/test/'] });
+  await expect.poll(() => filters.at(-1)).toMatchObject({ nodeId: 'prod-id', appPrefixes: ['sample/test/'] });
   await picker.click();
   await expect(page.getByRole('option', { name: 'mail' })).toHaveCount(0);
   await page.keyboard.press('Escape');
   await page.getByRole('combobox', { name: 'Stack filter' }).click();
   await page.getByRole('option', { name: /^dev\s+running/ }).click();
-  await expect.poll(() => filters.at(-1)?.appPrefixes).toEqual(['daos/dev/']);
+  await expect.poll(() => filters.at(-1)?.appPrefixes).toEqual(['sample/dev/']);
   await picker.click();
   await expect(page.getByRole('option', { name: 'dev-api' })).toBeVisible();
   await expect(page.getByRole('option', { name: /test-api|omnitron|foreign/ })).toHaveCount(0);

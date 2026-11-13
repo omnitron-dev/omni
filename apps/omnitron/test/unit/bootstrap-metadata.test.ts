@@ -214,14 +214,14 @@ describe('durable bootstrap declaration evidence', () => {
   it('routes explicit refresh through only the configuration owning the public stack and preserves the exact release', async () => {
     const capture = vi.fn(async () => ({ refreshed: 1, failures: [] }));
     const rpc = new ProjectRpcService({
-      resolveProjectStack: async () => ({ project: 'ozar-markets', stack: 'local' }),
-      projectConfigurations: () => [{ name: 'ozar' }, { name: 'ozar-markets' }],
+      resolveProjectStack: async () => ({ project: 'example-markets', stack: 'local' }),
+      projectConfigurations: () => [{ name: 'example' }, { name: 'example-markets' }],
       refreshTopologyMetadata: capture,
     } as never);
-    await expect(rpc.refreshTopologyMetadata({ project: 'ozar', release: 'candidate' })).rejects.toThrow(/stack/i);
+    await expect(rpc.refreshTopologyMetadata({ project: 'example', release: 'candidate' })).rejects.toThrow(/stack/i);
     expect(capture).not.toHaveBeenCalled();
-    expect(await rpc.refreshTopologyMetadata({ project: 'ozar', stack: 'markets/local', release: 'candidate' })).toEqual({ refreshed: 1, failures: [] });
-    expect(capture).toHaveBeenCalledExactlyOnceWith({ project: 'ozar-markets', stack: 'local', release: 'candidate' }, expect.any(Number));
+    expect(await rpc.refreshTopologyMetadata({ project: 'example', stack: 'markets/local', release: 'candidate' })).toEqual({ refreshed: 1, failures: [] });
+    expect(capture).toHaveBeenCalledExactlyOnceWith({ project: 'example-markets', stack: 'local', release: 'candidate' }, expect.any(Number));
   });
   it('authorizes operator inspection and reserves candidate imports for admins through the Netron HTTP transport', async () => {
     const logger = createNullLogger();

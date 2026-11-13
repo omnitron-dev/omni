@@ -5,6 +5,8 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { LONG_REQUEST_TIMEOUT } from '../../src/shared/dto/services.js';
 import type { IStackInfo } from '../../src/shared/dto/project.js';
 import { StackRecoveryAction, StackResumeNotice } from '../../webapp/src/components/stack-recovery.js';
+import { StackLifecycleActions } from '../../webapp/src/components/stack-lifecycle-actions.js';
+import { stackFixture } from '../helpers/stack-fixture.js';
 import { useProjectStore } from '../../webapp/src/stores/project.store.js';
 
 const rpc = vi.hoisted(() => ({ granted: true, resumeInstalledStack: vi.fn(), listStacks: vi.fn() }));
@@ -19,6 +21,24 @@ const result: NonNullable<IStackInfo['resumeOperation']> = {
 };
 const stack = { name: 'stage', stopOperation: stop, apps: [] } as unknown as IStackInfo;
 afterEach(() => { cleanup(); vi.clearAllMocks(); rpc.granted = true; });
+
+it.each([false, true])('offers a reviewed stop from a degraded or unobserved stack (detail %s)', detailed => {
+  const actions = { onResume: vi.fn(), onStart: vi.fn(), onReviewStop: vi.fn(), onDeploy: vi.fn() };
+  const renderActions = (status: IStackInfo['status']) => <StackLifecycleActions detailed={detailed}
+    stack={stackFixture('test', { type: 'remote', status })} pending={null} {...actions} />;
+  const page = render(renderActions('degraded'));
+  fireEvent.click(screen.getByRole('button', { name: 'Review stop…' }));
+  for (const status of ['unknown', 'error'] as const) {
+    page.rerender(renderActions(status));
+    expect(screen.getByRole('button', { name: 'Review stop…' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Deploy|Start/ })).toBeNull();
+  }
+  rpc.granted = false;
+  page.rerender(renderActions('degraded'));
+  expect(screen.queryByRole('button')).toBeNull();
+  expect(actions.onReviewStop).toHaveBeenCalledOnce();
+  expect(actions.onStart).not.toHaveBeenCalled();
+});
 
 it('offers only a permitted recovery after a fully confirmed, fenced stop', () => {
   const onResume = vi.fn();

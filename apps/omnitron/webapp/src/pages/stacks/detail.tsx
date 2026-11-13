@@ -1,5 +1,7 @@
 import { StackHealthStatus, ApplicationHealthStatus } from 'src/components/stack-health-status';
-import { hasInstalledRecovery, StackRecoveryAction, StackResumeNotice } from 'src/components/stack-recovery';
+import { StackResumeNotice } from 'src/components/stack-recovery';
+import { StackLifecycleActions } from 'src/components/stack-lifecycle-actions';
+import { statusColor } from 'src/utils/constants';
 import { StackStopDialog } from 'src/components/stack-stop-dialog';
 import { StackDiagnosisDialog } from 'src/components/stack-diagnosis-dialog';
 import { StackStopNotice } from 'src/components/stack-stop-notice';
@@ -24,7 +26,6 @@ import CardContent from '@mui/material/CardContent';
 import Typography from '@mui/material/Typography';
 import Chip from '@mui/material/Chip';
 import Button from '@mui/material/Button';
-import CircularProgress from '@mui/material/CircularProgress';
 import IconButton from '@mui/material/IconButton';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
@@ -35,7 +36,7 @@ import { Alert, FormAlert } from '@omnitron-dev/prism/components/alert';
 import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import { PageContent } from '@omnitron-dev/prism/components/page-content';
 import { Table, type TableColumn } from '@omnitron-dev/prism/components/table';
-import { PlayIcon, StopIcon, RefreshIcon, SyncIcon, DeployIcon, DeleteIcon } from '../../assets/icons';
+import { RefreshIcon, SyncIcon, DeployIcon, DeleteIcon } from '../../assets/icons';
 import {
   useProjectStore,
   useActiveProject,
@@ -48,15 +49,6 @@ import { StackReleaseCard } from 'src/components/stack-release-card';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
 import type { IStackAppStatus, IStackInfo, IStackNodeStatus } from '@omnitron-dev/omnitron/dto/services';
 import { syncFinding, syncWords, syncSeverity } from '@omnitron-dev/omnitron/sync-reading';
-
-const STATUS_COLORS: Record<string, string> = {
-  running: '#22c55e',
-  starting: '#eab308',
-  stopping: '#eab308',
-  degraded: '#f97316',
-  error: '#ef4444',
-  stopped: '#6b7280',
-};
 
 export default function StackDetailPage() {
   const { name } = useParams<{ name: string }>();
@@ -230,9 +222,7 @@ function StackDetail({ name, activeProject }: { name: string | undefined; active
   ];
 
   const takesReleasesOnly = stack.config?.release?.mode === 'required';
-  const isRunning = ['running', 'degraded', 'error', 'unknown', 'stopping'].includes(stack.status);
   const isStopped = stack.status === 'stopped';
-  const isTransitioning = stack.status === 'starting' || stack.status === 'stopping' || !!pendingOp;
   const busy = !!pendingOp;
 
   return (
@@ -253,52 +243,15 @@ function StackDetail({ name, activeProject }: { name: string | undefined; active
             <Chip
               label={stack.status.charAt(0).toUpperCase() + stack.status.slice(1)}
               size="small"
-              sx={{
-                bgcolor: STATUS_COLORS[stack.status] ?? STATUS_COLORS['stopped'],
-                color: 'white',
-                fontWeight: 600,
-              }}
+              color={statusColor(stack.status)}
             />
             <Can permission="OmnitronProject.diagnoseStack"><Button size="small" onClick={() => setDiagnoseOpen(true)}>Diagnose</Button></Can>
             <IconButton size="small" aria-label="Refresh stack" title="Refresh stack" onClick={() => activeProject && fetchStacks(activeProject)}>
               <RefreshIcon />
             </IconButton>
-            {isTransitioning ? (
-              <Button
-                variant="outlined"
-                size="small"
-                disabled
-                startIcon={<CircularProgress size={14} />}
-              >
-                {pendingOp === 'resuming' ? 'Resuming installed apps…' : pendingOp === 'starting' || stack.status === 'starting' ? 'Starting…' : 'Stopping…'}
-              </Button>
-            ) : activeProject && name && hasInstalledRecovery(stack) ? (
-              <StackRecoveryAction stack={stack} onResume={() => void resumeInstalled(activeProject, name)} onReviewStop={() => setStopOpen(true)} />
-            ) : isStopped ? (
-              // A stack that takes releases only refuses this button by
-              // design, and the daemon's refusal names the two commands. The
-              // console says it BEFORE the press instead: the release card
-              // below carries the button that works.
-              takesReleasesOnly && !stack.selectedRelease ? (
-                <Can permission="OmnitronProject.startStack"><Button
-                  startIcon={<DeployIcon />}
-                  color="success"
-                  variant="contained"
-                  size="small"
-                  onClick={() => setDeployOpen(true)}
-                >
-                  Deploy release…
-                </Button></Can>
-              ) : (
-                <Can permission="OmnitronProject.startStack"><Button startIcon={<PlayIcon />} color="success" variant="contained" size="small" onClick={handleStart}>
-                  Start
-                </Button></Can>
-              )
-            ) : isRunning ? (
-              <Can permission="OmnitronProject.reviewStackStop"><Button startIcon={<StopIcon />} color="error" variant="outlined" size="small" onClick={() => setStopOpen(true)}>
-                {stack.stopOperation?.phase === 'failed' && !stack.stopOperation.supersededAt ? 'Review retry…' : 'Review stop…'}
-              </Button></Can>
-            ) : null}
+            {activeProject && name && <StackLifecycleActions detailed stack={stack} pending={pendingOp}
+              onStart={handleStart} onDeploy={() => setDeployOpen(true)}
+              onResume={() => void resumeInstalled(activeProject, name)} onReviewStop={() => setStopOpen(true)} />}
           </Box>
         }
       />
@@ -311,7 +264,7 @@ function StackDetail({ name, activeProject }: { name: string | undefined; active
       <StackStopNotice operation={stack.stopOperation} />
       <StackResumeNotice stack={stack} />
       <StackStartNotice stack={stack} />
-        <StackHealthStatus stack={stack} />
+      <StackHealthStatus stack={stack} />
 
       {/* Start, stop and delete put their reason in the store's `error` and
           never reject. This page did not read it, so a stack that refused to
@@ -341,7 +294,7 @@ function StackDetail({ name, activeProject }: { name: string | undefined; active
       )}
 
       {/* Deployment banner for remote/cluster stacks */}
-      {stack.type !== 'local' && isRunning && (
+      {stack.type !== 'local' && !isStopped && stack.status !== 'starting' && (
         <Card variant="outlined" sx={{ mb: 2, p: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <DeployIcon sx={{ fontSize: 20, color: 'primary.main' }} />

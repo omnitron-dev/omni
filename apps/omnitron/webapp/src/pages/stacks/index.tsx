@@ -1,5 +1,6 @@
 import { StackHealthStatus } from 'src/components/stack-health-status';
-import { hasInstalledRecovery, StackRecoveryAction } from 'src/components/stack-recovery';
+import { StackLifecycleActions } from 'src/components/stack-lifecycle-actions';
+import { statusColor } from 'src/utils/constants';
 import { StackStopDialog } from 'src/components/stack-stop-dialog';
 import { StackDiagnosisDialog } from 'src/components/stack-diagnosis-dialog';
 import { StackStartNotice } from 'src/components/stack-start-notice';
@@ -22,7 +23,6 @@ import Typography from '@mui/material/Typography';
 import Chip from '@mui/material/Chip';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
-import CircularProgress from '@mui/material/CircularProgress';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
@@ -34,7 +34,7 @@ import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import { EmptyContent } from '@omnitron-dev/prism/components/empty-content';
 import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
-import { PlayIcon, StopIcon, SyncIcon, RefreshIcon, PlusIcon, DeleteIcon, DeployIcon } from '../../assets/icons';
+import { SyncIcon, RefreshIcon, PlusIcon, DeleteIcon } from '../../assets/icons';
 import { DeployReleaseDialog } from 'src/components/deploy-release-dialog';
 import CreateStackDialog from './create-stack-dialog';
 import {
@@ -47,19 +47,6 @@ import type { IStackInfo } from '@omnitron-dev/omnitron/dto/services';
 import { inSync, syncFinding } from '@omnitron-dev/omnitron/sync-reading';
 import { formatUptime } from '../../utils/formatters';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
-
-// =============================================================================
-// Status colors
-// =============================================================================
-
-const STATUS_CHIP: Record<string, { color: 'success' | 'warning' | 'error' | 'default'; label: string }> = {
-  running: { color: 'success', label: 'Running' },
-  starting: { color: 'warning', label: 'Starting' },
-  stopping: { color: 'warning', label: 'Stopping' },
-  degraded: { color: 'warning', label: 'Degraded' },
-  error: { color: 'error', label: 'Error' },
-  stopped: { color: 'default', label: 'Stopped' },
-};
 
 const TYPE_LABEL: Record<string, string> = {
   local: 'Local',
@@ -268,13 +255,11 @@ function StackCard({
   detailPath: string;
   onDetail: () => void;
 }) {
-  const status = STATUS_CHIP[stack.status] ?? { color: 'warning' as const, label: 'Unknown' };
   // A stack whose config says so takes releases only: its Start is refused by
   // the daemon on purpose, so the card offers the button that works.
   const takesReleasesOnly = stack.config?.release?.mode === 'required';
   const isRunning = stack.status === 'running';
   const isStopped = stack.status === 'stopped';
-  const isTransitioning = stack.status === 'starting' || stack.status === 'stopping' || !!pendingOp;
   const busy = !!pendingOp;
 
   return (
@@ -300,8 +285,8 @@ function StackCard({
               sx={{ color: 'inherit', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}>{stack.name}</Box>
           </Typography>
           <Chip
-            label={status.label}
-            color={status.color}
+            label={stack.status[0]!.toUpperCase() + stack.status.slice(1)}
+            color={statusColor(stack.status)}
             size="small"
             sx={{ height: 22, fontSize: '0.7rem' }}
           />
@@ -358,50 +343,8 @@ function StackCard({
         )}
         <Box sx={{ marginInlineStart: 'auto', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
           <Can permission="OmnitronProject.diagnoseStack"><Button size="small" onClick={onDiagnose}>Diagnose</Button></Can>
-          {isTransitioning ? (
-            <Button
-              size="small"
-              disabled
-              startIcon={<CircularProgress size={14} />}
-            >
-              {pendingOp === 'resuming' ? 'Resuming installed apps…' : pendingOp === 'starting' || stack.status === 'starting' ? 'Starting…' : 'Stopping…'}
-            </Button>
-          ) : hasInstalledRecovery(stack) ? (
-            <StackRecoveryAction stack={stack} onResume={onResume} onReviewStop={onStop} />
-          ) : isStopped ? (
-            takesReleasesOnly && !stack.selectedRelease ? (
-              <Can permission="OmnitronProject.startStack"><Button size="small" startIcon={<DeployIcon />} color="success" onClick={onDeploy}>
-                Deploy release…
-              </Button></Can>
-            ) : (
-              <Can permission="OmnitronProject.startStack"><Button
-                size="small"
-                startIcon={<PlayIcon />}
-                color="success"
-                onClick={onStart}
-              >
-                Start
-              </Button></Can>
-            )
-          ) : isRunning ? (
-            <>
-              {stack.type !== 'local' && (
-                <Can permission="OmnitronProject.startStack"><Button size="small" startIcon={<DeployIcon />} onClick={onDeploy}>
-                  Deploy…
-                </Button></Can>
-              )}
-              <Can permission="OmnitronProject.reviewStackStop"><Button
-                size="small"
-                startIcon={<StopIcon />}
-                color="error"
-                onClick={onStop}
-              >
-                Review stop…
-              </Button></Can>
-            </>
-          ) : (
-            <Chip label={status.label} size="small" color={status.color} sx={{ height: 20, fontSize: '0.65rem' }} />
-          )}
+          <StackLifecycleActions stack={stack} pending={pendingOp} onStart={onStart} onDeploy={onDeploy}
+            onResume={onResume} onReviewStop={onStop} />
         </Box>
       </CardActions>
     </Card>

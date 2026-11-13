@@ -6,6 +6,7 @@ import {
   MathTheoremBlock,
   HoverReferenceCard,
   CodeBlock,
+  ComponentExample,
   BacklinksSection,
   PageAgentActions,
 } from '../src/blocks/index.js';
@@ -75,6 +76,45 @@ describe('Documentation Content Blocks', () => {
       container.remove();
       vi.unstubAllGlobals();
     }
+  });
+
+  it('renders the example, its accessible caption and literal source in server HTML', () => {
+    const code = '<script>throw Error("example");</script>';
+    const host = document.createElement('div');
+    host.innerHTML = renderToStaticMarkup(<ComponentExample title="Counter" code={code} resettable
+      labels={{ source: 'Исходник' }}><output>0</output></ComponentExample>);
+    const figure = host.querySelector('figure')!;
+    expect(figure.querySelector('figcaption span')?.id).toBe(figure.getAttribute('aria-labelledby'));
+    expect(figure.querySelector('output')?.textContent).toBe('0');
+    expect(figure.querySelector('details > summary')?.textContent).toBe('Исходник');
+    expect(figure.querySelector('details code')?.textContent).toBe(code);
+    expect(figure.querySelector('script, button')).toBeNull();
+  });
+
+  it('restores just the stateful preview and preserves the source disclosure', async () => {
+    function Counter() {
+      const [count, setCount] = React.useState(0);
+      return <button type="button" onClick={() => setCount(value => value + 1)}>{count}</button>;
+    }
+    const host = document.createElement('div');
+    const root = createRoot(host);
+    try {
+      await act(async () => root.render(<ComponentExample title="Counter" code="Counter" resettable
+        labels={{ reset: 'Restore' }}><Counter /></ComponentExample>));
+      const details = host.querySelector('details')!;
+      details.open = true;
+      const before = Array.from(host.querySelectorAll('button')).find(button => button.textContent === '0')!;
+      await act(async () => before.click());
+      expect(before.textContent).toBe('1');
+      const reset = Array.from(host.querySelectorAll('button')).find(button => button.textContent === 'Restore')!;
+      await act(async () => reset.click());
+      expect(host.contains(before)).toBe(false);
+      expect(Array.from(host.querySelectorAll('button')).some(button => button.textContent === '0')).toBe(true);
+      expect(host.querySelector('details')).toBe(details);
+      expect(details.open).toBe(true);
+      await act(async () => root.render(<ComponentExample title="Text" code="Text">Text</ComponentExample>));
+      expect(Array.from(host.querySelectorAll('button')).some(button => button.textContent?.includes('Reset'))).toBe(false);
+    } finally { await act(async () => root.unmount()); }
   });
 
   it('renders BacklinksSection with exact empty match and backlink items', () => {

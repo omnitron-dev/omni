@@ -3,6 +3,7 @@ import {
   ApiExplorer,
   BacklinksSection,
   CodeBlock,
+  ComponentExample,
   DocPagination,
   DocSectionNav,
   HoverReferenceCard,
@@ -26,6 +27,7 @@ describe('@omnitron-dev/lumen-ui', () => {
     expect(typeof DocPagination).toBe('function');
     expect(typeof DocSectionNav).toBe('function');
     expect(typeof CodeBlock).toBe('function');
+    expect(typeof ComponentExample).toBe('function');
     expect(typeof HoverReferenceCard).toBe('function');
     expect(typeof ApiExplorer).toBe('function');
     expect(typeof NetronPlayground).toBe('function');

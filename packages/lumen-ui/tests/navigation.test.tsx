@@ -97,6 +97,17 @@ describe('Navigation Layout Components', () => {
     const link = nextOnly.slice(nextOnly.indexOf('<a '));
     expect(link.indexOf('lumen-pagination-label')).toBeLessThan(link.indexOf('lumen-pagination-arrow'));
     expect(link).toContain('aria-hidden="true"');
+    expect(link).toContain('>Next</span>');
+    expect(previousLink).toContain('>Previous</span>');
+  });
+
+  it('localizes the landmark and both native links before hydration', () => {
+    const html = renderToStaticMarkup(<DocPagination
+      labels={{ navigation: 'Навигация по документации', previous: 'Назад', next: 'Далее' }}
+      prev={{ href: '/one', label: 'Обзор' }} next={{ href: '/three', label: 'Модули' }} />);
+    expect(html).toContain('aria-label="Навигация по документации"');
+    expect(html).toMatch(/href="\/one"[^>]*rel="prev"[^>]*>.*>Назад<\/span>.*>Обзор<\/span>.*?<\/a>/);
+    expect(html).toMatch(/href="\/three"[^>]*rel="next"[^>]*>.*>Далее<\/span>.*>Модули<\/span>.*?<\/a>/);
   });
 
   it('renders native SSR section links and an explicitly controlled current section', () => {

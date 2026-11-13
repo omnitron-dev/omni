@@ -1,4 +1,5 @@
 import { expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 import { createBrowserTest } from './browser-fixture.js';
 
 const test = createBrowserTest('diagrams.html');
@@ -19,6 +20,10 @@ for (const width of [320, 1440]) {
         await expect(next).toHaveCount(kind === 'previous' ? 0 : 1);
         for (const [link, previous] of [[prev, true], [next, false]]) {
           if (!await link.count()) continue;
+          const word = previous ? 'Previous' : 'Next';
+          await expect(link).toHaveAccessibleName(`${word} ${word} documentation page`);
+          await expect(link.locator('.lumen-pagination-direction')).toHaveText(word);
+          await expect(link.locator('svg[aria-hidden="true"]')).toBeVisible();
           const arrow = await link.locator('.lumen-pagination-arrow').boundingBox();
           const label = await link.locator('.lumen-pagination-label').boundingBox();
           const box = await link.boundingBox();
@@ -37,6 +42,52 @@ for (const width of [320, 1440]) {
     }
   });
 }
+
+test('localized document pagination works from server HTML using the keyboard and no JavaScript', async ({ browser, cliSiteUrl }) => {
+  const context = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 320, height: 740 } });
+  try {
+    const page = await context.newPage();
+    await page.goto(cliSiteUrl);
+    const nav = page.getByRole('navigation', { name: 'Documentos' });
+    const previous = nav.getByRole('link', { name: 'Anterior Inicio' });
+    const next = nav.getByRole('link', { name: 'Siguiente Detalles' });
+    await previous.focus();
+    await page.keyboard.press('Tab');
+    await expect(next).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/#native-cli-document$/);
+  } finally { await context.close(); }
+});
+
+test('the component example exposes its real module without scripting and restores state when activated', async ({ browser, cliSiteUrl }) => {
+  const source = await readFile(new URL('./cli-site/counter-example.js', import.meta.url), 'utf8');
+  for (const javaScriptEnabled of [false, true]) {
+    const context = await browser.newContext({ javaScriptEnabled, viewport: { width: 320, height: 740 } });
+    try {
+      const page = await context.newPage();
+      await page.goto(cliSiteUrl);
+      const example = page.getByRole('figure', { name: 'Counter example' });
+      const reset = example.getByRole('button', { name: 'Reset example' });
+      if (javaScriptEnabled) await expect(reset).toBeVisible();
+      else await expect(reset).toHaveCount(0);
+      const summary = example.getByText('Source code', { exact: true });
+      await summary.focus();
+      await page.keyboard.press('Enter');
+      const code = example.locator('details code');
+      await expect(code).toBeVisible();
+      expect(await code.textContent()).toBe(source);
+      const count = example.getByRole('button', { name: 'Count 0' });
+      await expect(count).toBeVisible();
+      if (javaScriptEnabled) {
+        await count.click();
+        await expect(example.getByRole('button', { name: 'Count 1' })).toBeVisible();
+        await reset.click();
+        await expect(count).toBeVisible();
+        await expect(code).toBeVisible();
+      }
+    } finally { await context.close(); }
+  }
+});
 
 test('filetree disclosures, markers and annotations work without client JavaScript at 320px', async ({ browser, cliSiteUrl }) => {
   const context = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 320, height: 900 } });

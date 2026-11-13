@@ -233,6 +233,12 @@ export class RuntimeInstallation {
   /** Copies only a prebuilt, sealed dependency closure. Never moves or rewrites a live release. */
   async install(source: string): Promise<BackendArtifact> {
     if (!this.lease) throw new Error('Runtime installation requires an exclusive operation');
+    const sourceRoot = path.resolve(source);
+    if (path.dirname(sourceRoot) === this.releases) {
+      // Installed directories are addressed by their pinned digest. Use the
+      // same verification as cold start before running their preflight.
+      return this.artifact(path.basename(sourceRoot));
+    }
     const candidate = await checkBackendCandidate(path.join(source, 'packages/0/dist'));
     const destination = this.releasePath(candidate.runtimeHash);
     try {

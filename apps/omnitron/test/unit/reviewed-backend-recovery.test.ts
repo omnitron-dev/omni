@@ -236,8 +236,23 @@ it('rejects an inventory change during owner prepare and cancels only its uncomm
   fake.prepare.mockImplementationOnce(async (expected: ControllerGrant, candidateId: string) => {
     const ticket = await f.handoff.prepare(expected, candidateId); f.changeInventory(); return { ticket, snapshot: await fake.snapshot() };
   });
-  await expect(f.invoke()).rejects.toThrow('while preparing'); expect(fake.children).toHaveLength(0);
+  await expect(f.invoke()).rejects.toThrow('Reviewed execution inventory changed'); expect(fake.children).toHaveLength(0);
   expect(fake.cancel).toHaveBeenCalledTimes(1); expect(f.handoff.status().controller).toEqual(f.fence.controller);
+});
+
+it('identifies the rotating pool when its worker changes between native owner observations', async () => {
+  const f = await fixture();
+  const before = { ...await fake.snapshot(),
+    apps: [{ info: { name: 'files', pid: 4000, restarts: 0 }, startedAt: 1,
+      children: [], pools: [{ name: 'transform', workerIds: ['first'] }] }],
+    workers: [{ info: { id: 'first', startTime: 2 }, pid: 4001 }] };
+  const after = { ...before, inventoryDigest: '9'.repeat(64),
+    apps: [{ ...before.apps[0]!, pools: [{ name: 'transform', workerIds: ['second'] }] }],
+    workers: [{ info: { id: 'second', startTime: 3 }, pid: 4002 }] };
+  fake.snapshot.mockResolvedValueOnce(before).mockResolvedValueOnce(after);
+  await expect(checkReviewedBackendRecovery(f.fence)).rejects.toThrow('worker pools: "files/transform"');
+  expect(fake.prepare).not.toHaveBeenCalled();
+  expect(f.instance.activation()?.reviewedRecovery?.phase).toBe('held');
 });
 
 it('rechecks the exact prepared receipt after artifact verification before creating any child', async () => {

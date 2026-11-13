@@ -9,7 +9,7 @@ import { readProcessLifetime } from '@omnitron-dev/common/process-identity';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import { DomainError } from '@omnitron-dev/titan/errors';
 import { ProjectRegistry } from '../project/registry.js';
-import { projectExecutionIdentity, isExecutionIdentityEvidence, type ExecutionIdentityEvidence } from '../shared/execution-identity.js';
+import { projectExecutionIdentity, isExecutionIdentityEvidence, compareExecutionIdentityEvidence, describeExecutionIdentityDrift, type ExecutionIdentityEvidence } from '../shared/execution-identity.js';
 import { describeError } from '../shared/describe-error.js';
 import type { InfrastructureHandoffState } from '../infrastructure/infrastructure.service.js';
 import { RuntimeInstallation, type RuntimeActivation, type RuntimeSelection } from './runtime-installation.js';
@@ -138,11 +138,21 @@ function managedOwnerDigest(config: ManagedRuntime): string {
   return digest(owner);
 }
 
-function assertObserved(snapshot: ExecutionSnapshot, expected: Pick<ReviewedBackendRecoveryFence, 'owner' | 'controller' | 'pending' | 'inventoryDigest'>,
+type ReviewedObservation = Pick<ReviewedBackendRecoveryFence, 'owner' | 'controller' | 'pending' | 'inventoryDigest'>;
+
+function assertObserved(snapshot: ExecutionSnapshot, expected: ReviewedObservation, identity: () => ExecutionIdentityEvidence | null,
   phase: 'active' | 'prepared' = 'active'): void {
-  if (!same(snapshot.status.owner, expected.owner) || !same(snapshot.status.controller, expected.controller) ||
-      !same(snapshot.status.pending, expected.pending) || snapshot.status.phase !== phase || snapshot.status.inFlight !== 0 ||
-      snapshot.inventoryDigest !== expected.inventoryDigest) throw Error('Reviewed owner, grant or strict execution inventory changed');
+  const { status } = snapshot;
+  if (!same(status.owner, expected.owner)) throw Error('Reviewed execution owner changed');
+  if (!same(status.controller, expected.controller)) throw Error('Reviewed controller grant changed');
+  if (!same(status.pending, expected.pending)) throw Error('Reviewed handoff ticket changed');
+  if (status.phase !== phase || status.inFlight !== 0) {
+    throw Error(`Expected a settled ${phase} execution owner, observed ${status.phase} with ${status.inFlight} operations in flight`);
+  }
+  if (snapshot.inventoryDigest !== expected.inventoryDigest) {
+    const drift = compareExecutionIdentityEvidence(identity(), projectExecutionIdentity(snapshot));
+    throw Error('Reviewed execution inventory changed. ' + describeExecutionIdentityDrift(drift));
+  }
 }
 
 async function observeOwner(home: string, directory: string, phase: 'active' | 'prepared' = 'active') {
@@ -160,8 +170,8 @@ async function observeOwner(home: string, directory: string, phase: 'active' | '
     if (ownerPid !== snapshot.status.owner.pid) throw Error('Owner marker differs from the current owner');
     await verifyManagedIsolation(config, ownerPid, guardianPid);
     const native = await attestManagedOwnerRuntime(home, snapshot.status.owner);
-    assertObserved(await client.recoverySnapshot(), { owner: snapshot.status.owner, controller: snapshot.status.controller,
-      pending: snapshot.status.pending, inventoryDigest: snapshot.inventoryDigest }, phase);
+    assertObserved(await client.recoverySnapshot(), { ...snapshot.status, inventoryDigest: snapshot.inventoryDigest },
+      () => projectExecutionIdentity(snapshot), phase);
     return { snapshot, config, native };
   } finally { await client.close(); }
 }
@@ -246,10 +256,10 @@ async function assertRestoredCertificate(directory: string, fence: ReviewedBacke
 }
 
 async function checkOwner(fence: ReviewedBackendRecoveryFence, directory: string,
-  expected: Pick<ReviewedBackendRecoveryFence, 'owner' | 'controller' | 'pending' | 'inventoryDigest'> = fence,
+  expected: ReviewedObservation = fence,
   phase: 'active' | 'prepared' = 'active'): Promise<void> {
   const observed = await observeOwner(fence.instanceHome, directory, phase);
-  assertObserved(observed.snapshot, expected, phase);
+  assertObserved(observed.snapshot, expected, () => fence.identity, phase);
   if (observed.native.lifetime !== fence.ownerLifetime || observed.config.owner.artifact !== fence.ownerArtifact ||
       managedOwnerDigest(observed.config) !== fence.managedOwnerSha256) throw Error('Reviewed native owner or instance configuration changed');
 }
@@ -290,13 +300,11 @@ export async function recoverReviewedBackend(config: ManagedRuntime, input: { pl
     let candidate: ChildProcess | null = null, ticket: HandoffTicket | undefined;
     let spawned = false;
     try {
-      assertObserved(await owner.connect(), fence);
+      assertObserved(await owner.connect(), fence, () => fence.identity);
       const prepared = await owner.prepareReviewedReplacement(fence.controller, randomUUID());
       ticket = prepared.ticket;
-      if (!same(prepared.snapshot.status.owner, fence.owner) || prepared.snapshot.inventoryDigest !== fence.inventoryDigest ||
-          !same(ticket.from, fence.controller) || ticket.ownerId !== fence.owner.id || prepared.snapshot.status.phase !== 'prepared' ||
-          !same(prepared.snapshot.status.pending, ticket) || !same(prepared.snapshot.status.controller, fence.controller) ||
-          prepared.snapshot.status.inFlight !== 0) throw Error('Execution inventory or grant changed while preparing reviewed recovery');
+      if (!same(ticket.from, fence.controller) || ticket.ownerId !== fence.owner.id) throw Error('Reviewed recovery ticket came from a different controller or owner');
+      assertObserved(prepared.snapshot, { ...fence, pending: ticket }, () => fence.identity, 'prepared');
       const original = (await checkStatic(fence)).record;
       const file = path.join(config.directory, `handoff-${ticket.id}.json`);
       const boot: BackendBootRecord = { ...original, createdAt: new Date().toISOString(),

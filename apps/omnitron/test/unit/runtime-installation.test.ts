@@ -52,6 +52,7 @@ it('installs an independent verified copy without changing the running selection
   expect(artifact.runtimeRoot).toBe(store.releasePath(first.hash));
   await fs.writeFile(path.join(first.dist, 'daemon/daemon-entry.js'), 'changed source');
   expect((await store.artifact(first.hash)).runtimeHash).toBe(first.hash);
+  expect((await store.exclusive(() => store.install(artifact.runtimeRoot))).runtimeHash).toBe(first.hash);
   expect(await fs.readdir(store.releases)).toEqual([first.hash]);
 });
 
@@ -223,6 +224,7 @@ it('rejects a resealed replacement before executing its preflight under an exist
   manifest.sha256 = await runtimeArtifactDigest(installed);
   await fs.writeFile(manifestFile, JSON.stringify(manifest));
   await expect(store.artifact(first.hash)).rejects.toThrow('manifest does not match');
+  await expect(store.exclusive(() => store.install(installed))).rejects.toThrow('manifest does not match');
   await expect(fs.access(marker)).rejects.toMatchObject({ code: 'ENOENT' });
 });
 

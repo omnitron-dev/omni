@@ -45,6 +45,9 @@ jobs:
       - name: Rebuild and compare two independent release archives
         working-directory: apps/omnitron
         run: node test/runtime/reproducible-bundle.mjs dist
+      - name: Verify the host database through its published PostgreSQL port across a bridge transition
+        working-directory: apps/omnitron
+        run: node test/runtime/control-plane-network.js dist
       - name: Verify offline application delivery and owner-bound launch receipts
         working-directory: apps/omnitron
         run: |

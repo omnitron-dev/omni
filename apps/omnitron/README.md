@@ -30,6 +30,8 @@ omnitron stop project/stack/app
 
 ## Runtime ownership and releases
 
+On local cold updates, `omnitron backend select <sha256> --check` previews changes to the host database and stack containers. If the host PostgreSQL was created on a project bridge, the preview identifies its SQL cluster and the required PostgreSQL process restart. Moving the retained container to the platform bridge rebuilds host port forwarding. Startup checks the cluster through both the container and its published SQL port before applying migrations. The named volume and container ID survive this transition.
+
 The management backend and resident execution owner have separate identities. A backend handoff can retain the owner and application processes. Application release identity is distinct from either runtime's build commit. Status and operation receipts expose those identities; compare the actual target rather than assuming one commit describes the entire node.
 
 On a development machine, run `xec update local-check` in the main checkout to build the committed revision and inspect its handoff. Run `xec update local-apply` to activate the same candidate on a healthy controller. Both commands reuse the verified backend and Console build for that commit, platform and Node version. Use the same `--cache-dir <directory>` for both commands to keep builds on a development volume. This path uses the local Git checkout, frozen dependencies and the Turbo build cache.

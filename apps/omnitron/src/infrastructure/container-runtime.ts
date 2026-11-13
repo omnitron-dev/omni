@@ -949,6 +949,7 @@ export async function execInContainer(nameOrId: string, command: string[]): Prom
   const result = await adapter.execute({
     command: command[0],
     args: command.slice(1),
+    shell: false,
     adapterOptions: { type: 'docker', container: nameOrId },
   });
   return (result.stdout ?? '').trim();

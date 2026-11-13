@@ -185,6 +185,35 @@ it('waits passively for the admitted writer to replace its real startup-invalid 
   expect(fake.prepare).toHaveBeenCalledTimes(1); expect(fake.children).toHaveLength(1);
 });
 
+it.each([false, true])('rechecks the whole fence after temporary activity on the restored owner, inventory changes=%s', async changed => {
+  const f = await fixture();
+  const snapshot = fake.snapshot.getMockImplementation()!;
+  let restoredReads = 0;
+  fake.snapshot.mockImplementation(async () => {
+    const current = await snapshot();
+    if (current.status.controller.epoch > f.fence.controller.epoch) {
+      restoredReads++;
+      if (restoredReads === 2) current.status.inFlight = 1;
+      if (changed && restoredReads >= 3) {
+        current.status.inFlight = 1;
+        current.inventoryDigest = '9'.repeat(64);
+      }
+    }
+    return current;
+  });
+  if (changed) {
+    await expect(f.invoke()).rejects.toThrow('Reviewed execution inventory changed');
+    expect(restoredReads).toBe(3);
+    expect(f.instance.activation()?.reviewedRecovery?.phase).toBe('unconfirmed');
+  } else {
+    await expect(f.invoke()).resolves.toMatchObject({ ownerPid: f.fence.owner.pid, epoch: f.fence.controller.epoch + 1 });
+    expect(restoredReads).toBeGreaterThan(2);
+    expect(f.instance.activation()).toBeNull();
+  }
+  expect(fake.prepare).toHaveBeenCalledOnce();
+  expect(fake.children).toHaveLength(1);
+});
+
 it.each(['writer', 'registry', 'inventory', 'configuration'])('rejects a contradictory new %s certificate instead of waiting or retrying', async variant => {
   const f = await fixture();
   fake.certificate.mockImplementationOnce(async (record: BackendRecoveryRecord) => ({ ...record,
@@ -249,8 +278,11 @@ it('identifies the rotating pool when its worker changes between native owner ob
   const after = { ...before, inventoryDigest: '9'.repeat(64),
     apps: [{ ...before.apps[0]!, pools: [{ name: 'transform', workerIds: ['second'] }] }],
     workers: [{ info: { id: 'second', startTime: 3 }, pid: 4002 }] };
+  const { projectExecutionIdentity } = await import('../../src/shared/execution-identity.js');
+  const identity = projectExecutionIdentity(before);
+  if (!identity) throw Error('Expected a valid test pool');
   fake.snapshot.mockResolvedValueOnce(before).mockResolvedValueOnce(after);
-  await expect(checkReviewedBackendRecovery(f.fence)).rejects.toThrow('worker pools: "files/transform"');
+  await expect(checkReviewedBackendRecovery({ ...f.fence, identity })).rejects.toThrow('worker pools: "files/transform"');
   expect(fake.prepare).not.toHaveBeenCalled();
   expect(f.instance.activation()?.reviewedRecovery?.phase).toBe('held');
 });

@@ -46,6 +46,8 @@ Reviewed recovery installs a capable guardian and restores the original backend;
 
 Plan reviewed recovery between scheduled pool rotations. A worker reaching its configured lifetime can change the execution inventory while the guardian is preparing the plan. When the owner provides sufficient identity evidence, the refusal names the affected application or pool. Check the live membership and the outcome of the attempted operation before scheduling another transition.
 
+During final verification, the guardian can wait up to 15 seconds for an operation on the restored owner to finish. It rereads the recovery certificate, registry, grant, ticket and execution inventory before selecting the backend. A change of ownership or inventory ends verification immediately.
+
 Stops use durable execution intent. Starting a stack does not silently clear a separately stopped child application's fence. Native process lifetimes and generations distinguish a current process from a reused PID.
 
 Installed bootstrap applications repeat release and runtime verification before every supervised spawn, including pool recycling and resizing. A refused replacement leaves the old pool worker in place. Membership changes make the release observation unreported until the owner re-verifies the artifact and a stable set of live process handles. A late check cannot confirm a changed definition, stopped generation or different membership. Confirmation identifies the actual verified composition; it does not assert that a failed resize reached its requested count. Bootstrap applications declare their processes explicitly, with pools selected by each process's `instances` field.

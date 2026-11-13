@@ -14,6 +14,7 @@ import { describeError } from '../shared/describe-error.js';
 import type { InfrastructureHandoffState } from '../infrastructure/infrastructure.service.js';
 import { RuntimeInstallation, type RuntimeActivation, type RuntimeSelection } from './runtime-installation.js';
 import { BackendRecoveryJournal, type BackendRecoveryRecord } from './backend-recovery-journal.js';
+import { RecoveryBusyError } from './recovery-state.js';
 import { readBackendBootRecord, checkpointInstanceHome, type BackendBootRecord } from './backend-handoff-types.js';
 import { ExecutionClient } from './execution-client.js';
 import { ExecutionJournal, writePrivateRecord } from './execution-journal.js';
@@ -146,22 +147,25 @@ function assertObserved(snapshot: ExecutionSnapshot, expected: ReviewedObservati
   if (!same(status.owner, expected.owner)) throw Error('Reviewed execution owner changed');
   if (!same(status.controller, expected.controller)) throw Error('Reviewed controller grant changed');
   if (!same(status.pending, expected.pending)) throw Error('Reviewed handoff ticket changed');
-  if (status.phase !== phase || status.inFlight !== 0) {
-    throw Error(`Expected a settled ${phase} execution owner, observed ${status.phase} with ${status.inFlight} operations in flight`);
-  }
+  if (status.phase !== phase) throw Error(`Expected an execution owner in phase ${phase}, observed ${status.phase}`);
   if (snapshot.inventoryDigest !== expected.inventoryDigest) {
     const drift = compareExecutionIdentityEvidence(identity(), projectExecutionIdentity(snapshot));
     throw Error('Reviewed execution inventory changed. ' + describeExecutionIdentityDrift(drift));
   }
+  if (!Number.isSafeInteger(status.inFlight) || status.inFlight < 0) throw Error('Execution owner reported an invalid in-flight operation count');
+  if (status.inFlight > 0) throw new RecoveryBusyError(`Execution owner has ${status.inFlight} operations in flight`);
 }
 
-async function observeOwner(home: string, directory: string, phase: 'active' | 'prepared' = 'active') {
+async function observeOwner(home: string, directory: string, phase: 'active' | 'prepared' = 'active',
+  reviewed?: { observation: ReviewedObservation; identity: ExecutionIdentityEvidence }) {
   const config = await readManagedRuntime(home);
   if (!config || config.directory !== directory) throw Error('Reviewed recovery requires the existing managed instance');
   const client = new ExecutionClient(path.join(directory, 'owner.sock'), createNullLogger());
   try {
     const snapshot = await client.connect();
-    if (snapshot.status.phase !== phase || snapshot.status.inFlight !== 0) throw Error(`Execution owner is not settled in the expected ${phase} phase`);
+    const expected = reviewed?.observation ?? { ...snapshot.status, inventoryDigest: snapshot.inventoryDigest };
+    const identity = () => reviewed?.identity ?? projectExecutionIdentity(snapshot);
+    assertObserved(snapshot, expected, identity, phase);
     const journal = await new ExecutionJournal(path.join(directory, 'controller.json')).read();
     if (!journal || !same(journal.owner, snapshot.status.owner) || !same(journal.grant, snapshot.status.controller))
       throw Error('Execution journal disagrees with the current owner grant');
@@ -170,8 +174,7 @@ async function observeOwner(home: string, directory: string, phase: 'active' | '
     if (ownerPid !== snapshot.status.owner.pid) throw Error('Owner marker differs from the current owner');
     await verifyManagedIsolation(config, ownerPid, guardianPid);
     const native = await attestManagedOwnerRuntime(home, snapshot.status.owner);
-    assertObserved(await client.recoverySnapshot(), { ...snapshot.status, inventoryDigest: snapshot.inventoryDigest },
-      () => projectExecutionIdentity(snapshot), phase);
+    assertObserved(await client.recoverySnapshot(), expected, identity, phase);
     return { snapshot, config, native };
   } finally { await client.close(); }
 }
@@ -227,9 +230,8 @@ async function checkStatic(fence: ReviewedBackendRecoveryFence, certificate = tr
 }
 
 async function assertRestoredCertificate(directory: string, fence: ReviewedBackendRecoveryFence,
-  admitted: BackendBootRecord, pid: number, entry: string): Promise<void> {
+  admitted: BackendBootRecord, pid: number, entry: string, until: number): Promise<void> {
   const { ticket, ...admittedState } = admitted.state;
-  const until = Date.now() + 15_000;
   let reason = 'No recovery certificate has been published';
   while (true) {
     const journal = new BackendRecoveryJournal(directory, { readOnly: true });
@@ -258,8 +260,7 @@ async function assertRestoredCertificate(directory: string, fence: ReviewedBacke
 async function checkOwner(fence: ReviewedBackendRecoveryFence, directory: string,
   expected: ReviewedObservation = fence,
   phase: 'active' | 'prepared' = 'active'): Promise<void> {
-  const observed = await observeOwner(fence.instanceHome, directory, phase);
-  assertObserved(observed.snapshot, expected, () => fence.identity, phase);
+  const observed = await observeOwner(fence.instanceHome, directory, phase, { observation: expected, identity: fence.identity });
   if (observed.native.lifetime !== fence.ownerLifetime || observed.config.owner.artifact !== fence.ownerArtifact ||
       managedOwnerDigest(observed.config) !== fence.managedOwnerSha256) throw Error('Reviewed native owner or instance configuration changed');
 }
@@ -324,9 +325,20 @@ export async function recoverReviewedBackend(config: ManagedRuntime, input: { pl
       const confirm = async () => {
         // The newly admitted controller legitimately replaces the recovery
         // certificate. Its new receipt must be proven, not compared to the old writer's bytes.
-        await assertRestoredCertificate(config.directory, fence, boot, result.pid, artifact.entry);
-        await checkStatic(fence, false);
-        await checkOwner(fence, config.directory, { ...fence, controller: ticket!.to, pending: ticket! });
+        const until = Date.now() + 15_000;
+        for (;;) {
+          await assertRestoredCertificate(config.directory, fence, boot, result.pid, artifact.entry, until);
+          await checkStatic(fence, false);
+          try {
+            await checkOwner(fence, config.directory, { ...fence, controller: ticket!.to, pending: ticket! });
+            break;
+          } catch (error) {
+            // A live backend can be processing ordinary owner operations already.
+            // Re-read its certificate and every fence before accepting a quiet sample.
+            if (!(error instanceof RecoveryBusyError) || Date.now() >= until) throw error;
+            await delay(Math.min(250, until - Date.now()));
+          }
+        }
         const fresh = await readSupervisorTransition(input.plan);
         if (fresh.phase !== 'started' || supervisorTransitionIntentDigest(fresh) !== input.sha256)
           throw Error('Reviewed transition changed while restoring the backend');

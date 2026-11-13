@@ -70,6 +70,7 @@ export async function spawnReplacement(artifact: BackendArtifact, file: string, 
   await verifyBackendEntry(artifact);
   const log = await fs.open(path.join(executionDirectory(record.daemonConfig), `backend-${record.state.ticket.to.controllerId}.log`), 'a', 0o600);
   let child: ChildProcess;
+  let execution: BackendRuntimeStatus;
   try {
     await beforeSpawn?.();
     // Resolve tsx from the candidate installation, not the operator's cwd.
@@ -78,24 +79,26 @@ export async function spawnReplacement(artifact: BackendArtifact, file: string, 
       execPath: artifact.execPath,
       execArgv: ['--import', 'tsx/esm'], stdio: ['ignore', log.fd, log.fd, 'ipc'],
     });
+    // Node emits a failed spawn as an error before the next I/O turn.
+    await once(child, 'spawn');
+    onSpawn(child);
+    observeBackendChild(child);
+    const ready = new Promise<BackendRuntimeStatus>((resolve, reject) => {
+      const cleanup = () => { child.off('message', message); child.off('exit', exited); child.off('error', failed); };
+      const failed = (error: Error) => { cleanup(); reject(error); };
+      const exited = (code: number | null, signal: string | null) => failed(new Error(`Candidate backend exited (${code ?? signal}); inspect its private startup log`));
+      const message = (input: unknown) => {
+        const value = input as { type?: string; pid?: number; execution?: BackendRuntimeStatus; build?: BackendArtifact['build'] };
+        if (value.type !== 'backend-ready') return;
+        if (value.pid !== child.pid || value.build?.commit !== artifact.build.commit || !value.execution?.owner) {
+          failed(new Error('Candidate readiness identity does not match its validated artifact')); return;
+        }
+        cleanup(); resolve(value.execution);
+      };
+      child.once('error', failed); child.once('exit', exited); child.on('message', message);
+    });
+    execution = await withControlDeadline(ready, 120_000, 'Candidate backend did not become ready within 120 seconds');
   } finally { await log.close(); }
-  onSpawn(child);
-  observeBackendChild(child);
-  const ready = new Promise<BackendRuntimeStatus>((resolve, reject) => {
-    const cleanup = () => { child.off('message', message); child.off('exit', exited); child.off('error', failed); };
-    const failed = (error: Error) => { cleanup(); reject(error); };
-    const exited = (code: number | null, signal: string | null) => failed(new Error(`Candidate backend exited (${code ?? signal}); inspect its private startup log`));
-    const message = (input: unknown) => {
-      const value = input as { type?: string; pid?: number; execution?: BackendRuntimeStatus; build?: BackendArtifact['build'] };
-      if (value.type !== 'backend-ready') return;
-      if (value.pid !== child.pid || value.build?.commit !== artifact.build.commit || !value.execution?.owner) {
-        failed(new Error('Candidate readiness identity does not match its validated artifact')); return;
-      }
-      cleanup(); resolve(value.execution);
-    };
-    child.once('error', failed); child.once('exit', exited); child.on('message', message);
-  });
-  const execution = await withControlDeadline(ready, 120_000, 'Candidate backend did not become ready within 120 seconds');
   if (!execution.owner || !execution.epoch || execution.owner.id !== record.state.ticket.ownerId || execution.epoch !== record.state.ticket.to.epoch || execution.phase !== 'active') {
     throw new Error('Candidate did not acquire the expected execution owner and epoch');
   }

@@ -11,7 +11,13 @@ import * as runtime from '../../src/infrastructure/container-runtime.js';
 import type { ExistingInfrastructureReview } from '../../src/shared/dto/project.js';
 
 const native = vi.hoisted(() => ({ review: vi.fn() }));
-vi.mock('../../src/infrastructure/existing-containers.js', () => ({ reviewExistingContainers: native.review }));
+vi.mock('../../src/infrastructure/existing-containers.js', () => ({
+  reviewExistingContainers: native.review,
+  inspectExistingInfrastructure: async (...args: unknown[]) => {
+    const review = await native.review(...args);
+    return { review, state: { ready: review.digest !== null, services: {} } };
+  },
+}));
 const logger: any = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => logger };
 const scope = { project: 'sample', stack: 'dev' };
 const digest = 'a'.repeat(64);

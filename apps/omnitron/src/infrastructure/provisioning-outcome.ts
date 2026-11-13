@@ -92,6 +92,7 @@ export function observeProvisioning(actual: readonly ContainerState[], observati
 export function stackServiceObservation(state: ContainerState): IStackInfraStatus['services'][string] {
   return {
     status: state.error || state.provisioning === 'failed' ? 'error' : state.status === 'running' ? 'running' : 'stopped',
+    nativeStatus: state.status,
     containerName: state.name, port: Object.values(state.ports ?? {})[0] ?? null,
     ...(state.service !== undefined && { service: state.service }),
     ...(state.containerId !== undefined && { containerId: state.containerId }),

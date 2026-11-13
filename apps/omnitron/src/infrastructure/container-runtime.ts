@@ -195,7 +195,8 @@ export function planContainerAction(desired: ResolvedContainer, actual: Containe
   if (running && actual.networkAttached === false) return recreate('network-detached (running but on no network)');
   if (actual.image !== desired.image)
     return recreate(`image changed${running ? '' : ' while stopped'}: ${actual.image} → ${desired.image}`);
-  if (actual.specHash && !containerSpecHashMatches(desired, actual, migration))
+  if (!actual.specHash) return recreate('native specification receipt is missing');
+  if (!containerSpecHashMatches(desired, actual, migration))
     return recreate(`config drift${running ? '' : ' while ' + actual.status} (spec ${actual.specHash} → ${containerSpecHash(desired)})`);
   return running ? { type: 'noop', service } : { type: 'start', service, containerId: actual.containerId ?? service };
 }
@@ -458,11 +459,11 @@ interface NativeContainerObservation {
     Health?: { Status?: string; Log?: unknown[] } };
   HostConfig?: Record<string, unknown>;
   NetworkSettings?: { Networks?: Record<string, unknown>; Ports?: Record<string, Array<{ HostPort?: string; HostIp?: string }> | null> };
-  Mounts?: Array<{ Source: string; Destination: string; Type?: string; Name?: string }>;
+  Mounts?: Array<{ Source: string; Destination: string; Type?: string; Name?: string; RW?: boolean }>;
 }
 
 /** Project the same native observation for one container and for a complete inventory. */
-function containerObservation(info: NativeContainerObservation, name: string, fullId: boolean): ContainerState {
+export function containerObservation(info: NativeContainerObservation, name: string, fullId: boolean): ContainerState {
   // Network attachment: an OrbStack/dockerd restart can leave a container
   // 'running' but detached from every network (empty Networks) with its
   // published ports gone — reachable by nothing. Surface it so callers can
@@ -484,6 +485,7 @@ function containerObservation(info: NativeContainerObservation, name: string, fu
     ...(info.Mounts && { mounts: info.Mounts.map(mount => ({
       source: mount.Source,
       target: mount.Destination,
+      ...(typeof mount.RW === 'boolean' && { readOnly: !mount.RW }),
       ...(mount.Type && { type: mount.Type }), ...(mount.Name && { name: mount.Name }),
     })) }),
     service: info.Config?.Labels?.['omnitron.service'],

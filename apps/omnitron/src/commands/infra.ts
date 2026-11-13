@@ -148,7 +148,7 @@ function parseStack(value: string): { project: string; stack: string } | string 
 }
 
 /**
- * Ask the daemon about a stack this machine holds no containers of.
+ * Resolve the selected stack and its node observations through the controller.
  *
  * The same read `omnitron stack status` makes: for a remote stack,
  * `getStack` asks the node itself for its containers (`remoteInfraStatus`
@@ -168,81 +168,89 @@ async function askStack(project: string, stack: string): Promise<IStackInfo | st
   }
 }
 
-/**
- * `omnitron infra status [--stack <project>/<stack>]`.
- *
- * What `listManagedContainers` returns is THIS machine's containers, and the
- * table said so nowhere: measured 2026-09-23 on the master, twelve
- * `sample-dev-*` / `omnitron-*` rows with no host and no stack column, and the
- * six containers of the test stack — on 37.27.130.185 — invisible, with
- * nothing to say they exist. Now the header names the machine, each row its
- * stack, and `--stack` reaches a remote stack's containers the way `stack
- * status` does: by asking its node.
- */
-export async function infraStatusCommand(opts: { stack?: string } = {}): Promise<void> {
+/** Read the controller's host inventory, including setup observations when the daemon is reachable. */
+async function localContainerInventory(): Promise<ContainerState[]> {
   const client = createDaemonClient();
-  let containers: ContainerState[];
   try {
     if (await client.isReachable()) {
       const service = await client.service<import('../shared/dto/services.js').IOmnitronInfraService>('OmnitronInfra');
-      containers = await service.listContainers();
-    } else {
-      log.warn('Daemon unavailable: native container health only; declared service setup is not verified.');
-      containers = await listManagedContainers({ orThrow: true });
+      return await service.listContainers();
     }
+    log.warn('Daemon unavailable: native container health only; declared service setup is not verified.');
+    return await listManagedContainers({ orThrow: true });
   } finally { await client.disconnect(); }
+}
+
+export async function infraStatusCommand(opts: { stack?: string } = {}): Promise<void> {
   const machine = os.hostname();
 
-  if (opts.stack) {
+  if (opts.stack !== undefined) {
     const wanted = parseStack(opts.stack);
     if (typeof wanted === 'string') {
       log.error(wanted);
       process.exitCode = 1;
       return;
     }
-    const here = containers.filter((c) => c.project === wanted.project && c.stack === wanted.stack);
-    if (here.length > 0) {
-      log.info(prism.bold(`Containers of ${opts.stack} on this machine (${machine})`));
-      printContainers(here);
-      return;
-    }
-
     const info = await askStack(wanted.project, wanted.stack);
     if (typeof info === 'string') {
-      log.error(`No containers of ${opts.stack} on this machine (${machine}), and ${info}.`);
+      log.error(`Container inventory unavailable for ${opts.stack}: ${info}.`);
       process.exitCode = 1;
       return;
     }
     if (info.type === 'local') {
-      log.error(`No containers of ${opts.stack} on this machine (${machine}) — the stack is local and has none running.`);
-      process.exitCode = 1;
+      const scope = info.runtimeScope ?? wanted;
+      try {
+        const here = (await localContainerInventory()).filter(c => c.project === scope.project && c.stack === scope.stack);
+        if (here.length) {
+          log.info(prism.bold(`Containers of ${opts.stack} on this machine (${machine})`));
+          printContainers(here);
+        } else log.info(`No managed containers of ${opts.stack} on this machine (${machine}).`);
+      } catch (error) {
+        log.error(`Container inventory unavailable for ${opts.stack} on ${machine}: ${(error as Error).message}`);
+        process.exitCode = 1;
+      }
       return;
     }
     const hosts = info.nodes.map((n) => n.host).join(', ') || 'its node';
-    const services = Object.entries(info.infrastructure.services);
-    if (services.length === 0) {
-      log.warn(
-        `${opts.stack} runs on ${hosts}, and no infrastructure was reported for it — the node may not have answered. ` +
-          `\`omnitron stack status ${wanted.project} ${wanted.stack}\` shows what the master knows.`,
-      );
-      process.exitCode = 1;
+    log.info(prism.bold(`Containers of ${opts.stack} on ${hosts} — asked of the node through the daemon`));
+    const placements = info.placements ?? [];
+    const rows = placements.length ? placements.flatMap(node => {
+      if (!node.infrastructureObserved || !node.infrastructure) {
+        log.warn(`${node.nodeKey}: infrastructure inventory unavailable.`);
+        process.exitCode = 1;
+        return [];
+      }
+      const services = Object.entries(node.infrastructure.services);
+      if (!services.length) log.info(`${node.nodeKey}: no managed containers reported.`);
+      return services.map(([name, svc]) => ({ node: node.nodeKey, name, svc }));
+    }) : Object.entries(info.infrastructure.services).map(([name, svc]) => ({
+      node: svc.nodeKey ?? (info.nodes.length === 1 ? hosts : 'Not reported'), name, svc,
+    }));
+    if (!rows.length) {
+      if (!placements.length) {
+        log.warn(`Infrastructure inventory unavailable for ${opts.stack} on ${hosts}.`);
+        process.exitCode = 1;
+      }
       return;
     }
-    log.info(prism.bold(`Containers of ${opts.stack} on ${hosts} — asked of the node through the daemon`));
     table({
       width: 'auto',
-      data: services.map(([name, svc]) => ({
-        service: name,
+      data: rows.map(({ node, name, svc }) => ({
+        node,
+        service: svc.service ?? name,
         container: svc.containerName,
-        status: colourStatus(svc.status),
+        status: colourStatus(svc.nativeStatus ?? svc.status),
+        health: svc.health ?? 'Not reported',
         port: svc.port ?? '-',
         setup: svc.provisioning ?? 'Not reported',
         reason: svc.error ?? '-',
       })),
       columns: [
+        { key: 'node', header: 'Node' },
         { key: 'service', header: 'Service' },
         { key: 'container', header: 'Container' },
         { key: 'status', header: 'Status' },
+        { key: 'health', header: 'Health' },
         { key: 'port', header: 'Port' },
         { key: 'setup', header: 'Setup' },
         { key: 'reason', header: 'Reason' },
@@ -251,6 +259,7 @@ export async function infraStatusCommand(opts: { stack?: string } = {}): Promise
     return;
   }
 
+  const containers = await localContainerInventory();
   if (containers.length === 0) {
     log.info(`No Omnitron-managed containers on this machine (${machine}).`);
     log.info('Run: omnitron infra up');

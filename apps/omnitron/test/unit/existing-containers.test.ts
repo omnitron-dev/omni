@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { existingContainerMismatch, reconcileLegacyContainer, reviewExistingContainers } from '../../src/infrastructure/existing-containers.js';
+import { existingContainerMismatch, inspectExistingInfrastructure, reconcileLegacyContainer, reviewExistingContainers } from '../../src/infrastructure/existing-containers.js';
 import type { ResolvedContainer } from '../../src/infrastructure/types.js';
 import { containerSpecHash } from '../../src/infrastructure/container-runtime.js';
 
@@ -32,6 +32,21 @@ function fixture() {
 }
 
 describe('preservation from actual Docker resources', () => {
+  it('uses one inspected generation for both the preservation receipt and monitoring state', async () => {
+    const { desired, native, probes } = fixture();
+    const first = await inspectExistingInfrastructure([desired], probes);
+    expect(probes.inspect).toHaveBeenCalledOnce();
+    expect(first.review.containers[0]?.id).toBe(native.Id);
+    expect(first.state.services[desired.name]).toMatchObject({ containerId: native.Id, startedAt: native.State.StartedAt, status: 'running' });
+    expect(first.state.ready).toBe(true);
+    native.State.Status = 'exited';
+    const second = await inspectExistingInfrastructure([desired], probes);
+    expect(second.review.digest).toBeNull();
+    expect(second.state.services[desired.name]).toMatchObject({ status: 'unknown', error: 'container is not running' });
+    expect(second.state.ready).toBe(false);
+    expect(JSON.stringify(first.review)).not.toContain('private-password');
+  });
+
   it('uses the same command and entrypoint semantics as docker run', () => {
     const { desired, native, image } = fixture();
     desired.command = [];

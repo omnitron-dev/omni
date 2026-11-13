@@ -34,7 +34,7 @@ import { observeUnhealthy, type UnhealthyEvidence } from './health-recovery.js';
 import { normalizeInfraConfig } from './config-normalizer.js';
 import { createDefaultRegistry } from './presets/index.js';
 import { PhantomEndpointJanitor } from './phantom-endpoint-janitor.js';
-import { planLegacyContainer, reviewExistingContainers } from './existing-containers.js';
+import { inspectExistingInfrastructure, planLegacyContainer, reviewExistingContainers } from './existing-containers.js';
 import type { ExistingInfrastructureReview } from '../shared/dto/project.js';
 import { LOCAL_INFRA_HOST } from '../shared/local-infra-host.js';
 import {
@@ -426,20 +426,12 @@ export class InfrastructureService {
       await this.phantomJanitor?.drain();
       this.phantomJanitor = null;
       this.janitorNetworks = [];
-      const observed = await reviewExistingContainers(candidate.desiredContainers, undefined, scope ?? this.preservation?.scope);
+      const { review: observed, state } = await inspectExistingInfrastructure(candidate.desiredContainers, undefined, scope ?? this.preservation?.scope);
       if (!observed.digest || observed.digest !== review) throw new Error('Native infrastructure changed after review; nothing was provisioned');
-      const states = await Promise.all(observed.containers.map(async expected => {
-        const state = await getContainerState(expected.name, { orThrow: true, fullId: true });
-        if (!state || state.containerId !== expected.id || state.status !== 'running')
-          throw new Error('Native infrastructure identity changed during preservation');
-        return state;
-      }));
       this.replaceDefinitionFrom(candidate);
       this.preservation = observed;
       this.preservationPending = false;
-      for (const key of Object.keys(this.state.services)) delete this.state.services[key];
-      for (const state of states) this.state.services[state.name] = state;
-      this.state.ready = observed.containers.length === 0 || summariseProvisioning(this.desiredContainers, this.state.services).ready;
+      Object.assign(this.state, state);
       this.startHealthMonitor();
       return structuredClone(observed);
     } finally { this.definitionChanging = false; }
@@ -561,12 +553,12 @@ export class InfrastructureService {
   static async validateHandoff(snapshot: InfrastructureHandoffState): Promise<{
     state: InfrastructureState; observations: Array<{ name: string; containerId: string | null }>;
   }> {
-    const state = structuredClone(snapshot.state);
     if (snapshot.preservation) {
-      const observed = await reviewExistingContainers(snapshot.containers, undefined, snapshot.preservation.scope);
-      if (!observed.digest || observed.digest !== snapshot.preservation.digest) throw new Error('Preserved infrastructure changed during handoff');
-      return { state, observations: observed.containers.map(container => ({ name: container.name, containerId: container.id })) };
+      const { review, state } = await inspectExistingInfrastructure(snapshot.containers, undefined, snapshot.preservation.scope);
+      if (!review.digest || review.digest !== snapshot.preservation.digest) throw new Error('Preserved infrastructure changed during handoff');
+      return { state, observations: review.containers.map(container => ({ name: container.name, containerId: container.id })) };
     }
+    const state = structuredClone(snapshot.state);
     const observations = await InfrastructureService.validateHandoffContainers(snapshot.containers,
       snapshot.needsControlPlaneDatabase && !snapshot.usingGlobalOmnitronPg ? snapshot.controlPlaneContainer : undefined,
       state, snapshot.nativeState);
@@ -1006,6 +998,7 @@ export class InfrastructureService {
     // terminated unexpectedly". Whoever asked for this reconcile is the only
     // one in a position to restart them, so it has to be told.
     this.lastActions.set(desired.name, action.type);
+    let expectedId = id;
 
     switch (action.type) {
       case 'noop':
@@ -1014,7 +1007,7 @@ export class InfrastructureService {
 
       case 'create':
         this.logger.info({ service: desired.name, image: desired.image }, 'Creating service');
-        await this.createAndStart(desired);
+        expectedId = await this.createAndStart(desired);
         break;
 
       case 'start':
@@ -1031,7 +1024,7 @@ export class InfrastructureService {
           'Recreating service'
         );
         await removeContainer(id!, { graceful: true });
-        await this.createAndStart(desired);
+        expectedId = await this.createAndStart(desired);
         break;
 
       case 'remove':
@@ -1041,11 +1034,13 @@ export class InfrastructureService {
         break;
     }
 
-    // Update state
-    const newState = await getContainerState(desired.name, { orThrow: true, fullId: true });
-    if (newState) {
-      this.recordContainerObservation(desired, newState);
+    const confirmed = await getContainerState(desired.name, { orThrow: true, fullId: true });
+    if (action.type === 'remove') {
+      if (confirmed) throw Error(`Removal of ${desired.name} could not be confirmed`);
+    } else if (!expectedId || !confirmed?.containerId?.startsWith(expectedId)) {
+      throw Error(`Container identity changed while confirming ${action.type} for ${desired.name}`);
     }
+    this.recordContainerObservation(desired, confirmed);
   }
 
   @RecoveryMutation()
@@ -1085,7 +1080,7 @@ export class InfrastructureService {
     return planContainerAction(desired, actual, this.state.services[desired.name]?.specHashMigration);
   }
 
-  private async createAndStart(desired: ResolvedContainer): Promise<void> {
+  private async createAndStart(desired: ResolvedContainer): Promise<string> {
     const id = await createContainer(desired);
     this.logger.info({ service: desired.name, containerId: id }, 'Container created');
 
@@ -1095,6 +1090,7 @@ export class InfrastructureService {
     } else {
       await this.waitHealthy(id);
     }
+    return id;
   }
 
   private async waitHealthy(name: string): Promise<void> {
@@ -1139,7 +1135,12 @@ export class InfrastructureService {
     return !preset || Boolean(preset.postProvision);
   }
 
-  private recordContainerObservation(desired: ResolvedContainer, actual: ContainerState): void {
+  private recordContainerObservation(desired: ResolvedContainer, actual: ContainerState | null): void {
+    if (!actual) {
+      delete this.state.services[desired.name];
+      return;
+    }
+    ownedContainerId(desired, actual);
     const previous = this.state.services[desired.name];
     const next = retainProvisioningObservation(actual, previous, this.requiresPostProvision(desired));
     this.state.services[desired.name] = this.withSpecHashMigration(desired, next);
@@ -1279,14 +1280,10 @@ export class InfrastructureService {
 
   private async healthSweepOwned(): Promise<void> {
     if (this.preservation) {
-      try {
-        const review = await reviewExistingContainers(this.desiredContainers, undefined, this.preservation.scope);
-        const states = await Promise.all(this.desiredContainers.map(container => getContainerState(container.name, { orThrow: true, fullId: true })));
-        if (this.ownershipFrozen || this.definitionChanging) return;
-        for (const key of Object.keys(this.state.services)) delete this.state.services[key];
-        for (const state of states) if (state) this.state.services[state.name] = state;
-        this.state.ready = review.digest !== null && review.digest === this.preservation.digest;
-      } catch {
+      const { review, state } = await inspectExistingInfrastructure(this.desiredContainers, undefined, this.preservation.scope);
+      if (this.ownershipFrozen || this.definitionChanging) return;
+      Object.assign(this.state, state);
+      if (!review.digest || review.digest !== this.preservation.digest) {
         this.state.ready = false;
         this.logger.warn('Preserved native infrastructure observation is unavailable; repair authority remains disabled');
       }
@@ -1296,101 +1293,112 @@ export class InfrastructureService {
     // service keeps one.
     const allContainers = [...this.controlPlaneContainers(), ...this.desiredContainers];
     for (const desired of allContainers) {
-      const actual = await getContainerState(desired.name, { orThrow: true, fullId: true });
       if (this.ownershipFrozen || this.definitionChanging || this.preservationPending || this.preservation) return;
       if (this.retiredStacks.has(this.containerScope(desired))) continue;
-
-      // T#58: Docker's own `--restart=always` / `--restart=on-failure`
-      // policy puts the container into the 'restarting' state for the
-      // brief window between exit and re-entry. If we recreate during
-      // that window we race Docker's restart — `removeContainer` mid-
-      // restart leaves the daemon confused, and the recreated container
-      // may end up duplicated under a renamed transient. Let Docker
-      // finish; the next 30s tick will see 'running' and skip.
-      if (actual?.status === 'restarting') {
+      try {
+        await this.observeServiceHealth(desired);
+      } catch (error) {
         this.unhealthyEvidence.delete(desired.name);
+        this.state.services[desired.name] = { name: desired.name, image: desired.image, status: 'unknown',
+          error: describeError(error, 0, Object.values(desired.environment)) };
+      }
+    }
+    this.state.ready = summariseProvisioning(this.desiredContainers, this.state.services).ready;
+    this.state.lastReconciled = new Date().toISOString();
+  }
+
+  private async observeServiceHealth(desired: ResolvedContainer): Promise<void> {
+    const actual = await getContainerState(desired.name, { orThrow: true, fullId: true });
+    if (this.ownershipFrozen || this.definitionChanging || this.preservationPending || this.preservation ||
+        this.retiredStacks.has(this.containerScope(desired))) return;
+    this.recordContainerObservation(desired, actual);
+
+    // T#58: Docker's own `--restart=always` / `--restart=on-failure`
+    // policy puts the container into the 'restarting' state for the
+    // brief window between exit and re-entry. If we recreate during
+    // that window we race Docker's restart — `removeContainer` mid-
+    // restart leaves the daemon confused, and the recreated container
+    // may end up duplicated under a renamed transient. Let Docker
+    // finish; the next 30s tick will see 'running' and skip.
+    if (actual?.status === 'restarting') {
+      this.unhealthyEvidence.delete(desired.name);
+      this.logger.debug(
+        { service: desired.name },
+        "Service is restarting via Docker's own policy — yielding to it (T#58)"
+      );
+      return;
+    }
+
+    if (!actual || actual.status !== 'running') {
+      this.unhealthyEvidence.delete(desired.name);
+
+      // Circuit-breaker: while a service is inside its backoff window, skip
+      // the restart so a permanently-failing container can't hammer the
+      // supervisor every tick and starve the daemon's event loop.
+      const backoff = this.restartBackoff.get(desired.name);
+      if (backoff && Date.now() < backoff.nextAttemptAt) {
         this.logger.debug(
-          { service: desired.name },
-          "Service is restarting via Docker's own policy — yielding to it (T#58)"
+          { service: desired.name, failures: backoff.failures, retryInMs: backoff.nextAttemptAt - Date.now() },
+          'Service not running — in restart backoff, skipping tick'
         );
-        continue;
+        return;
       }
 
-      if (!actual || actual.status !== 'running') {
-        this.unhealthyEvidence.delete(desired.name);
-
-        // Circuit-breaker: while a service is inside its backoff window, skip
-        // the restart so a permanently-failing container can't hammer the
-        // supervisor every tick and starve the daemon's event loop.
-        const backoff = this.restartBackoff.get(desired.name);
-        if (backoff && Date.now() < backoff.nextAttemptAt) {
-          this.logger.debug(
-            { service: desired.name, failures: backoff.failures, retryInMs: backoff.nextAttemptAt - Date.now() },
-            'Service not running — in restart backoff, skipping tick'
-          );
-          continue;
-        }
-
+      this.logger.warn(
+        { service: desired.name, status: actual?.status ?? 'not_found' },
+        'Service not running — auto-restarting'
+      );
+      try {
+        await this.reconcileService(desired, 'automatic');
+      } catch (err) {
+        const failures = (this.restartBackoff.get(desired.name)?.failures ?? 0) + 1;
+        const backoffMs = restartBackoffMs(failures);
+        this.restartBackoff.set(desired.name, { failures, nextAttemptAt: Date.now() + backoffMs });
+        this.logger.error(
+          { service: desired.name, error: (err as Error).message, failures, backoffMs },
+          'Auto-restart failed'
+        );
+        throw err;
+      }
+    } else if (actual.health === 'unhealthy') {
+      const previous = this.unhealthyEvidence.get(desired.name);
+      const observation = observeUnhealthy(previous, actual, Date.now());
+      if (observation.evidence) this.unhealthyEvidence.set(desired.name, observation.evidence);
+      else this.unhealthyEvidence.delete(desired.name);
+      const backoff = this.restartBackoff.get(desired.name);
+      if (backoff && Date.now() < backoff.nextAttemptAt) {
+        this.logger.debug({ service: desired.name, retryInMs: backoff.nextAttemptAt - Date.now() },
+          'Service unhealthy — recovery backoff remains active');
+      } else if (!observation.restart) {
         this.logger.warn(
-          { service: desired.name, status: actual?.status ?? 'not_found' },
-          'Service not running — auto-restarting'
+          { service: desired.name, reason: observation.reason, nativeCheck: actual.healthCheck },
+          'Service unhealthy — waiting for confirmed native failure'
         );
-        try {
-          await this.reconcileService(desired, 'automatic');
-        } catch (err) {
-          const failures = (this.restartBackoff.get(desired.name)?.failures ?? 0) + 1;
-          const backoffMs = restartBackoffMs(failures);
-          this.restartBackoff.set(desired.name, { failures, nextAttemptAt: Date.now() + backoffMs });
-          this.logger.error(
-            { service: desired.name, error: (err as Error).message, failures, backoffMs },
-            'Auto-restart failed'
-          );
-        }
-      } else if (actual.health === 'unhealthy') {
-        const previous = this.unhealthyEvidence.get(desired.name);
-        const observation = observeUnhealthy(previous, actual, Date.now());
-        if (observation.evidence) this.unhealthyEvidence.set(desired.name, observation.evidence);
-        else this.unhealthyEvidence.delete(desired.name);
-        const backoff = this.restartBackoff.get(desired.name);
-        if (backoff && Date.now() < backoff.nextAttemptAt) {
-          this.logger.debug({ service: desired.name, retryInMs: backoff.nextAttemptAt - Date.now() },
-            'Service unhealthy — recovery backoff remains active');
-        } else if (!observation.restart) {
-          this.logger.warn(
-            { service: desired.name, reason: observation.reason, nativeCheck: actual.healthCheck },
-            'Service unhealthy — waiting for confirmed native failure'
-          );
-        } else {
-          await this.withContainerReconciliation(desired, () => this.recoverUnhealthyLocked(desired, actual, previous));
-        }
       } else {
-        // A starting container is not evidence of recovery. Retain backoff
-        // until a running container is healthy (or declares no native probe).
-        this.unhealthyEvidence.delete(desired.name);
-        if ((actual.health === 'healthy' || actual.health === 'none') && this.state.services[desired.name]?.provisioning !== 'failed') this.restartBackoff.delete(desired.name);
+        await this.withContainerReconciliation(desired, () => this.recoverUnhealthyLocked(desired, actual, previous));
+        this.recordContainerObservation(desired, await getContainerState(desired.name, { orThrow: true, fullId: true }));
       }
+    } else {
+      // A starting container is not evidence of recovery. Retain backoff
+      // until a running container is healthy (or declares no native probe).
+      this.unhealthyEvidence.delete(desired.name);
+      if ((actual.health === 'healthy' || actual.health === 'none') && this.state.services[desired.name]?.provisioning !== 'failed') this.restartBackoff.delete(desired.name);
+    }
 
-      // Update state
-      const newState = await getContainerState(desired.name, { orThrow: true, fullId: true });
-      if (newState) {
-        this.recordContainerObservation(desired, newState);
-        const state = this.state.services[desired.name]!;
-        if (state.status === 'running' && state.health !== 'unhealthy' &&
-            (state.provisioning === 'pending' || state.provisioning === 'failed') &&
-            Date.now() >= (this.restartBackoff.get(desired.name)?.nextAttemptAt ?? 0)) {
-          await this.runPresetPostProvisionHooks(desired);
-          if (this.state.services[desired.name]?.provisioning === 'ready') {
-            if (this.state.services[desired.name]?.health === 'healthy' || this.state.services[desired.name]?.health === 'none') this.restartBackoff.delete(desired.name);
-          } else {
-            const failures = (this.restartBackoff.get(desired.name)?.failures ?? 0) + 1;
-            this.restartBackoff.set(desired.name, { failures, nextAttemptAt: Date.now() + restartBackoffMs(failures) });
-          }
+    const state = this.state.services[desired.name];
+    if (state) {
+      if (state.status === 'running' && state.health !== 'unhealthy' &&
+          (state.provisioning === 'pending' || state.provisioning === 'failed') &&
+          Date.now() >= (this.restartBackoff.get(desired.name)?.nextAttemptAt ?? 0)) {
+        await this.runPresetPostProvisionHooks(desired);
+        if (this.state.services[desired.name]?.provisioning === 'ready') {
+          if (this.state.services[desired.name]?.health === 'healthy' || this.state.services[desired.name]?.health === 'none') this.restartBackoff.delete(desired.name);
+        } else {
+          const failures = (this.restartBackoff.get(desired.name)?.failures ?? 0) + 1;
+          this.restartBackoff.set(desired.name, { failures, nextAttemptAt: Date.now() + restartBackoffMs(failures) });
         }
       }
     }
-
-    this.state.ready = summariseProvisioning(this.desiredContainers, this.state.services).ready;
-    this.state.lastReconciled = new Date().toISOString();
   }
 }
 

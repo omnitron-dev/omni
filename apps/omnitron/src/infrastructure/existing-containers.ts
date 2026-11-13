@@ -2,8 +2,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { isDeepStrictEqual } from 'node:util';
 import path from 'node:path';
-import { containerResources, containerSpecHash, inspectStackContainers } from './container-runtime.js';
-import { DEFAULT_PORT_BIND_HOST, type ResolvedContainer } from './types.js';
+import { containerObservation, containerResources, containerSpecHash, inspectStackContainers } from './container-runtime.js';
+import { DEFAULT_PORT_BIND_HOST, type ContainerState, type InfrastructureState, type ResolvedContainer } from './types.js';
 import { stackDefinitionFingerprint } from '../project/node-stack-stop.js';
 import type { ExistingInfrastructureReview } from '../shared/dto/project.js';
 
@@ -202,10 +202,20 @@ export async function reconcileLegacyContainer(desired: ResolvedContainer, id: s
     throw Error(`Cannot confirm the in-place memory update for ${desired.name}; inspect the retained container`);
 }
 
-/** Pure observation plus native readers. No container, file, credential or setup writes. */
+/** Public admission report. Native state and mount paths stay on the host. */
 export async function reviewExistingContainers(desired: readonly ResolvedContainer[], probes = existingContainerProbes,
   scope?: { project: string; stack: string }): Promise<ExistingInfrastructureReview> {
+  return (await inspectExistingInfrastructure(desired, probes, scope)).review;
+}
+
+/** Project the receipt and service states from a single complete Docker observation. */
+export async function inspectExistingInfrastructure(desired: readonly ResolvedContainer[], probes = existingContainerProbes,
+  scope?: { project: string; stack: string }): Promise<{ review: ExistingInfrastructureReview; state: InfrastructureState }> {
   const review: ExistingInfrastructureReview = { protocol: 1, mode: 'preserve', digest: null, checks: [], containers: [] };
+  const state: InfrastructureState = { ready: false, lastReconciled: new Date().toISOString(),
+    services: Object.fromEntries(desired.map(({ name, image }) => [name, {
+      name, image, status: 'unknown', error: 'Native infrastructure has not been verified',
+    } satisfies ContainerState])) };
   try {
     if (new Set(desired.map(c => c.name)).size !== desired.length) throw Error('Duplicate infrastructure declaration');
     const project = scope?.project ?? desired[0]?.labels['omnitron.project'], stack = scope?.stack ?? desired[0]?.labels['omnitron.stack'];
@@ -215,7 +225,7 @@ export async function reviewExistingContainers(desired: readonly ResolvedContain
     if (project && stack) review.scope = { project, stack };
     if (!isDeepStrictEqual(inventory.map(item => item.name).sort(), desired.map(item => item.name).sort())) {
       review.checks.push({ code: 'infrastructure.preservation-footprint', resource: 'Infrastructure', state: 'blocked', message: 'Native ownership footprint differs from the desired services; reconcile separately.' });
-      return review;
+      return { review, state };
     }
     const observed = desired.length ? await probes.inspect(desired.map(c => c.name)) : [];
     for (const declaration of [...desired].sort((a, b) => a.name.localeCompare(b.name))) {
@@ -225,7 +235,11 @@ export async function reviewExistingContainers(desired: readonly ResolvedContain
         existingContainerMismatch(declaration, native, await probes.image(declaration.image));
       review.checks.push({ code: mismatch ? 'infrastructure.preservation-blocked' : 'infrastructure.preserved', resource: declaration.name,
         state: mismatch?.includes('cannot be proved') ? 'unknown' : mismatch ? 'blocked' : 'pass', message: mismatch ? `Cannot preserve: ${mismatch}.` : 'Existing native identity and specification verified; no infrastructure changes permitted.' });
-      if (!mismatch) review.containers.push({ name: declaration.name, id: native!['Id'], fingerprint: nativeFingerprint(native!) });
+      if (mismatch) state.services[declaration.name]!.error = mismatch;
+      else {
+        review.containers.push({ name: declaration.name, id: native!['Id'], fingerprint: nativeFingerprint(native!) });
+        state.services[declaration.name] = containerObservation(native!, declaration.name, true);
+      }
     }
     if (review.checks.every(check => check.state === 'pass')) review.digest = stackDefinitionFingerprint([
       'omnitron/infrastructure.preserve/v1', review.scope ?? null, [...desired].sort((a, b) => a.name.localeCompare(b.name)), review.containers,
@@ -233,5 +247,6 @@ export async function reviewExistingContainers(desired: readonly ResolvedContain
   } catch {
     review.checks.push({ code: 'infrastructure.preservation-unknown', resource: 'Infrastructure', state: 'unknown', message: 'Complete native infrastructure identity and specification could not be verified.' });
   }
-  return review;
+  state.ready = review.digest !== null;
+  return { review, state };
 }

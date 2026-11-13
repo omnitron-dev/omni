@@ -57,8 +57,8 @@ describe('a container that is not running', () => {
     expect(action(created({ specHash: containerSpecHash(desired) })).type).toBe('start');
   });
 
-  it('with no spec label — started, as an older container always was', () => {
-    expect(action(created()).type).toBe('start');
+  it.each(['created', 'exited', 'running'] as const)('requires review for a %s container without a specification receipt', status => {
+    expect(action(created({ status }))).toMatchObject({ type: 'recreate', reason: expect.stringContaining('receipt is missing') });
   });
 });
 

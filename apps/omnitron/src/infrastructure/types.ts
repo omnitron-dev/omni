@@ -232,7 +232,7 @@ export interface InfrastructureConfig {
 // Container State (runtime)
 // =============================================================================
 
-export type ContainerStatus = 'not_found' | 'created' | 'running' | 'paused' | 'restarting' | 'exited' | 'dead';
+export type ContainerStatus = 'not_found' | 'created' | 'running' | 'paused' | 'restarting' | 'exited' | 'dead' | 'unknown';
 
 /** Confirmed migration of immutable Docker label metadata, bound to one native container. */
 export interface ContainerSpecHashMigration {
@@ -249,7 +249,7 @@ export interface ContainerState {
   /** Read-only reason returned by the recipient for direct container lifecycle operations. */
   lifecycleRestriction?: string;
   /** Actual mounts from Docker inspection, used to verify legacy instance ownership. */
-  mounts?: Array<{ source: string; target: string; type?: string; name?: string }>;
+  mounts?: Array<{ source: string; target: string; type?: string; name?: string; readOnly?: boolean }>;
   /** Native container labels, used to verify explicit ownership adoption. */
   labels?: Record<string, string> | undefined;
   name: string;

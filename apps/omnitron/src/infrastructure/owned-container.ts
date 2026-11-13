@@ -1,3 +1,4 @@
+import path from 'node:path';
 import type { ContainerState, ResolvedContainer } from './types.js';
 
 /** Immutable Docker target only when its native ownership labels match the declaration. */
@@ -12,12 +13,15 @@ export function ownedContainerId(desired: Pick<ResolvedContainer, 'labels' | 'na
   return actual.containerId;
 }
 
-/** Recreating an image with VOLUME otherwise silently attaches a fresh, empty anonymous volume. */
+/** Keep persistent storage attached. Read-only bind mounts can be replaced with the next release's assets. */
 export function assertReplacementVolumes(desired: ResolvedContainer, actual: ContainerState): void {
   if (!actual.mounts) throw Error(`Cannot verify existing volumes for ${desired.name}`);
   for (const mount of actual.mounts) {
-    if (mount.type === 'bind' || mount.type === 'tmpfs') continue;
-    if (mount.type !== 'volume' || !mount.name || !desired.volumes.some(v => v.target === mount.target && v.source === mount.name))
-      throw Error(`Replacement of ${desired.name} requires an explicit data transition for the retained mount at ${mount.target}`);
+    if (mount.type === 'tmpfs' || (mount.type === 'bind' && mount.readOnly === true)) continue;
+    const next = desired.volumes.find(volume => volume.target === mount.target);
+    if (mount.type === 'volume' && mount.name && next?.source === mount.name) continue;
+    if (mount.type === 'bind' && next && (path.isAbsolute(next.source) || next.source.startsWith('.')) &&
+        path.resolve(next.source) === mount.source) continue;
+    throw Error(`Replacement of ${desired.name} requires an explicit data transition for the retained mount at ${mount.target}`);
   }
 }

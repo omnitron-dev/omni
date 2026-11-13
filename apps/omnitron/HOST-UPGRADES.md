@@ -115,10 +115,23 @@ An older candidate can report runtime and migration compatibility only.
 Boot and automatic stack resume can create missing services, start matching
 stopped containers and apply verified legacy memory limits in place. They hold
 an existing stack container when the effective declaration requires replacement.
+A missing specification receipt also holds automatic startup. A full native
+preservation review can establish the existing configuration before starting
+the applications that depend on it.
 Review that stack in Console or with `omnitron stack diagnose <project> <stack>`
 and apply an intended change with `omnitron stack start <project> <stack> --infrastructure reconcile`.
 A verified unhealthy container restarts with its native Docker ID and mounts.
 Preparing the replacement image precedes graceful removal during reconciliation.
+Reconciliation keeps named volumes and writable bind mounts attached to their
+existing destinations. Changing the host directory of a writable mount requires
+an explicit data migration. A release may replace a read-only bind mount such
+as its static site. Docker inspection supplies the mount's access mode.
+
+The health monitor records a restarting container while Docker owns its
+restart, and reports a missing or unobservable service during recovery backoff.
+After a lifecycle action, readiness is checked against the container ID that
+the action addressed. A preserved stack derives its receipt and service states
+from the same native inspection at admission, during monitoring and at handoff.
 
 The master also checks its own PostgreSQL against the native image, process,
 published port and mounts. Its data volume and bridge belong to the host.
@@ -127,6 +140,11 @@ When every other setting matches, cold boot moves the running container to
 `omnitron_default`. It attaches and verifies the host bridge before removing the
 old endpoint and reads both native IDs again after an uncertain Docker reply.
 The preview reports both bridges. Other differences hold startup for review.
+If the move fails, recovery restores the original attachments. When host SQL
+is unreachable after reattachment, the same container can require a second
+PostgreSQL restart to restore port forwarding. Recovery checks the cluster
+identifier through the container and its published SQL port, and retains the
+original transition error.
 
 ## Cold recovery after a reviewed writer exits
 

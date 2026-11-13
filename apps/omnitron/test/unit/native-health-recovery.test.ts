@@ -6,6 +6,7 @@ vi.mock('../../src/infrastructure/container-runtime.js', async original => ({
 import { InfrastructureService } from '../../src/infrastructure/infrastructure.service.js';
 import { containerSpecHash } from '../../src/infrastructure/container-runtime.js';
 import { nativeHealthCheck, observeUnhealthy } from '../../src/infrastructure/health-recovery.js';
+import * as existing from '../../src/infrastructure/existing-containers.js';
 import type { ContainerState, ResolvedContainer } from '../../src/infrastructure/types.js';
 
 const logger: any = { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() };
@@ -31,6 +32,74 @@ function fixture() {
 }
 
 describe('native health evidence controls in-place recovery', () => {
+  it.each(['docker restart', 'absent during backoff', 'foreign allocation', 'inspection failure'])(
+    'revokes previously healthy readiness when the current observation is %s', async change => {
+      const { service, actual } = fixture();
+      actual.health = 'healthy';
+      await service.healthSweep();
+      expect(service.getState().ready).toBe(true);
+      if (change === 'docker restart') actual.status = 'restarting';
+      if (change === 'absent during backoff') {
+        service.restartBackoff.set(actual.name, { failures: 1, nextAttemptAt: Date.now() + 60_000 });
+        runtime.get.mockResolvedValue(null);
+      }
+      if (change === 'inspection failure') runtime.get.mockRejectedValue(new Error('Docker unavailable'));
+      if (change === 'foreign allocation') {
+        actual.containerId = 'b'.repeat(64);
+        actual.labels = { ...actual.labels, 'omnitron.project': 'different' };
+      }
+
+      await service.healthSweep();
+      expect(service.getState().ready).toBe(false);
+      const recorded = service.getState().services[actual.name];
+      if (change === 'docker restart') expect(recorded?.status).toBe('restarting');
+      if (change === 'foreign allocation') expect(recorded?.error).toMatch(/another allocation/);
+      if (change === 'inspection failure') expect(recorded?.error).toMatch(/Docker unavailable/);
+      expect(runtime.remove).not.toHaveBeenCalled();
+      expect(runtime.restart).not.toHaveBeenCalled();
+      expect(service.createAndStart).not.toHaveBeenCalled();
+    }
+  );
+
+  it('refuses a successful reconciliation when its native target disappears or is replaced before confirmation', async () => {
+    const { service, actual } = fixture();
+    actual.health = 'healthy';
+    const desired = service.getDesiredContainers()[0];
+    for (const changed of [null, { ...actual, containerId: 'b'.repeat(64) }]) {
+      runtime.get.mockResolvedValueOnce(actual).mockResolvedValueOnce(changed);
+      await expect(service.reconcileService(desired)).rejects.toThrow(/identity changed/);
+    }
+  });
+
+  it('checks the same native identities when polling a preserved stack as when admitting it', async () => {
+    const { service, actual } = fixture();
+    actual.health = 'healthy';
+    const review = { protocol: 1 as const, mode: 'preserve' as const, digest: 'd'.repeat(64), checks: [],
+      scope: { project: 'sample', stack: 'dev' }, containers: [{ name: actual.name, id: actual.containerId!, fingerprint: 'e'.repeat(64) }] };
+    const state = { ready: true, services: { [actual.name]: actual } };
+    const reviewed = vi.spyOn(existing, 'inspectExistingInfrastructure').mockResolvedValue({ review, state });
+    try {
+      await service.preserveExisting(review.digest);
+      expect(service.getState().ready).toBe(true);
+      reviewed.mockResolvedValueOnce({
+        review: { ...review, digest: 'c'.repeat(64) },
+        state: { ready: true, services: { [actual.name]: { ...actual, containerId: 'b'.repeat(64) } } },
+      });
+      await service.healthSweep();
+      expect(service.getState().ready).toBe(false);
+      expect(service.getState().services[actual.name]?.containerId).toBe('b'.repeat(64));
+      const handoff = await service.prepareHandoff();
+      expect(handoff.state.ready).toBe(true);
+      expect(handoff.state.services[actual.name]?.containerId).toBe(actual.containerId);
+      service.resumeAfterHandoff();
+      await service.healthSweep();
+      expect(service.getState().ready).toBe(true);
+      expect(runtime.get).not.toHaveBeenCalled();
+      expect(runtime.remove).not.toHaveBeenCalled();
+      expect(runtime.restart).not.toHaveBeenCalled();
+    } finally { reviewed.mockRestore(); }
+  });
+
   it('does not count repeated polls of one failed Docker probe as confirmations', async () => {
     const { service, advance } = fixture();
     await service.healthSweep();

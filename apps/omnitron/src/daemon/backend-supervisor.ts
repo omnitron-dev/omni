@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { once } from 'node:events';
 import { fork, type ChildProcess } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Service, Public } from '@omnitron-dev/titan/decorators';
@@ -200,8 +201,9 @@ export class BackendSupervisorService {
       child = fork(artifact.entry, [], { execPath: artifact.execPath, cwd: path.dirname(artifact.directory),
         detached: false, execArgv: ['--import', 'tsx/esm'],
         env: { ...process.env, ...this.config.environment, OMNITRON_CWD: this.config.cwd }, stdio: ['ignore', output.fd, output.fd, 'ipc'] });
+      await once(child, 'spawn');
+      this.observe(child);
     } finally { await output.close(); }
-    this.observe(child);
     const client = createDaemonClient(this.daemonConfig.socketPath, 4000);
     const until = Date.now() + 120_000;
     try {

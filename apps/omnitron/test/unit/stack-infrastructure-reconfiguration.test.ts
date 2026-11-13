@@ -8,6 +8,7 @@ vi.mock('../../src/infrastructure/container-runtime.js', async original => ({
 import { InfrastructureService } from '../../src/infrastructure/infrastructure.service.js';
 import { StackInfrastructureManager } from '../../src/infrastructure/stack-infra-manager.js';
 import { containerSpecHash } from '../../src/infrastructure/container-runtime.js';
+import { assertReplacementVolumes } from '../../src/infrastructure/owned-container.js';
 import * as normalizer from '../../src/infrastructure/config-normalizer.js';
 import type { ContainerState, InfrastructureConfig, ResolvedContainer } from '../../src/infrastructure/types.js';
 
@@ -101,6 +102,40 @@ describe('a repeated stack start applies current infrastructure declarations', (
     expect(service.getState().services[gateway.name]?.error).toContain('explicit data transition');
     expect(read(gateway.name)?.containerId).toBe(gateway.containerId);
     expect(runtime.remove).not.toHaveBeenCalled();
+  });
+
+  it('holds a replacement that would detach a writable host data directory', async () => {
+    const config = definition();
+    const mount = { source: '/fixture/database', target: '/data' };
+    config.services!['storage']!.docker!.volumes = { data: mount };
+    await manager.provisionStack('tenant', 'dev', scope, config);
+    const storage = containers.get('tenant-dev-storage')!;
+    storage.mounts = [{ type: 'bind', ...mount }];
+    const next = definition();
+    next.services!['storage']!.docker!.volumes = { data: { ...mount, source: '/fixture/empty' } };
+
+    const service = await manager.provisionStack('tenant', 'dev', scope, next, undefined, undefined, 'reconcile');
+    expect(service.getState().ready).toBe(false);
+    expect(service.getState().services[storage.name]?.error).toContain('explicit data transition');
+    expect(read(storage.name)?.containerId).toBe(storage.containerId);
+    expect(runtime.remove).not.toHaveBeenCalled();
+  });
+
+  it('can retain writable bind storage and exchange a confirmed read-only release mount', async () => {
+    const service = await manager.provisionStack('tenant', 'dev', scope, definition());
+    const desired = service.getDesiredContainers().find(c => c.name.endsWith('-storage'))!;
+    const actual = containers.get(desired.name)!;
+    desired.volumes = [
+      { source: '/fixture/db', target: '/data' },
+      { source: '/fixture/site-v2', target: '/site', readonly: true },
+    ];
+    actual.mounts = [
+      { type: 'bind', source: '/fixture/db', target: '/data', readOnly: false },
+      { type: 'bind', source: '/fixture/site-v1', target: '/site', readOnly: true },
+    ];
+    expect(() => assertReplacementVolumes(desired, actual)).not.toThrow();
+    delete actual.mounts[1]!.readOnly;
+    expect(() => assertReplacementVolumes(desired, actual)).toThrow('explicit data transition');
   });
 
   it('rejects invalid fresh resolution without changing the previous definition, allocation or monitoring', async () => {

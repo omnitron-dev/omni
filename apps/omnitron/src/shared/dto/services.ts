@@ -370,7 +370,7 @@ export interface IProjectRpcService {
 
   // --- Stacks (Viewer) ---
   getTopology(data: { project?: string; stack?: string }): Promise<ProjectTopology>;
-  refreshTopologyMetadata(data: { project: string; stack?: string }): Promise<import('./project.js').TopologyMetadataRefresh>;
+  refreshTopologyMetadata(data: { project: string; stack?: string; release?: string }): Promise<import('./project.js').TopologyMetadataRefresh>;
   listStacks(data: { project: string }): Promise<IStackInfo[]>;
   getStack(data: { project: string; stack: string }): Promise<IStackInfo>;
   inspectInstalledArtifacts(data: { project: string; stack: string }): Promise<import('./installed-release.js').InstalledReleaseInspection>;

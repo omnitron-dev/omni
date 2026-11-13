@@ -116,6 +116,16 @@ describe('InfrastructureService — health sweep (T#58)', () => {
 
   it('locks reconcileService per-name against concurrent ticks', async () => {
     const svc: any = mkSvc();
+    const desired = svc.desiredContainers[0];
+    const running = {
+      name: desired.name,
+      status: 'running',
+      health: 'healthy',
+      containerId: '1'.repeat(64),
+      labels: desired.labels,
+      image: desired.image,
+      specHash: runtime.containerSpecHash(desired),
+    };
     let resolveFirstGetState: ((s: any) => void) | undefined;
     let callCount = 0;
     (runtime.getContainerState as any).mockImplementation(() => {
@@ -127,18 +137,10 @@ describe('InfrastructureService — health sweep (T#58)', () => {
           resolveFirstGetState = r;
         });
       }
-      return Promise.resolve({
-        name: 'test-svc',
-        status: 'exited',
-        health: 'none',
-        containerId: '1'.repeat(64),
-        labels: { 'omnitron.managed': 'true', 'omnitron.service': 'sample' },
-        image: 'busybox:latest',
-      });
+      return Promise.resolve(running);
     });
 
     // Fire two concurrent reconciles for the same container.
-    const desired = svc.desiredContainers[0];
     const a = svc.reconcileService(desired);
     const b = svc.reconcileService(desired);
 
@@ -151,14 +153,7 @@ describe('InfrastructureService — health sweep (T#58)', () => {
     expect(callCount).toBe(1);
 
     // Release the first reconcile and let both settle.
-    resolveFirstGetState!({
-      name: 'test-svc',
-      status: 'running',
-      health: 'healthy',
-      containerId: '1'.repeat(64),
-      labels: { 'omnitron.managed': 'true', 'omnitron.service': 'sample' },
-      image: 'busybox:latest',
-    });
+    resolveFirstGetState!(running);
     await Promise.all([a, b]);
     expect(runtime.removeContainer).not.toHaveBeenCalled();
     expect(runtime.createContainer).not.toHaveBeenCalled();

@@ -98,16 +98,43 @@ export async function inspectControlPlaneDatabase(desired: ResolvedContainer = r
 
 /** A Docker restart regenerates host port forwarding. The SQL client and the container must still reach the same cluster. */
 export async function moveControlPlaneDatabase(desired: ResolvedContainer, move: NetworkMove): Promise<void> {
-  const attachments = async (allowRestart = false) => {
+  let generation = move.startedAt;
+  const readNative = async () => {
     const [state] = await existingContainerProbes.inspect([move.id]);
-    if (!state || state['Id'] !== move.id || state['Name'] !== '/' + desired.name || !state['State']?.Running ||
-        (!allowRestart && state['State'].StartedAt !== move.startedAt))
-      throw Error('Database container or process generation changed during the bridge transition');
+    if (!state || state['Id'] !== move.id || state['Name'] !== '/' + desired.name ||
+        state['State']?.Running !== true || !Number.isFinite(Date.parse(state['State'].StartedAt)))
+      throw Error('Cannot verify the database container and process during the bridge transition');
+    return state;
+  };
+  const attachments = async () => {
+    const state = await readNative();
+    if (state['State'].StartedAt !== generation) throw Error('Database generation changed during the bridge transition');
     const networks = state['NetworkSettings']?.Networks ?? {};
     if (!Object.keys(networks).length || Object.entries(networks).some(([key, value]) =>
-      (value as { NetworkID?: string }).NetworkID !== (key === move.from ? move.fromId : key === move.to ? move.toId : null)))
+      (key !== move.from && key !== move.to) ||
+      (value as { NetworkID?: string }).NetworkID !== (key === move.from ? move.fromId : move.toId)))
       throw Error('Database bridges changed during the transition');
     return networks;
+  };
+  const setAttached = async (name: string, networkId: string, present: boolean) => {
+    if (Boolean((await attachments())[name]) === present) return;
+    try { await changeNetworkAttachment(present ? 'connect' : 'disconnect', networkId, move.id); }
+    catch (error) {
+      if (Boolean((await attachments())[name]) !== present) throw error;
+      return;
+    }
+    if (Boolean((await attachments())[name]) !== present) throw Error('Docker did not confirm the database bridge change');
+  };
+  const restartPublishedPort = async () => {
+    await attachments();
+    let failure: unknown;
+    try { await restartContainer(move.id); }
+    catch (error) { failure = error; }
+    const state = await readNative();
+    if (state['State'].StartedAt === generation) throw Error('Docker did not confirm a new PostgreSQL generation', { cause: failure });
+    generation = state['State'].StartedAt;
+    if (!await waitForHealthy(move.id, 60_000)) throw Error('PostgreSQL did not recover after restarting its published port');
+    if (await nativeCluster(desired, move.id) !== move.systemId) throw Error('PostgreSQL cluster changed during restart');
   };
   const plan = await inspectControlPlaneDatabase(desired);
   if (plan.action === 'retain' && plan.id === move.id) {
@@ -116,42 +143,28 @@ export async function moveControlPlaneDatabase(desired: ResolvedContainer, move:
   }
   if (plan.action !== 'move-network' || !isDeepStrictEqual({ ...move, attachedToTarget: plan.move.attachedToTarget }, plan.move))
     throw Error('Database identity, generation or configuration changed before the bridge transition');
-  let restarted = false;
+  const original = await attachments();
   try {
-    let networks = await attachments();
-    if (!networks[move.to]) {
-      try { await changeNetworkAttachment('connect', move.toId, move.id); }
-      catch (error) { if (!(await attachments())[move.to]) throw error; }
-    }
-    networks = await attachments();
-    if (!networks[move.to]) throw Error('Docker did not confirm the target database bridge');
-    if (networks[move.from]) {
-      try { await changeNetworkAttachment('disconnect', move.fromId, move.id); }
-      catch (error) { if ((await attachments())[move.from]) throw error; }
-    }
-    networks = await attachments();
-    if (networks[move.from] || !networks[move.to]) throw Error('Docker did not confirm the exclusive target database bridge');
-    try { await restartContainer(move.id); }
-    catch (error) {
-      const [observed] = await existingContainerProbes.inspect([move.id]);
-      if (!observed || observed['Id'] !== move.id || observed['State']?.Running !== true ||
-          !observed['State'].StartedAt || observed['State'].StartedAt === move.startedAt) throw error;
-    }
-    restarted = true;
-    if (!await waitForHealthy(move.id, 60_000)) throw Error('PostgreSQL did not recover after restarting its published port');
-    networks = await attachments(true);
+    await setAttached(move.to, move.toId, true);
+    await setAttached(move.from, move.fromId, false);
+    await restartPublishedPort();
+    const networks = await attachments();
     if (networks[move.from] || !networks[move.to]) throw Error('Database bridges changed across restart');
     await assertPublishedCluster(desired, move.systemId);
-    if (await nativeCluster(desired, move.id) !== move.systemId) throw Error('PostgreSQL cluster changed during restart');
   } catch (failure) {
     try {
-      const networks = await attachments(restarted);
-      if (!networks[move.from]) await changeNetworkAttachment('connect', move.fromId, move.id);
-      await assertPublishedCluster(desired, move.systemId);
-      const restored = await attachments(restarted);
-      if (!restored[move.from]) throw Error('Docker did not restore the original bridge', { cause: failure });
-      if (restored[move.to]) await changeNetworkAttachment('disconnect', move.toId, move.id);
-      await assertPublishedCluster(desired, move.systemId);
+      if (original[move.from]) await setAttached(move.from, move.fromId, true);
+      await setAttached(move.to, move.toId, Boolean(original[move.to]));
+      if (await nativeCluster(desired, move.id) !== move.systemId) throw Error('Cannot restore the original PostgreSQL cluster', { cause: failure });
+      try { await assertPublishedCluster(desired, move.systemId); }
+      catch (error) {
+        if (!isPortUnreachable(error)) throw error;
+        await restartPublishedPort();
+        await assertPublishedCluster(desired, move.systemId);
+      }
+      const restored = await attachments();
+      if (Boolean(restored[move.from]) !== Boolean(original[move.from]) || Boolean(restored[move.to]) !== Boolean(original[move.to]))
+        throw Error('Docker did not restore the original database bridges', { cause: failure });
     } catch (rollback) {
       throw new AggregateError([failure, rollback], 'PostgreSQL bridge transition and recovery need review', { cause: rollback });
     }

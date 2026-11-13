@@ -10,6 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { IStackInfo } from '../../src/shared/dto/project.js';
 
 const said: Array<{ level: string; text: string }> = [];
 const tables: Array<Array<Record<string, unknown>>> = [];
@@ -26,10 +27,13 @@ vi.mock('@xec-sh/kit', () => ({
 }));
 
 let containers: Array<Record<string, unknown>> = [];
+const listContainers = vi.fn(async () => containers);
+const listManagedContainers = vi.fn(async (_options?: { orThrow?: boolean }) => containers);
+const isReachable = vi.fn(async () => true);
 const getContainerLogs = vi.fn(async (name: string) => `log of ${name}`);
 const inspectStackContainers = vi.fn(() => { throw new Error('Unexpected Docker stack inspection in infrastructure command test'); });
 vi.mock('../../src/infrastructure/container-runtime.js', () => ({
-  listManagedContainers: async () => containers,
+  listManagedContainers,
   inspectStackContainers,
   getContainerLogs: (name: string) => getContainerLogs(name),
   isDockerAvailable: vi.fn(async () => true),
@@ -37,17 +41,17 @@ vi.mock('../../src/infrastructure/container-runtime.js', () => ({
   removeContainer: vi.fn(),
 }));
 
-const getStack = vi.fn(async ({ project, stack }: { project: string; stack: string }) =>
+const getStack = vi.fn(async ({ project, stack }: { project: string; stack: string }): Promise<Partial<IStackInfo>> =>
   stack === 'test'
     ? {
         name: stack,
         type: 'remote',
-        nodes: [{ host: '37.27.130.185', port: 9700 }],
+        nodes: [{ host: '37.27.130.185', port: 9700, role: 'worker', label: null, daemonRole: 'slave', connected: true, lastSeen: null, syncStatus: null }],
         infrastructure: {
-          ready: true,
+          ready: false,
           services: {
             postgres: { status: 'running', containerName: `${project}-test-postgres`, port: 5432 },
-            tor: { status: 'running', containerName: `${project}-test-tor`, port: null },
+            tor: { status: 'stopped', nativeStatus: 'restarting', containerName: `${project}-test-tor`, port: null, health: 'none' },
           },
         },
       }
@@ -55,8 +59,8 @@ const getStack = vi.fn(async ({ project, stack }: { project: string; stack: stri
 );
 vi.mock('../../src/daemon/daemon-client.js', () => ({
   createDaemonClient: () => ({
-    isReachable: async () => true,
-    service: async () => ({ getStack, listContainers: async () => containers }),
+    isReachable,
+    service: async () => ({ getStack, listContainers }),
     disconnect: async () => {},
   }),
 }));
@@ -77,6 +81,9 @@ beforeEach(() => {
   written = [];
   containers = [dev('postgres'), dev('tor'), { name: 'omnitron-pg', service: 'omnitron-pg', status: 'running', image: 'postgres:17-alpine' }];
   getStack.mockClear();
+  listContainers.mockReset();
+  listManagedContainers.mockClear();
+  isReachable.mockClear();
   getContainerLogs.mockClear();
   inspectStackContainers.mockClear();
   const spy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
@@ -102,6 +109,7 @@ describe('infra status', () => {
       ['sample-dev-tor', 'sample/dev'],
       ['omnitron-pg', '-'],
     ]);
+    expect(getStack).not.toHaveBeenCalled();
   });
 
   it('--stack reaches a remote stack\'s containers on its node', async () => {
@@ -110,6 +118,7 @@ describe('infra status', () => {
     expect(getStack).toHaveBeenCalledWith({ project: 'sample', stack: 'test' });
     expect(text()).toContain('Containers of sample/test on 37.27.130.185 — asked of the node through the daemon');
     expect(tables[0]!.map((r) => r['container'])).toEqual(['sample-test-postgres', 'sample-test-tor']);
+    expect(tables[0]?.[1]).toMatchObject({ status: 'restarting', health: 'none' });
   });
 
   it('--stack on a stack of this machine lists only its containers', async () => {
@@ -118,7 +127,74 @@ describe('infra status', () => {
     await infraStatusCommand({ stack: 'shop/prod' });
 
     expect(tables[0]!.map((r) => r['name'])).toEqual(['shop-prod-redis']);
+    expect(getStack).toHaveBeenCalledWith({ project: 'shop', stack: 'prod' });
+  });
+
+  it('reads a remote stack even when local Docker is unavailable', async () => {
+    listContainers.mockImplementationOnce(async () => { throw Error('Local Docker unavailable'); });
+    await infraStatusCommand({ stack: 'sample/test' });
+    expect(tables[0]!.map(row => row['container'])).toContain('sample-test-postgres');
+    expect(listContainers).not.toHaveBeenCalled();
+    expect(listManagedContainers).not.toHaveBeenCalled();
+  });
+
+  it('never substitutes local containers whose labels collide with the selected remote stack', async () => {
+    containers.unshift(dev('unrelated', { project: 'sample', stack: 'test' }));
+    await infraStatusCommand({ stack: 'sample/test' });
+    expect(getStack).toHaveBeenCalledWith({ project: 'sample', stack: 'test' });
+    expect(tables[0]!.map(row => row['container'])).toEqual(['sample-test-postgres', 'sample-test-tor']);
+    expect(listContainers).not.toHaveBeenCalled();
+  });
+
+  it('uses the runtime project and stack of an imported local stack', async () => {
+    getStack.mockResolvedValueOnce({ type: 'local', runtimeScope: { project: 'sample-markets', stack: 'local' } });
+    containers = [dev('wrong', { project: 'sample', stack: 'markets' }),
+      dev('right', { name: 'sample-markets-local-db', project: 'sample-markets', stack: 'local' })];
+    await infraStatusCommand({ stack: 'sample/markets' });
+    expect(tables[0]!.map(row => row['name'])).toEqual(['sample-markets-local-db']);
+  });
+
+  it('distinguishes empty local inventory from an unavailable controller or Docker inventory', async () => {
+    containers = [];
+    await infraStatusCommand({ stack: 'sample/dev' });
+    expect(text()).toContain('No managed containers of sample/dev');
+    expect(process.exitCode).not.toBe(1);
+    said.length = 0;
+    listContainers.mockRejectedValueOnce(Error('Docker is offline'));
+    await infraStatusCommand({ stack: 'sample/dev' });
+    expect(text()).toMatch(/inventory unavailable.*Docker is offline/i);
+    expect(text()).not.toContain('No managed containers');
+    expect(process.exitCode).toBe(1);
+    said.length = 0;
+    getStack.mockRejectedValueOnce(Error('Unknown stack'));
+    await infraStatusCommand({ stack: 'sample/missing' });
+    expect(text()).toMatch(/inventory unavailable.*Unknown stack/i);
+    expect(listContainers).toHaveBeenCalledTimes(2);
+  });
+
+  it('preserves distinct node observations, positive empty inventory and missing inventory in a cluster', async () => {
+    const placement = (nodeKey: string, infrastructure: IStackInfo['infrastructure'] | null) => ({
+      nodeKey, host: nodeKey, port: 9700, label: null, observedAt: null, appsObserved: false, apps: [],
+      infrastructureObserved: infrastructure !== null, infrastructure, errors: [],
+    });
+    const services = { redis: { status: 'running' as const, containerName: 'shared-name', port: 6379 } };
+    getStack.mockResolvedValueOnce({ type: 'cluster', nodes: [], infrastructure: { ready: false, services: {} },
+      placements: [placement('one:9700', { ready: true, services }), placement('two:9700', { ready: true, services }),
+        placement('empty:9700', { ready: true, services: {} }), placement('missing:9700', null)] });
+    await infraStatusCommand({ stack: 'sample/cluster' });
+    expect(tables[0]?.map(row => [row['node'], row['container']])).toEqual([['one:9700', 'shared-name'], ['two:9700', 'shared-name']]);
+    expect(text()).toContain('empty:9700: no managed containers reported');
+    expect(text()).toContain('missing:9700: infrastructure inventory unavailable');
+    expect(listContainers).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('keeps the native local inventory available without a daemon in global mode', async () => {
+    isReachable.mockResolvedValueOnce(false);
+    await infraStatusCommand();
+    expect(listManagedContainers).toHaveBeenCalledExactlyOnceWith({ orThrow: true });
     expect(getStack).not.toHaveBeenCalled();
+    expect(tables[0]!.length).toBe(3);
   });
 
   it('--stack refuses what is not <project>/<stack>', async () => {
@@ -126,6 +202,8 @@ describe('infra status', () => {
 
     expect(text()).toMatch(/--stack takes <project>\/<stack>/);
     expect(process.exitCode).toBe(1);
+    expect(listContainers).not.toHaveBeenCalled();
+    expect(getStack).not.toHaveBeenCalled();
   });
 });
 

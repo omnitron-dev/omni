@@ -25,7 +25,7 @@ import { compileCustomRoutes } from './http-routes.js';
 import type { AppHealthAnswer, IAppDefinition, IProcessEntry } from '../config/types.js';
 import type { IProcessTraffic } from '@omnitron-dev/titan-pm';
 import { pathToFileURL } from 'node:url';
-import { RUNTIME_CONTEXT, verifyInstalledRuntime, assertInstalledRuntimeModule } from '../runtime/context.js';
+import { RUNTIME_CONTEXT, verifyInstalledRuntime, importRuntimeModule } from '../runtime/context.js';
 import { queryTopologyService } from './topology-query.js';
 
 /**
@@ -354,7 +354,8 @@ class BootstrapProcess {
 
     // Prefer bundled module path (esbuild pre-built) over tsx runtime
     const hasTsx = !bundledModulePath && (process.execArgv ?? []).some((a) => a.includes('tsx'));
-    const runtimeContext = await verifyInstalledRuntime(pathToFileURL(bootstrapPath));
+    const bootstrapUrl = pathToFileURL(bootstrapPath);
+    const installedContext = await verifyInstalledRuntime(bootstrapUrl);
     reportStage('config:loading', bootstrapPath);
     this.definition = await loadBootstrapConfig(bootstrapPath, { devMode: hasTsx || !!bundledModulePath });
     reportStage('config:loaded', this.definition.name);
@@ -383,12 +384,11 @@ class BootstrapProcess {
       await hooks.beforeCreate();
     }
 
-    // Import the module — prefer pre-bundled .mjs from BuildService,
-    // fall back to resolving from bootstrap directory (tsx or dist/)
     const modulePath = bundledModulePath ?? path.resolve(path.dirname(bootstrapPath), this.entry.module);
-    await assertInstalledRuntimeModule(runtimeContext, pathToFileURL(bootstrapPath), pathToFileURL(modulePath));
     reportStage('module:importing', modulePath);
-    const moduleFile = await import(pathToFileURL(modulePath).href);
+    const { moduleFile, runtimeContext } = await importRuntimeModule(
+      installedContext, bootstrapUrl, pathToFileURL(modulePath), bundledModulePath ? this.entry.name : undefined
+    );
     reportStage('module:imported');
 
     // ────────────────────────────────────────────────────────────────────

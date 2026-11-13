@@ -9,7 +9,7 @@ import { DockerHealthIndicator } from '../../src/monitoring/docker-health.indica
 import { InfrastructureService } from '../../src/infrastructure/infrastructure.service.js';
 import { PresetRegistry } from '../../src/infrastructure/presets/registry.js';
 import { containerSpecHash } from '../../src/infrastructure/container-runtime.js';
-import { retainProvisioningObservation, summariseProvisioning } from '../../src/infrastructure/provisioning-outcome.js';
+import { retainProvisioningObservation, stackServiceObservation, summariseProvisioning } from '../../src/infrastructure/provisioning-outcome.js';
 import type { ContainerState } from '../../src/infrastructure/types.js';
 
 const logger: any = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
@@ -95,6 +95,12 @@ describe('declared service setup belongs to infrastructure readiness', () => {
     expect(service.getState().services[actual.name].error).toContain('[redacted]');
     expect(JSON.stringify(logger.error.mock.calls)).not.toContain('private-test-value');
   });
+});
+
+it.each(['restarting', 'paused', 'created', 'dead', 'unknown', 'not_found'] as const)('retains native %s without marking infrastructure ready', status => {
+  const service: ContainerState = { name: 'queue', image: 'queue:1', status };
+  expect(stackServiceObservation(service)).toMatchObject({ nativeStatus: status, status: 'stopped' });
+  expect(summariseProvisioning([service], { queue: service }).ready).toBe(false);
 });
 
 it('never attaches a previous setup receipt to a replacement or restarted native container', () => {

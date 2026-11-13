@@ -26,7 +26,10 @@ vi.mock('../../src/daemon/private-control-client.js', async importOriginal => ({
 vi.mock('../../src/daemon/backend-candidate.js', () => ({
   checkBackendCandidate: mocks.candidate, assertBackendMigrationsCompatible: vi.fn(), verifyBackendEntry: vi.fn(), checkBackendAdoption: mocks.adoption,
 }));
-vi.mock('../../src/daemon/runtime-installation.js', () => ({ RuntimeInstallation: { open: mocks.installation } }));
+vi.mock('../../src/daemon/runtime-installation.js', async original => ({
+  ...await original<typeof import('../../src/daemon/runtime-installation.js')>(),
+  RuntimeInstallation: { open: mocks.installation },
+}));
 vi.mock('../../src/daemon/backend-child.js', () => ({ supervisesBackendChildren: () => false, observeBackendChild: vi.fn() }));
 vi.mock('../../src/daemon/execution-client.js', () => ({ ExecutionClient: class {
   connect = mocks.observe;
@@ -55,7 +58,7 @@ afterEach(async () => {
   // Only harmless children allocated by this fixture. Retain the original kill
   // function so the injected refusal cannot obstruct fixture teardown.
   for (const { child, kill } of mocks.children.splice(0)) {
-    if (child.exitCode !== null || child.signalCode !== null) continue;
+    if (!child.pid || child.exitCode !== null || child.signalCode !== null) continue;
     const exited = once(child, 'exit');
     kill('SIGKILL');
     await exited;
@@ -156,6 +159,16 @@ it('awaits the final receiving fence before creating any candidate child', async
   const beforeSpawn = vi.fn(async () => { throw refused; });
   await expect(spawnReplacement(target.candidate, target.checkpoint, target.record, spawned, beforeSpawn)).rejects.toBe(refused);
   expect(beforeSpawn).toHaveBeenCalledOnce(); expect(spawned).not.toHaveBeenCalled(); expect(mocks.children).toHaveLength(0);
+});
+
+it('reports a refused OS spawn without admitting a nonexistent backend or starting recovery twice', async () => {
+  const target = await fixture(), spawned = vi.fn();
+  const missingNode = path.join(target.root, 'unavailable-node');
+  await expect(spawnReplacement({ ...target.candidate, execPath: missingNode }, target.checkpoint, target.record, spawned))
+    .rejects.toMatchObject({ code: 'ENOENT' });
+  expect(spawned).not.toHaveBeenCalled();
+  expect(mocks.children).toHaveLength(1);
+  expect(mocks.children[0]!.child.pid).toBeUndefined();
 });
 
 it('checks the frozen checkpoint again and aborts before retirement when adoption changes during drain', async () => {

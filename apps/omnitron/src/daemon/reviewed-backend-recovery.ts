@@ -12,7 +12,8 @@ import { ProjectRegistry } from '../project/registry.js';
 import { projectExecutionIdentity, isExecutionIdentityEvidence, compareExecutionIdentityEvidence, describeExecutionIdentityDrift, type ExecutionIdentityEvidence } from '../shared/execution-identity.js';
 import { describeError } from '../shared/describe-error.js';
 import type { InfrastructureHandoffState } from '../infrastructure/infrastructure.service.js';
-import { RuntimeInstallation, type RuntimeActivation, type RuntimeSelection } from './runtime-installation.js';
+import { RuntimeInstallation, type ColdRecoveryDecision, type RuntimeActivation, type RuntimeSelection } from './runtime-installation.js';
+import { assertCleanManagedShutdown, withOwnerBootFence } from './owner-reconciliation.js';
 import { BackendRecoveryJournal, type BackendRecoveryRecord } from './backend-recovery-journal.js';
 import { RecoveryBusyError } from './recovery-state.js';
 import { readBackendBootRecord, checkpointInstanceHome, type BackendBootRecord } from './backend-handoff-types.js';
@@ -131,6 +132,10 @@ async function originalActivation(file: string, home: string) {
 
 /** Inspect durable evidence only. Even a current certificate is never permission to start a writer. */
 export async function inspectHeldBackendRecovery(installation: RuntimeInstallation) {
+  return (await readHeldBackendRecovery(installation)).report;
+}
+
+async function readHeldBackendRecovery(installation: RuntimeInstallation) {
   const { readSupervisorTransition, supervisorTransitionIntentDigest } = await import('./supervisor-transition.js');
   const activation = installation.activation();
   const hold = activation?.reviewedRecovery;
@@ -166,21 +171,29 @@ export async function inspectHeldBackendRecovery(installation: RuntimeInstallati
     const authority = new ExecutionJournal(path.join(directory, 'controller.json'));
     const owner = await authority.read();
     const registryFile = path.join(installation.home, 'data/daemon-state.db');
-    const registryDigest = ProjectRegistry.readRecoveryDigest(registryFile);
+    const catalogue = () => ProjectRegistry.withRecoveryCatalogue(registryFile, { lifecycle: true }, v => v);
+    const { registryDigest, lifecycleDigest } = catalogue();
     const writerMatches = writer ? matchesAdmittedWriter(writer, fence, admitted.record, writer.previousPid, original.record.previousEntry) : false;
     const environmentMatches = writerMatches && same(writer?.environment, admitted.record.environment);
     const writerPid = writerMatches && writer ? writer.previousPid : null;
     const durableGrantMatches = same(owner?.owner, fence.owner) && same(owner?.grant, ticket.to);
     const registryMatches = registryDigest === fence.registryDigest;
     const observedAt = new Date().toISOString();
+    const writerPidState = writerPid === null ? null : readProcessLifetime(writerPid).state;
+    const recoveryReceiptSha256 = receipt ? digest(receipt) : null;
+    const currentStateReview = writerMatches && environmentMatches && durableGrantMatches && registryMatches &&
+      receipt && writerPidState === 'dead'
+      ? digest({ instance: installation.home, intent: hold.planSha256, original: original.sha256, admitted: admitted.sha256,
+        selection: fence.selection, authority: owner, recoveryReceiptSha256, registryDigest, lifecycleDigest })
+      : null;
     const result = {
       observedAt, planId: plan.id, originalCheckpointSha256: original.sha256, admittedCheckpointSha256: admitted.sha256,
       admittedEpoch: ticket.to.epoch, durableEpoch: owner?.grant.epoch ?? null,
       durableGrantMatches, registryDigest, registryMatches,
       certificate: receipt?.status ?? 'missing', certificateAt: receipt?.at ?? null,
       previousCertifiedAt: receipt?.status === 'invalid' ? receipt.previousCertifiedAt ?? null : null,
-      recoveryReceiptSha256: receipt ? digest(receipt) : null,
-      writerMatches, writerPid, writerPidState: writerPid === null ? null : readProcessLifetime(writerPid).state, environmentMatches,
+      recoveryReceiptSha256, currentStateReview, lifecycleDigest,
+      writerMatches, writerPid, writerPidState, environmentMatches,
       projectState: receipt?.status === 'ready' && writerMatches && environmentMatches && durableGrantMatches && registryMatches
         ? 'certified' as const : 'unconfirmed' as const,
       invalidation: receipt?.status === 'invalid' ? { reason: receipt.reason, reasons: receipt.reasons ?? [receipt.reason],
@@ -188,12 +201,44 @@ export async function inspectHeldBackendRecovery(installation: RuntimeInstallati
     };
     // Reads span three independent stores. Discard the observation if any input moved while collecting it.
     if (!same(installation.activation(), activation) || !same(installation.selection(), fence.selection) ||
-        !same(journal.read(), receipt) || !same(await authority.read(), owner) || ProjectRegistry.readRecoveryDigest(registryFile) !== registryDigest ||
+        !same(journal.read(), receipt) || !same(await authority.read(), owner) || !same(catalogue(), { registryDigest, lifecycleDigest }) ||
         (await checkpoint(activation.checkpoint)).sha256 !== original.sha256 || (await checkpoint(hold.checkpoint)).sha256 !== admitted.sha256 ||
         !same(await readSupervisorTransition(hold.planFile), plan))
       throw Error('Recovery evidence changed during inspection');
-    return result;
+    return { report: result, activation, fence, original, admitted, receipt, plan, owner, registryFile };
   } finally { await journal.close(); }
+}
+
+/** A deliberate cold start from persisted intent. Never grants a second live writer or invents a final snapshot. */
+export async function acceptColdBackendRecovery(installation: RuntimeInstallation, review: string): Promise<ColdRecoveryDecision> {
+  if (!HASH.test(review)) throw Error('A complete current-state review SHA-256 is required');
+  return installation.exclusive(async () => {
+    const completed = installation.coldRecoveryDecision(review);
+    if (completed) return completed;
+    const config = await readManagedRuntime(installation.home);
+    if (!config) throw Error('Cold recovery requires the existing managed instance');
+    return withOwnerBootFence(config, async () => {
+      const facts = await readHeldBackendRecovery(installation);
+      const { report, fence, plan, activation, receipt, original, admitted, owner, registryFile } = facts;
+      if (report.currentStateReview !== review || !report.writerPid || !receipt || !same(config, plan.after))
+        throw Error('Current-state review differs from the recorded activation, receipt, managed instance or catalogue');
+      await assertCleanManagedShutdown(config, { pid: fence.owner.pid, lifetime: fence.ownerLifetime },
+        [plan.guardianPid, original.record.previousPid, report.writerPid]);
+      const observed = await readHeldBackendRecovery(installation);
+      if (observed.report.currentStateReview !== review || !same(await readManagedRuntime(installation.home), config))
+        throw Error('Current-state evidence changed before cold recovery');
+      const decision: ColdRecoveryDecision = { review, planId: plan.id, acceptedAt: new Date().toISOString(),
+        epoch: report.admittedEpoch, previousCertifiedAt: receipt.status === 'ready' ? receipt.at : receipt.previousCertifiedAt ?? null,
+        receiptAt: receipt.at, historicalState: 'unverified', source: 'current-local-registration-and-lifecycle' };
+      ProjectRegistry.withRecoveryCatalogue(registryFile, { lifecycle: true, lockWriters: true }, catalogue => {
+        if (catalogue.registryDigest !== report.registryDigest || catalogue.lifecycleDigest !== report.lifecycleDigest)
+          throw Error('Current-state catalogue changed before cold recovery');
+        installation.settleColdRecovery(activation, fence.selection, decision, { plan, original: original.record, admitted: admitted.record,
+          receipt, authority: owner, report });
+      });
+      return decision;
+    });
+  });
 }
 
 async function lineage(file: string, home: string) {

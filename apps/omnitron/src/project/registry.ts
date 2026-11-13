@@ -103,6 +103,12 @@ function findProjectConfig(dir: string): string | null {
 export class ProjectRegistry {
   /** Existing durable catalogue only: no initialization, imports, migrations or cache mutation. */
   static readRecoveryDigest(file: string): string {
+    return this.withRecoveryCatalogue(file, {}, value => value.registryDigest);
+  }
+
+  /** Synchronous callback keeps the catalogue stable while recording a cold recovery decision. */
+  static withRecoveryCatalogue<Result>(file: string, options: { lifecycle?: boolean; lockWriters?: boolean },
+    observe: (value: { registryDigest: string; lifecycleDigest?: string }) => Result): Result {
     for (const suffix of ['', '-wal', '-shm', '-journal']) {
       try {
         const stat = fs.lstatSync(file + suffix);
@@ -110,17 +116,23 @@ export class ProjectRegistry {
           throw Error('Project registry must be a private regular file');
       } catch (error) { if (suffix === '' || (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
     }
-    const db = openSqliteDatabase(file, { readonly: true, fileMustExist: true });
-    try { return db.transaction(() => {
-      const reader: RecoveryReader = {
-        selectProjectsSync: () => db.prepare('SELECT name, path, config_hash, added_at, last_seen FROM projects ORDER BY added_at ASC').all() as ReturnType<DaemonStateStore['selectProjectsSync']>,
-        kvGetSync: <T>(key: string): T | null => {
-          const row = db.prepare('SELECT value FROM state_kv WHERE key = ?').get(key) as { value: string } | undefined;
-          return row ? JSON.parse(row.value) as T : null;
-        },
-      };
-      return createHash('sha256').update(normalizedRecoveryRegistrations(recoveryRegistrations(reader))).digest('hex');
-    }).deferred(); } finally { db.close(); }
+    const db = openSqliteDatabase(file, { readonly: !options.lockWriters, fileMustExist: true });
+    try {
+      const observation = db.transaction(() => {
+        const reader: RecoveryReader = {
+          selectProjectsSync: () => db.prepare('SELECT name, path, config_hash, added_at, last_seen FROM projects ORDER BY added_at ASC').all() as ReturnType<DaemonStateStore['selectProjectsSync']>,
+          kvGetSync: <T>(key: string): T | null => {
+            const row = db.prepare('SELECT value FROM state_kv WHERE key = ?').get(key) as { value: string } | undefined;
+            return row ? JSON.parse(row.value) as T : null;
+          },
+        };
+        const registryDigest = createHash('sha256').update(normalizedRecoveryRegistrations(recoveryRegistrations(reader))).digest('hex');
+        if (!options.lifecycle) return observe({ registryDigest });
+        const intent = db.prepare("SELECT key, value FROM state_kv WHERE key GLOB 'lifecycle:*' ORDER BY key").all();
+        return observe({ registryDigest, lifecycleDigest: createHash('sha256').update(JSON.stringify(intent)).digest('hex') });
+      });
+      return options.lockWriters ? observation.immediate() : observation.deferred();
+    } finally { db.close(); }
   }
   /**
    * In-memory cache mirroring the persisted state. Reads (list/get)

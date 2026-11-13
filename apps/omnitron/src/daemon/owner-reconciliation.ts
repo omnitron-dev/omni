@@ -94,7 +94,7 @@ export function assertPreviousOwnersGone(pids: readonly number[], observed: Pick
 }
 
 /** Pure safety decision; unknown observations always refuse reconciliation. */
-export function assertOwnerReconciliationEvidence(plan: OwnerReconciliationPlan, observed: NativeEvidence, startingOwner?: number): void {
+export function assertOwnerReconciliationEvidence(plan: Pick<OwnerReconciliationPlan, 'bootId' | 'native' | 'processes'>, observed: NativeEvidence, startingOwner?: number): void {
   if (observed.bootId !== plan.bootId) throw new Error('Host boot changed since the owner recovery plan');
   if (plan.native && (observed.native?.bootSession !== plan.native.bootSession || observed.native.domain !== plan.native.domain))
     throw new Error('Native boot session or service domain changed since recovery was planned');
@@ -112,6 +112,15 @@ export function assertOwnerReconciliationEvidence(plan: OwnerReconciliationPlan,
       compareProcessLifetimes(expected.lifetime, actual.lifetime) !== 'different')))
       throw new Error(`Recorded process ${expected.pid} has not been proven gone`);
   }
+}
+
+/** An already-reviewed controller can be retired cold only after the same owner finished shutting down. */
+export async function assertCleanManagedShutdown(config: ManagedRuntime, owner: ProcessIdentity, retiredPids: number[]): Promise<void> {
+  const receipt = await readPrivateRecord<{ clean: boolean; pid: number; bootId: string }>(receiptFile(config));
+  if (!receipt || receipt.clean !== true || receipt.pid !== owner.pid || !isStableHostBootIdentity(receipt.bootId))
+    throw new Error('Cold recovery requires the recorded owner to complete its normal shutdown on this boot');
+  const processes = [owner, ...[...new Set(retiredPids)].filter(pid => pid !== owner.pid).map(pid => ({ pid, lifetime: null }))];
+  assertOwnerReconciliationEvidence({ bootId: receipt.bootId, processes }, await nativeEvidence(config, processes));
 }
 
 async function records(config: ManagedRuntime): Promise<{ receipt: CrashReceipt; journal: NonNullable<Awaited<ReturnType<ExecutionJournal['read']>>> }> {

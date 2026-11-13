@@ -91,7 +91,7 @@ image is bound to its exact native identity in the reviewed plan. A change of
 volume or restart generation requires a fresh review. Correct real resource
 drift and qualify the rollback before stopping the stack.
 
-## Blocker for a writer that exited after a reviewed handoff
+## Cold recovery after a reviewed writer exits
 
 An `unconfirmed` hold with an admitted checkpoint can outlive the backend that
 accepted the grant. This blocks project operations that require that backend.
@@ -111,17 +111,32 @@ configuration and running app identities cannot establish the final controller
 state after that point. A successful inspection reports its findings and keeps
 the hold in place.
 
-Completing this recovery requires a platform operation that binds the held
-intent, accepted grant, current owner and selected runtime under the installation
-lease. It must either certify the final controller state or explicitly establish
-a newly reviewed baseline for all affected projects and infrastructure. The new
-baseline must account for pending operations and application and storage
-ownership. Preserve the prior receipts and the unknown historical interval.
-Qualification requires the public CLI to recover on a disposable installation,
-refuse incompatible or changing evidence before dispatch, and settle an
-interrupted attempt without duplicating a writer. Verify retained application
-identities and delivery of logs through the restored backend. Until this
-operation is qualified, a replay of the failed plan has no proven rollback.
+To recover from the current local registrations, enabled stacks and durable
+lifecycle choices, preview the decision while applications are still running.
+
+```sh
+omnitron --json backend recover --current-state --check
+```
+
+The preview returns `currentStateReview` only when the admitted writer has
+exited and the persisted grant, catalogue, checkpoints and writer agree.
+Review the current declarations, data volumes, release pins and any pending
+application operations before scheduling a cold restart. During that window,
+stop the managed services normally. Use the preview's exact digest once the
+owner records a clean shutdown.
+
+```sh
+omnitron --json backend recover --current-state --review <currentStateReview>
+```
+
+Omnitron verifies the native services, processes, boot and sockets, then
+archives the original and admitted checkpoints, writer receipt, grant and
+selection in one SQLite transaction with retirement of the held activation.
+The interval since the last certified state is recorded as unverified. Retrying
+the same digest returns the recorded decision. The existing rollback runtime
+remains selected. Install or select the desired runtime and start the services
+using the normal cold-start procedure. Verify stack readiness, queue delivery
+and the Console after startup.
 
 ## Application releases and coupled hosts
 

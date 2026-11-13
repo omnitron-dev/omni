@@ -99,6 +99,7 @@ export async function backendInstallationCommand(options: { recovery?: boolean }
         emitInfo(`Durable controller epoch ${recovery.durableEpoch ?? 'unknown'} (admitted ${recovery.admittedEpoch}), grant ${recovery.durableGrantMatches ? 'matches' : 'differs'}, registry ${recovery.registryMatches ? 'matches' : 'differs'}`);
         emitInfo(`Certificate ${recovery.certificate}, writer PID ${recovery.writerPid ?? 'unknown'} (${recovery.writerPidState ?? 'unknown'}), project state ${recovery.projectState}`);
         if (recovery.invalidation) emitInfo(`Invalidated at ${recovery.certificateAt} by ${recovery.invalidation.reasons.join(', ')} (${recovery.invalidation.history}). No later project snapshot is certified.`);
+        if (recovery.currentStateReview) emitInfo(`Cold recovery review: ${recovery.currentStateReview}. Inspect with omnitron backend recover --current-state --check.`);
       }
     }
   } catch (error) { emitError(error); process.exitCode = 1; }
@@ -204,8 +205,27 @@ export async function backendUpgradeCommand(directory: string, options: { check?
   } catch (error) { emitError(error); process.exitCode = 1; }
 }
 
-export async function backendRecoverCommand(file?: string): Promise<void> {
+export async function backendRecoverCommand(file?: string, options: { currentState?: boolean; check?: boolean; review?: string } = {}): Promise<void> {
   try {
+    if (options.currentState) {
+      if (file || Boolean(options.check) === Boolean(options.review))
+        throw Error('Choose --current-state --check or --current-state --review <sha256> without a checkpoint argument');
+      const installation = options.check ? await RuntimeInstallation.openReadOnly() : await RuntimeInstallation.open(undefined, { existing: true });
+      if (!installation) throw Error('No runtime installation exists');
+      try {
+        const { inspectHeldBackendRecovery, acceptColdBackendRecovery } = await import('../daemon/reviewed-backend-recovery.js');
+        if (options.check) {
+          const state = await inspectHeldBackendRecovery(installation);
+          if (!state.currentStateReview) throw Error('A current-state review requires the admitted grant, matching catalogue and a provably dead backend');
+          if (!emitJson(state)) emitInfo(`Current-state review ${state.currentStateReview}; controller epoch ${state.admittedEpoch}. Applying requires a clean, stopped owner and guardian. The historical interval remains unverified.`);
+        } else {
+          const decision = await acceptColdBackendRecovery(installation, options.review!);
+          if (!emitJson(decision)) emitInfo(`Cold recovery recorded for epoch ${decision.epoch}. The previous startup runtime remains selected.`);
+        }
+      } finally { await installation.close(); }
+      return;
+    }
+    if (options.check || options.review) throw Error('--check and --review require --current-state');
     const config = { ...DEFAULT_DAEMON_CONFIG, ...savedDaemonOverrides(readSavedDaemonConfig()) };
     const result = file ? await recoverBackend(path.resolve(file)) : await recoverBackendAfterCrash(executionDirectory(config));
     if (!emitJson(result)) emitInfo(`Backend recovered as PID ${result.pid}; execution owner ${result.ownerPid}`);

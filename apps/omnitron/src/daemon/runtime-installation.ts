@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import { constants } from 'node:fs';
 import path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import { DomainError } from '@omnitron-dev/titan/errors';
@@ -34,6 +35,16 @@ export interface ReviewedRecoveryHold {
 export interface RuntimeActivation {
   candidate: string; previous: string; checkpoint: string; startedAt: string;
   reviewedRecovery?: ReviewedRecoveryHold;
+}
+export interface ColdRecoveryDecision {
+  review: string;
+  planId: string;
+  acceptedAt: string;
+  epoch: number;
+  previousCertifiedAt: string | null;
+  receiptAt: string;
+  historicalState: 'unverified';
+  source: 'current-local-registration-and-lifecycle';
 }
 const HASH = /^[a-f0-9]{64}$/;
 
@@ -186,6 +197,28 @@ export class RuntimeInstallation {
     if (!this.lease) throw new Error('Aborting activation requires the installation lease');
     if (this.activation()?.reviewedRecovery) throw Error('Reviewed recovery cannot be discarded by ordinary activation rollback');
     this.store.kvDeleteSync('runtime.activation');
+  }
+
+  coldRecoveryDecision(review: string): ColdRecoveryDecision | null {
+    if (!HASH.test(review)) throw Error('A complete current-state review SHA-256 is required');
+    return this.read<{ decision: ColdRecoveryDecision }>('runtime.recovery-history.' + review)?.decision ?? null;
+  }
+
+  /** Only called with a clean, natively stopped owner and the installation lease. */
+  settleColdRecovery(activation: RuntimeActivation, selection: RuntimeSelection, decision: ColdRecoveryDecision, evidence: object): void {
+    const held = activation.reviewedRecovery;
+    if (!this.lease || !HASH.test(decision.review) || !held?.checkpoint || held.phase !== 'unconfirmed' ||
+        decision.planId !== held.planId || selection.current !== activation.previous)
+      throw Error('Cold recovery requires the exact unconfirmed activation and its previous selection');
+    const db = this.store.initSync();
+    db.transaction(() => {
+      if (!isDeepStrictEqual(this.activation(), activation) || !isDeepStrictEqual(this.selection(), selection))
+        throw Error('Runtime selection or held activation changed before cold recovery');
+      // The write-once history and removal of the hold commit together. Keep the rollback runtime selected.
+      db.prepare('INSERT INTO state_kv (key, value, updated_at) VALUES (?, ?, ?)')
+        .run('runtime.recovery-history.' + decision.review, JSON.stringify({ decision, activation, selection, evidence }), decision.acceptedAt);
+      this.store.kvDeleteSync('runtime.activation');
+    }).immediate();
   }
 
   async artifact(id: string): Promise<BackendArtifact> {

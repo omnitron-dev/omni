@@ -21,11 +21,14 @@ import { RuntimeInstallation } from '../../src/daemon/runtime-installation.js';
 import { ExecutionJournal, writePrivateRecord } from '../../src/daemon/execution-journal.js';
 import { ProjectRegistry } from '../../src/project/registry.js';
 import { supervisorTransitionIntentDigest, type SupervisorTransition } from '../../src/daemon/supervisor-transition.js';
-import { prepareReviewedBackendRecovery, checkReviewedBackendRecovery, inspectHeldBackendRecovery, recoverReviewedBackend } from '../../src/daemon/reviewed-backend-recovery.js';
+import { prepareReviewedBackendRecovery, checkReviewedBackendRecovery, inspectHeldBackendRecovery, acceptColdBackendRecovery, recoverReviewedBackend } from '../../src/daemon/reviewed-backend-recovery.js';
 
 const fake = vi.hoisted(() => ({ config: undefined as ManagedRuntime | undefined, artifact: undefined as BackendArtifact | undefined,
   snapshot: vi.fn(), prepare: vi.fn(), cancel: vi.fn(), launch: vi.fn(), daemon: vi.fn(), proof: vi.fn(), candidate: vi.fn(),
-  children: [] as ChildProcess[], native: vi.fn(), certificate: vi.fn(), verifyEntry: vi.fn() }));
+  children: [] as ChildProcess[], native: vi.fn(), certificate: vi.fn(), verifyEntry: vi.fn(), shutdown: vi.fn() }));
+vi.mock('../../src/daemon/owner-reconciliation.js', async original => ({
+  ...await original<typeof import('../../src/daemon/owner-reconciliation.js')>(), assertCleanManagedShutdown: fake.shutdown,
+}));
 vi.mock('../../src/daemon/managed-runtime.js', async original => ({
   ...await original<typeof import('../../src/daemon/managed-runtime.js')>(), readManagedRuntime: async () => fake.config,
   managedJobPid: async () => process.pid, verifyManagedIsolation: vi.fn(),
@@ -356,6 +359,15 @@ it('preserves a committed grant after its writer exits with an invalidated SQLit
     registryMatches: true, writerMatches: true, environmentMatches: true, writerPid: fake.children[0]!.pid,
     certificate: 'invalid', projectState: 'unconfirmed', invalidation: { reason: 'loadProjectConfig' } });
   expect(facts).not.toHaveProperty('environment');
+  const review = facts.currentStateReview!;
+  expect(review).toMatch(/^[a-f0-9]{64}$/);
+  fake.shutdown.mockRejectedValueOnce(Error('Owner is still running'));
+  await expect(acceptColdBackendRecovery(f.instance, review)).rejects.toThrow('Owner is still running');
+  expect(f.instance.coldRecoveryDecision(review)).toBeNull();
+  expect(f.instance.activation()?.reviewedRecovery).toEqual(hold);
+  f.database.kvSetSync('lifecycle:test', { phase: 'changed' });
+  await expect(acceptColdBackendRecovery(f.instance, review)).rejects.toThrow('Current-state review differs');
+  f.database.kvDeleteSync('lifecycle:test');
   // Old writers only recorded the first invalidation. Their earlier snapshot cannot establish the final state.
   const oldJournal = new DaemonStateStore(createNullLogger(), path.join(f.directory, 'recovery.db'));
   stores.push(oldJournal);
@@ -372,6 +384,37 @@ it('preserves a committed grant after its writer exits with an invalidated SQLit
   await expect(f.invoke()).rejects.toThrow('earlier attempt');
   expect(fake.prepare).toHaveBeenCalledOnce(); expect(fake.children).toHaveLength(1);
   expect(await fs.readFile(f.checkpoint)).toEqual(original);
+});
+
+it('archives the admitted evidence exactly once before allowing a cold start from current intent', async () => {
+  const f = await fixture();
+  fake.candidate.mockImplementationOnce(async () => fake.artifact).mockImplementationOnce(async () => {
+    f.changeInventory(); return fake.artifact;
+  });
+  await expect(f.invoke()).rejects.toThrow('inventory changed');
+  const held = f.instance.activation()!;
+  const checkpointBytes = await fs.readFile(held.reviewedRecovery!.checkpoint!);
+  const journal = new BackendRecoveryJournal(f.directory);
+  journal.invalidate('loadProjectConfig');
+  const receipt = journal.read();
+  try {
+    const report = await inspectHeldBackendRecovery(f.instance);
+    const review = report.currentStateReview!;
+    expect(review).toBeTruthy();
+    const decision = await acceptColdBackendRecovery(f.instance, review);
+    expect(decision).toMatchObject({ review, epoch: report.admittedEpoch, historicalState: 'unverified' });
+    expect(f.instance.activation()).toBeNull();
+    expect(f.instance.selection()).toEqual(f.fence.selection);
+    expect(await acceptColdBackendRecovery(f.instance, review)).toEqual(decision);
+    expect(fake.shutdown).toHaveBeenCalledOnce();
+    expect(journal.read()).toEqual(receipt);
+    journal.invalidate('New boot');
+    const history = new DaemonStateStore(createNullLogger(), path.join(f.home, 'runtime/state.db')); stores.push(history);
+    const archive = history.kvGetSync<{ evidence: { receipt: unknown; admitted: BackendBootRecord } }>('runtime.recovery-history.' + review);
+    expect(archive?.evidence.receipt).toEqual(receipt);
+    expect(archive?.evidence.admitted).toEqual(JSON.parse(checkpointBytes.toString()));
+    expect(await fs.readFile(held.reviewedRecovery!.checkpoint!)).toEqual(checkpointBytes);
+  } finally { await journal.close(); }
 });
 
 it('does not treat a different owner or foreign controller as a reviewable baseline', async () => {

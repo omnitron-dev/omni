@@ -131,9 +131,12 @@ backend.command('upgrade <dist>').description('Activate a built backend artifact
     await backendUpgradeCommand(dist, options);
   });
 backend.command('recover [checkpoint]').description('Recover a dead backend from its certified state, or reconcile an explicit activation checkpoint')
-  .structuredAction(async (checkpoint?: string) => {
+  .option('--current-state', 'Resolve an unconfirmed activation from current local registrations after a clean shutdown')
+  .option('--check', 'Inspect current-state recovery without changing the installation')
+  .option('--review <sha256>', 'Accept the exact current-state review after clean shutdown')
+  .structuredAction(async (checkpoint: string | undefined, options: { currentState?: boolean; check?: boolean; review?: string }) => {
     const { backendRecoverCommand } = await import('../commands/backend.js');
-    await backendRecoverCommand(checkpoint);
+    await backendRecoverCommand(checkpoint, options);
   });
 
 program

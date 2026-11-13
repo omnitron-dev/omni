@@ -18,6 +18,7 @@ import type { AuditService } from '../../src/services/audit.service.js';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { provisioningVerdict, type ProvisioningOutcome } from '../../src/infrastructure/provisioning-outcome.js';
+import { defineEcosystem } from '../../src/config/define-ecosystem.js';
 import { ProjectService } from '../../src/services/project.service.js';
 
 const containersUp: ProvisioningOutcome = {
@@ -70,12 +71,12 @@ describe('the master carries «not ready» to the start\'s answer and its row', 
       registry: { get: () => null, list: () => [] },
       stackStates: new Map(),
       startsInFlight: new Map(),
-    infrastructurePolicy: () => null,
+      infrastructurePolicy: () => null,
       stopsInFlight: new Map(),
       assertStackMutable: vi.fn(),
       markPriorStopSuperseded: vi.fn(),
       rememberStackTargets: vi.fn(),
-      loadProjectConfig: vi.fn(async () => ({})),
+      loadProjectConfig: vi.fn(async () => defineEcosystem({ apps: APPS.map(name => ({ name, script: name + '.js' })) })),
       resolveStacks: () => ({ test: { type: 'remote', apps: 'all', nodes: [] } }),
       startRemoteStack: vi.fn(async () => reach),
       updateEnabledStacks: vi.fn(),
@@ -92,17 +93,17 @@ describe('the master carries «not ready» to the start\'s answer and its row', 
       nodes: 1,
       reached: 1,
       skipped: [],
-      notReady: ['37.27.130.185:9700: host services NOT up — bitcoin failed: could not start bitcoind'],
+      notReady: ['192.0.2.21:9700: host services NOT up — bitcoin failed: could not start bitcoind'],
     });
 
     const info = await svc.startStack('sample', 'test', { source: 'operator' });
 
     const row = record.mock.calls[0]![0] as any;
     expect(row.outcome).toBe('partial');
-    expect(row.details.notUp).toMatch(/^infrastructure on 37\.27\.130\.185:9700: host services NOT up — bitcoin/);
+    expect(row.details.notUp).toMatch(/^infrastructure on 192\.0\.2\.21:9700: host services NOT up — bitcoin/);
     expect(row.details.notReady).toHaveLength(1);
     expect(info.notUp).toEqual([
-      'infrastructure on 37.27.130.185:9700: host services NOT up — bitcoin failed: could not start bitcoind',
+      'infrastructure on 192.0.2.21:9700: host services NOT up — bitcoin failed: could not start bitcoind',
     ]);
   });
 
@@ -120,7 +121,7 @@ describe('`stack start` says it and exits non-zero', () => {
   it('reports the failed node service alongside the online applications and exits 1', async () => {
     const errors: string[] = [];
     const success = vi.fn();
-    const reason = 'infrastructure on 37.27.130.185:9700: host services NOT up — bitcoin failed: could not start bitcoind';
+    const reason = 'infrastructure on 192.0.2.21:9700: host services NOT up — bitcoin failed: could not start bitcoind';
     vi.doMock('../../src/daemon/daemon-client.js', async (importOriginal) => ({
       ...(await importOriginal<typeof import('../../src/daemon/daemon-client.js')>()),
       createDaemonClient: () => ({

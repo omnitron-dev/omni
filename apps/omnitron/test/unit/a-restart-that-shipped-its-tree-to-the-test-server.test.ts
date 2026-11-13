@@ -18,10 +18,11 @@ import { tmpdir } from 'node:os';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { defineEcosystem } from '../../src/config/define-ecosystem.js';
 import { ProjectService } from '../../src/services/project.service.js';
 
 const APPS = ['main', 'storage', 'quotes', 'payments', 'messaging', 'geo'];
-const NODE = { host: '37.27.130.185', port: 9700, label: 'test' };
+const NODE = { host: '192.0.2.21', port: 9700, label: 'test' };
 const REMOTE = { type: 'remote' as const, apps: 'all' as const, nodes: [NODE] };
 
 function nodeAnswer(online: readonly string[]) {
@@ -47,7 +48,7 @@ function remoteService(answer: () => Promise<unknown>) {
     assertStackMutable: vi.fn(),
     markPriorStopSuperseded: vi.fn(),
     rememberStackTargets: vi.fn(),
-    loadProjectConfig: vi.fn(async () => ({})),
+    loadProjectConfig: vi.fn(async () => defineEcosystem({ apps: APPS.map(name => ({ name, script: name + '.js' })) })),
     resolveStacks: () => ({ test: REMOTE }),
     slaveConnector: { invokeOnSlave: vi.fn(answer) },
     remoteInfraStatus: vi.fn(async () => null),

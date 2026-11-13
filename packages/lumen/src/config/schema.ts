@@ -59,6 +59,12 @@ export const LumenPdfConfigSchema = z.object({
   paperSections: z.array(z.string()).default([]),
 }).strict();
 
+const exampleGroup = z.object({
+  sources: z.record(z.string().min(1), z.string().min(1)),
+  language: z.string().regex(/^[\w.+#-]+$/).default('tsx'),
+  labels: z.object({ source: z.string().min(1).optional() }).strict().optional(),
+}).strict();
+
 export const LumenLocalesConfigSchema = z.union([
   z.array(z.string()),
   z.object({
@@ -80,6 +86,7 @@ export const LumenUserConfigSchema = z.object({
   publicDir: z.string().optional(),
   pagesDir: z.string().optional(),
   clientEntry: z.string().optional(),
+  examples: z.record(z.string().min(1), exampleGroup).optional(),
   stylesheets: z.array(z.string()).optional(),
   sidebars: z.record(z.string(), z.array(LumenSidebarItemSchema)).optional(),
   katexMacros: z.record(z.string(), z.string()).optional(),
@@ -108,6 +115,7 @@ export interface LumenConfig {
   publicDir?: string;
   pagesDir?: string;
   clientEntry?: string;
+  examples?: Record<string, z.output<typeof exampleGroup>>;
   stylesheets?: string[];
   sidebars: Record<string, LumenSidebarItem[]>;
   katexMacros: Record<string, string>;

@@ -5,7 +5,7 @@
 import { normalizeLumenHtml } from '../compiler/html.js';
 import { serializeIslandProps, parseHydrationTrigger } from '../islands/index.js';
 import { renderSafeHtmlElement } from './safe-html.js';
-import type { LumenDocumentAst, LumenNode } from '../ast/types.js';
+import type { LumenDocumentAst, LumenExampleSource, LumenNode } from '../ast/types.js';
 import { renderDiagramHtml } from '../diagrams/renderer.js';
 import { renderCodeBlockHtml } from '../highlight/emitter.js';
 import { LumenMacroRegistry } from '../katex/macro-registry.js';
@@ -14,12 +14,14 @@ import { renderFileTreeHtml } from './file-tree.js';
 
 export interface SsrOptions {
   macros?: Record<string, string> | LumenMacroRegistry;
+  renderExample?: (source: LumenExampleSource & { code: string; language: string }, islandHtml: string, ordinal: number) => string;
 }
 
 interface SsrContext {
   macros: LumenMacroRegistry;
   diagramCounter: number;
   widgetCounter: number;
+  renderExample?: SsrOptions['renderExample'];
 }
 
 const ALLOWED_URL_SCHEMES = new Set(['http', 'https', 'mailto', 'tel']);
@@ -132,6 +134,7 @@ export function toHtmlSsr(ast: LumenDocumentAst, options?: SsrOptions): string {
     macros,
     diagramCounter: 0,
     widgetCounter: 0,
+    renderExample: options?.renderExample,
   };
 
   const bodyHtml = renderNodesToHtml(ast.children, context);
@@ -274,7 +277,7 @@ function renderSingleNodeToHtml(node: LumenNode, context: SsrContext): string {
     }
 
     case 'jsxWidget': {
-      context.widgetCounter += 1;
+      const ordinal = ++context.widgetCounter;
       const rawName = String(node.name ?? 'Widget');
       const name = escapeHtml(rawName);
       const safeIslandName = escapeHtml(rawName.replace(/[^a-zA-Z0-9_.-]/g, '') || 'Widget');
@@ -283,8 +286,16 @@ function renderSingleNodeToHtml(node: LumenNode, context: SsrContext): string {
       const rawHydrate = propsObj['client:hydrate'] !== undefined ? propsObj['client:hydrate'] : propsObj['hydrate'];
       const hydrate = parseHydrationTrigger(rawHydrate === undefined ? 'interaction' : rawHydrate);
       const children = (node.children ?? []) as LumenNode[];
-      const inner = renderNodesToHtml(children, context);
-      return `<div class="lumen-widget lumen-portal-island" data-widget="${name}" data-lumen-island="lumen-widget-${context.widgetCounter}-${safeIslandName}" data-component="${name}" data-hydrate="${escapeHtml(hydrate)}" data-props="${propsJson}">${inner}</div>`;
+      const source = node.exampleSource;
+      const block = source ? children.at(-1) : undefined;
+      if (source && (block?.type !== 'codeBlock' || typeof block.value !== 'string'))
+        throw new TypeError('A registered example requires a literal source block');
+      const inner = renderNodesToHtml(source ? children.slice(0, -1) : children, context);
+      const island = `<div class="lumen-widget lumen-portal-island" data-widget="${name}" data-lumen-island="lumen-widget-${ordinal}-${safeIslandName}" data-component="${name}" data-hydrate="${escapeHtml(hydrate)}" data-props="${propsJson}">${inner}</div>`;
+      if (!source || !block) return island;
+      const code = block.value!;
+      if (context.renderExample) return context.renderExample({ ...source, code, language: block.lang ?? 'text' }, island, ordinal);
+      return `${island}<details><summary>${escapeHtml(source.labels?.source ?? 'Source code')}</summary><pre tabindex="0"><code>${escapeHtml(code)}</code></pre></details>`;
     }
 
     case 'htmlElement': {

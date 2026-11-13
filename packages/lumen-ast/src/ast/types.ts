@@ -17,8 +17,16 @@ export interface Position {
   end: Point;
 }
 
+/** Assigned by the site build after audience projection. The last child holds the literal code block. */
+export interface LumenExampleSource {
+  id: string;
+  title: string;
+  labels?: { source?: string };
+}
+
 export interface LumenBaseNode {
   type: string;
+  exampleSource?: LumenExampleSource;
   data?: Record<string, unknown>;
   position?: Position;
   children?: LumenNode[];

@@ -6,6 +6,12 @@ import CounterExample from './counter-example.js';
 import counterSource from './counter-example.js?raw';
 
 const LazyApi = lazy(() => import('./lazy-api.jsx'));
+const SourceModule = lazy(() => import('./source-example.jsx'));
+function SourceExample() {
+  const [active, setActive] = useState(false);
+  return active ? <Suspense fallback={<span role="status">Loading observation</span>}><SourceModule /></Suspense>
+    : <button type="button" onClick={() => setActive(true)}>Load observation</button>;
+}
 
 function CounterDemo() {
   return <ComponentExample title="Counter example" code={counterSource} language="js" resettable>
@@ -28,7 +34,7 @@ function HydrationCanary({ origin = 'diagram-label' }) {
 
 function Client() {
   const [open, setOpen] = useState(false);
-  return <LumenShell theme="light" islands={{ MermaidDiagram, HydrationCanary, CounterDemo, FailurePreview }}>
+  return <LumenShell theme="light" islands={{ MermaidDiagram, HydrationCanary, CounterDemo, FailurePreview, SourceExample }}>
     <button onClick={() => setOpen(true)}>Open API explorer</button>
     <CodeBlock className="client-code" code="const value = 'A deliberately long client code line with native keyboard scrolling';" />
     {open && <Suspense fallback={<p>Loading API explorer</p>}><LazyApi /></Suspense>}

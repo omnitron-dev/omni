@@ -39,7 +39,7 @@ export function ComponentExample({
       minWidth: 0, borderTop: 1, borderColor: 'divider',
       '& > summary': { px: 2, py: 1, cursor: 'pointer', typography: 'body2' },
       '& > summary:focus-visible': { outline: '2px solid currentColor', outlineOffset: -2 },
-      '& pre': { maxWidth: '100%', overflow: 'auto' },
+      '& pre': { maxWidth: '100%', maxHeight: '24rem', overflow: 'auto' },
     }}>
       <summary>{labels?.source ?? 'Source code'}</summary>
       <CodeBlock code={code} language={language} copyable={interactive} />

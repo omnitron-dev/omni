@@ -91,6 +91,17 @@ describe('Documentation Content Blocks', () => {
     expect(figure.querySelector('script, button')).toBeNull();
   });
 
+  it('keeps the literal full source once in a closed keyboard-readable disclosure', () => {
+    const source = 'const one = 1;\nconst two = 2;\n// [!code highlight]\n';
+    const host = document.createElement('div');
+    host.innerHTML = renderToStaticMarkup(<ComponentExample title="Source" code={source}
+      labels={{ source: 'Пример' }}>Preview</ComponentExample>);
+    expect(Array.from(host.querySelectorAll('details')).map(node => node.open)).toEqual([false]);
+    expect(Array.from(host.querySelectorAll('summary')).map(node => node.textContent)).toEqual(['Пример']);
+    expect(Array.from(host.querySelectorAll('pre')).map(node => node.tabIndex)).toEqual([0]);
+    expect(Array.from(host.querySelectorAll('pre code')).map(node => node.textContent)).toEqual([source]);
+  });
+
   it('restores just the stateful preview and preserves the source disclosure', async () => {
     function Counter() {
       const [count, setCount] = React.useState(0);

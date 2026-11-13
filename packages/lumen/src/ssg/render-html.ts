@@ -4,7 +4,9 @@ import createCache from '@emotion/cache';
 import { CacheProvider, ClassNames, Global } from '@emotion/react';
 import createEmotionServer from '@emotion/server/create-instance';
 import { LumenShell } from '@omnitron-dev/lumen-ui';
+import { ComponentExample } from '@omnitron-dev/lumen-ui/blocks';
 import { mixins } from '@omnitron-dev/prism/theme';
+import { PrismThemeProvider, useTheme } from '@omnitron-dev/prism/ui';
 import {
   toHtmlSsr,
   createDocumentAccessPredicate,
@@ -36,12 +38,30 @@ export function renderDocumentHtml(ast: LumenDocumentAst, options?: RenderDocume
     createDocumentAccessPredicate(roles, options?.accessFilter)
   );
 
-  const articleHtml = docAllowed
-    ? toHtmlSsr(effectiveAst, { macros: options?.macros })
-    : '<article class="lumen-doc"><h1>Restricted</h1></article>';
-
   const cache = createCache({ key: 'css' });
   const emotionServer = createEmotionServer(cache);
+  function Article({ className }: { className: string }): React.ReactNode {
+    const prismTheme = useTheme();
+    const articleHtml = docAllowed
+      ? toHtmlSsr(effectiveAst, {
+          macros: options?.macros,
+          renderExample: ({ id, ...source }, islandHtml, ordinal) => renderToString(
+            React.createElement(CacheProvider, { value: cache },
+              React.createElement(PrismThemeProvider, { theme: prismTheme },
+                React.createElement('section', { 'data-example': id, 'aria-label': `${id} example` },
+                  React.createElement(ComponentExample, {
+                    ...source,
+                    children: React.createElement('div', { dangerouslySetInnerHTML: { __html: islandHtml } }),
+                  })
+                )
+              )
+            ),
+            { identifierPrefix: `example-${ordinal}-` }
+          ),
+        })
+      : '<article class="lumen-doc"><h1>Restricted</h1></article>';
+    return React.createElement('div', { className, dangerouslySetInnerHTML: { __html: articleHtml } });
+  }
 
   const renderedShellHtml = renderToString(
     React.createElement(
@@ -60,7 +80,7 @@ export function renderDocumentHtml(ast: LumenDocumentAst, options?: RenderDocume
             LumenShell,
             { theme, locale, currentPath, disablePrismProvider: Boolean(options?.renderLayout) },
             (options?.renderLayout ?? ((content) => content))(
-              React.createElement('div', {
+              React.createElement(Article, {
                 className: cx(
                   'lumen-doc-container',
                   css`
@@ -69,7 +89,6 @@ export function renderDocumentHtml(ast: LumenDocumentAst, options?: RenderDocume
                     color: inherit;
                   `
                 ),
-                dangerouslySetInnerHTML: { __html: articleHtml },
               })
             )
           ),

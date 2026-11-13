@@ -1,5 +1,6 @@
 import { publishGeneration, type StaticFile } from './publish-generation.js';
 import React from 'react';
+import { resolveExampleSources } from '../corpus/examples.js';
 import { buildClientAssets } from './client-build.js';
 import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
@@ -81,6 +82,7 @@ export async function buildStaticSite(
     accessFilter: options?.accessFilter,
   };
   const projectedCorpus = projectCorpus(corpus, audience);
+  resolveExampleSources(projectedCorpus, config, options?.rootDir ?? process.cwd());
   const documents = projectedCorpus.getAllDocuments();
 
   const hasIslands = (nodes: LumenNode[]): boolean =>

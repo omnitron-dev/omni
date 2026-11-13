@@ -29,5 +29,6 @@ function Layout({ children }) {
 export default {
   title: 'CLI browser boundary',
   clientEntry: 'client.jsx',
+  examples: { SourceExample: { sources: { source: 'source-example.jsx' }, language: 'jsx' } },
   theme: { layout: Layout },
 };

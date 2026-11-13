@@ -1,4 +1,4 @@
-import { stackApps, stackCounts, stacksInScope } from 'src/utils/stack-inventory';
+import { stackApps, stackCounts, stackNodes, stacksInScope } from 'src/utils/stack-inventory';
 /**
  * Status Bar — Fixed bottom bar with real-time system health
  *
@@ -123,8 +123,8 @@ export function StatusBar({ docked = false }: { docked?: boolean }) {
   const stack = useProjectStore(s => s.activeStack);
   const { can, snapshot } = useAccess();
   const showStatus = can('OmnitronDaemon.status');
-  const showNodes = can('OmnitronNodes.listNodes');
   const showStacks = can('OmnitronProject.listStacks');
+  const showNodes = can('OmnitronNodes.listNodes') && (!project || showStacks);
   const showAlerts = can('OmnitronAlerts.getSummary') && can('OmnitronAlerts.getActiveAlerts') && can('OmnitronAlerts.getRules');
   const key = JSON.stringify([snapshot?.userId, project, stack, showStatus, showNodes, showStacks, showAlerts]);
   return <StatusBarReader key={key} docked={docked} showStatus={showStatus} showNodes={showNodes}
@@ -161,7 +161,7 @@ function StatusBarReader({ docked, showStatus, showNodes, showStacks, showAlerts
       const [status, , nodesList, alertsResult] = await Promise.allSettled([
         showStatus ? daemon.status() : null,
         activeProject && showStacks ? fetchStacks(activeProject) : null,
-        showNodes ? nodesRpc.listNodes() : null,
+        showNodes && !activeProject ? nodesRpc.listNodes() : null,
         showAlerts ? alerts.getSummary() : null,
       ]);
 
@@ -218,7 +218,16 @@ function StatusBarReader({ docked, showStatus, showNodes, showStacks, showAlerts
 
   if (!data) return null;
   const showApps = activeProject ? showStacks : showStatus;
-  const selectedApps = inventory ? stackApps(stacksInScope(inventory, activeStack)) : null;
+  const selected = inventory ? stacksInScope(inventory, activeStack) : null;
+  const currentInventory = selected && (!activeStack || selected.length) ? selected : null;
+  const selectedApps = currentInventory ? stackApps(currentInventory) : null;
+  const nodes = showNodes && currentInventory ? stackNodes(currentInventory) : null;
+  const unknownNodes = nodes?.filter(node => node.connected === null).length ?? 0;
+  const nodeCount = activeProject
+    ? nodes ? `${nodes.filter(node => node.connected).length}/${nodes.length}${inventoryError ? ' stale' : unknownNodes ? ` · ${unknownNodes} unknown` : ''}` : 'unknown'
+    : `${data.nodesOnline}/${data.nodesTotal}`;
+  const alertCount = `${data.firingAlerts} ${activeProject ? 'fleet ' : ''}alert${data.firingAlerts === 1 ? '' : 's'}`;
+  const nodeNames = nodes?.map(node => `${node.name} (${node.connected === null ? 'unknown' : node.connected ? 'connected' : 'disconnected'})`).join(', ');
   const unknownApps = selectedApps?.filter(app => app.status === 'unknown').length ?? 0;
   const observedApps = selectedApps ? tally(selectedApps) : null;
   const appCount = activeProject
@@ -227,7 +236,7 @@ function StatusBarReader({ docked, showStatus, showNodes, showStacks, showAlerts
 
   return (
     <Box
-      aria-label={`Infrastructure status: ${data.daemonOnline ? 'online' : 'offline'}${showApps ? `, applications ${appCount}` : ''}${showNodes ? `, nodes ${data.nodesOnline}/${data.nodesTotal}` : ''}${showAlerts ? `, ${data.firingAlerts} alerts` : ''}`}
+      aria-label={`Infrastructure status: ${data.daemonOnline ? 'online' : 'offline'}${showApps ? `, applications ${appCount}` : ''}${showNodes ? `, nodes ${nodeCount}` : ''}${showAlerts ? `, ${alertCount}` : ''}`}
       sx={{
         position: docked ? 'relative' : 'fixed',
         bottom: 0,
@@ -273,9 +282,9 @@ function StatusBarReader({ docked, showStatus, showNodes, showStacks, showAlerts
       </StatusItem>}
 
       {/* Nodes */}
-      {showNodes && data.nodesTotal > 0 && (
+      {showNodes && (activeProject || data.nodesTotal > 0) && (
         <StatusItem priority="extra">
-          <StatusLabel label="Nodes" value={`${data.nodesOnline}/${data.nodesTotal}`} />
+          <Box component="span" title={nodeNames || undefined}><StatusLabel label="Nodes" value={nodeCount} /></Box>
         </StatusItem>
       )}
 
@@ -294,7 +303,7 @@ function StatusBarReader({ docked, showStatus, showNodes, showStacks, showAlerts
           }}
         >
           <Dot color="currentColor" />
-          {data.firingAlerts} alert{data.firingAlerts > 1 ? 's' : ''}
+          {alertCount}
         </Box>
       )}
 

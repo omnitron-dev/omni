@@ -39,6 +39,7 @@ export function ProjectSwitcher() {
   const inventory = useProjectStore((s) => s.projects);
   const projects = canList ? inventory : [];
   const activeProject = useActiveProject();
+  const activeStack = useProjectStore(s => s.activeStack);
   const selectProject = useProjectStore((s) => s.selectProject);
   const deselectProject = useProjectStore((s) => s.deselectProject);
   const fetchProjects = useProjectStore((s) => s.fetchProjects);
@@ -49,13 +50,13 @@ export function ProjectSwitcher() {
   }, [fetchProjects, navigate, canList, snapshot?.userId]);
 
   const handleSelectOmnitron = useCallback(() => {
-    if (activeProject) navigate(deselectProject(pathname));
+    if (activeProject) navigate(deselectProject(pathname), { state: { workspace: { project: null, stack: null } } });
     onClose();
   }, [activeProject, deselectProject, navigate, pathname, onClose]);
 
   const handleSelectProject = useCallback(
     (name: string) => {
-      if (name !== activeProject) navigate(selectProject(name, pathname));
+      if (name !== activeProject) navigate(selectProject(name, pathname), { state: { workspace: { project: name, stack: null } } });
       onClose();
     },
     [activeProject, selectProject, navigate, pathname, onClose]
@@ -119,7 +120,7 @@ export function ProjectSwitcher() {
           {isOmnitron ? 'Omnitron' : (activeInfo?.displayName ?? activeProject)}
         </Box>
 
-        {activeInfo && (
+        {activeInfo && !activeStack && (
           <Box component="span" title="Running / configured stacks in the whole workspace" sx={{ display: { xs: 'none', sm: 'inline-flex' } }}>
             <Label color={activeInfo.runningStacks > 0 ? 'success' : 'default'} sx={{ height: 22, cursor: 'inherit' }}>
               {activeInfo.runningStacks}/{activeInfo.totalStacks} stacks{stackReadError ? " · stale" : ""}

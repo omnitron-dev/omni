@@ -18,3 +18,18 @@ export function stackCounts(stacks: readonly IStackInfo[]) {
 export function stackApps(stacks: readonly IStackInfo[]): IProjectAppStatus[] {
   return stacks.flatMap(stack => stack.apps.map(app => ({ ...app, stack: stack.name, stackType: stack.type })));
 }
+
+/** A node may host several stacks. Count each declared daemon endpoint once. */
+export function stackNodes(stacks: readonly IStackInfo[]) {
+  const endpoints = new Map<string, { name: string; connected: boolean | null }>();
+  for (const stack of stacks) {
+    if (!Array.isArray(stack.nodes)) return null;
+    for (const node of stack.nodes) {
+      const key = JSON.stringify([node.host, node.port]);
+      const known = endpoints.get(key);
+      if (!known) endpoints.set(key, { name: node.label || `${node.host}:${node.port}`, connected: node.connected });
+      else if (known.connected !== node.connected) known.connected = null;
+    }
+  }
+  return [...endpoints.values()];
+}

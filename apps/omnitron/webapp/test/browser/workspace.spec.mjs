@@ -3,7 +3,9 @@ import { test, expect, stubInventory } from './fixtures.mjs';
 test('a project stack selection filters inventory, follows details and survives history and reload', async ({ page, url }) => {
   const stacks = ['dev', 'test'].map(name => ({
     name, type: name === 'dev' ? 'local' : 'remote', status: 'running', uptime: 60_000,
-    config: { type: name === 'dev' ? 'local' : 'remote' }, nodes: [], apps: [],
+    config: { type: name === 'dev' ? 'local' : 'remote' },
+    nodes: [{ host: name === 'dev' ? 'localhost' : 'test.example', port: 9700, label: name === 'dev' ? 'Local' : 'Test node', connected: true }],
+    apps: [{ name: name + '-api', handleKey: 'sample/' + name + '/api', status: 'online' }],
   }));
   await stubInventory(page, {
     'OmnitronProject.listProjects': [
@@ -12,6 +14,9 @@ test('a project stack selection filters inventory, follows details and survives 
     ],
     'OmnitronProject.listStacks': ({ project }) => project === 'sample' ? stacks : [],
     'OmnitronAudit.list': [],
+    'OmnitronDaemon.list': [],
+    'OmnitronMetrics.getSnapshot': { apps: {} },
+    'OmnitronNodes.listNodes': [{ id: 'other-unrelated-node', status: { omnitronConnected: true } }],
   });
   await page.addInitScript(() => {
     if (!localStorage.getItem('omnitron_active_project')) localStorage.setItem('omnitron_active_project', 'sample');
@@ -33,11 +38,18 @@ test('a project stack selection filters inventory, follows details and survives 
   };
   await expect(card('dev')).toBeVisible();
   await expect(card('test')).toBeVisible();
+  const projectHeader = page.getByRole('button', { name: 'Switch workspace: Sample' });
+  await expect(projectHeader).toHaveText(/2\/2 stacks/i);
+  await expect(page.getByLabel(/applications 2\/2, nodes 2\/2/)).toBeVisible();
   await choose('dev');
   await expect(card('test')).toHaveCount(0);
+  await expect(projectHeader).not.toHaveText(/2\/2 stacks/i);
+  await expect(page.getByLabel(/applications 1\/1, nodes 1\/1/)).toBeVisible();
+  await expect(page.getByTitle('Local (connected)')).toBeVisible();
   await choose('test');
   await expect(card('dev')).toHaveCount(0);
   await expect(card('test')).toBeVisible();
+  await expect(page.getByTitle('Test node (connected)')).toBeVisible();
   await page.goBack();
   await expect(filter).toHaveText('Stack: dev');
   await expect(card('test')).toHaveCount(0);
@@ -66,6 +78,18 @@ test('a project stack selection filters inventory, follows details and survives 
   await page.goBack();
   await expect(page.getByRole('button', { name: 'Switch workspace: Sample' })).toBeVisible();
   await expect(filter).toHaveText('Stack: dev');
+  await page.route(url + '/?view=dashboard', async route => {
+    await route.fulfill({ response: await route.fetch({ url: url + '/workspace.html' }) });
+  });
+  await page.goto(url + '/?view=dashboard');
+  await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();
+  await choose('All stacks');
+  await expect(page.getByLabel(/applications 2\/2, nodes 2\/2/)).toBeVisible();
+  await choose('test');
+  await expect(page.getByLabel(/applications 1\/1, nodes 1\/1/)).toBeVisible();
+  await expect(page.getByRole('heading', { name: '1/1', exact: true })).toHaveCount(2);
+  await expect(page.getByText('test-api', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('dev-api', { exact: true })).toHaveCount(0);
 });
 
 test('log filters use the selected stack inventory, including remote apps that have never logged', async ({ page, url }) => {

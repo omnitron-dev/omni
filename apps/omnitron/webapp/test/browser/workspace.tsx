@@ -7,6 +7,7 @@ import { ConsoleLayout } from '../../src/layouts/console-layout';
 import { omnitronTheme } from '@omnitron-dev/prism/identity';
 import { FleetRollout } from '../../src/components/fleet-rollout';
 import AuditPage from '../../src/pages/audit';
+import DashboardPage from '../../src/pages/dashboard';
 import LogsPage from '../../src/pages/logs';
 import StacksPage from '../../src/pages/stacks/index';
 import StackDetailPage from '../../src/pages/stacks/detail';
@@ -28,7 +29,7 @@ const workspace = (
             <Route path="logs" element={<LogsPage />} />
             <Route path="stacks" element={<StacksPage />} />
             <Route path="stacks/:name" element={<StackDetailPage />} />
-            <Route index element={view === 'rollout'
+            <Route index element={view === 'dashboard' ? <DashboardPage /> : view === 'rollout'
               ? <FleetRollout nodes={[]} /> : <div data-testid="content">Project content</div>} />
           </Route>
         </Routes>

@@ -4,11 +4,11 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IStackInfo } from '../../src/shared/dto/project.js';
-const rpc = vi.hoisted(() => ({ stacks: vi.fn() }));
+const rpc = vi.hoisted(() => ({ stacks: vi.fn(), nodes: vi.fn(async () => []), summary: vi.fn(async () => ({ firing: 0 })) }));
 vi.mock('src/auth/access', () => ({ useAccess: () => ({ can: () => true, snapshot: { userId: 'reader' } }) }));
 vi.mock('src/netron/client', () => ({
   daemon: { status: async () => ({ apps: [], uptime: 1 }) }, project: { listStacks: (data: unknown) => rpc.stacks(data) },
-  nodes: { listNodes: async () => [] }, alerts: { getSummary: async () => ({ firing: 0 }) },
+  nodes: { listNodes: rpc.nodes }, alerts: { getSummary: rpc.summary },
 }));
 const initialize = () => () => undefined;
 vi.mock('src/stores/realtime.store', () => ({ useRealtimeStore: (select: (state: unknown) => unknown) => select({ connected: true, lastEvent: null, initialize }) }));
@@ -21,6 +21,8 @@ const stack = (name: string, running: boolean): IStackInfo => stackFixture(name,
 });
 beforeEach(() => {
   rpc.stacks.mockReset();
+  rpc.nodes.mockClear();
+  rpc.summary.mockResolvedValue({ firing: 0 });
   useProjectStore.getState().setInventoryReaders('reader', 'reader');
   useProjectStore.setState({ activeProject: 'sample', activeStack: null, stacksByProject: {}, projects: [] });
 });
@@ -34,6 +36,30 @@ describe('one observed inventory across the console', () => {
     act(() => useProjectStore.getState().selectStack('dev'));
     await waitFor(() => expect(screen.getByLabelText(/applications 0\/6,/)).toBeTruthy());
     expect(screen.getByText('(0/1 stacks)')).toBeTruthy();
+  });
+  it('counts only the selected deployments and names fleet alerts in a project', async () => {
+    const local = { host: 'localhost', port: 9700, label: 'Local', role: 'app', daemonRole: 'master', connected: true, syncStatus: null, lastSeen: null } as const;
+    const remote = { ...local, host: 'sample.test', label: 'Test node', daemonRole: 'slave', connected: false } as const;
+    const dev = stackFixture('dev', { nodes: [local] });
+    const test = stackFixture('test', { type: 'remote', runtimeScope: { project: 'imported', stack: 'deployed' }, nodes: [remote] });
+    const shadow = stackFixture('shadow', { nodes: [remote] });
+    rpc.stacks.mockResolvedValue([dev, test, shadow]);
+    rpc.summary.mockResolvedValue({ firing: 1 });
+    render(<MemoryRouter><StatusBar /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByLabelText(/nodes 1\/2, 1 fleet alert/)).toBeTruthy());
+    expect(screen.getByText('1 fleet alert')).toBeTruthy();
+    expect(screen.getByTitle('Local (connected), Test node (disconnected)')).toBeTruthy();
+    act(() => useProjectStore.getState().selectStack('test'));
+    await waitFor(() => expect(screen.getByLabelText(/nodes 0\/1,/)).toBeTruthy());
+    expect(screen.getByTitle('Test node (disconnected)')).toBeTruthy();
+    act(() => useProjectStore.getState().selectStack('dev'));
+    await waitFor(() => expect(screen.getByLabelText(/nodes 1\/1,/)).toBeTruthy());
+    expect(screen.getByTitle('Local (connected)')).toBeTruthy();
+    expect(rpc.nodes).not.toHaveBeenCalled();
+    act(() => useProjectStore.setState({ stackReadErrors: { sample: 'unreachable' } }));
+    expect(screen.getByLabelText(/nodes 1\/1 stale/)).toBeTruthy();
+    act(() => useProjectStore.setState({ stacksByProject: {} }));
+    expect(screen.getByLabelText(/nodes unknown/)).toBeTruthy();
   });
   it('updates the footer when another page refreshes the shared inventory', async () => {
     rpc.stacks.mockResolvedValue([stack('dev', false), stack('test', true)]);

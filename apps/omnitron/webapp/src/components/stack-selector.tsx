@@ -19,27 +19,18 @@ export function StackSelector() {
   const stack = useProjectStore(s => s.activeStack);
   const restore = useProjectStore(s => s.restoreWorkspace);
   const lastEntry = useRef<string | null>(null);
-  const selectingFrom = useRef<string | null>(null);
-  const previousProject = useRef(project);
   useLayoutEffect(() => {
-    // React can synchronously commit a Zustand change before React Router
-    // commits the matching push. Preserve the history entry we are leaving.
-    if (selectingFrom.current === location.key) return;
-    selectingFrom.current = null;
-    const entered = lastEntry.current !== location.key;
-    const projectChanged = previousProject.current !== project;
-    previousProject.current = project;
+    if (lastEntry.current === location.key) return;
     lastEntry.current = location.key;
     const saved = location.state?.workspace;
-    if (entered && navigation === 'POP' && saved &&
+    if (saved &&
         (saved.project === null || typeof saved.project === 'string') &&
         (saved.stack === null || typeof saved.stack === 'string')) {
-      restore(saved.project, saved.stack);
+      if (navigation === 'POP') restore(saved.project, saved.stack);
       return;
     }
-    if (saved?.project === project && saved?.stack === stack) return;
-    // A project switch pushes its own destination after updating the store.
-    if (!entered && projectChanged && saved) return;
+    // Stamp an unstamped entry once. A store update can render before its
+    // matching router push and must never rewrite the entry we are leaving.
     void navigate({ pathname: location.pathname, search: location.search, hash: location.hash }, {
       replace: true, preventScrollReset: true, state: { ...location.state, workspace: { project, stack } },
     });
@@ -52,12 +43,8 @@ export function StackSelector() {
   return <StackFilter onChange={chosen => {
     const state = useProjectStore.getState();
     if (state.activeStack === chosen) return;
-    selectingFrom.current = location.key;
     state.selectStack(chosen);
-    if (useProjectStore.getState().activeStack !== chosen) {
-      selectingFrom.current = null;
-      return;
-    }
+    if (useProjectStore.getState().activeStack !== chosen) return;
     const pathname = stackDetail ? (chosen ? '/stacks/' + encodeURIComponent(chosen) : '/stacks') : location.pathname;
     void navigate({ pathname, search: location.search, hash: location.hash }, {
       preventScrollReset: true, state: { ...location.state, workspace: { project, stack: chosen } },

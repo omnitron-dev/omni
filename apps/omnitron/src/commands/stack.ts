@@ -10,6 +10,7 @@ import { log, table, note, prism } from '@xec-sh/kit';
 import { createDaemonClient, LONG_REQUEST_TIMEOUT, isRequestTimeout } from '../daemon/daemon-client.js';
 import { isLostRpcAcknowledgement, type IProjectRpcService } from '../shared/dto/services.js';
 import { emitJson, emitError, emitStep, emitSuccess, emitInfo, isJsonMode } from './output.js';
+import { shellEscape } from '../shared/shell-escape.js';
 import { syncFinding, syncWords, syncSeverity } from '../shared/sync-reading.js';
 import { readDeploymentProgress, readStackStart } from '../shared/release-reading.js';
 
@@ -20,9 +21,9 @@ import { readDeploymentProgress, readStackStart } from '../shared/release-readin
 function statusIcon(status: string): string {
   switch (status) {
     case 'running': return prism.green('●');
-    case 'starting': case 'stopping': return prism.yellow('◐');
+    case 'starting': case 'stopping': case 'restarting': case 'paused': return prism.yellow('◐');
     case 'degraded': return prism.yellow('●');
-    case 'error': return prism.red('●');
+    case 'error': case 'dead': case 'unhealthy': return prism.red('●');
     default: return prism.gray('○');
   }
 }
@@ -178,8 +179,11 @@ export async function stackStatusCommand(projectName: string, stackName: string)
       for (const reason of placement.errors) log.warn(`${placement.nodeKey}: ${reason}`);
     }
     for (const [name, svcInfo] of Object.entries(stack.infrastructure.services)) {
-      const sym = svcInfo.status === 'running' ? prism.green('●') : svcInfo.status === 'error' ? prism.red('●') : prism.dim('○');
-      log.info(`  ${sym} ${name}${svcInfo.port ? ` :${svcInfo.port}` : ''} ${prism.dim(`(${svcInfo.containerName})`)}${svcInfo.error ? ` — ${svcInfo.error}` : ''}`);
+      const status = svcInfo.nativeStatus ?? svcInfo.status;
+      const nativeHealth = svcInfo.health && svcInfo.health !== 'none' ? svcInfo.health : undefined;
+      const verdict = svcInfo.status === 'error' ? 'error' : nativeHealth ?? status;
+      const detail = [status, nativeHealth, svcInfo.provisioning && `setup ${svcInfo.provisioning}`].filter(Boolean).join(' · ');
+      log.info(`  ${statusIcon(verdict)} ${name}${svcInfo.port ? ` :${svcInfo.port}` : ''} ${prism.dim(`(${svcInfo.containerName})`)} ${detail}${svcInfo.error ? ` — ${svcInfo.error}` : ''}`);
     }
 
     // Nodes
@@ -305,6 +309,11 @@ function reportLifecycleError(
   process.exitCode = 1;
 }
 
+function declarationRefreshCommand(project: string, stack: string, release?: string): string {
+  return 'omnitron topology refresh ' + [project, stack].map(shellEscape).join(' ') +
+    (release ? ' --release ' + shellEscape(release) : '');
+}
+
 export async function stackReleaseAdmissionCommand(project: string, stack: string, release: string, prepare: boolean): Promise<void> {
   const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
   try {
@@ -312,9 +321,11 @@ export async function stackReleaseAdmissionCommand(project: string, stack: strin
     const report = await service.checkRelease({ project, stack, release, prepare });
     const accepted = report.ok || (prepare && report.state === 'requires-stop');
     if (!accepted) process.exitCode = 1;
-    if (!emitJson({ project, stack, release, ...(prepare && { prepared: accepted }), ...report })) {
+    const action = report.declarations === 'refresh-required' ? declarationRefreshCommand(project, stack, release) : undefined;
+    if (!emitJson({ project, stack, release, ...(prepare && { prepared: accepted }), ...report, ...(action && { action }) })) {
       if (accepted) emitSuccess(report.because);
       else emitError(report.because, { project, stack, release });
+      if (action) emitInfo(`${report.declarationReason ?? 'Candidate declarations require refresh'}. Administrator: ${action}`);
     }
   } catch (error) {
     reportLifecycleError(error, prepare ? 'preparing the release' : 'checking release admission', { project, stack, release });
@@ -338,11 +349,14 @@ export async function stackStartCommand(
     if (review && (review.protocol !== 1 || review.infrastructure !== 'preserve')) throw Error('Controller did not confirm preservation capability; no start was requested');
     if (opts?.dryRun && review) {
       if (!review.digest) process.exitCode = 1;
-      if (!emitJson(review)) {
+      const refresh = review.targets.find(target => target.refreshDeclarations)?.refreshDeclarations;
+      const action = refresh && declarationRefreshCommand(projectName, stackName, refresh.release);
+      if (!emitJson({ ...review, ...(action && { action }) })) {
         for (const target of review.targets) {
           if (target.reason) emitInfo(`${target.node}: ${target.reason}`);
           for (const check of target.infrastructure?.checks ?? []) emitInfo(`${target.node}: ${check.resource}: ${check.state}: ${check.message}`);
         }
+        if (action) emitInfo('Administrator: ' + action);
         if (review.digest) emitInfo(`Review digest: ${review.digest}`);
       }
       return;

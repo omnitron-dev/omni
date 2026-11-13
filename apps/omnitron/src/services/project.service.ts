@@ -152,6 +152,7 @@ import { ExecutionService, type SSHTarget } from '../execution/execution.service
 type AdmittedRelease = LoadedRelease & { readonly remoteDefinitions?: Map<string, IAppDefinition> };
 
 class LocalReleaseStopRequired extends Error {}
+class DeclarationRefreshRequired extends Error {}
 
 function sameLaunchCode(actual: IEcosystemAppEntry, expected: IEcosystemAppEntry): boolean {
   if (!expected.releaseRoot) return !actual.releaseRoot;
@@ -1466,7 +1467,8 @@ export class ProjectService extends EventEmitter {
 
   /** Explicit administrative discovery. Imports trusted declarations in bounded child processes, never starts a stack. */
   @RecoveryMutation()
-  async refreshTopologyMetadata(scope: { project: string; stack?: string }, deadline = Date.now() + TOPOLOGY_REFRESH_TIMEOUT_MS): Promise<import('../shared/dto/project.js').TopologyMetadataRefresh> {
+  async refreshTopologyMetadata(scope: { project: string; stack?: string; release?: string }, deadline = Date.now() + TOPOLOGY_REFRESH_TIMEOUT_MS): Promise<import('../shared/dto/project.js').TopologyMetadataRefresh> {
+    if (scope.release !== undefined && !scope.stack) throw Error('A candidate release requires an exact stack');
     const config = await this.ensureConfig(scope.project);
     const directory = this.registry.get(scope.project)?.path;
     if (!directory) throw new Error('Project is not registered');
@@ -1475,7 +1477,13 @@ export class ProjectService extends EventEmitter {
     if (scope.stack && !stacks[scope.stack]) throw new Error('Stack is not configured');
     for (const [name, stack] of Object.entries(stacks)) {
       if (scope.stack && scope.stack !== name) continue;
-      for (const app of await this.launchEntries(scope.project, name, stack, config))
+      let entries: IEcosystemAppEntry[];
+      if (scope.release !== undefined) {
+        if (stack.type !== 'local' || stack.managedOrigin) throw Error('Candidate declarations require an independently owned local stack');
+        const release = await this.admitRelease(scope.project, name, stack, config, scope.release, 'check');
+        entries = await this.installedEntries(scope.project, name, stack, config, release, false);
+      } else entries = await this.launchEntries(scope.project, name, stack, config);
+      for (const app of entries)
         if (app.bootstrap) bootstraps.set(resolveAppPath(directory, app, app.bootstrap),
           { app: app.name, ...(app.releaseRoot && { releaseRoot: app.releaseRoot }) });
     }
@@ -1495,7 +1503,8 @@ export class ProjectService extends EventEmitter {
       }
     }
     await this.audit?.record({ action: 'topology.metadata.refresh', resourceType: 'project', resourceId: scope.project,
-      details: { stack: scope.stack, refreshed: result.refreshed, failures: result.failures.length } });
+      details: { stack: scope.stack, ...(scope.release !== undefined && { release: scope.release }),
+        refreshed: result.refreshed, failures: result.failures.length } });
     return result;
   }
 
@@ -1567,7 +1576,8 @@ export class ProjectService extends EventEmitter {
   }
 
   /** Read declarations without importing application code or executing startup hooks. */
-  private preservationDefinitions(project: string, stack: string, entries: IEcosystemAppEntry[]): Map<string, IAppDefinition> {
+  private preservationDefinitions(project: string, stack: string, entries: IEcosystemAppEntry[],
+    archived?: ReadonlyMap<string, DeclaredConfig>): Map<string, IAppDefinition> {
     const root = this.registry.get(project)?.path;
     if (!root) throw Error('Project is not registered');
     const definitions = new Map<string, IAppDefinition>();
@@ -1575,9 +1585,13 @@ export class ProjectService extends EventEmitter {
       if (entry.releaseFrom) throw Error('Preservation requires a prepared release installation');
       if (!entry.bootstrap) continue;
       const bootstrap = resolveAppPath(root, entry, entry.bootstrap);
-      const { metadata, declared, state, record } = this.readAppDeclaration(project, stack, entry.name, bootstrap);
-      if (declared.malformed || !metadata || !record || state?.failure || metadataSourceChanged(record))
-        throw Error('Current application declarations must be captured before reviewing infrastructure preservation');
+      const { metadata, declared: local, state, record } = this.readAppDeclaration(project, stack, entry.name, bootstrap);
+      const declared = archived?.get(entry.name) ?? local;
+      if (declared.malformed) throw Error('Application configuration is invalid for ' + entry.name);
+      if (state?.failure) throw new DeclarationRefreshRequired(entry.name + ': ' + state.failure.reason);
+      if (!metadata || !record) throw new DeclarationRefreshRequired(entry.name + ': bootstrap declarations have not been captured');
+      if (metadataSourceChanged(record))
+        throw new DeclarationRefreshRequired(entry.name + ': bootstrap source changed after its last declaration capture');
       definitions.set(entry.name, withDeclaredConfig({ name: entry.name, version: '', processes: [], ...metadata }, declared));
     }
     return definitions;
@@ -1589,6 +1603,7 @@ export class ProjectService extends EventEmitter {
     if (options.workingTree && options.release) throw Error('Select either a release or the working tree');
     const report: StackStartReview = { protocol: 1, project, stack: stackName, infrastructure: 'preserve', checkedAt: new Date().toISOString(),
       digest: null, targets: [], deferred: ['Application startup and application health; framework setup and migrations are forbidden in preserve mode'] };
+    let candidate: string | undefined;
     try {
       const config = this.getLoadedConfig(project);
       if (!config) throw Error('Project configuration is not loaded');
@@ -1598,8 +1613,9 @@ export class ProjectService extends EventEmitter {
       const local = stack.type === 'local' && !stack.managedOrigin;
       const prior = local ? this.localSelection(project, stackName).read().release : null;
       const id = options.release ?? (options.workingTree ? undefined : prior?.id);
+      if (local) candidate = id;
       report.selection = id ? { release: id } : { workingTree: true };
-      const release = id ? await this.admitRelease(project, stackName, stack, config, id) : null;
+      const release = id ? await this.admitRelease(project, stackName, stack, config, id, 'check') : null;
       if (!release && stack.release?.mode === 'required') throw Error('A verified release is required');
       if (release && prior && prior.id === id && prior.manifestSha256 !== release.manifestSha256) throw Error('Selected release changed');
       const installation = local && release ? await this.installedRelease(project, stackName, stack, config, release, false) : undefined;
@@ -1638,9 +1654,13 @@ export class ProjectService extends EventEmitter {
         stack, entries, [...definitions], environment, release?.manifestSha256 ?? null, launch,
         report.targets.map(target => [target.node, target.infrastructure!.digest]),
       ]);
-    } catch {
+    } catch (error) {
       // Source errors may contain credential values. Evidence contains only reviewed fingerprints and controlled diagnostics.
-      report.targets.push({ node: 'preflight', reason: 'Complete launch and infrastructure preservation could not be verified. Check release preparation, current declarations and recipient capability.' });
+      if (error instanceof DeclarationRefreshRequired) {
+        report.targets.push({ node: 'preflight', reason: error.message, refreshDeclarations: candidate ? { release: candidate } : {} });
+      } else {
+        report.targets.push({ node: 'preflight', reason: 'Complete launch and infrastructure preservation could not be verified. Check release preparation, current declarations and recipient capability.' });
+      }
     }
     return report;
   }
@@ -2502,6 +2522,7 @@ export class ProjectService extends EventEmitter {
     prepare = false,
   ): Promise<import('../shared/dto/project.js').ReleaseAdmission> {
     let preparedArtifactVolumes: import('../shared/dto/project.js').PreparedArtifactVolume[] | undefined;
+    let declarationReason: string | undefined;
     try {
       const config = await this.loadProjectConfig(projectName);
       const stacks = this.resolveStacks(config, projectName);
@@ -2516,6 +2537,11 @@ export class ProjectService extends EventEmitter {
           ? await this.installedRelease(projectName, stackName, stackConfig, config, release, prepare) : undefined;
         const entries = inspected?.entries ?? await this.installedEntries(projectName, stackName, stackConfig, config, release, prepare);
         if (prepare && inspected) preparedArtifactVolumes = inspected.preparedArtifactVolumes;
+        try { this.preservationDefinitions(projectName, stackName, entries); }
+        catch (error) {
+          if (!(error instanceof DeclarationRefreshRequired)) throw error;
+          declarationReason = error.message;
+        }
         const prior = this.localSelection(projectName, stackName).read().release;
         if (prior?.id === release.id && prior.manifestSha256 !== release.manifestSha256) throw new Error('Selected manifest changed on disk');
         const plan = await this.checkLocalOwner(projectName, stackName, entries, prior?.id !== release.id);
@@ -2528,6 +2554,7 @@ export class ProjectService extends EventEmitter {
       const passed = gates.filter((g) => g.status === 'passed').length;
       return {
         ok: true,
+        ...(declarationReason && { declarations: 'refresh-required' as const, declarationReason }),
         ...(preparedArtifactVolumes?.length && { preparedArtifactVolumes }),
         because:
           `${projectName}/${stackName} would take ${release.id}: ${passed} of ${gates.length} gates passed, ` +
@@ -2543,7 +2570,9 @@ export class ProjectService extends EventEmitter {
           ok: false, state: 'missing', because: `Release ${releaseId} is absent from this controller. Fetch it from the configured release store and check target admission.`,
         };
       }
+      if (err instanceof DeclarationRefreshRequired) return { ok: false, because: err.message + '. Ask an administrator to refresh the source stack declarations.' };
       return { ok: false, because: (err as Error).message,
+        ...(declarationReason && { declarations: 'refresh-required' as const, declarationReason }),
         ...(err instanceof LocalReleaseNotPreparedError && { state: 'unprepared' as const }),
         ...(err instanceof LocalReleaseStopRequired && { state: 'requires-stop' as const,
           ...(preparedArtifactVolumes?.length && { preparedArtifactVolumes }) }) };
@@ -3237,7 +3266,9 @@ export class ProjectService extends EventEmitter {
       for (const entry of entries) {
         if (entry.bootstrap) archived.set(entry.name, await readArchiveInfrastructure(release, entry.name));
       }
-      remoteDefinitions = await this.loadAppDefinitions(projectName, stackConfig, config, entries, archived);
+      remoteDefinitions = purpose === 'check'
+        ? this.preservationDefinitions(projectName, stackName, entries, archived)
+        : await this.loadAppDefinitions(projectName, stackConfig, config, entries, archived);
     }
     let inputs: string[] | undefined;
     try {

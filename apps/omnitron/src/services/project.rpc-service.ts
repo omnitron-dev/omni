@@ -117,14 +117,16 @@ export class ProjectRpcService {
 
   /** Explicit administrative imports; all configurations share one bounded read window. */
   @Public({ auth: { roles: ADMIN_ROLES } })
-  async refreshTopologyMetadata(data: { project: string; stack?: string }): Promise<import('../shared/dto/project.js').TopologyMetadataRefresh> {
+  async refreshTopologyMetadata(data: { project: string; stack?: string; release?: string }): Promise<import('../shared/dto/project.js').TopologyMetadataRefresh> {
     const result: import('../shared/dto/project.js').TopologyMetadataRefresh = { refreshed: 0, failures: [] };
     const { TOPOLOGY_REFRESH_TIMEOUT_MS } = await import('../project/bootstrap-metadata.js');
     const deadline = Date.now() + TOPOLOGY_REFRESH_TIMEOUT_MS;
+    if (data.release !== undefined && !data.stack) throw Errors.badRequest('A candidate release requires an exact stack');
     const selected = data.stack ? await this.projectService.resolveProjectStack({ project: data.project, stack: data.stack }) : null;
-    for (const record of this.projectService.projectConfigurations(data.project)) {
-      if (selected && selected.project !== record.name) continue;
-      const refresh = await this.projectService.refreshTopologyMetadata({ project: record.name, ...(selected ? { stack: selected.stack } : {}) }, deadline);
+    const projects = selected ? [selected.project] : this.projectService.projectConfigurations(data.project).map(record => record.name);
+    for (const project of projects) {
+      const refresh = await this.projectService.refreshTopologyMetadata({ project,
+        ...(selected ? { stack: selected.stack } : {}), ...(data.release !== undefined && { release: data.release }) }, deadline);
       result.refreshed += refresh.refreshed;
       result.failures.push(...refresh.failures.map(failure => ({ ...failure, project: data.project })));
     }

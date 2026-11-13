@@ -15,7 +15,9 @@ export async function topologyCommand(
   try {
     const service = await client.service<IProjectRpcService>('OmnitronProject');
     if (action === 'refresh') {
-      const result = await service.refreshTopologyMetadata({ project, ...(stack ? { stack } : {}) });
+      if (argument !== undefined && !stack) throw Error('A candidate release requires an exact stack');
+      const result = await service.refreshTopologyMetadata({ project, ...(stack ? { stack } : {}),
+        ...(argument !== undefined && { release: argument }) });
       if (isJsonMode()) emitJson(result);
       else {
         emitInfo(`Captured ${result.refreshed} application declarations; workloads unchanged.`);

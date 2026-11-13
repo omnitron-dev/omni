@@ -1,5 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
+import { constants } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createToken, type Token } from '@omnitron-dev/titan/nexus';
 import { readInstalledReleaseReceipt, validRuntimeOrigin } from '../release/installed-origin.js';
@@ -20,9 +22,21 @@ export type InstalledRuntimeContext =
       observedAt: string;
       ownerAttestation: null;
     }>
-  | Readonly<{ state: 'unavailable'; reason: string }>;
+  | Readonly<{
+      state: 'unavailable';
+      reason: string;
+      /** The generated worker file observed during import. This carries no release or dependency identity. */
+      development?: Readonly<{
+        basis: 'observed-development-module';
+        relativeFile: string;
+        sha256: string;
+        observedAt: string;
+      }>;
+    }>;
 export const RUNTIME_CONTEXT: Token<InstalledRuntimeContext> =
   createToken<InstalledRuntimeContext>('omnitron.runtime-context');
+
+const noInstalledOrigin = 'No admitted runtime origin is recorded for this entry';
 
 /** Startup evidence for this physical compiled entry, not owner or continuous-memory attestation. */
 export async function verifyInstalledRuntime(entry: URL): Promise<InstalledRuntimeContext> {
@@ -49,7 +63,7 @@ export async function verifyInstalledRuntime(entry: URL): Promise<InstalledRunti
       directory = parent;
     }
     if (!root)
-      return Object.freeze({ state: 'unavailable', reason: 'No admitted runtime origin is recorded for this entry' });
+      return Object.freeze({ state: 'unavailable', reason: noInstalledOrigin });
     if (!/\.[cm]?js$/.test(file) || (await fs.realpath(file)) !== file || !(await fs.lstat(file)).isFile())
       throw Error('Runtime entry must be a physical compiled file');
     const r = await readInstalledReleaseReceipt(root),
@@ -106,6 +120,47 @@ export async function verifyInstalledRuntime(entry: URL): Promise<InstalledRunti
       error instanceof Error ? error.message : 'Runtime origin verification failed',
       { cause: error }
     );
+  }
+}
+
+/** Load a worker through its usual ESM path. Only the owner's BuildService supplies a generated process name. */
+export async function importRuntimeModule(
+  context: InstalledRuntimeContext, entry: URL, module: URL, generatedProcess?: string
+) {
+  await assertInstalledRuntimeModule(context, entry, module);
+  if (generatedProcess === undefined || context.state !== 'unavailable' || context.reason !== noInstalledOrigin)
+    return { moduleFile: await import(module.href), runtimeContext: context };
+
+  const bootstrap = fileURLToPath(entry), file = fileURLToPath(module);
+  const directory = path.dirname(bootstrap);
+  if (!generatedProcess || path.basename(generatedProcess) !== generatedProcess || entry.search || entry.hash ||
+      module.search || module.hash || path.basename(directory) !== '.omnitron-build' ||
+      path.basename(bootstrap) !== 'bootstrap.js' || file !== path.join(directory, generatedProcess + '.js'))
+    throw new RuntimeOriginVerificationError('Generated worker does not match its BuildService entry');
+
+  // The registered project may itself be reached via a symlink. The output directory and files under it must
+  // physically belong to that project. Hold the worker descriptor across import to detect replacement or edits.
+  const root = await fs.realpath(path.dirname(directory));
+  const relativeFile = '.omnitron-build/' + generatedProcess + '.js';
+  if (await fs.realpath(bootstrap) !== path.join(root, '.omnitron-build', 'bootstrap.js') ||
+      await fs.realpath(file) !== path.join(root, relativeFile))
+    throw new RuntimeOriginVerificationError('Generated worker or bootstrap escapes its build directory');
+  const handle = await fs.open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    const before = await handle.stat({ bigint: true });
+    if (!before.isFile()) throw new RuntimeOriginVerificationError('Generated worker is not a regular file');
+    const sha256 = createHash('sha256').update(await handle.readFile()).digest('hex');
+    const moduleFile = await import(module.href);
+    const after = await fs.lstat(file, { bigint: true });
+    if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size ||
+        before.ctimeNs !== after.ctimeNs || before.mtimeNs !== after.mtimeNs ||
+        await fs.realpath(file) !== path.join(root, relativeFile))
+      throw new RuntimeOriginVerificationError('Generated worker changed during import');
+    const development = Object.freeze({ basis: 'observed-development-module' as const, relativeFile, sha256,
+      observedAt: new Date().toISOString() });
+    return { moduleFile, runtimeContext: Object.freeze({ ...context, development }) };
+  } finally {
+    await handle.close();
   }
 }
 

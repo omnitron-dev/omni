@@ -86,3 +86,28 @@ exact manifest/closure/file evidence, no application evaluation, symlink/path
 refusals, altered archives/payload/closure, legacy refusal, opt-in bounds,
 request mutation and cleanup. These unit fixtures are not a production release
 admission or a deployment test.
+
+## Review declarations from an installed candidate
+
+On the controller that owns the local stack, an operator can run
+`omnitron stack prepare-release <project> <stack> <id>` while the
+current release is serving. An existing installation can also be checked with
+`omnitron stack check-release <project> <stack> <id>`. Both commands read
+the captured declarations and inspect the verified installation. A missing or
+stale snapshot produces `declarations: "refresh-required"`, the application
+name and a reason. Admission reports a required whole-stack stop separately,
+so both conditions can be resolved in order.
+
+An administrator can capture the candidate's declarations before the stop:
+
+```sh
+omnitron topology refresh <project> <stack> --release <id>
+omnitron stack start <project> <stack> --release <id> --infrastructure preserve --dry-run
+```
+
+Refresh verifies the exact installed release, reads its trusted bootstrap
+in a bounded child process and records the declaration and source digest.
+The selected release and startup policy stay active throughout. Console uses
+the same administrative RPC. A failed capture retains the previous snapshot
+and reports the failure; a new preservation review requires valid, current
+evidence for every participating application.

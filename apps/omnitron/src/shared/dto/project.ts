@@ -169,7 +169,7 @@ export interface StackStartReview {
   selection?: { release?: string; workingTree?: true };
   checkedAt: string;
   digest: string | null;
-  targets: Array<{ node: string; infrastructure?: ExistingInfrastructureReview; reason?: string }>;
+  targets: Array<{ node: string; infrastructure?: ExistingInfrastructureReview; reason?: string; refreshDeclarations?: { release?: string } }>;
   deferred: string[];
 }
 
@@ -233,6 +233,9 @@ export interface PreparedArtifactVolume {
 }
 
 export interface ReleaseAdmission {
+  /** Installed candidate declarations needed for a preservation review. This is independent of the stop fence. */
+  declarations?: 'refresh-required';
+  declarationReason?: string;
   /** Only a successful prepare inspection supplies paths. Requires-stop may retain this
    * evidence so an operator can publish immutable assets before quiescing applications.
    * It does not select a release, update a gateway, or authorize any filesystem mutation. */
@@ -464,6 +467,8 @@ export interface IStackInfraStatus {
     string,
     {
       status: 'running' | 'stopped' | 'error';
+      /** Docker lifecycle, separate from the service verdict and setup. */
+      nativeStatus?: import('../../infrastructure/types.js').ContainerStatus;
       containerName: string;
       port: number | null;
       service?: string;

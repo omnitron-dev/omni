@@ -66,14 +66,22 @@ export async function observeStackStart<T>(
   finally { active = false; clearTimeout(timer); }
 }
 
+/** Resolve a recorded runtime target to its public stack. Unknown imported targets have no owner here. */
+export function publicDeploymentStack(
+  project: Pick<IProjectInfo, 'name' | 'configurations'> | null, sourceProject: string, sourceStack: string,
+): string | null {
+  if (!project) return sourceStack;
+  const source = project.configurations?.find(item => item.runtimeProject === sourceProject);
+  return source?.stacks[sourceStack] ?? (sourceProject === project.name ? sourceStack : null);
+}
+
 /** Current observations, including imported stack names and earlier controllers with no attribution. */
 export function readDeploymentProgress(records: readonly DeployProgressRecord[], project: Pick<IProjectInfo, 'name' | 'configurations'>, stack?: string | null) {
   const transfers: DeployProgressRecord[] = [];
   const unscoped: DeployProgressRecord[] = [];
   for (const record of records) {
     if (!record.project || !record.stack) { unscoped.push(record); continue; }
-    const source = project.configurations?.find(item => item.runtimeProject === record.project);
-    const publicName = source?.stacks[record.stack] ?? (record.project === project.name ? record.stack : undefined);
+    const publicName = publicDeploymentStack(project, record.project, record.stack);
     if (publicName && (!stack || publicName === stack)) {
       transfers.push(record.project === project.name && record.stack === publicName
         ? record : { ...record, project: project.name, stack: publicName });

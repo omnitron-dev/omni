@@ -66,6 +66,15 @@ Application entries do not replicate a whole application with `instances`. Autho
 
 ## Starting with existing infrastructure
 
+For a newly built or previously published release on an independently owned local
+stack, run `omnitron stack prepare-release acme prod <release-id>` on its controller
+while the current applications serve. If it reports `declarations: "refresh-required"`,
+an administrator runs `omnitron topology refresh acme prod --release <release-id>`.
+This records the installed candidate's declarations for the operator's review.
+The response can also report `state: "requires-stop"`; capture the declarations
+and review preservation before scheduling that stop. Console's Releases view
+offers the same operations according to the signed-in user's role.
+
 Runtime-only recovery uses `--infrastructure preserve`. Review the intended release and current resources before stopping applications:
 
 ```sh
@@ -112,6 +121,13 @@ omnitron sdk dev /path/to/omni --project-dir /path/to/acme --stack dev --start-s
 Set `digest` to the digest from the first command. The second builds the selected SDK, checks the stopped applications and retained infrastructure, and sends one start request for that stop ID. The first owner generations become the receipts for those SDK outputs. If the reply is lost, the CLI reports the observed stack state and leaves the SDK receipts unconfirmed. On a confirmed start, the watcher handles later source edits. Add `--no-watch` for a single reviewed start.
 
 Run `omnitron sdk status --project-dir /path/to/project --stack dev` to compare current package outputs and owner generations with the receipts from the last build. The command is read-only. Its JSON result identifies each confirmed application, each explicit opt-out, and the inactive and unaffected applications.
+
+Titan bootstrap workers can inject `RUNTIME_CONTEXT` from `@omnitron-dev/omnitron/runtime`.
+For a working-tree bundle produced by Omnitron, `development` records the generated worker's
+project-relative filename, SHA-256 and observation time. The adapter observes the file across
+its ESM import and rejects replacements or edits during that interval. Installed identity stays
+`unavailable`. External imports and process memory lie outside this measurement. Consumers
+that require reproducible release data should require `state: 'verified'` and the producer identity.
 
 ## Pipelines pinned to releases
 

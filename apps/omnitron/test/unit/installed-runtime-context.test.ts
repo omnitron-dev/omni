@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import fs from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -8,7 +9,10 @@ import {
   assertArtifactIdentity,
   RuntimeOriginVerificationError,
 } from '../../src/runtime/index.js';
-import { assertInstalledRuntimeModule } from '../../src/runtime/context.js';
+import { assertInstalledRuntimeModule, importRuntimeModule } from '../../src/runtime/context.js';
+import { BuildService } from '../../src/orchestrator/build-service.js';
+import BootstrapProcess from '../../src/orchestrator/bootstrap-process.js';
+import { linkFixtureDependencies } from '../helpers/installed-dependencies.js';
 import { releaseTreeDigest } from '../../src/release/runtime-provenance.js';
 import { targetRuntime } from '../../src/release/target-runtime.js';
 import type { InstalledReleaseReceipt } from '../../src/release/installed-origin.js';
@@ -82,6 +86,86 @@ it('preserves ordinary TS development when no admitted receipt exists', async ()
   await fs.writeFile(path.join(root, 'bootstrap.ts'), 'export default {};');
   process.execArgv = ['--import', 'tsx'];
   expect((await verifyInstalledRuntime(pathToFileURL(path.join(root, 'bootstrap.ts')))).state).toBe('unavailable');
+});
+
+async function generatedWorker(source = 'export default 42') {
+  await fs.unlink(path.join(root, '.omnitron-release.json'));
+  const dir = path.join(root, '.omnitron-build');
+  await fs.mkdir(dir);
+  await fs.writeFile(path.join(root, 'package.json'), '{"type":"module"}');
+  await fs.writeFile(path.join(dir, 'bootstrap.js'), 'export default {}');
+  const worker = path.join(dir, 'collector.js');
+  await fs.writeFile(worker, source);
+  const bootstrap = pathToFileURL(path.join(dir, 'bootstrap.js'));
+  return { worker, bootstrap, context: await verifyInstalledRuntime(bootstrap) };
+}
+
+it('records the generated worker file independently of installed identity and accepts a registered project symlink', async () => {
+  const source = 'export default 42', { worker, context } = await generatedWorker(source);
+  const alias = path.join(root, 'registered');
+  await fs.symlink(root, alias, 'dir');
+  const bootstrap = pathToFileURL(path.join(alias, '.omnitron-build/bootstrap.js'));
+  const module = pathToFileURL(path.join(alias, '.omnitron-build/collector.js'));
+  const result = await importRuntimeModule(context, bootstrap, module, 'collector');
+  expect(result.moduleFile.default).toBe(42);
+  expect(result.runtimeContext).toEqual({
+    ...context, development: { basis: 'observed-development-module', relativeFile: '.omnitron-build/collector.js',
+      sha256: createHash('sha256').update(source).digest('hex'), observedAt: expect.any(String) },
+  });
+  expect(result.runtimeContext).not.toHaveProperty('producer');
+  expect((await importRuntimeModule(context, bootstrap, pathToFileURL(worker))).runtimeContext).toEqual(context);
+});
+
+it('preserves an unavailable legacy installation even when the caller supplies a generated process name', async () => {
+  const { bootstrap, worker } = await generatedWorker();
+  delete receipt.origin.runtimeOrigin;
+  await save();
+  const legacy = await verifyInstalledRuntime(bootstrap);
+  expect(legacy).toMatchObject({ state: 'unavailable', reason: expect.stringContaining('Legacy') });
+  expect((await importRuntimeModule(legacy, bootstrap, pathToFileURL(worker), 'collector')).runtimeContext).toEqual(legacy);
+});
+
+it('rejects a different role and a linked worker instead of recording them as its generated output', async () => {
+  const { bootstrap, worker, context } = await generatedWorker();
+  await expect(importRuntimeModule(context, bootstrap, pathToFileURL(worker), 'server')).rejects.toThrow('BuildService entry');
+  const external = path.join(root, 'other.js');
+  await fs.rename(worker, external);
+  await fs.symlink(external, worker);
+  await expect(importRuntimeModule(context, bootstrap, pathToFileURL(worker), 'collector')).rejects.toThrow('escapes');
+});
+
+it('rejects a generated worker rewritten during import', async () => {
+  const { bootstrap, worker, context } = await generatedWorker(
+    'import {writeFileSync} from "node:fs"; writeFileSync(new URL(import.meta.url), "export default 7"); export default 42;'
+  );
+  await expect(importRuntimeModule(context, bootstrap, pathToFileURL(worker), 'collector')).rejects.toThrow('changed during import');
+});
+
+it('injects the observed working-tree build into the ordinary generated worker through Titan', async () => {
+  await fs.unlink(path.join(root, '.omnitron-release.json'));
+  await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'origin-probe', type: 'module' }));
+  await linkFixtureDependencies(root, ['@omnitron-dev/titan']);
+  await fs.mkdir(path.join(root, 'src'));
+  const definition = { name: 'origin-probe', version: '1', processes: [{ name: 'collector', module: './collector.js' }] };
+  const bootstrap = path.join(root, 'src/bootstrap.ts');
+  await fs.writeFile(bootstrap, 'export default ' + JSON.stringify(definition));
+  await fs.writeFile(path.join(root, 'src/collector.ts'),
+    'import { Module } from "@omnitron-dev/titan"; class Collector {} Module({})(Collector); export default Collector;');
+  const build = new BuildService(true), boot = new BootstrapProcess();
+  try {
+    const bundle = await build.buildApp('origin-probe', bootstrap, definition);
+    const module = bundle.modulePaths.get('collector')!;
+    await boot.init({ bootstrapPath: bundle.bootstrapPath, bundledModulePath: module, processName: 'collector' });
+    const { RUNTIME_CONTEXT } = await import('../../src/runtime/context.js');
+    const app = Reflect.get(boot, 'app')!;
+    expect(app.container.resolve(RUNTIME_CONTEXT)).toMatchObject({
+      state: 'unavailable', development: { basis: 'observed-development-module', relativeFile: '.omnitron-build/collector.js',
+        sha256: createHash('sha256').update(await fs.readFile(module)).digest('hex') },
+    });
+  } finally {
+    await boot.shutdown();
+    await build.dispose();
+  }
 });
 it('does not accept forged environment identity or upgrade a valid legacy record', async () => {
   delete receipt.origin.runtimeOrigin;

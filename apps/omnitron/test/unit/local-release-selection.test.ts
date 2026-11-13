@@ -121,6 +121,20 @@ it('keeps prepare, admission and launch distinct while applications are serving'
   expect(f.owner.redefineApp).not.toHaveBeenCalled();
 });
 
+it('retains the independent declaration remedy when the prior release still requires a reviewed stop', async () => {
+  const f = fixture(), service = f.make();
+  mkdirSync(f.installed.releaseRoot, { recursive: true });
+  const bootstrap = path.join(f.installed.releaseRoot, 'bootstrap.js');
+  writeFileSync(bootstrap, "throw Error('An operator must never evaluate this declaration')");
+  Object.assign(service, { installedEntries: async () => [{ ...f.installed, script: undefined, bootstrap }] });
+  f.handle.status = 'online'; f.handle.pid = 123;
+  expect(await service.checkRelease('research', 'lab', f.selected.id, true)).toMatchObject({
+    ok: false, state: 'requires-stop', declarations: 'refresh-required', declarationReason: expect.stringContaining('api'),
+  });
+  expect(f.selector().read().release).toBeNull();
+  expect(f.owner.stopStackExecution).not.toHaveBeenCalled();
+});
+
 it('refuses a different manifest under a previously selected release id before involving the owner', async () => {
   const f = fixture();
   f.selector().select(0, { ...f.selected, manifestSha256: 'e'.repeat(64) });

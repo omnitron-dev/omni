@@ -40,10 +40,14 @@ sdk.command('init').description('Install the pnpm bridge without resolving regis
 sdk.command('dev [checkout]').description('Select a local SDK and rebuild when it changes')
   .option('--project-dir <path>', 'Consumer workspace directory', process.cwd())
   .option('--stack <name>', 'Refresh watched applications in this local source stack')
+  .option('--start-stopped', 'Start the stopped working-tree stack and confirm its first SDK generations')
+  .option('--review <digest>', 'Use the exact infrastructure preservation review for that start')
   .option('--no-watch', 'Install the SDK without starting a watch session')
   .action(async (checkout, options) => (await import('../../bin/sdk.js')).sdkCommand([
     'dev', ...(checkout ? [checkout] : []), '--project-dir', options.projectDir,
     ...(options.stack ? ['--stack', options.stack] : []), ...(options.watch === false ? ['--no-watch'] : []),
+    ...(options.startStopped ? ['--start-stopped'] : []),
+    ...(options.review !== undefined ? ['--review', options.review] : []),
   ]));
 sdk.command('registry').description('Restore dependencies from the frozen distribution lock')
   .option('--project-dir <path>', 'Consumer workspace directory', process.cwd())
@@ -300,10 +304,11 @@ project
 
 const topology = program.command('topology').description('Inspect, edit and plan desired application placement');
 topology.command('refresh <project> [stack]')
+  .option('--release <id>', 'Capture declarations from this already prepared local release')
   .description('Read trusted bootstrap declarations in isolated processes; save metadata without restarting workloads (admin)')
-  .structuredAction(async (projectName, stackName) => {
+  .structuredAction(async (projectName, stackName, opts) => {
     const { topologyCommand } = await import('../commands/topology.js');
-    await topologyCommand('refresh', projectName, stackName);
+    await topologyCommand('refresh', projectName, stackName, opts.release);
   });
 for (const action of ['show', 'export', 'plan'] as const) {
   topology.command(`${action} <project> <stack>`)

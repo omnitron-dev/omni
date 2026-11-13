@@ -73,6 +73,7 @@ function Services({ services, label }: { services: IStackInfraStatus['services']
     {Object.entries(services).map(([key, svc]) => {
       const name = svc.service ?? key;
       const ports = portsLabel(svc.ports, svc.port);
+      const status = svc.nativeStatus ?? svc.status;
       return <Box component="li" key={key} sx={{ display: 'grid', gap: { xs: 0.5, sm: 2 }, py: 1,
         gridTemplateColumns: { xs: '1fr', sm: 'minmax(0, 1fr) minmax(0, auto)' },
         '& + &': { borderTop: 1, borderColor: 'divider' } }}>
@@ -85,7 +86,7 @@ function Services({ services, label }: { services: IStackInfraStatus['services']
           {svc.error && <Typography variant="caption" color="error.main" sx={{ overflowWrap: 'anywhere' }}>{svc.error}</Typography>}
         </Box>
         <Stack direction="row" useFlexGap sx={{ alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
-          <Chip size="small" variant="outlined" label={svc.status} color={statusColor(svc.status)} />
+          <Chip size="small" variant="outlined" label={status} color={statusColor(status)} />
           {svc.health && svc.health !== 'none' && <Chip size="small" variant="outlined" label={svc.health} color={statusColor(svc.health)} />}
           {svc.provisioning && <Chip size="small" variant="outlined" label={`Setup ${svc.provisioning}`}
             color={svc.provisioning === 'failed' ? 'error' : svc.provisioning === 'pending' ? 'warning' : 'success'} />}

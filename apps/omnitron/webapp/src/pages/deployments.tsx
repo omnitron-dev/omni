@@ -33,7 +33,7 @@ export default function DeploymentsPage() {
 }
 
 function DeploymentWorkspace() {
-  const { activeProject, activeStack, matchesNamespace, extractStack } = useStackContext();
+  const { activeProject, activeStack, matchesNamespace, visibleStackName } = useStackContext();
   const info = useProjectStore(s => s.projects.find(p => p.name === activeProject));
   const { can } = useAccess();
   const canHistory = can('OmnitronRelease.deployments');
@@ -57,7 +57,7 @@ function DeploymentWorkspace() {
   } : undefined), { intervalMs: 3_000, enabled: canProgress, resourceKey: JSON.stringify([activeProject, activeStack, canProgress]) });
 
   const starts = (history.data?.known ? history.data.deployments : [])
-    .filter(row => matchesNamespace(`${row.project}/${row.stack}/_`))
+    .filter(row => visibleStackName(row.project, row.stack) !== null)
     .sort((a, b) => b.at.localeCompare(a.at));
   const appRows = (legacy.data ?? []).filter(row => matchesNamespace(row.app));
   const records = canProgress ? progress.data ?? [] : [];
@@ -76,8 +76,8 @@ function DeploymentWorkspace() {
 
   const stackColumns: ColumnDef<ReleaseDeploymentDto>[] = [
     { key: 'stack', header: 'Stack', render: row => {
-      const name = extractStack(`${row.project}/${row.stack}/_`) ?? row.stack;
-      return activeProject && can('OmnitronProject.getStack')
+      const name = visibleStackName(row.project, row.stack);
+      return activeProject && name && can('OmnitronProject.listStacks')
         ? <Stack><Link component={RouterLink} to={`/stacks/${encodeURIComponent(name)}`}>{name}</Link>
           {(row.project !== activeProject || row.stack !== name) && <Typography variant="caption" color="text.secondary">{row.project}/{row.stack}</Typography>}</Stack>
         : <Typography variant="body2">{row.project}/{row.stack}</Typography>;

@@ -243,7 +243,7 @@ function appFromProcess(process: ProcessInfoDto, stack: string | null): AppNodeD
 function serviceNode(
   service: string,
   stack: string | null,
-  reported: { status: string; port: number | null } | null,
+  reported: IStackInfo['infrastructure']['services'][string] | null,
   container: ContainerState | undefined
 ): InfraNodeData {
   return {
@@ -254,7 +254,7 @@ function serviceNode(
     ...(container?.app && { app: container.app }),
     port: reported?.port ?? firstPublishedPort(container),
     health: container ? (container.health ?? 'none') : 'unknown',
-    status: container?.status ?? reported?.status ?? 'unknown',
+    status: reported?.status === 'error' ? 'error' : container?.status ?? reported?.nativeStatus ?? reported?.status ?? 'unknown',
     ...(container?.containerId && { containerId: container.containerId }),
     ...(container?.image && { image: container.image }),
     ...(container?.startedAt && { startedAt: container.startedAt }),
@@ -332,7 +332,7 @@ export function stackBands(
               nodeKey: placement.nodeKey,
               host: placement.host,
               port: service.port,
-              status: service.status,
+              status: service.status === 'error' ? 'error' : service.nativeStatus ?? service.status,
               health: service.health ?? 'unknown',
               containerId: service.containerId,
               image: service.image,

@@ -1,6 +1,7 @@
 import { stackFixture } from '../helpers/stack-fixture.js';
 import { describe, expect, it } from 'vitest';
-import { projectPrefixes, projectStackName, restoredProjectScope } from '../../webapp/src/utils/project-scope';
+import { publicDeploymentStack } from '@omnitron-dev/omnitron/release-reading';
+import { projectPrefixes, restoredProjectScope } from '../../webapp/src/utils/project-scope';
 import { metricScope, seriesInScope } from '../../webapp/src/utils/metric-series';
 import type { IProjectInfo } from '../../src/shared/dto/project';
 
@@ -13,7 +14,11 @@ describe('project ownership across historical namespaces', () => {
     expect(projectPrefixes(project, 'sample', null)).toEqual(['sample/', 'sample-research/']);
     expect(projectPrefixes(project, 'sample', 'research')).toEqual(['sample-research/local/', 'sample/research/']);
     expect(projectPrefixes(project, 'sample', 'test')).toEqual(['sample/test/']);
-    expect(projectStackName(project, 'sample-research/local/api')).toBe('research');
+    expect(publicDeploymentStack(project, 'sample-research', 'local')).toBe('research');
+    expect(publicDeploymentStack(project, 'sample', 'dev')).toBe('dev');
+    expect(publicDeploymentStack(project, 'other', 'dev')).toBeNull();
+    expect(publicDeploymentStack(project, 'sample-research', 'unregistered')).toBeNull();
+    expect(publicDeploymentStack(null, 'other', 'dev')).toBe('dev');
   });
   it('restores an old selected registration inside its owner without losing its stack', () => {
     expect(restoredProjectScope([project], 'sample-research', 'local')).toEqual({ project: 'sample', stack: 'research' });

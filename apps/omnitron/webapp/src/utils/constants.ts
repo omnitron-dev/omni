@@ -32,6 +32,7 @@ export const STATUS_COLORS: Record<string, 'success' | 'error' | 'warning' | 'de
   starting: 'warning',
   stopping: 'warning',
   restarting: 'warning',
+  paused: 'warning',
   degraded: 'warning',
   provisioning: 'warning',
 

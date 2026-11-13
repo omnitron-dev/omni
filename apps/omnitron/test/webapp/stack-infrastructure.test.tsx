@@ -38,7 +38,7 @@ it('keeps same-name services on separate nodes and differentiates unavailable an
     status: 'running', containerId: 'b'.repeat(64), port: 4222, ports: { '4222/tcp': 14222 }, health: 'healthy', provisioning: 'ready', image: 'nats:2' };
   const stack = stackFixture('test', { type: 'cluster', config: { type: 'cluster' },
     placements: [placement('worker-a', { ready: true, services: { queue: service } }),
-      placement('worker-b', { ready: false, services: { queue: { ...service, status: 'error', health: 'none', provisioning: 'failed', error: 'Cannot initialize stream' } } }),
+      placement('worker-b', { ready: false, services: { queue: { ...service, status: 'error', nativeStatus: 'restarting', health: 'none', provisioning: 'failed', error: 'Cannot initialize stream' } } }),
       placement('worker-c', null), placement('worker-d', { ready: true, services: {} })],
     infrastructure: { ready: true, services: { stale: { ...service, service: 'stale-controller-copy' } } } });
   render(<StackInfrastructure stack={stack} />);
@@ -48,6 +48,7 @@ it('keeps same-name services on separate nodes and differentiates unavailable an
   expect(a.getByText('Setup ready')).toBeInTheDocument();
   expect(a.getByText(/4222\/tcp → 14222/).textContent).toContain('bbbbbbbbbbbb');
   expect(b.getByText('Setup failed')).toBeInTheDocument();
+  expect(b.getByText('restarting')).toBeInTheDocument();
   expect(b.getByText('Cannot initialize stream')).toBeInTheDocument();
   expect(within(screen.getByRole('region', { name: 'worker-c:9700' })).getByText(/Node did not return/)).toBeInTheDocument();
   expect(within(screen.getByRole('region', { name: 'worker-d:9700' })).getByText('No services reported.')).toBeInTheDocument();

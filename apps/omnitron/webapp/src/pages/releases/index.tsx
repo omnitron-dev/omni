@@ -76,7 +76,7 @@ async function loadPage(): Promise<PageData> {
 }
 
 export default function ReleasesPage() {
-  const { activeProject, activeStack, matchesNamespace } = useStackContext();
+  const { activeProject, activeStack, visibleStackName } = useStackContext();
   const [buildOpen, setBuildOpen] = useState(false);
   const [pruneOpen, setPruneOpen] = useState(false);
   const [deployTarget, setDeployTarget] = useState<ReleaseSummary | null>(null);
@@ -136,7 +136,10 @@ export default function ReleasesPage() {
       key: 'id',
       header: 'Release',
       render: (r) => {
-        const targets = (deployedBy.get(r.id) ?? []).filter(target => matchesNamespace(`${target.project}/${target.stack}/_`));
+        const targets = (deployedBy.get(r.id) ?? []).flatMap(record => {
+          const name = visibleStackName(record.project, record.stack);
+          return name === null ? [] : [{ record, name }];
+        });
         return (
           <Stack spacing={0.5}>
             <Typography
@@ -154,13 +157,13 @@ export default function ReleasesPage() {
                   <Chip label={r.manifestError ? 'invalid manifest' : 'unfinished'} size="small" color={r.manifestError ? 'error' : 'warning'} variant="outlined" sx={{ height: 18, fontSize: 10 }} />
                 </Tooltip>
               )}
-              {targets.map((t) => (
+              {targets.map(({ record: t, name }) => (
                 <Tooltip
                   key={`${t.project}/${t.stack}`}
                   title={`Last recorded deployment to ${t.project}/${t.stack}: ${when(t.at)} · ${t.source ?? 'unknown'}. Current runtime identity is not verified by this record.`}
                   arrow
                 >
-                  <Chip label={`History: ${t.stack}`} size="small" variant="outlined" />
+                  <Chip label={`History: ${name}`} size="small" variant="outlined" />
                 </Tooltip>
               ))}
             </Stack>

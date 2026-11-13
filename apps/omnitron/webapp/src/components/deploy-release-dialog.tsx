@@ -33,6 +33,7 @@ import Typography from '@mui/material/Typography';
 
 import type { DeployProgressRecord, IStackInfo, ReleaseAdmission, ReleaseSummary } from '@omnitron-dev/omnitron/dto/services';
 import { observeStackStart } from '@omnitron-dev/omnitron/release-reading';
+import { useAccess } from 'src/auth/access';
 import { invokeStackLifecycle, project as projectRpc } from 'src/netron/client';
 import { releaseApi } from 'src/netron/release-wire';
 import { useProjectStore } from 'src/stores/project.store';
@@ -40,6 +41,7 @@ import { DeployIcon } from 'src/assets/icons';
 
 import { CommitPair, GateStrip, gateSentence } from './release-bits';
 import { DeployProgressList } from './deploy-progress';
+import { TopologyMetadataDialog } from './topology/topology-metadata-dialog';
 
 export interface DeployReleaseDialogProps {
   open: boolean;
@@ -56,9 +58,11 @@ export interface DeployReleaseDialogProps {
 }
 
 export function DeployReleaseDialog({ open, onClose, project, release: given, stack }: DeployReleaseDialogProps) {
+  const { can } = useAccess();
+  const canRefreshDeclarations = can('OmnitronProject.refreshTopologyMetadata');
   const navigate = useNavigate();
   const location = useLocation();
-  const inspect = (target: string) => {
+  const openStack = (target: string) => {
     const store = useProjectStore.getState();
     if (store.activeProject !== project) store.selectProject(project,location.pathname);
     onClose();
@@ -77,6 +81,7 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
   const [answer, setVerdict] = useState<(ReleaseAdmission & { key: string }) | null>(null);
   const [checking, setChecking] = useState(false);
   const [preparing, setPreparing] = useState(false);
+  const [metadataTarget, setMetadataTarget] = useState<string | null>(null);
   const selection = useRef(0);
   const [deploying, setDeploying] = useState(false);
   const [activity, setActivity] = useState<{ records: DeployProgressRecord[]; available: boolean }>({ records: [], available: true });
@@ -131,6 +136,7 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
   useEffect(() => {
     const generation = ++selection.current;
     setVerdict(null);
+    setMetadataTarget(null);
     setPreparing(false);
     setDeploying(false);
     setActivity({ records: [], available: true });
@@ -155,22 +161,24 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
     return () => { current = false; selection.current = generation + 1; window.clearTimeout(timeout); };
   }, [open, project, target, releaseId, key]);
 
-  const handlePrepare = async () => {
+  const checkAfterAction = async (prepare: boolean) => {
     const request = selection.current;
-    setPreparing(true);
+    const setPending = prepare ? setPreparing : setChecking;
+    setPending(true);
+    setVerdict(null);
     setFailure(null);
     try {
-      const response = await invokeStackLifecycle('checkRelease', { project, stack: target, release: releaseId, prepare: true });
+      const response = await invokeStackLifecycle('checkRelease', { project, stack: target, release: releaseId, ...(prepare && { prepare }) });
       if (request === selection.current) setVerdict({ ...response, key });
     } catch (err) {
       if (request === selection.current) setFailure((err as Error).message);
     } finally {
-      if (request === selection.current) setPreparing(false);
+      if (request === selection.current) setPending(false);
     }
   };
 
   const handleDeploy = async () => {
-    if (!releaseId || !target || !verdict?.ok) return;
+    if (!releaseId || !target || !verdict?.ok || verdict.declarations === 'refresh-required') return;
     setDeploying(true);
     setFailure(null);
     const attempt = selection.current;
@@ -187,7 +195,7 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
         setInspectTarget(outcome.state !== 'failed');
         return;
       }
-      inspect(target);
+      openStack(target);
     } catch (err) {
       if (selection.current === attempt) setFailure((err as Error).message);
     } finally {
@@ -197,6 +205,8 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
 
   const chosen = stacks.find((s) => s.name === target);
   const needsPreparation = verdict?.state === 'unprepared' || verdict?.state === 'missing';
+  const needsDeclarations = verdict?.declarations === 'refresh-required';
+  const needsInspection = inspectTarget || verdict?.state === 'requires-stop';
   const requiresRelease = chosen?.config?.release?.mode === 'required';
 
   return (
@@ -297,10 +307,16 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
           )}
 
           {verdict && !preparing && (
-            <Alert severity={verdict.ok ? 'success' : verdict.state ? 'info' : 'error'}>
+            <Alert severity={needsDeclarations ? 'warning' : verdict.ok ? 'success' : verdict.state ? 'info' : 'error'}
+              action={needsDeclarations && canRefreshDeclarations
+                ? <Button color="inherit" size="small" onClick={() => setMetadataTarget(key)}>Update declarations…</Button> : undefined}>
               <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
                 {verdict.because}
               </Typography>
+              {needsDeclarations && verdict.declarationReason && verdict.declarationReason !== verdict.because &&
+                <Typography variant="body2">{verdict.declarationReason}</Typography>}
+              {needsDeclarations && !canRefreshDeclarations &&
+                <Typography variant="body2">An administrator must update this release’s application declarations.</Typography>}
             </Alert>
           )}
 
@@ -325,19 +341,22 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
         </Stack>
       </DialogContent>
       <DialogActions>
-        <Button onClick={deploying ? () => inspect(target) : onClose} size="small">
+        <Button onClick={deploying ? () => openStack(target) : onClose} size="small">
           {deploying ? 'Open stack' : preparing ? 'Close' : 'Cancel'}
         </Button>
         <Button
           variant="contained"
           size="small"
           startIcon={deploying ? <CircularProgress size={14} color="inherit" /> : <DeployIcon />}
-          disabled={!releaseId || !target || deploying || preparing || checking || (!inspectTarget && !needsPreparation && verdict?.ok !== true)}
-          onClick={inspectTarget ? () => inspect(target) : needsPreparation ? handlePrepare : handleDeploy}
+          disabled={!releaseId || !target || deploying || preparing || checking || (!needsInspection && !needsPreparation && (needsDeclarations || verdict?.ok !== true))}
+          onClick={needsInspection ? () => openStack(target) : needsPreparation ? () => void checkAfterAction(true) : handleDeploy}
         >
-          {deploying ? 'Deploying…' : preparing ? 'Preparing…' : inspectTarget ? 'Inspect stack' : verdict?.state === 'missing' ? 'Fetch and verify' : needsPreparation ? 'Prepare release' : 'Deploy'}
+          {deploying ? 'Deploying…' : preparing ? 'Preparing…' : needsInspection ? 'Inspect stack' : verdict?.state === 'missing' ? 'Fetch and verify' : needsPreparation ? 'Prepare release' : 'Deploy'}
         </Button>
       </DialogActions>
+      {open && canRefreshDeclarations && metadataTarget === key && <TopologyMetadataDialog
+        key={key} project={project} stack={target} release={releaseId} onClose={() => setMetadataTarget(null)}
+        onUpdated={() => checkAfterAction(false)} />}
     </Dialog>
   );
 }

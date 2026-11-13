@@ -1,9 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { logCommand, logHref } from './log-location';
+import { legacyLogTargets, logCommand, logHref } from './log-location';
+import { stackAppFixture, stackFixture } from '../../../test/helpers/stack-fixture';
 import { terminalCommand } from './terminal-input';
 
 describe('one app and node across Console and CLI', () => {
+  it('requires an application and an unambiguous registry endpoint for older remote handles', () => {
+    const handle = 'sample-import/deployed/mail';
+    const stack = (name: string, host: string, port: number) => stackFixture(name, {
+      type: 'remote', runtimeScope: { project: 'sample-import', stack: name },
+      nodes: [{ host, port, role: 'app', label: null, daemonRole: 'slave', connected: true, lastSeen: null, syncStatus: null }],
+      apps: [stackAppFixture('mail', { handleKey: handle })],
+    });
+    const test = stack('test', 'worker', 9700);
+    const prod = stack('prod', 'worker', 9800);
+    const registry = [{ id: 't', host: 'worker', daemonPort: 9700 }, { id: 'p', host: 'worker', daemonPort: 9800 }];
+    const read = (stacks = [test, prod], nodeId = 't', nodes = registry) =>
+      legacyLogTargets('sample', 'test', stacks, nodes, nodeId);
+    expect(read()).toEqual({ observed: true, available: new Set([handle]) });
+    expect(read([test, prod], 'p').available.size).toBe(0);
+    expect(read([test, prod], '').available.size).toBe(0);
+    expect(read([test, stack('ambiguous', 'worker', 9700)]).available.size).toBe(0);
+    expect(read([test], 't', [...registry, { ...registry[0]!, id: 'duplicate' }]).available.size).toBe(0);
+  });
   it('round-trips an exact remote handle in a link', () => {
     const url = new URL(logHref('sample/production/mail', 'node-a'), 'http://localhost');
     expect(url.pathname).toBe('/logs');

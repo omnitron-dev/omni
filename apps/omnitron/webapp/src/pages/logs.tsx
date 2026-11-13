@@ -34,9 +34,13 @@ import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
 import { useCopyToClipboard } from '@omnitron-dev/prism/core';
 import { logs, daemon, nodes as nodesRpc } from 'src/netron/client';
 import { useStackContext } from 'src/hooks/use-stack-context';
+import { useActiveProjectStacks } from 'src/stores/project.store';
+import { stacksInScope } from 'src/utils/stack-inventory';
+import { useAccess } from 'src/auth/access';
+import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { LogLevelFilter } from 'src/components/log-level-filter';
 import { DEFAULT_LOG_LEVELS } from 'src/utils/log-levels';
-import { logCommand } from 'src/utils/log-location';
+import { legacyLogTargets, logCommand } from 'src/utils/log-location';
 
 import type { LogEntryRow, LevelCount } from '@omnitron-dev/omnitron/dto/services';
 
@@ -97,6 +101,10 @@ function parseLabelInput(input: string): Record<string, string> | undefined {
   return Object.keys(labels).length > 0 ? labels : undefined;
 }
 
+function shortAppName(name: string): string {
+  return name.slice(name.lastIndexOf('/') + 1);
+}
+
 // =============================================================================
 // LogsPage — Main component
 // =============================================================================
@@ -119,8 +127,18 @@ export default function LogsPage() {
     return () => { active = false; clearInterval(timer); };
   }, []);
   const theme = useTheme();
-  const { activeProject, namespacePrefixes, matchesNamespace, filterApps, displayName } = useStackContext();
+  const { activeProject, activeStack, namespacePrefixes, matchesNamespace } = useStackContext();
+  const stacks = useActiveProjectStacks();
+  const { can } = useAccess();
   const daemonMode = !activeProject;
+  const canListDaemonApps = daemonMode && can('OmnitronDaemon.list');
+  const daemonApps = usePolledResource(() => daemon.list(), {
+    enabled: canListDaemonApps, paused: true, intervalMs: 15_000, resourceKey: canListDaemonApps ? 'daemon' : null,
+  });
+  const canReadNodes = can('OmnitronNodes.listNodes');
+  const registry = usePolledResource(async () => (await nodesRpc.listNodes()).filter(node => !node.isLocal), {
+    enabled: canReadNodes, paused: true, intervalMs: 15_000, resourceKey: canReadNodes ? 'nodes' : null,
+  });
   const [params, setParams] = useSearchParams();
   const clipboard = useCopyToClipboard();
 
@@ -137,15 +155,21 @@ export default function LogsPage() {
     if (value) next.set('node', value); else next.delete('node');
     return next;
   }, { replace: true });
-  const [nodeNames, setNodeNames] = useState<Array<{ id: string; hostname: string }>>([]);
+  const nodeNames = canReadNodes ? registry.data : null;
+  const legacy = useMemo(() => legacyLogTargets(activeProject ?? '', activeStack, stacks, nodeNames ?? [], nodeFilter),
+    [activeProject, activeStack, stacks, nodeNames, nodeFilter]);
+  const legacyApp = Boolean(nodeFilter && app && legacy.available.has(app));
+  const logNamespaces = useMemo(() => legacyApp ? [app.slice(0, app.lastIndexOf('/') + 1)] : namespacePrefixes,
+    [app, legacyApp, namespacePrefixes]);
   useEffect(() => {
-    if (activeProject && app && !matchesNamespace(app)) {
+    if (activeProject && app && !matchesNamespace(app) && !legacyApp) {
+      if (nodeFilter && app.split('/')[1] === 'deployed' && canReadNodes && (registry.loading || !stacks.length)) return;
       setParams(previous => { const next = new URLSearchParams(previous); next.set('app', ''); return next; }, { replace: true });
     }
-  }, [activeProject, app, matchesNamespace, setParams]);
+  }, [activeProject, app, matchesNamespace, legacyApp, canReadNodes, nodeFilter, registry.loading, stacks.length, setParams]);
   /** The same list the Node dropdown shows, keyed for the row detail. */
   const nodeNameById = useMemo(
-    () => Object.fromEntries(nodeNames.map((n) => [n.id, n.hostname])),
+    () => Object.fromEntries((nodeNames ?? []).map(n => [n.id, n.name])),
     [nodeNames],
   );
   const selectedLevels = useMemo(() => [...new Set(params.getAll('level'))], [params]);
@@ -164,7 +188,6 @@ export default function LogsPage() {
   // things: what is RUNNING in the active project, and what has LOGGED at any
   // point. Both hold fully-namespaced names — the value the daemon actually
   // stores in `logs.app` — and the short form is a display concern only.
-  const [liveApps, setLiveApps] = useState<string[]>([]);
   const [loggedApps, setLoggedApps] = useState<string[]>([]);
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
@@ -193,7 +216,7 @@ export default function LogsPage() {
     lastTimestampRef.current = null;
     setTailLimited(false);
     return () => { generation.current++; };
-  }, [app, namespacePrefixes, nodeFilter, selectedLevels, debouncedSearch, labelInput, timeRangeKey, customFrom, customTo]);
+  }, [app, logNamespaces, nodeFilter, selectedLevels, debouncedSearch, labelInput, timeRangeKey, customFrom, customTo]);
 
   // ---- Scroll ----
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -225,57 +248,6 @@ export default function LogsPage() {
     }
   }, [isLive, paused]);
 
-  // ---- Fetch app names ----
-  //
-  // Scoped to the active project/stack, so it re-runs when that changes.
-  // `filterApps` and `displayName` come from the stack context and are rebuilt
-  // on every switch; running this once on mount left the app dropdown listing
-  // the apps of whichever project happened to be active at mount, with no way
-  // to refresh it short of a reload. The two calls used to share one effect —
-  // the node list below is cluster-wide and has nothing to do with the
-  // project, so it stays on its own.
-  useEffect(() => {
-    (async () => {
-      try {
-        const list = await daemon.list();
-        setLiveApps(filterApps(list).map((a: any) => a.name));
-      } catch {
-        /* noop */
-      }
-    })();
-  }, [filterApps]);
-
-  // ---- Fetch cluster nodes ----
-  //
-  // From the NODE REGISTRY, not the fleet table.
-  //
-  // This listed `fleet.listNodes()`, and that table holds one row — the
-  // master's own; every remote machine lives in the node registry instead.
-  // So the dropdown could only ever offer the node you are already looking
-  // at. Worse, the two registries mint their ids separately, and a
-  // replicated log row carries the REGISTRY id (that is what the master
-  // stamps when it pulls), so a fleet id selected here would have matched no
-  // row even if the table had held one: an empty result, on a filter that
-  // looks like it worked.
-  useEffect(() => {
-    (async () => {
-      try {
-        const list = await nodesRpc.listNodes();
-        // Remote nodes only. The master's own lines are written with no
-        // `nodeId` at all — the column is stamped when a batch is PULLED —
-        // so an entry for this machine would be a filter that returns
-        // nothing, which is worse than one that is absent. Its lines are in
-        // the unfiltered view, which is the default.
-        const remote = Array.isArray(list) ? list.filter((n: { isLocal: boolean }) => !n.isLocal) : [];
-        if (remote.length > 0) {
-          setNodeNames(remote.map((n: { id: string; name: string }) => ({ id: n.id, hostname: n.name })));
-        }
-      } catch {
-        /* node registry not available — single node mode */
-      }
-    })();
-  }, []);
-
   // ---- Apps that have logged ----
   //
   // `getLogStats` groups the whole table, so it is asked when the page opens
@@ -298,20 +270,13 @@ export default function LogsPage() {
 
   // ---- App filter options ----
   //
-  // The value sent to the daemon MUST be the namespaced name: `queryLogs`
-  // matches `app` by equality, so picking the short `main` asked for rows
-  // written under that exact string. Measured on this stand: `main` answers
-  // 36 rows whose newest is five days old, left behind by the pre-project
-  // standalone layout, while the app the operator meant is `acme/dev/main`
-  // with 81 783 rows and a newest entry seconds old. The page built the short
-  // names itself, so it was offering a filter that could only mislead.
   const appOptions = useMemo(() => {
-    // Un-namespaced names — the daemon's own `omnitron`, plus those standalone
-    // leftovers — have no prefix to match, so they stay visible in every
-    // scope. Same rule the metrics page applies to its series.
-    const inScope = (name: string) =>
-      name === app || matchesNamespace(name) || !name.includes('/');
-    const values = [...new Set([...liveApps, ...loggedApps, ...(app ? [app] : [])])].filter(inScope).sort();
+    // Project inventory includes remote applications before their first log reaches this controller.
+    const known = daemonMode
+      ? (canListDaemonApps ? daemonApps.data ?? [] : []).map(item => item.name)
+      : stacksInScope(stacks, activeStack).flatMap(stack => stack.apps.map(item => item.handleKey));
+    const values = [...new Set([...known, ...loggedApps, ...legacy.available, ...(app ? [app] : [])])]
+      .filter(name => matchesNamespace(name) || legacy.available.has(name)).sort();
 
     // Two values can render to one label — `main` and `acme/dev/main` both
     // display as `main`. Where that happens, show the full value: a dropdown
@@ -319,15 +284,15 @@ export default function LogsPage() {
     // one.
     const labelCounts = new Map<string, number>();
     for (const value of values) {
-      const label = displayName(value);
+      const label = shortAppName(value);
       labelCounts.set(label, (labelCounts.get(label) ?? 0) + 1);
     }
 
     return values.map((value) => {
-      const label = displayName(value);
+      const label = shortAppName(value);
       return { value, label: daemonMode || labelCounts.get(label)! > 1 ? value : label };
     });
-  }, [liveApps, loggedApps, matchesNamespace, displayName, app, daemonMode]);
+  }, [daemonMode, canListDaemonApps, daemonApps.data, stacks, activeStack, loggedApps, legacy, app, matchesNamespace]);
 
   // ---- Build filter ----
   const buildFilter = useCallback(
@@ -337,7 +302,7 @@ export default function LogsPage() {
         offset,
       };
       if (app) filter['app'] = app;
-      if (activeProject) filter['appPrefixes'] = namespacePrefixes;
+      if (activeProject) filter['appPrefixes'] = logNamespaces;
       if (selectedLevels.length > 0) filter['level'] = selectedLevels;
       if (debouncedSearch.trim()) filter['search'] = debouncedSearch.trim();
 
@@ -361,7 +326,7 @@ export default function LogsPage() {
 
       return filter;
     },
-    [app, activeProject, namespacePrefixes, nodeFilter, selectedLevels, debouncedSearch, labelInput, timeRangeKey, customFrom, customTo],
+    [app, activeProject, logNamespaces, nodeFilter, selectedLevels, debouncedSearch, labelInput, timeRangeKey, customFrom, customTo],
   );
 
   // ---- Fetch logs (paginated mode) ----
@@ -423,7 +388,7 @@ export default function LogsPage() {
     // different question than the one it was showing.
     const f: Record<string, unknown> = { tail: 100 };
     if (app) f['app'] = app;
-    if (activeProject) f['appPrefixes'] = namespacePrefixes;
+    if (activeProject) f['appPrefixes'] = logNamespaces;
     if (selectedLevels.length > 0) f['level'] = selectedLevels;
     if (debouncedSearch.trim()) f['search'] = debouncedSearch.trim();
     if (nodeFilter) f['nodeId'] = nodeFilter;
@@ -432,7 +397,7 @@ export default function LogsPage() {
     if (labels && Object.keys(labels).length > 0) f['labels'] = labels;
 
     return f;
-  }, [app, activeProject, namespacePrefixes, selectedLevels, debouncedSearch, nodeFilter, labelInput]);
+  }, [app, activeProject, logNamespaces, selectedLevels, debouncedSearch, nodeFilter, labelInput]);
 
   // Initial live fetch
   useEffect(() => {
@@ -659,6 +624,7 @@ export default function LogsPage() {
                     }
                     fetchLogs();
                     fetchLoggedApps();
+                    if (canListDaemonApps) void daemonApps.refresh();
                   }}
                 >
                   <RefreshIcon />
@@ -675,6 +641,13 @@ export default function LogsPage() {
           }
         />
 
+        {legacy.observed && !legacyApp && <Alert severity="info" sx={{ mb: 1.5 }}>
+          {legacy.available.size ? 'Select an application to read this node’s older deployed records.'
+            : !canReadNodes ? 'Reading this stack’s older deployed records requires access to the node registry.'
+            : registry.error ? 'Node registry unavailable. Older deployed records cannot be attributed to this stack.'
+            : nodeFilter ? 'No legacy application handle is confirmed for this stack on the selected node.'
+            : 'Some applications report the older deployed namespace. Select their node and application to read those records.'}
+        </Alert>}
         {/* Row 2: App + Search + Labels */}
         <Stack
           direction="row"
@@ -707,7 +680,7 @@ export default function LogsPage() {
             </TextField>
 
           {/* Node selector — only visible when cluster has multiple nodes */}
-          {nodeNames.length > 0 && (
+          {nodeNames && nodeNames.length > 0 && (
             <TextField
               select
               size="small"
@@ -725,7 +698,7 @@ export default function LogsPage() {
               </MenuItem>
               {nodeNames.map((node) => (
                 <MenuItem key={node.id} value={node.id} sx={{ fontFamily: MONO, fontSize: 12 }}>
-                  {node.hostname}
+                  {node.name}
                 </MenuItem>
               ))}
             </TextField>

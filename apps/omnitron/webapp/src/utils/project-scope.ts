@@ -17,12 +17,6 @@ export function projectPrefixes(info: Pick<IProjectInfo, 'configurations'> | und
   return [...new Set([project, ...sources.map(source => source.runtimeProject)])].map(name => `${name}/`);
 }
 
-export function projectStackName(info: Pick<IProjectInfo, 'configurations'> | undefined, runtimeName: string): string | null {
-  const [project, stack] = runtimeName.split('/');
-  if (!project || !stack || runtimeName.split('/').length < 3) return null;
-  return info?.configurations?.find(source => source.runtimeProject === project)?.stacks[stack] ?? stack;
-}
-
 export function restoredProjectScope(projects: IProjectInfo[], project: string, stack: string | null) {
   const owner = projects.find(info => info.name === project || info.configurations?.some(source => source.runtimeProject === project));
   if (!owner) return null;

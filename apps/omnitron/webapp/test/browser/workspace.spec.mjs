@@ -68,6 +68,57 @@ test('a DAOS stack selection filters inventory, follows details and survives his
   await expect(filter).toHaveText('Stack: dev');
 });
 
+test('log filters use the selected stack inventory, including remote apps that have never logged', async ({ page, url }) => {
+  const filters = [];
+  let daemonLists = 0;
+  await stubInventory(page, {
+    'OmnitronProject.listProjects': [{ name: 'daos', displayName: 'DAOS', path: '/daos', totalStacks: 3, runningStacks: 3 }],
+    'OmnitronProject.listStacks': ['dev', 'test', 'prod'].map(name => ({
+      name, type: name === 'dev' ? 'local' : 'remote', status: 'running', nodes: [{ host: name, port: 9700 }],
+      apps: [{ name: name + '-api', handleKey: 'daos/' + name + '/' + name + '-api', status: 'online' },
+        ...(name === 'dev' ? [] : [{ name: 'mail', handleKey: 'daos/deployed/mail', status: 'online' }])],
+    })),
+    'OmnitronNodes.listNodes': ['test', 'prod'].map(name => ({ id: name + '-id', name, host: name, daemonPort: 9700, isLocal: false })),
+    'OmnitronDaemon.list': () => { daemonLists++; return []; },
+    'OmnitronLogs.getLogStats': { byApp: [{ app: 'omnitron' }, { app: 'other/dev/foreign' }] },
+    'OmnitronLogs.queryLogs': filter => { filters.push(filter); return { entries: [], total: 0, hasMore: false, byLevel: [] }; },
+    'OmnitronLogs.streamLogs': filter => { filters.push(filter); return []; },
+  });
+  await page.addInitScript(() => {
+    localStorage.setItem('omnitron_active_project', 'daos');
+    localStorage.setItem('omnitron_active_stack', 'test');
+  });
+  await page.route(/\/logs$/, async route => {
+    if (route.request().resourceType() !== 'document') return route.continue();
+    await route.fulfill({ response: await route.fetch({ url: url + '/workspace.html' }) });
+  });
+  await page.goto(url + '/logs');
+  const picker = page.getByRole('combobox', { name: 'Application' });
+  await picker.click();
+  await expect(page.getByRole('option', { name: 'test-api' })).toBeVisible();
+  await expect(page.getByRole('option', { name: /dev-api|omnitron|foreign/ })).toHaveCount(0);
+  await page.getByRole('option', { name: 'test-api' }).click();
+  await expect.poll(() => filters.at(-1)?.app).toBe('daos/test/test-api');
+  await page.getByRole('combobox', { name: 'Node', exact: true }).click();
+  await page.getByRole('option', { name: 'test', exact: true }).click();
+  await picker.click();
+  await page.getByRole('option', { name: 'mail', exact: true }).click();
+  await expect.poll(() => filters.at(-1)).toMatchObject({ app: 'daos/deployed/mail', nodeId: 'test-id', appPrefixes: ['daos/deployed/'] });
+  await page.getByRole('combobox', { name: 'Node', exact: true }).click();
+  await page.getByRole('option', { name: 'prod', exact: true }).click();
+  await expect.poll(() => filters.at(-1)).toMatchObject({ nodeId: 'prod-id', appPrefixes: ['daos/test/'] });
+  await picker.click();
+  await expect(page.getByRole('option', { name: 'mail' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await page.getByRole('combobox', { name: 'Stack filter' }).click();
+  await page.getByRole('option', { name: /^dev\s+running/ }).click();
+  await expect.poll(() => filters.at(-1)?.appPrefixes).toEqual(['daos/dev/']);
+  await picker.click();
+  await expect(page.getByRole('option', { name: 'dev-api' })).toBeVisible();
+  await expect(page.getByRole('option', { name: /test-api|omnitron|foreign/ })).toHaveCount(0);
+  expect(daemonLists).toBe(0);
+});
+
 test('an administrator can prepare a catalog build on a narrow screen before explicitly applying it', async ({ page, url }) => {
   const commit = '4'.repeat(40);
   let receipt = null;

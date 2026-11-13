@@ -15,6 +15,10 @@ Choose a project in the header, then choose **All stacks** or an individual stac
 
 On a stack detail page, selecting another stack opens its details. Selecting **All stacks** opens the inventory. Browser Back, Forward and reload restore the workspace for that history entry. Controller-wide pages such as Audit and System omit the stack filter.
 
+Logs lists the selected stack's local and remote applications, including those awaiting their first log. For an older worker that reports `project/deployed/app`, select its registry node and application. Console includes those records when the observed placement identifies one stack on that node.
+
+In **Deploy a release**, an administrator can update missing application declarations for the selected release and target. Console then asks the controller for a fresh admission decision. A running target that needs to stop stays available through **Inspect stack** for a separate reviewed operation.
+
 ## Quick start
 
 Install and build the workspace dependencies as described in the [root README](../../../README.md), then run from this directory:

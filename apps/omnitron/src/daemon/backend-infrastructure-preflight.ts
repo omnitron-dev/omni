@@ -9,16 +9,17 @@ const MAX_INPUT_BYTES = 16 * 1024 * 1024;
 interface InfrastructurePreflightInput {
   protocol: 1;
   infrastructure: InfrastructureHandoffState[];
+  managedDatabase?: boolean;
 }
 
 /** Only the infrastructure projection crosses this read-only child boundary. */
-export function backendInfrastructureInput(state: Pick<BackendHandoffState, 'infrastructure' | 'projects'>): string {
+export function backendInfrastructureInput(state: Pick<BackendHandoffState, 'infrastructure' | 'projects'>, managedDatabase?: boolean): string {
   if (!state || !Array.isArray(state.projects?.infrastructure) ||
       (state.infrastructure !== null && (typeof state.infrastructure !== 'object' || Array.isArray(state.infrastructure))))
     throw new Error('Backend infrastructure snapshot is incomplete');
   const input: InfrastructurePreflightInput = { protocol: 1, infrastructure: [
     ...(state.infrastructure ? [state.infrastructure] : []), ...state.projects.infrastructure.map(entry => entry.infrastructure),
-  ] };
+  ], ...(managedDatabase !== undefined && { managedDatabase }) };
   const serialized = JSON.stringify(input);
   if (Buffer.byteLength(serialized) > MAX_INPUT_BYTES) throw new Error('Backend infrastructure preflight exceeds 16 MiB');
   return serialized;
@@ -34,7 +35,8 @@ function parseInfrastructure(input: Buffer): InfrastructurePreflightInput {
   try { parsed = JSON.parse(input.toString('utf8')) as InfrastructurePreflightInput; }
   catch { throw new Error('Invalid backend infrastructure preflight JSON'); }
   if (!parsed || parsed.protocol !== 1 || !Array.isArray(parsed.infrastructure) ||
-      Object.keys(parsed).length !== 2) throw new Error('Invalid backend infrastructure preflight protocol');
+      Object.keys(parsed).some(key => !['protocol', 'infrastructure', 'managedDatabase'].includes(key)) ||
+      (parsed.managedDatabase !== undefined && typeof parsed.managedDatabase !== 'boolean')) throw new Error('Invalid backend infrastructure preflight protocol');
   return parsed;
 }
 
@@ -49,13 +51,14 @@ export async function validateBackendInfrastructureInput(input: Buffer): Promise
 export interface ColdInfrastructurePreview {
   protocol: 1;
   digest: string;
+  controlPlaneDatabase?: Awaited<ReturnType<typeof import('./control-plane-database.js').inspectControlPlaneDatabase>>;
   containers: Array<{ name: string; action: 'retain' | 'create' | 'start' | 'replace' | 'update-limits' | 'unknown';
     id?: string; changed?: string[]; reason?: string }>;
 }
 
 /** Re-expand the candidate's presets. Preserve the captured gateway and application bindings separately. */
 export async function previewColdInfrastructure(input: Buffer): Promise<ColdInfrastructurePreview> {
-  const { infrastructure } = parseInfrastructure(input);
+  const { infrastructure, managedDatabase } = parseInfrastructure(input);
   const { resolveInfrastructure, withInfrastructureScope } = await import('../infrastructure/service-resolver.js');
   const { normalizeInfraConfig } = await import('../infrastructure/config-normalizer.js');
   const { createDefaultRegistry } = await import('../infrastructure/presets/index.js');
@@ -106,7 +109,8 @@ export async function previewColdInfrastructure(input: Buffer): Promise<ColdInfr
       }
     });
   }
-  return { protocol: 1, digest: backendInfrastructureDigest(input), containers };
+  const controlPlaneDatabase = managedDatabase ? await (await import('./control-plane-database.js')).inspectControlPlaneDatabase() : undefined;
+  return { protocol: 1, digest: backendInfrastructureDigest(input), containers, ...(controlPlaneDatabase && { controlPlaneDatabase }) };
 }
 
 export async function readBackendInfrastructureInput(input: AsyncIterable<Uint8Array>): Promise<Buffer> {

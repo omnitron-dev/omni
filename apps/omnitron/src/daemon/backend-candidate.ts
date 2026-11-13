@@ -204,7 +204,9 @@ export async function checkBackendAdoption(artifact: BackendArtifact, record: Ba
 }
 
 export async function previewBackendColdStart(artifact: BackendArtifact, record: BackendBootRecord | BackendRecoveryRecord): Promise<ColdInfrastructurePreview> {
-  const input = backendInfrastructureInput(record.state);
+  const managedDatabase = record.daemonConfig.role === 'master' && record.environment['OMNITRON_NO_INFRA'] !== '1' &&
+    !record.environment['OMNITRON_DATABASE_URL'];
+  const input = backendInfrastructureInput(record.state, managedDatabase);
   const checked = await runBackendPreflight(artifact, { input, cwd: record.cwd, environment: record.environment, cold: true });
   return checked.coldInfrastructure!;
 }

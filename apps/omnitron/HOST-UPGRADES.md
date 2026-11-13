@@ -120,6 +120,14 @@ and apply an intended change with `omnitron stack start <project> <stack> --infr
 A verified unhealthy container restarts with its native Docker ID and mounts.
 Preparing the replacement image precedes graceful removal during reconciliation.
 
+The master also checks its own PostgreSQL against the native image, process,
+published port and mounts. Its data volume and bridge belong to the host.
+An older installation can have this database attached to a project's bridge.
+When every other setting matches, cold boot moves the running container to
+`omnitron_default`. It attaches and verifies the host bridge before removing the
+old endpoint and reads both native IDs again after an uncertain Docker reply.
+The preview reports both bridges. Other differences hold startup for review.
+
 ## Cold recovery after a reviewed writer exits
 
 An `unconfirmed` hold with an admitted checkpoint can outlive the backend that

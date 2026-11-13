@@ -303,7 +303,7 @@ describe('a database the node never reads', () => {
     expect((master as unknown as { needsControlPlaneDatabase: boolean }).needsControlPlaneDatabase).toBe(true);
   });
 
-  it('defaults to provisioning one, because a master is the common case', async () => {
+  it('does not give a new application allocation ownership of the host database', async () => {
     const { InfrastructureService } = await import('../../src/infrastructure/infrastructure.service.js');
     const silent: any = {
       info: () => {}, warn: () => {}, error: () => {}, debug: () => {}, trace: () => {}, fatal: () => {},
@@ -312,6 +312,7 @@ describe('a database the node never reads', () => {
 
     const service = new InfrastructureService(silent, {});
 
-    expect((service as unknown as { needsControlPlaneDatabase: boolean }).needsControlPlaneDatabase).toBe(true);
+    expect(service.captureRecoveryState().needsControlPlaneDatabase).toBe(false);
+    service.dispose();
   });
 });

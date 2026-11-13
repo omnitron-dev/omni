@@ -44,12 +44,12 @@ vi.mock('../../src/infrastructure/service-resolver.js', () => ({
   resolveOmnitronPg: vi.fn().mockReturnValue({
     name: 'omnitron-pg',
     image: 'postgres:16',
-    env: {},
+    environment: {},
     labels: { 'omnitron.managed': 'true', 'omnitron.service': 'sample' },
     ports: [],
     volumes: [],
     network: undefined,
-    healthcheck: undefined,
+    healthCheck: undefined,
     restart: 'always',
   }),
 }));
@@ -75,12 +75,12 @@ function mkSvc(): InfrastructureService {
   svc.desiredContainers.push({
     name: 'test-svc',
     image: 'busybox:latest',
-    env: {},
+    environment: {},
     labels: { 'omnitron.managed': 'true', 'omnitron.service': 'sample' },
     ports: [],
     volumes: [],
     network: undefined,
-    healthcheck: undefined,
+    healthCheck: undefined,
     restart: 'always',
   });
   // Force the "global pg already running" branch so we don't try to

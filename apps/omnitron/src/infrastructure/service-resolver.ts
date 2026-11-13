@@ -617,7 +617,8 @@ export function resolveOmnitronPg(options?: {
   const password = options?.password ?? 'omnitron';
 
   return applyManagedDefaults({
-    name: `${getContainerPrefix()}-pg`,
+    name: 'omnitron-pg',
+    network: 'omnitron_default',
     image,
     ports: [{ host: port, container: 5432 }],
     environment: {
@@ -625,7 +626,7 @@ export function resolveOmnitronPg(options?: {
       POSTGRES_PASSWORD: password,
       POSTGRES_DB: 'omnitron',
     },
-    volumes: [{ source: `${getContainerPrefix()}-pg-data`, target: '/var/lib/postgresql/data' }],
+    volumes: [{ source: 'omnitron-pg-data', target: '/var/lib/postgresql/data' }],
     command: [
       'postgres',
       '-c',

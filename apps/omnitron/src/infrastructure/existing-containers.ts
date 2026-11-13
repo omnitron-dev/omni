@@ -32,6 +32,12 @@ export const existingContainerProbes: ExistingContainerProbes = {
     return images[0]!;
   },
 };
+export async function localBridgeId(name: string): Promise<string> {
+  const [network] = await inspect(['network', 'inspect', '--', name]);
+  if (!network || network['Name'] !== name || network['Driver'] !== 'bridge' || network['Scope'] !== 'local' ||
+      !/^[a-f0-9]{64}$/.test(network['Id'] ?? '')) throw Error(`Cannot verify local Docker bridge ${name}`);
+  return network['Id'];
+}
 const sorted = (values: unknown[]) => values.map(value => JSON.stringify(value)).sort();
 const environment = (values: unknown): Record<string, string> => {
   if (!Array.isArray(values) || values.some(value => typeof value !== 'string' || !value.includes('=')))
@@ -113,7 +119,12 @@ export function existingContainerMismatch(desired: ResolvedContainer, native: Na
   if (!Array.isArray(native['Mounts'])) return 'native mounts are unavailable';
   if (!mountsMatch(desired.volumes, native['Mounts'], runtime, image['Config'])) return 'volume identity or mount permissions differ';
   const network = desired.network ?? 'bridge';
-  if (runtime.NetworkMode !== network || !/^[a-f0-9]{64}$/.test(native['NetworkSettings']?.Networks?.[network]?.NetworkID ?? '') ||
+  // Docker retains the original NetworkMode after moving to another bridge, even across a restart.
+  const namedBridge = (name: unknown) => typeof name === 'string' && /^[a-z0-9][a-z0-9_.-]*_default$/.test(name);
+  const movedHostDatabase = desired.labels['omnitron.internal'] === 'true' && desired.labels['omnitron.service'] === 'omnitron-pg' &&
+    namedBridge(runtime.NetworkMode) && namedBridge(network);
+  if ((runtime.NetworkMode !== network && !movedHostDatabase) ||
+      !/^[a-f0-9]{64}$/.test(native['NetworkSettings']?.Networks?.[network]?.NetworkID ?? '') ||
       Object.keys(native['NetworkSettings'].Networks).length !== 1) return 'network attachment differs';
   const [restart, attempts] = (desired.restart || 'no').split(':');
   if ((runtime.RestartPolicy?.['Name'] || 'no') !== restart || runtime.RestartPolicy?.MaximumRetryCount !== Number(attempts ?? 0))

@@ -891,6 +891,14 @@ export async function restartContainer(id: string): Promise<void> {
 }
 
 /**
+ * Change a Docker network attachment using only immutable identities.
+ */
+export async function changeNetworkAttachment(operation: 'connect' | 'disconnect', networkId: string, containerId: string): Promise<void> {
+  if (![networkId, containerId].every(id => /^[a-f0-9]{64}$/.test(id))) throw Error('Network attachment requires immutable Docker IDs');
+  await executeDocker(['network', operation, '--', networkId, containerId]);
+}
+
+/**
  * Stop a running container gracefully.
  */
 export async function stopContainer(nameOrId: string, timeout = 10): Promise<void> {

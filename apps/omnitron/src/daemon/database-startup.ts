@@ -21,18 +21,21 @@ export async function prepareDaemonDatabase(
   // allocator; never create or recreate a local container for that address.
   if (!options.noInfra && !getEnv().OMNITRON_DATABASE_URL) {
     const { resolveOmnitronPg } = await import('../infrastructure/service-resolver.js');
-    const { createContainer, getContainerState, waitForHealthy, startContainer, planContainerAction } =
+    const { createContainer, waitForHealthy, startContainer } =
       await import('../infrastructure/container-runtime.js');
-    const { ownedContainerId } = await import('../infrastructure/owned-container.js');
+    const { inspectControlPlaneDatabase, moveControlPlaneDatabase } = await import('./control-plane-database.js');
     const desired = resolveOmnitronPg();
-    const actual = await getContainerState(desired.name, { orThrow: true, fullId: true });
-    const id = actual && ownedContainerId(desired, actual);
-    const action = planContainerAction(desired, actual);
-    if (action.type === 'recreate') throw Error(`Control-plane PostgreSQL requires a reviewed replacement: ${action.reason}`);
-    if (action.type === 'create') await createContainer(desired);
-    if (action.type === 'start') await startContainer(id!);
-    if (!await waitForHealthy(desired.name, 60_000))
-      throw new Error('Omnitron internal database did not become healthy before startup');
+    let plan = await inspectControlPlaneDatabase(desired);
+    if (plan.action === 'create' || plan.action === 'start' || plan.action === 'wait') {
+      const id = plan.action === 'create' ? await createContainer(desired) : plan.id;
+      if (plan.action === 'start') await startContainer(id);
+      if (!await waitForHealthy(id, 60_000)) throw Error('Omnitron internal database did not become healthy before startup');
+      plan = await inspectControlPlaneDatabase(desired);
+      if (!('id' in plan) || !plan.id.startsWith(id)) throw Error('Control-plane database identity changed while waiting for readiness');
+    }
+    if (plan.action === 'move-network') await moveControlPlaneDatabase(desired, plan.move);
+    else if (plan.action !== 'retain') throw Error('Control-plane PostgreSQL requires review: ' +
+      (plan.action === 'hold' ? plan.reason : plan.action));
   }
 
   // Propagate failure: a master without its auth, audit and operation journals

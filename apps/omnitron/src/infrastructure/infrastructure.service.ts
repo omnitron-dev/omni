@@ -45,12 +45,12 @@ import {
   restartContainer,
   removeContainer,
   ensureImage,
-  waitForHealthy,
   containerSpecHash,
   containerSpecHashMatches,
   migrateContainerSpecHash,
   hasLegacyContainerSpec,
   planContainerAction,
+  waitForHealthy,
   containerResources,
   containerResourcesMatch,
 } from './container-runtime.js';
@@ -88,48 +88,6 @@ export function restartBackoffMs(failures: number): number {
 // Omnitron internal PG connection defaults live in `database/connection.ts`
 // so the container spec below and every client that connects to it are
 // derived from the same values (see the import above).
-
-/**
- * What to do about the control plane's own database.
- *
- * Three cases that look alike and are not:
- *
- *   - a node's daemon keeps its state in SQLite and needs no database at all;
- *   - one is running, so it gets the same reconcile — and so the same
- *     `containerSpecHash` drift check — as every app service;
- *   - nothing is running, so provision.
- *
- * The middle case is the one that was missing. "Already running" was read as
- * "configured as declared", and the database was adopted exactly as it stood.
- * Measured: `omnitron-pg`, created before published ports were bound to
- * loopback, survived on 0.0.0.0:5480 through the fix that reached all eleven
- * other managed containers, and still answered `nc -vz <lan-address> 5480`
- * from another machine months later, while `sample-dev-postgres` beside it in
- * `docker ps` was correctly on 127.0.0.1.
- *
- * `reconcileName` is the subtlety. The control-plane database is ONE
- * container per host — it owns port 5480 — but each daemon resolves a name
- * carrying its own project prefix, so a daemon on the `sample/dev` stack
- * computes `sample-dev-pg` while the container that exists is `omnitron-pg`.
- * Reconciling the running container against a spec under the OTHER name
- * creates a second one and collides on the port; the first version of this
- * did exactly that and corrected nothing. The name to reconcile is therefore
- * the name of the container that is actually there, and the spec is
- * everything else. `containerSpecHash` does not cover the name, so the drift
- * comparison is unaffected either way.
- *
- * A differing name is not evidence of another owner: only omnitron creates
- * this container, and it carries omnitron's own `omnitron.internal` label.
- */
-export function decideControlPlaneDatabase(input: {
-  needsControlPlaneDatabase: boolean;
-  running: { name?: string; status?: string; specHash?: string | undefined } | null;
-  desiredName: string;
-}): { action: 'skip' | 'provision' } | { action: 'reconcile'; reconcileName: string } {
-  if (!input.needsControlPlaneDatabase) return { action: 'skip' };
-  if (input.running?.status !== 'running') return { action: 'provision' };
-  return { action: 'reconcile', reconcileName: input.running.name ?? input.desiredName };
-}
 
 export interface InfrastructureHandoffState {
   preservation?: ExistingInfrastructureReview;
@@ -205,13 +163,10 @@ export class InfrastructureService {
      */
     private serviceOverrides?: Record<string, import('./types.js').IServiceOverride>,
     /**
-     * Whether this daemon stores its own state in Postgres.
-     *
-     * True for a master, which is where projects, nodes, metrics and logs
-     * live. False for a node: its daemon keeps that in SQLite and reads a
-     * Postgres never.
+     * An older handoff can include the host database in its ownership record.
+     * New allocations leave the host database to daemon startup.
      */
-    private readonly needsControlPlaneDatabase = true,
+    private readonly needsControlPlaneDatabase = false,
   ) {
     this.presetRegistry ??= createDefaultRegistry();
     if (!normalizedServices) {
@@ -338,75 +293,11 @@ export class InfrastructureService {
       );
     }
 
-    // 2. Provision Omnitron's internal PostgreSQL (logs, metrics, portal users, etc.)
-    //    Skip if the global omnitron-pg is already running (avoids port conflict).
-    //    The stack-prefixed container (e.g. omni-dev-pg) shares the same port,
-    //    so we must not create/start it when the global one is active.
-    const globalOmnitronPg = this.needsControlPlaneDatabase ? await getContainerState('omnitron-pg', { orThrow: true, fullId: true }) : null;
-    const decision = decideControlPlaneDatabase({
-      needsControlPlaneDatabase: this.needsControlPlaneDatabase,
-      running: globalOmnitronPg,
-      desiredName: this.omnitronPgContainer.name,
-    });
-
-    if (decision.action === 'skip') {
-      // A node's daemon keeps its own state in SQLite — `SlaveStorageService`,
-      // `~/.omnitron/data/slave.db` — and reads this database never. Creating
-      // it anyway gave every provisioned node a Postgres nobody queries, on
-      // default credentials, and until published ports were bound to
-      // loopback it was reachable from the internet: measured answering on
-      // 0.0.0.0:5480 on a host whose firewall allows only SSH.
-      //
-      // The control plane's database belongs to the control plane.
-      this.logger.debug('Control-plane database provisioning is outside this infrastructure allocation');
-    } else if (decision.action === 'reconcile') {
+    // Only historical handoff allocations can request the host database. New project allocations are app-only.
+    if (this.needsControlPlaneDatabase) {
+      const { prepareDaemonDatabase } = await import('../daemon/database-startup.js');
+      await prepareDaemonDatabase('master');
       this.usingGlobalOmnitronPg = true;
-
-      // A stack-prefixed leftover cannot run beside the global one — they
-      // share port 5480 — so it goes before anything else touches that port.
-      if (this.omnitronPgContainer.name !== decision.reconcileName) {
-        const stalePg = await getContainerState(this.omnitronPgContainer.name, { orThrow: true, fullId: true });
-        if (stalePg) {
-          const id = ownedContainerId(this.omnitronPgContainer, stalePg);
-          if (mode === 'automatic') throw Error(`Automatic start would remove retained PostgreSQL ${stalePg.name}; review its data volume first`);
-          await removeContainer(id, { graceful: true });
-          this.logger.info({ service: this.omnitronPgContainer.name }, 'Removed stale stack-prefixed PG container');
-        }
-      }
-
-      // The same reconcile, and so the same drift check, as every app
-      // service — under the name the container actually has. Its data lives
-      // in the `omnitron-pg-data` volume and outlives the container it is
-      // recreated into.
-      // Name AND volume, not one of them. `resolveOmnitronPg` derives both
-      // from the container prefix, so overriding only the name produced a
-      // container called `omnitron-pg` mounting `sample-dev-pg-data` — the
-      // global identity on a stack-scoped volume, and the stack's own
-      // `omnitron-pg-data` left dangling where a `docker volume prune` would
-      // take it silently. The two names are one decision and must move
-      // together.
-      const reconciled = { ...this.omnitronPgContainer, name: decision.reconcileName };
-      if (decision.reconcileName !== this.omnitronPgContainer.name) {
-        reconciled.volumes = this.omnitronPgContainer.volumes.map((v) =>
-          v.target === '/var/lib/postgresql/data' ? { ...v, source: `${decision.reconcileName}-data` } : v,
-        );
-      }
-      await this.reconcileService(reconciled, mode);
-    } else {
-      try {
-        await this.provisionOmnitronDatabase(mode);
-      } catch (err) {
-        this.logger.error(
-          { error: (err as Error).message },
-          'Failed to provision Omnitron internal database'
-        );
-        this.state.services[this.omnitronPgContainer.name] = {
-          name: this.omnitronPgContainer.name,
-          image: this.omnitronPgContainer.image,
-          status: 'exited',
-          error: (err as Error).message,
-        };
-      }
     }
 
     this.logger.info(
@@ -1343,43 +1234,6 @@ export class InfrastructureService {
   // Private — Omnitron Internal Database
   // ===========================================================================
 
-  /**
-   * Provision Omnitron's own PostgreSQL container and run migrations.
-   * This database stores logs, metrics, alerts, portal users, deployments, etc.
-   */
-  private async provisionOmnitronDatabase(mode: InfrastructureStartMode): Promise<void> {
-    this.logger.info('Provisioning Omnitron internal database (omnitron-pg)');
-
-    // 1. Reconcile the omnitron-pg container
-    await this.reconcileService(this.omnitronPgContainer, mode);
-
-    // 2. Wait for healthy
-    if (!await waitForHealthy(this.omnitronPgContainer.name, 60_000))
-      throw Error('Control-plane PostgreSQL did not become healthy before migrations');
-
-    // 3. Run Kysely migrations
-    await this.runOmnitronMigrations();
-
-    this.logger.info('Omnitron internal database provisioned and migrated');
-  }
-
-  /**
-   * Apply the internal-database schema through the shared runner.
-   *
-   * This used to be a second, independently-maintained copy of the daemon's
-   * migration code that only knew migrations 001–002 — and, like the
-   * daemon's copy, it constructed `Migrator` from the `kysely` package root
-   * where that export does not exist, so it threw on every run. Both are now
-   * one call into `database/migration-runner.ts`.
-   *
-   * Errors propagate to `provisionOmnitronDatabase`'s caller: provisioning
-   * that ends with an unmigrated database has not succeeded.
-   */
-  private async runOmnitronMigrations(): Promise<void> {
-    const { runOmnitronMigrations } = await import('../database/migration-runner.js');
-    await runOmnitronMigrations(this.logger);
-  }
-
   // ===========================================================================
   // Private — Health Monitor (Self-Healing)
   // ===========================================================================
@@ -1403,7 +1257,7 @@ export class InfrastructureService {
 
   /**
    * The control-plane database container this service keeps, if any: none on
-   * a node — it keeps its own state in SQLite (`decideControlPlaneDatabase`) —
+   * a node — it keeps its own state in SQLite —
    * and none where the global `omnitron-pg` serves.
    *
    * `provision()` asked `needsControlPlaneDatabase`; the health sweep and the

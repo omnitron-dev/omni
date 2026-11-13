@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const calls = vi.hoisted(() => ({
   env: {} as { OMNITRON_DATABASE_URL?: string },
-  migrate: vi.fn(), verify: vi.fn(), inspect: vi.fn(), create: vi.fn(),
+  migrate: vi.fn(), verify: vi.fn(), inspect: vi.fn(), move: vi.fn(), create: vi.fn(),
   healthy: vi.fn(), start: vi.fn(), image: vi.fn(), remove: vi.fn(), volume: vi.fn(),
   desired: { name: 'omnitron-pg', image: 'postgres:test', volumes: [{ source: 'omnitron-pg-data' }],
     labels: { 'omnitron.managed': 'true', 'omnitron.internal': 'true' } },
@@ -12,6 +12,7 @@ vi.mock('../../src/database/migration-runner.js', () => ({
   runOmnitronMigrations: calls.migrate, assertOmnitronMigrationsCurrent: calls.verify,
 }));
 vi.mock('../../src/infrastructure/service-resolver.js', () => ({ resolveOmnitronPg: () => calls.desired }));
+vi.mock('../../src/daemon/control-plane-database.js', () => ({ inspectControlPlaneDatabase: calls.inspect, moveControlPlaneDatabase: calls.move }));
 vi.mock('../../src/infrastructure/container-runtime.js', async original => ({
   ...await original<typeof import('../../src/infrastructure/container-runtime.js')>(), startContainer: calls.start,
   createContainer: calls.create, getContainerState: calls.inspect, waitForHealthy: calls.healthy,
@@ -22,7 +23,8 @@ import { prepareDaemonDatabase } from '../../src/daemon/database-startup.js';
 beforeEach(() => {
   vi.resetAllMocks();
   calls.env = {};
-  calls.inspect.mockResolvedValue(null);
+  calls.inspect.mockResolvedValue({ action: 'retain', id: 'a'.repeat(64) });
+  calls.create.mockResolvedValue('a'.repeat(12));
   calls.healthy.mockResolvedValue(true);
 });
 
@@ -53,7 +55,8 @@ describe('control-plane database startup admission', () => {
 
   it('waits for database health before applying the shared migration registry', async () => {
     const events: string[] = [];
-    calls.create.mockImplementation(async () => { events.push('container'); });
+    calls.inspect.mockResolvedValueOnce({ action: 'create' });
+    calls.create.mockImplementation(async () => { events.push('container'); return 'a'.repeat(12); });
     calls.healthy.mockImplementation(async () => { events.push('healthy'); return true; });
     calls.migrate.mockImplementation(async () => { events.push('schema'); });
     await prepareDaemonDatabase('master');
@@ -64,24 +67,37 @@ describe('control-plane database startup admission', () => {
 
   it.each([false, true])('keeps a retained database and reports a detached network before migration: %s', async detached => {
     const containerId = 'a'.repeat(64);
-    calls.inspect.mockResolvedValue({ ...calls.desired, containerId, status: 'running', networkAttached: !detached });
-    if (detached) await expect(prepareDaemonDatabase('master')).rejects.toThrow('requires a reviewed replacement');
+    calls.inspect.mockResolvedValue(detached ? { action: 'hold', id: containerId, reason: 'network attachment differs' }
+      : { action: 'retain', id: containerId });
+    if (detached) await expect(prepareDaemonDatabase('master')).rejects.toThrow('network attachment differs');
     else await prepareDaemonDatabase('master');
     expect(calls.remove).not.toHaveBeenCalled(); expect(calls.create).not.toHaveBeenCalled();
     expect(calls.migrate).toHaveBeenCalledTimes(detached ? 0 : 1);
   });
 
   it('refuses a foreign allocation without removing it or applying migrations', async () => {
-    calls.inspect.mockResolvedValue({ ...calls.desired, containerId: 'b'.repeat(64), labels: {}, status: 'exited' });
+    calls.inspect.mockRejectedValue(Error('Container belongs to another allocation'));
     await expect(prepareDaemonDatabase('master')).rejects.toThrow('another allocation');
     expect(calls.remove).not.toHaveBeenCalled();
     expect(calls.migrate).not.toHaveBeenCalled();
   });
 
   it('does not declare startup ready after a failed health check', async () => {
+    calls.inspect.mockResolvedValue({ action: 'wait', id: 'a'.repeat(64) });
     calls.healthy.mockResolvedValue(false);
     await expect(prepareDaemonDatabase('master')).rejects.toThrow('did not become healthy');
     expect(calls.migrate).not.toHaveBeenCalled();
+  });
+
+  it('completes a verified network move before opening the database for migrations', async () => {
+    const move = { id: 'a'.repeat(64), from: 'sample_default', to: 'omnitron_default' };
+    calls.inspect.mockResolvedValue({ action: 'move-network', id: move.id, move });
+    const events: string[] = [];
+    calls.move.mockImplementation(async () => { events.push('network'); });
+    calls.migrate.mockImplementation(async () => { events.push('schema'); });
+    await prepareDaemonDatabase('master');
+    expect(calls.move).toHaveBeenCalledExactlyOnceWith(calls.desired, move);
+    expect(events).toEqual(['network', 'schema']); expect(calls.remove).not.toHaveBeenCalled();
   });
 
   it('propagates migration failure instead of admitting a partially initialized master', async () => {

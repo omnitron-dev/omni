@@ -50,7 +50,7 @@ describe('infrastructure stop acknowledgements', () => {
     finish(); await retired;
     expect(service.desiredContainers).toEqual([other]);
     await service.reconcileService(other);
-    expect(reconcile).toHaveBeenCalledWith(other);
+    expect(reconcile).toHaveBeenCalledWith(other, 'start');
     expect(removed).not.toHaveBeenCalled();
     service.dispose();
   });

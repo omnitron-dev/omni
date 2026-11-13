@@ -4,7 +4,7 @@ import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { RuntimeInstallation, selectedBackend } from '../../src/daemon/runtime-installation.js';
 import { runtimeArtifactDigest } from '../../src/shared/runtime-artifact.js';
 import { DaemonStateStore } from '../../src/daemon/daemon-state-store.service.js';
@@ -14,6 +14,7 @@ import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 const roots: string[] = [];
 const stores: RuntimeInstallation[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   for (const store of stores.splice(0)) await store.close();
   for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true });
 });
@@ -333,4 +334,70 @@ it('reads committed WAL state without schema changes, journal entries or a reade
   expect(await fs.readFile(file)).toEqual(checkpointed);
   const sidecar = await fs.stat(file + '-wal').catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error; return null; });
   expect(sidecar?.size ?? 0).toBe(0);
+});
+
+
+it('reuses a verified artifact only for its current exclusive operation', async () => {
+  const { store, make } = await fixture(), first = await make('first');
+  await store.exclusive(() => store.install(first.source));
+  const inspected = await store.exclusive(async () => {
+    const artifact = await store.artifact(first.hash);
+    expect(await store.artifact(first.hash)).toBe(artifact);
+    await store.select(first.hash, 0);
+    await store.writeLauncher();
+    expect(await store.artifact(first.hash)).toBe(artifact);
+    return artifact;
+  });
+  const next = await store.exclusive(() => store.artifact(first.hash));
+  expect(next).not.toBe(inspected);
+  expect(await store.artifact(first.hash)).not.toBe(next);
+});
+
+it('bounds read-only artifact reuse to an explicit inspection', async () => {
+  const { store, home, make } = await fixture(), first = await make('first');
+  await store.exclusive(() => store.install(first.source));
+  const reader = (await RuntimeInstallation.openReadOnly(home))!; stores.push(reader);
+  const prior = await reader.inspect(async () => {
+    const artifact = await reader.artifact(first.hash);
+    expect(await reader.artifact(first.hash)).toBe(artifact);
+    await expect(reader.inspect(async () => undefined)).rejects.toThrow('already active');
+    return artifact;
+  });
+  expect(await reader.inspect(() => reader.artifact(first.hash))).not.toBe(prior);
+  await expect(store.inspect(async () => undefined)).rejects.toThrow('unavailable');
+});
+
+it('invalidates the entire operation on filesystem drift and verifies the next operation independently', async () => {
+  const { store, make } = await fixture(), first = await make('first');
+  const installed = await store.exclusive(() => store.install(first.source));
+  const entry = path.join(installed.directory, 'daemon/daemon-entry.js');
+  await store.exclusive(async () => {
+    await store.artifact(first.hash);
+    await fs.writeFile(entry, 'changed');
+    await expect(store.artifact(first.hash)).rejects.toThrow('changed after verification');
+    await fs.writeFile(entry, 'export {};');
+    await expect(store.artifact(first.hash)).rejects.toThrow('begin a new operation');
+    expect(store.selection()).toBeNull();
+  });
+  expect((await store.exclusive(() => store.artifact(first.hash))).runtimeHash).toBe(first.hash);
+});
+
+
+it('refuses a late artifact result from a previous lease without poisoning the next operation', async () => {
+  const { store, make } = await fixture(), first = await make('first');
+  await store.exclusive(() => store.install(first.source));
+  const read = fs.lstat.bind(fs);
+  let release!: () => void, blocked = false;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  vi.spyOn(fs, 'lstat').mockImplementation(async (...args) => {
+    if (args[0] === store.releasePath(first.hash) && !blocked) { blocked = true; await gate; }
+    return read(...args);
+  });
+  let pending!: ReturnType<RuntimeInstallation['artifact']>;
+  await store.exclusive(async () => { pending = store.artifact(first.hash); });
+  await store.exclusive(async () => {
+    release();
+    await expect(pending).rejects.toThrow('ended before verification completed');
+    expect((await store.artifact(first.hash)).runtimeHash).toBe(first.hash);
+  });
 });

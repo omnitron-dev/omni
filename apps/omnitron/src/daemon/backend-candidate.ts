@@ -5,7 +5,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { DomainError } from '@omnitron-dev/titan/errors';
 import { readBuildStamp, type BuildStamp } from '../shared/build-stamp.js';
-import { verifyRuntimeArtifact } from '../shared/runtime-artifact.js';
+import { inspectRuntimeArtifact, verifyRuntimeArtifact } from '../shared/runtime-artifact.js';
 import { readExecutionCapabilities, type ExecutionCapabilities } from './execution-capabilities.js';
 import type { IDaemonConfig } from '../config/types.js';
 import { compareMigrationChecksumMetadata, type MigrationChecksumChange } from '../database/migration-registry-compatibility.js';
@@ -15,6 +15,14 @@ import { backendInfrastructureDigest, backendInfrastructureInput, type ColdInfra
 
 const execute = promisify(execFile);
 const PREFLIGHT_TIMEOUT_MS = 30_000;
+const candidateInspections = new WeakMap<BackendArtifact, () => Promise<void>>();
+
+/** Reuse is private to a live inspection or installation lease and still checks every entry's metadata. */
+export async function assertBackendArtifactUnchanged(artifact: BackendArtifact): Promise<void> {
+  const assertUnchanged = candidateInspections.get(artifact);
+  if (!assertUnchanged) throw new Error('Backend artifact has no in-process verification');
+  await assertUnchanged();
+}
 
 /** Diagnostic only: admission still requires the child's successful protocol response. */
 export interface BackendPreflightProgress {
@@ -172,7 +180,8 @@ export async function checkBackendCandidate(directory: string, currentEntry?: st
   if (directory !== path.join(runtimeRoot, 'packages/0/dist')) {
     throw new Error('Backend replacement requires an isolated runtime from scripts/freeze-backend.mjs; pass its packages/0/dist directory');
   }
-  const runtime = await verifyRuntimeArtifact(runtimeRoot, expectedRuntimeHash);
+  const inspection = await inspectRuntimeArtifact(runtimeRoot, expectedRuntimeHash);
+  const runtime = inspection.manifest;
   const execPath = path.join(runtimeRoot, 'node');
   const entry = path.join(directory, 'daemon', 'daemon-entry.js');
   const stat = await fs.lstat(entry);
@@ -187,11 +196,15 @@ export async function checkBackendCandidate(directory: string, currentEntry?: st
     const currentDist = path.dirname(path.dirname(await fs.realpath(currentEntry)));
     await assertBackendMigrationsCompatible(currentDist, directory, 'all');
   }
-  return { ...artifact, executionRequirements: readExecutionCapabilities(answer.executionRequirements),
+  await inspection.assertUnchanged();
+  const checked: BackendArtifact = { ...artifact, build: Object.freeze(build),
+    executionRequirements: Object.freeze(readExecutionCapabilities(answer.executionRequirements)),
     ...(answer.coldStackAdmissionProtocol === 1 ? { coldStackAdmissionProtocol: 1 } : {}),
     ...(answer.coldInfrastructureProtocol === 1 ? { coldInfrastructureProtocol: 1 } : {}),
     ...(answer.schemaExpansionProtocol === 1 ? { schemaExpansionProtocol: 1 } : {}),
     ...(answer.infrastructureAdoptionProtocol === 1 ? { infrastructureAdoptionProtocol: 1 } : {}) };
+  candidateInspections.set(checked, inspection.assertUnchanged);
+  return Object.freeze(checked);
 }
 
 /** The candidate must affirm the exact read-only projection; an older generic check is insufficient. */

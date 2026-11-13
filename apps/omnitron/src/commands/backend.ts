@@ -153,22 +153,24 @@ export async function backendSelectCommand(id: string, checkOnly = false): Promi
       return { selected, scope, config, artifact };
     };
     if (checkOnly) {
-      const { selected, scope, artifact, config } = await check();
-      const infrastructure = await coldStartPreview(artifact, config, registry.home);
-      const confirmed = registry.settledSelection({ allowEmpty: true });
-      if (confirmed?.revision !== selected?.revision || confirmed?.current !== selected?.current) throw new Error('Runtime selection changed during the check');
-      if (!emitJson({ checked: true, current: selected?.current ?? null, candidate: id, schemaScope: scope, coldStackAdmissionProtocol: artifact.coldStackAdmissionProtocol ?? null, infrastructure })) {
-        emitInfo(`Runtime selection and ${scope} migrations verified for ${id}.`);
-        if ('containers' in infrastructure) {
-          emitInfo(`Cold stack preview from ${infrastructure.coverage} at ${infrastructure.capturedAt}. Startup rechecks current declarations and native containers.`);
-          const database = infrastructure.controlPlaneDatabase;
-          if (database) emitInfo('Control-plane PostgreSQL: ' + database.action + (database.action === 'move-network'
-            ? ` (${database.move.from} → ${database.move.to}, ${database.move.restartsPostgres ? 'PostgreSQL process restart; ' : ''}same container and volume, published SQL cluster ${database.move.systemId ?? 'unverified'})` : database.action === 'hold' ? ' — ' + database.reason : ''));
-          for (const item of infrastructure.containers) {
-            emitInfo(`${item.name}: ${item.action}${item.changed?.length ? ' (' + item.changed.join(', ') + ')' : ''}${item.reason ? ' — ' + item.reason : ''}`);
-          }
-        } else emitInfo('Stack infrastructure unverified: ' + infrastructure.reason);
-      }
+      await registry.inspect(async () => {
+        const { selected, scope, artifact, config } = await check();
+        const infrastructure = await coldStartPreview(artifact, config, registry.home);
+        const confirmed = registry.settledSelection({ allowEmpty: true });
+        if (confirmed?.revision !== selected?.revision || confirmed?.current !== selected?.current) throw new Error('Runtime selection changed during the check');
+        if (!emitJson({ checked: true, current: selected?.current ?? null, candidate: id, schemaScope: scope, coldStackAdmissionProtocol: artifact.coldStackAdmissionProtocol ?? null, infrastructure })) {
+          emitInfo(`Runtime selection and ${scope} migrations verified for ${id}.`);
+          if ('containers' in infrastructure) {
+            emitInfo(`Cold stack preview from ${infrastructure.coverage} at ${infrastructure.capturedAt}. Startup rechecks current declarations and native containers.`);
+            const database = infrastructure.controlPlaneDatabase;
+            if (database) emitInfo('Control-plane PostgreSQL: ' + database.action + (database.action === 'move-network'
+              ? ` (${database.move.from} → ${database.move.to}, ${database.move.restartsPostgres ? 'PostgreSQL process restart; ' : ''}same container and volume, published SQL cluster ${database.move.systemId ?? 'unverified'})` : database.action === 'hold' ? ' — ' + database.reason : ''));
+            for (const item of infrastructure.containers) {
+              emitInfo(`${item.name}: ${item.action}${item.changed?.length ? ' (' + item.changed.join(', ') + ')' : ''}${item.reason ? ' — ' + item.reason : ''}`);
+            }
+          } else emitInfo('Stack infrastructure unverified: ' + infrastructure.reason);
+        }
+      });
       return;
     }
     const result = await registry.exclusive(async () => {

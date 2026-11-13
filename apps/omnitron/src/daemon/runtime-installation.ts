@@ -9,7 +9,7 @@ import { openSqliteDatabase } from '@omnitron-dev/titan-database/sqlite';
 import { OMNITRON_HOME } from '../config/defaults.js';
 import { verifyRuntimeArtifact } from '../shared/runtime-artifact.js';
 import { DaemonStateStore } from './daemon-state-store.service.js';
-import { checkBackendCandidate, type BackendArtifact } from './backend-candidate.js';
+import { assertBackendArtifactUnchanged, checkBackendCandidate, type BackendArtifact } from './backend-candidate.js';
 import { PidManager } from './pid-manager.js';
 import { writePrivateFile } from './execution-journal.js';
 
@@ -72,6 +72,8 @@ export class RuntimeInstallation {
   readonly releases: string;
   private readonly store: DaemonStateStore;
   private lease: InstallationLease | null = null;
+  private verifiedArtifacts: Map<string, BackendArtifact> | null = null;
+  private verificationFailed = false;
   private static startupLease: { home: string; token: string } | null = null;
   private inspection?: ReturnType<typeof openSqliteDatabase>;
 
@@ -223,12 +225,34 @@ export class RuntimeInstallation {
   }
 
   async artifact(id: string): Promise<BackendArtifact> {
-    const root = this.releasePath(id);
-    const stat = await fs.lstat(root);
-    if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('Installed runtime cannot be a symbolic link');
-    const artifact = await checkBackendCandidate(path.join(root, 'packages/0/dist'), undefined, id);
-    if (artifact.runtimeHash !== id) throw new Error('Installed runtime content does not match its identity');
-    return artifact;
+    const root = this.releasePath(id), operation = this.verifiedArtifacts;
+    if (operation && this.verificationFailed) throw new Error('Runtime inspection failed; begin a new operation');
+    try {
+      const stat = await fs.lstat(root);
+      if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('Installed runtime cannot be a symbolic link');
+      const prior = operation?.get(id);
+      const artifact = prior ?? await checkBackendCandidate(path.join(root, 'packages/0/dist'), undefined, id);
+      if (prior) await assertBackendArtifactUnchanged(prior);
+      if (artifact.runtimeHash !== id) throw new Error('Installed runtime content does not match its identity');
+      if (operation && operation !== this.verifiedArtifacts) throw new Error('Runtime inspection ended before verification completed');
+      operation?.set(id, artifact);
+      return artifact;
+    } catch (error) {
+      if (operation && operation === this.verifiedArtifacts) {
+        this.verificationFailed = true;
+        operation.clear();
+      }
+      throw error;
+    }
+  }
+
+  /** Read-only callers explicitly bound the lifetime of their verified filesystem snapshots. */
+  async inspect<T>(operation: () => Promise<T>): Promise<T> {
+    if (!this.inspection || this.verifiedArtifacts) throw new Error('Runtime inspection is unavailable or already active');
+    this.verifiedArtifacts = new Map();
+    this.verificationFailed = false;
+    try { return await operation(); }
+    finally { this.verifiedArtifacts = null; this.verificationFailed = false; }
   }
 
   /** A passive observer cannot recover an abandoned lease or imply that a pending activation is settled. */
@@ -295,8 +319,12 @@ export class RuntimeInstallation {
       this.store.kvSetSync('runtime.lease', lease);
     }).immediate();
     this.lease = lease;
+    this.verifiedArtifacts = new Map();
+    this.verificationFailed = false;
     try { return await operation(); }
     finally {
+      this.verifiedArtifacts = null;
+      this.verificationFailed = false;
       this.store.initSync().transaction(() => {
         if (this.read<InstallationLease>('runtime.lease')?.token !== lease.token) throw new Error('Runtime lease changed unexpectedly');
         this.store.kvDeleteSync('runtime.lease');

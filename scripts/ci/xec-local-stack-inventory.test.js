@@ -46,10 +46,47 @@ test('batch covers running disabled and stopped enabled local stacks at their ex
   assert.equal(imported.path, '/source');
   assert.deepEqual(imported.selection, { kind: 'release', id: 'release-2', manifestSha256 });
   assert.deepEqual(imported.apps, [
-    { name: 'api', status: 'online', handleKey: 'source-project/worker/api', generation: 'generation-import', pid: null },
+    { name: 'api', status: 'online', handleKey: 'source-project/worker/api', generation: 'generation-import', pid: null, health: 'absent', release: null },
   ]);
   assert.deepEqual(result.targets[0].selection, { kind: 'unreported' });
-  assert.deepEqual(result.targets[2].apps, [{ name: 'api', status: 'stopped', handleKey: 'product/next/api', generation: null, pid: null }]);
+  assert.deepEqual(result.targets[2].apps, [{ name: 'api', status: 'stopped', handleKey: 'product/next/api', generation: null, pid: null, health: 'absent', release: null }]);
+});
+
+test('health is independent of lifecycle, with no inferred success or unstable diagnostics', () => {
+  const input = snapshot();
+  const [app] = input[1][0].stacks[0].apps;
+  for (const [actual, expected] of [
+    ['healthy', 'healthy'], ['degraded', 'degraded'], ['unhealthy', 'unhealthy'], ['unknown', 'unknown'],
+    [undefined, 'absent'], ['not-running', 'absent'], ['future-contract', 'unknown'],
+  ]) {
+    app.health = actual;
+    assert.equal(localStackInventory(...input).targets[0].apps[0].health, expected);
+  }
+});
+
+test('the observed consumer release needs matching generation-bound receipts from the stack and the owner', () => {
+  const input = snapshot();
+  const app = input[1][0].stacks[1].apps[0];
+  const process = input[2].apps[1];
+  const consumer = { releaseId: 'release-2', manifestSha256, app: 'api' };
+  const producerSha = 'b'.repeat(64);
+  const receipt = { state: 'confirmed', releaseId: 'producer', manifestSha256: producerSha, artifactSha256: 'c'.repeat(64),
+    basis: 'verified-launch', launchId: app.generation, observedAt: '2026-01-02T03:04:05Z', consumer };
+  const read = () => localStackInventory(...input).targets[1].apps[0].release;
+  app.release = process.release = receipt;
+  assert.deepEqual(read(), { id: consumer.releaseId, manifestSha256 });
+  app.release = process.release = { ...receipt, consumer: undefined };
+  assert.deepEqual(read(), { id: 'producer', manifestSha256: producerSha });
+  app.release = receipt;
+  for (const different of [
+    null, { state: 'unreported' }, { state: 'modified' }, { state: 'confirmed' },
+    { ...receipt, launchId: 'retired' }, { ...receipt, artifactSha256: 'incomplete' },
+    { ...receipt, consumer: { ...consumer, app: 'another' } },
+    { ...receipt, consumer: { ...consumer, manifestSha256: 'd'.repeat(64) } },
+  ]) {
+    process.release = different;
+    assert.equal(read(), null);
+  }
 });
 
 test('a zero-project online registry and an owner reporting zero processes are valid observations', () => {

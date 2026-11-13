@@ -1,9 +1,11 @@
 import path from 'node:path';
+import { readStackRelease } from '../apps/omnitron/src/shared/release-reading.ts';
 
 const name = value => typeof value === 'string' && value.length > 0 && !value.includes('/') && value.trim() === value;
 const digest = /^[a-f0-9]{64}$/;
 const stableApp = new Set(['online', 'stopped', 'crashed', 'errored']);
 const stableStack = new Set(['running', 'stopped', 'degraded', 'error']);
+const observedHealth = new Set(['healthy', 'degraded', 'unhealthy', 'unknown']);
 
 function requireObservation(available, message) {
   if (!available) throw Error('Cannot review the local stacks: ' + message);
@@ -33,13 +35,24 @@ function configurationPath(project, stack, runtimeScope) {
   return matches[0].path;
 }
 
+function releaseId(value) {
+  return typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/.test(value) && !value.includes('..');
+}
+
 function selection(stack, label) {
   if (!Object.hasOwn(stack, 'selectedRelease')) return { kind: 'unreported' };
   const release = stack.selectedRelease;
-  requireObservation(typeof release?.id === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/.test(release.id) &&
-    !release.id.includes('..') && typeof release.manifestSha256 === 'string' && digest.test(release.manifestSha256),
+  requireObservation(releaseId(release?.id) && typeof release.manifestSha256 === 'string' && digest.test(release.manifestSha256),
     'invalid selected release for ' + label);
   return { kind: 'release', id: release.id, manifestSha256: release.manifestSha256 };
+}
+
+function confirmedRelease(app) {
+  if (app?.release?.state !== 'confirmed') return null;
+  const { runningRelease, releaseEvidence } = readStackRelease({ type: 'local', status: 'running', apps: [app] });
+  const receipt = releaseEvidence.releases[0];
+  if (runningRelease !== 'confirmed' || !releaseId(receipt?.releaseId)) return null;
+  return { id: receipt.releaseId, manifestSha256: receipt.manifestSha256 };
 }
 
 function observeApps(stack, scope, processes, covered) {
@@ -59,7 +72,12 @@ function observeApps(stack, scope, processes, covered) {
       requireObservation(process.pid === app.pid && (process.pid === null || (Number.isSafeInteger(process.pid) && process.pid > 0)),
         'missing or changed process identity for ' + handleKey);
     }
-    return { name: app.name, handleKey, status: app.status, generation: process?.generation ?? null, pid: process?.pid ?? null };
+    const stackReceipt = confirmedRelease(app);
+    const ownerReceipt = stackReceipt && confirmedRelease(process);
+    const release = ownerReceipt && ownerReceipt.id === stackReceipt.id && ownerReceipt.manifestSha256 === stackReceipt.manifestSha256
+      ? ownerReceipt : null;
+    const health = app.health == null || app.health === 'not-running' ? 'absent' : observedHealth.has(app.health) ? app.health : 'unknown';
+    return { name: app.name, handleKey, status: app.status, generation: process?.generation ?? null, pid: process?.pid ?? null, health, release };
   }).sort((a, b) => a.handleKey.localeCompare(b.handleKey));
 }
 

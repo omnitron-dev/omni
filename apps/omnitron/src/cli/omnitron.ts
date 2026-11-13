@@ -1669,9 +1669,10 @@ program
 program
   .command('init')
   .description('Scaffold omnitron.config.ts in current directory')
-  .action(async () => {
+  .option('--force', 'Overwrite an existing configuration explicitly')
+  .action(async (options: { force?: boolean }) => {
     const { initCommand } = await import('../commands/init.js');
-    await initCommand();
+    await initCommand(options);
   });
 
 program
@@ -1786,11 +1787,12 @@ program.parseAsync().then(
     // reaching here is a bug in a command, and swallowing it would hide it.
     if ((err as { exitCode?: number })?.exitCode == null) {
       const { emitError, isJsonMode } = await import('../commands/output.js');
-      if (isJsonMode()) emitError(err instanceof Error ? err.message : String(err), { code: 'COMMAND_FAILED', outcome: 'unknown' });
+      if (isJsonMode()) emitError(err, { outcome: 'unknown' });
       else console.error(err instanceof Error ? err.stack ?? err.message : String(err));
     }
     const { finishJsonModeGuard } = await import('../commands/output.js');
     finishJsonModeGuard();
-    return exitAfterOutput(process.exitCode ?? 1);
+    const exitCode = (err as { exitCode?: number })?.exitCode;
+    return exitAfterOutput(exitCode ?? (Number(process.exitCode) || 1));
   },
 );

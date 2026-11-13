@@ -51,17 +51,33 @@ export default defineEcosystem({
 });
 `;
 
-export async function initCommand(): Promise<void> {
+export async function initCommand(options: { force?: boolean } = {}): Promise<void> {
   const configPath = path.resolve(process.cwd(), 'omnitron.config.ts');
-
-  if (fs.existsSync(configPath)) {
-    const overwrite = await confirm({ message: 'omnitron.config.ts already exists. Overwrite?' });
-    if (!overwrite) {
-      log.info('Aborted');
+  const exists = fs.existsSync(configPath);
+  if (exists && fs.lstatSync(configPath).isSymbolicLink()) {
+    throw new Error('omnitron.config.ts is a symbolic link. Select its project directory explicitly.');
+  }
+  if (exists && !options.force) {
+    if (!process.stdin.isTTY) {
+      throw new Error('omnitron.config.ts already exists. Use --force to overwrite it.');
+    }
+    const overwrite = await confirm({
+      message: 'omnitron.config.ts already exists. Overwrite?',
+      initialValue: false,
+      input: process.stdin,
+      output: process.stderr,
+    });
+    if (overwrite !== true) {
+      if (typeof overwrite === 'symbol') process.exitCode = 130;
+      log.info('Configuration preserved');
       return;
     }
   }
 
-  fs.writeFileSync(configPath, CONFIG_TEMPLATE, 'utf-8');
+  const fd = fs.openSync(configPath, exists
+    ? fs.constants.O_WRONLY | fs.constants.O_TRUNC | fs.constants.O_NOFOLLOW
+    : 'wx');
+  try { fs.writeFileSync(fd, CONFIG_TEMPLATE, 'utf-8'); }
+  finally { fs.closeSync(fd); }
   log.success('Created omnitron.config.ts');
 }

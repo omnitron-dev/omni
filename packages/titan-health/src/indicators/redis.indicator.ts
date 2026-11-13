@@ -8,79 +8,12 @@
  */
 
 import { HealthIndicator } from '../health.indicator.js';
-import type { HealthIndicatorResult } from '../health.types.js';
-
-/**
- * Redis health check options
- */
-export interface RedisHealthOptions {
-  /**
-   * Ping latency threshold for degraded status (ms)
-   * @default 10
-   */
-  latencyDegradedThreshold?: number;
-
-  /**
-   * Ping latency threshold for unhealthy status (ms)
-   * @default 100
-   */
-  latencyUnhealthyThreshold?: number;
-
-  /**
-   * Timeout for health check (ms)
-   * @default 5000
-   */
-  timeout?: number;
-
-  /**
-   * Include memory info in health check
-   * @default false
-   */
-  includeMemoryInfo?: boolean;
-
-  /**
-   * Memory usage threshold for degraded status (ratio 0-1)
-   * @default 0.8 (80%)
-   */
-  memoryDegradedThreshold?: number;
-
-  /**
-   * Memory usage threshold for unhealthy status (ratio 0-1)
-   * @default 0.95 (95%)
-   */
-  memoryUnhealthyThreshold?: number;
-}
-
-/**
- * Redis client interface
- * Compatible with ioredis and node-redis
- */
-export interface IRedisClient {
-  /**
-   * Redis PING command
-   */
-  ping(): Promise<string>;
-
-  /**
-   * Redis INFO command (optional, for memory info)
-   */
-  info?(section?: string): Promise<string>;
-
-  /**
-   * Connection status (ioredis)
-   */
-  status?: string;
-
-  /**
-   * Ready state (node-redis)
-   */
-  isReady?: boolean;
-}
+import type { HealthIndicatorResult, IRedisClient, RedisIndicatorOptions } from '../health.types.js';
 
 /**
  * Default thresholds
  */
-const DEFAULT_OPTIONS: Required<RedisHealthOptions> = {
+const DEFAULT_OPTIONS: Required<RedisIndicatorOptions> = {
   latencyDegradedThreshold: 10,
   latencyUnhealthyThreshold: 100,
   timeout: 5000,
@@ -88,6 +21,26 @@ const DEFAULT_OPTIONS: Required<RedisHealthOptions> = {
   memoryDegradedThreshold: 0.8,
   memoryUnhealthyThreshold: 0.95,
 };
+
+const PING_TIMEOUT = new Error('Redis PING timed out');
+const CONNECTION_STATES = new Set(['wait', 'connecting', 'connect', 'reconnecting', 'close', 'end']);
+
+function parseMemoryInfo(info: string) {
+  const lines = info.split('\r\n');
+  const bytes = (key: string): number => {
+    const prefix = key + ':';
+    const value = lines.find(line => line.startsWith(prefix))?.slice(prefix.length);
+    if (!value || !/^\d+$/.test(value) || !Number.isSafeInteger(Number(value))) {
+      throw new Error('Invalid Redis memory statistics');
+    }
+    return Number(value);
+  };
+
+  const used = bytes('used_memory');
+  const peak = bytes('used_memory_peak');
+  const maxmemory = bytes('maxmemory');
+  return { used, peak, maxmemory, usedRatio: maxmemory > 0 ? used / maxmemory : 0 };
+}
 
 /**
  * Redis Health Indicator
@@ -112,10 +65,10 @@ const DEFAULT_OPTIONS: Required<RedisHealthOptions> = {
 export class RedisHealthIndicator extends HealthIndicator {
   readonly name = 'redis';
 
-  private readonly options: Required<RedisHealthOptions>;
+  private readonly options: Required<RedisIndicatorOptions>;
   private client?: IRedisClient;
 
-  constructor(client?: IRedisClient, options: RedisHealthOptions = {}) {
+  constructor(client?: IRedisClient, options: RedisIndicatorOptions = {}) {
     super();
     this.client = client;
     this.options = {
@@ -135,23 +88,21 @@ export class RedisHealthIndicator extends HealthIndicator {
    * Perform Redis health check
    */
   async check(): Promise<HealthIndicatorResult> {
-    if (!this.client) {
-      return this.unhealthy('Redis client not configured');
-    }
-
-    // Check connection status first (if available)
-    if (this.client.status && this.client.status !== 'ready') {
-      return this.unhealthy(`Redis not ready: ${this.client.status}`, { status: this.client.status });
-    }
-
-    if (this.client.isReady === false) {
-      return this.unhealthy('Redis not ready');
-    }
+    const client = this.client;
+    if (!client) return this.unhealthy('Redis client not configured');
 
     try {
-      const start = Date.now();
-      await this.withTimeout(() => this.client!.ping(), this.options.timeout);
-      const pingLatency = Date.now() - start;
+      const { status, isReady } = client;
+      if (status !== undefined && status !== 'ready') {
+        const details = CONNECTION_STATES.has(status) ? { status } : undefined;
+        return this.unhealthy('Redis not ready', details);
+      }
+      if (isReady !== undefined && isReady !== true) return this.unhealthy('Redis not ready');
+
+      const start = performance.now();
+      const reply = await this.withTimeout(() => client.ping(), this.options.timeout, PING_TIMEOUT);
+      const pingLatency = Math.floor(performance.now() - start);
+      if (reply !== 'PONG') return this.unhealthy('Redis PING returned an unexpected reply');
 
       const details: Record<string, unknown> = {
         latency: pingLatency,
@@ -163,9 +114,12 @@ export class RedisHealthIndicator extends HealthIndicator {
 
       // Optionally include memory info
       let memoryStatus: 'healthy' | 'degraded' | 'unhealthy' = 'healthy';
-      if (this.options.includeMemoryInfo && this.client.info) {
+      if (this.options.includeMemoryInfo && client.info) {
         try {
-          const memoryInfo = await this.getMemoryInfo();
+          const remaining = this.options.timeout - (performance.now() - start);
+          if (remaining <= 0) throw new Error('Redis INFO timed out');
+          const info = await this.withTimeout(() => client.info!('memory'), remaining);
+          const memoryInfo = parseMemoryInfo(info);
           details['memory'] = memoryInfo;
 
           if (memoryInfo.usedRatio >= this.options.memoryUnhealthyThreshold) {
@@ -185,56 +139,14 @@ export class RedisHealthIndicator extends HealthIndicator {
       }
 
       if (pingLatency >= this.options.latencyDegradedThreshold || memoryStatus === 'degraded') {
-        return this.degraded(`Redis degraded: latency=${pingLatency}ms`, details);
+        const memory = memoryStatus === 'degraded' ? ', memory=degraded' : '';
+        return this.degraded(`Redis degraded: latency=${pingLatency}ms${memory}`, details);
       }
 
       return this.healthy(`Redis responding in ${pingLatency}ms`, details);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      return this.unhealthy(
-        `Redis check failed: ${errorMessage}`,
-        undefined,
-        error instanceof Error ? error : new Error(errorMessage)
-      );
+      // Driver messages and errors may contain connection or request data.
+      return this.unhealthy(error === PING_TIMEOUT ? 'Redis PING timed out' : 'Redis PING failed');
     }
-  }
-
-  /**
-   * Get Redis memory info
-   */
-  private async getMemoryInfo(): Promise<{
-    used: number;
-    peak: number;
-    maxmemory: number;
-    usedRatio: number;
-  }> {
-    if (!this.client?.info) {
-      throw new Error('INFO command not available');
-    }
-
-    const infoResult = await this.client.info('memory');
-    if (!infoResult) {
-      throw new Error('INFO command returned empty result');
-    }
-    const lines = infoResult.split('\r\n');
-
-    const parseValue = (key: string): number => {
-      const line = lines.find((l) => l.startsWith(`${key}:`));
-      if (!line) return 0;
-      const parts = line.split(':');
-      const value = parts[1];
-      return value ? parseInt(value, 10) || 0 : 0;
-    };
-
-    const used = parseValue('used_memory');
-    const peak = parseValue('used_memory_peak');
-    const maxmemory = parseValue('maxmemory');
-
-    return {
-      used,
-      peak,
-      maxmemory,
-      usedRatio: maxmemory > 0 ? used / maxmemory : 0,
-    };
   }
 }

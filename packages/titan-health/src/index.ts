@@ -110,8 +110,6 @@ export {
   // Types
   type DatabaseHealthOptions,
   type IDatabaseConnection,
-  type RedisHealthOptions,
-  type IRedisClient,
 } from './indicators/index.js';
 
 // ============================================================================
@@ -149,6 +147,7 @@ export type {
   HealthModuleAsyncOptions,
   DatabaseIndicatorOptions,
   RedisIndicatorOptions,
+  IRedisClient,
 
   // Threshold configuration
   MemoryThresholds,

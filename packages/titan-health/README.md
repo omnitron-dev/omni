@@ -24,6 +24,8 @@ Add this dynamic module to the `imports` of an existing Titan application.
 
 On `Health@1.0.0`, `live()` and `ready()` allow anonymous probes and return status and timestamp. With `detailRpcRoles`, detailed reports require an admitted matching role. Omitting that option leaves health RPCs public; set `enableRpcService: false` to disable RPC exposure.
 
+The Redis indicator accepts a raw client such as `RedisManager.getClient()`. It requires the exact `PONG` reply. Reported latency covers the application’s round trip, including local scheduling. Optional memory diagnostics use the remaining check timeout.
+
 ## Documentation
 
 [Public API](src/index.ts) · [Package exports](package.json) · [Omni](../../README.md)

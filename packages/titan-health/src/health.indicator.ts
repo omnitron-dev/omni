@@ -119,14 +119,15 @@ export abstract class HealthIndicator implements IHealthIndicator {
   protected async withTimeout<T>(
     operation: () => Promise<T>,
     timeoutMs: number,
-    timeoutMessage = 'Health check timed out'
+    timeoutMessage: string | Error = 'Health check timed out'
   ): Promise<T> {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
-        reject(new Error(timeoutMessage));
+        reject(typeof timeoutMessage === 'string' ? new Error(timeoutMessage) : timeoutMessage);
       }, timeoutMs);
 
-      operation()
+      Promise.resolve()
+        .then(operation)
         .then((result) => {
           clearTimeout(timer);
           resolve(result);

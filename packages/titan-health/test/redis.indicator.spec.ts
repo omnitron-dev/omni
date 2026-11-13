@@ -2,9 +2,10 @@
  * Redis Health Indicator Tests
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { HealthService } from '../src/health.service.js';
 import { RedisHealthIndicator } from '../src/indicators/redis.indicator.js';
-import type { IRedisClient } from '../src/indicators/redis.indicator.js';
+import type { IRedisClient } from '../src/health.types.js';
 
 // Mock Redis client
 const createMockRedisClient = (
@@ -130,6 +131,45 @@ describe('setClient', () => {
       expect(result.message).toContain('not ready');
     });
 
+    it.each(['OK', '', 'PONG\n', null, true, { text: 'private Redis data' }, Buffer.from('PONG')])(
+      'requires the raw Redis PONG reply before collecting optional memory', async reply => {
+        const info = vi.fn();
+        const client = { ping: async () => reply, info } as unknown as IRedisClient;
+        const result = await new RedisHealthIndicator(client, { includeMemoryInfo: true }).check();
+        expect(result.status).toBe('unhealthy');
+        expect(result.message).toBe('Redis PING returned an unexpected reply');
+        expect(info).not.toHaveBeenCalled();
+        expect(JSON.stringify(result)).not.toContain('private Redis data');
+        expect(result.error).toBeUndefined();
+      });
+
+    it.each(['connection', 'readiness', 'getter', 'rejection'] as const)(
+      'keeps untrusted %s data out of the public health result', async kind => {
+        const privateValue = 'private Redis data';
+        const client = createMockRedisClient();
+        if (kind === 'connection') client.status = privateValue;
+        else if (kind === 'readiness') Object.assign(client, { isReady: privateValue });
+        else if (kind === 'getter') Object.defineProperty(client, 'status', { get() { throw new Error(privateValue); } });
+        else client.ping = async () => { throw Object.assign(new Error(privateValue), { code: privateValue }); };
+        const service = new HealthService();
+        service.registerIndicator(new RedisHealthIndicator(client));
+        const health = await service.check();
+        expect(health.status).toBe('unhealthy');
+        expect(JSON.stringify(health)).not.toContain(privateValue);
+      });
+
+    it.each([false, true])('honors the health cache flag %s when a PONG changes to an invalid reply', async enableCaching => {
+      const ping = vi.fn<IRedisClient['ping']>().mockResolvedValueOnce('PONG').mockResolvedValue('private Redis data');
+      const service = new HealthService({ enableCaching, cacheTtl: 60_000 });
+      service.registerIndicator(new RedisHealthIndicator({ ping }, NO_LATENCY_BUDGET));
+      expect((await service.check()).status).toBe('healthy');
+      expect((await service.checkOne('redis')).status).toBe(enableCaching ? 'healthy' : 'unhealthy');
+      service.invalidateCache();
+      const health = await service.check();
+      expect(health.status).toBe('unhealthy');
+      expect(JSON.stringify(health)).not.toContain('private Redis data');
+    });
+
     it('should return healthy for fast response', async () => {
       // The claim is "measured latency below the threshold ⇒ healthy", and it
       // is asserted as that relationship rather than as an absolute time, so a
@@ -173,7 +213,12 @@ describe('setClient', () => {
 
       const result = await indicator.check();
       expect(result.status).toBe('unhealthy');
-      expect(result.message).toContain('Connection reset');
+      expect(result.message).toBe('Redis PING failed');
+    });
+
+    it('classifies a driver failure independently of its error text', async () => {
+      indicator.setClient({ ping: () => { throw new Error('Health check timed out'); } });
+      expect((await indicator.check()).message).toBe('Redis PING failed');
     });
 
     it('should handle timeout', async () => {
@@ -273,6 +318,27 @@ describe('setClient', () => {
       // Should still be healthy since ping succeeded
       expect(result.status).toBe('healthy');
       expect((result.details?.['memory'] as any)?.error).toContain('Failed to retrieve');
+    });
+
+    it('keeps optional memory diagnostics bounded and separate from the successful PING', async () => {
+      const info = vi.fn(() => new Promise<string>(() => {}));
+      const client = { ping: async () => 'PONG', info };
+      const options = { timeout: 25, ...NO_LATENCY_BUDGET };
+      expect((await new RedisHealthIndicator(client, options).check()).status).toBe('healthy');
+      expect(info).not.toHaveBeenCalled();
+
+      const result = await new RedisHealthIndicator(client, { ...options, includeMemoryInfo: true }).check();
+      expect(info).toHaveBeenCalledWith('memory');
+      expect(result.status).toBe('healthy');
+      expect(result.details?.['memory']).toEqual({ error: 'Failed to retrieve memory info' });
+    });
+
+    it('reports unavailable memory instead of inventing zero-byte statistics from a partial INFO', async () => {
+      const client = { ping: async () => 'PONG', info: async () => 'used_memory:42private data\r\n' };
+      const result = await new RedisHealthIndicator(client, { includeMemoryInfo: true, ...NO_LATENCY_BUDGET }).check();
+      expect(result.status).toBe('healthy');
+      expect(result.details?.['memory']).toEqual({ error: 'Failed to retrieve memory info' });
+      expect(JSON.stringify(result)).not.toContain('private data');
     });
 
     it('should handle zero maxmemory (unlimited)', async () => {

@@ -34,4 +34,4 @@ export { DatabaseHealthIndicator, type DatabaseHealthOptions, type IDatabaseConn
 // Redis Indicator
 // ============================================================================
 
-export { RedisHealthIndicator, type RedisHealthOptions, type IRedisClient } from './redis.indicator.js';
+export { RedisHealthIndicator } from './redis.indicator.js';

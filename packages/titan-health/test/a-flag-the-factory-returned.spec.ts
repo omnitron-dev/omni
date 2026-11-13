@@ -106,6 +106,31 @@ it('keeps the async deployment policy isolated from the default service and its 
   expect(readMethodMetadata(new HealthRpcService(), 'check')?.auth).toEqual({ allowAnonymous: true });
 });
 
+it.each([false, true])('exposes Redis readiness and sanitized diagnostics only when enabled (%s)', async enabled => {
+  const secret = 'Redis driver reply carrying an internal address';
+  const started = await start(TitanHealthModule.forRootAsync({
+    useFactory: () => ({
+      enableEventLoopIndicator: false,
+      enableMemoryIndicator: false,
+      enableRedisIndicator: enabled,
+      redisClient: { ping: async () => secret },
+    }),
+  }));
+  const service = await started.resolveAsync(HealthRpcService);
+  const report = await service.check();
+  expect(report.indicators.redis?.status).toBe(enabled ? 'unhealthy' : undefined);
+  expect(report.status).toBe(enabled ? 'unhealthy' : 'healthy');
+  if (enabled) {
+    const single = await service.checkIndicator('redis');
+    expect(single.result.message).toBe('Redis PING returned an unexpected reply');
+    expect(JSON.stringify(single)).not.toContain(secret);
+  }
+  expect(JSON.stringify(report)).not.toContain(secret);
+  const probe = await service.ready();
+  expect(probe.status).toBe(enabled ? 'unhealthy' : 'healthy');
+  expect(Object.keys(probe).sort()).toEqual(['status', 'timestamp']);
+});
+
 it('refuses to expose an empty detailed role policy', () => {
   expect(() => HealthRpcService.create(new HealthService({}), { detailRpcRoles: [] })).toThrow('detailRpcRoles');
 });

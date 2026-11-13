@@ -115,6 +115,17 @@ export interface DatabaseIndicatorOptions {
 }
 
 /**
+ * Raw Redis commands implemented by ioredis and node-redis. PING without a
+ * message returns the string PONG. Boolean health-service adapters are separate.
+ */
+export interface IRedisClient {
+  ping(): Promise<string>;
+  info?(section?: string): Promise<string>;
+  status?: string;
+  isReady?: boolean;
+}
+
+/**
  * Redis health indicator options
  */
 export interface RedisIndicatorOptions {
@@ -205,12 +216,7 @@ export interface HealthModuleOptions {
    * Redis client for health checks
    * Compatible with ioredis and node-redis
    */
-  redisClient?: {
-    ping(): Promise<string>;
-    info?(section?: string): Promise<string>;
-    status?: string;
-    isReady?: boolean;
-  };
+  redisClient?: IRedisClient;
 
   /**
    * Default timeout for health checks in milliseconds

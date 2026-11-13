@@ -178,6 +178,8 @@ export async function inspectHeldBackendRecovery(installation: RuntimeInstallati
       admittedEpoch: ticket.to.epoch, durableEpoch: owner?.grant.epoch ?? null,
       durableGrantMatches, registryDigest, registryMatches,
       certificate: receipt?.status ?? 'missing', certificateAt: receipt?.at ?? null,
+      previousCertifiedAt: receipt?.status === 'invalid' ? receipt.previousCertifiedAt ?? null : null,
+      recoveryReceiptSha256: receipt ? digest(receipt) : null,
       writerMatches, writerPid, writerPidState: writerPid === null ? null : readProcessLifetime(writerPid).state, environmentMatches,
       projectState: receipt?.status === 'ready' && writerMatches && environmentMatches && durableGrantMatches && registryMatches
         ? 'certified' as const : 'unconfirmed' as const,

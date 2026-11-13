@@ -3,6 +3,7 @@ import { constants } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
+import { DomainError } from '@omnitron-dev/titan/errors';
 import { openSqliteDatabase } from '@omnitron-dev/titan-database/sqlite';
 import { OMNITRON_HOME } from '../config/defaults.js';
 import { verifyRuntimeArtifact } from '../shared/runtime-artifact.js';
@@ -35,6 +36,15 @@ export interface RuntimeActivation {
   reviewedRecovery?: ReviewedRecoveryHold;
 }
 const HASH = /^[a-f0-9]{64}$/;
+
+/** Shared refusal for commands that cannot supersede a reviewed attempt. */
+export function assertOrdinaryRecoveryAllowed(activation: RuntimeActivation | null | undefined): void {
+  const hold = activation?.reviewedRecovery;
+  if (!activation || !hold) return;
+  throw new DomainError({ domainCode: 'REVIEWED_RECOVERY_HELD',
+    message: `Recovery is held for reviewed plan ${hold.planId} (${hold.phase}). Inspect it with omnitron backend installation${hold.phase === 'unconfirmed' && hold.checkpoint ? ' --recovery' : ''}.`,
+    details: { plan: hold.planFile, phase: hold.phase, originalCheckpoint: activation.checkpoint, admittedCheckpoint: hold.checkpoint ?? null } });
+}
 
 async function privateDirectory(directory: string, create: boolean): Promise<void> {
   if (create) await fs.mkdir(directory, { recursive: true, mode: 0o700 });

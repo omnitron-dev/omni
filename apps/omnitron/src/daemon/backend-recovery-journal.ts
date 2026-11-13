@@ -14,7 +14,7 @@ export interface BackendRecoveryRecord extends Omit<BackendBootRecord, 'state'> 
 }
 
 export type BackendRecoveryState =
-  | { status: 'invalid'; reason: string; at: string; reasons?: string[]; additionalReasons?: true; previous?: BackendRecoveryRecord }
+  | { status: 'invalid'; reason: string; at: string; reasons?: string[]; additionalReasons?: true; previous?: BackendRecoveryRecord; previousCertifiedAt?: string }
   | { status: 'ready'; record: BackendRecoveryRecord; at: string };
 
 /** Small, private FULL-synchronous journal, using the daemon's SQLite store. */
@@ -23,8 +23,6 @@ export class BackendRecoveryJournal {
   private readonly inspection: import('better-sqlite3').Database | null;
   private recordedReasons = new Set<string>();
   private reasonsFull = false;
-  private firstReason: string | null = null;
-  private firstInvalidatedAt: string | null = null;
   constructor(readonly directory: string, options: { readOnly?: boolean } = {}) {
     const stat = fs.lstatSync(directory);
     if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0 ||
@@ -57,13 +55,13 @@ export class BackendRecoveryJournal {
     const full = reasons.size >= 16 && !reasons.has(label);
     const additional = incomplete || full;
     if (!full) reasons.add(label);
-    const firstReason = this.firstReason ?? label, at = this.firstInvalidatedAt ?? new Date().toISOString();
-    this.store.kvSetSync('backend.recovery', { status: 'invalid', reason: firstReason, at, reasons: [...reasons],
-      ...(additional && { additionalReasons: true }), ...(previous && { previous }) });
+    const reasonAtStart = prior?.status === 'invalid' ? prior.reason : label;
+    const at = prior?.status === 'invalid' ? prior.at : new Date().toISOString();
+    const previousCertifiedAt = prior?.status === 'ready' ? prior.at : prior?.previousCertifiedAt;
+    this.store.kvSetSync('backend.recovery', { status: 'invalid', reason: reasonAtStart, at, reasons: [...reasons],
+      ...(additional && { additionalReasons: true }), ...(previous && { previous }), ...(previousCertifiedAt && { previousCertifiedAt }) });
     this.recordedReasons = reasons;
     this.reasonsFull = full;
-    this.firstReason = firstReason;
-    this.firstInvalidatedAt = at;
   }
 
   publish(record: BackendRecoveryRecord): void {
@@ -71,8 +69,6 @@ export class BackendRecoveryJournal {
     this.store.kvSetSync('backend.recovery', { status: 'ready', record, at: new Date().toISOString() });
     this.recordedReasons.clear();
     this.reasonsFull = false;
-    this.firstReason = null;
-    this.firstInvalidatedAt = null;
   }
 
   read(): BackendRecoveryState | null {
@@ -83,7 +79,9 @@ export class BackendRecoveryJournal {
     if (state.status === 'invalid' && typeof state.reason === 'string' &&
         (state.reasons === undefined || Array.isArray(state.reasons) && state.reasons.length > 0 && state.reasons.length <= 16 &&
           state.reasons.every(value => typeof value === 'string')) &&
-        (state.additionalReasons === undefined || state.additionalReasons === true)) return state;
+        (state.additionalReasons === undefined || state.additionalReasons === true) &&
+        (state.previousCertifiedAt === undefined || typeof state.previousCertifiedAt === 'string' && !!state.previous &&
+          Number.isFinite(Date.parse(state.previousCertifiedAt)))) return state;
     if (state.status !== 'ready' || state.record?.protocol !== 1 || state.record.state?.protocol !== 1 ||
         !/^[a-f0-9]{64}$/.test(state.record.runtimeHash) || !/^[a-f0-9]{64}$/.test(state.record.registryDigest) ||
         !/^[a-f0-9]{64}$/.test(state.record.state.executionInventory) || !state.record.controller?.ownerId ||

@@ -17,7 +17,10 @@ vi.mock('../../src/daemon/managed-runtime.js', async original => ({
 vi.mock('../../src/daemon/backend-handoff-types.js', async original => ({
   ...await original<typeof import('../../src/daemon/backend-handoff-types.js')>(), readBackendBootRecord: fake.readBoot,
 }));
-vi.mock('../../src/daemon/runtime-installation.js', () => ({ RuntimeInstallation: { open: fake.opened, openReadOnly: (home: string) => fake.opened(home, { readOnly: true }) } }));
+vi.mock('../../src/daemon/runtime-installation.js', async original => ({
+  ...await original<typeof import('../../src/daemon/runtime-installation.js')>(),
+  RuntimeInstallation: { open: fake.opened, openReadOnly: (home: string) => fake.opened(home, { readOnly: true }) },
+}));
 vi.mock('../../src/daemon/execution-client.js', () => ({ ExecutionClient: class {
   async connect() { return fake.snapshot; } async close() {}
 } }));

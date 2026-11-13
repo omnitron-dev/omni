@@ -56,7 +56,7 @@ it('retains distinct invalidations across reopen and signals when their bounded 
     const firstAt = reopened.read()!.at;
     for (let i = 0; i < 16; i++) reopened.invalidate('operation-' + i);
     const state = reopened.read();
-    expect(state).toMatchObject({ status: 'invalid', reason: 'operation-0', at: firstAt, additionalReasons: true });
+    expect(state).toMatchObject({ status: 'invalid', reason: 'loadProjectConfig', at: firstAt, additionalReasons: true });
     if (state?.status !== 'invalid') throw Error('Missing invalidation');
     expect(state.reasons).toHaveLength(16);
     expect(state.reasons!.slice(0, 2)).toEqual(['loadProjectConfig', 'startStack']);
@@ -88,7 +88,9 @@ it('leaves a durable invalidation after an actual SIGKILL inside an unfinished o
     controller: { ownerId: 'test-owner', controllerId: 'test-backend', epoch: 1 }, previousPid: 999,
     previousEntry: '/test/entry.js', cwd: root, daemonConfig: { executionHost: { enabled: true } }, environment: {},
   } as BackendRecoveryRecord;
-  journal.publish(record); await journal.close();
+  journal.publish(record);
+  const certifiedAt = journal.read()!.at;
+  await journal.close();
   const source = fileURLToPath(new URL('../../src/daemon/backend-recovery-journal.ts', import.meta.url));
   const tracker = fileURLToPath(new URL('../../src/daemon/recovery-state.ts', import.meta.url));
   const script = path.join(root, 'mutation.mjs');
@@ -111,7 +113,11 @@ it('leaves a durable invalidation after an actual SIGKILL inside an unfinished o
     child.kill('SIGKILL'); await exited;
     const recovered = new BackendRecoveryJournal(root);
     try {
-      expect(recovered.read()).toMatchObject({ status: 'invalid', previous: { controller: record.controller } });
+      const before = recovered.read()!;
+      expect(before).toMatchObject({ status: 'invalid', previous: { controller: record.controller }, previousCertifiedAt: certifiedAt });
+      recovered.invalidate('new process startup');
+      expect(recovered.read()).toMatchObject({ at: before.at, reason: 'Controller startup has not published a recovery snapshot',
+        previousCertifiedAt: certifiedAt, reasons: expect.arrayContaining(['unfinished deployment', 'new process startup']) });
     } finally { await recovered.close(); }
   } finally {
     if (child.exitCode === null && child.signalCode === null) { child.kill('SIGKILL'); await exited; }

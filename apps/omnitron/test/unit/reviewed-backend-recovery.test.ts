@@ -177,10 +177,11 @@ it('waits passively for the admitted writer to replace its real startup-invalid 
   try {
     await vi.waitFor(() => expect(fake.certificate).toHaveBeenCalledTimes(1));
     const journal = new BackendRecoveryJournal(f.directory, { readOnly: true });
-    try { expect(journal.read()).toMatchObject({ status: 'invalid', reason: 'Controller startup has not published a recovery snapshot' }); }
+    try { expect(journal.read()).toMatchObject({ status: 'invalid', reason: 'Failed candidate startup',
+      reasons: ['Failed candidate startup', 'Controller startup has not published a recovery snapshot'] }); }
     finally { await journal.close(); }
     expect(settled).toBe(false); expect(fake.children).toHaveLength(1);
-  } finally { publication.resolve(); }
+  } finally { publication.resolve(); await recovery; }
   await expect(recovery).resolves.toMatchObject({ pid: fake.children[0]!.pid });
   expect(fake.prepare).toHaveBeenCalledTimes(1); expect(fake.children).toHaveLength(1);
 });

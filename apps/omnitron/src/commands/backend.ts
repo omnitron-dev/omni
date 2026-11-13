@@ -4,9 +4,10 @@ import { createDaemonClient } from '../daemon/daemon-client.js';
 import type { BackendRpcService } from '../daemon/backend.rpc-service.js';
 import { replaceBackend, recoverBackend, abortBackendReplacement } from '../daemon/backend-upgrade.js';
 import { emitJson, emitError, emitInfo, emitStep } from './output.js';
-import { RuntimeInstallation } from '../daemon/runtime-installation.js';
+import { RuntimeInstallation, assertOrdinaryRecoveryAllowed } from '../daemon/runtime-installation.js';
 import { PidManager } from '../daemon/pid-manager.js';
-import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
+import { DEFAULT_DAEMON_CONFIG, DEFAULT_SOCKET_PATH } from '../config/defaults.js';
+import { getEnv } from '../shared/env-config.js';
 import { expandPath } from '../shared/paths.js';
 import { executionDirectory } from '../daemon/execution-launcher.js';
 import { readSavedDaemonConfig, savedDaemonOverrides } from '../config/saved.js';
@@ -179,6 +180,13 @@ export async function backendStatusCommand(): Promise<void> {
 
 export async function backendUpgradeCommand(directory: string, options: { check?: boolean; schemaPlan?: string }): Promise<void> {
   try {
+    // A socket chosen for another instance must keep its own RPC authority.
+    const target = getEnv().OMNITRON_SOCKET ?? DEFAULT_SOCKET_PATH;
+    if (path.resolve(target) === path.resolve(DEFAULT_SOCKET_PATH)) {
+      const installation = await RuntimeInstallation.openReadOnly();
+      try { assertOrdinaryRecoveryAllowed(installation?.activation()); }
+      finally { await installation?.close(); }
+    }
     // Legacy versions have no OmnitronBackend service. Ask their stable
     // status first to explain the capability boundary without draining them.
     const client = createDaemonClient();

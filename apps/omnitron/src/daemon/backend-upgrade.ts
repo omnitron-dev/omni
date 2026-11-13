@@ -17,7 +17,7 @@ import { executionDirectory } from './execution-launcher.js';
 import { PidManager } from './pid-manager.js';
 import type { BackendRuntimeStatus } from '../shared/dto/backend.js';
 import { OMNITRON_HOME } from '../config/defaults.js';
-import { RuntimeInstallation, type RuntimeActivation } from './runtime-installation.js';
+import { RuntimeInstallation, assertOrdinaryRecoveryAllowed } from './runtime-installation.js';
 import { observeBackendChild, supervisesBackendChildren } from './backend-child.js';
 import { readManagedRuntime, managedSupervisorSocket } from './managed-runtime.js';
 import type { BackendSupervisorService } from './backend-supervisor.js';
@@ -353,13 +353,6 @@ export async function replaceBackend(directory: string, options: {
       return result;
     }); } finally { await installation.close(); }
   } finally { await control.close(); }
-}
-
-function assertOrdinaryRecoveryAllowed(activation: RuntimeActivation | null): void {
-  const hold = activation?.reviewedRecovery;
-  if (hold) throw new DomainError({ domainCode: 'REVIEWED_RECOVERY_HELD',
-    message: `Recovery is held for reviewed plan ${hold.planId} (${hold.phase}). Inspect it with backend installation.`,
-    details: { plan: hold.planFile, phase: hold.phase } });
 }
 
 /** Explicit recovery for an interrupted upgrade. Never preempts a live backend. */

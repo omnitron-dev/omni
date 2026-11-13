@@ -366,8 +366,9 @@ it('repairs a version-only SDK source install once and refuses changes outside i
     postinstall: 'node -e "require(\'node:fs\').appendFileSync(\'install-count\', \'1\')"',
   } });
   await write(manifestFile, { ...manifest, version: '0.3.6' });
-  await expect(exec('pnpm', ['exec', 'node', '--version'], { cwd: source }))
-    .rejects.toMatchObject({ stderr: expect.stringContaining('ERR_PNPM_VERIFY_DEPS_BEFORE_RUN') });
+  // pnpm run and exec pass this recursion guard to their children. The SDK
+  // must still verify its own source workspace when invoked from a script.
+  vi.stubEnv('pnpm_config_verify_deps_before_run', 'false');
   await initialize();
   await select(source);
   expect(await fs.readFile(path.join(source, 'install-count'), 'utf8')).toBe('1');

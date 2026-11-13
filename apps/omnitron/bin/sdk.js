@@ -438,8 +438,11 @@ async function build(source, names, signal) {
     // pnpm's implicit pre-script install only warns on failure. Ask pnpm to
     // check its installation first, then require a successful frozen repair.
     try {
-      await exec('pnpm', ['--reporter=ndjson', '--config.verify-deps-before-run=error', 'exec', process.execPath, '--version'],
-        { cwd: source, env: nodeEnvironment(), signal });
+      // A parent pnpm script exports a recursion guard that overrides CLI
+      // options. This probe checks a different workspace and owns its repair.
+      await exec('pnpm', ['--reporter=ndjson', 'exec', process.execPath, '--version'], {
+        cwd: source, env: { ...nodeEnvironment(), pnpm_config_verify_deps_before_run: 'error' }, signal,
+      });
     } catch (error) {
       if (error.code !== 1 || !error.stderr?.split('\n').some(line => {
         try {

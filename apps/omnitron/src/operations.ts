@@ -17,3 +17,4 @@ export type { HostOperationAllowance } from './services/host-operation-barrier.j
 
 export { immutableAssetsRoot, type StaticAssetOwner, type StaticAssetSource, type StaticAssetPublication, type StaticAssetReceipt } from './services/static-carry-forward.js';
 export { compileCustomRoutes } from './orchestrator/http-routes.js';
+export type { RuntimeUpdatePlan, RuntimeUpdateReceipt, RuntimeUpdateStatus, VerifiedRuntimeReference } from './shared/dto/runtime-update.js';

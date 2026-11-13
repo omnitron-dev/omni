@@ -1,13 +1,19 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { withKernelFileLock } from '../apps/omnitron/src/shared/kernel-file-lock.ts';
-import { verifyRuntimeArtifact } from '../apps/omnitron/src/shared/runtime-artifact.ts';
-import { assertStandaloneNodeConfiguration } from '../apps/omnitron/scripts/standalone-node.js';
+
+/** The trusted checkout verifies bytes before any cached interpreter runs. */
+export async function verifyLocalRuntime(root, directory, run) {
+  return JSON.parse(await run(root, process.execPath, [
+    '--conditions=omnitron-source', '--import=tsx/esm', '--input-type=module', '--eval',
+    "import { verifyRuntimeArtifact } from '@omnitron-dev/omnitron/runtime-artifact'; process.stdout.write(JSON.stringify(await verifyRuntimeArtifact(process.argv[1])));",
+    directory,
+  ], { timeoutMs: 120_000 }));
+}
 
 /** Prepare one native development runtime per committed revision and producer. */
 export async function localRuntime(root, cache, run, progress) {
-  assertStandaloneNodeConfiguration(process.config.variables);
+  const { withKernelFileLock } = await import('@xec-sh/ops/utils/file-lock');
   const revision = (await run(root, 'git', ['rev-parse', '--verify', 'HEAD^{commit}'])).trim();
   if (!/^[a-f0-9]{40}$/.test(revision)) throw Error('Cannot identify the local source commit');
   if ((await run(root, 'git', ['status', '--porcelain'])).trim())
@@ -18,7 +24,7 @@ export async function localRuntime(root, cache, run, progress) {
   const destination = path.join(base, key);
   const dist = path.join(destination, 'packages/0/dist');
   const verify = async directory => {
-    const manifest = await verifyRuntimeArtifact(directory);
+    const manifest = await verifyLocalRuntime(root, directory, run);
     if (manifest.nodeVersion !== process.version) throw Error('Cached runtime uses a different Node producer');
     for (const subpath of ['dist', 'webapp/dist']) {
       const stamp = JSON.parse(await fs.readFile(path.join(directory, 'packages/0', subpath, 'BUILD.json'), 'utf8'));

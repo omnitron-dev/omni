@@ -59,6 +59,11 @@
       "types": "./dist/operations.d.ts",
       "default": "./dist/operations.js"
     },
+    "./runtime-artifact": {
+      "omnitron-source": "./src/shared/runtime-artifact.ts",
+      "types": "./dist/shared/runtime-artifact.d.ts",
+      "default": "./dist/shared/runtime-artifact.js"
+    },
     "./migration": {
       "types": "./dist/migration/index.d.ts",
       "default": "./dist/migration/index.js"
@@ -173,6 +178,7 @@
     "bin/sdk.js",
     "bin/sdk.d.ts",
     "bin/pnpmfile-sdk.js",
+    "src/shared/runtime-artifact.ts",
     "dist",
     "webapp/dist",
     "data"

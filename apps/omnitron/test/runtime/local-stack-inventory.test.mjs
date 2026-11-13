@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { localStackInventory } from '../../.xec/local-stack-inventory.js';
+import { tsImport } from 'tsx/esm/api';
+const { localStackInventory } = await tsImport('../../src/project/local-stack-inventory.ts', import.meta.url);
 
 const manifestSha256 = 'a'.repeat(64);
 const scope = { project: 'source-project', stack: 'worker' };

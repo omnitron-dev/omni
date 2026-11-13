@@ -4,8 +4,9 @@ import fs from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { runLocalSync } from '../../../../.xec/local-sync.js';
-import { assertReviewedBoot, stackAdmissionProtocol } from '../../../../.xec/local-sync-host.js';
+import { tsImport } from 'tsx/esm/api';
+const { runRuntimeUpdate, readRuntimeUpdateReceipt } = await tsImport('../../src/daemon/runtime-update.ts', import.meta.url);
+const { assertReviewedBoot, stackAdmissionProtocol } = await tsImport('../../src/daemon/runtime-update-host.ts', import.meta.url);
 
 const actions = ['prepare', 'validateStop', 'stop', 'assertStopped', 'start', 'canRestore', 'captureForRollback', 'accept'];
 const file = fileURLToPath(import.meta.url);
@@ -19,7 +20,7 @@ if (process.argv[1] === file && process.argv[2] === '--interrupt-client') {
     process.once('message', reply => reply.error ? reject(Error(reply.error)) : resolve(reply.value));
     process.send({ name, args });
   })]));
-  await runLocalSync({ actions: calls, directory, review, progress(phase) {
+  await runRuntimeUpdate({ actions: calls, directory, operation: 'apply', digest: review, progress(phase) {
     if (phase === 'verifying') process.exit(lostReply);
   } });
   throw Error('Fixture client unexpectedly received the completed update');
@@ -176,18 +177,18 @@ export async function managedLocalSyncRoundtrip(context) {
       return result;
     },
   };
-  const { digest } = await runLocalSync({ directory, actions: driver });
+  const { digest } = await runRuntimeUpdate({ directory, actions: driver, operation: 'prepare' });
   await loseClientAfterBoot(directory, digest, driver, context.lifecycleBudget);
-  const outstanding = await runLocalSync({ directory, status: true });
+  const outstanding = await readRuntimeUpdateReceipt(directory);
   assert.equal(outstanding.phase, 'verifying'); assert.equal(outstanding.digest, digest);
   await driver.accept(plan, 'target');
-  await assert.rejects(runLocalSync({ directory, actions: driver, review: digest }), /unfinished/);
+  await assert.rejects(runRuntimeUpdate({ directory, actions: driver, operation: 'apply', digest }), /unfinished/);
   await assert.rejects(project(service => service.startStack({ ...scope, workingTree: true }).then(() => { manualStarts++; })), /held by local update/);
-  const rollback = await runLocalSync({ directory, actions: driver, rollback: true, review: digest });
+  const rollback = await runRuntimeUpdate({ directory, actions: driver, operation: 'recover', digest });
   assert.equal(rollback.phase, 'rolled-back');
   assert.equal(rollback.digest, digest); assert.equal(rounds.length, 2); assert.equal(manualStarts, 0);
-  assert.deepEqual(await runLocalSync({ directory, actions: driver, rollback: true, review: digest }), rollback);
-  assert.deepEqual(await runLocalSync({ directory, status: true }), rollback);
+  assert.deepEqual(await runRuntimeUpdate({ directory, actions: driver, operation: 'recover', digest }), rollback);
+  assert.deepEqual(await readRuntimeUpdateReceipt(directory), rollback);
   assert.equal(new Set([worker.pid, ...rounds.map(v => v.applicationPid)]).size, 3);
   assert.equal(new Set([first.execution.owner.id, ...rounds.map(v => v.ownerId)]).size, 3);
   assert.notEqual(rounds[0].applicationGeneration, rounds[1].applicationGeneration);

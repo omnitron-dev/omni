@@ -1,19 +1,23 @@
 import path from 'node:path';
-import { readStackRelease } from '../apps/omnitron/src/shared/release-reading.ts';
+import { readStackRelease, type ReleaseApplicationObservation } from '../shared/release-reading.js';
 
-const name = value => typeof value === 'string' && value.length > 0 && !value.includes('/') && value.trim() === value;
+import type { ProcessInfoDto } from '../config/types.js';
+import type { IProjectInfo, IStackInfo, SelectedRelease, RuntimeStackScope } from '../shared/dto/project.js';
+import type { LocalRuntimeInventory, RuntimeUpdateApplication, RuntimeUpdateSelection, RuntimeUpdateProjectObservation, RuntimeUpdateStackObservation, RuntimeUpdateStatusObservation } from '../shared/dto/runtime-update.js';
+
+const name = (value: unknown): value is string => typeof value === 'string' && value.length > 0 && !value.includes('/') && value.trim() === value;
 const digest = /^[a-f0-9]{64}$/;
 const stableApp = new Set(['online', 'stopped', 'crashed', 'errored']);
 const stableStack = new Set(['running', 'stopped', 'degraded', 'error']);
 const observedHealth = new Set(['healthy', 'degraded', 'unhealthy', 'unknown']);
 
-function requireObservation(available, message) {
+function requireObservation(available: unknown, message: string): asserts available {
   if (!available) throw Error('Cannot review the local stacks: ' + message);
 }
 
-function index(rows, field, label) {
+function index<T extends object>(rows: T[] | undefined, field: keyof T, label: string): Map<string, T> {
   requireObservation(Array.isArray(rows), 'missing ' + label);
-  const result = new Map();
+  const result = new Map<string, T>();
   for (const row of rows) {
     const key = row?.[field];
     requireObservation(typeof key === 'string' && key.length && !result.has(key), 'missing or duplicate identity in ' + label);
@@ -22,7 +26,7 @@ function index(rows, field, label) {
   return result;
 }
 
-function configurationPath(project, stack, runtimeScope) {
+function configurationPath(project: IProjectInfo, stack: IStackInfo, runtimeScope: RuntimeStackScope): string {
   const sources = project.configurations;
   // Older catalogues only expose the primary project directory. Never use it
   // for an import whose public and runtime identities differ.
@@ -30,16 +34,17 @@ function configurationPath(project, stack, runtimeScope) {
   requireObservation(Array.isArray(sources), 'missing configurations for ' + project.name);
   const matches = sources.filter(source => source?.runtimeProject === runtimeScope.project &&
     (source.name === 'default' ? runtimeScope.stack === stack.name : source.stacks?.[runtimeScope.stack] === stack.name));
-  requireObservation(matches.length === 1 && typeof matches[0].path === 'string' && path.isAbsolute(matches[0].path),
+  const match = matches[0];
+  requireObservation(matches.length === 1 && match && typeof match.path === 'string' && path.isAbsolute(match.path),
     'no unique configuration for ' + project.name + '/' + stack.name);
-  return matches[0].path;
+  return match.path;
 }
 
-function releaseId(value) {
+function releaseId(value: unknown): value is string {
   return typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/.test(value) && !value.includes('..');
 }
 
-function selection(stack, label) {
+function selection(stack: IStackInfo, label: string): RuntimeUpdateSelection {
   if (!Object.hasOwn(stack, 'selectedRelease')) return { kind: 'unreported' };
   const release = stack.selectedRelease;
   requireObservation(releaseId(release?.id) && typeof release.manifestSha256 === 'string' && digest.test(release.manifestSha256),
@@ -47,15 +52,15 @@ function selection(stack, label) {
   return { kind: 'release', id: release.id, manifestSha256: release.manifestSha256 };
 }
 
-function confirmedRelease(app) {
+function confirmedRelease(app: ReleaseApplicationObservation | undefined): SelectedRelease | null {
   if (app?.release?.state !== 'confirmed') return null;
-  const { runningRelease, releaseEvidence } = readStackRelease({ type: 'local', status: 'running', apps: [app] });
+  const { runningRelease, releaseEvidence } = readStackRelease({ type: 'local', status: 'running', nodes: [], apps: [app] });
   const receipt = releaseEvidence.releases[0];
   if (runningRelease !== 'confirmed' || !releaseId(receipt?.releaseId)) return null;
   return { id: receipt.releaseId, manifestSha256: receipt.manifestSha256 };
 }
 
-function observeApps(stack, scope, processes, covered) {
+function observeApps(stack: IStackInfo, scope: string, processes: Map<string, ProcessInfoDto>, covered: Set<string>): RuntimeUpdateApplication[] {
   const rows = index(stack.apps, 'name', 'applications for ' + scope);
   const configured = stack.config.apps;
   requireObservation(configured === undefined || configured === 'all' ||
@@ -68,6 +73,7 @@ function observeApps(stack, scope, processes, covered) {
     requireObservation(stableApp.has(app.status) && (process ? process.status === app.status : app.status === 'stopped'),
       'incomplete or changing process observation for ' + handleKey);
     if (app.status === 'online') {
+      requireObservation(process, 'missing owner observation for ' + handleKey);
       requireObservation(name(process.generation) && process.generation === app.generation, 'missing or changed generation for ' + handleKey);
       requireObservation(process.pid === app.pid && (process.pid === null || (Number.isSafeInteger(process.pid) && process.pid > 0)),
         'missing or changed process identity for ' + handleKey);
@@ -76,13 +82,13 @@ function observeApps(stack, scope, processes, covered) {
     const ownerReceipt = stackReceipt && confirmedRelease(process);
     const release = ownerReceipt && ownerReceipt.id === stackReceipt.id && ownerReceipt.manifestSha256 === stackReceipt.manifestSha256
       ? ownerReceipt : null;
-    const health = app.health == null || app.health === 'not-running' ? 'absent' : observedHealth.has(app.health) ? app.health : 'unknown';
+    const health: RuntimeUpdateApplication['health'] = app.health == null || app.health === 'not-running' ? 'absent' : observedHealth.has(app.health) ? app.health : 'unknown';
     return { name: app.name, handleKey, status: app.status, generation: process?.generation ?? null, pid: process?.pid ?? null, health, release };
   }).sort((a, b) => a.handleKey.localeCompare(b.handleKey));
 }
 
 /** Join the data from project list, stack list and status without guessing a runtime namespace or release. */
-export function localStackInventory(projectsReply, stackGroups, status) {
+export function localStackInventory(projectsReply: RuntimeUpdateProjectObservation, stackGroups: RuntimeUpdateStackObservation[], status: RuntimeUpdateStatusObservation): LocalRuntimeInventory {
   requireObservation(projectsReply?.online === true, 'project registry is offline');
   requireObservation(status?.execution?.connection?.status === 'connected', 'process owner is disconnected or unobserved');
   const projects = index(projectsReply.projects, 'name', 'registered projects');
@@ -91,10 +97,10 @@ export function localStackInventory(projectsReply, stackGroups, status) {
   requireObservation(status.appsTotal === processes.size && status.appsOnline === status.apps.filter(app => app.status === 'online').length,
     'owner process totals do not match the observations');
   requireObservation(groups.size === projects.size, 'project and stack inventories disagree');
-  const covered = new Set();
-  const scopes = new Set();
-  const targets = [];
-  const excluded = [];
+  const covered = new Set<string>();
+  const scopes = new Set<string>();
+  const targets: LocalRuntimeInventory['targets'] = [];
+  const excluded: LocalRuntimeInventory['excluded'] = [];
   for (const project of projects.values()) {
     const group = groups.get(project.name);
     requireObservation(name(project.name) && typeof project.path === 'string' && path.isAbsolute(project.path) &&
@@ -136,6 +142,6 @@ export function localStackInventory(projectsReply, stackGroups, status) {
   for (const process of processes.values()) {
     requireObservation(process.status === 'stopped' || covered.has(process.name), 'owner process outside the local stack inventory: ' + process.name);
   }
-  const byScope = (a, b) => a.project.localeCompare(b.project) || a.stack.localeCompare(b.stack);
+  const byScope = (a: { project: string; stack: string }, b: { project: string; stack: string }) => a.project.localeCompare(b.project) || a.stack.localeCompare(b.stack);
   return { targets: targets.sort(byScope), excluded: excluded.sort(byScope) };
 }

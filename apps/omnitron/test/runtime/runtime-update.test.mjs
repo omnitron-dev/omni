@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
-import { execFile, fork } from 'node:child_process';
+import { fork } from 'node:child_process';
 import { once } from 'node:events';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { promisify } from 'node:util';
-import { runLocalSync } from '../../.xec/local-sync.js';
-import { assertLocalIdle, assertReviewedBoot, assertSameSavedSelection, assertLocalServiceTargets, stackAdmissionProtocol } from '../../.xec/local-sync-host.js';
-import { BACKEND_ACTIVITY_COUNTERS } from '../../apps/omnitron/src/shared/dto/backend.ts';
+import { tsImport } from 'tsx/esm/api';
+const { runRuntimeUpdate, readRuntimeUpdateReceipt } = await tsImport('../../src/daemon/runtime-update.ts', import.meta.url);
+const { assertLocalIdle, assertReviewedBoot, assertSameSavedSelection, assertLocalServiceTargets, stackAdmissionProtocol } = await tsImport('../../src/daemon/runtime-update-host.ts', import.meta.url);
+import { BACKEND_ACTIVITY_COUNTERS } from '../../src/shared/dto/backend.ts';
 
 test('only boots with the exact native admission and unchanged desired state', () => {
   const reviewed = 'a'.repeat(64);
@@ -54,7 +54,6 @@ const native = ['darwin', 'linux'].includes(process.platform);
 const previous = 'a'.repeat(64);
 const target = 'b'.repeat(64);
 const source = 'c'.repeat(40);
-const execute = promisify(execFile);
 
 async function privateInstance(t) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'xec-local-sync-'));
@@ -104,21 +103,6 @@ function planFor(directory, identity) {
   };
 }
 
-test('the Xec update entry reads the private receipt and rejects a combined status and mutation', async t => {
-  const directory = await privateInstance(t);
-  const update = new URL('../../.xec/update.mjs', import.meta.url).href;
-  const invoke = (...args) => execute(process.execPath, ['--input-type=module', '--eval',
-    `import {runUpdate} from ${JSON.stringify(update)}; await runUpdate(process.argv.slice(1));`, '--', ...args],
-  { cwd: directory, env: { ...process.env, OMNITRON_HOME: directory } });
-  const result = await invoke('local-sync', '--status');
-  assert.equal(JSON.parse(result.stdout), null);
-  await assert.rejects(invoke('local-sync', '--status', '--review', 'd'.repeat(64)),
-    error => error.code === 1 && /xec update local-sync/.test(error.stderr));
-  await assert.rejects(invoke('local-apply', '--review', 'd'.repeat(64)), error =>
-    error.code === 1 && /belong to local-sync/.test(error.stderr));
-  assert.deepEqual(await fs.readdir(directory), []);
-});
-
 test('an in-flight operation must be clear before a review can stop the private instance', { skip: !native }, async t => {
   const directory = await privateInstance(t);
   const plan = planFor(directory, { pid: process.pid, generation: 'fixture-owner' });
@@ -135,14 +119,14 @@ test('an in-flight operation must be clear before a review can stop the private 
     async start() { assert.fail('a busy instance cannot be started'); },
   };
   const config = { actions, directory, progress() {} };
-  const { digest } = await runLocalSync(config);
+  const { digest } = await runRuntimeUpdate({ ...config, operation: 'prepare' });
   assert.match(digest, /^[a-f0-9]{64}$/);
   blockers.backupOperations = 1;
-  await assert.rejects(runLocalSync({ ...config, review: digest }), /backupOperations=1/);
+  await assert.rejects(runRuntimeUpdate({ ...config, operation: 'apply', digest: digest }), /backupOperations=1/);
   delete blockers.backupOperations;
-  await assert.rejects(runLocalSync({ ...config, review: digest }), /activity counters/);
+  await assert.rejects(runRuntimeUpdate({ ...config, operation: 'apply', digest: digest }), /activity counters/);
   blockers.backupOperations = 0;
-  assert.equal((await runLocalSync(config)).digest, digest);
+  assert.equal((await runRuntimeUpdate({ ...config, operation: 'prepare' })).digest, digest);
 });
 
 test('a pending review holds the native instance lock and a concurrent operation exits before preparation', { skip: !native }, async t => {
@@ -150,7 +134,7 @@ test('a pending review holds the native instance lock and a concurrent operation
   const plan = planFor(directory, { pid: process.pid, generation: 'fixture-owner' });
   const entered = Promise.withResolvers();
   const paused = Promise.withResolvers();
-  const first = runLocalSync({ directory, actions: { async prepare() {
+  const first = runRuntimeUpdate({ directory, operation: 'prepare', actions: { async prepare() {
     entered.resolve();
     await paused.promise;
     return plan;
@@ -158,12 +142,12 @@ test('a pending review holds the native instance lock and a concurrent operation
   await Promise.race([entered.promise, first]);
   const other = { directory, actions: { async prepare() { assert.fail('a second review acquired the instance lock'); } } };
   try {
-    await assert.rejects(runLocalSync(other), /lock was not acquired/);
+    await assert.rejects(runRuntimeUpdate({ ...other, operation: 'prepare' }), /lock was not acquired/);
   } finally {
     paused.resolve();
     await first;
   }
-  assert.ok((await runLocalSync({ directory, actions: { async prepare() { return plan; } } })).digest);
+  assert.ok((await runRuntimeUpdate({ directory, operation: 'prepare', actions: { async prepare() { return plan; } } })).digest);
 });
 
 test('changing a reviewed owner generation invalidates the review before any process is stopped', { skip: !native }, async t => {
@@ -174,11 +158,11 @@ test('changing a reviewed owner generation invalidates the review before any pro
     async stop() { assert.fail('a replaced generation cannot be retired with the prior review'); },
   };
   const config = { actions, directory };
-  const reviewed = await runLocalSync(config);
+  const reviewed = await runRuntimeUpdate({ ...config, operation: 'prepare' });
   observed = { ...observed, generation: 'second-generation' };
-  const replacement = await runLocalSync(config);
+  const replacement = await runRuntimeUpdate({ ...config, operation: 'prepare' });
   assert.notEqual(replacement.digest, reviewed.digest);
-  await assert.rejects(runLocalSync({ ...config, review: reviewed.digest }), error => error.message.includes(replacement.digest));
+  await assert.rejects(runRuntimeUpdate({ ...config, operation: 'apply', digest: reviewed.digest }), error => error.message.includes(replacement.digest));
 });
 
 test('a shutdown admission refusal preserves the original owner without starting recovery', { skip: !native }, async t => {
@@ -201,13 +185,13 @@ test('a shutdown admission refusal preserves the original owner without starting
       async canRestore() { assert.fail('an admission refusal cannot start recovery'); },
     },
   };
-  const review = await runLocalSync(config);
+  const review = await runRuntimeUpdate({ ...config, operation: 'prepare' });
   for (const reason of ['source changed', 'worker rotation', 'infrastructure changed']) {
     refusal = new Error(reason);
-    await assert.rejects(runLocalSync({ ...config, review: review.digest }), error => error === refusal);
-    assert.equal(await runLocalSync({ ...config, status: true }), null);
+    await assert.rejects(runRuntimeUpdate({ ...config, operation: 'apply', digest: review.digest }), error => error === refusal);
+    assert.equal(await readRuntimeUpdateReceipt(directory), null);
     assert.deepEqual(await owner.observe(), owner.identity);
-    assert.equal((await runLocalSync(config)).digest, review.digest);
+    assert.equal((await runRuntimeUpdate({ ...config, operation: 'prepare' })).digest, review.digest);
   }
   assert.deepEqual(phases, []);
 });
@@ -252,25 +236,65 @@ test('applying the same review twice verifies a new live process generation and 
     },
   };
   const config = { actions, directory, progress() {} };
-  const preview = await runLocalSync(config);
+  const preview = await runRuntimeUpdate({ ...config, operation: 'prepare' });
   assert.deepEqual(events, []);
-  const receipt = await runLocalSync({ ...config, review: preview.digest });
+  const receipt = await runRuntimeUpdate({ ...config, operation: 'apply', digest: preview.digest });
   const admitted = await owner.observe();
   assert.deepEqual(receipt.acceptance, admitted);
   assert.equal(receipt.phase, 'accepted');
   const firstAcceptance = events.filter(event => event === 'accept').length;
   assert.ok(firstAcceptance > 0);
-  assert.deepEqual(await runLocalSync({ ...config, review: preview.digest }), receipt);
+  assert.deepEqual(await runRuntimeUpdate({ ...config, operation: 'apply', digest: preview.digest }), receipt);
   assert.deepEqual(await owner.observe(), admitted);
   assert.deepEqual(events.filter(event => event !== 'accept'), ['stop', 'start']);
   assert.ok(events.filter(event => event === 'accept').length > firstAcceptance);
 
-  const rollback = await runLocalSync({ ...config, rollback: true, review: preview.digest });
+  const rollback = await runRuntimeUpdate({ ...config, operation: 'recover', digest: preview.digest });
   assert.equal(rollback.phase, 'rolled-back');
   assert.equal(rollback.acceptance.artifact, original.artifact);
   assert.notEqual(rollback.acceptance.generation, admitted.generation);
   assert.notEqual(rollback.acceptance.pid, admitted.pid);
-  assert.deepEqual(await runLocalSync({ ...config, rollback: true, review: preview.digest }), rollback);
-  assert.deepEqual(await runLocalSync({ ...config, status: true }), rollback);
+  assert.deepEqual(await runRuntimeUpdate({ ...config, operation: 'recover', digest: preview.digest }), rollback);
+  assert.deepEqual(await readRuntimeUpdateReceipt(directory), rollback);
   assert.deepEqual(events.filter(event => event !== 'accept'), ['stop', 'start', 'stop', 'start']);
+});
+
+test('a lost rollback acknowledgement is inspected without a second cold start', { skip: !native }, async t => {
+  const directory = await privateInstance(t);
+  const plan = planFor(directory, { pid: process.pid, generation: 'original' });
+  let starts = 0;
+  let restored = false;
+  let inspectOnly;
+  const actions = {
+    async prepare() { return plan; },
+    async validateStop() {},
+    async stop() {},
+    async assertStopped() {},
+    async canRestore() { return true; },
+    async start(destination) {
+      starts++;
+      if ('artifact' in destination) throw Error('candidate refused');
+      restored = true;
+      throw Error('restored but acknowledgement was lost');
+    },
+    async accept(reviewed, direction, inspect) {
+      assert.deepEqual(reviewed, plan);
+      assert.equal(direction, 'previous');
+      assert.equal(restored, true);
+      inspectOnly = inspect;
+      return { restored: true };
+    },
+    async captureForRollback() { assert.fail('restoration cannot retire its already restored owner'); },
+  };
+  const prepared = await runRuntimeUpdate({ actions, directory, operation: 'prepare' });
+  await assert.rejects(runRuntimeUpdate({ actions, directory, operation: 'apply', digest: prepared.digest }), /acknowledgement was lost/);
+  const interrupted = await readRuntimeUpdateReceipt(directory);
+  assert.equal(interrupted.phase, 'recovery-required');
+  assert.equal(interrupted.restoreAttempted, true);
+  assert.equal(starts, 2);
+  const recovered = await runRuntimeUpdate({ actions, directory, operation: 'recover', digest: prepared.digest });
+  assert.equal(recovered.phase, 'rolled-back');
+  assert.equal(inspectOnly, true);
+  assert.equal(starts, 2);
+  assert.deepEqual(await readRuntimeUpdateReceipt(directory, prepared.digest), recovered);
 });

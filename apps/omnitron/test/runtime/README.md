@@ -46,7 +46,15 @@ For two sealed runtimes that implement reviewed cold stack admission, run
 `managed-backend.mjs <previous-dist> <candidate-dist> --local-sync-roundtrip`
 with the checkout's Node and `--import tsx`. The private launchd/systemd fixture
 starts an enabled working-tree stack through ordinary automatic boot in both
-directions. Its reviewing Xec client exits after startup and before acceptance.
+directions. Its reviewing domain client exits after startup and before acceptance.
 The next client reads the incomplete receipt, recovers its digest, then checks
 the same rollback receipt a second time. The fixture records owner lifetimes,
 application generations, native artifact hashes and both durable claims.
+
+`runtime-update.test.mjs` exercises the shared Omnitron state machine with real
+private process generations, kernel exclusion and lost restoration replies.
+`runtime-update-cli.test.mjs` exercises the public CLI, artifact verification,
+typed status and exact candidate delegation without starting native services.
+The managed roundtrip uses unique fixture service labels through its host
+driver. The production host adapter addresses standard user services, so the
+roundtrip does not cover that adapter through the public CLI on a shared account.

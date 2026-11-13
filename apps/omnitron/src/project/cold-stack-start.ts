@@ -6,30 +6,16 @@ import { readManagedRuntime, verifyManagedIsolation } from '../daemon/managed-ru
 import { RuntimeInstallation } from '../daemon/runtime-installation.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import { stackExecutionKey, type StackExecutionScope } from '../shared/dto/stack-execution.js';
+import type { RuntimeUpdateOwner, RuntimeUpdatePlan, RuntimeUpdateReceipt, ReviewedRuntimeUpdateStack } from '../shared/dto/runtime-update.js';
 
 const sha = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
-interface Stack extends StackExecutionScope {
-  runtimeScope: StackExecutionScope;
-  enabled: boolean;
-  path: string;
-  startReview: string;
-}
-interface Incarnation { ownerId: string; ownerPid: number; ownerLifetime: string }
-interface Before extends Incarnation { owner: string; backend: string; revision: number }
-interface Receipt {
-  protocol: number; phase: string; digest: string; rollbackOwner?: Incarnation;
-  plan: {
-    protocol: number; stackAdmissionProtocol?: number; instance: string; target: { artifact: string };
-    before: Before; infrastructure: { database: string | null }; stacks: Stack[]; excluded: (StackExecutionScope & { reason: string })[];
-  };
-}
 type Direction = 'target' | 'previous';
 export interface ColdBatch {
   digest: string; phase: string; direction: Direction;
-  artifact: string; ownerArtifact: string; before: Before; retiringOwner: Incarnation; target: string;
-  database: string | null; stacks: Stack[]; excluded: Receipt['plan']['excluded'];
+  artifact: string; ownerArtifact: string; before: RuntimeUpdatePlan['before']; retiringOwner: RuntimeUpdateOwner; target: string;
+  database: string | null; stacks: ReviewedRuntimeUpdateStack[]; excluded: RuntimeUpdatePlan['excluded'];
 }
-export interface ColdStartPermit extends Incarnation {
+export interface ColdStartPermit extends RuntimeUpdateOwner {
   digest: string; direction: Direction; scope: StackExecutionScope; review: string;
 }
 const terminal = new Set(['accepted', 'rolled-back']);
@@ -37,7 +23,7 @@ const targetPhases = new Set(['starting', 'verifying']);
 const previousPhases = new Set(['restoring']);
 
 export async function readColdBatch(instance: string): Promise<ColdBatch | null> {
-  const receipt = await readPrivateRecord<Receipt>(path.join(instance, 'runtime/local-updates/current.json'));
+  const receipt = await readPrivateRecord<RuntimeUpdateReceipt>(path.join(instance, 'runtime/local-updates/current.json'));
   if (!receipt) return null;
   const plan = receipt.plan;
   if (receipt.protocol !== 1 || !sha(receipt.digest) || createHash('sha256').update(JSON.stringify(plan) ?? '').digest('hex') !== receipt.digest ||
@@ -66,7 +52,7 @@ export async function readColdBatch(instance: string): Promise<ColdBatch | null>
 }
 
 /** The running backend and OS-supervised owner must both belong to the reviewed direction. */
-async function observeOwner(instance: string, batch: ColdBatch): Promise<Incarnation> {
+async function observeOwner(instance: string, batch: ColdBatch): Promise<RuntimeUpdateOwner> {
   const config = await readManagedRuntime(instance);
   if (!config || config.owner.artifact !== batch.ownerArtifact ||
       process.execPath !== path.join(instance, 'runtime/releases', batch.artifact, 'node')) throw Error('Serving runtime differs from the reviewed local stack admission');
@@ -106,7 +92,7 @@ export async function reviewedColdStart(instance: string, batch: ColdBatch, scop
 /** Durable exactly-once attempt, even across a backend crash. Recovery uses the opposite direction. */
 export function claimColdStart(store: DaemonStateStore, permit: ColdStartPermit): void {
   const key = 'lifecycle:cold-start:' + stackExecutionKey(permit.scope);
-  store.kvUpdateSync<{ digest: string; target?: Incarnation; previous?: Incarnation }>(key, prior => {
+  store.kvUpdateSync<{ digest: string; target?: RuntimeUpdateOwner; previous?: RuntimeUpdateOwner }>(key, prior => {
     if (prior && (!sha(prior.digest) || !prior.target && !prior.previous)) throw Error('Invalid previous cold stack claim');
     if (prior?.digest === permit.digest && prior[permit.direction]) throw Error('The reviewed stack start was already attempted for this direction');
     if (prior?.digest === permit.digest && prior.previous && permit.direction === 'target') throw Error('The local update is already restoring the previous runtime');

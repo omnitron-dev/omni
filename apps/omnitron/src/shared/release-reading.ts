@@ -279,12 +279,22 @@ export interface StackReleaseEvidence {
   }>;
 }
 
+export interface ReleaseApplicationObservation {
+  name: string;
+  status: string;
+  pid?: number | null;
+  generation?: string;
+  release?: RuntimeReleaseEvidence;
+}
+
 /** Read every physical replica; a healthy peer cannot attest for an unreachable one. */
-export function readStackRelease(stack: IStackInfo): Pick<ReleaseStackObservation, 'runningRelease' | 'releaseEvidence'> {
+export function readStackRelease(stack: Pick<IStackInfo, 'type' | 'status' | 'nodes' | 'placements'> & {
+  apps: readonly ReleaseApplicationObservation[];
+}): Pick<ReleaseStackObservation, 'runningRelease' | 'releaseEvidence'> {
   const observations: StackReleaseEvidence['observations'] = [];
   const releases = new Map<string, StackReleaseEvidence['releases'][number]>();
   const producerManifests = new Map<string, Set<string>>();
-  const inspect = (app: { name: string; status: string; pid?: number | null; generation?: string; release?: RuntimeReleaseEvidence }, node: string | null, available = true) => {
+  const inspect = (app: ReleaseApplicationObservation, node: string | null, available = true) => {
     if (available && app.status === 'stopped') return;
     const base = { app: app.name, node, pid: app.pid ?? null,
       ...(typeof app.generation === 'string' && { generation: app.generation }) };

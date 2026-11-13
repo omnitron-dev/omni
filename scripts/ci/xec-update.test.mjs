@@ -5,7 +5,26 @@ import os from 'node:os';
 import path from 'node:path';
 import { ReleaseCommandError } from '@xec-sh/ops/release';
 import { runUpdate } from '../../.xec/update.mjs';
-import { runtimeArtifactDigest } from '../../apps/omnitron/src/shared/runtime-artifact.ts';
+import { runtimeArtifactDigest, verifyRuntimeArtifact } from '../../apps/omnitron/src/shared/runtime-artifact.ts';
+
+test('local status and recovery use the public CLI without a build or private instance reads', async () => {
+  const digest = 'e'.repeat(64);
+  const calls = [];
+  const status = { prepared: null, receipt: { digest, phase: 'recovery-required' }, runtime: { artifact: 'a'.repeat(64) } };
+  const options = { progress() {}, run: async (_root, command, args) => {
+    assert.equal(command, '/operator/omnitron');
+    calls.push(args);
+    return JSON.stringify({ ok: true, data: status });
+  } };
+  assert.deepEqual(await runUpdate(['local-sync', '--status', '--cli', '/operator/omnitron'], options), status);
+  await runUpdate(['local-sync', '--review', digest, '--rollback', '--cli', '/operator/omnitron'], options);
+  assert.deepEqual(calls, [
+    ['--json', 'runtime', 'update', 'status'], ['--json', 'runtime', 'update', 'recover', digest],
+  ]);
+  await assert.rejects(runUpdate(['local-sync', '--status', '--review', digest], options), /xec update local-sync/);
+  await assert.rejects(runUpdate(['local-apply', '--review', digest], options), /belong to local-sync/);
+  assert.equal(calls.length, 2);
+});
 
 test('Xec stages a reviewed candidate through Omnitron without activating or using SSH', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'xec-managed-update-'));
@@ -34,6 +53,7 @@ test('activation and reconciliation delegate exactly once; local check cannot im
   const id = '12345678-1234-1234-1234-123456789abc';
   const calls = [];
   const options = { progress() {}, run: async (_root, command, args) => {
+    if (args[0] === '--conditions=omnitron-source') return '{}';
     if (args.includes('backend')) assert.equal(command, '/private/runtime/node');
     else assert.equal(command, 'omnitron');
     calls.push(args);
@@ -59,6 +79,7 @@ test('controller refusals preserve structured receipts, nonzero status and the a
   const output = [], calls = [];
   let reply = { ok: true, data: receipt };
   const options = { progress: message => output.push(message), run: async (_root, _cmd, args) => {
+    if (args[0] === '--conditions=omnitron-source') return '{}';
     calls.push(args);
     throw new ReleaseCommandError('omnitron', reply.ok ? 1 : 7, reply.ok ? JSON.stringify(reply) : '', reply.ok ? '' : JSON.stringify(reply));
   } };
@@ -82,6 +103,7 @@ test('check builds one isolated local revision and apply consumes the same verif
   let dist, dirty = false;
   const options = { progress() {}, run: async (_root, executable, args) => {
     events.push([executable, ...args]);
+    if (args[0] === '--conditions=omnitron-source') return JSON.stringify(await verifyRuntimeArtifact(args.at(-1)));
     if (args[0] === 'rev-parse') return commit;
     if (args[0] === 'status') return dirty ? ' M pkg.ts' : '';
     if (args[0]?.endsWith('/freeze-backend.mjs')) {
@@ -94,6 +116,7 @@ test('check builds one isolated local revision and apply consumes the same verif
       await fs.writeFile(path.join(directory, 'RUNTIME.json'), JSON.stringify({ protocol: 1, platform: process.platform,
         arch: process.arch, nodeVersion: process.version, sha256: await runtimeArtifactDigest(directory) }));
     }
+    if (args.includes('update')) return JSON.stringify({ ok: true, data: { digest: 'a'.repeat(64) } });
     if (args.includes('upgrade')) { dist = args[args.indexOf('upgrade') + 1]; return '{"ok":true,"data":{}}'; }
     return '';
   } };
@@ -102,6 +125,12 @@ test('check builds one isolated local revision and apply consumes the same verif
   assert.equal(events.filter(([command, arg]) => command === 'pnpm' && arg === 'install').length, 1);
   assert.equal(events.filter(call => call.includes('upgrade')).length, 2);
   assert.ok(!events.some(call => call.includes('test') || call.includes('publish')));
+  await runUpdate(['local-sync', '--cache-dir', cache], options);
+  await runUpdate(['local-sync', '--cache-dir', cache, '--review', 'a'.repeat(64)], options);
+  assert.deepEqual(events.filter(call => call.includes('update')).map(call => call.slice(-4)), [
+    ['runtime', 'update', 'prepare', path.resolve(dist, '../../..')], ['runtime', 'update', 'apply', 'a'.repeat(64)],
+  ]);
+  assert.equal(events.filter(([command, arg]) => command === 'pnpm' && arg === 'install').length, 1);
   dirty = true;
   await assert.rejects(runUpdate(['local-apply', '--cache-dir', cache], options), /Commit the local changes/);
   dirty = false;

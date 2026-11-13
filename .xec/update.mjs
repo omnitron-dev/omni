@@ -6,7 +6,7 @@ import { Pipeline } from '@xec-sh/ops/pipeline';
 import { UserError } from '@xec-sh/ops';
 import { releaseCommand, ReleaseCommandError } from '@xec-sh/ops/release';
 import { qualifiedRuntimes } from './qualification.mjs';
-import { localRuntime } from './local-runtime.mjs';
+import { localRuntime, verifyLocalRuntime } from './local-runtime.mjs';
 
 /** Xec orchestrates; the daemon remains the authority for pins, roles, locks and recovery. */
 export async function runUpdate(args, options = {}) {
@@ -21,7 +21,7 @@ export async function runUpdate(args, options = {}) {
     'xec update local-check [dist] [--cache-dir <private-directory>]\nxec update local-apply [dist] [--cache-dir <private-directory>]\n' +
     'xec update local-sync [--cache-dir <private-directory>] [--review <sha256> [--rollback] | --status]\n' +
     '  Set OMNITRON_DEV_CACHE to retain builds on a development volume between batches.\n' +
-    '  --cli <executable> Select the fleet controller CLI; local updates use the candidate CLI\n' +
+    '  --cli <executable> Select the controller CLI for fleet operations or local status/recovery\n' +
     'local-sync prepares the completed development batch. Its review covers local supervision, Console and the listed stacks.';
   if (values.help) { console.log(usage); return; }
   const [operation, target] = positionals;
@@ -36,33 +36,25 @@ export async function runUpdate(args, options = {}) {
   const run = options.run ?? releaseCommand;
   const progress = options.progress ?? console.log;
   if (values['cache-dir'] && (!local || target)) throw Error('--cache-dir applies only when building the current local revision');
-  if (local && values.cli) throw new UserError('Local updates require the candidate and its own CLI');
-  let sync, directory, saved;
-  if (operation === 'local-sync') {
-    sync = await import('./local-sync.js');
-    const { OMNITRON_HOME } = await import('../apps/omnitron/src/config/defaults.ts');
-    directory = path.join(OMNITRON_HOME, 'runtime', 'local-updates');
-    if (values.status || values.rollback) saved = await sync.localSyncStatus(directory);
-    if (values.status) { progress(JSON.stringify(saved, null, 2)); return saved; }
-    if (values.rollback && (!saved || saved.digest !== values.review || target || values['cache-dir']))
-      throw new UserError('Recovery uses the reviewed installed runtime and its exact receipt; inspect local-sync --status');
-    if (!values.rollback && target) throw new UserError('local-sync finalizes the current clean checkout. Select an explicit runtime only for a backend handoff or recovery');
-  }
+  const inspection = operation === 'local-sync' && (values.status || values.rollback);
+  if (local && values.cli && !inspection) throw new UserError('Local updates require the candidate and its own CLI');
+  if (operation === 'local-sync' && target) throw new UserError('local-sync finalizes the current clean checkout');
+  if (values.rollback && values['cache-dir']) throw new UserError('Recovery uses the reviewed installed runtime; inspect local-sync --status');
   const cache = values['cache-dir'] ?? process.env.OMNITRON_DEV_CACHE;
-  const candidate = local ? (saved ? path.join(path.dirname(directory), 'releases', saved.plan.target.artifact, 'packages/0/dist') : target ? path.resolve(root, target) :
+  const candidate = local && !inspection ? (target ? path.resolve(root, target) :
     await localRuntime(root, cache && path.resolve(root, cache), run, progress)) : null;
-  const runtime = local ? path.resolve(candidate, '../../..') : null;
-  if (local && (values.cli || candidate !== path.join(runtime, 'packages/0/dist')))
-    throw new UserError('Local updates require the sealed candidate packages/0/dist and its own CLI; --cli selects a fleet controller');
-  // Candidate admission must understand its own requirements. Using the installed
-  // older CLI can miss new owner contracts or misclassify checksum-only changes.
-  const executable = local ? path.join(runtime, 'node') : values.cli ?? 'omnitron';
-  const prefix = local ? [path.join(candidate, 'cli/omnitron.js')] : [];
-  const call = async (argv, runtimeRoot) => {
+  const runtime = candidate ? path.resolve(candidate, '../../..') : null;
+  if (candidate && candidate !== path.join(runtime, 'packages/0/dist'))
+    throw new UserError('Local updates require the sealed candidate packages/0/dist and its own CLI');
+  if (runtime) await verifyLocalRuntime(root, runtime, run);
+  // Admission runs in the sealed candidate after the trusted source verifier checks its bytes.
+  const executable = runtime ? path.join(runtime, 'node') : values.cli ?? 'omnitron';
+  const prefix = candidate ? [path.join(candidate, 'cli/omnitron.js')] : [];
+  const call = async argv => {
     let output, failure;
-    const command = runtimeRoot ? path.join(runtimeRoot, 'node') : executable;
-    const cli = runtimeRoot ? [path.join(runtimeRoot, 'packages/0/dist/cli/omnitron.js')] : prefix;
-    try { output = await run(root, command, [...cli, '--json', ...argv], { timeoutMs: 30 * 60_000 }); }
+    try { output = await run(root, executable, [...prefix, '--json', ...argv], {
+      timeoutMs: operation === 'local-sync' && !values.status ? 60 * 60_000 : 30 * 60_000,
+    }); }
     catch (error) {
       if (!(error instanceof ReleaseCommandError)) throw error;
       // Omnitron emits successful receipts on stdout and refusals on stderr.
@@ -87,10 +79,16 @@ export async function runUpdate(args, options = {}) {
     }
     return reply.data;
   };
-  if (sync) {
-    const { localSyncActions } = await import('./local-sync-host.js');
-    const actions = await localSyncActions({ root, runtime, call, run, progress, directory });
-    const result = await sync.runLocalSync({ directory, actions, review: values.review, rollback: values.rollback, progress });
+  if (operation === 'local-sync') {
+    if (!inspection) {
+      const stamp = JSON.parse(await fs.readFile(path.join(candidate, 'BUILD.json'), 'utf8'));
+      const revision = (await run(root, 'git', ['rev-parse', '--verify', 'HEAD^{commit}'])).trim();
+      if (stamp.commit !== revision || stamp.dirty !== false || (await run(root, 'git', ['status', '--porcelain'])).trim())
+        throw new UserError('The development checkout changed after runtime preparation. Commit the batch and prepare it again');
+    }
+    const action = values.status ? ['status'] : values.rollback ? ['recover', values.review] :
+      values.review ? ['apply', values.review] : ['prepare', runtime];
+    const result = await call(['runtime', 'update', ...action]);
     progress(JSON.stringify(result, null, 2));
     return result;
   }

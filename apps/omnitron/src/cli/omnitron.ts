@@ -76,6 +76,34 @@ sdk.command('status').description('Verify the workspace imports and report their
 // Daemon Lifecycle
 // ============================================================================
 
+const runtimeCommand = program.command('runtime').description('Verify native runtimes and manage a reviewed local host update');
+runtimeCommand.command('verify <directory>').description('Verify every sealed runtime file without executing the candidate')
+  .structuredAction(async (directory: string) => {
+    const { runtimeVerifyCommand } = await import('../commands/runtime-update.js');
+    await runtimeVerifyCommand(directory);
+  });
+const runtimeUpdate = runtimeCommand.command('update').description('Review, apply and recover local supervision and application updates');
+runtimeUpdate.command('prepare <runtime>').description('Install the candidate and record the exact local update plan')
+  .structuredAction(async (directory: string) => {
+    const { runtimeUpdateCommand } = await import('../commands/runtime-update.js');
+    await runtimeUpdateCommand('prepare', directory);
+  });
+runtimeUpdate.command('apply <digest>').description('Apply the unchanged reviewed plan once')
+  .structuredAction(async (digest: string) => {
+    const { runtimeUpdateCommand } = await import('../commands/runtime-update.js');
+    await runtimeUpdateCommand('apply', digest);
+  });
+runtimeUpdate.command('status [digest]').description('Inspect the durable receipt and its verified candidate without connecting to the daemon')
+  .structuredAction(async (digest?: string) => {
+    const { runtimeUpdateStatusCommand } = await import('../commands/runtime-update.js');
+    await runtimeUpdateStatusCommand(digest);
+  });
+runtimeUpdate.command('recover <digest>').description('Restore the reviewed previous installation or inspect its attempted recovery')
+  .structuredAction(async (digest: string) => {
+    const { runtimeUpdateCommand } = await import('../commands/runtime-update.js');
+    await runtimeUpdateCommand('recover', digest);
+  });
+
 const backend = program.command('backend').description('Inspect and replace the control plane without restarting resident applications');
 const ownerRecovery = backend.command('owner-reconcile').description('Explicit offline recovery after an execution-owner crash; never stops applications');
 ownerRecovery.command('prepare <worker-pids>').description('Seal native recovery evidence on macOS/Linux; pass every recorded application/worker/descendant PID, comma-separated')

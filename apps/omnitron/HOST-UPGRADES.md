@@ -67,13 +67,34 @@ Finish a reviewed batch on a macOS development machine from its clean main
 checkout. The build uses local Git, frozen pnpm dependencies and the Turbo
 cache. `OMNITRON_DEV_CACHE` selects a private build cache on the development
 volume. Xec reuses the sealed runtime for the same commit, platform and Node
-version. Each batch has one receipt per Omnitron instance.
+version. The build-cache lock uses the public Xec operations API in 0.11.5.
+Omnitron owns the local plan, process transitions and durable receipt.
 
 ```sh
 pnpm exec xec update local-sync
 pnpm exec xec update local-sync --review <plan-sha256>
 pnpm exec xec update local-sync --status
 ```
+
+These Xec commands build and verify the committed runtime, then invoke its
+public CLI. An installed operator can use the same workflow with a sealed
+runtime and no source checkout.
+
+```sh
+omnitron runtime verify <runtime-root>
+omnitron runtime update prepare <runtime-root>
+omnitron runtime update apply <plan-sha256>
+omnitron runtime update status [plan-sha256]
+omnitron runtime update recover <plan-sha256>
+```
+
+`verify` checks the artifact without executing it. Preparation and application
+run through the verified candidate's own Node and CLI. `status` returns the
+prepared plan, current or requested receipt, and verified candidate paths. It
+remains available while the daemon is stopped. Xec status and recovery accept
+`--cli <executable>` when selecting an installed operator. Mutation authority
+for this host operation comes from the local private instance and native user
+services. The HTTP API exposes no host-update mutation.
 
 Preparation stages the candidate alongside the running installation. The plan
 names both native process owners, the serving Console, physical container IDs,
@@ -92,9 +113,12 @@ a new reviewed batch begins.
 
 A failed transition attempts to restore the recorded roles and Console from the
 installed artifacts once clean process retirement is established. For an
-interrupted operation, inspect `--status` and recover the exact receipt with
-`pnpm exec xec update local-sync --review <plan-sha256> --rollback`. The
-receipt records the original error and any recovery failure. An unproven
+interrupted operation, inspect `omnitron runtime update status` and recover the
+exact receipt with `omnitron runtime update recover <plan-sha256>`. The Xec
+equivalent is `pnpm exec xec update local-sync --review <plan-sha256> --rollback`.
+The receipt records the original error and any recovery failure. Once a
+restoration start has been attempted, another recovery invocation inspects
+that result and cannot launch the previous runtime again. An unproven
 execution owner requires inspection before a new installation can start.
 
 The automatic path requires independent supervision and retained containers.

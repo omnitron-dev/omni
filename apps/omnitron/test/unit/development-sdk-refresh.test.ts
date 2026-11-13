@@ -15,7 +15,7 @@ vi.mock('@omnitron-dev/omnitron/operations', async () => ({
     status: rpc.status, getWatchStatus: rpc.watch, restartAfterChange: rpc.automatic,
     restartApp: rpc.manual, disconnect: rpc.disconnect }),
 }));
-const { watchSdk } = await import('../../bin/sdk.js');
+const { inspectSdk, watchSdk } = await import('../../bin/sdk.js');
 const require = createRequire(import.meta.url);
 
 interface Application {
@@ -58,9 +58,10 @@ async function fixture() {
     generation: item.generation, definitionRevision: item.definitionRevision });
   function observations() {
     for (const method of Object.values(rpc)) method.mockReset();
-    rpc.projects.mockResolvedValue([{ name: 'project', path: consumer }]);
+    rpc.projects.mockResolvedValue([{ name: 'project', path: consumer,
+      configurations: [{ name: 'default', runtimeProject: 'project', path: consumer, stacks: {} }] }]);
     rpc.stack.mockImplementation(async ({ stack }: { stack: string }) => ({ type: 'local', config: { watch: true },
-      apps: structuredClone(stacks.get(stack) ?? []) }));
+      runtimeScope: { project: 'project', stack }, apps: structuredClone(stacks.get(stack) ?? []) }));
     rpc.status.mockResolvedValue({ execution: { ownerCapabilities: { applicationRuntimeResolution: 1, sourceRefresh: 1 },
       connection: { status: 'connected' }, ownerRuntime: { node: process.version, abi: process.versions.modules, platform: process.platform, arch: process.arch } } });
     rpc.watch.mockImplementation(async () => {
@@ -101,7 +102,7 @@ async function fixture() {
       messages: messages.mock.calls.map(call => call.map(String).join(' ')),
       checkpoint: JSON.parse(await fs.readFile(checkpoint, 'utf8').catch(() => 'null')) };
   }
-  return { app, add, binding, observations, run, source, consumer, pkg, checkpoint,
+  return { app, add, binding, observations, run, source, consumer, pkg, checkpoint, profile,
     close: async () => { errors.mockRestore(); messages.mockRestore(); await fs.rm(root, { recursive: true, force: true }); } };
 }
 
@@ -134,6 +135,48 @@ it('records completed builds without inventing application receipts after a refu
       if (['owner-refusal', 'unconfirmed', 'invalid-receipt'].includes(fault)) expect(rpc.automatic, fault).toHaveBeenCalledTimes(1);
       else expect(rpc.automatic, fault).not.toHaveBeenCalled();
     }
+  } finally { await f.close(); }
+}, 120_000);
+
+it('refreshes the watched backend alongside a self-watching portal, and rejects a revoked exemption', async () => {
+  const f = await fixture();
+  try {
+    const portal = f.add('dev', 'portal');
+    const config = path.join(f.consumer, 'omnitron.config.js');
+    const declare = (watch: boolean) => fs.writeFile(config, `module.exports = { apps: [
+      { name: 'site', script: './server.js' }, { name: 'portal', script: './portal.js', watch: ${watch} }
+    ] };`);
+    await declare(false);
+    rpc.watch.mockImplementation(async () => ({ enabled: true, watching: true, apps: [f.binding(f.app)] }));
+    const first = await f.run('dev');
+    expect(first.errors).toEqual([]);
+    expect(rpc.automatic).toHaveBeenCalledTimes(1);
+    expect(first.checkpoint.applications['project/dev'][portal.handleKey]).toBeUndefined();
+    expect(first.messages).toContain('Development SDK refresh confirmed for project/dev: 1 applications, 0 inactive, 1 opted out of owner refresh');
+    for (const name of ['active.json', 'install.json'])
+      await fs.writeFile(path.join(path.dirname(f.checkpoint), name), JSON.stringify(f.profile));
+    const saved = await fs.readFile(f.checkpoint, 'utf8');
+    rpc.automatic.mockClear();
+    expect((await inspectSdk(f.consumer, 'dev')).refresh).toEqual({
+      stack: 'project/dev', confirmed: [f.app.handleKey], inactive: [], unaffected: [], optedOut: [portal.handleKey],
+    });
+    f.app.generation = randomUUID();
+    await expect(inspectSdk(f.consumer, 'dev')).rejects.toThrow('No current SDK refresh receipt');
+    expect(rpc.automatic).not.toHaveBeenCalled();
+    expect(await fs.readFile(f.checkpoint, 'utf8')).toBe(saved);
+    f.app.status = 'stopped';
+    rpc.watch.mockResolvedValue({ enabled: true, watching: false, apps: [] });
+    const external = await f.run('dev');
+    expect(external.errors).toEqual([]);
+    expect(rpc.automatic).not.toHaveBeenCalled();
+    rpc.watch.mockResolvedValueOnce({ enabled: true, watching: false, apps: [] }).mockImplementation(async () => {
+      await declare(true);
+      return { enabled: true, watching: false, apps: [] };
+    });
+    const changed = await f.run('dev');
+    expect(changed.errors[0]).toContain('Watch policy or generation changed while confirming');
+    expect(changed.messages.some(message => message.includes('refresh confirmed'))).toBe(false);
+    expect((await f.run('dev')).errors[0]).toContain('has no active watcher');
   } finally { await f.close(); }
 }, 120_000);
 

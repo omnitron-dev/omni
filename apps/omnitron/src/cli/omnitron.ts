@@ -50,15 +50,21 @@ sdk.command('registry').description('Restore dependencies from the frozen distri
   .action(async ({ projectDir }) => (await import('../../bin/sdk.js')).sdkCommand(['registry', '--project-dir', projectDir]));
 sdk.command('status').description('Verify the workspace imports and report their SDK origin')
   .option('--project-dir <path>', 'Consumer workspace directory', process.cwd())
-  .structuredAction(async ({ projectDir }) => {
+  .option('--stack <name>', 'Verify existing application refresh receipts against the execution owner')
+  .structuredAction(async ({ projectDir, stack }) => {
     const { inspectSdk } = await import('../../bin/sdk.js');
     const { emitJson, emitInfo } = await import('../commands/output.js');
-    const status = await inspectSdk(projectDir);
+    const status = await inspectSdk(projectDir, stack);
     if (!emitJson(status)) {
       emitInfo([status.mode, status.source, status.verifiedImports + ' verified imports',
         ...(status.distributionLock === 'absent' ? ['no distribution lock'] : []),
         ...(status.distributionLock === 'manager-only' ? ['package-manager metadata only'] : []),
         ...(status.distributionLockChanged ? ['distribution lock changed'] : [])].filter(Boolean).join(' · '));
+      if (status.refresh) {
+        const { confirmed, inactive, optedOut, unaffected } = status.refresh;
+        emitInfo(`${status.refresh.stack} · ${confirmed.length} owner receipts · ${inactive.length} inactive · ${unaffected.length} unaffected`);
+        if (optedOut.length) emitInfo('Owner refresh disabled (watch: false) · ' + optedOut.join(', '));
+      }
     }
   });
 

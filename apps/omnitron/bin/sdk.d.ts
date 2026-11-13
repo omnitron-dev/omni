@@ -4,6 +4,7 @@ export interface DevelopmentSdkStatus {
   source?: string;
   distributionLock?: 'present' | 'absent' | 'manager-only';
   distributionLockChanged?: boolean;
+  refresh?: { stack: string; confirmed: string[]; inactive: string[]; optedOut: string[]; unaffected: string[] };
 }
 export interface DevelopmentSdkProfile {
   schema: 1;
@@ -15,5 +16,5 @@ export interface DevelopmentSdkProfile {
   inputSha256?: string;
 }
 export function sdkCommand(args: string[]): Promise<void>;
-export function inspectSdk(projectDirectory?: string): Promise<DevelopmentSdkStatus>;
+export function inspectSdk(projectDirectory?: string, stack?: string): Promise<DevelopmentSdkStatus>;
 export function watchSdk(profile: DevelopmentSdkProfile, stack: string | undefined, signal: AbortSignal): Promise<void>;

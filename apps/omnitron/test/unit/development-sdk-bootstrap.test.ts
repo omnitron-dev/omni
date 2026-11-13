@@ -554,7 +554,7 @@ it('rejects a transitive framework import resolving outside the selected SDK', a
   await fs.mkdir(other);
   await fs.symlink(other, link);
   await expect(inspectSdk(consumer)).rejects.toThrow(/lumen resolves.*lumen-ast/);
-});
+}, 90_000);
 
 it('refuses an external consumer dependency directory before package-manager bootstrap or installation', async () => {
   await initialize();

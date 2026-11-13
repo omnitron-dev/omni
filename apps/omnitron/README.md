@@ -98,9 +98,11 @@ The first selection may ask pnpm to generate its package-manager metadata. That 
 
 `sdk status` validates registry importers with pnpm's frozen lockfile check, including overrides and relative local dependencies. Framework packages must still resolve to registry archives with SHA512 integrity; file and link overrides for them are refused. Inspection uses the installed pnpm matching the project's exact package-manager pin (qualified with pnpm 12.16.1), keeps its temporary cache separate, and runs no install scripts or custom manifest hooks. A lock that requires those hooks, an unsupported pnpm command, or stale dependency configuration fails explicitly. This checks existing installation provenance and lock freshness offline; pnpm's `--trust-lockfile` skips a new supply-chain policy lookup, so status is not a fresh registry security audit.
 
-Every `--no-watch` invocation refreshes the graph once. Without it, the SDK watcher rebuilds changed packages. Add `--stack dev` when a managed stack must apply each new SDK build: success requires an authoritative watch binding and an owner-confirmed source-refresh receipt. Excluded, missing or changed bindings fail visibly; a successful build alone does not confirm application refresh.
+Every `--no-watch` invocation refreshes the graph once. Without it, the SDK watcher rebuilds changed packages. With `--stack dev`, Omnitron records the owner's receipt for each watched application that uses the changed SDK. An application such as a Vite server can declare `watch: false` and manage its own reloads. The CLI reports it separately and leaves its generation running. It checks the declaration in the stack's registered configuration before and after refresh. A missing required watcher or a changed binding fails the operation. Check an application's own reload mechanism through its native client.
 
 Keep the consumer's `node_modules` directory physical. Standard pnpm `virtualStoreDir` configuration can place the store on another disk; a symlink replacing the entire directory is refused. Initial selection and registry restoration must satisfy the lifecycle and dependency admission checks. SDK selection does not activate a deployed release.
+
+Run `omnitron sdk status --project-dir /path/to/project --stack dev` to compare current package outputs and owner generations with the receipts from the last build. The command is read-only. Its JSON result identifies each confirmed application, each explicit opt-out, and the inactive and unaffected applications.
 
 ## Pipelines pinned to releases
 

@@ -18,15 +18,18 @@ export function StackSelector() {
   const project = useProjectStore(s => s.activeProject);
   const stack = useProjectStore(s => s.activeStack);
   const restore = useProjectStore(s => s.restoreWorkspace);
-  const lastEntry = useRef<string | null>(null);
+  const handled = useRef<typeof location | null>(null);
   useLayoutEffect(() => {
-    if (lastEntry.current === location.key) return;
-    lastEntry.current = location.key;
+    // Store changes can render before their matching navigation. Conversely,
+    // a rapid Back may produce a fresh POP for the same entry key that React
+    // last rendered. Handle each router location, not each distinct key.
+    if (handled.current === location) return;
+    handled.current = location;
     const saved = location.state?.workspace;
     if (saved &&
         (saved.project === null || typeof saved.project === 'string') &&
         (saved.stack === null || typeof saved.stack === 'string')) {
-      if (navigation === 'POP') restore(saved.project, saved.stack);
+      if (navigation === 'POP' && (saved.project !== project || saved.stack !== stack)) restore(saved.project, saved.stack);
       return;
     }
     // Stamp an unstamped entry once. A store update can render before its

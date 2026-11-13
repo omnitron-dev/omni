@@ -61,6 +61,59 @@ healthy target uses a new plan for its retained previous artifact. Owner updates
 Node changes, schema changes and the first coupled-to-resident transition remain
 separate maintenance operations.
 
+## Local development rollout
+
+After a qualified batch, pin the intended `main` commit. Record the builds actually
+running in the guardian, backend, owner and Console. Enumerate running and enabled
+stacks from the owner and each logical project's catalogue. Select by local placement, including imported
+configurations, and record each public project/stack and its `runtimeScope`.
+Keep the launch selection for each stack, including working-tree watches and
+retained application releases. Platform and application SDK versions are separate
+observations.
+
+For the maintenance window, review the platform transition and rollback with the
+operator. Use a single lifecycle operator for each stack. When an owner transition
+already restarted a stack on the new runtime, accept it there. For the other
+stacks, run `stack stop` with `--keep-infrastructure --dry-run` and its reviewed
+digest. Review `stack start` against the resulting state using
+`--infrastructure preserve --dry-run`, the recorded launch selection and the
+returned digest. A working-tree build between stop and start belongs to that
+same window. Verify the new launch identities, development watches, health,
+application receipts, fresh logs, and the Console stack page before the next
+dependent stack. A failed stage retains its receipts and its prepared rollback.
+
+## Blocker for a writer that exited after a reviewed handoff
+
+An `unconfirmed` hold with an admitted checkpoint can outlive the backend that
+accepted the grant. This blocks project operations that require that backend.
+With a CLI containing this diagnostic, run:
+
+```sh
+omnitron --json backend installation --recovery
+```
+
+The command reads the held plan, original and admitted checkpoints, selection,
+execution journal, project catalogue and writer certificate. It returns the
+admitted and durable epochs, digest comparisons, observed PID state, and the
+certificate status and invalidation time. The **previous** writer snapshot in an
+invalid certificate describes the last certified state. Older journals retain
+only the first invalidation reason. Project registration, a matching source
+configuration and running app identities cannot establish the final controller
+state after that point. A successful inspection reports its findings and keeps
+the hold in place.
+
+Completing this recovery requires a platform operation that binds the held
+intent, accepted grant, current owner and selected runtime under the installation
+lease. It must either certify the final controller state or explicitly establish
+a newly reviewed baseline for all affected projects and infrastructure. The new
+baseline must account for pending operations and application and storage
+ownership. Preserve the prior receipts and the unknown historical interval.
+Qualification requires the public CLI to recover on a disposable installation,
+refuse incompatible or changing evidence before dispatch, and settle an
+interrupted attempt without duplicating a writer. Verify retained application
+identities and delivery of logs through the restored backend. Until this
+operation is qualified, a replay of the failed plan has no proven rollback.
+
 ## Application releases and coupled hosts
 
 An app release holds `RemoteDeployer.underLease` across `inspectInstalledBundle`, dependency installation, and app activation. Inspection returns `{root, version, commit}` for the immutable installed host and verifies its clean build, live process entry, and supervisor binding. App releases must not install/activate a host bundle or rewrite its service. They refuse an unfinished host upgrade.

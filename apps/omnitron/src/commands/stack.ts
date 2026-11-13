@@ -266,7 +266,8 @@ export async function stackStatusCommand(projectName: string, stackName: string)
       });
     }
   } catch (err) {
-    log.error((err as Error).message);
+    emitError(err);
+    process.exitCode = 1;
   } finally {
     await client.disconnect();
   }

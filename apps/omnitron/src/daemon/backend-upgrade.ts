@@ -17,7 +17,7 @@ import { executionDirectory } from './execution-launcher.js';
 import { PidManager } from './pid-manager.js';
 import type { BackendRuntimeStatus } from '../shared/dto/backend.js';
 import { OMNITRON_HOME } from '../config/defaults.js';
-import { RuntimeInstallation } from './runtime-installation.js';
+import { RuntimeInstallation, type RuntimeActivation } from './runtime-installation.js';
 import { observeBackendChild, supervisesBackendChildren } from './backend-child.js';
 import { readManagedRuntime, managedSupervisorSocket } from './managed-runtime.js';
 import type { BackendSupervisorService } from './backend-supervisor.js';
@@ -355,6 +355,13 @@ export async function replaceBackend(directory: string, options: {
   } finally { await control.close(); }
 }
 
+function assertOrdinaryRecoveryAllowed(activation: RuntimeActivation | null): void {
+  const hold = activation?.reviewedRecovery;
+  if (hold) throw new DomainError({ domainCode: 'REVIEWED_RECOVERY_HELD',
+    message: `Recovery is held for reviewed plan ${hold.planId} (${hold.phase}). Inspect it with backend installation.`,
+    details: { plan: hold.planFile, phase: hold.phase } });
+}
+
 /** Explicit recovery for an interrupted upgrade. Never preempts a live backend. */
 export async function recoverBackend(file: string): Promise<BackendReplacementResult> {
   const previous = await readBackendBootRecord(file);
@@ -373,6 +380,7 @@ export async function recoverBackend(file: string): Promise<BackendReplacementRe
   if (!installation) throw new Error('Cannot open runtime installation for recovery');
   try { return await installation.exclusive(async () => {
     const activation = installation.activation();
+    assertOrdinaryRecoveryAllowed(activation);
     const selected = installation.selection();
     const currentPid = new PidManager(previous.daemonConfig.pidFile).getPid();
     if (currentPid) {
@@ -436,6 +444,7 @@ export async function abortBackendReplacement(file: string): Promise<void> {
     if (installation) {
       await installation.exclusive(async () => {
         const activation = installation.activation();
+        assertOrdinaryRecoveryAllowed(activation);
         if (activation && activation.checkpoint !== file) throw new Error('Another activation checkpoint owns the installation');
         await control.service.abort({ ticketId: record.state.ticket.id });
         installation.abortActivation();

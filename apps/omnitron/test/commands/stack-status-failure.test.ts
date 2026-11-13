@@ -30,4 +30,16 @@ describe('stack status launch evidence', () => {
     expect(mock.warn).not.toHaveBeenCalled();
     expect(mock.error).not.toHaveBeenCalled();
   });
+  it('returns the RPC failure to callers and exits unsuccessfully', async () => {
+    mock.jsonMode = true;
+    const error = Object.assign(new Error('Stack is unavailable'), { code: 'RPC_UNAVAILABLE' });
+    mock.getStack.mockRejectedValueOnce(error);
+    const previous = process.exitCode;
+    try {
+      await stackStatusCommand('sample', 'dev');
+      expect(mock.error).toHaveBeenCalledWith(error);
+      expect(mock.json).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
+    } finally { process.exitCode = previous; }
+  });
 });

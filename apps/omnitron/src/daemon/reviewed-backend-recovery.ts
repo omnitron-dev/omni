@@ -89,6 +89,23 @@ function withoutNativeObservations(state: BackendRecoveryRecord['state']): Backe
   return copy;
 }
 
+/** Fields admitted by a reviewed handoff, shared by live verification and offline inspection. */
+function matchesAdmittedWriter(candidate: BackendRecoveryRecord, fence: ReviewedBackendRecoveryFence,
+  admitted: BackendBootRecord, pid: number, entry: string): boolean {
+  const { ticket, ...state } = admitted.state;
+  return candidate.protocol === 1 && positive(pid) && candidate.previousPid === pid && candidate.previousEntry === entry &&
+    candidate.runtimeHash === fence.activation.previous && same(candidate.controller, ticket.to) &&
+    candidate.registryDigest === fence.registryDigest && candidate.state.executionInventory === fence.inventoryDigest &&
+    same(withoutNativeObservations(candidate.state), withoutNativeObservations(state)) &&
+    same(candidate.daemonConfig, admitted.daemonConfig) && candidate.cwd === admitted.cwd;
+}
+
+function reviewedCheckpointOrigin(fence: ReviewedBackendRecoveryFence, planId: string, intentDigest: string) {
+  return { protocol: 1, planId, intentDigest, originalCheckpoint: fence.activation.checkpoint,
+    originalCheckpointSha256: fence.originalCheckpointSha256, certifiedRecoveryRecordSha256: fence.certifiedRecoveryRecordSha256,
+    acceptedInventoryDigest: fence.inventoryDigest, historicalExecutionDelta: fence.historicalExecutionDelta };
+}
+
 async function checkpoint(file: string): Promise<{ record: BackendBootRecord; sha256: string }> {
   if ((await fs.lstat(file)).size > 16 * 1024 * 1024) throw Error('Backend checkpoint exceeds its size limit');
   const record = await readBackendBootRecord(file);
@@ -110,6 +127,71 @@ async function originalActivation(file: string, home: string) {
   if (!activation || activation.checkpoint !== file || !selection || selection.current !== activation.previous)
     throw Error('Original activation and selected previous runtime do not match');
   return { ...original, activation, selection, directory };
+}
+
+/** Inspect durable evidence only. Even a current certificate is never permission to start a writer. */
+export async function inspectHeldBackendRecovery(installation: RuntimeInstallation) {
+  const { readSupervisorTransition, supervisorTransitionIntentDigest } = await import('./supervisor-transition.js');
+  const activation = installation.activation();
+  const hold = activation?.reviewedRecovery;
+  if (hold?.phase !== 'unconfirmed' || !activation || !hold.checkpoint)
+    throw Error('Inspection requires an unconfirmed reviewed recovery with an admitted checkpoint');
+  const plan = await readSupervisorTransition(hold.planFile);
+  const fence = plan.recovery;
+  if (!fence || plan.phase !== 'started' || plan.id !== hold.planId || plan.before.instanceHome !== installation.home ||
+      supervisorTransitionIntentDigest(plan) !== hold.planSha256 || !same(activationIdentity(activation), fence.activation) ||
+      !same(installation.selection(), fence.selection))
+    throw Error('Held activation, selected runtime or reviewed plan no longer match');
+  const original = await checkpoint(activation.checkpoint);
+  const directory = executionDirectory(original.record.daemonConfig);
+  if (checkpointInstanceHome(original.record) !== installation.home || path.dirname(activation.checkpoint) !== directory ||
+      original.sha256 !== fence.originalCheckpointSha256 || !same(original.record.state.ticket, fence.pending) ||
+      !same(original.record.state.ticket.to, fence.controller) || path.dirname(hold.checkpoint) !== directory)
+    throw Error('Original checkpoint differs from the reviewed instance, grant or digest');
+  const admitted = await checkpoint(hold.checkpoint);
+  const ticket = admitted.record.state.ticket;
+  if (hold.checkpoint !== path.join(directory, `handoff-${ticket.id}.json`) || !same(ticket.from, fence.controller) ||
+      ticket.ownerId !== fence.owner.id || !grant(ticket.to) || ticket.to.ownerId !== ticket.ownerId ||
+      ticket.to.controllerId === ticket.from.controllerId || ticket.to.epoch !== ticket.from.epoch + 1 ||
+      !Number.isFinite(Date.parse(admitted.record.createdAt)) ||
+      !same(admitted.record, { ...original.record, createdAt: admitted.record.createdAt,
+        state: { ...original.record.state, ticket, executionInventory: fence.inventoryDigest },
+        reviewedRecovery: reviewedCheckpointOrigin(fence, plan.id, hold.planSha256) }))
+    throw Error('Admitted checkpoint differs from the reviewed handoff');
+
+  const journal = new BackendRecoveryJournal(directory, { readOnly: true });
+  try {
+    const receipt = journal.read();
+    const writer = receipt?.status === 'ready' ? receipt.record : receipt?.previous;
+    const authority = new ExecutionJournal(path.join(directory, 'controller.json'));
+    const owner = await authority.read();
+    const registryFile = path.join(installation.home, 'data/daemon-state.db');
+    const registryDigest = ProjectRegistry.readRecoveryDigest(registryFile);
+    const writerMatches = writer ? matchesAdmittedWriter(writer, fence, admitted.record, writer.previousPid, original.record.previousEntry) : false;
+    const environmentMatches = writerMatches && same(writer?.environment, admitted.record.environment);
+    const writerPid = writerMatches && writer ? writer.previousPid : null;
+    const durableGrantMatches = same(owner?.owner, fence.owner) && same(owner?.grant, ticket.to);
+    const registryMatches = registryDigest === fence.registryDigest;
+    const observedAt = new Date().toISOString();
+    const result = {
+      observedAt, planId: plan.id, originalCheckpointSha256: original.sha256, admittedCheckpointSha256: admitted.sha256,
+      admittedEpoch: ticket.to.epoch, durableEpoch: owner?.grant.epoch ?? null,
+      durableGrantMatches, registryDigest, registryMatches,
+      certificate: receipt?.status ?? 'missing', certificateAt: receipt?.at ?? null,
+      writerMatches, writerPid, writerPidState: writerPid === null ? null : readProcessLifetime(writerPid).state, environmentMatches,
+      projectState: receipt?.status === 'ready' && writerMatches && environmentMatches && durableGrantMatches && registryMatches
+        ? 'certified' as const : 'unconfirmed' as const,
+      invalidation: receipt?.status === 'invalid' ? { reason: receipt.reason, reasons: receipt.reasons ?? [receipt.reason],
+        history: receipt.reasons === undefined ? 'first-reason-only' : receipt.additionalReasons ? 'partial' : 'distinct-reasons' } : null,
+    };
+    // Reads span three independent stores. Discard the observation if any input moved while collecting it.
+    if (!same(installation.activation(), activation) || !same(installation.selection(), fence.selection) ||
+        !same(journal.read(), receipt) || !same(await authority.read(), owner) || ProjectRegistry.readRecoveryDigest(registryFile) !== registryDigest ||
+        (await checkpoint(activation.checkpoint)).sha256 !== original.sha256 || (await checkpoint(hold.checkpoint)).sha256 !== admitted.sha256 ||
+        !same(await readSupervisorTransition(hold.planFile), plan))
+      throw Error('Recovery evidence changed during inspection');
+    return result;
+  } finally { await journal.close(); }
 }
 
 async function lineage(file: string, home: string) {
@@ -231,7 +313,6 @@ async function checkStatic(fence: ReviewedBackendRecoveryFence, certificate = tr
 
 async function assertRestoredCertificate(directory: string, fence: ReviewedBackendRecoveryFence,
   admitted: BackendBootRecord, pid: number, entry: string, until: number): Promise<void> {
-  const { ticket, ...admittedState } = admitted.state;
   let reason = 'No recovery certificate has been published';
   while (true) {
     const journal = new BackendRecoveryJournal(directory, { readOnly: true });
@@ -239,11 +320,7 @@ async function assertRestoredCertificate(directory: string, fence: ReviewedBacke
     try { state = journal.read(); } finally { await journal.close(); }
     const candidate = state?.status === 'ready' ? state.record : state?.previous;
     if (candidate) {
-      const expected = candidate.previousPid === pid && candidate.previousEntry === entry &&
-        candidate.runtimeHash === fence.activation.previous && same(candidate.controller, ticket.to) &&
-        candidate.registryDigest === fence.registryDigest && candidate.state.executionInventory === fence.inventoryDigest &&
-        same(withoutNativeObservations(candidate.state), withoutNativeObservations(admittedState)) &&
-        same(candidate.daemonConfig, admitted.daemonConfig) && candidate.cwd === admitted.cwd;
+      const expected = matchesAdmittedWriter(candidate, fence, admitted, pid, entry);
       // Startup may retain the old certificate while its new writer is pending.
       // A different writer or contradictory new certificate is never a wait condition.
       if (!expected && !(state?.status === 'invalid' && digest(candidate) === fence.certifiedRecoveryRecordSha256))
@@ -310,10 +387,7 @@ export async function recoverReviewedBackend(config: ManagedRuntime, input: { pl
       const file = path.join(config.directory, `handoff-${ticket.id}.json`);
       const boot: BackendBootRecord = { ...original, createdAt: new Date().toISOString(),
         state: { ...original.state, ticket, executionInventory: fence.inventoryDigest } };
-      await writePrivateRecord(file, { ...boot, reviewedRecovery: { protocol: 1, planId: plan.id, intentDigest: input.sha256,
-        originalCheckpoint: fence.activation.checkpoint, originalCheckpointSha256: fence.originalCheckpointSha256,
-        certifiedRecoveryRecordSha256: fence.certifiedRecoveryRecordSha256, acceptedInventoryDigest: fence.inventoryDigest,
-        historicalExecutionDelta: 'unknown' } });
+      await writePrivateRecord(file, { ...boot, reviewedRecovery: reviewedCheckpointOrigin(fence, plan.id, input.sha256) });
       hold = installation.advanceReviewedRecovery(hold, { phase: 'applying', checkpoint: file });
       const result = await spawnReplacement(artifact, file, boot, child => { candidate = child; spawned = true; }, async () => {
         await checkStatic(fence);

@@ -76,12 +76,15 @@ export async function backendInstallCommand(directory: string): Promise<void> {
   finally { await installation?.close(); }
 }
 
-export async function backendInstallationCommand(): Promise<void> {
+export async function backendInstallationCommand(options: { recovery?: boolean } = {}): Promise<void> {
   let installation: RuntimeInstallation | null = null;
   try {
     installation = await RuntimeInstallation.openReadOnly();
+    if (options.recovery && !installation) throw Error('No runtime installation exists');
+    const recovery = options.recovery && installation
+      ? await (await import('../daemon/reviewed-backend-recovery.js')).inspectHeldBackendRecovery(installation) : undefined;
     const state = { directory: installation?.directory ?? null, selection: installation?.selection() ?? null,
-      activation: installation?.activation() ?? null };
+      activation: installation?.activation() ?? null, ...(recovery && { recovery }) };
     if (!emitJson(state)) {
       emitInfo(state.selection ? `Cold-start runtime: ${state.selection.current} (revision ${state.selection.revision})` : 'No runtime is selected for cold start');
       if (state.directory) emitInfo(`Installation: ${state.directory}`);
@@ -90,6 +93,11 @@ export async function backendInstallationCommand(): Promise<void> {
       if (hold) {
         emitInfo(`Reviewed recovery ${hold.phase} (${hold.planFile})`);
         if (hold.checkpoint) emitInfo(`Admitted checkpoint: ${hold.checkpoint}`);
+      }
+      if (recovery) {
+        emitInfo(`Durable controller epoch ${recovery.durableEpoch ?? 'unknown'} (admitted ${recovery.admittedEpoch}), grant ${recovery.durableGrantMatches ? 'matches' : 'differs'}, registry ${recovery.registryMatches ? 'matches' : 'differs'}`);
+        emitInfo(`Certificate ${recovery.certificate}, writer PID ${recovery.writerPid ?? 'unknown'} (${recovery.writerPidState ?? 'unknown'}), project state ${recovery.projectState}`);
+        if (recovery.invalidation) emitInfo(`Invalidated at ${recovery.certificateAt} by ${recovery.invalidation.reasons.join(', ')} (${recovery.invalidation.history}). No later project snapshot is certified.`);
       }
     }
   } catch (error) { emitError(error); process.exitCode = 1; }

@@ -103,9 +103,10 @@ backend.command('install <runtime>').description('Copy a sealed runtime into per
     await backendInstallCommand(runtime);
   });
 backend.command('installation').description('Inspect the cold-start selection and any unfinished activation')
-  .structuredAction(async () => {
+  .option('--recovery', 'Trace an unconfirmed recovery to the durable controller grant and project certificate')
+  .structuredAction(async (options: { recovery?: boolean }) => {
     const { backendInstallationCommand } = await import('../commands/backend.js');
-    await backendInstallationCommand();
+    await backendInstallationCommand(options);
   });
 backend.command('select <sha256>').description('Select an installed runtime while backend and execution owner are stopped')
   .option('--check', 'Verify cold selection and rollback compatibility while services are running')

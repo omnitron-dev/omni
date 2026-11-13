@@ -21,7 +21,7 @@ import { RuntimeInstallation } from '../../src/daemon/runtime-installation.js';
 import { ExecutionJournal, writePrivateRecord } from '../../src/daemon/execution-journal.js';
 import { ProjectRegistry } from '../../src/project/registry.js';
 import { supervisorTransitionIntentDigest, type SupervisorTransition } from '../../src/daemon/supervisor-transition.js';
-import { prepareReviewedBackendRecovery, checkReviewedBackendRecovery, recoverReviewedBackend } from '../../src/daemon/reviewed-backend-recovery.js';
+import { prepareReviewedBackendRecovery, checkReviewedBackendRecovery, inspectHeldBackendRecovery, recoverReviewedBackend } from '../../src/daemon/reviewed-backend-recovery.js';
 
 const fake = vi.hoisted(() => ({ config: undefined as ManagedRuntime | undefined, artifact: undefined as BackendArtifact | undefined,
   snapshot: vi.fn(), prepare: vi.fn(), cancel: vi.fn(), launch: vi.fn(), daemon: vi.fn(), proof: vi.fn(), candidate: vi.fn(),
@@ -305,6 +305,11 @@ it('detects rotation during final artifact verification, stops only its child an
   expect(fake.children).toHaveLength(1); expect(fake.children[0]!.signalCode).not.toBeNull();
   expect(f.instance.selection()?.revision).toBe(f.fence.selection.revision);
   expect(f.instance.activation()?.reviewedRecovery).toMatchObject({ phase: 'unconfirmed', checkpoint: expect.any(String) });
+  const activation = f.instance.activation();
+  expect(await inspectHeldBackendRecovery(f.instance)).toMatchObject({ certificate: 'ready', durableGrantMatches: true,
+    writerMatches: true, registryMatches: true, environmentMatches: true, projectState: 'certified' });
+  expect(f.instance.activation()).toEqual(activation);
+  expect(fake.prepare).toHaveBeenCalledOnce();
 });
 
 it('preserves a committed grant after its writer exits with an invalidated SQLite certificate', async () => {
@@ -345,6 +350,24 @@ it('preserves a committed grant after its writer exits with an invalidated SQLit
   } finally { await receipt.close(); }
   expect(f.handoff.status()).toMatchObject({ phase: 'active', controller: derived.state.ticket.to, pending: derived.state.ticket });
   expect(f.instance.selection()).toEqual(f.fence.selection);
+  const facts = await inspectHeldBackendRecovery(f.instance);
+  expect(facts).toMatchObject({ admittedEpoch: derived.state.ticket.to.epoch, durableGrantMatches: true,
+    registryMatches: true, writerMatches: true, environmentMatches: true, writerPid: fake.children[0]!.pid,
+    certificate: 'invalid', projectState: 'unconfirmed', invalidation: { reason: 'loadProjectConfig' } });
+  expect(facts).not.toHaveProperty('environment');
+  // Old writers only recorded the first invalidation. Their earlier snapshot cannot establish the final state.
+  const oldJournal = new DaemonStateStore(createNullLogger(), path.join(f.directory, 'recovery.db'));
+  stores.push(oldJournal);
+  const saved = oldJournal.kvGetSync<Record<string, unknown>>('backend.recovery')!;
+  const { reasons: _reasons, additionalReasons: _additional, ...legacy } = saved;
+  oldJournal.kvSetSync('backend.recovery', legacy);
+  expect(await inspectHeldBackendRecovery(f.instance)).toMatchObject({ projectState: 'unconfirmed',
+    invalidation: { history: 'first-reason-only' } });
+  f.database.upsertProjectSync({ name: 'new', path: path.join(f.home, 'new'), added_at: f.boot.createdAt, last_seen: f.boot.createdAt });
+  expect(await inspectHeldBackendRecovery(f.instance)).toMatchObject({ registryMatches: false, projectState: 'unconfirmed' });
+  await writePrivateRecord(hold!.checkpoint!, { ...derived, cwd: f.directory });
+  await expect(inspectHeldBackendRecovery(f.instance)).rejects.toThrow('Admitted checkpoint differs');
+  expect(f.instance.activation()?.reviewedRecovery).toEqual(hold);
   await expect(f.invoke()).rejects.toThrow('earlier attempt');
   expect(fake.prepare).toHaveBeenCalledOnce(); expect(fake.children).toHaveLength(1);
   expect(await fs.readFile(f.checkpoint)).toEqual(original);

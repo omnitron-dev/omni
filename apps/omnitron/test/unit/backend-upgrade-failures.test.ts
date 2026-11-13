@@ -45,7 +45,7 @@ vi.mock('node:child_process', async importOriginal => {
   } };
 });
 
-const { replaceBackend, spawnReplacement } = await import('../../src/daemon/backend-upgrade.js');
+const { replaceBackend, spawnReplacement, recoverBackend, abortBackendReplacement } = await import('../../src/daemon/backend-upgrade.js');
 const roots: string[] = [];
 const digest = 'c'.repeat(64);
 const owner = { id: 'fixture-owner', pid: 123, startedAt: '2026-01-01T00:00:00.000Z' };
@@ -127,6 +127,21 @@ async function fixture(restoreReady = true) {
     to: { ownerId: owner.id, controllerId: 'restored', epoch: 3 } });
   return { root, candidate, previous, checkpoint, record, complete, select, abort, prepare, retire, beginActivation };
 }
+
+it('honors a reviewed hold inside the lease before ordinary recovery or abort can dispatch', async () => {
+  const target = await fixture();
+  await writePrivateRecord(target.checkpoint, { ...target.record, previousPid: process.pid });
+  await fs.writeFile(target.record.daemonConfig.pidFile, String(process.pid));
+  const hold = { phase: 'unconfirmed', planId: 'private-fixture', planFile: '/fixture/plan' };
+  mocks.installation.mockResolvedValue({ exclusive: (work: () => Promise<unknown>) => work(), close: vi.fn(),
+    activation: () => ({ checkpoint: target.checkpoint, reviewedRecovery: hold }) });
+  await expect(recoverBackend(target.checkpoint)).rejects.toThrow(/held for reviewed plan/);
+  await expect(abortBackendReplacement(target.checkpoint)).rejects.toThrow(/held for reviewed plan/);
+  expect(target.abort).not.toHaveBeenCalled();
+  expect(mocks.observe).not.toHaveBeenCalled();
+  expect(mocks.replacement).not.toHaveBeenCalled();
+  expect(mocks.children).toHaveLength(0);
+});
 
 it('refuses a candidate adoption failure before draining the current backend', async () => {
   const target = await fixture();

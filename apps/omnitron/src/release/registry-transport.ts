@@ -19,7 +19,7 @@ export class RegistryTransportError extends Error {
   readonly code = 'REGISTRY_ARCHIVE_UNAVAILABLE';
   constructor(readonly category: RegistryFailure, readonly status?: number) {
     super(category === 'environment'
-      ? 'Framework registry download refused: the requested environment omits inherited keys, but Xec 0.11.2 cannot replace the environment. Use a clean build-controller environment.'
+      ? 'Framework registry download refused: the requested environment omits keys inherited by the local executor. Use a clean build-controller environment.'
       : `Framework registry download failed: ${category}${status === undefined ? '' : ` (HTTP ${status})`}`);
   }
 }
@@ -38,9 +38,9 @@ function reportedFailure(stderr: string): RegistryTransportError | undefined {
  * never by changing the daemon's cwd/env. Xec owns cancellation and the process
  * tree. Only archive bytes leave stdout; the caller remains the SHA-512 and
  * archive-layout authority. No package or pnpmfile hooks are executed.
- * Xec 0.11.2 merges ambient environment keys rather than replacing them. Until
- * it exposes replacement semantics, refuse an environment that needs to remove
- * a key: otherwise a rejected loader/configuration variable would be restored.
+ * The local Xec executor merges ambient environment keys. Refuse an environment
+ * that needs to remove a key: otherwise a rejected loader/configuration variable
+ * would be restored.
  * As elsewhere in the daemon, concurrent mutation of process.env is unsupported. */
 export async function withRegistryArchive<T>(
   pkg: RegistryPackage, options: RegistryTransportOptions,

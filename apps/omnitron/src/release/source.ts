@@ -25,7 +25,7 @@ export function networkRepository(repository: string): boolean {
 
 function environment(): NodeJS.ProcessEnv {
   const env = { ...process.env };
-  // Xec 0.11.2 merges the ambient environment. Refuse repository redirects instead
+  // The local Xec executor merges the ambient environment. Refuse repository redirects instead
   // of pretending that omitting them here isolates a child. User transport remains intact.
   assertCheckoutEnvironment();
   // Preserve configured askpass programs (including core.askPass): they may be

@@ -18,6 +18,7 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
+import { runExclusive } from '@omnitron-dev/common';
 import { Injectable, Inject, Optional } from '@omnitron-dev/titan/decorators';
 import { LOGGER_SERVICE_TOKEN, type ILoggerModule, type ILogger } from '@omnitron-dev/titan/module/logger';
 import { DAEMON_STATE_STORE_TOKEN, PROJECT_SERVICE_TOKEN } from '../shared/tokens.js';
@@ -126,6 +127,19 @@ function metadataOf(raw: string | null): BackupMetadata {
   } catch {
     return {};
   }
+}
+
+type IndexedBackup = ReturnType<DaemonStateStore['selectBackupsSync']>[number];
+
+function describeBackup(row: IndexedBackup): BackupRecord {
+  const meta = metadataOf(row.metadata);
+  const filename = meta.filename ?? path.basename(row.path);
+  return {
+    id: row.id, database: row.app, filename, size: row.size_bytes, createdAt: row.created_at,
+    compressed: meta.compressed ?? filename.endsWith('.gz'),
+    ...(meta.project && meta.stack ? { project: meta.project, stack: meta.stack } : {}),
+    ...(meta.scope ? { scope: meta.scope } : {}), ...(meta.bucket ? { bucket: meta.bucket } : {}),
+  };
 }
 
 /** A pass entry named so that two stacks' `main` cannot be taken for each other. */
@@ -346,6 +360,26 @@ export class BackupService {
   private legacyMigrated = false;
   /** The tail of the scheduled passes, which run one at a time — see `runExclusive`. */
   private passQueue: Promise<unknown> = Promise.resolve();
+  /** Restoring and retiring one archive share a resource; other archives remain independent. */
+  private readonly archiveOperations = new Map<string, { users: number }>();
+
+  private async withArchive<T>(row: IndexedBackup, operation: () => Promise<T>): Promise<T> {
+    const filename = path.resolve(row.path);
+    if (filename !== row.path || path.dirname(filename) !== path.resolve(this.backupDir))
+      throw new Error(`Backup '${row.id}' is outside its managed backup directory`);
+    const resource = this.archiveOperations.get(filename) ?? { users: 0 };
+    resource.users++;
+    this.archiveOperations.set(filename, resource);
+    try {
+      return await runExclusive(resource, () => {
+        const current = this.store.selectBackupsSync().find(backup => backup.id === row.id);
+        if (!isDeepStrictEqual(current, row)) throw new Error(`Backup '${row.id}' changed while waiting for its archive`);
+        return operation();
+      });
+    } finally {
+      if (--resource.users === 0) this.archiveOperations.delete(filename);
+    }
+  }
 
   // T-2 — @Inject decorators bind tokens to ctor positions; framework
   // reads metadata directly, no inject:[] array drift possible.
@@ -1002,27 +1036,15 @@ export class BackupService {
     const rows = this.store.selectBackupsSync(database);
     const backups: BackupRecord[] = [];
     for (const row of rows) {
-      // The .sql.gz bytes still live on disk; if they were deleted
-      // externally, drop the row (self-cleaning index) so a stale
-      // entry doesn't haunt the listing.
-      if (!fs.existsSync(row.path)) {
-        try { this.store.deleteBackupSync(row.id); } catch { /* best-effort */ }
-        continue;
+      // A missing archive is not restorable. Keep its index entry: a failed
+      // retirement may still own sidecars, and only explicit deletion or
+      // retention may finish it. Listing must not erase that recovery state.
+      try { await fs.promises.access(row.path); }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+        throw error;
       }
-      const meta = metadataOf(row.metadata);
-      const filename = meta.filename ?? path.basename(row.path);
-      backups.push({
-        id: row.id,
-        database: row.app,
-        filename,
-        size: row.size_bytes,
-        createdAt: row.created_at,
-        compressed: meta.compressed ?? filename.endsWith('.gz'),
-        // Where it came from, when the row recorded it — see `BackupOrigin`.
-        ...(meta.project && meta.stack ? { project: meta.project, stack: meta.stack } : {}),
-        ...(meta.scope ? { scope: meta.scope } : {}),
-        ...(meta.bucket ? { bucket: meta.bucket } : {}),
-      });
+      backups.push(describeBackup(row));
     }
     return backups;
   }
@@ -1032,18 +1054,17 @@ export class BackupService {
   // ===========================================================================
 
   async restoreBackup(backupId: string): Promise<void> {
-    return this.trackOperation(() => this.restoreBackupOnce(backupId));
+    return this.trackOperation(() => {
+      this.migrateLegacyMetaIfPresent();
+      // Resolve prefixes before taking the archive lock, then revalidate the
+      // exact index identity after any earlier operation has finished.
+      const row = resolveBackupId(this.store.selectBackupsSync(), backupId,
+        r => `${r.id} (${r.app}, ${formatUtc(r.created_at)})`);
+      return this.withArchive(row, () => this.restoreBackupOnce(row));
+    });
   }
 
-  private async restoreBackupOnce(backupId: string): Promise<void> {
-    this.migrateLegacyMetaIfPresent();
-    // The full id, or a prefix of it that names one backup — what the CLI
-    // prints. An ambiguous prefix is refused with every candidate named.
-    const row = resolveBackupId(
-      this.store.selectBackupsSync(),
-      backupId,
-      (r) => `${r.id} (${r.app}, ${formatUtc(r.created_at)})`,
-    );
+  private async restoreBackupOnce(row: IndexedBackup): Promise<void> {
     if (!fs.existsSync(row.path)) throw new Error(`Backup file not found: ${row.path}`);
 
     const meta = metadataOf(row.metadata);
@@ -1082,26 +1103,35 @@ export class BackupService {
   // ===========================================================================
 
   async deleteBackup(backupId: string): Promise<void> {
-    const backups = await this.listBackups();
-    const backup = backups.find((b) => b.id === backupId);
-    if (!backup) throw new Error(`Backup '${backupId}' not found`);
-
-    const filepath = path.join(this.backupDir, backup.filename);
-
-    // Drop the SQLite row first so a concurrent listBackups call
-    // doesn't return a record whose .sql.gz file is about to be
-    // unlinked. Backup-file unlink is best-effort — a missing
-    // file just means the operator already removed it.
-    this.store.deleteBackupSync(backup.id);
-    try { fs.unlinkSync(filepath); } catch { /* ignore */ }
-    // And whatever SQLite left beside it. Removing only the named file is how
-    // four `daemon-state_*.db-shm/-wal` pairs on the master came to outlive
-    // the backups retention had pruned — belonging to nothing, in no listing.
-    for (const suffix of SQLITE_SIDECARS) {
-      try { fs.unlinkSync(filepath + suffix); } catch { /* none, or not ours */ }
-    }
-
-    this.logger.info({ database: backup.database, filename: backup.filename }, 'Backup deleted');
+    return this.trackOperation(() => {
+      this.migrateLegacyMetaIfPresent();
+      const row = this.store.selectBackupsSync().find(backup => backup.id === backupId);
+      if (!row) throw new Error(`Backup '${backupId}' not found`);
+      return this.withArchive(row, async () => {
+        // APFS can spend seconds releasing a multi-gigabyte archive. Keep that
+        // work off the event loop and inside the backup/recovery fence.
+        try {
+          for (const filename of [row.path, ...SQLITE_SIDECARS.map(suffix => row.path + suffix)]) {
+            try { await fs.promises.unlink(filename); }
+            catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+          }
+          const directory = await fs.promises.open(this.backupDir, 'r');
+          try { await directory.sync(); } finally { await directory.close(); }
+        } catch (error) {
+          throw new Error(`Backup '${backupId}' deletion is incomplete; index retained for retry: ${reasonOf(error)}`, { cause: error });
+        }
+        // Missing files are safe to retry by ID, including a partial sidecar
+        // cleanup. No success is reported until the index also confirms it.
+        try {
+          this.store.deleteBackupSync(backupId);
+          if (this.store.selectBackupsSync().some(backup => backup.id === backupId))
+            throw new Error('Backup index still contains the deleted archive');
+        } catch (error) {
+          throw new Error(`Backup '${backupId}' files were removed but index deletion was not confirmed: ${reasonOf(error)}`, { cause: error });
+        }
+        this.logger.info({ database: row.app, filename: path.basename(row.path) }, 'Backup deleted');
+      });
+    });
   }
 
   // ===========================================================================
@@ -1349,7 +1379,11 @@ export class BackupService {
    * so the history already on disk is bounded exactly as before.
    */
   private async pruneOldBackups(database: string, keep = 48): Promise<void> {
-    const rows = await this.listBackups();
+    this.migrateLegacyMetaIfPresent();
+    // Include incomplete deletions whose archive is already absent. Their
+    // index remains the authority for retrying sidecar cleanup by exact ID.
+    const rows = this.store.selectBackupsSync().map(describeBackup);
+    const failures: Error[] = [];
     let dbs: string[];
     if (database === 'all' || database === 'full') {
       // Union of what is scheduled and what is ON DISK.
@@ -1389,9 +1423,15 @@ export class BackupService {
         }
       }
       for (const old of doomed) {
-        try { await this.deleteBackup(old.id); } catch { /* best-effort */ }
+        try { await this.deleteBackup(old.id); }
+        catch (error) {
+          const reason = new Error(`Backup '${old.id}': ${reasonOf(error)}`, { cause: error });
+          failures.push(reason);
+          this.logger.error({ backupId: old.id, database: old.database, error: reason.message }, 'Backup retention could not confirm deletion');
+        }
       }
     }
+    if (failures.length) throw new AggregateError(failures, `Backup retention could not delete ${failures.length} archive(s)`);
   }
 
   dispose(): void {

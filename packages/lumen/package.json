@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/lumen",
-  "version": "0.4.8",
+  "version": "0.4.9",
   "description": "Static site generator, Corpus Graph verification engine, and CLI for Lumen",
   "type": "module",
   "main": "./dist/index.js",

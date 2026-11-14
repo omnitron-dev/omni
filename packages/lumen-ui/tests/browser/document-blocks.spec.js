@@ -124,7 +124,11 @@ test('filetree disclosures, markers and annotations work without client JavaScri
     expect(await tree.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
     const marker = await tree.locator('svg').first().boundingBox();
     expect(marker.width).toBe(16); expect(marker.height).toBe(16);
-    await expect(page.locator('.lumen-code-block')).toHaveAttribute('tabindex', '0');
+    const codeBlocks = page.locator('.lumen-code-block');
+    await expect(codeBlocks).toHaveCount(2); // Document code and the initially closed example source.
+    for (const code of await codeBlocks.all()) {
+      await expect(code).toHaveAttribute('tabindex', '0');
+    }
     await expect(page.getByRole('table')).toHaveAttribute('tabindex', '0');
     await expect(page.locator('pre.lumen-diagram-source')).toHaveAttribute('tabindex', '0');
   } finally { await context.close(); }
@@ -146,6 +150,11 @@ const transparentThumb = 'rgba(0, 0, 0, 0) rgba(0, 0, 0, 0)';
 async function prepareScrollports(page, url, includeApi = false) {
   await page.goto(url);
   await expect(page.locator('.lumen-diagram-content svg')).toBeVisible();
+  // Include the source of the live example as a scrollport. Closed native
+  // disclosures keep their code in the DOM, but cannot be hovered or tabbed to.
+  const source = page.getByRole('figure', { name: 'Counter example' }).locator('details');
+  await source.evaluate(element => { element.open = true; });
+  await expect(source.locator('code')).toBeVisible();
   if (includeApi) {
     await page.getByRole('button', { name: 'Open API explorer' }).click();
     await expect(page.getByRole('listbox', { name: 'API symbols' })).toBeVisible();
@@ -214,13 +223,13 @@ test('Tab reaches native code, table and diagram scrollports and arrow keys scro
   await page.addStyleTag({ content: '.lumen-doc td{white-space:nowrap}.lumen-diagram-content>svg{min-width:600px}.client-code{overflow:auto}' });
   const selector = '.lumen-code-block,.lumen-doc table,.lumen-diagram-content';
   const blocks = page.locator(selector);
-  await expect(blocks).toHaveCount(4); // SSR code, client CodeBlock, table, diagram.
+  await expect(blocks).toHaveCount(5); // SSR code, example source, client CodeBlock, table, diagram.
   for (const block of await blocks.all()) {
     await expect(block).toHaveAttribute('tabindex', '0');
     expect(await block.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
   }
   const visited = new Set();
-  for (let tabs = 0; tabs < 30 && visited.size < 4; tabs++) {
+  for (let tabs = 0; tabs < 30 && visited.size < 5; tabs++) {
     await page.keyboard.press('Tab');
     const index = await page.evaluate(query => [...document.querySelectorAll(query)].indexOf(document.activeElement), selector);
     if (index < 0 || visited.has(index)) continue;
@@ -231,7 +240,7 @@ test('Tab reaches native code, table and diagram scrollports and arrow keys scro
     await expect.poll(() => block.evaluate(element => element.scrollLeft)).toBeGreaterThan(0);
     visited.add(index);
   }
-  expect(visited.size).toBe(4);
+  expect(visited.size).toBe(5);
   await expect(page.getByRole('table')).toHaveCount(1);
   await expect(page.getByRole('group', { name: 'Diagram', exact: true })).toHaveCount(1);
 });

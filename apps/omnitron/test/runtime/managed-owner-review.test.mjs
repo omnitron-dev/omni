@@ -8,6 +8,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { stopPrivateFixtureStack, upgradePrivateFixtureBackend } from './managed-owner-roundtrip.mjs';
+import { capturePrivateRestartConfiguration, assertRetainedFixtureLaunches } from './managed-local-sync-roundtrip.mjs';
 import { applicationSdkOption } from './managed-project-runtime.mjs';
 import { preparationOption, prepareFixture, claimPreparedFixture, verifyPreparedFixture,
   assertPreparedFixtureIdle } from './fixture-preparation.mjs';
@@ -324,4 +325,50 @@ test('prepared options reject mixed scenarios, ambient live selectors and duplic
   for (const variable of ['OMNITRON_HOME', 'OMNITRON_SOCKET', 'OMNITRON_DATABASE_URL']) {
     assert.throws(() => preparationOption([...input, '--prepare-only'], { [variable]: '' }), /must not override/);
   }
+});
+
+for (const mismatch of [null, 'instance', 'protocol', 'owner']) {
+  test('retained native review ' + (mismatch ? 'refuses another ' + mismatch : 'uses the private controller and actual owner'), async () => {
+    const instance = '/private/fixture/i';
+    let closed = 0, captures = 0;
+    const configuration = { ownerId: mismatch === 'owner' ? 'different' : 'original', stacks: [] };
+    const pending = capturePrivateRestartConfiguration({ instance, scope, ownerId: 'original',
+      api: async callback => callback({ async service(name) {
+        assert.equal(name, 'OmnitronBackend');
+        return { async controlAddress() { return { socket: '/private/fixture/e/controller.sock' }; } };
+      } }),
+      connect: async (socket, service) => {
+        assert.equal(socket, '/private/fixture/e/controller.sock');
+        assert.equal(service, 'OmnitronBackendControl');
+        return { service: {
+          async status() { return { instanceHome: mismatch === 'instance' ? '/another/i' : instance,
+            runtimeRestartProtocol: mismatch === 'protocol' ? undefined : 1 }; },
+          async runtimeRestart(request) { captures++; assert.deepEqual(request, { stacks: [scope] }); return configuration; },
+        }, async close() { closed++; } };
+      },
+    });
+    if (mismatch) await assert.rejects(pending);
+    else assert.equal(await pending, configuration);
+    assert.equal(captures, ['instance', 'protocol'].includes(mismatch) ? 0 : 1);
+    assert.equal(closed, 1, 'Private RPC connection must close on success and refusal');
+  });
+}
+
+test('native acceptance preserves all launch intent except the owner-bound installed root', () => {
+  const oldRoot = '/private/fixture/e/releases/previous';
+  const nextRoot = '/private/fixture/e/releases/next';
+  const expected = { name: 'probe/local/counter', releaseRoot: oldRoot, script: oldRoot + '/dist/index.js',
+    cwd: '/private/fixture/project', env: { FIXTURE_VALUE: 'declared' }, readiness: { timeoutMs: 1000 } };
+  const actual = { ...expected, releaseRoot: nextRoot, script: nextRoot + '/dist/index.js' };
+  const configuration = { stacks: [{ launches: [expected] }] };
+  const snapshot = { status: { phase: 'active', inFlight: 0 }, apps: [{ info: { name: expected.name }, entry: actual }] };
+  assert.doesNotThrow(() => assertRetainedFixtureLaunches(snapshot, configuration));
+  for (const changed of [
+    { cwd: '/another/project' }, { script: nextRoot + '/another.js' },
+    { env: { FIXTURE_VALUE: 'changed' } }, { readiness: { timeoutMs: 2000 } },
+  ]) assert.throws(() => assertRetainedFixtureLaunches({ ...snapshot,
+    apps: [{ ...snapshot.apps[0], entry: { ...actual, ...changed } }] }, configuration));
+  assert.throws(() => assertRetainedFixtureLaunches({ ...snapshot, apps: [] }, configuration), /absent/);
+  assert.throws(() => assertRetainedFixtureLaunches({ ...snapshot, status: { ...snapshot.status, inFlight: 1 } }, configuration));
+  assert.throws(() => assertRetainedFixtureLaunches({ ...snapshot, status: { ...snapshot.status, phase: 'starting' } }, configuration));
 });

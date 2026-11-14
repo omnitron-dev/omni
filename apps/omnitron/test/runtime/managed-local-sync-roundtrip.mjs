@@ -5,8 +5,12 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
+import { upgradePrivateFixtureBackend } from './managed-owner-roundtrip.mjs';
+import { authorizeFixtureGuardianReplacement, assertFixtureUnitFilesOwned } from './fixture-unit-files.mjs';
 const { runRuntimeUpdate, readRuntimeUpdateReceipt } = await tsImport('../../src/daemon/runtime-update.ts', import.meta.url);
-const { assertReviewedBoot } = await tsImport('../../src/daemon/runtime-update-host.ts', import.meta.url);
+const { assertReviewedBoot, restoreRuntimeRoles } = await tsImport('../../src/daemon/runtime-update-host.ts', import.meta.url);
+const { saveRestartConfiguration, readRestartConfiguration, restartLaunchIntent, assertRestartOwnerDefaults } =
+  await tsImport('../../src/project/runtime-restart.ts', import.meta.url);
 
 const actions = ['prepare', 'validateStop', 'stop', 'assertStopped', 'start', 'canRestore', 'captureForRollback', 'accept'];
 const file = fileURLToPath(import.meta.url);
@@ -47,11 +51,38 @@ async function loseClientAfterBoot(directory, review, driver, timeout) {
   try { await finished; } finally { await active; }
 }
 
+/** The same authenticated next-start review used by runtimeUpdateActions. */
+export async function capturePrivateRestartConfiguration({ api, connect, instance, ownerId, scope }) {
+  const address = await api(async client => (await client.service('OmnitronBackend')).controlAddress());
+  const control = await connect(address.socket, 'OmnitronBackendControl');
+  try {
+    const status = await control.service.status();
+    assert.equal(status.instanceHome, instance, 'Restart review belongs to another private instance');
+    assert.equal(status.runtimeRestartProtocol, 1, 'Warm the capable controller before retained review');
+    const configuration = await control.service.runtimeRestart({ stacks: [scope] });
+    assert.equal(configuration.ownerId, ownerId, 'Restart review belongs to another execution owner');
+    return configuration;
+  } finally { await control.close(); }
+}
+
+export function assertRetainedFixtureLaunches(snapshot, configuration) {
+  assert.equal(snapshot.status.phase, 'active');
+  assert.equal(snapshot.status.inFlight, 0);
+  for (const stack of configuration.stacks) for (const expected of stack.launches) {
+    const actual = snapshot.apps.find(app => app.info.name === expected.name)?.entry;
+    assert.ok(actual, 'Retained application is absent: ' + expected.name);
+    assert.deepEqual(restartLaunchIntent(actual), restartLaunchIntent(expected),
+      'Application differs from retained next-start intent: ' + expected.name);
+  }
+}
+
 export async function managedLocalSyncRoundtrip(context) {
   const { first, previous, candidate, instance, root, projectDirectory, candidateRoot, cli, api, status, ready, certificate,
     worker, history, jobPid, retireNative, launchNative, track, mark, until } = context;
   const req = createRequire(path.join(candidateRoot, 'packages/0/package.json'));
   const { assertCleanManagedShutdown } = await context.load('daemon/owner-reconciliation');
+  const { privateControlClient } = await context.load('daemon/private-control-client');
+  const { loadRegisteredStartupEcosystem } = await context.load('daemon/startup-config');
   const { readProcessLifetime } = await import(pathToFileURL(req.resolve('@omnitron-dev/common/process-identity')).href);
   const Database = req('better-sqlite3');
   const directory = path.join(instance, 'runtime/local-updates');
@@ -78,6 +109,7 @@ export async function managedLocalSyncRoundtrip(context) {
     assert.equal(supervision.owner.label, 'dev.omnitron.fixture.' + context.fixtureId + '.owner');
     assert.equal(supervision.backend.label, 'dev.omnitron.fixture.' + context.fixtureId + '.backend');
     return { backend: selected.current, owner: supervision.owner.artifact, guardian: supervision.backend.artifact,
+      scope: supervision.scope, backendCommit: current.build.commit, console: null, consoleCommit: null,
       revision: selected.revision, ownerPid: current.execution.owner.pid, ownerLifetime: birth(current.execution.owner.pid),
       ownerId: current.execution.owner.id, backendPid: current.pid, guardianPid: await jobPid('backend') };
   };
@@ -91,8 +123,25 @@ export async function managedLocalSyncRoundtrip(context) {
     assert.equal(initial.infrastructureReview ?? null, null);
     return review;
   };
-  assert.notEqual(previous.backend, candidate.id, 'Use two independently sealed runtimes');
+  assert.notEqual(previous.owner, candidate.id, 'Use an independent previous execution owner');
+  assert.notEqual(previous.guardian, candidate.id, 'Exercise restoration of the previous native guardian');
   await certificate();
+  const initialRoles = await nativeRoles(await status());
+  const initialApp = await api(client => client.getApp({ name: 'probe/local/counter' }));
+  // Production preparation requires the serving controller to capture the old
+  // owner's retained intent. The reviewed baseline is this warmed controller,
+  // not the earlier backend that will be restored after the cold receipt ends.
+  if (previous.backend !== candidate.id) await upgradePrivateFixtureBackend({ cli, runtimeRoot: candidateRoot,
+    commit: candidate.build.commit, status });
+  await certificate();
+  const warmed = await status(), baseline = await nativeRoles(warmed);
+  assert.equal(baseline.backend, candidate.id);
+  for (const key of ['owner', 'ownerId', 'ownerPid', 'ownerLifetime', 'guardian', 'guardianPid'])
+    assert.equal(baseline[key], initialRoles[key], 'Warm preparation changed ' + key);
+  assert.equal((await ready(baseline.ownerPid)).pid, worker.pid);
+  const warmedApp = await api(client => client.getApp({ name: 'probe/local/counter' }));
+  assert.equal(warmedApp.generation, initialApp.generation);
+  track(warmed.pid);
   const checks = [];
   for (const id of [candidate.id, previous.backend]) {
     const checked = await cli('backend', 'select', id, '--check');
@@ -101,12 +150,30 @@ export async function managedLocalSyncRoundtrip(context) {
     assert.deepEqual(checked.infrastructure.containers, []);
     checks.push(checked);
   }
-  // This fixture also exercises legacy receipts which restore each controller directly.
-  const protocol = checks.every(checked => checked.coldStackAdmissionProtocol === 1) ? 1 : undefined;
-  assert.equal(protocol, 1);
-  const review = await inspectSelection();
+  assert.equal(checks[0].coldStackAdmissionProtocol, 1);
+  assert.equal(checks[0].runtimeRestartProtocol, 1);
+  const protocol = 1;
+  const configuration = await capturePrivateRestartConfiguration({ api, connect: privateControlClient,
+    instance, ownerId: baseline.ownerId, scope });
+  assertRestartOwnerDefaults(await loadRegisteredStartupEcosystem(context.config.cwd), configuration.watchConfig);
+  assert.equal(configuration.stacks.length, 1);
+  const retained = configuration.stacks[0];
+  assert.equal(retained.project, scope.project); assert.equal(retained.stack, scope.stack);
+  assert.equal(retained.path, projectDirectory); assert.equal(retained.selection, null);
+  const review = retained.review;
+  assert.equal((await inspectSelection()).digest, review.digest);
+  const configurationSha256 = await saveRestartConfiguration(instance, configuration);
+  const verifyLaunches = async () => {
+    const owner = await privateControlClient(path.join(context.execution, 'owner.sock'), 'OmnitronExecution');
+    try { assertRetainedFixtureLaunches(await owner.service.snapshot(), await readRestartConfiguration(instance, configurationSha256)); }
+    finally { await owner.close(); }
+  };
+  await verifyLaunches();
   const plan = { protocol: 1, stackAdmissionProtocol: protocol, instance, target: { artifact: candidate.id, commit: candidate.build.commit },
-    before: await nativeRoles(first), infrastructure: { database: null, containers: [], digest: checks[0].infrastructure.digest },
+    configuration: { sha256: configurationSha256, basis: 'retained-next-start' },
+    before: { ...baseline, retiredPids: [warmed.pid, baseline.guardianPid, worker.pid] },
+    infrastructure: { database: null, containers: [], digest: checks[0].infrastructure.digest,
+      schemaScope: checks[0].schemaScope, coldStackAdmissionProtocol: 1, runtimeRestartProtocol: 1 },
     stacks: [{ ...scope, runtimeScope: scope, path: projectDirectory, enabled: true, infrastructureMode: 'reconcile',
       infrastructureReview: null, selection: { kind: 'working-tree' }, savedSelection: { kind: 'unreported' }, startReview: review.digest }],
     excluded: [], watches: [] };
@@ -115,6 +182,35 @@ export async function managedLocalSyncRoundtrip(context) {
   assert.equal(claims(), null);
   const rounds = [];
   let stopped, priorWorker = worker, manualStarts = 0;
+  let guardianApplyCount = 0, lostGuardianReply = false;
+  const restoreCall = async args => {
+    const apply = args[0] === 'backend' && args[1] === 'guardian' && args[2] === 'apply' && !args.includes('--check');
+    if (apply) {
+      const transition = JSON.parse(await fs.readFile(args[3], 'utf8'));
+      if (transition.phase === 'prepared')
+        await authorizeFixtureGuardianReplacement(context.units, args[3], transition, instance);
+    }
+    const result = await cli(...args);
+    if (apply) {
+      guardianApplyCount++;
+      await assertFixtureUnitFilesOwned(context.units);
+      const current = await status();
+      track(current.pid, current.execution.owner.pid, await jobPid('backend'));
+      if (!lostGuardianReply) {
+        lostGuardianReply = true;
+        throw Error('Fixture lost guardian restoration reply');
+      }
+    }
+    return result;
+  };
+  const completeRestore = async (expected, restoration) => restoreRuntimeRoles(expected,
+    () => until(async () => nativeRoles(await status()), 'Restored roles did not become observable'),
+    async () => {
+      const roles = await nativeRoles(await status());
+      assert.equal(roles.owner, baseline.owner); assert.equal(roles.backend, candidate.id); assert.equal(roles.guardian, candidate.id);
+      assert.equal(claims()?.previous?.ownerId, roles.ownerId);
+      await verifyLaunches();
+    }, restoreCall, restoration);
   const driver = {
     async prepare() { return plan; },
     async validateStop(expected) {
@@ -140,10 +236,11 @@ export async function managedLocalSyncRoundtrip(context) {
       assert.equal(value.backend, candidate.id); assert.notEqual(value.ownerId, plan.before.ownerId);
       return value;
     },
-    async start(destination) {
+    async start(destination, expected, restoration) {
       assert.ok(stopped);
       const forward = !!destination.artifact;
-      const target = forward ? { owner: candidate.id, guardian: candidate.id, backend: candidate.id, commit: candidate.build.commit } : previous;
+      const target = { owner: forward ? candidate.id : baseline.owner, guardian: candidate.id,
+        backend: candidate.id, commit: candidate.build.commit };
       await launchNative(target);
       stopped = undefined;
       const next = await until(async () => {
@@ -153,7 +250,10 @@ export async function managedLocalSyncRoundtrip(context) {
       const value = await ready(next.execution.owner.pid, priorWorker.pid);
       track(next.pid, next.execution.owner.pid, value.pid, await jobPid('backend'));
       priorWorker = value;
+      await certificate();
+      if (!forward) await completeRestore(expected, restoration);
     },
+    completeRestore,
     async accept(_plan, direction) {
       const current = await status(), value = await ready(current.execution.owner.pid);
       const observed = await inspectSelection(), claim = claims();
@@ -167,7 +267,12 @@ export async function managedLocalSyncRoundtrip(context) {
       assert.equal(claim[direction].ownerLifetime, birth(current.execution.owner.pid));
       if (direction === 'target') assert.equal(claim.previous, undefined);
       else assert.deepEqual(claim.target, rounds[0].claim.target);
-      assert.equal(current.build.commit, direction === 'target' ? candidate.build.commit : previous.commit);
+      assert.equal(current.build.commit, candidate.build.commit);
+      const roles = await nativeRoles(current);
+      assert.equal(roles.backend, candidate.id);
+      assert.equal(roles.owner, direction === 'target' ? candidate.id : baseline.owner);
+      assert.equal(roles.guardian, direction === 'target' ? candidate.id : baseline.guardian);
+      await verifyLaunches();
       assert.deepEqual(await history(), migrations);
       const result = { direction, ownerId: current.execution.owner.id, ownerPid: current.execution.owner.pid,
         guardianPid: await jobPid('backend'), backendPid: current.pid, applicationPid: value.pid, applicationGeneration: app.generation, claim,
@@ -185,16 +290,45 @@ export async function managedLocalSyncRoundtrip(context) {
   await driver.accept(plan, 'target');
   await assert.rejects(runRuntimeUpdate({ directory, actions: driver, operation: 'apply', digest }), /unfinished/);
   await assert.rejects(project(service => service.startStack({ ...scope, workingTree: true }).then(() => { manualStarts++; })), /held by local update/);
+  await assert.rejects(runRuntimeUpdate({ directory, actions: driver, operation: 'recover', digest }), /Fixture lost guardian restoration reply/);
+  const interruptedRestore = await readRuntimeUpdateReceipt(directory);
+  assert.equal(interruptedRestore.phase, 'recovery-required');
+  assert.equal(interruptedRestore.restoreAttempted, true);
+  assert.ok(interruptedRestore.restoreGuardian);
+  const restoredBeforeRetry = await nativeRoles(await status());
+  const restoredApp = await api(client => client.getApp({ name: 'probe/local/counter' }));
   const rollback = await runRuntimeUpdate({ directory, actions: driver, operation: 'recover', digest });
   assert.equal(rollback.phase, 'rolled-back');
   assert.equal(rollback.digest, digest); assert.equal(rounds.length, 2); assert.equal(manualStarts, 0);
   assert.deepEqual(await runRuntimeUpdate({ directory, actions: driver, operation: 'recover', digest }), rollback);
   assert.deepEqual(await readRuntimeUpdateReceipt(directory), rollback);
+  assert.deepEqual(rollback.restoreGuardian, interruptedRestore.restoreGuardian);
+  assert.deepEqual(await nativeRoles(await status()), restoredBeforeRetry);
+  assert.equal((await api(client => client.getApp({ name: 'probe/local/counter' }))).generation, restoredApp.generation);
+  assert.equal(guardianApplyCount, 1, 'Lost acknowledgement repeated a committed guardian effect');
   assert.equal(new Set([worker.pid, ...rounds.map(v => v.applicationPid)]).size, 3);
   assert.equal(new Set([first.execution.owner.id, ...rounds.map(v => v.ownerId)]).size, 3);
   assert.notEqual(rounds[0].applicationGeneration, rounds[1].applicationGeneration);
+  // The cold receipt restores its actual warmed baseline. Returning to the
+  // original backend is a separate public warm transition in the operator plan.
+  if (previous.backend !== candidate.id) await upgradePrivateFixtureBackend({ cli,
+    runtimeRoot: context.installed(previous.backend), commit: previous.commit, status });
+  await certificate();
+  const final = await nativeRoles(await status()), finalApp = await api(client => client.getApp({ name: 'probe/local/counter' }));
+  assert.equal(final.backend, previous.backend);
+  for (const key of ['owner', 'ownerId', 'ownerPid', 'ownerLifetime', 'guardian', 'guardianPid'])
+    assert.equal(final[key], restoredBeforeRetry[key], 'Final warm rollback changed ' + key);
+  assert.equal(finalApp.pid, restoredApp.pid); assert.equal(finalApp.generation, restoredApp.generation);
+  assert.equal((await ready(final.ownerPid)).pid, restoredApp.pid);
+  await verifyLaunches();
+  assert.deepEqual(await history(), migrations);
+  assert.deepEqual(await readRuntimeUpdateReceipt(directory), rollback);
+  track(final.backendPid, final.guardianPid);
   const result = { test: 'managed-local-sync-roundtrip', platform: process.platform, root, digest, previous: previous.backend, candidate: candidate.id,
-    rounds, protocol, verifiedBinaries: checks.map(v => v.candidate), lostAcknowledgement: outstanding.phase,
+    rounds, protocol, configuration: configurationSha256, reviewedBaseline: baseline,
+    verifiedBinaries: checks.map(v => v.candidate), lostAcknowledgement: outstanding.phase,
+    restorationReplyLost: true, guardianApplyCount, restoreGuardian: rollback.restoreGuardian,
+    finalWarmRollback: { outsideColdReceipt: true, ...final, applicationPid: finalApp.pid, applicationGeneration: finalApp.generation },
     repeatedRollback: 'same receipt and generation', postBootApplicationStarts: manualStarts, success: true };
   await fs.writeFile(path.join(root, 'local-sync-roundtrip.json'), JSON.stringify(result, null, 2) + '\n');
   return result;

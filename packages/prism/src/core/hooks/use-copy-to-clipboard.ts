@@ -23,9 +23,9 @@ export interface UseCopyToClipboardReturn {
   state: CopyState;
   /** Copied text (null if not copied) */
   copiedText: string | null;
-  /** Copy text to clipboard */
+  /** Copy text; only the latest request updates state or invokes callbacks. */
   copy: (text: string) => Promise<boolean>;
-  /** Reset state to idle */
+  /** Reset state to idle and invalidate pending requests. */
   reset: () => void;
 }
 
@@ -35,9 +35,9 @@ export interface UseCopyToClipboardReturn {
 export interface UseCopyToClipboardOptions {
   /** Reset to idle after this many ms (default: 2000) */
   resetTimeout?: number;
-  /** Callback on successful copy */
+  /** Callback when the latest copy succeeds */
   onSuccess?: (text: string) => void;
-  /** Callback on copy error */
+  /** Callback when the latest copy fails */
   onError?: (error: Error) => void;
 }
 
@@ -83,63 +83,63 @@ export function useCopyToClipboard(options: UseCopyToClipboardOptions = {}): Use
   const [state, setState] = useState<CopyState>('idle');
   const [copiedText, setCopiedText] = useState<string | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestRef = useRef(0);
+  const mountedRef = useRef(true);
 
-  // Cleanup timeout on unmount
-  useEffect(
-    () => () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-    },
-    []
-  );
-
-  const reset = useCallback(() => {
-    // Clear any pending timeout when manually resetting
+  const invalidate = useCallback(() => {
+    requestRef.current += 1;
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      invalidate();
+    };
+  }, [invalidate]);
+
+  const reset = useCallback(() => {
+    invalidate();
+    if (!mountedRef.current) return;
     setState('idle');
     setCopiedText(null);
-  }, []);
+  }, [invalidate]);
 
   const copy = useCallback(
     async (text: string): Promise<boolean> => {
-      // Clear any existing timeout
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
-
-      // Check if clipboard API is available
-      if (!navigator?.clipboard) {
-        const error = new Error('Clipboard API not available');
-        setState('error');
-        onError?.(error);
-        return false;
-      }
+      if (!mountedRef.current) return false;
+      reset();
+      const request = requestRef.current;
+      const isCurrent = () => mountedRef.current && requestRef.current === request;
+      const scheduleReset = () => {
+        if (isCurrent() && resetTimeout > 0) {
+          timeoutRef.current = setTimeout(() => {
+            if (isCurrent()) reset();
+          }, resetTimeout);
+        }
+      };
 
       try {
+        if (typeof navigator === 'undefined' || !navigator.clipboard) throw new Error('Clipboard API not available');
         await navigator.clipboard.writeText(text);
-        setCopiedText(text);
-        setState('success');
-        onSuccess?.(text);
-
-        // Auto-reset after timeout
-        if (resetTimeout > 0) {
-          timeoutRef.current = setTimeout(reset, resetTimeout);
+        if (isCurrent()) {
+          setCopiedText(text);
+          setState('success');
+          onSuccess?.(text);
+          scheduleReset();
         }
 
         return true;
       } catch (err) {
-        const error = err instanceof Error ? err : new Error('Failed to copy');
-        setState('error');
-        onError?.(error);
-
-        // Auto-reset after timeout
-        if (resetTimeout > 0) {
-          timeoutRef.current = setTimeout(reset, resetTimeout);
+        if (isCurrent()) {
+          const error = err instanceof Error ? err : new Error('Failed to copy');
+          setState('error');
+          onError?.(error);
+          scheduleReset();
         }
 
         return false;

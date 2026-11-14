@@ -5,12 +5,12 @@ import os from 'node:os';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  ambientHome: '/ambient-instance-must-not-be-used', daemon: vi.fn(), control: vi.fn(), candidate: vi.fn(), migrations: vi.fn(), installation: vi.fn(), supervised: vi.fn(), adoption: vi.fn(),
+  ambientHome: '/ambient-instance-must-not-be-used', daemon: vi.fn(), control: vi.fn(), candidate: vi.fn(), migrations: vi.fn(), installation: vi.fn(), inspection: vi.fn(), supervised: vi.fn(), adoption: vi.fn(),
 }));
 vi.mock('../../src/daemon/daemon-client.js', () => ({ createDaemonClient: mocks.daemon }));
 vi.mock('../../src/daemon/private-control-client.js', () => ({ privateControlClient: mocks.control }));
 vi.mock('../../src/daemon/backend-candidate.js', () => ({ checkBackendCandidate: mocks.candidate, assertBackendMigrationsCompatible: mocks.migrations, checkBackendAdoption: mocks.adoption }));
-vi.mock('../../src/daemon/runtime-installation.js', () => ({ RuntimeInstallation: { open: mocks.installation } }));
+vi.mock('../../src/daemon/runtime-installation.js', () => ({ RuntimeInstallation: { open: mocks.installation, openReadOnly: mocks.inspection } }));
 vi.mock('../../src/daemon/backend-child.js', () => ({ supervisesBackendChildren: mocks.supervised }));
 vi.mock('../../src/config/defaults.js', async importOriginal => ({
   ...await importOriginal<typeof import('../../src/config/defaults.js')>(), get OMNITRON_HOME() { return mocks.ambientHome; },
@@ -118,6 +118,52 @@ it('delegates to the selected managed instance and never the ambient instance', 
   expect(target.upgrade).toHaveBeenCalledWith({ directory: '/candidate', checkOnly: true });
   expect(mocks.control.mock.calls.map(call => call[0])).toEqual([target.control, path.join(target.execution, 'supervisor.sock')]);
   expect(mocks.candidate).toHaveBeenCalledWith('/candidate', undefined, undefined);
+  expect(mocks.installation).not.toHaveBeenCalled();
+});
+
+it('refreshes only the confirmed managed instance launcher after an older guardian completes promotion', async () => {
+  const target = await fixture(true);
+  let confirmed = false;
+  const candidate = 'c'.repeat(64);
+  mocks.candidate.mockResolvedValue({ runtimeHash: candidate, build: { commit: 'target' } });
+  const inspectionClose = vi.fn();
+  mocks.inspection.mockResolvedValue({ selection: () => ({ revision: 7 }), close: inspectionClose });
+  const result = { pid: 456, ownerPid: 123, ownerId: 'fixture-owner', epoch: 2, checkpoint: '/checkpoint', build: { commit: 'target' } };
+  target.upgrade.mockImplementation(async () => { confirmed = true; return result; });
+  const writeLauncher = vi.fn(async () => { expect(confirmed).toBe(true); return '/launcher'; });
+  const close = vi.fn(), select = vi.fn();
+  const exclusive = vi.fn(async (work: () => Promise<unknown>) => work());
+  mocks.installation.mockResolvedValue({ exclusive, writeLauncher, close, select,
+    selection: () => ({ current: candidate, revision: 8 }), activation: () => null });
+  await expect(replaceBackend('/candidate', { socket: target.socket })).resolves.toEqual(result);
+  expect(mocks.inspection).toHaveBeenCalledExactlyOnceWith(target.home);
+  expect(inspectionClose).toHaveBeenCalledOnce();
+  expect(mocks.installation).toHaveBeenCalledExactlyOnceWith(target.home);
+  expect(exclusive).toHaveBeenCalledOnce();
+  expect(writeLauncher).toHaveBeenCalledExactlyOnceWith();
+  expect(select).not.toHaveBeenCalled();
+  expect(close).toHaveBeenCalledOnce();
+});
+
+it.each(['candidate', 'revision', 'activation', 'result'] as const)('refuses managed launcher refresh when the confirmed %s no longer matches', async changed => {
+  const target = await fixture(true), candidate = 'c'.repeat(64);
+  mocks.candidate.mockResolvedValue({ runtimeHash: candidate, build: { commit: 'target' } });
+  mocks.inspection.mockResolvedValue({ selection: () => ({ revision: 7 }), close: vi.fn() });
+  target.upgrade.mockResolvedValue({ pid: 456, build: { commit: changed === 'result' ? 'unexpected' : 'target' } });
+  const writeLauncher = vi.fn(), close = vi.fn();
+  mocks.installation.mockResolvedValue({ exclusive: async (work: () => Promise<unknown>) => work(), writeLauncher, close,
+    selection: () => ({ current: changed === 'candidate' ? 'd'.repeat(64) : candidate, revision: changed === 'revision' ? 9 : 8 }),
+    activation: () => changed === 'activation' ? { candidate } : null });
+  await expect(replaceBackend('/candidate', { socket: target.socket })).rejects.toThrow('launcher refresh is refused');
+  expect(writeLauncher).not.toHaveBeenCalled();
+  expect(close).toHaveBeenCalledOnce();
+});
+
+it('does not refresh or promote a launcher after the managed guardian refuses handoff', async () => {
+  const target = await fixture(true);
+  target.upgrade.mockRejectedValue(new Error('Candidate handoff failed'));
+  await expect(replaceBackend('/candidate', { socket: target.socket })).rejects.toThrow('Candidate handoff failed');
+  expect(mocks.installation).not.toHaveBeenCalled();
 });
 
 it.each([true, false])('explains an old guardian metadata refusal before any lifecycle change (check=%s)', async checkOnly => {

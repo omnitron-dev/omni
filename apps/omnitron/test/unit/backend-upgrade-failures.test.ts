@@ -67,7 +67,7 @@ afterEach(async () => {
   for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true });
 });
 
-async function fixture(restoreReady = true) {
+async function fixture(restoreReady = true, candidateReady = false) {
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'backend-failure-')));
   roots.push(root);
   const home = path.join(root, 'home'), execution = path.join(home, 'execution');
@@ -77,6 +77,8 @@ async function fixture(restoreReady = true) {
     const runtimeRoot = path.join(root, name), directory = path.join(runtimeRoot, 'packages/0/dist');
     const entry = path.join(directory, 'daemon/daemon-entry.js');
     await fs.mkdir(path.dirname(entry), { recursive: true });
+    await fs.mkdir(path.join(directory, 'cli'));
+    await fs.writeFile(path.join(directory, 'cli/installed.js'), 'export {};');
     await fs.mkdir(path.join(directory, '../node_modules'));
     const require = createRequire(import.meta.url);
     await fs.symlink(path.dirname(require.resolve('tsx/package.json')), path.join(directory, '../node_modules/tsx'), 'dir');
@@ -88,7 +90,7 @@ async function fixture(restoreReady = true) {
       const record = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
       setInterval(() => {}, 1000);
       process.send({type: 'backend-ready', pid: process.pid,
-        build: ${JSON.stringify(index === 1 && restoreReady ? build : { ...build, commit: 'wrong-readiness-identity' })},
+        build: ${JSON.stringify((index === 0 ? candidateReady : restoreReady) ? build : { ...build, commit: 'wrong-readiness-identity' })},
         execution: {owner: ${JSON.stringify(owner)}, epoch: record.state.ticket.to.epoch, phase: 'active'}});
     `);
     artifacts.push({ directory, entry, runtimeRoot, runtimeHash: String(index + 1).repeat(64), entryHash: 'a'.repeat(64),
@@ -120,7 +122,8 @@ async function fixture(restoreReady = true) {
   }, close: vi.fn() });
   mocks.daemon.mockReturnValue({ service: async () => ({ status: async () => ({ handoffSupported: true }),
     controlAddress: async () => ({ socket: path.join(execution, 'control.sock') }) }),
-  status: async () => ({ pid: mocks.children.at(-1)!.child.pid, execution: { owner, epoch: 3 } }), disconnect: vi.fn() });
+  status: async () => ({ pid: mocks.children.at(-1)!.child.pid,
+    execution: { owner, epoch: mocks.children.at(-1)!.entry === candidate.entry ? 2 : 3 } }), disconnect: vi.fn() });
   mocks.installation.mockResolvedValue({ exclusive: async (work: () => Promise<unknown>) => work(), activation: () => null,
     install: async (runtimeRoot: string) => artifacts.find(item => item.runtimeRoot === runtimeRoot),
     selection: () => ({ current: previous.runtimeHash, revision: 1 }), select,
@@ -128,8 +131,73 @@ async function fixture(restoreReady = true) {
   mocks.observe.mockResolvedValue({ inventoryDigest: digest });
   mocks.replacement.mockResolvedValue({ ...ticket, id: 'recovery-ticket', from: ticket.to,
     to: { ownerId: owner.id, controllerId: 'restored', epoch: 3 } });
-  return { root, candidate, previous, checkpoint, record, complete, select, abort, prepare, retire, beginActivation };
+  return { root, home, candidate, previous, checkpoint, record, complete, select, abort, prepare, retire, beginActivation };
 }
+
+async function persistedInstallation(target: Awaited<ReturnType<typeof fixture>>) {
+  const { RuntimeInstallation } = await vi.importActual<typeof import('../../src/daemon/runtime-installation.js')>(
+    '../../src/daemon/runtime-installation.js');
+  const store = await RuntimeInstallation.open(target.home);
+  if (!store) throw new Error('Fixture installation was not opened');
+  // Artifact sealing is covered by runtime-installation tests. Keep the real
+  // selection journal and launcher publication around this real child handoff.
+  const artifacts = [target.previous, target.candidate];
+  vi.spyOn(store, 'artifact').mockImplementation(async id => artifacts.find(item => item.runtimeHash === id)!);
+  vi.spyOn(store, 'install').mockImplementation(async root => artifacts.find(item => item.runtimeRoot === root)!);
+  await store.exclusive(async () => {
+    await store.select(target.previous.runtimeHash, 0);
+    await store.writeLauncher();
+  });
+  mocks.installation.mockResolvedValue(store);
+  const launcher = path.join(store.directory, 'bin/omnitron');
+  const inspect = async () => {
+    const reader = await RuntimeInstallation.openReadOnly(target.home);
+    if (!reader) throw new Error('Fixture installation was not retained');
+    try { return { selection: reader.selection(), activation: reader.activation(), launcher: await fs.readFile(launcher, 'utf8') }; }
+    finally { await reader.close(); }
+  };
+  return { store, launcher, inspect };
+}
+
+it('refreshes the old bootstrap launcher only after a confirmed handoff and durable candidate promotion', async () => {
+  const target = await fixture(true, true), installed = await persistedInstallation(target);
+  const oldLauncher = (await installed.inspect()).launcher;
+  target.complete.mockImplementation(async () => {
+    expect(await installed.inspect()).toMatchObject({ selection: { bootstrap: target.previous.runtimeHash }, launcher: oldLauncher });
+  });
+  await expect(replaceBackend(target.candidate.directory)).resolves.toMatchObject({ ownerId: owner.id, epoch: 2 });
+  const after = await installed.inspect();
+  expect(target.complete).toHaveBeenCalledOnce();
+  expect(after.selection).toMatchObject({ current: target.candidate.runtimeHash, bootstrap: target.candidate.runtimeHash,
+    previous: target.previous.runtimeHash, revision: 2 });
+  expect(after.activation).toBeNull();
+  expect(after.launcher).toContain(path.join(target.candidate.directory, 'cli/installed.js'));
+  expect(after.launcher).not.toContain(path.join(target.previous.directory, 'cli/installed.js'));
+});
+
+it('keeps the old bootstrap and launcher when candidate handoff fails and the previous backend is restored', async () => {
+  const target = await fixture(), installed = await persistedInstallation(target);
+  const oldLauncher = (await installed.inspect()).launcher;
+  await expect(replaceBackend(target.candidate.directory)).rejects.toMatchObject({ details: { outcome: 'restored' } });
+  expect(await installed.inspect()).toMatchObject({ selection: { current: target.previous.runtimeHash,
+    bootstrap: target.previous.runtimeHash, revision: 2 }, activation: null, launcher: oldLauncher });
+});
+
+it('leaves the confirmed selection and usable old launcher when atomic launcher replacement fails', async () => {
+  const target = await fixture(true, true), installed = await persistedInstallation(target);
+  const oldLauncher = (await installed.inspect()).launcher;
+  const rename = fs.rename.bind(fs);
+  vi.spyOn(fs, 'rename').mockImplementation(async (from, to) => {
+    if (String(to) === installed.launcher && target.complete.mock.calls.length) throw new Error('Launcher publication refused');
+    await rename(from, to);
+  });
+  await expect(replaceBackend(target.candidate.directory)).rejects.toThrow('Launcher publication refused');
+  expect(await installed.inspect()).toMatchObject({ selection: { current: target.candidate.runtimeHash,
+    bootstrap: target.candidate.runtimeHash }, activation: null, launcher: oldLauncher });
+  expect(mocks.children).toHaveLength(1);
+  expect(mocks.children[0]!.child.exitCode).toBeNull();
+  expect(mocks.replacement).not.toHaveBeenCalled();
+});
 
 it('honors a reviewed hold inside the lease before ordinary recovery or abort can dispatch', async () => {
   const target = await fixture();

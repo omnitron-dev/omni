@@ -244,8 +244,36 @@ export async function replaceBackend(directory: string, options: {
         if (compatibility?.kind === 'checksum-metadata' && guardian.migrationChecksumMetadata !== 1) {
           throw new Error('Only migration checksum metadata changed, but the running guardian cannot verify that transition. Prepare and apply a backend guardian transition with this candidate, then retry backend upgrade. No backend or application was stopped.');
         }
-        return await supervisor.service.upgrade({ directory, checkOnly: options.checkOnly === true,
+        let expectedRevision: number | undefined;
+        if (!options.checkOnly) {
+          const inspection = await RuntimeInstallation.openReadOnly(previous.instanceHome);
+          try {
+            const selected = inspection?.selection();
+            // A previously unconfigured installation first selects rollback.
+            expectedRevision = selected ? selected.revision + 1 : 2;
+          } finally { await inspection?.close(); }
+        }
+        const result = await supervisor.service.upgrade({ directory, checkOnly: options.checkOnly === true,
           ...(options.schemaPlan ? { schemaPlan: path.resolve(options.schemaPlan) } : {}) });
+        if (!('checked' in result)) {
+          // An older guardian can commit the proven bootstrap without refreshing
+          // its launcher. Use only that durable selection, never the requested
+          // candidate, and serialize with subsequent installation operations.
+          const installation = await RuntimeInstallation.open(previous.instanceHome);
+          if (!installation) throw new Error('Could not open the confirmed runtime installation to refresh its launcher');
+          try { await installation.exclusive(async () => {
+            const selected = installation.selection();
+            if (installation.activation() || selected?.current !== artifact.runtimeHash || selected?.revision !== expectedRevision ||
+                result.build.commit !== artifact.build.commit) {
+              throw new Error('Runtime selection changed or does not match the confirmed backend upgrade; launcher refresh is refused');
+            }
+            // writeLauncher resolves the committed bootstrap, retaining the
+            // management fallback when the selected backend has no launcher.
+            await installation.writeLauncher();
+          }); }
+          finally { await installation.close(); }
+        }
+        return result;
       }
       finally { await supervisor.close(); }
     }
@@ -346,6 +374,9 @@ export async function replaceBackend(directory: string, options: {
       // A failed candidate never replaces management, and legacy rollback
       // retains this capable bootstrap instead of losing service delegation.
       await installation.select(installedCandidate.runtimeHash, selected.revision, true);
+      // Publish the launcher only after promotion. Its atomic replacement leaves
+      // a usable old or new bootstrap if the coordinator or storage fails here.
+      await installation.writeLauncher();
       // The private checkpoint remains a receipt, never a cold-start project snapshot.
       try {
         await writePrivateRecord(path.join(executionDirectory(record.daemonConfig), 'active-backend.json'), { protocol: 1, artifact: installedCandidate, checkpoint: prepared.file });

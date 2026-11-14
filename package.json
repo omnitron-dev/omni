@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "sdk": "node apps/omnitron/bin/sdk.js",
-    "build": "turbo build && turbo build:titan",
+    "build": "turbo run build build:titan",
     "dev": "turbo dev",
     "test": "turbo test",
     "test:up": "docker compose -f docker-compose.test.yml up -d --wait",

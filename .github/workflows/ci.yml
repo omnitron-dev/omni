@@ -61,6 +61,10 @@ jobs:
         env:
           TEST_DATABASE_URL: postgresql://postgres:isolated-ci@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/postgres
         run: node test/runtime/fresh-migration-history.mjs dist
+      - name: Verify PostgreSQL backup bytes and fail-fast restore
+        env:
+          OMNITRON_TEST_POSTGRES_IMAGE: postgres:17-alpine
+        run: pnpm --filter @omnitron-dev/omnitron exec vitest run test/integration/backup-postgres.test.ts
       - name: Enforce one service identity and authorization decision across Netron transports
         working-directory: packages/titan
         run: >-

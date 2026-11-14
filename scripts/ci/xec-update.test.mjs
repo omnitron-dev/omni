@@ -3,8 +3,10 @@ import test from 'node:test';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { ReleaseCommandError } from '@xec-sh/ops/release';
 import { runUpdate } from '../../.xec/update.mjs';
+import { locateQualifiedLocalRuntime } from '../../.xec/qualification.mjs';
 import { runtimeArtifactDigest, verifyRuntimeArtifact } from '../../apps/omnitron/src/shared/runtime-artifact.ts';
 
 test('local status and recovery use the public CLI without a build or private instance reads', async () => {
@@ -138,3 +140,53 @@ test('check builds one isolated local revision and apply consumes the same verif
   await assert.rejects(runUpdate(['local-apply', '--cache-dir', cache], options), /changed after sealing/);
   assert.equal(events.filter(call => call.includes('upgrade')).length, 2);
 });
+
+test('local sync consumes the completed native release build without another build, copy or CI lookup',
+  { skip: !['linux', 'darwin'].includes(process.platform) }, async t => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'xec-qualified-local-'));
+    t.after(() => fs.rm(root, { recursive: true, force: true }));
+    const commit = 'c'.repeat(40), cache = path.join(root, 'development');
+    const identity = { schema: 1, commit, version: '0.4.8', node: process.version };
+    const key = createHash('sha256').update(JSON.stringify(identity)).digest('hex');
+    const selection = path.join(root, '.release-artifacts/qualification', commit);
+    const directory = path.join(selection, key), build = path.join(directory, 'build');
+    const runtime = path.join(build, 'runtime');
+    for (const subpath of ['dist', 'webapp/dist']) {
+      const target = path.join(runtime, 'packages/0', subpath);
+      await fs.mkdir(target, { recursive: true });
+      await fs.writeFile(path.join(target, 'BUILD.json'), JSON.stringify({ commit, dirty: false }));
+    }
+    const sha256 = await runtimeArtifactDigest(runtime);
+    const producer = { nodeVersion: process.version, platform: process.platform, arch: process.arch };
+    await fs.writeFile(path.join(runtime, 'RUNTIME.json'), JSON.stringify({ protocol: 1, ...producer, sha256 }));
+    await fs.writeFile(path.join(build, 'QUALIFICATION.json'), JSON.stringify({
+      revision: commit, independentBuilds: 2, node: process.version, sha256,
+    }));
+    await fs.writeFile(path.join(directory, 'qualification.json'), JSON.stringify({
+      identity, completedAt: '2026-11-14T10:00:00Z',
+    }));
+    await fs.writeFile(path.join(selection, 'selected.json'), JSON.stringify({ identity, key }));
+    const calls = [], progress = [];
+    const options = { root, progress: message => progress.push(message), run: async (_root, executable, args) => {
+      calls.push([executable, ...args]);
+      if (args[0] === 'rev-parse') return commit;
+      if (args[0] === 'status') return '';
+      if (args[0] === '--conditions=omnitron-source') return JSON.stringify(await verifyRuntimeArtifact(args.at(-1)));
+      assert.equal(executable, path.join(runtime, 'node'), 'only the verified native candidate may run');
+      assert.deepEqual(args.slice(-4), ['runtime', 'update', 'prepare', runtime]);
+      return '{"ok":true,"data":{"prepared":true}}';
+    } };
+    await runUpdate(['local-sync', '--cache-dir', cache], options);
+    assert.equal(calls.filter(call => call.includes('--conditions=omnitron-source')).length, 1);
+    assert(progress.includes('Using qualified local runtime ' + commit));
+    assert(!(await fs.readdir(cache)).some(entry => entry === [commit, process.platform, process.arch, process.version].join('-')));
+    assert.equal(await locateQualifiedLocalRuntime(root, commit, { ...producer, nodeVersion: 'v0.0.0' }), null);
+    assert.equal(await locateQualifiedLocalRuntime(root, commit, { ...producer, arch: 'foreign' }), null);
+    const count = calls.filter(call => call.includes('prepare')).length;
+    await fs.appendFile(path.join(runtime, 'packages/0/dist/BUILD.json'), ' ');
+    await assert.rejects(runUpdate(['local-sync', '--cache-dir', cache], options), /changed after sealing/);
+    assert.equal(calls.filter(call => call.includes('prepare')).length, count);
+    assert(!calls.some(([command]) => command === 'pnpm' || command === 'gh'), 'neither rebuilding nor CI is required');
+    await fs.writeFile(path.join(selection, 'selected.json'), JSON.stringify({ identity, key: '../elsewhere' }));
+    await assert.rejects(locateQualifiedLocalRuntime(root, commit, producer), /Invalid selected local qualification/);
+  });

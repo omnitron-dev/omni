@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { locateQualifiedLocalRuntime } from './qualification.mjs';
 
 /** The trusted checkout verifies bytes before any cached interpreter runs. */
 export async function verifyLocalRuntime(root, directory, run) {
@@ -23,9 +24,11 @@ export async function localRuntime(root, cache, run, progress) {
   const key = [revision, process.platform, process.arch, process.version].join('-');
   const destination = path.join(base, key);
   const dist = path.join(destination, 'packages/0/dist');
-  const verify = async directory => {
+  const verify = async (directory, expectedDigest) => {
     const manifest = await verifyLocalRuntime(root, directory, run);
-    if (manifest.nodeVersion !== process.version) throw Error('Cached runtime uses a different Node producer');
+    if (manifest.nodeVersion !== process.version || manifest.platform !== process.platform || manifest.arch !== process.arch)
+      throw Error('Cached runtime uses a different native producer');
+    if (expectedDigest && manifest.sha256 !== expectedDigest) throw Error('Qualified runtime digest changed');
     for (const subpath of ['dist', 'webapp/dist']) {
       const stamp = JSON.parse(await fs.readFile(path.join(directory, 'packages/0', subpath, 'BUILD.json'), 'utf8'));
       if (stamp.commit !== revision || stamp.dirty !== false) throw Error('Runtime or Console has a different source revision');
@@ -38,6 +41,14 @@ export async function localRuntime(root, cache, run, progress) {
       await verify(destination);
       progress('Using local runtime ' + revision);
       return dist;
+    }
+    const qualified = await locateQualifiedLocalRuntime(root, revision, {
+      nodeVersion: process.version, platform: process.platform, arch: process.arch,
+    });
+    if (qualified) {
+      await verify(qualified.directory, qualified.sha256);
+      progress('Using qualified local runtime ' + revision);
+      return path.join(qualified.directory, 'packages/0/dist');
     }
     const stage = await fs.mkdtemp(path.join(base, '.build-'));
     try {

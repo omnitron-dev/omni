@@ -46,7 +46,9 @@ export async function runUpdate(args, options = {}) {
   const runtime = candidate ? path.resolve(candidate, '../../..') : null;
   if (candidate && candidate !== path.join(runtime, 'packages/0/dist'))
     throw new UserError('Local updates require the sealed candidate packages/0/dist and its own CLI');
-  if (runtime) await verifyLocalRuntime(root, runtime, run);
+  // localRuntime already verifies its selected cache/build before returning.
+  // An explicit artifact needs the same trusted check, exactly once.
+  if (runtime && target) await verifyLocalRuntime(root, runtime, run);
   // Admission runs in the sealed candidate after the trusted source verifier checks its bytes.
   const executable = runtime ? path.join(runtime, 'node') : values.cli ?? 'omnitron';
   const prefix = candidate ? [path.join(candidate, 'cli/omnitron.js')] : [];

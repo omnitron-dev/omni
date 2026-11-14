@@ -58,6 +58,14 @@ Finish verifies the recorded Node producer, independent builds and native transi
 
 Source development and npm publication do not activate managed applications. Backend and resident-owner updates, application release selection and infrastructure reconciliation have separate reviewed operations. Use the [Omnitron lifecycle documentation](apps/omnitron/README.md) for those boundaries.
 
+After a committed local batch, `pnpm exec xec update local-sync` prepares the
+local runtime, Console and stack transition for review. Set `OMNITRON_DEV_CACHE`
+to a private development volume. Xec reuses a sealed local release build for the
+same commit, platform, architecture and Node producer before building again;
+reuse verifies its bytes locally and does not require a CI connection.
+Apply the returned plan with `--review <digest>` only after reviewing its scope
+and recovery instructions. Use `--status` to inspect an interrupted operation.
+
 ## Documentation
 
 [Project documentation](https://omnitron.dev) · [Repository workflow](AGENTS.md) · [Release workflow](.xec/release.mjs) · [Qualification policy](.xec/release-policy.mjs)

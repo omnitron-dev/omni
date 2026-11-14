@@ -220,3 +220,29 @@ export async function qualifiedRuntimes(root, commit) {
   if (proof.commit !== commit) throw Error('Use the clean checkout of the qualified release');
   return Object.values(proof.runtimes);
 }
+
+/** Locate completed local build evidence without requiring a CI connection.
+ * The caller must verify the returned runtime's bytes before executing it. */
+export async function locateQualifiedLocalRuntime(root, commit, producer) {
+  const selected = await optional(path.join(root, '.release-artifacts/qualification', commit, 'selected.json'));
+  if (!selected) return null;
+  if (selected.identity?.schema !== 1 || selected.identity.commit !== commit ||
+      selected.key !== digest(selected.identity)) throw Error('Invalid selected local qualification');
+  const directory = path.join(root, '.release-artifacts/qualification', commit, selected.key);
+  const state = await read(path.join(directory, 'qualification.json'));
+  if (JSON.stringify(state.identity) !== JSON.stringify(selected.identity) ||
+      !Number.isFinite(Date.parse(state.completedAt))) throw Error('Selected local qualification is incomplete');
+  if (selected.identity.node !== producer.nodeVersion) return null;
+  const output = state.buildDirectory ?? 'build';
+  if (output !== 'build' && !/^build-[a-f0-9-]{36}$/.test(output))
+    throw Error('Invalid qualified build directory');
+  const build = path.join(directory, output);
+  const proof = await read(path.join(build, 'QUALIFICATION.json'));
+  const runtime = path.join(build, 'runtime');
+  const manifest = await read(path.join(runtime, 'RUNTIME.json'));
+  if (proof.revision !== commit || proof.independentBuilds !== 2 || proof.node !== producer.nodeVersion ||
+      manifest.nodeVersion !== producer.nodeVersion || manifest.sha256 !== proof.sha256)
+    throw Error('Local runtime differs from its completed build evidence');
+  if (manifest.platform !== producer.platform || manifest.arch !== producer.arch) return null;
+  return { directory: runtime, sha256: proof.sha256 };
+}

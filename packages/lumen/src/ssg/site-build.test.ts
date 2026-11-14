@@ -28,6 +28,20 @@ afterEach(() => {
 });
 
 describe('ordinary site build', () => {
+  it.each([false, true])('canonical URLs match actual trailingSlash=%s output under the site base', async (trailingSlash) => {
+    const root = fixture();
+    const config = defineLumenConfig({
+      title: 'Site', pagesDir: 'pages', url: 'https://docs.example.test', baseUrl: '/product/', trailingSlash,
+    });
+    const { graph } = await loadCorpusFromDirectory(root, config);
+    const outDir = join(root, 'out');
+    const result = await buildStaticSite(graph, config, { rootDir: root, outDir, writeToDisk: true });
+    const html = result.pages.get('/manual/start');
+    expect(html).toContain(`<link rel="canonical" href="https://docs.example.test/product/manual/start${trailingSlash ? '/' : ''}"`);
+    expect(readFileSync(join(outDir, trailingSlash ? 'manual/start/index.html' : 'manual/start.html'), 'utf8')).toBe(html);
+    expect(readFileSync(join(outDir, 'index.html'), 'utf8')).toContain('<link rel="canonical" href="https://docs.example.test/product/"');
+  });
+
   it('distinguishes source links from the public Markdown mirrors of custom and root routes', async () => {
     const root = fixture();
     writeFileSync(join(root, 'docs/guide/index.md'), '# Next\n\n[Reader](./start.mdx)\n\n[Mirror](/manual/start.md)\n\n[Home mirror](/index.md)');

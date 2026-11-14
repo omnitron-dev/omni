@@ -169,6 +169,7 @@ export async function buildStaticSite(
   const renderPromises = documents.map(async (doc) => {
     const rawRoute = (doc.routePath ?? doc.path.replace(/\\/g, '/')).replace(/\.(pdx|md)$/, '');
     const route = rawRoute.startsWith('/') ? rawRoute : `/${rawRoute}`;
+    const canonicalRoute = config.trailingSlash && route !== '/' && !route.endsWith('.html') ? `${route}/` : route;
 
     const html = doc.ast
       ? renderDocumentHtml(doc.ast, {
@@ -183,7 +184,7 @@ export async function buildStaticSite(
               (path) => `<link rel="stylesheet" href="${escapeHtml(assetUrl(path))}" />`
             ),
             ...(config.url
-              ? [`<link rel="canonical" href="${escapeHtml(config.url.replace(/\/$/, '') + assetUrl(route))}" />`]
+              ? [`<link rel="canonical" href="${escapeHtml(config.url.replace(/\/$/, '') + assetUrl(canonicalRoute))}" />`]
               : []),
           ],
           bodyScripts: [

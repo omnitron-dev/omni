@@ -15,7 +15,8 @@ it('ordinary dev rebuilds and restarts without mutating the published generation
   mkdirSync(temporary);
   mkdirSync(join(root, 'docs'));
   // This external fixture has no ESM package boundary.
-  writeFileSync(join(root, 'lumen.config.mjs'), 'export default { title: "Development", outDir: "out" };');
+  writeFileSync(join(root, 'lumen.config.mjs'), 'export default { title: "Development", outDir: "out", baseUrl: "/manual/", trailingSlash: true };');
+  writeFileSync(join(root, 'docs/api.md'), '# API directory\n');
   const document = join(root, 'docs/index.md');
   const change = (value: string) => writeFileSync(document, `---\nslug: /\n---\n# ${value}\n`);
   change('First generation');
@@ -24,7 +25,7 @@ it('ordinary dev rebuilds and restarts without mutating the published generation
   await once(reserve, 'listening');
   const port = (reserve.address() as AddressInfo).port;
   await new Promise<void>((resolve, reject) => reserve.close(error => error ? reject(error) : resolve()));
-  const origin = `http://127.0.0.1:${port}`;
+  const origin = `http://127.0.0.1:${port}/manual`;
   const cli = new URL('../cli/index.ts', import.meta.url).href;
   let child: ChildProcess | undefined;
   let log = '';
@@ -62,6 +63,11 @@ it('ordinary dev rebuilds and restarts without mutating the published generation
   try {
     start();
     await renders('First generation');
+    const redirect = await fetch(`${origin}/docs/api?q=typed%20value`, { redirect: 'manual' });
+    expect(redirect.status).toBe(308);
+    expect(redirect.headers.get('location')).toBe('/manual/docs/api/?q=typed%20value');
+    expect(await (await fetch(`${origin}/docs/api/`)).text()).toContain('API directory');
+    expect((await fetch(`${origin}/missing`, { redirect: 'manual' })).status).toBe(404);
     // A real Vite request starts its optimizer; the on-disk inventory must stay exact.
     await fetch(`${origin}/@vite/client`);
     await until(() => readdirSync(temporary).some(name => name.startsWith('lumen-dev-')), 'Private compiler cache');

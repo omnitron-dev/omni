@@ -53,6 +53,8 @@ pnpm exec lumen serve --host 127.0.0.1 --port 4173
 
 Initialization is file-based; there is no `lumen init` command. `lumen dev` watches content for local development. Restart it after changing configuration. Both local servers refuse an occupied port rather than selecting another silently.
 
+Set `trailingSlash: true` for directory output (`docs/api/index.html`). Both local servers redirect `/docs/api` to `/docs/api/`, preserving the query and configured `baseUrl`, only when that page exists. Unknown routes remain 404s.
+
 ## Build and publication
 
 The builder validates a staged generation before publishing it. Failed rebuilds retain the last verified generation; the publisher owns output consistency and durability. Serve or deploy the resulting directory through your hosting system. `lumen serve` is a local preview server.

@@ -27,6 +27,7 @@ import {
 import { computeContentHash } from '../manifest/hashing.js';
 import { withProjectBuild } from '../ssg/server-build.js';
 import { captureGeneration, recoverGeneration } from '../ssg/publish-generation.js';
+import { directoryRouteRedirects } from '../ssg/serve-routes.js';
 import { runLumenMcpServer } from '../ai/mcp-server.js';
 import { documentRoute } from '../corpus/routes.js';
 import { createRequire } from 'node:module';
@@ -408,13 +409,15 @@ Commands:
       // Vite's default cache is inside its root. The served generation is
       // verified publication output and must never contain compiler state.
       const cacheDir = mkdtempSync(join(tmpdir(), 'lumen-dev-'));
+      const outDir = resolve(cliOpts.rootDir, cliOpts.outDir ?? config.outDir);
       const server = await createServer({
         configFile: false,
-        root: resolve(cliOpts.rootDir, cliOpts.outDir ?? config.outDir),
+        root: outDir,
+        base: config.baseUrl,
         cacheDir,
         publicDir: false,
         appType: 'mpa',
-        plugins: [{
+        plugins: [config.trailingSlash && directoryRouteRedirects(outDir), {
           name: 'lumen-dev-cache',
           // Vite awaits this hook after the optimizer and server environments
           // close, including its own SIGTERM shutdown path.
@@ -523,6 +526,7 @@ Commands:
         root: cliOpts.rootDir,
         appType: 'mpa',
         base: config.baseUrl,
+        plugins: [config.trailingSlash && directoryRouteRedirects(snapshot.directory)],
         build: { outDir: snapshot.directory },
         preview: { host: cliOpts.host, port: cliOpts.port, strictPort: true },
       }).catch(error => { snapshot.release(); throw error; });

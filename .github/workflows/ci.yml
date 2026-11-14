@@ -245,7 +245,8 @@ jobs:
       - run: pnpm build
       # Owns a unique Compose project and tears it down on success or failure.
       # Run every package's normal suite, in addition to the focused gates above.
-      - run: pnpm test:ci
+      # Packages are already built; keep forced tests without rebuilding prerequisites.
+      - run: pnpm test:ci --only
         env:
           OMNITRON_HOME: ${{ runner.temp }}/omnitron-test-home
 

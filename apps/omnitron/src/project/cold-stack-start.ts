@@ -14,6 +14,7 @@ export interface ColdBatch {
   digest: string; phase: string; direction: Direction;
   artifact: string; ownerArtifact: string; before: RuntimeUpdatePlan['before']; retiringOwner: RuntimeUpdateOwner; target: string;
   database: string | null; stacks: ReviewedRuntimeUpdateStack[]; excluded: RuntimeUpdatePlan['excluded'];
+  configuration?: string;
 }
 export interface ColdStartPermit extends RuntimeUpdateOwner {
   digest: string; direction: Direction; scope: StackExecutionScope; review: string;
@@ -30,6 +31,7 @@ export async function readColdBatch(instance: string): Promise<ColdBatch | null>
       plan?.protocol !== 1 || plan.instance !== instance) throw Error('Unverified local update receipt');
   if (plan.stackAdmissionProtocol === undefined || terminal.has(receipt.phase)) return null;
   if (plan.stackAdmissionProtocol !== 1 || !sha(plan.target?.artifact) || !sha(plan.before?.backend) || !sha(plan.before.owner) ||
+      (plan.configuration !== undefined && (!sha(plan.configuration.sha256) || plan.configuration.basis !== 'retained-next-start')) ||
       !Number.isSafeInteger(plan.before.revision) || plan.before.revision < 1 || !plan.before.ownerId ||
       !Number.isSafeInteger(plan.before.ownerPid) || plan.before.ownerPid < 1 || typeof plan.before.ownerLifetime !== 'string' ||
       compareProcessLifetimes(plan.before.ownerLifetime, plan.before.ownerLifetime) !== 'same' ||
@@ -46,13 +48,14 @@ export async function readColdBatch(instance: string): Promise<ColdBatch | null>
   if (!retiringOwner.ownerId || !Number.isSafeInteger(retiringOwner.ownerPid) || retiringOwner.ownerPid < 1 ||
       typeof retiringOwner.ownerLifetime !== 'string' || compareProcessLifetimes(retiringOwner.ownerLifetime, retiringOwner.ownerLifetime) !== 'same')
     throw Error('Cannot identify the retiring execution owner');
-  return { digest: receipt.digest, phase: receipt.phase, direction, retiringOwner, artifact: direction === 'target' ? plan.target.artifact : plan.before.backend,
+  return { digest: receipt.digest, phase: receipt.phase, direction, retiringOwner, artifact: direction === 'target' || plan.configuration ? plan.target.artifact : plan.before.backend,
     ownerArtifact: direction === 'target' ? plan.target.artifact : plan.before.owner, before: plan.before, target: plan.target.artifact,
-    database: plan.infrastructure.database, stacks: plan.stacks, excluded: plan.excluded };
+    database: plan.infrastructure.database, stacks: plan.stacks, excluded: plan.excluded,
+    ...(plan.configuration && { configuration: plan.configuration.sha256 }) };
 }
 
 /** The running backend and OS-supervised owner must both belong to the reviewed direction. */
-async function observeOwner(instance: string, batch: ColdBatch): Promise<RuntimeUpdateOwner> {
+export async function observeColdOwner(instance: string, batch: ColdBatch): Promise<RuntimeUpdateOwner> {
   const config = await readManagedRuntime(instance);
   if (!config || config.owner.artifact !== batch.ownerArtifact ||
       process.execPath !== path.join(instance, 'runtime/releases', batch.artifact, 'node')) throw Error('Serving runtime differs from the reviewed local stack admission');
@@ -77,7 +80,7 @@ async function observeOwner(instance: string, batch: ColdBatch): Promise<Runtime
 /** A remote boot may only reattach its declared remote stack. Local admissions never widen a stored policy. */
 export async function reviewedColdStart(instance: string, batch: ColdBatch, scope: StackExecutionScope,
   registration: { path: string; enabledStacks?: readonly string[] } | null, kind: 'local' | 'remote' | 'cluster' | undefined, automatic: boolean,
-  logical: StackExecutionScope, observe = observeOwner): Promise<ColdStartPermit | null> {
+  logical: StackExecutionScope, observe = observeColdOwner): Promise<ColdStartPermit | null> {
   if (!automatic || !targetPhases.has(batch.phase) && !previousPhases.has(batch.phase)) throw Error('Stack operation is held by local update ' + batch.digest);
   if (!registration?.enabledStacks?.includes(scope.stack)) throw Error('Disabled stack is excluded from the local update');
   if (kind === 'remote' || kind === 'cluster') {

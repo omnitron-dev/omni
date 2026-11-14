@@ -158,7 +158,8 @@ export async function backendSelectCommand(id: string, checkOnly = false): Promi
         const infrastructure = await coldStartPreview(artifact, config, registry.home);
         const confirmed = registry.settledSelection({ allowEmpty: true });
         if (confirmed?.revision !== selected?.revision || confirmed?.current !== selected?.current) throw new Error('Runtime selection changed during the check');
-        if (!emitJson({ checked: true, current: selected?.current ?? null, candidate: id, schemaScope: scope, coldStackAdmissionProtocol: artifact.coldStackAdmissionProtocol ?? null, infrastructure })) {
+        if (!emitJson({ checked: true, current: selected?.current ?? null, candidate: id, schemaScope: scope, coldStackAdmissionProtocol: artifact.coldStackAdmissionProtocol ?? null,
+          runtimeRestartProtocol: artifact.runtimeRestartProtocol ?? null, infrastructure })) {
           emitInfo(`Runtime selection and ${scope} migrations verified for ${id}.`);
           if ('containers' in infrastructure) {
             emitInfo(`Cold stack preview from ${infrastructure.coverage} at ${infrastructure.capturedAt}. Startup rechecks current declarations and native containers.`);
@@ -219,7 +220,7 @@ export async function backendUpgradeCommand(directory: string, options: { check?
     const target = getEnv().OMNITRON_SOCKET ?? DEFAULT_SOCKET_PATH;
     if (path.resolve(target) === path.resolve(DEFAULT_SOCKET_PATH)) {
       const installation = await RuntimeInstallation.openReadOnly();
-      try { assertOrdinaryRecoveryAllowed(installation?.activation()); }
+      try { await assertOrdinaryRecoveryAllowed(installation?.activation()); }
       finally { await installation?.close(); }
     }
     // Legacy versions have no OmnitronBackend service. Ask their stable

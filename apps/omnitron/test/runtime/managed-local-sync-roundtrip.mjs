@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
 const { runRuntimeUpdate, readRuntimeUpdateReceipt } = await tsImport('../../src/daemon/runtime-update.ts', import.meta.url);
-const { assertReviewedBoot, stackAdmissionProtocol } = await tsImport('../../src/daemon/runtime-update-host.ts', import.meta.url);
+const { assertReviewedBoot } = await tsImport('../../src/daemon/runtime-update-host.ts', import.meta.url);
 
 const actions = ['prepare', 'validateStop', 'stop', 'assertStopped', 'start', 'canRestore', 'captureForRollback', 'accept'];
 const file = fileURLToPath(import.meta.url);
@@ -101,7 +101,8 @@ export async function managedLocalSyncRoundtrip(context) {
     assert.deepEqual(checked.infrastructure.containers, []);
     checks.push(checked);
   }
-  const protocol = stackAdmissionProtocol(...checks);
+  // This fixture also exercises legacy receipts which restore each controller directly.
+  const protocol = checks.every(checked => checked.coldStackAdmissionProtocol === 1) ? 1 : undefined;
   assert.equal(protocol, 1);
   const review = await inspectSelection();
   const plan = { protocol: 1, stackAdmissionProtocol: protocol, instance, target: { artifact: candidate.id, commit: candidate.build.commit },

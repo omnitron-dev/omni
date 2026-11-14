@@ -30,7 +30,7 @@ async function main() {
       else infrastructureAdoption = await validateBackendInfrastructureInput(input);
     }
     process.stdout.write(JSON.stringify({ protocol: 1, schemaExpansionProtocol: 1,
-      coldStackAdmissionProtocol: 1, coldInfrastructureProtocol: 1, ...(coldInfrastructure && { coldInfrastructure }),
+      coldStackAdmissionProtocol: 1, runtimeRestartProtocol: 1, coldInfrastructureProtocol: 1, ...(coldInfrastructure && { coldInfrastructure }),
       infrastructureAdoptionProtocol: 1, ...(infrastructureAdoption && { infrastructureAdoption }),
       executionRequirements: REQUIRED_OWNER_CAPABILITIES, build: OWN_BUILD }) + '\n');
     return;

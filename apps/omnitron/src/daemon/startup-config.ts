@@ -5,6 +5,18 @@ import { readSavedDaemonConfig, savedDaemonOverrides, ensurePersistedJwtSecret }
 
 /** Resolve the registered ecosystem consistently for cold starts and explicit reloads. */
 export async function loadStartupEcosystem(cwd: string) {
+  const { OMNITRON_HOME } = await import('../config/defaults.js');
+  const { readColdBatch } = await import('../project/cold-stack-start.js');
+  const batch = await readColdBatch(OMNITRON_HOME);
+  if (batch?.configuration) {
+    const { readRestartConfiguration } = await import('../project/runtime-restart.js');
+    return (await readRestartConfiguration(OMNITRON_HOME, batch.configuration)).watchConfig;
+  }
+  return loadRegisteredStartupEcosystem(cwd);
+}
+
+/** The input an older resident owner reads before accepting its controller. */
+export async function loadRegisteredStartupEcosystem(cwd: string) {
   const registry = ProjectRegistry.open();
   const detected = registry.autoDetect(cwd);
   const projectName = detected?.name ?? registry.list()[0]?.name;

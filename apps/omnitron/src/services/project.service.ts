@@ -1,4 +1,5 @@
 import { readColdBatch, reviewedColdStart, claimColdStart, type ColdStartPermit } from '../project/cold-stack-start.js';
+import { readRestartConfiguration, restartLaunchIntent, type RuntimeRestartConfiguration, type RuntimeRestartStack } from '../project/runtime-restart.js';
 import { readProjectStacks, resolveProjectStacks } from '../config/project-stacks.js';
 import { assertApplicationInstances } from '../config/define-ecosystem.js';
 import { readSavedDaemonConfig } from '../config/saved.js';
@@ -311,6 +312,7 @@ export class ProjectService extends EventEmitter {
   ): Awaited<ReturnType<ProjectService['prepareHandoff']>> {
     return structuredClone({
       projects: [...this.configRegistry], infrastructure,
+      ...(this.retainedConfiguration && { restartConfiguration: this.retainedConfiguration.digest }),
       bootstrapTopology: [...this.bootstrapTopology],
       resumeBackoff: [...this.resumeBackoff], reconciling,
       stacks: [...this.stackStates].map(([key, { infraService: _infra, ...state }]) => [key, state] as [string, Omit<StackRuntimeState, 'infraService'>]),
@@ -319,6 +321,7 @@ export class ProjectService extends EventEmitter {
 
   /** Capture controllers' bookkeeping, retaining native application ownership in the execution host. */
   async prepareHandoff(): Promise<{
+    restartConfiguration?: string;
     bootstrapTopology?: Array<[string, Pick<IAppDefinition, 'requires' | 'omnitronConfig'>]>;
     projects: Array<[string, LoadedProject]>;
     stacks: Array<[string, Omit<StackRuntimeState, 'infraService'>]>;
@@ -348,6 +351,10 @@ export class ProjectService extends EventEmitter {
 
   async adoptHandoff(snapshot: Awaited<ReturnType<ProjectService['prepareHandoff']>>): Promise<void> {
     if (this.stackStates.size) throw new Error('Project runtime is not empty before adoption');
+    if (snapshot.restartConfiguration) {
+      const value = await readRestartConfiguration(path.dirname(path.dirname(this.daemonStateStore.dbPath)), snapshot.restartConfiguration);
+      this.retainedConfiguration = { digest: snapshot.restartConfiguration, value };
+    }
     for (const [name, project] of snapshot.projects) {
       const registered = this.registry.get(name);
       if (!registered) throw new Error(`Project disappeared during backend transfer: ${name}`);
@@ -368,6 +375,7 @@ export class ProjectService extends EventEmitter {
   private readonly bootstrapTopology = new Map<string, Pick<IAppDefinition, 'requires' | 'omnitronConfig'>>();
   private readonly bootstrapMetadata: BootstrapMetadataStore;
   private readonly configRegistry = new Map<string, LoadedProject>();
+  private retainedConfiguration?: { digest: string; value: RuntimeRestartConfiguration };
   private readonly stackStates = new Map<string, StackRuntimeState>();
   private readonly infraManager: StackInfrastructureManager;
   private readonly nodeStackStop: NodeStackStop;
@@ -1570,6 +1578,77 @@ export class ProjectService extends EventEmitter {
     if (await this.readColdBatch()) throw Error('Stack lifecycle is held by the local platform update');
   }
 
+  /** Used only by private local runtime preparation; ordinary deployment keeps
+   * source admission. Every recorded entry must match the owner's next start. */
+  async captureRuntimeRestart(scopes: readonly StackExecutionScope[]): Promise<Pick<RuntimeRestartConfiguration, 'projects' | 'stacks'>> {
+    this.captureRecoveryState();
+    await this.orchestrator.refreshObservation?.();
+    const projects = structuredClone([...this.configRegistry]);
+    for (const [name, loaded] of projects) loaded.config.stacks = structuredClone(this.resolveStacks(loaded.config, name));
+    const stacks: RuntimeRestartStack[] = [];
+    for (const scope of scopes) {
+      const registration = this.registry.get(scope.project), config = this.getLoadedConfig(scope.project);
+      const definition = config && this.resolveStacks(config, scope.project)[scope.stack];
+      if (!registration || !config || definition?.type !== 'local' || definition.managedOrigin ||
+          !registration.enabledStacks?.includes(scope.stack)) throw Error('Runtime restart requires an enabled, independently owned local stack');
+      const selection = this.localSelection(scope.project, scope.stack).read().release;
+      const entries = await this.launchEntries(scope.project, scope.stack, definition, config);
+      // The full installed payload was just verified. Retain its captured
+      // declarations and original review identity across owner-bound relocation.
+      const previous = this.retainedConfiguration?.value.stacks.find(value => value.project === scope.project && value.stack === scope.stack);
+      const retainedPayload = previous?.selection && isDeepStrictEqual(previous.selection, selection) &&
+        isDeepStrictEqual(entries.map(restartLaunchIntent), previous.entries.map(restartLaunchIntent)) ? previous : undefined;
+      const declarations = retainedPayload ? new Map(retainedPayload.declarations) : this.preservationDefinitions(scope.project, scope.stack, entries);
+      const environment = await this.stackEnvFor(scope.project, scope.stack, definition, entries.map(entry => entry.name));
+      const build = this.stackEntryBuilder(scope.project, scope.stack, definition, config, declarations, environment);
+      const launches = entries.map(entry => {
+        const expected = build(entry), actual = this.orchestrator.getHandle(expected.name)?.entry;
+        if (!actual || !isDeepStrictEqual(restartLaunchIntent(actual), restartLaunchIntent(expected)))
+          throw Error('Retained next-start definition differs from the effective configuration for ' + expected.name);
+        return structuredClone(actual);
+      });
+      const retained: RuntimeRestartStack = { ...scope, path: registration.path, registeredAt: registration.registeredAt,
+        definition: structuredClone(definition), selection: structuredClone(selection), environment: structuredClone(environment),
+        declarations: structuredClone([...declarations]), entries: structuredClone(retainedPayload?.entries ?? entries), launches,
+        review: { protocol: 1, ...scope, infrastructure: 'preserve', checkedAt: '', digest: null, targets: [], deferred: [] } };
+      retained.review = await this.reviewStackStartIntent(scope.project, scope.stack, { infrastructure: 'preserve' }, retained);
+      if (!retained.review.digest) throw Error('Retained launch and infrastructure cannot be verified for ' + scope.project + '/' + scope.stack);
+      // A timestamp is not part of restart authority and must not invalidate a
+      // second preparation of the same private configuration.
+      retained.review.checkedAt = '';
+      stacks.push(retained);
+    }
+    this.captureRecoveryState();
+    return { projects, stacks };
+  }
+
+  private async retainedRestartConfiguration(): Promise<RuntimeRestartConfiguration | null> {
+    const batch = await this.readColdBatch();
+    if (!batch?.configuration) return null;
+    if (this.retainedConfiguration?.digest !== batch.configuration) {
+      const value = await readRestartConfiguration(path.dirname(path.dirname(this.daemonStateStore.dbPath)), batch.configuration);
+      if (value.registryDigest !== this.recoveryRegistryDigest()) throw Error('Project registrations differ from the retained runtime configuration');
+      this.retainedConfiguration = { digest: batch.configuration, value };
+      for (const [name, loaded] of value.projects) this.configRegistry.set(name, structuredClone(loaded));
+    }
+    if (this.retainedConfiguration.value.registryDigest !== this.recoveryRegistryDigest())
+      throw Error('Project registrations differ from the retained runtime configuration');
+    return this.retainedConfiguration.value;
+  }
+
+  private async retainedRelease(project: string, stack: string, definition: IStackConfig, retained: RuntimeRestartStack): Promise<LoadedRelease | null> {
+    const registration = this.registry.get(project);
+    if (!registration || registration.path !== retained.path || registration.registeredAt !== retained.registeredAt ||
+        retained.project !== project || retained.stack !== stack || !isDeepStrictEqual(definition, retained.definition) ||
+        !isDeepStrictEqual(this.localSelection(project, stack).read().release, retained.selection))
+      throw Error('Retained restart registration, definition or release selection changed');
+    if (!retained.selection) return null;
+    const { loadRelease } = await import('../release/load.js');
+    const release = await loadRelease(retained.selection.id, await this.releaseStore());
+    if (release.manifestSha256 !== retained.selection.manifestSha256) throw Error('Retained release manifest changed');
+    return release;
+  }
+
   private infrastructurePolicyKey(project: string, stack: string): string {
     const registration = this.registry.get(project);
     if (!registration?.registeredAt) throw Error('Infrastructure authority requires a project registration');
@@ -1611,6 +1690,10 @@ export class ProjectService extends EventEmitter {
 
   /** Shared lifecycle preflight. No release installation, bootstrap import, provisioning or database effects. */
   async reviewStackStart(project: string, stackName: string, options: StackStartOptions = {}): Promise<StackStartReview> {
+    return this.reviewStackStartIntent(project, stackName, options);
+  }
+
+  private async reviewStackStartIntent(project: string, stackName: string, options: StackStartOptions = {}, retained?: RuntimeRestartStack, prepare = false): Promise<StackStartReview> {
     if (options.infrastructure !== undefined && options.infrastructure !== 'preserve') throw Error('Start review requires infrastructure=preserve');
     if (options.workingTree && options.release) throw Error('Select either a release or the working tree');
     const report: StackStartReview = { protocol: 1, project, stack: stackName, infrastructure: 'preserve', checkedAt: new Date().toISOString(),
@@ -1627,15 +1710,18 @@ export class ProjectService extends EventEmitter {
       const id = options.release ?? (options.workingTree ? undefined : prior?.id);
       if (local) candidate = id;
       report.selection = id ? { release: id } : { workingTree: true };
-      const release = id ? await this.admitRelease(project, stackName, stack, config, id, 'check') : null;
+      const release = retained ? await this.retainedRelease(project, stackName, stack, retained)
+        : id ? await this.admitRelease(project, stackName, stack, config, id, 'check') : null;
       if (!release && stack.release?.mode === 'required') throw Error('A verified release is required');
       if (release && prior && prior.id === id && prior.manifestSha256 !== release.manifestSha256) throw Error('Selected release changed');
-      const installation = local && release ? await this.installedRelease(project, stackName, stack, config, release, false) : undefined;
+      const installation = local && release ? await this.installedRelease(project, stackName, stack, config, release, prepare, undefined, undefined, undefined, retained) : undefined;
       const entries = installation?.entries ?? this.resolveStackApps(stack, config);
+      if (retained && !isDeepStrictEqual(entries.map(restartLaunchIntent), retained.entries.map(restartLaunchIntent)))
+        throw Error('Prepared release entries differ from the retained configuration');
       for (const entry of entries) assertApplicationInstances(entry);
       resolveStartupOrder(entries);
-      const definitions = release?.remoteDefinitions ?? this.preservationDefinitions(project, stackName, entries);
-      const environment = await this.stackEnvFor(project, stackName, stack, entries.map(entry => entry.name));
+      const definitions = retained ? new Map(retained.declarations) : (release as AdmittedRelease | null)?.remoteDefinitions ?? this.preservationDefinitions(project, stackName, entries);
+      const environment = retained?.environment ?? await this.stackEnvFor(project, stackName, stack, entries.map(entry => entry.name));
       const effective = mergeInferredInfrastructure(buildInfraFromRequirements(requirementsFromDefinitions(definitions)),
         installation?.infrastructure ?? mergeInfrastructure(config, stack));
       const normalized = normalizeInfraConfig(effective ?? {}, createDefaultRegistry());
@@ -1663,7 +1749,7 @@ export class ProjectService extends EventEmitter {
       }) : [];
       if (report.targets.length && report.targets.every(target => target.infrastructure?.digest)) report.digest = stackDefinitionFingerprint([
         'omnitron/stack-start/preserve/v1', { project, stack: stackName }, this.registry.get(project)!.registeredAt,
-        stack, entries, [...definitions], environment, release?.manifestSha256 ?? null, launch,
+        stack, retained?.entries ?? entries, [...definitions], environment, release?.manifestSha256 ?? null, launch,
         report.targets.map(target => [target.node, target.infrastructure!.digest]),
       ]);
     } catch (error) {
@@ -1708,7 +1794,9 @@ export class ProjectService extends EventEmitter {
     const review = cold?.review ?? opts?.review ?? (mode === 'preserve' ? policy?.review : undefined);
     if (mode === 'preserve' && (!review || !/^[a-f0-9]{64}$/.test(review))) throw Error('Preserved infrastructure requires a successful stack start review; inspect --dry-run --infrastructure preserve');
     if (opts?.review && mode !== 'preserve') throw Error('A preservation review cannot authorize reconciliation');
-    const infrastructure = { mode, review: review ?? undefined, explicitReconcile: opts?.infrastructure === 'reconcile', ...(cold && { cold }) } as const;
+    const retained = cold ? (await this.retainedRestartConfiguration())?.stacks.find(value => value.project === projectName && value.stack === stackName) : undefined;
+    if (cold && batch?.configuration && !retained) throw Error('Stack has no retained restart configuration');
+    const infrastructure = { mode, review: review ?? undefined, explicitReconcile: opts?.infrastructure === 'reconcile', ...(cold && { cold }), ...(retained && { retained }) } as const;
     const automatic = opts?.source === 'boot' || opts?.source === 'auto-resume';
     const selection = JSON.stringify([opts?.release, opts?.workingTree === true, opts?.reinstall === true, infrastructure, automatic]);
     const running = this.startsInFlight.get(inFlightKey);
@@ -1770,7 +1858,7 @@ export class ProjectService extends EventEmitter {
     releaseId?: string,
     reinstall = false,
     workingTree = false,
-    infrastructure?: { mode: 'reconcile' | 'preserve'; review: string | undefined; explicitReconcile: boolean; cold?: ColdStartPermit },
+    infrastructure?: { mode: 'reconcile' | 'preserve'; review: string | undefined; explicitReconcile: boolean; cold?: ColdStartPermit; retained?: RuntimeRestartStack },
   ): Promise<IStackInfo> {
     const known: StackStartKnown = { attach: false };
     try {
@@ -1806,7 +1894,7 @@ export class ProjectService extends EventEmitter {
     known: StackStartKnown,
     reinstall = false,
     workingTree = false,
-    infrastructure?: { mode: 'reconcile' | 'preserve'; review: string | undefined; explicitReconcile: boolean; cold?: ColdStartPermit },
+    infrastructure?: { mode: 'reconcile' | 'preserve'; review: string | undefined; explicitReconcile: boolean; cold?: ColdStartPermit; retained?: RuntimeRestartStack },
   ): Promise<IStackInfo> {
     const config = infrastructure?.mode === 'preserve' ? this.getLoadedConfig(projectName) : await this.loadProjectConfig(projectName);
     if (!config) throw Error('Project configuration must be loaded before preservation');
@@ -1827,14 +1915,15 @@ export class ProjectService extends EventEmitter {
 
     let preservation: StackStartReview | undefined;
     if (infrastructure?.mode === 'preserve') {
-      preservation = await this.reviewStackStart(projectName, stackName, { infrastructure: 'preserve', ...(releaseId && { release: releaseId }), ...(workingTree && { workingTree: true }) });
+      if (infrastructure.cold && infrastructure.retained) claimColdStart(this.daemonStateStore, infrastructure.cold);
+      preservation = await this.reviewStackStartIntent(projectName, stackName, { infrastructure: 'preserve', ...(releaseId && { release: releaseId }), ...(workingTree && { workingTree: true }) }, infrastructure.retained, Boolean(infrastructure.cold && infrastructure.retained));
       if (!preservation.digest || preservation.digest !== infrastructure.review) throw Error('Stack launch or native infrastructure changed since review; no startup effects were admitted');
       if (infrastructure.cold) {
         // A review can take time. Losing the persisted direction before the first effect revokes authority.
         const intent = await this.readColdBatch();
         if (!intent || intent.digest !== infrastructure.cold.digest || intent.direction !== infrastructure.cold.direction ||
           !['starting', 'verifying', 'restoring'].includes(intent.phase)) throw Error('The local update changed during stack start review');
-        claimColdStart(this.daemonStateStore, infrastructure.cold);
+        if (!infrastructure.retained) claimColdStart(this.daemonStateStore, infrastructure.cold);
       } else this.setInfrastructurePolicy(projectName, stackName, preservation.digest);
     }
 
@@ -1849,7 +1938,9 @@ export class ProjectService extends EventEmitter {
     if (requested) {
       known.release = requested;
       if (this.receiveRelease && releaseId && source === 'operator') await this.fetchMissingRelease(releaseId);
-      release = await this.admitRelease(projectName, stackName, stackConfig, config, requested);
+      release = infrastructure?.retained ? await this.retainedRelease(projectName, stackName, stackConfig, infrastructure.retained)
+        : await this.admitRelease(projectName, stackName, stackConfig, config, requested);
+      if (!release) throw Error('Retained restart has lost its selected release');
       if (prior?.release?.id === requested && prior.release.manifestSha256 !== release.manifestSha256)
         throw new Error('The selected release manifest changed on disk; restore its original bytes');
     } else if (stackConfig.release?.mode === 'required') {
@@ -1938,8 +2029,10 @@ export class ProjectService extends EventEmitter {
     if (mounted.length && (!local || !release || !ownsStackInfrastructure(stackConfig)))
       throw Error('Artifact volumes require a selected release on an independently owned local stack');
     const installation = mounted.length && release
-      ? await this.installedRelease(projectName, stackName, stackConfig, config, release, !preservation) : undefined;
-    const entries = installation?.entries ?? (local && release ? await this.installedEntries(projectName, stackName, stackConfig, config, release, !preservation) : undefined);
+      ? await this.installedRelease(projectName, stackName, stackConfig, config, release, !preservation, undefined, undefined, undefined, infrastructure?.retained) : undefined;
+    const entries = installation?.entries ?? (local && release ? infrastructure?.retained
+      ? (await this.installedRelease(projectName, stackName, stackConfig, config, release, !preservation, undefined, undefined, undefined, infrastructure.retained)).entries
+      : await this.installedEntries(projectName, stackName, stackConfig, config, release, !preservation) : undefined);
     let localMembershipChanged = false;
     if (local) {
       const target = entries ?? this.resolveStackApps(stackConfig, config);
@@ -2039,10 +2132,10 @@ export class ProjectService extends EventEmitter {
           installation ? async () => {
             const plan = await this.checkLocalOwner(projectName, stackName, target, changing);
             if (changing && plan.phase !== 'stopped') throw new LocalReleaseStopRequired('Artifact volume selection requires the owner stop fence');
-            return (await this.installedRelease(projectName, stackName, stackConfig, config, release!, false)).infrastructure;
-          } : undefined, preservation, startMode);
+            return (await this.installedRelease(projectName, stackName, stackConfig, config, release!, false, undefined, undefined, undefined, infrastructure?.retained)).infrastructure;
+          } : undefined, preservation, startMode, infrastructure?.retained);
         } else {
-          await this.startLocalStack(projectName, stackName, stackConfig, config, undefined, async () => { await enable(); }, undefined, undefined, preservation, startMode);
+          await this.startLocalStack(projectName, stackName, stackConfig, config, undefined, async () => { await enable(); }, undefined, undefined, preservation, startMode, infrastructure?.retained);
         }
       } else {
         this.rememberStackTargets(projectName, stackName, stackConfig, config);
@@ -3587,6 +3680,12 @@ export class ProjectService extends EventEmitter {
   // ===========================================================================
 
   async loadProjectConfig(projectName: string): Promise<IEcosystemConfig> {
+    const retained = await this.retainedRestartConfiguration();
+    if (retained) {
+      const loaded = this.configRegistry.get(projectName);
+      if (!loaded) throw Error('Project is absent from the retained runtime configuration');
+      return loaded.config;
+    }
     const project = this.registry.get(projectName);
     if (!project) throw new Error(`Project '${projectName}' not found`);
 
@@ -3597,6 +3696,8 @@ export class ProjectService extends EventEmitter {
     if (!registration || registration.path !== project.path || registration.registeredAt !== project.registeredAt)
       throw new Error('Project registration changed while loading configuration');
     const current = this.configRegistry.get(projectName);
+    // An explicit reload is the boundary back to mutable project declarations.
+    delete this.retainedConfiguration;
     if (current && isDeepStrictEqual(current.config, config)) return current.config;
     if (this.ownershipFrozen || current !== before)
       throw new RecoveryBusyError('Project ownership or cached configuration changed while loading; retry on the current backend');
@@ -3868,6 +3969,7 @@ export class ProjectService extends EventEmitter {
     verifyArtifactInfrastructure?: () => Promise<InfrastructureConfig | undefined>,
     preservation?: StackStartReview,
     startMode: InfrastructureStartMode = 'start',
+    retained?: RuntimeRestartStack,
   ): Promise<void> {
     const ownsInfrastructure = ownsStackInfrastructure(stackConfig);
     const stateKey = `${projectName}/${stackName}`;
@@ -3879,9 +3981,9 @@ export class ProjectService extends EventEmitter {
     // What the stack gives its apps, vault references resolved — now, before
     // anything is provisioned: a key the vault does not hold refuses the
     // start here (project/stack-env.ts).
-    const stackEnv = await this.stackEnvFor(projectName, stackName, stackConfig, appEntries.map((e) => e.name));
+    const stackEnv = retained?.environment ?? await this.stackEnvFor(projectName, stackName, stackConfig, appEntries.map((e) => e.name));
     const project = this.registry.get(projectName);
-    const appDefinitions = preservation ? this.preservationDefinitions(projectName, stackName, appEntries)
+    const appDefinitions = retained ? new Map(retained.declarations) : preservation ? this.preservationDefinitions(projectName, stackName, appEntries)
       : await this.loadAppDefinitions(projectName, stackConfig, ecosystemConfig, appEntries);
 
     // 2. Provision per-stack infrastructure (built-in + app-declared services)
@@ -3896,7 +3998,7 @@ export class ProjectService extends EventEmitter {
       verifyArtifactInfrastructure ? await verifyArtifactInfrastructure() : mergeInfrastructure(ecosystemConfig, stackConfig),
     ) : undefined;
     if (preservation) {
-      const current = await this.reviewStackStart(projectName, stackName, { infrastructure: 'preserve', ...preservation.selection });
+      const current = await this.reviewStackStartIntent(projectName, stackName, { infrastructure: 'preserve', ...preservation.selection }, retained);
       if (!current.digest || current.digest !== preservation.digest) throw Error('Launch, release or native infrastructure changed immediately before start');
     }
     // Refuse missing/tampered migrators before creating or changing infrastructure.
@@ -3974,7 +4076,16 @@ export class ProjectService extends EventEmitter {
 
     // Resolve once for both migrations and application startup. Inferred service
     // requirements are not permission to connect to a database or run migrations.
-    const appConfigBuilder = this.stackEntryBuilder(projectName, stackName, stackConfig, ecosystemConfig, appDefinitions, stackEnv);
+    const build = this.stackEntryBuilder(projectName, stackName, stackConfig, ecosystemConfig, appDefinitions, stackEnv);
+    const appConfigBuilder = (entry: IEcosystemAppEntry) => {
+      const result = build(entry);
+      if (retained) {
+        const expected = retained.launches.find(value => value.name === result.name);
+        if (!expected || !isDeepStrictEqual(restartLaunchIntent(result), restartLaunchIntent(expected)))
+          throw Error('Launch differs from the retained next-start intent for ' + result.name);
+      }
+      return result;
+    };
     if (effectiveInfra && project && !preservation) {
       await this.runStackMigrations(projectName, stackName, this.infraManager.getNormalizedServices(projectName, stackName) ?? {}, appEntries, project.path, appConfigBuilder, verifyMigrations);
     }
@@ -5246,6 +5357,8 @@ export class ProjectService extends EventEmitter {
    * No implicit fallbacks — stacks must be created explicitly.
    */
   private resolveStacks(config: IEcosystemConfig, project?: string | ISeedProject): Record<string, IStackConfig> {
+    if (typeof project === 'string' && this.retainedConfiguration?.value.projects.some(([name, loaded]) => name === project &&
+      isDeepStrictEqual(loaded.config, config))) return config.stacks ?? {};
     if (!project) return config.stacks ?? {};
     if (typeof project !== 'string') return resolveProjectStacks(config, project.path, project.name);
     const directory = path.dirname(this.getUserStacksPath(project));
@@ -5448,14 +5561,14 @@ export class ProjectService extends EventEmitter {
     return (await this.installedRelease(project, stack, definition, config, release, prepare, requiredApps, requiredFiles)).entries;
   }
 
-  private async installedRelease(project: string, stack: string, definition: IStackConfig, config: IEcosystemConfig, release: LoadedRelease, prepare = false, requiredApps?: readonly string[], requiredFiles?: MigrationRequiredFiles, admittedOwner?: ApplicationRuntime) {
+  private async installedRelease(project: string, stack: string, definition: IStackConfig, config: IEcosystemConfig, release: LoadedRelease, prepare = false, requiredApps?: readonly string[], requiredFiles?: MigrationRequiredFiles, admittedOwner?: ApplicationRuntime, retained?: RuntimeRestartStack) {
     const root = this.registry.get(project)?.path;
     if (!root) throw new Error('Project is not registered');
     const { inspectLocalReleaseInstallation, inspectLocalReleasePayloads } = await import('../release/local-installation.js');
     const stackEntries = this.resolveStackApps(definition, config);
     // Validate the complete stack before narrowing executable verification to
     // requested executable owners. Other applications still own their declared environment.
-    const env = await this.stackEnvFor(project, stack, definition, stackEntries.map(entry => entry.name));
+    const env = retained?.environment ?? await this.stackEnvFor(project, stack, definition, stackEntries.map(entry => entry.name));
     const configured = stackEntries.filter(entry => !requiredApps || requiredApps.includes(entry.name));
     const entries = configured.map(entry => ({
       ...entry, env: { ...entry.env, ...env[entry.name] },

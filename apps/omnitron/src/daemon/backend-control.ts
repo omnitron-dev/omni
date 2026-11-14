@@ -28,9 +28,18 @@ export class BackendControlService {
   @Public({ auth: { roles: ADMIN_ROLES } })
   async status() {
     return { pid: process.pid, runtime: this.daemon.backendRuntimeStatus(), retired: this.retired,
+      runtimeRestartProtocol: 1,
       instanceHome: OMNITRON_HOME, schemaScope: backendSchemaScope(this.daemon.daemonConfig),
       ticketId: this.prepared?.state.ticket.id ?? null, build: OWN_BUILD,
       entry: fileURLToPath(new URL('./daemon-entry.js', import.meta.url)) };
+  }
+
+  /** Private next-start review; unlike prepare(), this does not drain or freeze ownership. */
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async runtimeRestart(data: { stacks: Array<{ project: string; stack: string }> }) {
+    if (this.preparing || this.prepared || this.retired || !Array.isArray(data.stacks) || data.stacks.length > 1000)
+      throw Error('A stable local stack inventory is required for runtime restart review');
+    return this.daemon.captureRuntimeRestart(data.stacks);
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })

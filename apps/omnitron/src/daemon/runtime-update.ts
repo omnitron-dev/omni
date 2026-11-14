@@ -21,6 +21,8 @@ export interface RuntimeUpdateActions {
   canRestore(previous: RuntimeUpdateIdentity): Promise<boolean>;
   captureForRollback(plan: RuntimeUpdatePlan): Promise<RuntimeUpdateIdentity>;
   start(destination: RuntimeUpdateReference | RuntimeUpdatePlan['before'], plan: RuntimeUpdatePlan): Promise<void>;
+  /** Finish only observed restoration stages; never starts a second owner or stack attempt. */
+  completeRestore?(plan: RuntimeUpdatePlan): Promise<void>;
   accept(plan: RuntimeUpdatePlan, direction: 'target' | 'previous', inspectOnly?: boolean): Promise<RuntimeUpdateAcceptance>;
 }
 
@@ -77,6 +79,7 @@ export async function runRuntimeUpdate({ actions, directory, operation, digest: 
       const plan = record.plan;
       try {
         if (record.restoreAttempted || record.phase === 'restoring') {
+          await actions.completeRestore?.(plan);
           const acceptance = await actions.accept(plan, 'previous', true);
           return await save('rolled-back', { acceptance });
         }

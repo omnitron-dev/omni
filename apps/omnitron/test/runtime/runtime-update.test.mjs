@@ -7,7 +7,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { tsImport } from 'tsx/esm/api';
 const { runRuntimeUpdate, readRuntimeUpdateReceipt } = await tsImport('../../src/daemon/runtime-update.ts', import.meta.url);
-const { assertLocalIdle, assertReviewedBoot, assertSameSavedSelection, assertLocalServiceTargets, stackAdmissionProtocol } = await tsImport('../../src/daemon/runtime-update-host.ts', import.meta.url);
+const { assertLocalIdle, assertReviewedBoot, assertSameSavedSelection, assertLocalServiceTargets } = await tsImport('../../src/daemon/runtime-update-host.ts', import.meta.url);
 import { BACKEND_ACTIVITY_COUNTERS } from '../../src/shared/dto/backend.ts';
 
 test('only boots with the exact native admission and unchanged desired state', () => {
@@ -19,15 +19,12 @@ test('only boots with the exact native admission and unchanged desired state', (
   }
 });
 
-test('one-shot admission requires both actual runtimes and preserves native service and boot policy scope', () => {
-  const supported = { coldStackAdmissionProtocol: 1 };
+test('one-shot admission requires a capable restoring controller and preserves native service and boot policy scope', () => {
   const digest = 'a'.repeat(64);
   const stack = { project: 'example', stack: 'dev', enabled: true, infrastructureMode: 'reconcile', infrastructureReview: null };
-  for (const [candidate, previous] of [[{}, {}], [supported, {}], [{}, supported], [supported, { coldStackAdmissionProtocol: 2 }]]) {
-    assert.throws(() => assertReviewedBoot(stack, digest, stackAdmissionProtocol(candidate, previous)), /candidate and rollback backends/);
-  }
-  const protocol = stackAdmissionProtocol(supported, supported);
-  assert.equal(protocol, 1);
+  for (const protocol of [undefined, 2])
+    assert.throws(() => assertReviewedBoot(stack, digest, protocol), /restoring controller/);
+  const protocol = 1;
   assert.doesNotThrow(() => assertReviewedBoot(stack, digest, protocol));
   for (const change of [{ enabled: false }, { infrastructureMode: 'preserve' }, { infrastructureReview: 'b'.repeat(64) }])
     assert.throws(() => assertReviewedBoot({ ...stack, ...change }, digest, protocol), /cannot prove/);
@@ -264,6 +261,7 @@ test('a lost rollback acknowledgement is inspected without a second cold start',
   const plan = planFor(directory, { pid: process.pid, generation: 'original' });
   let starts = 0;
   let restored = false;
+  let completed = false;
   let inspectOnly;
   const actions = {
     async prepare() { return plan; },
@@ -277,10 +275,17 @@ test('a lost rollback acknowledgement is inspected without a second cold start',
       restored = true;
       throw Error('restored but acknowledgement was lost');
     },
+    async completeRestore(reviewed) {
+      assert.deepEqual(reviewed, plan);
+      assert.equal(restored, true);
+      assert.equal(starts, 2);
+      completed = true;
+    },
     async accept(reviewed, direction, inspect) {
       assert.deepEqual(reviewed, plan);
       assert.equal(direction, 'previous');
       assert.equal(restored, true);
+      assert.equal(completed, true);
       inspectOnly = inspect;
       return { restored: true };
     },
@@ -292,9 +297,11 @@ test('a lost rollback acknowledgement is inspected without a second cold start',
   assert.equal(interrupted.phase, 'recovery-required');
   assert.equal(interrupted.restoreAttempted, true);
   assert.equal(starts, 2);
+  assert.equal(completed, false);
   const recovered = await runRuntimeUpdate({ actions, directory, operation: 'recover', digest: prepared.digest });
   assert.equal(recovered.phase, 'rolled-back');
   assert.equal(inspectOnly, true);
+  assert.equal(completed, true);
   assert.equal(starts, 2);
   assert.deepEqual(await readRuntimeUpdateReceipt(directory, prepared.digest), recovered);
 });

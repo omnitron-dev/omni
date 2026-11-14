@@ -67,7 +67,7 @@ Finish a reviewed batch on a macOS development machine from its clean main
 checkout. The build uses local Git, frozen pnpm dependencies and the Turbo
 cache. `OMNITRON_DEV_CACHE` selects a private build cache on the development
 volume. Xec reuses the sealed runtime for the same commit, platform and Node
-version. The build-cache lock uses the public Xec operations API in 0.11.5.
+version. The build-cache lock uses the public Xec operations API.
 Omnitron owns the local plan, process transitions and durable receipt.
 
 ```sh
@@ -96,16 +96,36 @@ remains available while the daemon is stopped. Xec status and recovery accept
 for this host operation comes from the local private instance and native user
 services. The HTTP API exposes no host-update mutation.
 
+Ordinary CLI startup resolves the selected executable from the private registry,
+manifest and physical entry-point checks without hashing the entire runtime.
+Writable installation and admission modules load only when needed.
+`InstalledRuntimeCli` is an executable selection, not an admitted
+`BackendArtifact`: install, select, service startup and handoff still require
+the full runtime digest and their applicable preflight checks.
+
 Preparation stages the candidate alongside the running installation. The plan
 names both native process owners, the serving Console, physical container IDs,
 logical project and stack names, application generations, source watches and
 verified release pins. Review the affected stacks and rollback identities with
-their operators. A change to the checkout, launch policy or process inventory
+their operators. A change to reviewed launch policy, payload or process inventory
 requires reviewing the new digest. Active work, including backups, is reported
 by the controller.
 
+Runtime-only preparation captures the serving controller's effective project
+definitions and resolved next-start environments in a private file; the public
+plan records its digest and `basis: retained-next-start`. It compares those
+definitions with the owner's current restart entries, without claiming the
+original environment of a running process. The serving and target controllers
+must advertise `runtimeRestartProtocol: 1`; an older serving controller first
+needs a verified warm backend upgrade. Ordinary release deployment keeps its
+source-closure admission checks. Updating unused project imports therefore
+does not redeploy them during this reviewed runtime restart.
+
 Application replaces the user launchd services through Omnitron. The resident
-owner restores enabled local stacks with their configured launch selections.
+owner restores enabled local stacks from the private reviewed definitions and
+their saved launch selections. The existing release installer verifies and
+stages the same payload for the replacement owner's runtime, preserving
+operational working directories, environment and readiness policy.
 Acceptance checks new generations, release receipts, the served Console
 `BUILD.json` and retained infrastructure. An accepted digest can be checked
 again without restarting a stack. The instance keeps the previous receipt when
@@ -118,18 +138,21 @@ exact receipt with `omnitron runtime update recover <plan-sha256>`. The Xec
 equivalent is `pnpm exec xec update local-sync --review <plan-sha256> --rollback`.
 The receipt records the original error and any recovery failure. Once a
 restoration start has been attempted, another recovery invocation inspects
-that result and cannot launch the previous runtime again. An unproven
+that result and cannot launch the previous runtime again. For retained
+configuration, the target controller first restores the previous owner and
+applications, then restores previous backend and guardian roles through their
+ordinary warm handoffs. Recovery may finish an interrupted handoff after
+observing its committed roles. Startup defaults which an older owner cannot
+replace must still match before it is launched. An unproven
 execution owner requires inspection before a new installation can start.
 
 The automatic path requires independent supervision and retained containers.
 Preparation checks both installed binaries with `backend select <artifact> --check`.
-When both advertise `coldStackAdmissionProtocol: 1`, the plan records
-`stackAdmissionProtocol: 1`. Each replacement owner may consume the exact
+The target controller must advertise `coldStackAdmissionProtocol: 1`; it
+performs stack restoration in both directions. Each replacement owner may consume the exact
 infrastructure review once per enabled local stack in each direction. A retry
 checks the durable claim. The stack keeps its saved boot policy and its full
-release selection. With an older binary, preparation requires an already
-persisted preserve policy and matching review for every affected stack. It
-reports the first unsatisfied review before shutdown.
+release selection. Preparation reports an unsatisfied review before shutdown.
 A stack running with disabled boot intent needs its intent reconciled before
 a cold restart. A database expansion, Docker resource change or shared research
 data transition has its own Omnitron review. Developer SDK mode and an

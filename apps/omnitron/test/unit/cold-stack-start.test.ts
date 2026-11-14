@@ -82,6 +82,20 @@ describe('one local cold admission', () => {
     expect(store.kvGetSync('lifecycle:infrastructure:runtime-tenant/dev:2026-11-13T12:00:00Z')).toBeNull();
   });
 
+  it('uses the fixed controller with the old owner for retained rollback and still requires a new native owner lifetime', async () => {
+    const plan = { ...makePlan(), configuration: { sha256: sha('e'), basis: 'retained-next-start' } };
+    await save('restoring', plan);
+    const state = await batch();
+    expect(state).toMatchObject({ direction: 'previous', artifact: plan.target.artifact, ownerArtifact: old.owner, configuration: sha('e') });
+    await expect(reviewedColdStart(home, state, scope, registered(), 'local', true, publicScope)).rejects.toThrow('Serving runtime');
+    const permit = await reviewedColdStart(home, state, scope, registered(), 'local', true, publicScope, async () => owner);
+    claimColdStart(store, permit!);
+    expect(() => claimColdStart(store, permit!)).toThrow('already attempted');
+    const invalid = { ...plan, configuration: { sha256: sha('e'), basis: 'source-fallback' } };
+    await save('restoring', invalid);
+    await expect(readColdBatch(home)).rejects.toThrow('authority');
+  });
+
   it('refuses a new owner without physical proof and prevents unrelated, disabled, unmapped and changed local scopes', async () => {
     await save('starting');
     const facts = await batch(), entry = registered(), probe = vi.fn(async () => { throw Error('unit mismatch'); });

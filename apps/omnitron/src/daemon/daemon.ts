@@ -399,6 +399,24 @@ export class OmnitronDaemon {
     finally { this.ownerAdmissionProof = undefined; }
   }
 
+  /** Read-only capture through the authenticated private controller endpoint. */
+  async captureRuntimeRestart(scopes: Array<{ project: string; stack: string }>): Promise<import('../project/runtime-restart.js').RuntimeRestartConfiguration> {
+    const { recoveryState } = await import('./recovery-state.js');
+    const token = recoveryState.token(), status = this.backendRuntimeStatus();
+    if (token === null || !this.execution || !this.app || !this.watchConfig || status.recovery?.status !== 'ready' ||
+        status.phase !== 'active' || Object.values(status.blockers).some(count => count !== 0))
+      throw Error('Runtime restart requires a current, idle recovery certificate');
+    const before = await this.execution.controlledOwnerSnapshot();
+    const projects = await this.app.container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
+    const registryDigest = projects.recoveryRegistryDigest();
+    const configuration = await projects.captureRuntimeRestart(scopes);
+    const after = await this.execution.controlledOwnerSnapshot(before.status.controller);
+    if (!recoveryState.unchanged(token) || before.inventoryDigest !== after.inventoryDigest || registryDigest !== projects.recoveryRegistryDigest())
+      throw Error('Effective configuration or application ownership changed during restart review');
+    return { protocol: 1, registryDigest, ownerId: before.status.owner.id, inventoryDigest: before.inventoryDigest,
+      watchConfig: structuredClone(this.watchConfig), ...configuration };
+  }
+
   /** Called after the initiating RPC has returned, so it is not waiting for itself. */
   async prepareBackendHandoff(candidateId: string): Promise<BackendHandoffState> {
     if (!this.execution || !this.app?.netron || !this.watchConfig) throw new Error(this.backendRuntimeStatus().reason ?? 'Backend is not ready');
@@ -512,6 +530,11 @@ export class OmnitronDaemon {
       const connection = await connectExecutionOwner(config, this.dc, createNullLogger(), options?.backendHandoff?.ticket);
       this.execution = connection.client;
       this.supervision = connection.supervision;
+      if (coldBatch?.configuration) {
+        const { observeColdOwner } = await import('../project/cold-stack-start.js');
+        await observeColdOwner(OMNITRON_HOME, coldBatch);
+        await this.execution.orchestrator.setConfig(config);
+      }
       await this.initializeRecoveryMonitor();
     } else if (options?.backendHandoff) {
       throw new Error('Backend handoff requires the resident execution owner');

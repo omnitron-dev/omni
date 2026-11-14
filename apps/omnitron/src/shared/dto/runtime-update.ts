@@ -80,6 +80,7 @@ export interface VerifiedRuntimeReference extends RuntimeUpdateReference {
 export interface RuntimeUpdateInfrastructure {
   schemaScope: 'node' | 'all';
   coldStackAdmissionProtocol?: 1;
+  runtimeRestartProtocol?: 1;
   digest: string;
   containers: Array<{ name: string; id: string }>;
   database: string | null;
@@ -93,6 +94,8 @@ export interface RuntimeUpdateWatch {
 export interface RuntimeUpdatePlan {
   protocol: 1;
   stackAdmissionProtocol?: 1;
+  /** Private effective definitions; never contains environment values in the public plan. */
+  configuration?: { sha256: string; basis: 'retained-next-start' };
   instance: string;
   target: RuntimeUpdateReference;
   before: RuntimeUpdateIdentity & { console: string | null; consoleCommit: string | null };

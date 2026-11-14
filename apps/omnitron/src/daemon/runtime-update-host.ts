@@ -6,6 +6,11 @@ import { verifyRuntimeArtifact } from '../shared/runtime-artifact.js';
 import { BACKEND_ACTIVITY_COUNTERS } from '../shared/dto/backend.js';
 import { LAUNCHD_LABEL, OWNER_LAUNCHD_LABEL } from '../commands/service-units.js';
 import { localStackInventory } from '../project/local-stack-inventory.js';
+import { readRestartConfiguration, saveRestartConfiguration, restartConfigurationDigest, restartLaunchIntent, assertRestartOwnerDefaults, type RuntimeRestartConfiguration } from '../project/runtime-restart.js';
+import { privateControlClient } from './private-control-client.js';
+import type { BackendControlService } from './backend-control.js';
+import type { BackendRpcService } from './backend.rpc-service.js';
+import type { ExecutionHostService } from './execution-host.js';
 
 import type { ReleaseCommand } from '@xec-sh/ops/release';
 import type { BuildStamp } from '../shared/build-stamp.js';
@@ -18,6 +23,7 @@ import type { RuntimeUpdateIdentity, RuntimeUpdateInfrastructure, RuntimeUpdateP
 export type RuntimeUpdateCall = <T>(argv: readonly string[], runtimeRoot?: string) => Promise<T>;
 interface ColdStartObservation {
   checked: boolean; candidate: string; schemaScope: 'node' | 'all'; coldStackAdmissionProtocol?: number | null;
+  runtimeRestartProtocol?: number | null;
   infrastructure: { coverage: string; digest: string; containers: Array<{ name: string; id: string; action: string }>; controlPlaneDatabase?: { id: string; action: string } };
 }
 
@@ -68,17 +74,13 @@ export function assertLocalIdle(status: RuntimeUpdateStatusObservation) {
   if (execution.recovery?.status !== 'ready') throw Error(execution.recovery?.reason || 'Waiting for the current recovery certificate');
 }
 
-export function stackAdmissionProtocol(candidate: { coldStackAdmissionProtocol?: number | null }, previous: { coldStackAdmissionProtocol?: number | null }): 1 | undefined {
-  return candidate.coldStackAdmissionProtocol === 1 && previous.coldStackAdmissionProtocol === 1 ? 1 : undefined;
-}
-
-// A legacy runtime must already have the exact preserve policy saved for automatic boot.
+// The controller which restores both directions must admit the exact review.
 export function assertReviewedBoot(stack: RuntimeUpdateStack, digest: string, protocol: 1 | undefined) {
   const preserved = stack.infrastructureMode === 'preserve' && stack.infrastructureReview === digest;
   const once = protocol === 1 && stack.infrastructureMode === 'reconcile' && stack.infrastructureReview === null;
   if (!stack.enabled || !hash.test(digest) || (!preserved && !once)) {
     const reason = !stack.enabled ? 'The saved stack is disabled.' : !hash.test(digest) ? 'The infrastructure review digest is invalid.' :
-      'Both candidate and rollback backends must support coldStackAdmissionProtocol@1, or the saved stack must already preserve this exact infrastructure review.';
+      'The restoring controller must support coldStackAdmissionProtocol@1, or the saved stack must already preserve this exact infrastructure review.';
     throw Error('Local restart cannot prove reviewed boot for ' + stack.project + '/' + stack.stack + '. ' + reason);
   }
 }
@@ -91,6 +93,31 @@ export function assertSameSavedSelection(prior: ReviewedRuntimeUpdateStack, now:
 export function assertLocalServiceTargets(config: ManagedRuntime | null): asserts config is ManagedRuntime {
   if (config?.scope !== 'user' || config.owner.label !== OWNER_LAUNCHD_LABEL || config.backend.label !== LAUNCHD_LABEL)
     throw Error('Local service commands address only the standard Omnitron user services');
+}
+
+/** Complete a restored owner through the existing warm role handoffs. Repeating
+ * this after a lost reply observes committed roles; it never starts an owner. */
+export async function restoreRuntimeRoles(plan: RuntimeUpdatePlan, observe: () => Promise<RuntimeUpdateIdentity>,
+  accept: () => Promise<unknown>, call: RuntimeUpdateCall): Promise<void> {
+  if (!plan.configuration) return;
+  let roles = await observe();
+  if (roles.owner !== plan.before.owner || roles.ownerId === plan.before.ownerId ||
+      ![plan.target.artifact, plan.before.backend].includes(roles.backend))
+    throw Error('Cannot complete restoration without its verified replacement owner and controller');
+  if (roles.backend === plan.target.artifact && roles.guardian === plan.target.artifact) {
+    await accept();
+    if (plan.before.backend !== plan.target.artifact) {
+      await call(['backend', 'upgrade', path.join(plan.instance, 'runtime/releases', plan.before.backend, cliDist)]);
+      roles = await observe();
+    }
+  }
+  if (roles.backend !== plan.before.backend) throw Error('Previous backend restoration is unconfirmed');
+  if (roles.guardian !== plan.before.guardian) {
+    if (roles.guardian !== plan.target.artifact) throw Error('Guardian changed outside the reviewed restoration');
+    const transition = await call<{ file: string }>(['backend', 'guardian', 'prepare', path.join(plan.instance, 'runtime/releases', plan.before.guardian, cliDist)]);
+    await call(['backend', 'guardian', 'apply', transition.file, '--check']);
+    await call(['backend', 'guardian', 'apply', transition.file]);
+  }
 }
 
 /** Native supervision and application admission share the local update authority. */
@@ -176,6 +203,41 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
       }).sort((a, b) => a.name.localeCompare(b.name));
     } finally { await client.disconnect(); }
   };
+  const retainedConfiguration = async (stacks: RuntimeUpdateStack[]): Promise<RuntimeRestartConfiguration> => {
+    const client = createDaemonClient();
+    let address: { socket: string };
+    try { address = await (await client.service<BackendRpcService>('OmnitronBackend')).controlAddress(); }
+    finally { await client.disconnect(); }
+    const control = await privateControlClient<BackendControlService>(address.socket, 'OmnitronBackendControl', 10 * 60_000);
+    try {
+      const status = await control.service.status();
+      if (status.instanceHome !== home || status.runtimeRestartProtocol !== 1)
+        throw Error('The serving controller cannot review retained next-start definitions; perform a verified warm backend upgrade before preparing an owner update');
+      return await control.service.runtimeRestart({ stacks: stacks.map(stack => stack.runtimeScope) });
+    } finally { await control.close(); }
+  };
+  const verifyPreviousOwnerDefaults = async (configuration: RuntimeRestartConfiguration) => {
+    const managed = await readManagedRuntime(home);
+    if (!managed) throw Error('Retained restart requires managed execution');
+    const { loadRegisteredStartupEcosystem } = await import('./startup-config.js');
+    assertRestartOwnerDefaults(await loadRegisteredStartupEcosystem(managed.cwd), configuration.watchConfig);
+  };
+  const verifyRetainedLaunches = async (plan: RuntimeUpdatePlan) => {
+    if (!plan.configuration) return;
+    const configuration = await readRestartConfiguration(home, plan.configuration.sha256);
+    const managed = await readManagedRuntime(home);
+    if (!managed) throw Error('Retained launch verification requires managed execution');
+    const owner = await privateControlClient<ExecutionHostService>(path.join(managed.directory, 'owner.sock'), 'OmnitronExecution');
+    try {
+      const snapshot = await owner.service.snapshot();
+      if (snapshot.status.phase !== 'active' || snapshot.status.inFlight !== 0) throw Error('Replacement owner has unsettled applications');
+      for (const stack of configuration.stacks) for (const expected of stack.launches) {
+        const actual = snapshot.apps.find(app => app.info.name === expected.name)?.entry;
+        if (!actual || !isDeepStrictEqual(restartLaunchIntent(actual), restartLaunchIntent(expected)))
+          throw Error('Application differs from the retained next-start intent: ' + expected.name);
+      }
+    } finally { await owner.close(); }
+  };
   const startReview = async (stack: RuntimeUpdateStack): Promise<{ digest: string; selection: RuntimeUpdateSelection }> => {
     const args = ['stack', 'start', stack.project, stack.stack, '--infrastructure', 'preserve'];
     const review = await call<StackStartReview>([...args, '--dry-run']);
@@ -202,7 +264,8 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
     if (!response.checked || response.candidate !== artifact || infra?.coverage !== 'certified-declarations' || !Array.isArray(infra.containers) ||
         !hash.test(infra.digest) || infra.containers.some(v => v.action !== 'retain' || !hash.test(v.id)) ||
         (infra.controlPlaneDatabase && infra.controlPlaneDatabase.action !== 'retain')) throw Error('Automatic local restart requires verified retained infrastructure; inspect backend select ' + artifact + ' --check for the proposed changes');
-    return { schemaScope: response.schemaScope, ...(response.coldStackAdmissionProtocol === 1 && { coldStackAdmissionProtocol: 1 as const }), digest: infra.digest, containers: infra.containers.map(({ name, id }) => ({ name, id })).sort((a, b) => a.name.localeCompare(b.name)),
+    return { schemaScope: response.schemaScope, ...(response.coldStackAdmissionProtocol === 1 && { coldStackAdmissionProtocol: 1 as const }),
+      ...(response.runtimeRestartProtocol === 1 && { runtimeRestartProtocol: 1 as const }), digest: infra.digest, containers: infra.containers.map(({ name, id }) => ({ name, id })).sort((a, b) => a.name.localeCompare(b.name)),
       database: infra.controlPlaneDatabase?.id ?? null };
   };
   const stopped = async (previous: RuntimeUpdateIdentity) => {
@@ -214,6 +277,54 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
   };
   const sameOwner = (a: RuntimeUpdateIdentity, b: RuntimeUpdateIdentity) => (['scope', 'ownerId', 'ownerLifetime', 'ownerPid', 'guardianPid', 'backendPid', 'revision', 'backend', 'guardian', 'owner'] as const).every(k => a[k] === b[k]);
   const healthRank = { unknown: 0, unhealthy: 1, degraded: 2, healthy: 3, absent: 0 };
+  const accept = async (plan: RuntimeUpdatePlan, direction: 'target' | 'previous', inspected = false, interim = false) => {
+    const target = direction === 'target', expect = target || interim ? plan.target.artifact : plan.before.backend;
+    const observe = async () => {
+      const status = await call<RuntimeUpdateStatusObservation>(['status']);
+      const roles = await identity(status, false);
+      if (roles.backend !== expect || roles.guardian !== (target || interim ? expect : plan.before.guardian) ||
+          roles.owner !== (target ? expect : plan.before.owner) || roles.ownerId === plan.before.ownerId) throw Error('The reviewed roles have not taken ownership');
+      const [web, stacks] = await Promise.all([consoleState(), inventory(status)]);
+      if (web.artifact !== (target && plan.before.console ? expect : plan.before.console)) throw Error('The serving Console has not reached its reviewed version');
+      if (stacks.targets.length !== plan.stacks.length || !isDeepStrictEqual(stacks.excluded, plan.excluded)) throw Error('Local stack membership differs from the plan');
+      const observed = new Map(stacks.targets.map(stack => [projectKey(stack), stack]));
+      const results = plan.stacks.map(prior => {
+        const now = observed.get(projectKey(prior));
+        if (!now || now.enabled !== prior.enabled || now.infrastructureMode !== prior.infrastructureMode || now.infrastructureReview !== prior.infrastructureReview || now.status !== 'running' || now.path !== prior.path || !isDeepStrictEqual(now.runtimeScope, prior.runtimeScope) ||
+            now.apps.length !== prior.apps.length) throw Error('Waiting for ' + projectKey(prior));
+        assertSameSavedSelection(prior, now);
+        for (const app of prior.apps) {
+          const current = now.apps.find(v => v.handleKey === app.handleKey);
+          if (current?.status !== 'online' || !current.generation || current.generation === app.generation) throw Error('Waiting for a verified new generation of ' + app.handleKey);
+          if (healthRank[current.health] < healthRank[app.health]) throw Error('Application health regressed for ' + app.handleKey + ': ' + app.health + ' -> ' + current.health);
+          if ((app.release && !isDeepStrictEqual(current.release, app.release)) || (prior.selection.kind === 'release' &&
+              (current.release?.id !== prior.selection.id || current.release?.manifestSha256 !== prior.selection.manifestSha256))) throw Error('Waiting for the running release receipt of ' + app.handleKey);
+        }
+        return { project: now.project, stack: now.stack, selection: prior.selection, apps: now.apps.map(({ handleKey, generation, health, release }) => ({ handleKey, generation, health, release })) };
+      });
+      const watching = await watches(stacks.targets);
+      if (!isDeepStrictEqual(watching, plan.watches)) throw Error('The development stack has not restored its original source watches');
+      return { backend: roles.backend, owner: roles.owner, guardian: roles.guardian, ownerId: roles.ownerId, console: web, stacks: results, watches: watching, observed };
+    };
+    if (!inspected) progress('Waiting for the serving Console and independently observed application generations');
+    const { observed, ...evidence } = await (inspected ? observe() : until('Local batch acceptance failed', observe, 15 * 60_000));
+    await verifyRetainedLaunches(plan);
+    for (const prior of plan.configuration ? [] : plan.stacks) {
+      const current = observed.get(projectKey(prior));
+      if (!current) throw Error('Stack disappeared from the accepted inventory');
+      const review = await startReview(current);
+      if (!isDeepStrictEqual(review.selection, prior.selection) || review.digest !== prior.startReview) throw Error('Launch declaration, volumes or runtime selection changed for ' + projectKey(prior));
+    }
+    const actual = await coldPreview(expect);
+    if (actual.database !== plan.infrastructure.database || !isDeepStrictEqual(actual.containers, plan.infrastructure.containers)) throw Error('Native container identities or the control-plane database changed');
+    return evidence;
+  };
+
+  const completeRestore = async (plan: RuntimeUpdatePlan) => {
+    await restoreRuntimeRoles(plan, () => until('Waiting for the restored controller',
+      async () => identity(await call<RuntimeUpdateStatusObservation>(['status'])), 10 * 60_000),
+    () => accept(plan, 'previous', false, true), call);
+  };
   return {
     async prepare(): Promise<RuntimeUpdatePlan> {
       const live = await call<RuntimeUpdateStatusObservation>(['status']);
@@ -228,18 +339,25 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
       } else candidate = await call<{ id: string; directory: string; build: BuildStamp }>(['backend', 'install', runtime]);
       if (candidate.id !== manifest.sha256 || candidate.directory !== installed(candidate.id) || !cleanBuild(candidate.build) || candidate.build.commit !== await runtimeBuildCommit(runtime, true)) throw Error('Installed candidate or Console differs from the sealed checkout');
       const infrastructure = await coldPreview(candidate.id);
-      let previous = infrastructure;
       if (before.backend !== candidate.id) {
         await assertBackendMigrationsCompatible(path.join(installed(candidate.id), cliDist), path.join(installed(before.backend), cliDist), infrastructure.schemaScope);
-        previous = await coldPreview(before.backend);
+        await coldPreview(before.backend);
       }
-      const protocol = stackAdmissionProtocol(infrastructure, previous);
-      // Discovery is live. Each dry run checks the same declarations and pinned bytes the normal start path uses.
+      if (infrastructure.runtimeRestartProtocol !== 1 || infrastructure.coldStackAdmissionProtocol !== 1)
+        throw Error('The target controller cannot restore retained next-start definitions');
+      const protocol = 1;
+      // Both directions use the target controller for application restoration.
+      // The previous backend is restored through its existing warm handoff.
+      const configuration = await retainedConfiguration(stacks.targets);
+      if (configuration.ownerId !== before.ownerId) throw Error('Retained configuration belongs to another owner');
+      await verifyPreviousOwnerDefaults(configuration);
       const targets: ReviewedRuntimeUpdateStack[] = [];
       for (const stack of stacks.targets) {
-        const review = await startReview(stack);
-        assertReviewedBoot(stack, review.digest, protocol);
-        targets.push({ ...stack, savedSelection: stack.selection, selection: review.selection, startReview: review.digest });
+        const retained = configuration.stacks.find(value => value.project === stack.runtimeScope.project && value.stack === stack.runtimeScope.stack);
+        if (!retained?.review.digest || retained.path !== stack.path) throw Error('Retained stack review is incomplete');
+        const selection: RuntimeUpdateSelection = retained.selection ? { kind: 'release', ...retained.selection } : { kind: 'working-tree' };
+        assertReviewedBoot(stack, retained.review.digest, protocol);
+        targets.push({ ...stack, savedSelection: stack.selection, selection, startReview: retained.review.digest });
       }
       const watching = await watches(stacks.targets);
       for (const id of new Set([before.backend, before.owner, before.guardian, web.artifact].filter((artifact): artifact is string => typeof artifact === 'string'))) {
@@ -247,11 +365,18 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
       }
       const after = await identity(await call<RuntimeUpdateStatusObservation>(['status']));
       if (!isDeepStrictEqual(before, after)) throw Error('Local execution changed during preparation. Inspect the current plan');
-      return { protocol: 1, ...(protocol && { stackAdmissionProtocol: protocol }), instance: home, target: { artifact: candidate.id, commit: candidate.build.commit },
+      const sha256 = await saveRestartConfiguration(home, configuration);
+      return { protocol: 1, stackAdmissionProtocol: protocol, configuration: { sha256, basis: 'retained-next-start' }, instance: home, target: { artifact: candidate.id, commit: candidate.build.commit },
         before: { ...before, console: web.artifact, consoleCommit: web.commit }, stacks: targets, excluded: stacks.excluded, watches: watching, infrastructure };
     },
     async validateStop(previous, plan) {
       if (plan) {
+        if (plan.configuration) {
+          const configuration = await retainedConfiguration(plan.stacks);
+          if (restartConfigurationDigest(configuration) !== plan.configuration.sha256)
+            throw Error('Retained next-start intent changed before shutdown');
+          await verifyPreviousOwnerDefaults(configuration);
+        }
         const infra = await coldPreview(plan.target.artifact);
         if (!isDeepStrictEqual(infra, plan.infrastructure)) throw Error('Cold-start infrastructure changed before shutdown');
       }
@@ -268,14 +393,18 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
     },
     async start(destination, plan) {
       assertLocalServiceTargets(await readManagedRuntime(home));
-      const backend = 'artifact' in destination ? destination.artifact : destination.backend, owner = 'artifact' in destination ? destination.artifact : destination.owner;
+      const restoring = !('artifact' in destination);
+      const backend = 'artifact' in destination ? destination.artifact : plan.configuration ? plan.target.artifact : destination.backend;
+      const owner = 'artifact' in destination ? destination.artifact : destination.owner;
+      if (restoring && plan.configuration)
+        await verifyPreviousOwnerDefaults(await readRestartConfiguration(home, plan.configuration.sha256));
       const selected = await call<{ selection: RuntimeSelection | null }>(['backend', 'select', backend]);
       if (selected?.selection?.current !== backend) throw Error('Native selector did not confirm the reviewed backend');
       const args = ['service', 'install', '--scope', plan.before.scope, '--owner-runtime', owner];
       await raw(backend, [...args, '--prepare']);
       await raw(backend, args);
       const guardian = 'guardian' in destination ? destination.guardian : backend;
-      if (guardian !== backend) {
+      if (guardian !== backend && !plan.configuration) {
         // Service install binds the guardian to the selected backend. Restore an independently pinned guardian through its own handoff.
         await until('Waiting for the restored controller', async () => assertLocalIdle(await call<RuntimeUpdateStatusObservation>(['status'])), 10 * 60_000);
         const transition = await call<{ file: string }>(['backend', 'guardian', 'prepare', path.join(installed(guardian), cliDist)]);
@@ -290,47 +419,9 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
         }, 5 * 60_000);
         await call(['webapp', 'start'], installed(web));
       }
+      if (restoring && plan.configuration) await completeRestore(plan);
     },
-    async accept(plan, direction, inspected = false) {
-      const target = direction === 'target', expect = target ? plan.target.artifact : plan.before.backend;
-      const observe = async () => {
-        const status = await call<RuntimeUpdateStatusObservation>(['status']);
-        const roles = await identity(status, false);
-        if (roles.backend !== expect || roles.guardian !== (target ? expect : plan.before.guardian) ||
-            roles.owner !== (target ? expect : plan.before.owner) || roles.ownerId === plan.before.ownerId) throw Error('The reviewed roles have not taken ownership');
-        const [web, stacks] = await Promise.all([consoleState(), inventory(status)]);
-        if (web.artifact !== (target && plan.before.console ? expect : plan.before.console)) throw Error('The serving Console has not reached its reviewed version');
-        if (stacks.targets.length !== plan.stacks.length || !isDeepStrictEqual(stacks.excluded, plan.excluded)) throw Error('Local stack membership differs from the plan');
-        const observed = new Map(stacks.targets.map(stack => [projectKey(stack), stack]));
-        const results = plan.stacks.map(prior => {
-          const now = observed.get(projectKey(prior));
-          if (!now || now.enabled !== prior.enabled || now.infrastructureMode !== prior.infrastructureMode || now.infrastructureReview !== prior.infrastructureReview || now.status !== 'running' || now.path !== prior.path || !isDeepStrictEqual(now.runtimeScope, prior.runtimeScope) ||
-              now.apps.length !== prior.apps.length) throw Error('Waiting for ' + projectKey(prior));
-          assertSameSavedSelection(prior, now);
-          for (const app of prior.apps) {
-            const current = now.apps.find(v => v.handleKey === app.handleKey);
-            if (current?.status !== 'online' || !current.generation || current.generation === app.generation) throw Error('Waiting for a verified new generation of ' + app.handleKey);
-            if (healthRank[current.health] < healthRank[app.health]) throw Error('Application health regressed for ' + app.handleKey + ': ' + app.health + ' -> ' + current.health);
-            if ((app.release && !isDeepStrictEqual(current.release, app.release)) || (prior.selection.kind === 'release' &&
-                (current.release?.id !== prior.selection.id || current.release?.manifestSha256 !== prior.selection.manifestSha256))) throw Error('Waiting for the running release receipt of ' + app.handleKey);
-          }
-          return { project: now.project, stack: now.stack, selection: prior.selection, apps: now.apps.map(({ handleKey, generation, health, release }) => ({ handleKey, generation, health, release })) };
-        });
-        const watching = await watches(stacks.targets);
-        if (!isDeepStrictEqual(watching, plan.watches)) throw Error('The development stack has not restored its original source watches');
-        return { backend: roles.backend, owner: roles.owner, guardian: roles.guardian, ownerId: roles.ownerId, console: web, stacks: results, watches: watching, observed };
-      };
-      if (!inspected) progress('Waiting for the serving Console and independently observed application generations');
-      const { observed, ...evidence } = await (inspected ? observe() : until('Local batch acceptance failed', observe, 15 * 60_000));
-      for (const prior of plan.stacks) {
-        const current = observed.get(projectKey(prior));
-        if (!current) throw Error('Stack disappeared from the accepted inventory');
-        const review = await startReview(current);
-        if (!isDeepStrictEqual(review.selection, prior.selection) || review.digest !== prior.startReview) throw Error('Launch declaration, volumes or runtime selection changed for ' + projectKey(prior));
-      }
-      const actual = await coldPreview(expect);
-      if (actual.database !== plan.infrastructure.database || !isDeepStrictEqual(actual.containers, plan.infrastructure.containers)) throw Error('Native container identities or the control-plane database changed');
-      return evidence;
-    },
+    completeRestore,
+    accept,
   };
 }

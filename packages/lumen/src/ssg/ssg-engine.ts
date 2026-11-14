@@ -62,11 +62,18 @@ function createClientStylesheet(): string {
   return [
     BASE_LUMEN_THEME_CSS,
     FILE_TREE_CSS,
-    '.lumen-doc h1,.lumen-doc h2,.lumen-doc h3,.lumen-doc h4{color:var(--lumen-fg);line-height:1.3;margin-top:1.75em;margin-bottom:0.6em;}',
-    '.lumen-doc a{color:var(--lumen-accent);text-decoration:none;}',
-    '.lumen-doc a:hover{text-decoration:underline;}',
-    '.lumen-doc pre,.lumen-doc code{font-family:var(--lumen-font-mono);background:var(--lumen-code-bg);border-radius:6px;}',
-    '.lumen-doc pre{padding:1rem;overflow-x:auto;border:1px solid var(--lumen-border);}',
+    // Prose owns its typography. Islands and example frames own their component
+    // styles, including server-rendered content before any client hydration.
+    '@scope (.lumen-doc) to (.lumen-portal-island,[data-lumen-island],[data-widget],[data-example]){',
+    'h1,h2,h3,h4{color:var(--lumen-fg);line-height:1.3;margin-top:1.75em;margin-bottom:0.6em;}',
+    'a{color:var(--lumen-accent);text-decoration:none;}',
+    'a:hover{text-decoration:underline;}',
+    'pre,code{font-family:var(--lumen-font-mono);background:var(--lumen-code-bg);border-radius:6px;}',
+    'pre{padding:1rem;overflow-x:auto;border:1px solid var(--lumen-border);}',
+    '}',
+    // CodeBlock is also used outside prose, for example in a ComponentExample.
+    '.lumen-code-block{font-family:var(--lumen-font-mono);background:var(--lumen-code-bg);border-radius:6px;padding:1rem;overflow-x:auto;border:1px solid var(--lumen-border);}',
+    '.lumen-code-block code{font-family:inherit;background:transparent;}',
     '.lumen-math-block,.lumen-admonition{border:1px solid var(--lumen-border);background:var(--lumen-surface);border-radius:8px;padding:1rem 1.25rem;margin:1.25rem 0;}',
     '.lumen-portal-island{display:block;position:relative;}',
   ].join('\n');

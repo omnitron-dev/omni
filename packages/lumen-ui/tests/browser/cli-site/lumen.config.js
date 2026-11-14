@@ -3,12 +3,23 @@ import { readFileSync } from 'node:fs';
 import { ComponentExample } from '@omnitron-dev/lumen-ui/blocks';
 import { DocPagination } from '@omnitron-dev/lumen-ui/layout';
 import { PortalIslandHost } from '@omnitron-dev/lumen-ui/runtime';
+import { PrismProvider } from '@omnitron-dev/prism/core';
 import CounterExample from './counter-example.js';
+import StyleBoundary from './style-boundary.js';
 
 const counterSource = readFileSync(new URL('./counter-example.js', import.meta.url), 'utf8');
 
-function Layout({ children }) {
+function Layout({ children, document }) {
   const [state] = useState('CUSTOM_LAYOUT_STATE');
+  if (document.routePath === '/docs/style-boundary') {
+    return createElement(PrismProvider, { mode: 'light' },
+      createElement('section', { 'data-style-reference': true }, createElement(StyleBoundary)),
+      createElement('article', { className: 'lumen-doc', 'data-style-prose': true },
+        createElement('h4', { 'data-prose-heading': true }, 'Ordinary prose heading'),
+        createElement('a', { href: '#style-boundary-document', 'data-prose-link': true }, 'Ordinary prose link'),
+        createElement('div', { 'data-example': 'style-boundary' }, createElement(StyleBoundary))),
+      children);
+  }
   return createElement('section', { 'data-ssr-layout': state },
     createElement('h1', null, 'CLI browser boundary'), children,
     createElement(PortalIslandHost, { islandId: 'counter-example', component: 'CounterDemo', hydrate: 'load' },

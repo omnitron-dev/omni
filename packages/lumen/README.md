@@ -86,6 +86,8 @@ The build reads registered UTF-8 sources after projecting document access. Paths
 
 The shared `ComponentExample` renders a native source disclosure outside the live island. Its full source supports keyboard scrolling and remains available with JavaScript disabled. The Markdown mirror contains the same source. Set `labels.source` in the group to localize the disclosure.
 
+Document typography stops at island hosts and example frames. Components retain their Prism styling before and after hydration; ordinary headings, links and code remain styled as prose. Custom website prose rules should use the same CSS scope boundary instead of targeting every descendant of `.lumen-doc`.
+
 For development against an unpublished Omni checkout, use the [Omnitron SDK bridge](../../apps/omnitron/README.md#source-sdk-development) with a normally installed full workspace. It builds the declared package graph and preserves the consumer's registry lock baseline; copied package directories are not an SDK installation.
 
 ## Documentation

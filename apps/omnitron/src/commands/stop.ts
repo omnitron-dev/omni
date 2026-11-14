@@ -1,7 +1,7 @@
 /** Stop managed applications through the owner-facing daemon RPC. */
+import { createProgress, emitError } from './output.js';
 import { createDaemonClient, LONG_REQUEST_TIMEOUT } from '../daemon/daemon-client.js';
 import { requireDaemon } from './daemon-required.js';
-import { spinner } from './spinner.js';
 
 export async function stopCommand(appName?: string, options: { force?: boolean } = {}): Promise<void> {
   const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
@@ -11,7 +11,7 @@ export async function stopCommand(appName?: string, options: { force?: boolean }
       return;
     }
 
-    const s = spinner();
+    const s = createProgress();
     const force = options.force ?? false;
     try {
       if (!appName || appName === 'all') {
@@ -25,7 +25,8 @@ export async function stopCommand(appName?: string, options: { force?: boolean }
         s.stop(`${appName} stopped`);
       }
     } catch (err) {
-      s.stop(`Stop not confirmed: ${err instanceof Error ? err.message : String(err)}`, 1);
+      s.clear();
+      emitError(`Stop not confirmed: ${err instanceof Error ? err.message : String(err)}`);
       process.exitCode = 1;
     }
   } finally {

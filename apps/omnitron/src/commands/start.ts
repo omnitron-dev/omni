@@ -1,13 +1,13 @@
 /** Start one managed application, or start the fleet when explicitly requested. */
+import { createProgress, emitError } from './output.js';
 import { log } from '@xec-sh/kit';
 import { createDaemonClient, LONG_REQUEST_TIMEOUT } from '../daemon/daemon-client.js';
 import { daemonStart } from './daemon-cmd.js';
 import { reportAbsence, requireDaemon } from './daemon-required.js';
-import { spinner } from './spinner.js';
 
 export async function startCommand(appName?: string): Promise<void> {
   const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
-  const progress = spinner();
+  const progress = createProgress();
   try {
     const absence = await client.whyUnreachable();
     if (absence) {
@@ -38,7 +38,8 @@ export async function startCommand(appName?: string): Promise<void> {
       progress.stop(`${app.name} — ${app.status} (PID: ${app.pid})`);
     }
   } catch (error) {
-    progress.stop(`Start not confirmed: ${error instanceof Error ? error.message : String(error)}`, 1);
+    progress.clear();
+    emitError(`Start not confirmed: ${error instanceof Error ? error.message : String(error)}`);
     process.exitCode = 1;
   } finally {
     await client.disconnect();

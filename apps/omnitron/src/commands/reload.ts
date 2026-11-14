@@ -1,8 +1,8 @@
 /**
  * omnitron reload [app|all] — Zero-downtime reload
  */
+import { createProgress } from './output.js';
 
-import { spinner } from './spinner.js';
 import { createDaemonClient, LONG_REQUEST_TIMEOUT } from '../daemon/daemon-client.js';
 import { requireDaemon } from './daemon-required.js';
 
@@ -30,7 +30,7 @@ export async function reloadCommand(appName?: string): Promise<void> {
     return;
   }
 
-  const s = spinner();
+  const s = createProgress();
 
   try {
 
@@ -44,7 +44,8 @@ export async function reloadCommand(appName?: string): Promise<void> {
       s.stop(`${app.name} — ${app.status}`);
     }
   } catch (err) {
-    s.stop(`Failed: ${(err as Error).message}`);
+    s.error(`Operation not confirmed: ${(err as Error).message}`);
+    process.exitCode = 1;
   }
 
   await client.disconnect();

@@ -12,12 +12,12 @@
  *   omnitron up --no-infra       # Skip Docker provisioning
  *   omnitron up --no-watch       # Disable file watching
  */
+import { createProgress } from './output.js';
 
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { log, select, isCancel } from '@xec-sh/kit';
-import { spinner } from './spinner.js';
 import { ProjectRegistry } from '../project/registry.js';
 import { loadEcosystemConfig, loadEcosystemConfigFile } from '../config/loader.js';
 import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
@@ -290,7 +290,7 @@ async function startBackground(
   dc: import('../config/types.js').IDaemonConfig,
   options: UpCommandOptions | undefined,
 ): Promise<void> {
-  const s = spinner();
+  const s = createProgress();
   s.start('Starting Omnitron daemon...');
 
   // When the OS service is installed (`omnitron service install`), start the

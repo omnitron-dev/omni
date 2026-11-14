@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
-const { client, daemonStart, progress } = vi.hoisted(() => ({
+const { client, daemonStart, progress, error } = vi.hoisted(() => ({
   client: { whyUnreachable: vi.fn(), startApp: vi.fn(), startAll: vi.fn(), disconnect: vi.fn() },
-  progress: { start: vi.fn(), stop: vi.fn() },
+  progress: { start: vi.fn(), stop: vi.fn(), clear: vi.fn() },
+  error: vi.fn(),
   daemonStart: vi.fn(),
 }));
 vi.mock('../../src/daemon/daemon-client.js', () => ({ createDaemonClient: () => client, LONG_REQUEST_TIMEOUT: 600_000 }));
 vi.mock('../../src/commands/daemon-cmd.js', () => ({ daemonStart }));
-vi.mock('../../src/commands/spinner.js', () => ({ spinner: () => progress }));
-vi.mock('@xec-sh/kit', () => ({ log: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), success: vi.fn() } }));
+vi.mock('@xec-sh/kit', () => ({ spinner: () => progress, log: { warn: vi.fn(), info: vi.fn(), error, success: vi.fn() } }));
 
 import { startCommand } from '../../src/commands/start.js';
 
@@ -69,6 +69,16 @@ it('reports a lost reply without resending', async () => {
   client.startApp.mockRejectedValue(new Error('connection closed'));
   await startCommand(name);
   expect(client.startApp).toHaveBeenCalledOnce();
-  expect(progress.stop).toHaveBeenCalledWith('Start not confirmed: connection closed', 1);
+  expect(error).toHaveBeenCalledWith('Start not confirmed: connection closed');
   expect(process.exitCode).toBe(1);
+});
+
+it('reports a failed probe before the progress indicator starts', async () => {
+  client.whyUnreachable.mockRejectedValueOnce(new Error('connection refused'));
+  await startCommand(name);
+  expect(progress.start).not.toHaveBeenCalled();
+  expect(client.startApp).not.toHaveBeenCalled();
+  expect(error).toHaveBeenCalledWith('Start not confirmed: connection refused');
+  expect(process.exitCode).toBe(1);
+  expect(client.disconnect).toHaveBeenCalledOnce();
 });

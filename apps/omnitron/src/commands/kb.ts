@@ -147,14 +147,14 @@ export async function kbIndexCommand(options: {
   watch?: boolean;
 }): Promise<void> {
   const { log } = await import('@xec-sh/kit');
-  const { spinner } = await import('./spinner.js');
+  const { createProgress } = await import('./output.js');
   const { KnowledgeBase } = await import('@omnitron-dev/kb');
   const { SurrealKbStore } = await import('@omnitron-dev/kb/surreal');
 
   const dbPath = kbDbPath();
   const root = getEnv().OMNITRON_ROOT ?? process.cwd();
 
-  const s = spinner();
+  const s = createProgress();
   s.start('Initializing knowledge base...');
 
   const store = new SurrealKbStore({ url: `surrealkv://${dbPath}` });

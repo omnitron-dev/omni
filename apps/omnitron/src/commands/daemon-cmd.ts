@@ -7,12 +7,12 @@
  * There is no `daemon` command group; the names here predate its removal and
  * are kept because callers import them.
  */
+import { createProgress } from './output.js';
 
 import path from 'node:path';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { log } from '@xec-sh/kit';
-import { spinner } from './spinner.js';
 import { PidManager } from '../daemon/pid-manager.js';
 import { spawnDaemon, describeStartupTimeout } from '../daemon/spawn-daemon.js';
 import { createDaemonClient } from '../daemon/daemon-client.js';
@@ -62,7 +62,7 @@ export async function daemonStart(options: { foreground?: boolean; config?: stri
     return;
   }
 
-  const s = spinner();
+  const s = createProgress();
   s.start('Starting Omnitron daemon...');
 
   const { selectedBackend } = await import('../daemon/runtime-installation.js');
@@ -164,7 +164,7 @@ export async function daemonStop(): Promise<void> {
   const pidManager = new PidManager(pidFile);
   const pid = pidManager.getPid();
 
-  const s = spinner();
+  const s = createProgress();
   s.start('Stopping Omnitron daemon...');
 
   try {

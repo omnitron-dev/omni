@@ -3,15 +3,16 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { HostIngressService } from '../../src/infrastructure/host-ingress.service.js';
 import { checkIngressConflicts, normalizeIngressApplication, normalizeIngressSettings, renderHostIngress } from '../../src/infrastructure/host-ingress-config.js';
 import { DockerHostIngressRuntime } from '../../src/infrastructure/host-ingress-runtime.js';
 import type { HostIngressApply, HostIngressRuntime, HostIngressSettings, HostIngressTakeover, HostIngressTakeoverSnapshot } from '../../src/infrastructure/host-ingress-types.js';
-import type { IngressLock } from '../../src/infrastructure/host-ingress-lock.js';
+import type { withKernelFileLock } from '@xec-sh/ops/utils/file-lock';
 
 let root: string, certs: string, settings: HostIngressSettings, runtime: FakeRuntime, service: HostIngressService;
 let serial: Promise<unknown> = Promise.resolve();
-const lock: IngressLock = async (_file, body) => { const next = serial.then(body, body); serial = next.catch(() => {}); return next; };
+const lock: typeof withKernelFileLock = async (_file, body) => { const next = serial.then(body, body); serial = next.catch(() => {}); return next; };
 class FakeRuntime implements HostIngressRuntime {
   active: string | null = null;
   failure: 'validate' | 'activate' | 'acknowledge' | null = null;
@@ -351,9 +352,9 @@ it.skipIf(!process.env['OMNITRON_INGRESS_DOCKER_TEST_IMAGE'])('native OpenResty 
 
 
 it.skipIf(!process.env['OMNITRON_INGRESS_DOCKER_TEST_IMAGE'])('native Linux kernel lock excludes concurrent publishers and releases after process death', () => {
-  const source = path.resolve(import.meta.dirname, '../../src/infrastructure/host-ingress-lock.ts');
+  const source = fileURLToPath(import.meta.resolve('@xec-sh/ops/utils/file-lock'));
   const fixture = path.resolve(import.meta.dirname, '../fixtures/host-ingress-lock.mjs');
-  const output = execFileSync('docker', ['run', '--rm', '--pull', 'never', '--network', 'none', '--memory', '128m', '--cpus', '1', '--read-only', '--tmpfs', '/tmp:rw,nosuid,size=4m', '--mount', `type=bind,source=${source},target=/test/host-ingress-lock.ts,readonly`, '--mount', `type=bind,source=${fixture},target=/test/host-ingress-lock.mjs,readonly`, '--entrypoint', 'node', 'node:22.14.0-bookworm-slim', '--experimental-strip-types', '/test/host-ingress-lock.mjs'], { encoding: 'utf8', timeout: 20_000, stdio: ['ignore', 'pipe', 'pipe'] });
+  const output = execFileSync('docker', ['run', '--rm', '--pull', 'never', '--network', 'none', '--memory', '128m', '--cpus', '1', '--read-only', '--tmpfs', '/tmp:rw,nosuid,size=4m', '--mount', `type=bind,source=${source},target=/test/file-lock.mjs,readonly`, '--mount', `type=bind,source=${fixture},target=/test/host-ingress-lock.mjs,readonly`, '--entrypoint', 'node', 'node:22.14.0-bookworm-slim', '/test/host-ingress-lock.mjs'], { encoding: 'utf8', timeout: 20_000, stdio: ['ignore', 'pipe', 'pipe'] });
   expect(output.trim()).toBe('exclusive; crash released; exception released');
 });
 

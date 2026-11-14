@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { client, progress, warn } = vi.hoisted(() => ({
+const { client, progress, warn, error } = vi.hoisted(() => ({
   client: { whyUnreachable: vi.fn(), stopApp: vi.fn(), stopAll: vi.fn(), disconnect: vi.fn() },
-  progress: { start: vi.fn(), stop: vi.fn() },
+  progress: { start: vi.fn(), stop: vi.fn(), clear: vi.fn() },
+  error: vi.fn(),
   warn: vi.fn(),
 }));
 vi.mock('../../src/daemon/daemon-client.js', () => ({ createDaemonClient: () => client, LONG_REQUEST_TIMEOUT: 600_000 }));
-vi.mock('../../src/commands/spinner.js', () => ({ spinner: () => progress }));
-vi.mock('@xec-sh/kit', () => ({ log: { warn, info: vi.fn(), error: vi.fn() } }));
+vi.mock('@xec-sh/kit', () => ({ spinner: () => progress, log: { warn, info: vi.fn(), error } }));
 
 import { stopCommand } from '../../src/commands/stop.js';
 
@@ -58,7 +58,7 @@ describe('application stop', () => {
     await stopCommand('project/test/api');
     expect(client.stopApp).toHaveBeenCalledOnce();
     expect(client.stopAll).not.toHaveBeenCalled();
-    expect(progress.stop).toHaveBeenCalledExactlyOnceWith(`Stop not confirmed: ${reason}`, 1);
+    expect(error).toHaveBeenCalledExactlyOnceWith(`Stop not confirmed: ${reason}`);
     expect(client.disconnect).toHaveBeenCalledOnce();
     expect(process.exitCode).toBe(1);
   });

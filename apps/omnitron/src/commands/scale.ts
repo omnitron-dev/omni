@@ -1,6 +1,5 @@
 /** omnitron scale <app> <count> --process <declared-pool> */
-import { spinner } from './spinner.js';
-import { emitError, emitJson } from './output.js';
+import { createProgress, emitError, emitJson } from './output.js';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import { requireDaemon } from './daemon-required.js';
 import { LONG_REQUEST_TIMEOUT } from '../shared/dto/services.js';
@@ -13,7 +12,7 @@ export async function scaleCommand(appName: string, count: string, processName?:
     request = parsePoolScaleRequest({ name: appName, process: processName, instances: Number(count) });
   } catch (error) { emitError((error as Error).message, { outcome: 'refused' }); process.exitCode = 1; return; }
   const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
-  const progress = spinner();
+  const progress = createProgress();
   let dispatched = false;
   try {
     if (!(await requireDaemon(client))) { process.exitCode = 1; return; }
@@ -23,10 +22,10 @@ export async function scaleCommand(appName: string, count: string, processName?:
     const observed = app.processes?.find(item => item.name === request.process);
     if (!observed || observed.declaredInstances < 2) throw new Error('The requested pool is absent from the owner observation');
     if (emitJson({ request, observation: { app: app.name, process: observed }, lifetime: 'until-restart',
-      declarationChanged: false, automaticPolicy: 'unchanged' })) { progress.stop(); return; }
+      declarationChanged: false, automaticPolicy: 'unchanged' })) { progress.clear(); return; }
     progress.stop(`${app.name}/${request.process}: ${observed.instances} observed workers (requested ${request.instances}). Runtime resize only; restart restores the declaration and automatic scaling remains active where configured.`);
   } catch (error) {
-    progress.stop();
+    progress.clear();
     emitError(dispatched ? `Resize not confirmed: ${(error as Error).message}. Inspect the selected pool before retrying.` : (error as Error).message,
       { request, outcome: dispatched ? 'unknown' : 'refused' });
     process.exitCode = 1;

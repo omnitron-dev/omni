@@ -6,7 +6,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readManagedRuntime, hostBootIdentity, type ManagedRuntime } from './managed-runtime.js';
 import { ExecutionJournal, readPrivateRecord, writePrivateRecord } from './execution-journal.js';
-import { withKernelFileLock } from '../shared/kernel-file-lock.js';
+import { withKernelFileLock } from '@xec-sh/ops/utils/file-lock';
 import { readDarwinOwnerEvidence, type DarwinReconciliationScope } from './darwin-owner-evidence.js';
 
 interface ProcessIdentity { pid: number; lifetime: string | null }

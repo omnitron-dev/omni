@@ -109,6 +109,8 @@ The first selection may ask pnpm to generate its package-manager metadata. That 
 
 Every `--no-watch` invocation refreshes the graph once. Without it, the SDK watcher rebuilds changed packages. With `--stack dev`, Omnitron records the owner's receipt for each watched application that uses the changed SDK. An application such as a Vite server can declare `watch: false` and manage its own reloads. The CLI reports it separately and leaves its generation running. It checks the declaration in the stack's registered configuration before and after refresh. A missing required watcher or a changed binding fails the operation. Check an application's own reload mechanism through its native client.
 
+The persistent watcher uses Xec's polling API to inspect only selected `src` trees and their package/workspace build configuration once per second. It does not traverse installed dependencies or generated output. Edits are coalesced, builds are serialized, and changes arriving during a build remain queued. Successful completion is reported after application receipts and RPC cleanup settle; watcher errors stop the command explicitly. Interrupting the command closes its observers. This requires `@xec-sh/loader` 0.12.0 or newer.
+
 Keep the consumer's `node_modules` directory physical. Standard pnpm `virtualStoreDir` configuration can place the store on another disk; a symlink replacing the entire directory is refused. Initial selection and registry restoration must satisfy the lifecycle and dependency admission checks. SDK selection does not activate a deployed release.
 
 After a confirmed `stack stop --keep-infrastructure`, the SDK can start the local working tree and keep watching it.

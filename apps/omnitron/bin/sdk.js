@@ -2,7 +2,7 @@
 import { execFile, spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
-import { watch } from 'node:fs';
+import { FileWatcher } from '@xec-sh/loader/watch';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -931,7 +931,8 @@ export async function watchSdk(profile, stack, signal) {
   const sdkPackages = new Map([...packages].filter(([name]) => Object.hasOwn(profile.links, name)));
   const pending = new Set(Object.keys(profile.links));
   const handles = [];
-  let timer, running;
+  let closed = false;
+  let timer, running, onAbort;
   async function rebuild() {
     const edits = new Set(pending);
     pending.clear();
@@ -943,12 +944,13 @@ export async function watchSdk(profile, stack, signal) {
     await checkpointSdkBuild(profile, names, stack, signal, packages);
   }
   const flush = async () => {
-    if (running || signal.aborted || !pending.size) return;
+    if (closed || running || signal.aborted || !pending.size) return;
     const attempted = [...pending];
     running = rebuild();
     let replay = true;
     try {
       await running;
+      if (!signal.aborted) console.log('Development SDK rebuild complete');
     } catch (error) {
       if (!signal.aborted) {
         replay = pending.size > 0;
@@ -957,41 +959,50 @@ export async function watchSdk(profile, stack, signal) {
       }
     } finally {
       running = undefined;
-      if (!signal.aborted && pending.size && replay) queueMicrotask(flush);
+      if (!closed && !signal.aborted && pending.size && replay) queueMicrotask(flush);
     }
   };
   function schedule(names) {
+    if (closed || signal.aborted) return;
     for (const name of names) pending.add(name);
     clearTimeout(timer);
     timer = setTimeout(flush, 150);
   }
   try {
-    for (const [name, dir] of Object.entries(profile.links)) {
-      handles.push(watch(path.join(dir, 'src'), { recursive: true }, () => schedule([name])));
-      handles.push(
-        watch(dir, (_event, file) => {
-          if (file && /^(?:package\.json|tsconfig.*\.json|(?:tsup|vite)\.config\..+)$/.test(String(file)))
-            schedule([name]);
-        })
-      );
-    }
-    handles.push(
-      watch(profile.source, (_event, file) => {
-        if (['pnpm-lock.yaml', 'pnpm-workspace.yaml', 'turbo.json', 'tsconfig.json'].includes(String(file)))
-          schedule(Object.keys(profile.links));
-      })
-    );
-    console.log('Watching SDK sources at ' + profile.source);
-    void flush();
-    if (!signal.aborted)
-      await new Promise((resolve, reject) => {
-        signal.addEventListener('abort', resolve, { once: true });
-        for (const handle of handles) handle.once('error', reject);
-      });
+    const selected = Object.entries(profile.links);
+    const options = { poll: true, pollInterval: 1000, debounce: 150, extensions: [], ignore: [], persistent: true };
+    const sources = new FileWatcher(selected.map(([, dir]) => path.join(dir, 'src')), options);
+    sources.on('change', event => {
+      schedule(selected.filter(([, dir]) => inside(path.join(dir, 'src'), event.path)).map(([name]) => name));
+    });
+    const configurations = new FileWatcher([profile.source, ...selected.map(([, dir]) => dir)], { ...options, recursive: false });
+    configurations.on('change', event => {
+      const file = path.basename(event.path), directory = path.dirname(event.path);
+      if (directory === profile.source && ['pnpm-lock.yaml', 'pnpm-workspace.yaml', 'turbo.json', 'tsconfig.json'].includes(file))
+        schedule(Object.keys(profile.links));
+      else if (/^(?:package\.json|tsconfig.*\.json|(?:tsup|vite)\.config\..+)$/.test(file))
+        schedule(selected.filter(([, dir]) => dir === directory).map(([name]) => name));
+    });
+    handles.push(sources, configurations);
+    if (!signal.aborted) await new Promise((resolve, reject) => {
+      let failed = false;
+      onAbort = resolve;
+      signal.addEventListener('abort', onAbort, { once: true });
+      for (const handle of handles) handle.once('error', error => { failed = true; reject(error); });
+      for (const handle of handles) {
+        handle.start();
+        if (failed) return;
+      }
+      console.log('Watching SDK sources at ' + profile.source + ' (polling every 1000 ms)');
+      void flush();
+    });
   } finally {
+    closed = true;
     clearTimeout(timer);
     for (const handle of handles) handle.close();
+    if (onAbort) signal.removeEventListener('abort', onAbort);
     await running?.catch(() => {});
+    console.log('Development SDK watcher stopped');
   }
 }
 

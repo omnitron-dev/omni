@@ -4,7 +4,7 @@ import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { afterEach, describe, expect, it } from 'vitest';
-import { withKernelFileLock } from '../../src/shared/kernel-file-lock.js';
+import { withKernelFileLock } from '@xec-sh/ops/utils/file-lock';
 
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
@@ -30,7 +30,7 @@ describe.skipIf(!['darwin', 'linux'].includes(process.platform))('native inherit
     await fs.writeFile(target, '', { mode: 0o600 }); await fs.symlink(target, file);
     await expect(withKernelFileLock(file, async () => undefined)).rejects.toThrow();
     await fs.unlink(file); await fs.writeFile(file, '', { mode: 0o666 }); await fs.chmod(file, 0o666);
-    await expect(withKernelFileLock(file, async () => undefined)).rejects.toThrow('private regular');
+    await expect(withKernelFileLock(file, async () => undefined)).rejects.toThrow('regular file');
   });
   it('tightens a legacy read-only-to-others lock without changing its inode or accepting a shared directory', async () => {
     const file = await fixture(); await fs.writeFile(file, '', { mode: 0o644 }); await fs.chmod(file, 0o644);
@@ -42,7 +42,7 @@ describe.skipIf(!['darwin', 'linux'].includes(process.platform))('native inherit
   });
   it('releases the kernel fence if its owning Node process dies', async () => {
     const file = await fixture();
-    const module = new URL('../../src/shared/kernel-file-lock.ts', import.meta.url).href;
+    const module = import.meta.resolve('@xec-sh/ops/utils/file-lock');
     const child = spawn(process.execPath, ['--input-type=module', '-e', `import {withKernelFileLock} from ${JSON.stringify(module)}; await withKernelFileLock(process.argv[1], async()=>{setInterval(()=>{},1000);process.stdout.write('locked\\n');await new Promise(()=>{});});`, file], { stdio: ['ignore', 'pipe', 'pipe'] });
     const closed = once(child, 'close');
     try {

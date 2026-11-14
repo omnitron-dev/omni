@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { withKernelFileLock } from '../shared/kernel-file-lock.js';
+import { withKernelFileLock } from '@xec-sh/ops/utils/file-lock';
 import { readPrivateRecord, writePrivateRecord } from './execution-journal.js';
 import type {
   PreparedRuntimeUpdate, RuntimeUpdateAcceptance, RuntimeUpdateIdentity, RuntimeUpdatePhase,

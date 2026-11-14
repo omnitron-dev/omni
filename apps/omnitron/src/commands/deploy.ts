@@ -6,9 +6,9 @@
  * announcing an operation it did not perform. Deployment is
  * `omnitron stack start`; see the notes on each function.
  */
+import { createProgress } from './output.js';
 
 import { log } from '@xec-sh/kit';
-import { spinner } from './spinner.js';
 
 /**
  * Build a deployment artifact for an app.
@@ -29,7 +29,7 @@ export async function projectBuildCommand(app: string): Promise<void> {
   }
 
   const cwd = process.cwd();
-  const s = spinner();
+  const s = createProgress();
 
   // Step 1: Analyze workspace dependencies
   s.start(`Analyzing workspace dependencies for '${app}'...`);

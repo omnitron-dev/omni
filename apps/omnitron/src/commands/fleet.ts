@@ -3,6 +3,7 @@
  *
  * Fleet communication uses TCP transport (cross-server Netron RPC).
  */
+import { createProgress } from './output.js';
 
 import { log, table, prism } from '@xec-sh/kit';
 import { ServerRegistry } from '../infrastructure/server-registry.js';
@@ -10,7 +11,6 @@ import { NO_MACHINES_MESSAGE, type KnownMachine } from '../infrastructure/known-
 import { createDaemonClient, LONG_REQUEST_TIMEOUT } from '../daemon/daemon-client.js';
 import { MeshAsker, askMachine, knownMachines } from './fleet-asking.js';
 import { formatStatus, formatMemory } from '../shared/format.js';
-import { spinner } from './spinner.js';
 
 export async function fleetStatusCommand(): Promise<void> {
   const { machines: servers, nodesUnavailable } = await knownMachines();
@@ -284,7 +284,7 @@ export async function fleetUpgradeCommand(
       process.exitCode = 1;
       return;
     }
-    const s = spinner();
+    const s = createProgress();
     s.start('Building a bundle from this working tree...');
     bundle = await buildOwnBundle({ workspaceRoot, label: String(process.pid) });
     s.stop(`Built ${bundle.version}`);
@@ -318,7 +318,7 @@ export async function fleetUpgradeCommand(
 
     const report = await runUpgrade(plan, {
       async install(node) {
-        const s2 = spinner();
+        const s2 = createProgress();
         s2.start(`${node.name}: installing beside the running version...`);
         const ok = await nodes.installBundleOnNode({
           nodeId: node.nodeId, archivePath: archive, version: plan.targetVersion,
@@ -327,7 +327,7 @@ export async function fleetUpgradeCommand(
         return ok;
       },
       async activate(node) {
-        const s2 = spinner();
+        const s2 = createProgress();
         s2.start(`${node.name}: switching and restarting...`);
         const ok = await nodes.activateBundleOnNode({
           nodeId: node.nodeId, version: plan.targetVersion, keepVersions: options.keep ?? 3,

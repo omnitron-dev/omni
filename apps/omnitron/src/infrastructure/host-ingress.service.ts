@@ -6,7 +6,7 @@ import { createHash, createPrivateKey, randomUUID, X509Certificate } from 'node:
 import { checkIngressConflicts, ingressOwner, ingressOwnerKey, normalizeIngressApplication, normalizeIngressSettings, renderHostIngress } from './host-ingress-config.js';
 import { normalizeIngressTakeover, normalizeIngressTakeoverSnapshot } from './host-ingress-takeover.js';
 import { DockerHostIngressRuntime } from './host-ingress-runtime.js';
-import { withIngressLock, type IngressLock } from './host-ingress-lock.js';
+import { withKernelFileLock } from '@xec-sh/ops/utils/file-lock';
 import type { HostIngressApply, HostIngressCheck, HostIngressManifest, HostIngressOwner, HostIngressReceipt, HostIngressRemove, HostIngressRuntime, HostIngressSettings, HostIngressStatus, HostIngressValidation, HostIngressOwnerRestore, HostIngressTakeover, HostIngressTakeoverSnapshot, HostIngressTakeoverRecord, HostIngressTakeoverRollback, HostIngressTakeoverRollbackReceipt, StoredIngressApplication } from './host-ingress-types.js';
 
 const digest = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
@@ -25,7 +25,7 @@ async function durableFile(file: string, contents: string | Buffer): Promise<voi
 export class HostIngressService {
   readonly root: string;
   private readonly runtime: HostIngressRuntime;
-  constructor(root = path.join(OMNITRON_HOME, 'host-ingress'), runtime?: HostIngressRuntime, private readonly lock: IngressLock = withIngressLock) {
+  constructor(root = path.join(OMNITRON_HOME, 'host-ingress'), runtime?: HostIngressRuntime, private readonly lock: typeof withKernelFileLock = withKernelFileLock) {
     this.root = path.resolve(root);
     if (/[\0\r\n,]/.test(this.root)) throw new Error('Invalid host ingress state root');
     this.runtime = runtime ?? new DockerHostIngressRuntime(this.root);

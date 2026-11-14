@@ -44,6 +44,8 @@ To use a source checkout from another application, follow the [Omnitron SDK work
 
 Use the canonical Xec workflow:
 
+The workspace uses Xec 0.12 for command execution, SDK source watching, kernel locks and CLI progress. Turbo supplies the build graph and cache; project scripts and release commands use the same installed tools.
+
 ```sh
 pnpm exec xec release <version> --dry-run
 pnpm exec xec release <version> --prepare --previous <full-commit> --push-source

@@ -29,10 +29,10 @@ overrides:
   react: 19.3.1
   react-dom: 19.3.1
   react-router-dom: 7.18.5
-  "@xec-sh/core": 0.11.4
-  "@xec-sh/kit": 0.11.4
-  "@xec-sh/loader": 0.11.4
-  "@xec-sh/ops": 0.11.4
+  "@xec-sh/core": 0.12.0
+  "@xec-sh/kit": 0.12.0
+  "@xec-sh/loader": 0.12.0
+  "@xec-sh/ops": 0.12.0
 patchedDependencies:
   "@ts-morph/common@0.29.0": patches/ts-morph-common@0.29.0.patch
   vitest@5.0.5: patches/vitest@5.0.5.patch
@@ -129,13 +129,13 @@ minimumReleaseAgeExclude:
   - "@kysera/soft-delete@0.10.2"
   - "@kysera/testing@0.10.2"
   - "@kysera/timestamps@0.10.2"
-  - "@xec-sh/core@0.11.4"
-  - "@xec-sh/kit@0.11.4"
-  - "@xec-sh/loader@0.11.4"
-  - "@xec-sh/ops@0.11.4"
-  - "@xec-sh/cli@0.11.4"
+  - "@xec-sh/core@0.12.0"
+  - "@xec-sh/kit@0.12.0"
+  - "@xec-sh/loader@0.12.0"
+  - "@xec-sh/ops@0.12.0"
   # Exact reviewed PDF glyph-validation dependency; no install scripts.
   - fontkit@3.0.0
+  - "@xec-sh/cli@0.12.0"
 # SQON ships JavaScript and declarations without a Compiler API dependency.
 # Its types compile with our TypeScript 7 build; the tooling alias is API 6.
 peerDependencyRules:

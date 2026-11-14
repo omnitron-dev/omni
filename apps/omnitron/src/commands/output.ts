@@ -12,11 +12,16 @@
  * In TUI mode commands keep their human-friendly output unchanged.
  */
 
-import { log } from '@xec-sh/kit';
+import { log, spinner, type SpinnerResult } from '@xec-sh/kit';
 import { isJsonOutput } from '../shared/env-config.js';
 
 export function isJsonMode(): boolean {
   return isJsonOutput();
+}
+
+/** Kit owns terminal and redirected rendering; machine output has no progress stream. */
+export function createProgress(): SpinnerResult {
+  return spinner({ enabled: !isJsonMode() });
 }
 
 /** Whether the admitted action has emitted its shared machine result. */

@@ -1,10 +1,9 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import type { ProcessInfoDto } from '../../src/config/types.js';
-const mocks = vi.hoisted(() => ({ scale: vi.fn(), disconnect: vi.fn(async () => {}), start: vi.fn(), stop: vi.fn(), error: vi.fn(), json: vi.fn(() => false), ready: vi.fn(async () => true) }));
+const mocks = vi.hoisted(() => ({ scale: vi.fn(), disconnect: vi.fn(async () => {}), start: vi.fn(), stop: vi.fn(), clear: vi.fn(), error: vi.fn(), json: vi.fn(() => false), ready: vi.fn(async () => true) }));
 vi.mock('../../src/daemon/daemon-client.js', () => ({ createDaemonClient: () => mocks }));
 vi.mock('../../src/commands/daemon-required.js', () => ({ requireDaemon: mocks.ready }));
-vi.mock('../../src/commands/spinner.js', () => ({ spinner: () => mocks }));
-vi.mock('../../src/commands/output.js', () => ({ emitError: mocks.error, emitJson: mocks.json }));
+vi.mock('../../src/commands/output.js', () => ({ createProgress: () => mocks, emitError: mocks.error, emitJson: mocks.json }));
 import { scaleCommand } from '../../src/commands/scale.js';
 const exitCode = process.exitCode;
 afterEach(() => { process.exitCode = exitCode; vi.clearAllMocks(); });

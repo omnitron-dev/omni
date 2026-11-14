@@ -4,6 +4,7 @@ export interface DevelopmentSdkStatus {
   source?: string;
   distributionLock?: 'present' | 'absent' | 'manager-only';
   distributionLockChanged?: boolean;
+  transition?: { id: string; phase: 'committed' | 'restored'; source: string };
   build?: { status: 'current'; packages: string[] };
   refresh?: { stack: string; confirmed: string[]; inactive: string[]; optedOut: string[]; unaffected: string[] };
 }

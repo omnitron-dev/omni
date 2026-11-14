@@ -11,10 +11,12 @@ import { isDeepStrictEqual, parseArgs, promisify } from 'node:util';
 import { parseAllDocuments } from 'yaml';
 import { getWantedPackageManager } from '@pnpm/config.reader';
 import { frameworkPackage } from './pnpmfile-sdk.js';
+import { sdkDirectory, sdkTransitionStatus, prepareSdkTransition, beginSdkTransition, finishSdkTransition, recoverSdkTransition } from './sdk-transition.js';
 
 const help = `omnitron sdk init [--project-dir PATH]
 omnitron sdk dev [SDK_CHECKOUT] [--project-dir PATH] [--stack NAME [--start-stopped --review DIGEST]] [--no-watch]
 omnitron sdk registry [--project-dir PATH]
+omnitron sdk recover [--project-dir PATH] [--stack NAME]
 omnitron sdk status [--project-dir PATH] [--stack NAME]
 
 init installs the pnpm bridge without resolving registry dependencies.
@@ -26,6 +28,12 @@ working-tree start. Obtain the digest with stack start PROJECT STACK --dry-run -
 Applications declaring watch: false are reported separately. Missing required watchers fail.
 status verifies current Turbo inputs and build outputs; --stack also verifies application receipts.
 Inspection never builds, installs dependencies or restarts applications.
+Selection retains a verified before-image in the development cache before building or installing.
+OMNITRON_DEV_CACHE overrides the shared XDG_CACHE_HOME/~/.cache/omnitron/development default.
+recover restores the last retained selection's bytes without rebuilding or installing.
+Affected source consumers must be stopped; uncertain interrupted writes are never overwritten.
+Protected selections require project-owned module directories and virtual stores.
+External stores remain inspectable, but cannot be changed without an ownership contract.
 registry restores the frozen distribution dependencies. Releases always read Git.`;
 
 const scope = '@omnitron-dev/';
@@ -122,9 +130,12 @@ function command(program, args, cwd, capture = false, signal) {
     child.stdout?.setEncoding('utf8').on('data', (chunk) => {
       result += chunk;
     });
-    child.on('error', reject);
+    // Abort can emit error before close. Recovery must wait until the writer
+    // has actually exited before measuring or restoring its output directories.
+    let failure;
+    child.on('error', error => { failure = error; });
     child.on('close', (code, sig) =>
-      code === 0 ? resolve(result.trim()) : reject(new Error(`${program} ${args[0]} exited with ${sig ?? code}`))
+      failure ? reject(failure) : code === 0 ? resolve(result.trim()) : reject(new Error(`${program} ${args[0]} exited with ${sig ?? code}`))
     );
   });
 }
@@ -212,8 +223,11 @@ async function desiredProfile(root, source, distribution) {
 
 async function prepareState(root) {
   const dir = statePath(root);
-  await fs.mkdir(dir, { recursive: true, mode: 0o700 });
+  await sdkDirectory(dir);
   if ((await fs.realpath(dir)) !== dir) throw Error('SDK state directory must be local to this project');
+  const info = await fs.stat(dir);
+  if (typeof process.getuid === 'function' && (info.uid !== process.getuid() || info.mode & 0o022))
+    throw Error('SDK state directory must be owned by this user and not writable by other users');
   await fs.writeFile(path.join(dir, '.gitignore'), '*\n', { mode: 0o600 });
   return dir;
 }
@@ -538,11 +552,26 @@ async function verifyInputs(profile, inputs, signal) {
     throw Error('SDK build inputs changed for ' + changed.join(', ') + '; run sdk dev to rebuild before confirming readiness');
 }
 
-async function build(profile, names, signal) {
+async function assertSourceAvailable(source) {
+  const owner = await optionalJson(path.join(statePath(source), 'pending-selection'));
+  if (!owner) return;
+  const selection = typeof owner.root === 'string' && path.isAbsolute(owner.root) && await sdkTransitionStatus(owner.root);
+  if (!selection || selection.id !== owner.id || selection.source !== source ||
+      !['committed', 'restored'].includes(selection.phase))
+    throw Error('Shared SDK source has an unfinished selection; recover its consumer before another build: ' + owner.root);
+}
+async function clearSourceSelection(root, source, id) {
+  const file = path.join(statePath(source), 'pending-selection');
+  const owner = await optionalJson(file);
+  if (owner?.root === root && owner.id === id) await fs.rm(file);
+}
+
+async function build(profile, names, signal, locked = false) {
   if (!names.length) throw Error('No development SDK packages selected for building');
   const source = profile.source;
   const dir = await prepareState(source);
-  return exclusively(dir, async () => {
+  const execute = async () => {
+    if (!locked) await assertSourceAvailable(source);
     // pnpm's implicit pre-script install only warns on failure. Ask pnpm to
     // check its installation first, then require a successful frozen repair.
     try {
@@ -568,7 +597,8 @@ async function build(profile, names, signal) {
     for (const name of names) hashes[name] = await buildDigest(profile.links[name]);
     await verifyInputs(profile, inputs, signal);
     return { inputs, hashes };
-  }, signal);
+  };
+  return locked ? execute() : exclusively(dir, execute, signal);
 }
 
 async function profileStatus(root) {
@@ -649,6 +679,133 @@ async function requireStopped(root, stack) {
   } finally {
     await client.disconnect();
   }
+}
+
+async function requireSourceStopped(root, source, stack) {
+  await requireStopped(root, stack);
+  const socket = path.join(process.env.OMNITRON_HOME ?? path.join(os.homedir(), '.omnitron'), 'daemon.sock');
+  if (!stack && !await fs.lstat(socket).catch(error => { if (error.code === 'ENOENT') return null; throw error; })) return;
+  const { createDaemonClient, LONG_REQUEST_TIMEOUT } = await import('@omnitron-dev/omnitron/operations');
+  const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
+  try {
+    await requireApplicationRuntime(client);
+    const service = await client.service('OmnitronProject');
+    for (const project of await service.listProjects()) {
+      const running = (await service.listStacks({ project: project.name })).filter(item => item.type === 'local' &&
+        !item.selectedRelease && item.apps.some(app => !['stopped', 'offline', 'not-started'].includes(app.status)));
+      if (!running.length) continue;
+      const directories = new Set([project.path, ...(project.configurations ?? []).map(item => item.path)]);
+      for (const directory of directories) {
+        const physical = await fs.realpath(directory);
+        const selected = await profileStatus(physical);
+        if (physical === root || inside(source, physical) || inside(physical, source) || selected &&
+            (selected.source === source || Object.values(selected.links).some(file => inside(source, file))))
+          throw Error(`Stop ${project.name}/${running.map(item => item.name).join(', ')} before changing shared SDK outputs`);
+        // Absence of an SDK declaration does not prove that running source
+        // applications are independent of this checkout. Never guess isolation.
+        if (!selected) throw Error('Cannot prove SDK isolation for running project ' + project.name + '; its dependency binding must be established before this selection');
+        await verifyLinks(physical, selected);
+      }
+    }
+  } finally { await client.disconnect(); }
+}
+
+async function selectionInventory(root, source, names, signal) {
+  const paths = [], guards = [];
+  for (const directory of [root, source]) {
+    const packages = await inventory(directory);
+    const installation = await moduleConfiguration(directory);
+    if (!inside(directory, installation.virtualStoreDir)) throw Error('SDK recovery requires a project-owned virtual store: ' + installation.virtualStoreDir);
+    paths.push(path.join(directory, 'node_modules'), installation.virtualStoreDir, path.join(directory, 'pnpm-lock.yaml'));
+    // The development hook moves lockfileDir here. With the default layout,
+    // pnpm puts its installed graph here and leaves importer links at the root.
+    paths.push(path.join(statePath(directory), 'node_modules'));
+    for (const modules of [path.join(directory, 'node_modules'), path.join(statePath(directory), 'node_modules')]) {
+      const receipt = await fs.readFile(path.join(modules, '.modules.yaml'), 'utf8').catch(error => {
+        if (error.code === 'ENOENT') return null; throw error;
+      });
+      if (receipt === null) continue;
+      const store = lockDocuments(receipt).at(-1)?.toJS()?.virtualStoreDir;
+      if (typeof store !== 'string') throw Error('Installed SDK dependency store has no location receipt');
+      const installed = path.resolve(modules, store);
+      if (!inside(directory, installed)) throw Error('SDK recovery requires a project-owned installed virtual store: ' + installed);
+      paths.push(installed);
+    }
+    guards.push(...['package.json', 'pnpm-workspace.yaml', '.npmrc', '.pnpmfile.mjs'].map(file => path.join(directory, file)));
+    for (const pkg of packages.values()) {
+      paths.push(path.join(pkg.directory, 'node_modules'));
+      guards.push(path.join(pkg.directory, 'package.json'));
+    }
+  }
+  for (const modules of paths.filter(file => path.basename(file) === 'node_modules')) {
+    const present = await fs.lstat(modules).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
+    if (present && (present.isSymbolicLink() || !present.isDirectory() || await fs.realpath(modules) !== modules))
+      throw Error('SDK recovery requires physical project-owned dependency directories: ' + modules);
+  }
+  if (names) {
+    const plan = await buildPlan(source, names, signal);
+    for (const task of plan.tasks) {
+      const directory = path.resolve(source, task.directory ?? '.');
+      if (!inside(source, directory)) throw Error('SDK task is outside its source checkout');
+      for (const output of task.outputs ?? []) {
+        if (output.startsWith('!')) continue;
+        const first = output.split('/')[0];
+        if (!first || first === '.' || first === '..' || /[*?[\]{}()]/.test(first))
+          throw Error('SDK transition requires bounded task output directories: ' + output);
+        paths.push(path.join(directory, first));
+      }
+      for (const file of Object.keys(task.inputs ?? {})) guards.push(path.resolve(directory, file));
+    }
+    for (const file of Object.keys(plan.globalCacheInputs?.files ?? {})) guards.push(path.resolve(source, file));
+  }
+  const previous = await profileStatus(root);
+  if (previous && previous.source !== source) {
+    guards.push(path.join(previous.source, 'node_modules'));
+    for (const directory of Object.values(previous.links))
+      guards.push(path.join(directory, 'package.json'), path.join(directory, 'dist'), path.join(directory, 'node_modules'));
+  }
+  // Restore physical outputs/bindings before exposing the previous selection.
+  const stateFiles = ['pnpm-lock.yaml', 'built.json', 'install.json', 'active.json'].map(file => path.join(statePath(root), file));
+  paths.push(...stateFiles);
+  // Source repair is frozen: unlike the consumer's admitted manager document,
+  // a source-lock edit is never owned by this selection or erased by recovery.
+  const sourceLock = path.join(source, 'pnpm-lock.yaml');
+  return { paths, guards: [...new Set([...guards, sourceLock])].filter(file =>
+    file === sourceLock || !paths.some(output => inside(output, file))) };
+}
+
+async function changeSelection(root, source, stack, names, signal, operation) {
+  const sourceState = await prepareState(source);
+  return exclusively(sourceState, async () => {
+    await assertSourceAvailable(source);
+    await requireSourceStopped(root, source, stack);
+    const selection = await prepareSdkTransition({ root, source, ...await selectionInventory(root, source, names, signal) });
+    let ownedDistribution = await distributionLock(root);
+    await requireSourceStopped(root, source, stack);
+    await atomic(path.join(sourceState, 'pending-selection'), JSON.stringify({ root, id: selection.journal.id }) + '\n');
+    await beginSdkTransition(selection);
+    try {
+      const result = await operation(value => { ownedDistribution = value; });
+      await assertDistribution(root, lockIdentity(ownedDistribution));
+      await finishSdkTransition(selection, true);
+      await clearSourceSelection(root, source, selection.journal.id);
+      return result;
+    } catch (error) {
+      if (signal?.aborted) throw new Error('SDK writer was interrupted; its outputs are unconfirmed and were not overwritten. Run sdk status.', { cause: error });
+      try {
+        // An unexpected lock edit belongs to another writer, even when it was
+        // made during a failing package-manager lifecycle script.
+        await assertDistribution(root, lockIdentity(ownedDistribution));
+        await finishSdkTransition(selection, false);
+        await requireSourceStopped(root, source, stack);
+        await recoverSdkTransition(root);
+        await clearSourceSelection(root, source, selection.journal.id);
+      } catch (recovery) {
+        throw new AggregateError([error, recovery], `SDK selection failed: ${error.message}. Recovery is unconfirmed: ${recovery.message}`);
+      }
+      throw new Error(`SDK selection failed: ${error.message}. Previous SDK bytes and dependency bindings were restored; readiness still requires sdk status.`, { cause: error });
+    }
+  }, signal);
 }
 
 function dependsOn(manifest, changed, packages, seen = new Set()) {
@@ -995,7 +1152,7 @@ async function verifyOutputs(profile, hashes) {
   }
 }
 
-async function checkpointSdkBuild(profile, built, stack, signal, packages, review) {
+async function checkpointSdkBuild(profile, built, stack, signal, packages, review, locked = false) {
   const checkpoint = path.join(statePath(profile.root), 'built.json');
   const prior = await optionalJson(checkpoint);
   const hashes = prior?.source === profile.source ? prior.hashes : {};
@@ -1029,7 +1186,7 @@ async function checkpointSdkBuild(profile, built, stack, signal, packages, revie
     signal?.throwIfAborted();
     await atomic(checkpoint, JSON.stringify(nextCheckpoint) + '\n');
   };
-  const save = () => exclusively(sourceState, persist, signal);
+  const save = () => locked ? persist() : exclusively(sourceState, persist, signal);
   // A completed build is a separate fact from any application's loaded modules.
   // Build-only use and another stack's receipt cannot certify this stack.
   await save();
@@ -1038,7 +1195,9 @@ async function checkpointSdkBuild(profile, built, stack, signal, packages, revie
     if (review) {
       // A cold launch must consume one stable build, including during daemon RPC.
       // persist() already runs under this writer lock and never reacquires it.
-      await exclusively(sourceState, () => startStoppedStack(profile, stack, review, nextCheckpoint, packages, persist, signal), signal);
+      const launch = () => startStoppedStack(profile, stack, review, nextCheckpoint, packages, persist, signal);
+      if (locked) await launch();
+      else await exclusively(sourceState, launch, signal);
     } else await refresh(profile.root, stack, nextCheckpoint, packages, save, signal);
   } else {
     console.log(changed.size ? 'Development SDK build ready: ' + [...changed].join(', ') : 'Development SDK build is current');
@@ -1170,7 +1329,11 @@ async function inspectBuild(active, stack) {
 export async function inspectSdk(projectDirectory = process.cwd(), stack) {
   const root = await fs.realpath(projectDirectory);
   const dir = statePath(root);
+  const transition = await sdkTransitionStatus(root);
+  if (transition && !['committed', 'restored'].includes(transition.phase))
+    throw Error(`SDK transition ${transition.id} is ${transition.phase}; readiness is unconfirmed. Run sdk recover.`);
   const active = await profileStatus(root);
+  if (active) await assertSourceAvailable(active.source);
   const distribution = await distributionLock(root);
   const selected = await optionalJson(path.join(dir, 'install.json'));
   if (JSON.stringify(selected) !== JSON.stringify(active))
@@ -1183,9 +1346,10 @@ export async function inspectSdk(projectDirectory = process.cwd(), stack) {
         verifiedImports: await verifyLinks(root, active),
         distributionLock: distribution === null ? 'absent' : applicationDocument(distribution) === null ? 'manager-only' : 'present',
         distributionLockChanged: lockIdentity(distribution) !== active.lockSha256,
+        ...(transition && { transition }),
         ...await inspectBuild(active, stack),
       }
-    : { mode: 'registry', verifiedImports: await verifyLinks(root, null) };
+    : { mode: 'registry', verifiedImports: await verifyLinks(root, null), ...(transition && { transition }) };
 }
 
 export async function sdkCommand(argv) {
@@ -1207,7 +1371,7 @@ export async function sdkCommand(argv) {
     console.log(help);
     return;
   }
-  if (!['init', 'dev', 'status', 'registry'].includes(action) || positionals.length > (action === 'dev' ? 2 : 1))
+  if (!['init', 'dev', 'status', 'registry', 'recover'].includes(action) || positionals.length > (action === 'dev' ? 2 : 1))
     throw Error(help);
   if ((values['start-stopped'] || values.review !== undefined) &&
       (action !== 'dev' || !values.stack || !values['start-stopped'] || !/^[a-f0-9]{64}$/.test(values.review ?? '')))
@@ -1255,6 +1419,27 @@ export async function sdkCommand(argv) {
     throw Error('Run omnitron sdk init to install or upgrade the project bridge, then commit the hook');
   await prepareState(root);
   await exclusively(dir, async () => {
+    const transition = await sdkTransitionStatus(root);
+    if (action === 'recover') {
+      if (!transition) throw Error('No retained SDK transition is available');
+      await sdkTransitionStatus(root, true);
+      await exclusively(await prepareState(transition.source), async () => {
+        await requireSourceStopped(root, transition.source, values.stack);
+        await recoverSdkTransition(root);
+        await clearSourceSelection(root, transition.source, transition.id);
+      });
+      console.log('Previous SDK bytes and dependency bindings restored. This does not certify source or application readiness; run sdk status.');
+      return;
+    }
+    if (transition && !['committed', 'restored'].includes(transition.phase))
+      throw Error('SDK transition is unfinished; run sdk recover before another selection');
+    // A crash after committing the consumer receipt can precede releasing the
+    // source fence. Clear that exact terminal fence before replacing history.
+    if (transition) {
+      const sourceState = statePath(transition.source);
+      if (await fs.realpath(sourceState) !== sourceState) throw Error('SDK source operation directory changed');
+      await exclusively(sourceState, () => clearSourceSelection(root, transition.source, transition.id));
+    }
     const previous = await profileStatus(root);
     const selection = path.join(dir, 'active.json');
     const selected = await optionalJson(path.join(dir, 'install.json'));
@@ -1266,19 +1451,11 @@ export async function sdkCommand(argv) {
       }
       await requireStopped(root, values.stack);
       await registryBaseline(root, distribution);
-      try {
+      await changeSelection(root, previous?.source ?? selected?.source, values.stack, undefined, undefined, async () => {
         await frozen(root);
         await verifyLinks(root, null);
         await fs.rm(selection, { force: true });
-      } catch (error) {
-        try {
-          if (previous && JSON.stringify(await optionalJson(path.join(dir, 'install.json'))) !== JSON.stringify(selected))
-            await installDevelopment(root, previous, lockIdentity(distribution));
-        } catch (rollback) {
-          throw new AggregateError([error, rollback], 'Registry switch and recovery failed');
-        }
-        throw error;
-      }
+      });
       return;
     }
     const source = await fs.realpath(
@@ -1294,43 +1471,20 @@ export async function sdkCommand(argv) {
       const launch = values['start-stopped'] ? await reviewedSdkLaunch(root, values.stack, values.review) : undefined;
       let built;
       if (interrupted || JSON.stringify(previous) !== JSON.stringify(desired)) {
-        await requireStopped(root, values.stack);
-        let registryAvailable = false;
-        if (!previous) {
-          try { await registryBaseline(root, distribution); registryAvailable = true; }
-          catch { /* A missing or stale distribution is not a rollback target. */ }
-        }
-        built = await build(desired, Object.keys(desired.links), controller.signal);
-        if (!isDeepStrictEqual(await desiredProfile(root, source, distribution), desired))
-          throw Error('Consumer or SDK inputs changed while building; run sdk dev again');
-        let prepared = distribution;
-        let installationStarted = false;
-        try {
-          prepared = await bootstrapPackageManager(root, distribution);
+        await changeSelection(root, source, values.stack, Object.keys(desired.links), controller.signal, async ownDistribution => {
+          built = await build(desired, Object.keys(desired.links), controller.signal, true);
+          if (!isDeepStrictEqual(await desiredProfile(root, source, distribution), desired))
+            throw Error('Consumer or SDK inputs changed while building; run sdk dev again');
+          const prepared = await bootstrapPackageManager(root, distribution);
+          ownDistribution(prepared);
           desired = { ...desired, lockSha256: lockIdentity(prepared) };
-          installationStarted = true;
           await installDevelopment(root, desired);
-          if (!launch) await checkpointSdkBuild(desired, built, undefined, controller.signal);
+          if (!launch) await checkpointSdkBuild(desired, built, undefined, controller.signal, undefined, undefined, true);
           await atomic(selection, JSON.stringify(desired, null, 2) + '\n');
+          if (launch) await checkpointSdkBuild(desired, built, values.stack, controller.signal, undefined, launch, true);
           if (prepared !== distribution)
             console.log('Accepted pnpm package-manager metadata in the distribution lock; the application dependency graph is unchanged.');
-        } catch (error) {
-          if (!installationStarted || !previous && !registryAvailable) {
-            try { await restoreDistribution(root, distribution, prepared); }
-            catch (restore) { throw new AggregateError([error, restore], 'SDK switch failed; a changed distribution lock was preserved'); }
-            if (!installationStarted) throw error;
-            throw new Error(error.message + '. No verified registry baseline is available; the SDK installation is incomplete. Run sdk dev again to finish it.', { cause: error });
-          }
-          let recovery;
-          try {
-            if (previous) await installDevelopment(root, previous, lockIdentity(prepared));
-            else if (registryAvailable) { await frozen(root); await verifyLinks(root, null); }
-          } catch (rollback) { recovery = rollback; }
-          try { await restoreDistribution(root, distribution, prepared); }
-          catch (restore) { throw new AggregateError([error, ...(recovery ? [recovery] : []), restore], 'SDK switch failed; a changed distribution lock was preserved'); }
-          if (recovery) throw new AggregateError([error, recovery], 'SDK switch and recovery failed');
-          throw error;
-        }
+        });
       } else {
         await verifyLinks(root, desired);
         if (values['no-watch'] || launch) {
@@ -1338,16 +1492,18 @@ export async function sdkCommand(argv) {
             const { client } = await localStack(root, values.stack);
             await client.disconnect();
           }
-          // Profile equality says nothing about source or built output. Let the
-          // normal Turbo graph decide which tasks need rebuilding on every dev.
-          built = await build(desired, Object.keys(desired.links), controller.signal);
-          if (!isDeepStrictEqual(await desiredProfile(root, source, distribution), desired))
-            throw Error('Consumer or SDK inputs changed while building; run sdk dev again');
-          await verifyLinks(root, desired);
-          if (!launch) await checkpointSdkBuild(desired, built, values.stack, controller.signal);
+          // An explicit one-shot rebuild can overwrite a working SDK even
+          // without a profile change. It needs the same before-image/recovery.
+          await changeSelection(root, source, values.stack, Object.keys(desired.links), controller.signal, async () => {
+            built = await build(desired, Object.keys(desired.links), controller.signal, true);
+            if (!isDeepStrictEqual(await desiredProfile(root, source, distribution), desired))
+              throw Error('Consumer or SDK inputs changed while building; run sdk dev again');
+            await verifyLinks(root, desired);
+            if (!launch) await checkpointSdkBuild(desired, built, values.stack, controller.signal, undefined, undefined, true);
+            else await checkpointSdkBuild(desired, built, values.stack, controller.signal, undefined, launch, true);
+          });
         }
       }
-      if (launch) await checkpointSdkBuild(desired, built, values.stack, controller.signal, undefined, launch);
       if (!values['no-watch']) await watchSdk(desired, values.stack, controller.signal);
     } finally {
       process.off('SIGINT', stop);

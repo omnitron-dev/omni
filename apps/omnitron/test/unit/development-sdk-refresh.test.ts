@@ -29,6 +29,9 @@ interface Application {
 
 async function fixture() {
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'sdk-refresh-')));
+  const previousCache = process.env['OMNITRON_DEV_CACHE'];
+  const retained = path.join(root, 'retained'); await fs.mkdir(retained);
+  process.env['OMNITRON_DEV_CACHE'] = retained;
   const source = path.join(root, 'sdk'), consumer = path.join(root, 'consumer');
   const pkg = path.join(source, 'packages/probe'), state = path.join(consumer, '.omnitron/dev-sdk');
   for (const directory of [source, consumer]) {
@@ -105,7 +108,12 @@ async function fixture() {
       checkpoint: JSON.parse(await fs.readFile(checkpoint, 'utf8').catch(() => 'null')) };
   }
   return { app, add, binding, observations, run, source, consumer, pkg, checkpoint, profile,
-    close: async () => { errors.mockRestore(); messages.mockRestore(); await fs.rm(root, { recursive: true, force: true }); } };
+    close: async () => {
+      errors.mockRestore(); messages.mockRestore();
+      if (previousCache === undefined) delete process.env['OMNITRON_DEV_CACHE'];
+      else process.env['OMNITRON_DEV_CACHE'] = previousCache;
+      await fs.rm(root, { recursive: true, force: true });
+    } };
 }
 
 async function coldFixture() {
@@ -204,9 +212,19 @@ it.each(['stale-review', 'late-review', 'lost-reply', 'lost-online-reply', 'chan
         expect(rpc.start).not.toHaveBeenCalled();
         if (fault === 'stale-review') expect(await fs.stat(path.join(path.dirname(f.checkpoint), 'active.json')).catch(() => null)).toBeNull();
       } else {
-        expect(JSON.parse(await fs.readFile(f.checkpoint, 'utf8')).applications['project/dev'] ?? {}).toEqual({});
-        if (fault === 'lost-reply') await expect(f.command()).rejects.toThrow('already had a start request');
-        if (fault === 'lost-online-reply') await expect(f.command()).rejects.toThrow('fully stopped');
+        if (fault === 'lost-reply') {
+          // The owner still observes a stopped stack: selection recovery
+          // restores the original absence of a build, retaining launch intent.
+          expect(await fs.stat(f.checkpoint).catch(() => null)).toBeNull();
+          await expect(f.command()).rejects.toThrow('already had a start request');
+        } else {
+          expect(JSON.parse(await fs.readFile(f.checkpoint, 'utf8')).applications['project/dev'] ?? {}).toEqual({});
+        }
+        if (fault === 'lost-online-reply') {
+          await expect(f.command()).rejects.toThrow('SDK transition is unfinished');
+          await expect(sdkCommand(['recover', '--project-dir', f.consumer, '--stack', 'dev']))
+            .rejects.toThrow('before switching its working-tree dependencies');
+        }
         expect(rpc.start).toHaveBeenCalledTimes(1);
       }
     } finally { await f.close(); }

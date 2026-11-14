@@ -83,6 +83,8 @@ beforeEach(async () => {
   consumer = path.join(root, 'consumer');
   source = path.join(root, 'source');
   vi.stubEnv('OMNITRON_HOME', path.join(root, 'no-daemon'));
+  const retained = path.join(root, 'retained'); await fs.mkdir(retained);
+  vi.stubEnv('OMNITRON_DEV_CACHE', retained);
   await workspace(consumer);
   const manifest = await json(path.join(consumer, 'package.json'));
   manifest.dependencies = { '@omnitron-dev/lumen': '0.3.5' };
@@ -312,10 +314,18 @@ it.each(['file', 'link'] as const)('refuses a pnpm-valid %s override for a frame
 
 it.each([{ external: false, nodeLinker: 'isolated' }, { external: true, nodeLinker: 'isolated' },
   { external: false, nodeLinker: 'hoisted' }, { external: true, nodeLinker: 'hoisted' }])(
-  'restores registry dependencies using the installed pnpm store (%j)', async ({ external, nodeLinker }) => {
+  'restores owned registry stores and refuses external stores without changing them (%j)', async ({ external, nodeLinker }) => {
   const store = external ? path.join(root, 'consumer-virtual-store') : path.join(consumer, 'node_modules/.pnpm');
   await installRegistry(external ? store : undefined, nodeLinker);
   const baseline = await fs.readFile(path.join(consumer, 'pnpm-lock.yaml'), 'utf8');
+  if (external) {
+    const before = await filesystemSnapshot(store);
+    await expect(select(source)).rejects.toThrow('project-owned virtual store');
+    expect(await filesystemSnapshot(store)).toEqual(before);
+    expect(await inspectSdk(consumer)).toMatchObject({ mode: 'registry', verifiedImports: 1 });
+    expect(await exists(active())).toBe(false);
+    return;
+  }
   await select(source);
   expect((await exec('pnpm', ['run', 'build'], { cwd: consumer })).stdout).toContain('Built with SDK value 42');
   await sdkCommand(['registry', '--project-dir', consumer]);
@@ -410,7 +420,7 @@ it('rebuilds the same SDK selection after source changes with unchanged package 
 }, 90_000);
 
 it('binds environment-resolved pnpm layout changes even when workspace text is unchanged', async () => {
-  const first = path.join(root, 'first-store'), second = path.join(root, 'second-store');
+  const first = path.join(consumer, 'first-store'), second = path.join(consumer, 'second-store');
   vi.stubEnv('SDK_TEST_VIRTUAL_STORE', first);
   await installRegistry('${SDK_TEST_VIRTUAL_STORE}');
   await select(source);
@@ -436,8 +446,11 @@ it('retains the last successful build checkpoint when a repeated SDK build fails
   const rootLock = await distribution();
   const script = path.join(source, 'packages/lumen-ast/build.js');
   const original = await fs.readFile(script, 'utf8');
-  await fs.writeFile(script, 'throw Error("Build was not completed");\n');
+  const output = path.join(source, 'packages/lumen-ast/dist/index.js');
+  const previousOutput = await fs.readFile(output, 'utf8');
+  await fs.writeFile(script, 'import fs from "node:fs"; fs.writeFileSync("dist/index.js", "partial build"); throw Error("Build was not completed");\n');
   await expect(select()).rejects.toThrow(/pnpm .* exited/);
+  expect(await fs.readFile(output, 'utf8')).toBe(previousOutput);
   expect(await fs.readFile(checkpoint, 'utf8')).toBe(before);
   expect(await fs.readFile(active(), 'utf8')).toBe(profile);
   expect(await distribution()).toBe(rootLock);
@@ -554,15 +567,15 @@ it.each([false, true])('restores the original root lock after failed bootstrap a
   const file = path.join(consumer, 'package.json'), manifest = await json(file);
   manifest.scripts = { preinstall: 'node -e "process.exit(23)"' };
   await write(file, manifest);
-  await expect(select(source)).rejects.toThrow('No verified registry baseline');
-  expect((await json(selected())).installing).toBe(true);
+  await expect(select(source)).rejects.toThrow('Previous SDK bytes and dependency bindings were restored');
+  expect(await exists(selected())).toBe(false);
   expect(await exists(active())).toBe(false);
   if (stale) expect(await fs.readFile(path.join(consumer, 'pnpm-lock.yaml'), 'utf8')).toBe(original);
   else expect(await exists(path.join(consumer, 'pnpm-lock.yaml'))).toBe(false);
-  await expect(inspectSdk(consumer)).rejects.toThrow('interrupted');
+  expect((await json(path.join(consumer, '.omnitron/dev-sdk/transition.json'))).phase).toBe('restored');
   delete manifest.scripts;
   await write(file, manifest);
-  await select();
+  await select(source);
   expect(await inspectSdk(consumer)).toMatchObject({ mode: 'development', source, distributionLock: stale ? 'present' : 'absent' });
 }, 90_000);
 
@@ -593,14 +606,12 @@ it('preserves a concurrent root lock edit instead of hiding it during failed boo
   const concurrent = '# changed by another writer while pnpm was installing\nlockfileVersion: \'9.0\'\nimporters:\n  .: {}\n';
   await fs.writeFile(path.join(consumer, 'concurrent.js'),
     `require('node:fs').writeFileSync('pnpm-lock.yaml', ${JSON.stringify(concurrent)}); process.exit(23);\n`);
-  await expect(select(source)).rejects.toThrow(
-    'pnpm install exited with 1. No verified registry baseline is available; the SDK installation is incomplete. Run sdk dev again to finish it.'
-  );
+  await expect(select(source)).rejects.toThrow('Recovery is unconfirmed: Distribution lock changed');
   expect(await fs.readFile(path.join(consumer, 'pnpm-lock.yaml'), 'utf8')).toBe(concurrent);
   expect(await exists(active())).toBe(false);
   expect(await exists(path.join(consumer, '.omnitron/dev-sdk/built.json'))).toBe(false);
   expect((await json(selected())).installing).toBe(true);
-  await expect(inspectSdk(consumer)).rejects.toThrow('interrupted');
+  await expect(inspectSdk(consumer)).rejects.toThrow('readiness is unconfirmed');
 }, 90_000);
 
 it.each(['private', 'version', 'missing', 'escape'])('refuses an invalid SDK package before installing the consumer: %s', async invalid => {

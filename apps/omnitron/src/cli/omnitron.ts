@@ -52,6 +52,12 @@ sdk.command('dev [checkout]').description('Select a local SDK and rebuild when i
 sdk.command('registry').description('Restore dependencies from the frozen distribution lock')
   .option('--project-dir <path>', 'Consumer workspace directory', process.cwd())
   .action(async ({ projectDir }) => (await import('../../bin/sdk.js')).sdkCommand(['registry', '--project-dir', projectDir]));
+sdk.command('recover').description('Restore the retained SDK bytes and dependency bindings without rebuilding')
+  .option('--project-dir <path>', 'Consumer workspace directory', process.cwd())
+  .option('--stack <name>', 'Require this local source stack to remain stopped')
+  .action(async ({ projectDir, stack }) => (await import('../../bin/sdk.js')).sdkCommand([
+    'recover', '--project-dir', projectDir, ...(stack ? ['--stack', stack] : []),
+  ]));
 sdk.command('status').description('Verify the workspace imports and report their SDK origin')
   .option('--project-dir <path>', 'Consumer workspace directory', process.cwd())
   .option('--stack <name>', 'Verify existing application refresh receipts against the execution owner')

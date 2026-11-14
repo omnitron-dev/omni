@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
+import { developmentCacheDirectory } from '../apps/omnitron/bin/sdk-transition.js';
 import { locateQualifiedLocalRuntime } from './qualification.mjs';
 
 /** The trusted checkout verifies bytes before any cached interpreter runs. */
@@ -19,7 +19,7 @@ export async function localRuntime(root, cache, run, progress) {
   if (!/^[a-f0-9]{40}$/.test(revision)) throw Error('Cannot identify the local source commit');
   if ((await run(root, 'git', ['status', '--porcelain'])).trim())
     throw Error('Commit the local changes before preparing a runtime from HEAD');
-  const base = path.resolve(cache ?? path.join(process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache'), 'omnitron', 'development'));
+  const base = developmentCacheDirectory(cache);
   await fs.mkdir(base, { recursive: true, mode: 0o700 });
   const key = [revision, process.platform, process.arch, process.version].join('-');
   const destination = path.join(base, key);

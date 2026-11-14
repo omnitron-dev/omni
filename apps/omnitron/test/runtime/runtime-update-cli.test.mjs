@@ -7,6 +7,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { runtimeArtifactDigest } from '../../src/shared/runtime-artifact.ts';
+import { readCommandResult, CommandResultError } from '../../src/shared/command-result.ts';
 import { tsImport } from 'tsx/esm/api';
 
 const { runtimeUpdatePlanDigest } = await tsImport('../../src/daemon/runtime-update.ts', import.meta.url);
@@ -14,6 +15,27 @@ const execute = promisify(execFile);
 const root = fileURLToPath(new URL('../../../../', import.meta.url));
 const cli = fileURLToPath(new URL('../../src/cli/omnitron.ts', import.meta.url));
 const commit = 'c'.repeat(40);
+
+test('machine results preserve refusals, explicit codes and process failure without exposing raw output', () => {
+  assert.deepEqual(readCommandResult('{"ok":true,"data":{"ready":true}}', 'status'), { ready: true });
+  assert.throws(() => readCommandResult(JSON.stringify({ ok: false, error: { message: 'Preparation refused' },
+    code: 'REVIEW_STALE', details: { phase: 'inspect' } }), 'runtime update prepare'), error => {
+    assert.equal(error.message, 'Preparation refused');
+    assert.equal(error.code, 'REVIEW_STALE');
+    assert.deepEqual(error.details.reported, { phase: 'inspect' });
+    return true;
+  });
+  assert.throws(() => readCommandResult('{"ok":true,"data":{"reason":"Not finished"}}', 'apply', 7), error =>
+    error instanceof CommandResultError && error.message === 'Not finished' && error.exitCode === 7);
+  assert.throws(() => readCommandResult('{"ok":true,"data":{}}', 'apply', 'SIGTERM'), error =>
+    error instanceof CommandResultError && error.exitCode === 1);
+  assert.throws(() => readCommandResult('private-output-that-is-not-json', 'status'), error =>
+    !error.message.includes('private-output') && !JSON.stringify(error.details).includes('private-output'));
+  const transport = Error('connection lost');
+  assert.throws(() => readCommandResult('partial', 'status', 1, transport), error => error === transport);
+  for (const value of [null, [], true, { data: {} }])
+    assert.throws(() => readCommandResult(JSON.stringify(value), 'status'), CommandResultError);
+});
 
 async function instance(t) {
   const home = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), 'runtime-cli-'));
@@ -24,7 +46,7 @@ async function instance(t) {
   return { home, invoke };
 }
 
-async function candidate(home) {
+async function candidate(home, reply = { ok: true, data: { delegated: true } }, status = 0) {
   const stage = path.join(home, 'candidate');
   const called = path.join(home, 'called');
   await fs.mkdir(path.join(stage, 'packages/0/dist/cli'), { recursive: true, mode: 0o700 });
@@ -34,7 +56,8 @@ async function candidate(home) {
   }
   await fs.writeFile(path.join(stage, 'packages/0/dist/cli/omnitron.js'), '// Verified fixture entry\n', { mode: 0o600 });
   const quoted = "'" + called.replaceAll("'", "'\\''") + "'";
-  await fs.writeFile(path.join(stage, 'node'), `#!/bin/sh\nprintf '%s\\n' "$@" > ${quoted}\nprintf '%s\\n' '{"ok":true,"data":{"delegated":true}}'\n`, { mode: 0o700 });
+  const encoded = "'" + JSON.stringify(reply).replaceAll("'", "'\\''") + "'";
+  await fs.writeFile(path.join(stage, 'node'), `#!/bin/sh\nprintf '%s\\n' "$@" > ${quoted}\nprintf '%s\\n' ${encoded}\nexit ${status}\n`, { mode: 0o700 });
   const artifact = await runtimeArtifactDigest(stage);
   const manifest = { protocol: 1, sha256: artifact, platform: process.platform, arch: process.arch, nodeVersion: process.version, packages: 1 };
   await fs.writeFile(path.join(stage, 'RUNTIME.json'), JSON.stringify(manifest), { mode: 0o600 });
@@ -76,6 +99,26 @@ test('public prepare delegates exactly once to the sealed candidate Node and CLI
     path.join(runtime.directory, 'packages/0/dist/cli/omnitron.js'), '--json', 'runtime', 'update', 'prepare', runtime.directory,
   ]);
   await assert.rejects(fs.access(path.join(home, 'runtime/local-updates')), 'the reviewing CLI cannot run host actions itself');
+});
+
+test('public prepare preserves target refusal reasons and the structured review on nonzero exit', { skip: process.platform === 'win32' }, async t => {
+  const { invoke, home } = await instance(t);
+  const review = { project: 'sample', stack: 'local', digest: null,
+    targets: [{ node: 'local', reason: 'Selected release declarations changed' }] };
+  const runtime = await candidate(home, { ok: true, data: review }, 1);
+  await assert.rejects(invoke('runtime', 'update', 'prepare', runtime.directory), error => {
+    const reply = JSON.parse(error.stderr);
+    assert.equal(reply.ok, false);
+    assert.equal(reply.error, 'local: Selected release declarations changed');
+    assert.equal(reply.code, 'CLI_RESULT_UNCONFIRMED');
+    assert.equal(reply.details.exitCode, 1);
+    assert.deepEqual(reply.details.result, review);
+    return true;
+  });
+  assert.deepEqual((await fs.readFile(runtime.called, 'utf8')).trim().split('\n'), [
+    path.join(runtime.directory, 'packages/0/dist/cli/omnitron.js'), '--json', 'runtime', 'update', 'prepare', runtime.directory,
+  ]);
+  await assert.rejects(fs.access(path.join(home, 'runtime/local-updates')), 'a refused review must not apply a host action');
 });
 
 test('status exposes verified candidate paths and refuses a mismatching private plan', async t => {

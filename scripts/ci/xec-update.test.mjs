@@ -98,6 +98,18 @@ test('controller refusals preserve structured receipts, nonzero status and the a
   await assert.rejects(runUpdate(['apply', id], { ...options, run: async () => { throw transport; } }), error => error === transport);
 });
 
+test('target-specific preparation refusals survive Xec with their complete review', async () => {
+  const review = { digest: null, targets: [{ node: 'local', reason: 'Pinned declarations changed' }] };
+  const output = [];
+  let calls = 0;
+  await assert.rejects(runUpdate(['local-sync', '--status', '--cli', '/operator/omnitron'], {
+    progress: value => output.push(value),
+    run: async () => { calls++; throw new ReleaseCommandError('omnitron', 1, JSON.stringify({ ok: true, data: review }), ''); },
+  }), error => error.isUserError && error.exitCode === 1 && error.message === 'local: Pinned declarations changed');
+  assert.deepEqual(JSON.parse(output[0]), review);
+  assert.equal(calls, 1);
+});
+
 test('check builds one isolated local revision and apply consumes the same verified bytes', { skip: !['linux', 'darwin'].includes(process.platform) }, async t => {
   const cache = await fs.mkdtemp(path.join(os.tmpdir(), 'xec-development-'));
   t.after(() => fs.rm(cache, { recursive: true, force: true }));

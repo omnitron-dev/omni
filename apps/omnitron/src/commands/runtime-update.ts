@@ -7,6 +7,7 @@ import { verifyRuntimeArtifact } from '../shared/runtime-artifact.js';
 import { readPreparedRuntimeUpdate, readRuntimeUpdateReceipt, runRuntimeUpdate } from '../daemon/runtime-update.js';
 import { runtimeUpdateActions, verifyRuntimeUpdateTarget } from '../daemon/runtime-update-host.js';
 import { emitError, emitInfo, emitJson, emitStep } from './output.js';
+import { readCommandResult } from '../shared/command-result.js';
 import type { RuntimeUpdateCall } from '../daemon/runtime-update-host.js';
 import type { PreparedRuntimeUpdate, RuntimeUpdateReceipt, RuntimeUpdateStatus, VerifiedRuntimeReference } from '../shared/dto/runtime-update.js';
 
@@ -23,13 +24,7 @@ async function callRuntime<T>(runtime: VerifiedRuntimeReference, args: readonly 
     failure = error;
     output = error.stdout.trim() ? error.stdout : error.stderr;
   }
-  let reply;
-  try { reply = JSON.parse(output); } catch (error) { throw failure ?? error; }
-  if (reply?.ok !== true || failure) {
-    const reason = typeof reply?.error === 'string' ? reply.error : reply?.error?.message ?? reply?.data?.reason;
-    throw Error(reason ?? 'Runtime did not confirm the operation. Inspect runtime update status before recovery.', { cause: failure });
-  }
-  return reply.data as T;
+  return readCommandResult<T>(output, args.join(' '), failure ? failure.status || 1 : 0, failure);
 }
 
 async function inspect(digest?: string): Promise<RuntimeUpdateStatus> {

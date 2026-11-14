@@ -173,7 +173,7 @@ async function command(program: string, args: string[], options: { cwd: string; 
   const signal = controller.signal;
   let active = true;
   const engine = new ExecutionEngine({ defaultShell: false, maxBuffer: DIAGNOSTIC_BYTES, enableEvents: false,
-    adapters: { local: { forceImplementation: 'node', killSignal: 'SIGKILL' } } });
+    adapters: { local: { killSignal: 'SIGKILL' } } });
   const sink = options.stdout;
   const sinkFailure = (error: Error) => { if (active) controller.abort(error); };
   const cancel = () => {

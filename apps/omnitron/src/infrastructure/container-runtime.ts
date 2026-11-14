@@ -879,8 +879,7 @@ export async function startContainer(nameOrId: string): Promise<void> {
 
 async function executeDocker(args: string[]) {
   const { ExecutionEngine } = await import('@xec-sh/core');
-  const engine = new ExecutionEngine({ defaultShell: false, enableEvents: false,
-    adapters: { local: { forceImplementation: 'node' } } });
+  const engine = new ExecutionEngine({ defaultShell: false, enableEvents: false });
   try {
     return await engine.execute({ command: 'docker', args, shell: false, adapter: 'local',
       timeout: 60_000, maxBuffer: 1024 * 1024, throwOnNonZeroExit: true });

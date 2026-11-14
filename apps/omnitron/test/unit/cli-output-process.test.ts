@@ -30,6 +30,21 @@ function run(args: string[], setup?: (root: string) => void, environment = false
   }
 }
 describe('actual CLI machine output boundary', () => {
+  it('returns from parser help with a complete response and exit code zero', () => {
+    const result = run(['--help']);
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('Usage: omnitron');
+    expect(result.stderr).toBe('');
+  });
+  it('reports parser errors and exits unsuccessfully without waiting for daemon handles', () => {
+    const result = run(['--unknown-cli-option']);
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain("unknown option '--unknown-cli-option'");
+    expect(result.instanceCreated).toBe(false);
+  });
   it.each([false, true])(
     'rejects lifecycle mutation before private state is created (environment=%s)',
     (environment) => {

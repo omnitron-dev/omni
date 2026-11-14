@@ -25,7 +25,7 @@ import { prepareReviewedBackendRecovery, checkReviewedBackendRecovery, inspectHe
 
 const fake = vi.hoisted(() => ({ config: undefined as ManagedRuntime | undefined, artifact: undefined as BackendArtifact | undefined,
   snapshot: vi.fn(), prepare: vi.fn(), cancel: vi.fn(), launch: vi.fn(), daemon: vi.fn(), proof: vi.fn(), candidate: vi.fn(),
-  children: [] as ChildProcess[], native: vi.fn(), certificate: vi.fn(), verifyEntry: vi.fn(), shutdown: vi.fn() }));
+  children: [] as ChildProcess[], native: vi.fn(), certificate: vi.fn(), verifyEntry: vi.fn(), unchanged: vi.fn(), shutdown: vi.fn() }));
 vi.mock('../../src/daemon/owner-reconciliation.js', async original => ({
   ...await original<typeof import('../../src/daemon/owner-reconciliation.js')>(), assertCleanManagedShutdown: fake.shutdown,
 }));
@@ -39,6 +39,7 @@ vi.mock('@omnitron-dev/common/process-identity', async original => ({
 vi.mock('../../src/daemon/managed-owner-build.js', () => ({ attestManagedOwnerRuntime: fake.proof }));
 vi.mock('../../src/daemon/backend-candidate.js', async original => ({
   ...await original<typeof import('../../src/daemon/backend-candidate.js')>(), checkBackendCandidate: fake.candidate, verifyBackendEntry: fake.verifyEntry,
+  assertBackendArtifactUnchanged: fake.unchanged,
 }));
 vi.mock('../../src/daemon/execution-client.js', () => ({ ExecutionClient: class {
   connect = fake.snapshot; recoverySnapshot = fake.snapshot; prepareReviewedReplacement = fake.prepare;
@@ -59,7 +60,12 @@ vi.mock('node:child_process', async original => {
 const roots: string[] = [];
 const instances: RuntimeInstallation[] = [];
 const stores: DaemonStateStore[] = [];
-beforeEach(() => { vi.resetAllMocks(); fake.native.mockReturnValue({ state: 'dead' }); fake.certificate.mockImplementation(async record => record); });
+beforeEach(() => {
+  vi.resetAllMocks(); fake.native.mockReturnValue({ state: 'dead' }); fake.certificate.mockImplementation(async record => record);
+  // This fixture substitutes artifact verification, including reuse of its proof.
+  // runtime-installation.test.ts exercises the real sealed bytes and private proof.
+  fake.unchanged.mockImplementation(async artifact => { expect(artifact).toBe(fake.artifact); });
+});
 afterEach(async () => {
   for (const child of fake.children.splice(0)) if (child.exitCode === null && child.signalCode === null) {
     const ended = once(child, 'exit'); child.kill('SIGKILL'); await ended;
@@ -174,11 +180,13 @@ it('restores one harmless child from a new lineage checkpoint and accepts the ne
 it('waits passively for the admitted writer to replace its real startup-invalid certificate without spawning again', async () => {
   const f = await fixture();
   const publication = Promise.withResolvers<void>();
-  fake.certificate.mockImplementationOnce(async record => { await publication.promise; return record; });
+  const entered = Promise.withResolvers<void>();
+  fake.certificate.mockImplementationOnce(async record => { entered.resolve(); await publication.promise; return record; });
   let settled = false;
   const recovery = f.invoke().finally(() => { settled = true; });
   try {
-    await vi.waitFor(() => expect(fake.certificate).toHaveBeenCalledTimes(1));
+    await Promise.race([entered.promise, recovery]);
+    expect(fake.certificate).toHaveBeenCalledTimes(1);
     const journal = new BackendRecoveryJournal(f.directory, { readOnly: true });
     try { expect(journal.read()).toMatchObject({ status: 'invalid', reason: 'Failed candidate startup',
       reasons: ['Failed candidate startup', 'Controller startup has not published a recovery snapshot'] }); }
@@ -302,8 +310,8 @@ it('rechecks the exact prepared receipt after artifact verification before creat
 
 it('detects rotation during final artifact verification, stops only its child and retains the failed hold', async () => {
   const f = await fixture();
-  fake.candidate.mockImplementationOnce(async () => fake.artifact).mockImplementationOnce(async () => {
-    f.changeInventory(); return fake.artifact;
+  fake.unchanged.mockImplementation(async () => {
+    if (fake.children.length) f.changeInventory();
   });
   await expect(f.invoke()).rejects.toThrow('inventory changed');
   expect(fake.children).toHaveLength(1); expect(fake.children[0]!.signalCode).not.toBeNull();
@@ -388,8 +396,8 @@ it('preserves a committed grant after its writer exits with an invalidated SQLit
 
 it('archives the admitted evidence exactly once before allowing a cold start from current intent', async () => {
   const f = await fixture();
-  fake.candidate.mockImplementationOnce(async () => fake.artifact).mockImplementationOnce(async () => {
-    f.changeInventory(); return fake.artifact;
+  fake.unchanged.mockImplementation(async () => {
+    if (fake.children.length) f.changeInventory();
   });
   await expect(f.invoke()).rejects.toThrow('inventory changed');
   const held = f.instance.activation()!;

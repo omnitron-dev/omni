@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, expect, it, vi } from 'vitest';
 import { RuntimeInstallation, selectedBackend } from '../../src/daemon/runtime-installation.js';
 import { runtimeArtifactDigest } from '../../src/shared/runtime-artifact.js';
+import { assertBackendArtifactUnchanged } from '../../src/daemon/backend-candidate.js';
 import { DaemonStateStore } from '../../src/daemon/daemon-state-store.service.js';
 import { openSqliteDatabase } from '@omnitron-dev/titan-database/sqlite';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
@@ -71,6 +72,16 @@ it('persists startup selection and rollback while keeping a stable bootstrap lau
   });
   expect(store.selection()).toMatchObject({ current: next.hash, previous: first.hash, bootstrap: first.hash, revision: 2 });
   expect((await selectedBackend(home))?.runtimeHash).toBe(next.hash);
+});
+
+it('refuses copied artifact metadata as a substitute for in-process verification', async () => {
+  const { store, make } = await fixture(), first = await make('first');
+  await store.exclusive(async () => {
+    const artifact = await store.install(first.source);
+    await expect(assertBackendArtifactUnchanged(artifact)).resolves.toBeUndefined();
+    await expect(assertBackendArtifactUnchanged({ ...artifact })).rejects.toThrow('no in-process verification');
+    await expect(assertBackendArtifactUnchanged(artifact)).resolves.toBeUndefined();
+  });
 });
 
 it('retains installation and recovery commands after rollback to a backend without an installation CLI', async () => {

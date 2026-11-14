@@ -177,10 +177,23 @@ try {
   assert.equal(new Set(states.map(state => state.owner)).size, states.length);
   for (let index = 1; index < states.length; index++) assert.ok(states[index].epoch > states[index - 1].epoch);
   assert.equal((await selectedBackend(home)).runtimeHash, installed.artifact.runtimeHash);
-  await fs.appendFile(path.join(installed.artifact.directory, 'cli/omnitron.js'), '\n// altered fixture\n');
-  await assert.rejects(() => execute(installed.launcher, ['--help'], {
-    cwd: directory, env: { ...process.env, OMNITRON_HOME: home }, timeout: 30_000,
-  }), error => /changed after sealing/.test(error.stderr));
+  const cliEntry = path.join(installed.artifact.directory, 'cli/omnitron.js');
+  const originalCli = await fs.readFile(cliEntry);
+  try {
+    await fs.appendFile(cliEntry, '\n// altered fixture\n');
+    const options = { cwd: directory, env: { ...process.env, OMNITRON_HOME: home }, timeout: 30_000 };
+    // A private control client remains usable; starting a backend still requires
+    // complete artifact admission before config, infrastructure or process creation.
+    const help = await execute(installed.launcher, ['--help'], options);
+    assert.match(help.stdout, /Usage: omnitron/);
+    await assert.rejects(() => execute(installed.launcher,
+      ['up', '--foreground', '--no-infra', '--no-watch', '--no-webapp'], options),
+    error => error.code === 1 && /changed after sealing/.test(error.stderr));
+    for (const marker of [path.join(home, 'daemon.pid'), path.join(ownerDirectory, 'owner.pid')]) {
+      assert.equal(new PidManager(marker).getPid(), null, 'Altered runtime must not start a daemon or execution owner');
+    }
+  } finally { await fs.writeFile(cliEntry, originalCli); }
+  assert.deepEqual(await fs.readFile(cliEntry), originalCli);
   await verifyRuntimeArtifact(path.resolve(dist, '../../..'));
   console.log(JSON.stringify({ test: 'durable-cold-start-and-integrity', role, directory, states, foregroundLifecycle: true, sourcePathAbsent: true, alteredRuntimeRefused: true }));
 } catch (error) {

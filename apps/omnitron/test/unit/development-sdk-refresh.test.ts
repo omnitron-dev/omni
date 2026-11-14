@@ -2,9 +2,11 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { setTimeout as delay } from 'node:timers/promises';
-import { expect, it, vi } from 'vitest';
+import { promisify } from 'node:util';
+import { beforeAll, expect, it, vi } from 'vitest';
 
 const rpc = vi.hoisted(() => ({ projects: vi.fn(), stacks: vi.fn(), stack: vi.fn(), status: vi.fn(), watch: vi.fn(), review: vi.fn(), start: vi.fn(),
   automatic: vi.fn(), manual: vi.fn(), disconnect: vi.fn() }));
@@ -18,6 +20,16 @@ vi.mock('@omnitron-dev/omnitron/operations', async () => ({
 }));
 const { inspectSdk, sdkCommand, watchSdk } = await import('../../bin/sdk.js');
 const require = createRequire(import.meta.url);
+let packageManager: string;
+
+beforeAll(async () => {
+  packageManager = JSON.parse(await fs.readFile(path.resolve(import.meta.dirname, '../../../../package.json'), 'utf8')).packageManager;
+  expect(packageManager).toMatch(/^pnpm@\d+\.\d+\.\d+$/);
+  const { stdout } = await promisify(execFile)('pnpm', ['--config.pmOnFail=ignore', '--version'], {
+    cwd: os.tmpdir(), timeout: 10_000,
+  });
+  expect(stdout.trim()).toBe(packageManager.slice('pnpm@'.length));
+});
 
 interface Application {
   name: string;
@@ -38,8 +50,11 @@ async function fixture() {
     await fs.mkdir(path.join(directory, 'node_modules/.bin'), { recursive: true });
     await fs.writeFile(path.join(directory, '.gitignore'), 'node_modules/\n.omnitron/\n.turbo/\ndist/\n');
     await fs.writeFile(path.join(directory, 'package.json'), JSON.stringify({ name: path.basename(directory),
-      private: true, packageManager: 'pnpm@12.16.1', ...(directory === consumer && { dependencies: { '@omnitron-dev/probe': '1.0.0' } }) }));
-    await fs.writeFile(path.join(directory, 'pnpm-workspace.yaml'), 'packages:\n  - packages/*\n');
+      private: true, packageManager, ...(directory === consumer && { dependencies: { '@omnitron-dev/probe': '1.0.0' } }) }));
+    // The harness verifies the exact pnpm executable; its external-manager mode
+    // keeps every command from adding a manager document to this fixture lock.
+    await fs.writeFile(path.join(directory, 'pnpm-workspace.yaml'),
+      `packages:\n  - packages/*\noffline: true\npmOnFail: ignore\nverifyDepsBeforeRun: error\nstoreDir: ${path.join(root, 'store')}\ncacheDir: ${path.join(root, 'cache')}\n`);
     await fs.writeFile(path.join(directory, 'pnpm-lock.yaml'), "lockfileVersion: '9.0'\nimporters:\n  .: {}\n  packages/probe: {}\n");
     await fs.writeFile(path.join(directory, 'turbo.json'), JSON.stringify({ tasks: { build: { outputs: ['dist/**'] } } }));
     await fs.symlink(path.join(path.dirname(require.resolve('turbo/package.json')), 'bin/turbo'), path.join(directory, 'node_modules/.bin/turbo'));
@@ -140,8 +155,16 @@ async function coldFixture() {
   };
   halt();
   await sdkCommand(['init', '--project-dir', f.consumer]);
-  const command = () => sdkCommand(['dev', f.source, '--project-dir', f.consumer, '--stack', 'dev',
-    '--start-stopped', '--review', digest, '--no-watch']);
+  const sourceLock = path.join(f.source, 'pnpm-lock.yaml');
+  const beforeSourceLock = await fs.readFile(sourceLock, 'utf8');
+  const command = async () => {
+    try {
+      return await sdkCommand(['dev', f.source, '--project-dir', f.consumer, '--stack', 'dev',
+        '--start-stopped', '--review', digest, '--no-watch']);
+    } finally {
+      expect(await fs.readFile(sourceLock, 'utf8')).toBe(beforeSourceLock);
+    }
+  };
   return { ...f, apps, state, stop, target, digest, start, halt, command };
 }
 

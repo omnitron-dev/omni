@@ -69,6 +69,42 @@ describe('actual CLI machine output boundary', () => {
     expect(JSON.parse(result.stderr)).toMatchObject({ ok: false, code: 'DAEMON_NOT_RUNNING', outcome: 'not-started' });
     expect(result.stderr).not.toContain('JSON_OUTPUT_CONTRACT_VIOLATION');
   });
+  it.each([false, true])(
+    'admits backup diagnostics and reports the unavailable daemon as JSON (environment=%s)',
+    (environment) => {
+      const result = run([...(environment ? [] : ['--json']), 'backup', 'schedules'], undefined, environment);
+      expect(result.error).toBeUndefined();
+      expect(result.status).toBe(1);
+      expect(result.stdout).toBe('');
+      expect(JSON.parse(result.stderr)).toEqual({
+        ok: false,
+        error: 'Backup status unavailable: omnitron daemon is not running (start it with `omnitron up`)',
+      });
+      expect(result.instanceCreated).toBe(false);
+    }
+  );
+  it.each([
+    ['create', 'main'],
+    ['full'],
+    ['list'],
+    ['restore', 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'],
+    ['schedule', 'all', 'hourly'],
+    ['unschedule', 'all'],
+  ])('keeps unsupported backup %s output closed before execution', (...args) => {
+    for (const environment of [false, true]) {
+      const result = run([...(environment ? [] : ['--json']), 'backup', ...args], undefined, environment);
+      expect(result.error).toBeUndefined();
+      expect(result.status).toBe(2);
+      expect(result.stdout).toBe('');
+      expect(JSON.parse(result.stderr)).toMatchObject({
+        ok: false,
+        code: 'JSON_OUTPUT_UNSUPPORTED',
+        command: `backup ${args[0]}`,
+        outcome: 'not-started',
+      });
+      expect(result.instanceCreated).toBe(false);
+    }
+  });
   it('uses the shared envelope for a local --json config flag', () => {
     const result = run(['config', '--json'], (root) =>
       fs.writeFileSync(path.join(root, 'omnitron.config.mjs'), 'export default { apps: [] };\n')

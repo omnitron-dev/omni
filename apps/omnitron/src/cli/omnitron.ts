@@ -1370,7 +1370,7 @@ backup
 backup
   .command('schedules')
   .description('List configured backup schedules')
-  .action(async () => {
+  .structuredAction(async () => {
     const { backupSchedulesCommand } = await import('../commands/backup.js');
     await backupSchedulesCommand();
   });

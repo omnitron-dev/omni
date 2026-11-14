@@ -126,4 +126,23 @@ describe('discoverManagedProcesses — batched env read', () => {
     expect(execSyncMock).toHaveBeenCalledTimes(1);
     expect(readFileMock).toHaveBeenCalledTimes(HOST_PIDS.length);
   });
+
+  it.each(['EACCES', 'ENOENT'])('keeps Linux discovery local when a proc entry returns %s', code => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux');
+    execSyncMock.mockImplementation((cmd: string) => {
+      if (cmd.startsWith('ps -eo')) return psTable();
+      throw new Error(`unexpected command: ${cmd}`);
+    });
+    readFileMock.mockImplementation((file: string) => {
+      if (file === `/proc/${TAGGED}/environ`)
+        return 'OMNITRON_APP_NAME=api\0OMNITRON_PROJECT=proj\0OMNITRON_STACK=stack\0OMNITRON_MANAGED=1\0';
+      throw Object.assign(new Error('process environment unavailable'), { code });
+    });
+
+    expect(discoverManagedProcesses()).toEqual([expect.objectContaining({
+      pid: TAGGED, appName: 'api', fullyQualifiedName: 'proj/stack/api', managed: true,
+    })]);
+    expect(readFileMock).toHaveBeenCalledTimes(HOST_PIDS.length);
+    expect(execSyncMock.mock.calls.map(call => call[0])).toEqual(['ps -eo pid,ppid,etime']);
+  });
 });

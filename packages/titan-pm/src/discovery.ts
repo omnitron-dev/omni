@@ -102,13 +102,15 @@ export function discoverManagedProcesses(opts?: {
 function defaultReadEnv(pid: number): Record<string, string> | null {
   // Linux fast path — /proc is a kernel filesystem so reading is
   // cheap + atomic for a single process.
-  try {
-    if (process.platform === 'linux') {
+  if (process.platform === 'linux') {
+    try {
       const raw = readFileSync(`/proc/${pid}/environ`, 'utf-8');
       return parseEnvironZeros(raw);
+    } catch {
+      // A process may exit or deny access between discovery and this read.
+      // BSD's ps -E cannot recover that observation on Linux.
+      return null;
     }
-  } catch {
-    /* fall through to ps */
   }
   // Darwin / BSD — `ps -p <pid> -E` emits "args" with env appended.
   // It's slower (process spawn per pid) so we only use it on Darwin.

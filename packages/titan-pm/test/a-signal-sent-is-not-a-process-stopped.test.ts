@@ -28,14 +28,16 @@
  * simply never called it.
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
-import { fork, type ChildProcess } from 'node:child_process';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { fork, spawn, type ChildProcess } from 'node:child_process';
+import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 
 const FIXTURE = fileURLToPath(new URL('./fixtures/ignores-sigterm.cjs', import.meta.url));
 
 const spawned: ChildProcess[] = [];
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const c of spawned.splice(0)) {
     try {
       if (c.pid) process.kill(c.pid, 'SIGKILL');
@@ -180,6 +182,42 @@ describe('hasExited answers about the process, not about us', () => {
 describe('killChildAndVerify escalates, and says so honestly', () => {
   const quiet = () => {};
   const logger = { warn: quiet, error: quiet, info: quiet, debug: quiet, trace: quiet, fatal: quiet } as never;
+
+  it.skipIf(process.platform !== 'darwin')('reaps an exited group before concluding that macOS refused cleanup', async () => {
+    const child = spawn(process.execPath, ['-e', 'process.exit(0)'], { detached: true, stdio: 'ignore' });
+    spawned.push(child);
+    await once(child, 'spawn');
+    // Hold libuv while our child exits. XNU reports EPERM for a group whose
+    // only remaining member is a zombie; Node has not observed exit yet.
+    const stopWaiting = performance.now() + 5_000;
+    const barrier = new Int32Array(new SharedArrayBuffer(4));
+    let observed: string | undefined;
+    while (performance.now() < stopWaiting) {
+      try { process.kill(-child.pid!, 0); }
+      catch (error) { observed = (error as NodeJS.ErrnoException).code; break; }
+      Atomics.wait(barrier, 0, 0, 10);
+    }
+    expect(observed, 'the owned child is an unreaped zombie before cleanup').toBe('EPERM');
+    expect(child.exitCode).toBeNull();
+    await expect(killChildAndVerify(child, logger, {}, 0,
+      { force: true, processGroup: true, killGraceMs: 1_000 })).resolves.toBe(true);
+    expect(child.exitCode).toBe(0);
+    expect(() => process.kill(-child.pid!, 0)).toThrow(expect.objectContaining({ code: 'ESRCH' }));
+  });
+
+  it.skipIf(process.platform === 'win32')('retains a persistent permission refusal instead of reporting an inaccessible group stopped', async () => {
+    const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, stdio: 'ignore' });
+    spawned.push(child);
+    await once(child, 'spawn');
+    const kill = process.kill;
+    vi.spyOn(process, 'kill').mockImplementation((pid, signal) => {
+      if (pid === -child.pid!) throw Object.assign(new Error('group access denied'), { code: 'EPERM' });
+      return kill.call(process, pid, signal);
+    });
+    await expect(killChildAndVerify(child, logger, {}, 0,
+      { force: true, processGroup: true, killGraceMs: 50 })).rejects.toMatchObject({ code: 'EPERM' });
+    expect(osSaysAlive(child.pid)).toBe(true);
+  });
 
   it('kills a child that ignores SIGTERM, and reports that it is gone', async () => {
     const child = await startStubbornChild();

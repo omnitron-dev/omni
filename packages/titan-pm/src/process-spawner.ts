@@ -186,41 +186,57 @@ export async function killChildAndVerify(
   options: { force?: boolean; processGroup?: boolean; killGraceMs?: number } = {},
 ): Promise<boolean> {
   const pid = child.pid;
-  const groupAlive = (): boolean => {
+  const pause = (milliseconds: number) => new Promise<void>(resolve => {
+    const finish = () => { clearTimeout(timer); child.off('exit', finish); resolve(); };
+    const timer = setTimeout(finish, Math.min(50, milliseconds));
+    child.once('exit', finish);
+  });
+  const groupAlive = async (deadline: number): Promise<boolean> => {
     if (!options.processGroup || pid == null) return false;
-    try { process.kill(-pid, 0); return true; }
-    catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ESRCH') return false;
-      // Permission errors are uncertainty, not proof that the group is gone.
-      throw error;
+    for (;;) {
+      try { process.kill(-pid, 0); return true; }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ESRCH') return false;
+        const remaining = deadline - performance.now();
+        // XNU excludes zombies from killpg, returning EPERM until they are
+        // reaped. Yield to SIGCHLD within the existing budget, then ask again.
+        // A persistent permission refusal remains an error, never proof of exit.
+        if ((error as NodeJS.ErrnoException).code !== 'EPERM' || remaining <= 0) throw error;
+        await pause(remaining);
+      }
     }
   };
-  const gone = () => hasExited(child) && !groupAlive();
-  const signal = (value: NodeJS.Signals) => {
-    if (options.processGroup && pid != null && groupAlive()) process.kill(-pid, value);
-    else if (!hasExited(child)) child.kill(value);
-  };
-  const waitForExit = async (milliseconds: number): Promise<boolean> => {
-    const deadline = performance.now() + milliseconds;
-    while (!gone()) {
+  const gone = async (deadline: number) => hasExited(child) && !await groupAlive(deadline);
+  const waitForExit = async (deadline: number): Promise<boolean> => {
+    while (!await gone(deadline)) {
       const remaining = deadline - performance.now();
       if (remaining <= 0) return false;
-      await new Promise<void>(resolve => {
-        const finish = () => { clearTimeout(timer); child.off('exit', finish); resolve(); };
-        const timer = setTimeout(finish, Math.min(50, remaining));
-        child.once('exit', finish);
-      });
+      await pause(remaining);
     }
     return true;
   };
-  if (gone()) return true;
+  const signal = async (value: NodeJS.Signals, deadline: number) => {
+    try {
+      if (options.processGroup && pid != null && await groupAlive(deadline)) process.kill(-pid, value);
+      else if (!hasExited(child)) child.kill(value);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ESRCH') return;
+      // The group can exit between the probe and the signal. Only a subsequent
+      // confirmed exit may resolve EPERM; do not silently fall back to one PID.
+      if ((error as NodeJS.ErrnoException).code === 'EPERM' && await waitForExit(deadline)) return;
+      throw error;
+    }
+  };
+  let deadline = performance.now() + (options.force ? options.killGraceMs ?? 1000 : termGraceMs);
+  if (await gone(deadline)) return true;
   if (!options.force) {
-    signal('SIGTERM');
-    if (await waitForExit(termGraceMs)) return true;
+    await signal('SIGTERM', deadline);
+    if (await waitForExit(deadline)) return true;
     logger.warn({ ...context, pid }, 'Child ignored SIGTERM — escalating to SIGKILL');
+    deadline = performance.now() + (options.killGraceMs ?? 1000);
   }
-  signal('SIGKILL');
-  return waitForExit(options.killGraceMs ?? 1000);
+  await signal('SIGKILL', deadline);
+  return waitForExit(deadline);
 }
 
 export class WorkerHandle extends EventEmitter implements IWorkerHandle {

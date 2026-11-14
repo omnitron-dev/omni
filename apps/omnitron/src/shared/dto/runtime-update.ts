@@ -132,6 +132,8 @@ export interface RuntimeUpdateReceipt extends PreparedRuntimeUpdate {
   updatedAt: string;
   rollbackOwner?: RuntimeUpdateIdentity;
   restoreAttempted?: true;
+  /** Existing guardian transaction, retained before its first effect. */
+  restoreGuardian?: { file: string; intentSha256: string };
   acceptance?: RuntimeUpdateAcceptance;
   error?: string;
   recoveryError?: string;

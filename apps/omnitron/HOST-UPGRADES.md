@@ -142,7 +142,12 @@ that result and cannot launch the previous runtime again. For retained
 configuration, the target controller first restores the previous owner and
 applications, then restores previous backend and guardian roles through their
 ordinary warm handoffs. Recovery may finish an interrupted handoff after
-observing its committed roles. Startup defaults which an older owner cannot
+observing its committed roles. Before guardian effects, the runtime receipt
+retains the existing guardian plan's private path and intent digest. A repeat
+recover validates that binding and resumes the same `backend guardian apply`
+transaction even while its backend is retired or its unit is configured.
+It does not prepare another guardian plan or restart the owner.
+Startup defaults which an older owner cannot
 replace must still match before it is launched. An unproven
 execution owner requires inspection before a new installation can start.
 

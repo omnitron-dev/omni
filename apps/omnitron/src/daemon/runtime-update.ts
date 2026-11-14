@@ -13,6 +13,18 @@ const finished = new Set<RuntimeUpdatePhase>(['accepted', 'rolled-back']);
 const phases = new Set<RuntimeUpdatePhase>(['stopping', 'starting', 'verifying', 'accepted', 'failed',
   'stopping-candidate', 'restoring', 'rolled-back', 'recovery-required']);
 
+export interface RuntimeUpdateRestoration {
+  guardian(): RuntimeUpdateReceipt['restoreGuardian'];
+  recordGuardian(reference: NonNullable<RuntimeUpdateReceipt['restoreGuardian']>): Promise<void>;
+}
+
+function assertGuardianReference(plan: RuntimeUpdatePlan, reference: NonNullable<RuntimeUpdateReceipt['restoreGuardian']>) {
+  if (!plan.configuration || typeof reference.file !== 'string' || !path.isAbsolute(reference.file) ||
+      path.dirname(reference.file) !== path.join(plan.instance, 'runtime') ||
+      !/^supervisor-transition-[0-9a-f-]{36}\.json$/.test(path.basename(reference.file)) || !hash.test(reference.intentSha256))
+    throw Error('Invalid runtime restoration guardian reference');
+}
+
 export interface RuntimeUpdateActions {
   prepare(): Promise<RuntimeUpdatePlan>;
   validateStop(previous: RuntimeUpdateIdentity, plan?: RuntimeUpdatePlan): Promise<void>;
@@ -20,9 +32,9 @@ export interface RuntimeUpdateActions {
   assertStopped(previous: RuntimeUpdateIdentity): Promise<unknown>;
   canRestore(previous: RuntimeUpdateIdentity): Promise<boolean>;
   captureForRollback(plan: RuntimeUpdatePlan): Promise<RuntimeUpdateIdentity>;
-  start(destination: RuntimeUpdateReference | RuntimeUpdatePlan['before'], plan: RuntimeUpdatePlan): Promise<void>;
+  start(destination: RuntimeUpdateReference | RuntimeUpdatePlan['before'], plan: RuntimeUpdatePlan, restoration?: RuntimeUpdateRestoration): Promise<void>;
   /** Finish only observed restoration stages; never starts a second owner or stack attempt. */
-  completeRestore?(plan: RuntimeUpdatePlan): Promise<void>;
+  completeRestore?(plan: RuntimeUpdatePlan, restoration: RuntimeUpdateRestoration): Promise<void>;
   accept(plan: RuntimeUpdatePlan, direction: 'target' | 'previous', inspectOnly?: boolean): Promise<RuntimeUpdateAcceptance>;
 }
 
@@ -41,6 +53,7 @@ export async function readRuntimeUpdateReceipt(directory: string, digest?: strin
   if (digest && receipt?.digest !== digest) receipt = await readPrivateRecord<RuntimeUpdateReceipt>(path.join(directory, digest + '.json'));
   if (receipt) {
     assertPrepared(receipt);
+    if (receipt.restoreGuardian) assertGuardianReference(receipt.plan, receipt.restoreGuardian);
     if (!phases.has(receipt.phase) || typeof receipt.updatedAt !== 'string' || digest && receipt.digest !== digest)
       throw Error('Invalid local update receipt');
   }
@@ -74,12 +87,24 @@ export async function runRuntimeUpdate({ actions, directory, operation, digest: 
       progress(phase);
       return next;
     };
+    const restoration: RuntimeUpdateRestoration = {
+      guardian: () => record?.restoreGuardian,
+      async recordGuardian(reference) {
+        if (!record?.restoreAttempted || !['restoring', 'recovery-required'].includes(record.phase))
+          throw Error('No runtime restoration owns this guardian plan');
+        assertGuardianReference(record.plan, reference);
+        if (record.restoreGuardian && (record.restoreGuardian.file !== reference.file || record.restoreGuardian.intentSha256 !== reference.intentSha256))
+          throw Error('Runtime restoration already owns another guardian plan');
+        await save('restoring', { restoreGuardian: reference });
+      },
+    };
     const recover = async () => {
       if (!record) throw Error('No local update is available for recovery');
       const plan = record.plan;
       try {
         if (record.restoreAttempted || record.phase === 'restoring') {
-          await actions.completeRestore?.(plan);
+          if (record.phase !== 'restoring') await save('restoring');
+          await actions.completeRestore?.(plan, restoration);
           const acceptance = await actions.accept(plan, 'previous', true);
           return await save('rolled-back', { acceptance });
         }
@@ -91,7 +116,7 @@ export async function runRuntimeUpdate({ actions, directory, operation, digest: 
           await actions.assertStopped(live);
         }
         await save('restoring', { restoreAttempted: true });
-        await actions.start(plan.before, plan);
+        await actions.start(plan.before, plan, restoration);
         const acceptance = await actions.accept(plan, 'previous');
         return await save('rolled-back', { acceptance });
       } catch (error) {

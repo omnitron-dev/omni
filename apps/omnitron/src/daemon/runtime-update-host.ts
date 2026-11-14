@@ -17,7 +17,7 @@ import type { BuildStamp } from '../shared/build-stamp.js';
 import type { ManagedRuntime } from './managed-runtime.js';
 import type { RuntimeSelection } from './runtime-installation.js';
 import type { StackStartReview, SelectedRelease } from '../shared/dto/project.js';
-import type { RuntimeUpdateActions } from './runtime-update.js';
+import type { RuntimeUpdateActions, RuntimeUpdateRestoration } from './runtime-update.js';
 import type { RuntimeUpdateIdentity, RuntimeUpdateInfrastructure, RuntimeUpdatePlan, RuntimeUpdateProjectObservation, RuntimeUpdateStack, RuntimeUpdateStackObservation, RuntimeUpdateStatusObservation, RuntimeUpdateSelection, ReviewedRuntimeUpdateStack, VerifiedRuntimeReference } from '../shared/dto/runtime-update.js';
 
 export type RuntimeUpdateCall = <T>(argv: readonly string[], runtimeRoot?: string) => Promise<T>;
@@ -98,8 +98,28 @@ export function assertLocalServiceTargets(config: ManagedRuntime | null): assert
 /** Complete a restored owner through the existing warm role handoffs. Repeating
  * this after a lost reply observes committed roles; it never starts an owner. */
 export async function restoreRuntimeRoles(plan: RuntimeUpdatePlan, observe: () => Promise<RuntimeUpdateIdentity>,
-  accept: () => Promise<unknown>, call: RuntimeUpdateCall): Promise<void> {
+  accept: () => Promise<unknown>, call: RuntimeUpdateCall, restoration: RuntimeUpdateRestoration): Promise<void> {
   if (!plan.configuration) return;
+  const guardianPlan = async (file: string, intentSha256?: string, owner?: RuntimeUpdateIdentity) => {
+    const { readSupervisorTransition, supervisorTransitionIntentDigest } = await import('./supervisor-transition.js');
+    const transition = await readSupervisorTransition(file), digest = supervisorTransitionIntentDigest(transition);
+    if (transition.before.instanceHome !== plan.instance || transition.before.scope !== plan.before.scope || transition.before.owner.artifact !== plan.before.owner ||
+        transition.before.backend.artifact !== plan.target.artifact || transition.after.backend.artifact !== plan.before.guardian ||
+        transition.backend.runtime !== plan.before.backend || transition.owner.id === plan.before.ownerId ||
+        (owner && (transition.owner.id !== owner.ownerId || transition.owner.pid !== owner.ownerPid)) ||
+        (intentSha256 && digest !== intentSha256)) throw Error('Guardian transaction differs from the reviewed runtime restoration');
+    return { phase: transition.phase, reference: { file, intentSha256: digest } };
+  };
+  const resumeGuardian = async (reference: NonNullable<ReturnType<RuntimeUpdateRestoration['guardian']>>) => {
+    const { phase } = await guardianPlan(reference.file, reference.intentSha256);
+    if (phase === 'complete') return;
+    if (phase === 'prepared') await call(['backend', 'guardian', 'apply', reference.file, '--check']);
+    await call(['backend', 'guardian', 'apply', reference.file]);
+  };
+  // A retired/configured guardian may have no healthy backend yet. Its own
+  // durable transaction verifies native ownership before resuming that stage.
+  const pending = restoration.guardian();
+  if (pending) await resumeGuardian(pending);
   let roles = await observe();
   if (roles.owner !== plan.before.owner || roles.ownerId === plan.before.ownerId ||
       ![plan.target.artifact, plan.before.backend].includes(roles.backend))
@@ -113,10 +133,13 @@ export async function restoreRuntimeRoles(plan: RuntimeUpdatePlan, observe: () =
   }
   if (roles.backend !== plan.before.backend) throw Error('Previous backend restoration is unconfirmed');
   if (roles.guardian !== plan.before.guardian) {
+    if (pending) throw Error('Recorded guardian restoration is unconfirmed');
     if (roles.guardian !== plan.target.artifact) throw Error('Guardian changed outside the reviewed restoration');
     const transition = await call<{ file: string }>(['backend', 'guardian', 'prepare', path.join(plan.instance, 'runtime/releases', plan.before.guardian, cliDist)]);
-    await call(['backend', 'guardian', 'apply', transition.file, '--check']);
-    await call(['backend', 'guardian', 'apply', transition.file]);
+    const { phase, reference } = await guardianPlan(transition.file, undefined, roles);
+    if (phase !== 'prepared') throw Error('A new guardian restoration must be prepared before its first effect');
+    await restoration.recordGuardian(reference);
+    await resumeGuardian(reference);
   }
 }
 
@@ -320,10 +343,10 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
     return evidence;
   };
 
-  const completeRestore = async (plan: RuntimeUpdatePlan) => {
+  const completeRestore = async (plan: RuntimeUpdatePlan, restoration: RuntimeUpdateRestoration) => {
     await restoreRuntimeRoles(plan, () => until('Waiting for the restored controller',
       async () => identity(await call<RuntimeUpdateStatusObservation>(['status'])), 10 * 60_000),
-    () => accept(plan, 'previous', false, true), call);
+    () => accept(plan, 'previous', false, true), call, restoration);
   };
   return {
     async prepare(): Promise<RuntimeUpdatePlan> {
@@ -391,9 +414,10 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
       if (live.ownerId === plan.before.ownerId || live.backend !== plan.target.artifact || live.owner !== plan.target.artifact || live.guardian !== plan.target.artifact) throw Error('Cannot identify the candidate as the exclusive serving owner');
       return live;
     },
-    async start(destination, plan) {
+    async start(destination, plan, restoration) {
       assertLocalServiceTargets(await readManagedRuntime(home));
       const restoring = !('artifact' in destination);
+      if (restoring && plan.configuration && !restoration) throw Error('Runtime restoration requires its durable receipt');
       const backend = 'artifact' in destination ? destination.artifact : plan.configuration ? plan.target.artifact : destination.backend;
       const owner = 'artifact' in destination ? destination.artifact : destination.owner;
       if (restoring && plan.configuration)
@@ -419,7 +443,7 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
         }, 5 * 60_000);
         await call(['webapp', 'start'], installed(web));
       }
-      if (restoring && plan.configuration) await completeRestore(plan);
+      if (restoring && plan.configuration) await completeRestore(plan, restoration!);
     },
     completeRestore,
     accept,

@@ -259,6 +259,8 @@ test('applying the same review twice verifies a new live process generation and 
 test('a lost rollback acknowledgement is inspected without a second cold start', { skip: !native }, async t => {
   const directory = await privateInstance(t);
   const plan = planFor(directory, { pid: process.pid, generation: 'original' });
+  plan.configuration = { sha256: 'f'.repeat(64), basis: 'retained-next-start' };
+  const guardian = { file: path.join(directory, 'runtime/supervisor-transition-01234567-0000-0000-0000-000000000001.json'), intentSha256: 'e'.repeat(64) };
   let starts = 0;
   let restored = false;
   let completed = false;
@@ -269,16 +271,21 @@ test('a lost rollback acknowledgement is inspected without a second cold start',
     async stop() {},
     async assertStopped() {},
     async canRestore() { return true; },
-    async start(destination) {
+    async start(destination, _plan, restoration) {
       starts++;
       if ('artifact' in destination) throw Error('candidate refused');
       restored = true;
+      await restoration.recordGuardian(guardian);
+      assert.deepEqual((await readRuntimeUpdateReceipt(directory)).restoreGuardian, guardian, 'the reference is durable before guardian effects');
       throw Error('restored but acknowledgement was lost');
     },
-    async completeRestore(reviewed) {
+    async completeRestore(reviewed, restoration) {
       assert.deepEqual(reviewed, plan);
       assert.equal(restored, true);
       assert.equal(starts, 2);
+      assert.deepEqual(restoration.guardian(), guardian);
+      await assert.rejects(restoration.recordGuardian({ ...guardian, intentSha256: 'd'.repeat(64) }), /another guardian plan/);
+      await assert.rejects(restoration.recordGuardian({ ...guardian, file: '/different/instance/plan.json' }), /Invalid runtime restoration/);
       completed = true;
     },
     async accept(reviewed, direction, inspect) {
@@ -296,6 +303,7 @@ test('a lost rollback acknowledgement is inspected without a second cold start',
   const interrupted = await readRuntimeUpdateReceipt(directory);
   assert.equal(interrupted.phase, 'recovery-required');
   assert.equal(interrupted.restoreAttempted, true);
+  assert.deepEqual(interrupted.restoreGuardian, guardian);
   assert.equal(starts, 2);
   assert.equal(completed, false);
   const recovered = await runRuntimeUpdate({ actions, directory, operation: 'recover', digest: prepared.digest });

@@ -84,6 +84,7 @@ test('qualification uses one Xec pipeline, resumes a completed build and keeps b
     assert.equal(executable, process.execPath);
     assert.ok(path.isAbsolute(args[0]));
     assert.deepEqual(args.slice(1, 3), ['run', 'scripts/check-reproducible-backend.mjs']);
+    assert.equal(args[args.indexOf('--first') + 1], path.join(root, '.release-artifacts/qualification', commit, 'preparation'));
     builds++;
     const directory = args.at(-1);
     await buildFixture(directory, process.version);

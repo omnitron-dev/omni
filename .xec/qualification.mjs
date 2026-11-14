@@ -11,6 +11,7 @@ import { retainNativeRuntime } from './native-delivery.mjs';
 import { verifyRuntimeArtifact } from '../apps/omnitron/src/shared/runtime-artifact.ts';
 import os from 'node:os';
 import { verifyVersionQualification } from './version-qualification.js';
+import { preparationBuildDirectory } from '../scripts/lib/release-build.js';
 
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const read = async filename => JSON.parse(await fs.readFile(filename, 'utf8'));
@@ -115,7 +116,8 @@ async function runQualification(root, version, options, recordedIdentity) {
       }
       await persist();
       await run(root, process.execPath, [fileURLToPath(new URL('../bin/xec', import.meta.resolve('@xec-sh/cli'))),
-        'run', 'scripts/check-reproducible-backend.mjs', '--revision', commit, '--out', build],
+        'run', 'scripts/check-reproducible-backend.mjs', '--revision', commit,
+        '--first', preparationBuildDirectory(root, commit), '--out', build],
         { timeoutMs: 90 * 60_000 });
     }
     state.stages.reproducibility = await verifyBuild(build, commit, identity.node);

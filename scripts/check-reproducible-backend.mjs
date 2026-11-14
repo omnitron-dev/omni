@@ -1,17 +1,16 @@
 import assert from 'node:assert/strict';
 import { releaseCommand } from '@xec-sh/ops/release';
-import { createReadStream } from 'node:fs';
-import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { preserveReproducibilityFailure } from './lib/reproducibility-evidence.mjs';
 import { assertStandaloneNodeConfiguration } from '../apps/omnitron/scripts/standalone-node.js';
+import { releaseBuildContext, releaseInstallArgs, releaseDependencyBuildArgs, measureReleaseBuild, verifyPreparationBuild } from './lib/release-build.js';
 
 const { values } = parseArgs({ args: globalThis.args ?? process.argv.slice(2), options: {
-  out: { type: 'string' }, revision: { type: 'string' }, diagnostics: { type: 'string' },
+  out: { type: 'string' }, revision: { type: 'string' }, diagnostics: { type: 'string' }, first: { type: 'string' },
 } });
 if (values.revision && !/^[a-f0-9]{40}$/.test(values.revision)) throw Error('--revision requires a full Git commit');
 // The freezer copies this exact interpreter. Reject an unsuitable producer
@@ -25,80 +24,31 @@ if (destination) {
 const source = fileURLToPath(new URL('../', import.meta.url));
 const git = (...args) => releaseCommand(source, 'git', args);
 const revision = await git('rev-parse', '--verify', `${values.revision ?? 'HEAD'}^{commit}`);
+const context = await releaseBuildContext(source, revision);
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'omnitron-reproduce-'));
 const diagnostics = values.diagnostics ? path.resolve(values.diagnostics)
   : await fs.mkdtemp(destination ? destination + '.diagnostics-' : root + '-evidence-');
 if (values.diagnostics) await fs.mkdir(diagnostics, { mode: 0o700 }); // Never replace another run's evidence.
 const inventories = {}, sdkRoots = {};
-const env = { ...process.env, TZ: 'UTC', SOURCE_DATE_EPOCH: await git('show', '-s', '--format=%ct', revision),
-  npm_config_side_effects_cache: 'false', TURBO_TELEMETRY_DISABLED: '1', TURBO_FORCE: 'true', TURBO_CONCURRENCY: '3' };
-delete env.TURBO_TOKEN;
-delete env.TURBO_TEAM;
-
-/** Export only from the independent checkout, never from served Console output. */
-async function packSdk(cwd, output, buildEnv, round) {
-  const load = file => import(pathToFileURL(path.join(cwd, 'apps/omnitron/dist', file)).href);
-  const { normalizePackedWorkspace } = await load('release/portable-archive.js');
-  const { inspectFrameworkArchive } = await load('release/registry-framework.js');
-  const { readWorkspace, directoryOf } = await load('services/bundle-builder.js');
-  const packages = [...readWorkspace(cwd).values()]
-    .filter(pkg => !pkg.private && pkg.name.startsWith('@omnitron-dev/'))
-    .sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
-  assert.ok(packages.some(pkg => pkg.name === '@omnitron-dev/omnitron'));
-  await fs.mkdir(output, { mode: 0o700 });
-  const records = [];
-  const inventory = [];
-  inventories[round] = inventory;
-  sdkRoots[round] = output;
-  let files = 0;
-  for (const pkg of packages) {
-    const archive = path.join(output, 'workspace.tgz');
-    await releaseCommand(directoryOf(pkg), 'pnpm', ['pack', '--out', archive], { env: buildEnv });
-    await normalizePackedWorkspace(archive);
-    const bytes = await fs.readFile(archive);
-    const metadata = JSON.parse(await releaseCommand(cwd, 'tar', ['-xOf', archive, 'package/package.json']));
-    const sha256 = createHash('sha256').update(bytes).digest('hex');
-    const integrity = 'sha512-' + createHash('sha512').update(bytes).digest('base64');
-    const inspected = await inspectFrameworkArchive({ name: pkg.name, version: pkg.version, integrity },
-      createReadStream(archive), undefined, revision);
-    files += inspected.files.size;
-    assert.ok(files <= 200_000, 'SDK diagnostic inventory exceeds 200000 files');
-    const filename = `${pkg.name.slice(1).replace('/', '-')}-${pkg.version}-${sha256.slice(0, 12)}.tgz`;
-    await fs.rename(archive, path.join(output, filename));
-    records.push({ name: pkg.name, version: pkg.version, filename, sha256, integrity,
-      sourceRevision: revision, sourceDirty: false, dependencies: metadata.dependencies ?? {},
-      optionalDependencies: metadata.optionalDependencies ?? {}, peerDependencies: metadata.peerDependencies ?? {} });
-    inventory.push({ ...records.at(-1), files: Object.fromEntries([...inspected.files].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) });
-    await fs.writeFile(path.join(diagnostics, round + '-sdk.json'), JSON.stringify(inventory, null, 2) + '\n');
-  }
-  const manifest = JSON.stringify(records, null, 2) + '\n';
-  await fs.writeFile(path.join(output, 'framework-manifest.json'), manifest, { flag: 'wx' });
-  return { packages: records.length, files, manifestSha256: createHash('sha256').update(manifest).digest('hex') };
-}
 
 async function build(round, retained, retainedSdk) {
   const cwd = path.join(root, round);
   const output = retained ?? path.join(root, round + '-runtime');
   const sdkOutput = retainedSdk ?? path.join(root, round + '-sdk');
   await fs.mkdir(cwd);
-  const buildEnv = { ...env, OMNITRON_HOME: path.join(root, round + '-home') };
+  const buildEnv = { ...context.env, OMNITRON_HOME: path.join(root, round + '-home') };
   const run = (command, args) => releaseCommand(cwd, command, args, { env: buildEnv, timeoutMs: 30 * 60_000 });
   await run('git', ['init', '--quiet']);
   await run('git', ['fetch', '--quiet', '--depth=1', '--no-tags', '--', source, revision]);
   await run('git', ['checkout', '--quiet', '--detach', revision]);
-  await run('pnpm', ['install', '--frozen-lockfile']);
+  await run('pnpm', releaseInstallArgs);
+  await run('pnpm', releaseDependencyBuildArgs);
   await run('pnpm', ['run', 'build']);
-  await run(process.execPath, ['apps/omnitron/scripts/freeze-backend.mjs', 'apps/omnitron', output]);
-  const read = async filename => JSON.parse(await fs.readFile(path.join(output, filename), 'utf8'));
-  const stamp = await read('packages/0/dist/BUILD.json');
-  assert.equal(stamp.commit, revision);
-  assert.equal(stamp.dirty, false, 'The build observed an uncommitted input');
-  const runtime = await read('RUNTIME.json');
-  const ui = await read('packages/0/webapp/dist/console-version.json');
-  const sdk = await packSdk(cwd, sdkOutput, buildEnv, round);
-  assert.equal(await releaseCommand(cwd, 'git', ['status', '--porcelain']), '',
-    'The independent checkout changed during build or packing');
-  const result = { sha256: runtime.sha256, packages: runtime.packages, console: ui.version, sdk };
+  sdkRoots[round] = sdkOutput;
+  const { result } = await measureReleaseBuild(cwd, output, sdkOutput, { ...context, env: buildEnv }, async inventory => {
+    inventories[round] = inventory;
+    await fs.writeFile(path.join(diagnostics, round + '-sdk.json'), JSON.stringify(inventory, null, 2) + '\n');
+  });
   // Free the large checkout/runtime before the second build, but retain both
   // inspected SDKs until their exact digests and file inventories are compared.
   await fs.rm(cwd, { recursive: true });
@@ -108,8 +58,14 @@ async function build(round, retained, retainedSdk) {
 let staging;
 let first, second, complete = false, evidenceRetained = false;
 try {
-  console.log('Independent build 1/2 · running');
-  first = await build('first');
+  console.log('Independent build 1/2 · ' + (values.first ? 'verifying retained preparation' : 'running'));
+  if (values.first) {
+    const prepared = await verifyPreparationBuild(path.resolve(values.first), context.identity);
+    first = prepared.result;
+    inventories.first = prepared.inventory;
+    sdkRoots.first = path.join(path.resolve(values.first), 'sdk');
+    await fs.writeFile(path.join(diagnostics, 'first-sdk.json'), JSON.stringify(prepared.inventory, null, 2) + '\n');
+  } else first = await build('first');
   console.log('Independent build 1/2 · verified');
   // Stage the second verified tree on the requested filesystem. The caller
   // can import <destination>/runtime only after both measurements agree.
@@ -143,7 +99,7 @@ try {
     console.error(JSON.stringify(report));
   } catch (failure) {
     console.error('Could not retain bounded failure evidence; original inputs remain at ' + root + (staging ? ' and ' + staging : ''));
-    throw new AggregateError([error, failure], 'Reproducibility and evidence retention failed');
+    throw new AggregateError([error, failure], 'Reproducibility and evidence retention failed', { cause: failure });
   }
   throw error;
 } finally {

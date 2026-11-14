@@ -6,6 +6,7 @@ import { Pipeline } from '@xec-sh/ops/pipeline';
 import { releaseCommand } from '@xec-sh/ops/release';
 import { assertPipelineSucceeded } from './lib/pipeline-result.mjs';
 import policy from '../.xec/release-policy.mjs';
+import { releaseBuildContext, releaseDependencyBuildArgs, retainPreparationBuild } from './lib/release-build.js';
 
 const [source, commit] = globalThis.args ?? process.argv.slice(2);
 const destination = realpathSync(process.cwd());
@@ -21,12 +22,17 @@ await git('read-tree', commit);
 if (await git('status', '--porcelain')) throw Error('Exported source differs from the release commit');
 const verification = mkdtempSync(path.join(os.tmpdir(), 'omnitron-release-consumer-'));
 try {
+  const context = await releaseBuildContext(destination, commit);
+  context.env.OMNITRON_HOME = path.join(verification, 'home');
   const consumer = path.join(verification, 'consumer');
   const pipeline = Pipeline.create('package-consumer-acceptance')
     .step('dependency-preflight', { run: {
       command: process.execPath, args: ['scripts/undeclared-dependencies.mjs'], shell: false, cwd: destination,
     }, timeout: 60_000 })
-    .step('build', { dependsOn: ['dependency-preflight'], run: { command: 'pnpm', args: ['run', 'build'], shell: false, cwd: destination }, timeout: 30 * 60_000 })
+    .step('dependency-build', { dependsOn: ['dependency-preflight'], run: {
+      command: 'pnpm', args: releaseDependencyBuildArgs, shell: false, cwd: destination, env: context.env,
+    }, timeout: 30 * 60_000 })
+    .step('build', { dependsOn: ['dependency-build'], run: { command: 'pnpm', args: ['run', 'build'], shell: false, cwd: destination, env: context.env }, timeout: 30 * 60_000 })
     .step('consumer-install', { dependsOn: ['build'], run: {
       command: process.execPath, args: ['scripts/check-package-exports.mjs', '--install-consumer', consumer], shell: false, cwd: destination,
     }, timeout: policy.preparation.consumerTimeoutMs })
@@ -38,6 +44,8 @@ try {
     if (event.type === 'step-start') console.log(event.step + ' · running');
   } });
   assertPipelineSucceeded(result);
+  console.log('Retaining the clean preparation as independent build 1/2');
+  await retainPreparationBuild(source, destination, context);
 } finally {
   rmSync(verification, { recursive: true, force: true });
 }

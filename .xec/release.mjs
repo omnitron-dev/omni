@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,6 +19,7 @@ import { qualifyRelease, verifyReleaseQualification, verifyQualifiedRevision } f
 import { assertReleaseVersionAvailable } from './release-registry.js';
 import { prepareVersionQualification } from './version-qualification.js';
 import { assertPipelineSucceeded } from '../scripts/lib/pipeline-result.mjs';
+import { releaseBuildContext, releaseInstallArgs } from '../scripts/lib/release-build.js';
 
 const defaultRoot = fileURLToPath(new URL('../', import.meta.url));
 const repository = policy.repository;
@@ -132,12 +134,17 @@ export async function runRelease(args, root = defaultRoot) {
       if (!sealed) await assertReleaseVersionAvailable(root, plan.packages, version, { registry: values.registry });
       await commitReleaseVersion(root, version);
       const commit = await releaseCommand(root, 'git', ['rev-parse', 'HEAD']);
+      const buildContext = await releaseBuildContext(root, commit);
       const prepared = await prepareReleaseArtifacts(root, version, {
         build: { executable: process.execPath, args: [fileURLToPath(new URL('../bin/xec', import.meta.resolve('@xec-sh/cli'))), 'run', 'scripts/build-release.mjs', root, commit] },
         async run(cwd, executable, args, options) {
+          if (executable === 'pnpm' && args[0] === 'install') {
+            assert.deepEqual(args, releaseInstallArgs, 'Preparation install differs from the independent build contract');
+            return releaseCommand(cwd, executable, args, { ...options, env: buildContext.env });
+          }
           if (!args.includes('scripts/build-release.mjs')) return releaseCommand(cwd, executable, args, options);
           const build = Pipeline.create('release-preparation').step('isolated-build', {
-            run: { command: executable, args, cwd, shell: false }, timeout: policy.preparation.recipeTimeoutMs,
+            run: { command: executable, args, cwd, shell: false, env: buildContext.env }, timeout: policy.preparation.recipeTimeoutMs,
           });
           const result = await build.run({}, { onEvent(event) {
             if (event.type === 'step-output') process[event.stream].write(event.text);

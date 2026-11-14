@@ -149,6 +149,14 @@ else if (cmd === 'release' && op === 'view' && fs.readFileSync(state, 'utf8') ==
   await fs.cp(path.join(repo, '.xec'), path.join(workspace, '.xec'), { recursive: true, filter: file => !file.includes('/.tmp') });
   // CI qualification has its own failure/resume suite; this loopback suite exercises registry publication.
   await fs.writeFile(path.join(workspace, '.xec/qualification.mjs'), 'export async function qualifyRelease() {}\nexport async function verifyReleaseQualification() { return {fixture:true}; }\nexport async function verifyQualifiedRevision() { throw Error("This fixture does not qualify a previous runtime"); }\n');
+  // These two registry fixtures have no backend/Console graph or pnpm registry
+  // metadata. The real producer and retained-output verifier have separate tests.
+  const buildHelper = path.join(workspace, 'scripts/lib/release-build.js');
+  await fs.writeFile(buildHelper, (await fs.readFile(buildHelper, 'utf8'))
+    .replace("const packageManager = (await json(path.join(root, 'package.json'))).packageManager;",
+      "const packageManager = 'pnpm@' + await run(root, 'pnpm', ['--version']);")
+    .replace('export async function retainPreparationBuild(root, workspace, context) {',
+      'export async function retainPreparationBuild(root, workspace, context) { return;\n'));
   // The fixture publishes two tiny packages, not the complete Omnitron SDK.
   // Keep both package-consumer validation stages observable in its archive.
   await fs.mkdir(path.join(workspace, 'scripts/ci'), { recursive: true });
@@ -165,23 +173,35 @@ else if (cmd === 'release' && op === 'view' && fs.readFileSync(state, 'utf8') ==
   assert.equal(compilerRequire('typescript/package.json').name, 'typescript');
   assert.equal(typeof compilerRequire('typescript').createSourceFile, 'function');
   const compilerDirectory = path.dirname(compilerRequire.resolve('typescript/package.json'));
+  const nativeDirectory = path.join(workspace, 'vendor/native-dependency');
+  await fs.mkdir(nativeDirectory, { recursive: true });
+  await fs.writeFile(path.join(nativeDirectory, 'package.json'), JSON.stringify({
+    name: '@fixture/native', version: '1.0.0',
+    scripts: { install: 'node -e "require(\'node:fs\').writeFileSync(\'native-built\', \'built\')"' },
+  }));
   await fs.mkdir(path.join(workspace, 'tools/lint'), { recursive: true });
   await json('tools/lint/package.json', { name: '@fixture/lint', private: true,
-    devDependencies: { typescript: `file:${compilerDirectory}` } });
+    devDependencies: { typescript: `file:${compilerDirectory}`, '@fixture/native': 'file:../../vendor/native-dependency' } });
   await json('package.json', { name: 'fixture', private: true, type: 'module', scripts: { build: 'node scripts/build.mjs' } });
   await fs.writeFile(path.join(workspace, 'scripts/build.mjs'), `
 import assert from 'node:assert/strict';
-import { realpathSync, writeFileSync } from 'node:fs';
+import { realpathSync, writeFileSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { sep } from 'node:path';
 const require = createRequire(new URL('../tools/lint/package.json', import.meta.url));
+assert.equal(process.env.TURBO_FORCE, 'true');
+assert.equal(process.env.TURBO_CACHE, 'local:w');
+assert.equal(process.env.PNPM_CONFIG_SIDE_EFFECTS_CACHE, 'false');
+assert.equal(process.env.TZ, 'UTC');
+assert.equal(readFileSync(require.resolve('@fixture/native/native-built'), 'utf8'), 'built',
+  'pending dependency install scripts must finish before the workspace build');
 assert.equal(typeof require('typescript').createSourceFile, 'function');
 assert.ok(realpathSync(require.resolve('typescript')).startsWith(realpathSync(process.cwd()) + sep),
   'the clean export must own its installed compiler');
 writeFileSync(process.env.FIXTURE_BUILD_RECORD, process.cwd());
 for (const name of ['base', 'client']) writeFileSync('packages/' + name + '/index.js', 'export default 1;');
 `);
-  await fs.writeFile(path.join(workspace, 'pnpm-workspace.yaml'), "packages:\n  - 'packages/*'\n  - 'tools/*'\n");
+  await fs.writeFile(path.join(workspace, 'pnpm-workspace.yaml'), "allowBuilds:\n  '@fixture/native@file:vendor/native-dependency': true\npackages:\n  - 'packages/*'\n  - 'tools/*'\n");
   for (const [folder, name] of [['base', first], ['client', second]]) {
     await fs.mkdir(path.join(workspace, 'packages', folder), { recursive: true });
     await json(`packages/${folder}/package.json`, { name, version: '0.1.0', main: './index.js', files: ['index.js', 'consumer-checked'],
@@ -216,7 +236,10 @@ for (const name of ['base', 'client']) writeFileSync('packages/' + name + '/inde
   await git('add', '--', 'packages/client/package.json', 'pnpm-lock.yaml');
   await git('commit', '-qm', 'Fix internal workspace peer');
   await release('--prepare', '--registry', registry);
-  assert.notEqual(await fs.readFile(buildRecord, 'utf8'), workspace, 'the build must run in the clean export');
+  const preparedBuild = await fs.readFile(buildRecord, 'utf8');
+  assert.notEqual(preparedBuild, workspace, 'the build must run in the clean export');
+  await release('--prepare', '--registry', registry);
+  assert.equal(await fs.readFile(buildRecord, 'utf8'), preparedBuild, 'sealed preparation must not build again');
   const commit = await git('rev-parse', 'HEAD');
   assert.notEqual(commit, before);
   const next = path.join(temp, 'next');

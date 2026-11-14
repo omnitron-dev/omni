@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { preserveReproducibilityFailure, sdkDifferences } from '../lib/reproducibility-evidence.mjs';
+import './release-build.test.js';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const entry = (filename, contents, files) => ({ name: '@omnitron-dev/example', version: '1.0.0', filename,

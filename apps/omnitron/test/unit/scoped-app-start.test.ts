@@ -44,7 +44,7 @@ it.each([['stopped', undefined], ['stale', 'all']] as const)('starts an absent f
   client.whyUnreachable.mockResolvedValueOnce({ kind, pid: 12 });
   await startCommand(scope);
   expect(daemonStart).toHaveBeenCalledOnce();
-  expect(client.startAll).toHaveBeenCalledTimes(scope ? 1 : 0);
+  expect(client.startAll).toHaveBeenCalledOnce();
   expect(process.exitCode).toBe(0);
 });
 
@@ -70,6 +70,23 @@ it('reports a lost reply without resending', async () => {
   await startCommand(name);
   expect(client.startApp).toHaveBeenCalledOnce();
   expect(error).toHaveBeenCalledWith('Start not confirmed: connection closed');
+  expect(process.exitCode).toBe(1);
+});
+
+it.each(['starting', 'errored', 'crashed', 'stopped'])('rejects a returned %s application without a success message', async status => {
+  client.startApp.mockResolvedValue({ name, status, pid: null });
+  await startCommand(name);
+  expect(progress.stop).not.toHaveBeenCalled();
+  expect(error).toHaveBeenCalledWith(`Start not confirmed: ${name} is ${status}`);
+  expect(client.startApp).toHaveBeenCalledOnce();
+  expect(process.exitCode).toBe(1);
+});
+
+it('reports a partial fleet start as unconfirmed', async () => {
+  client.startAll.mockResolvedValue([{ name: 'healthy', status: 'online' }, { name, status: 'errored' }]);
+  await startCommand('all');
+  expect(progress.stop).not.toHaveBeenCalled();
+  expect(error).toHaveBeenCalledWith(`Start not confirmed: ${name} is errored`);
   expect(process.exitCode).toBe(1);
 });
 

@@ -29,7 +29,7 @@ import type {
   PoolDiagnosticsDto,
   LogPathsDto,
 } from '../config/types.js';
-import { configuredStartEntry, withDefaultStack } from '../orchestrator/app-name.js';
+import { configuredStartEntry, ensureNamespacedEntry, withDefaultStack } from '../orchestrator/app-name.js';
 import { worstVerdict } from '../orchestrator/app-health.js';
 import { redactEnv } from '../shared/redact-env.js';
 import type { AuditService } from '../services/audit.service.js';
@@ -43,6 +43,12 @@ import { runtimeDiagnostics } from '../monitoring/runtime-diagnostics.js';
 import { loadStartupEcosystem } from './startup-config.js';
 import type { OmnitronDaemon } from './daemon.js';
 import { OPERATOR_ROLES, ADMIN_ROLES, CONTROL_PLANE_READ_ROLES, CONTROL_PLANE_ROLES } from '../shared/roles.js';
+
+function requireOnlineApplication(app: ProcessInfoDto | null | undefined, name: string): ProcessInfoDto {
+  if (!app || app.status !== 'online')
+    throw Errors.conflict(`Application '${name}' is ${app?.status ?? 'unobserved'}; an online state was not confirmed`);
+  return app;
+}
 
 @Service({ name: DAEMON_SERVICE_ID })
 export class DaemonRpcService implements IDaemonService {
@@ -72,18 +78,21 @@ export class DaemonRpcService implements IDaemonService {
     this.assertLifecycleMutable?.();
     const known = this.orchestrator.getApp(data.name);
     if (known) {
-      if (known.status === 'online' || known.status === 'starting') return known;
+      if (known.status === 'online') return known;
+      // A second request must not spawn again while the owner's first start
+      // is pending. Report its incomplete observation without claiming success.
+      if (known.status === 'starting') return requireOnlineApplication(known, known.name);
       const started = await this.orchestrator.startKnownApp(known.name);
       const observed = started && this.orchestrator.getApp(known.name);
       if (!observed) throw Errors.notFound('Registered application', known.name);
-      return observed;
+      return requireOnlineApplication(observed, known.name);
     }
     const entry = configuredStartEntry(data.name, this.config);
     if (entry) {
       await this.orchestrator.startApp(entry);
       const observed = this.orchestrator.getApp(entry.name);
       if (!observed) throw Errors.notFound('Started application', entry.name);
-      return observed;
+      return requireOnlineApplication(observed, entry.name);
     }
     if (data.name.includes('/')) {
       const [project, stack] = data.name.split('/');
@@ -99,8 +108,13 @@ export class DaemonRpcService implements IDaemonService {
     // Bulk startup must carry the same project/stack identity as a single-app
     // start. Preserve declared names/dependencies for startup ordering; the owner
     // promotes each entry when it registers the actual process handle.
-    await this.orchestrator.startAll({ ...this.config, apps: this.config.apps.map(entry => withDefaultStack(entry, this.config)) });
-    return this.orchestrator.list();
+    const entries = this.config.apps.map(entry => withDefaultStack(entry, this.config));
+    await this.orchestrator.startAll({ ...this.config, apps: entries });
+    const observed = this.orchestrator.list();
+    return entries.filter(entry => entry.enabled !== false).map(entry => {
+      const name = ensureNamespacedEntry(entry).name;
+      return requireOnlineApplication(observed.find(app => app.name === name), name);
+    });
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
@@ -133,7 +147,7 @@ export class DaemonRpcService implements IDaemonService {
   async restartApp(data: { name: string }): Promise<ProcessInfoDto> {
     this.assertLifecycleMutable?.();
     await this.orchestrator.restartApp(data.name);
-    return this.orchestrator.getApp(data.name)!;
+    return requireOnlineApplication(this.orchestrator.getApp(data.name), data.name);
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
@@ -160,32 +174,29 @@ export class DaemonRpcService implements IDaemonService {
   async restartAll(): Promise<ProcessInfoDto[]> {
     this.assertLifecycleMutable?.();
     const entries = this.config.apps;
-    // P0-H — was a serial `for..await`. One hung app blocked the
-    // entire fleet restart (the operator hits "Restart all" and the
-    // whole UI stalls on apps[i+1..n]). Run in parallel with
-    // allSettled + per-app deadline so a slow restart can't take
-    // down the rest. Caller still sees the final fleet state via
-    // `orchestrator.list()`; per-app failures surface in the daemon
-    // log.
+    // Each deadline bounds the reply, not the owner's operation. An expired
+    // or failed restart cannot be reported as success from an old online row.
     const PER_APP_TIMEOUT_MS = 60_000;
-    await Promise.allSettled(
+    const results = await Promise.allSettled(
       entries.map(async (entry) => {
+        let timer: ReturnType<typeof setTimeout> | undefined;
         try {
           await Promise.race([
             this.orchestrator.restartApp(entry.name),
-            new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error(`restartApp(${entry.name}) timed out after ${PER_APP_TIMEOUT_MS}ms`)), PER_APP_TIMEOUT_MS),
-            ),
+            new Promise<never>((_, reject) => {
+              timer = setTimeout(() => reject(new Error(`restartApp(${entry.name}) timed out after ${PER_APP_TIMEOUT_MS}ms`)), PER_APP_TIMEOUT_MS);
+            }),
           ]);
-        } catch (err) {
-           
-          console.warn(
-            `[daemon.restartAll] ${entry.name} failed: ${(err as Error).message} — continuing`,
-          );
+          return requireOnlineApplication(this.orchestrator.getApp(entry.name), entry.name);
+        } finally {
+          if (timer) clearTimeout(timer);
         }
       }),
     );
-    return this.orchestrator.list();
+    const failures = results.flatMap((result, index) => result.status === 'rejected'
+      ? [`${entries[index]!.name}: ${String(result.reason)}`] : []);
+    if (failures.length) throw Errors.conflict(`Restart was not confirmed for ${failures.join('; ')}`);
+    return results.flatMap(result => result.status === 'fulfilled' ? [result.value] : []);
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })

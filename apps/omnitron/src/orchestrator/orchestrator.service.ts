@@ -1821,9 +1821,9 @@ export class OrchestratorService extends EventEmitter {
    * disposing the context creates a window where the next save can be
    * missed (esbuild's metafile doesn't carry over between contexts).
    *
-   * `launchBootstrapMode` sees the live buildResult + watch and skips
-   * the cold rebuild, so a restart cycle is just: kill old child →
-   * spawn new child with the bundle that was already on disk. The
+   * `launchBootstrapMode` sees the live buildResult + watch and refreshes
+   * its incremental contexts before spawning. A live watch alone does not
+   * prove dependency freshness after a package installation. The
    * bootstrap-config cache is cleared because changes to `bootstrap.ts`
    * (topology definition) need to take effect on the next start.
    */
@@ -2556,7 +2556,7 @@ export class OrchestratorService extends EventEmitter {
         this.buildResults.delete(entry.name);
         this.buildResults.set(entry.name, await this.buildService.buildApp(entry.name, bootstrapAbsPath, definition, this.devMode));
         this.logger.info({ app: entry.name }, 'Built entry points via esbuild');
-      }
+      } else await this.buildService.rebuildApp(entry.name);
       this.bootstrapSources.set(entry.name, { path: bootstrapAbsPath, definition });
       await this.syncBootstrapWatch(entry.name);
     } catch (error) {

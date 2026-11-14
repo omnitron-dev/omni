@@ -28,3 +28,22 @@ it.each([
   expect(client.disconnect).toHaveBeenCalledOnce();
   expect(process.exitCode).toBe(1);
 });
+
+it.each(['starting', 'errored', 'crashed', 'stopped'])('restart refuses a returned %s application', async status => {
+  process.exitCode = 0;
+  client.restartApp.mockResolvedValueOnce({ name: 'project/dev/api', status });
+  await restartCommand('project/dev/api');
+  expect(progress.stop).not.toHaveBeenCalled();
+  expect(progress.error).toHaveBeenCalledWith(`Operation not confirmed: project/dev/api is ${status}`);
+  expect(client.restartApp).toHaveBeenCalledOnce();
+  expect(process.exitCode).toBe(1);
+});
+
+it('restart refuses an incomplete fleet result', async () => {
+  process.exitCode = 0;
+  client.restartAll.mockResolvedValueOnce([{ name: 'healthy', status: 'online' }, { name: 'failed', status: 'errored' }]);
+  await restartCommand('all');
+  expect(progress.stop).not.toHaveBeenCalled();
+  expect(progress.error).toHaveBeenCalledWith('Operation not confirmed: failed is errored');
+  expect(process.exitCode).toBe(1);
+});

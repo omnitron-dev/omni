@@ -32,7 +32,8 @@ describe('bulk startup preserves project identity', () => {
     expect(source).toEqual(before);
   });
   it('keeps downstream apps blocked when their declared dependency fails', async () => {
-    const f = fixture(config(), 'database'); await f.rpc.startAll();
+    const f = fixture(config(), 'database');
+    await expect(f.rpc.startAll()).rejects.toThrow(/database.*unobserved/);
     expect(f.started).toEqual([]);
   });
   it('preserves explicit per-app scope and unscoped daemon entries', async () => {

@@ -37,10 +37,13 @@ export async function restartCommand(appName?: string): Promise<void> {
     if (!appName || appName === 'all') {
       s.start('Restarting all apps...');
       const apps = await client.restartAll();
+      const incomplete = apps.filter(app => app.status !== 'online');
+      if (incomplete.length) throw new Error(incomplete.map(app => `${app.name} is ${app.status}`).join('; '));
       s.stop(`Restarted ${apps.length} apps`);
     } else {
       s.start(`Restarting ${appName}...`);
       const app = await client.restartApp({ name: appName });
+      if (app.status !== 'online') throw new Error(`${app.name} is ${app.status}`);
       s.stop(`${app.name} — ${app.status} (PID: ${app.pid})`);
     }
   } catch (err) {

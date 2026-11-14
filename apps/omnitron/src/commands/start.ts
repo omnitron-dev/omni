@@ -24,17 +24,19 @@ export async function startCommand(appName?: string): Promise<void> {
         process.exitCode = 1;
         return;
       }
-      if (!appName) return;
     }
 
     if (!appName || appName === 'all') {
       progress.start('Starting all apps...');
       const apps = await client.startAll();
+      const incomplete = apps.filter(app => app.status !== 'online');
+      if (incomplete.length) throw new Error(incomplete.map(app => `${app.name} is ${app.status}`).join('; '));
       progress.stop(`Started ${apps.length} apps`);
       for (const app of apps) log.success(`  ${app.name} — ${app.status} (PID: ${app.pid})`);
     } else {
       progress.start(`Starting ${appName}...`);
       const app = await client.startApp({ name: appName });
+      if (app.status !== 'online') throw new Error(`${app.name} is ${app.status}`);
       progress.stop(`${app.name} — ${app.status} (PID: ${app.pid})`);
     }
   } catch (error) {

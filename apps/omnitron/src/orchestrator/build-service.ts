@@ -37,6 +37,7 @@ export interface BuildResult {
 }
 
 interface WatchHandle {
+  rebuild: () => Promise<void>;
   dispose: () => Promise<void>;
 }
 
@@ -365,6 +366,36 @@ export class BuildService {
     return this.watchHandles.has(appName);
   }
 
+  /** Re-resolve every entry before launch, including dependencies replaced by an install. */
+  async rebuildApp(appName: string): Promise<void> {
+    const startedAt = Date.now();
+    let ok = false;
+    try {
+      const session = this.watchHandles.get(appName);
+      if (!session) throw new Error(`No source build context for '${appName}'`);
+      await session.ready;
+      const assertCurrent = () => {
+        if (session.closed || this.watchHandles.get(appName) !== session)
+          throw new Error(`Source build context for '${appName}' changed during refresh`);
+      };
+      assertCurrent();
+      // Pending notifications predate the refresh and are consumed by it.
+      // Later automatic builds still notify, including on an entry whose
+      // explicit rebuild finishes before another entry's rebuild does.
+      if (session.timer) clearTimeout(session.timer);
+      session.timer = null;
+      session.firstChangeAt = 0;
+      const results = await Promise.allSettled(session.handles.map(handle => handle.rebuild()));
+      const failures = results.filter(result => result.status === 'rejected').map(result => result.reason);
+      if (failures.length) throw new AggregateError(failures,
+        `Source rebuild failed for '${appName}': ${failures.map(error => String(error)).join('; ')}`);
+      assertCurrent();
+      ok = true;
+    } finally {
+      this.recordBuildResult(appName, 'rebuild', Date.now() - startedAt, ok);
+    }
+  }
+
   async dispose(): Promise<void> {
     await Promise.all([...this.watchHandles.keys()].map((name) => this.unwatchApp(name)));
   }
@@ -428,6 +459,7 @@ export class BuildService {
     let disposed = false;
     let recreation: Promise<void> | null = null;
     let recreationTimer: NodeJS.Immediate | null = null;
+    let explicitRebuilds = 0;
     // SHA-1 of the previous successful bundle output. If a rebuild produces
     // byte-identical bytes (input mtime touched without an actual content
     // change — common with atime updates, IDE re-saves, formatter idempotency,
@@ -466,11 +498,7 @@ export class BuildService {
                   recreationTimer = setImmediate(() => {
                     recreationTimer = null;
                     if (disposed) return;
-                    recreation = this.recreateWatchContextSafely(
-                      currentCtx, esbuild, buildOptions,
-                      (next) => { currentCtx = next; consecutiveStaleErrors = 0; },
-                      () => disposed,
-                    ).finally(() => { recreation = null; });
+                    void recreate();
                   });
                 }
               }
@@ -491,7 +519,9 @@ export class BuildService {
               const nextHash = hashFileSafe(outPath);
               if (nextHash && nextHash === lastBundleHash) return;
               lastBundleHash = nextHash;
-              onRebuild();
+              // This caller will launch these exact outputs after rebuild()
+              // resolves. A separate watched build still gets its own event.
+              if (explicitRebuilds === 0) onRebuild();
             });
           },
         },
@@ -506,11 +536,35 @@ export class BuildService {
       logLevel: 'silent',
     });
 
+    const recreate = (): Promise<void> => {
+      recreation ??= this.recreateWatchContextSafely(
+        currentCtx, esbuild, buildOptions,
+        (next) => { currentCtx = next; consecutiveStaleErrors = 0; },
+        () => disposed,
+      ).finally(() => { recreation = null; });
+      return recreation;
+    };
+
     currentCtx = await esbuild.context(buildOptions());
     try { await currentCtx.watch(); }
     catch (error) { disposed = true; await currentCtx.dispose(); throw error; }
 
     return {
+      rebuild: async () => {
+        explicitRebuilds += 1;
+        try {
+          if (recreationTimer) {
+            clearImmediate(recreationTimer);
+            recreationTimer = null;
+            await recreate();
+          } else await recreation;
+          if (disposed || !currentCtx) throw new Error(`Source build context for '${entryPath}' is unavailable`);
+          await currentCtx.rebuild();
+          if (disposed) throw new Error(`Source build context for '${entryPath}' was disposed during refresh`);
+        } finally {
+          explicitRebuilds -= 1;
+        }
+      },
       dispose: async () => {
         disposed = true;
         if (recreationTimer) clearImmediate(recreationTimer);

@@ -1,4 +1,4 @@
-import SvgIcon from '@mui/material/SvgIcon';
+import { DuotoneIcon } from '@omnitron-dev/prism/icons';
 import type { SvgIconProps } from '@mui/material/SvgIcon';
 
 export { AccessIcon, CopyFilesIcon, NewFolderIcon, ParentFolderIcon, SwitchPanelsIcon, SystemInfoIcon, TopologyIcon, UploadFileIcon } from './workspace-icons';
@@ -19,7 +19,7 @@ export { AccessIcon, CopyFilesIcon, NewFolderIcon, ParentFolderIcon, SwitchPanel
 // ---------------------------------------------------------------------------
 
 export const DashboardIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -54,7 +54,7 @@ export const DashboardIcon = (props?: SvgIconProps) => (
       strokeWidth="1.5"
       d="M14 18C14 16.46 14 15.69 14.35 15.12C14.54 14.81 14.81 14.54 15.12 14.35C15.69 14 16.46 14 18 14C19.54 14 20.31 14 20.88 14.35C21.19 14.54 21.46 14.81 21.65 15.12C22 15.69 22 16.46 22 18C22 19.54 22 20.31 21.65 20.88C21.46 21.19 21.19 21.46 20.88 21.65C20.31 22 19.54 22 18 22C16.46 22 15.69 22 15.12 21.65C14.81 21.46 14.54 21.19 14.35 20.88C14 20.31 14 19.54 14 18Z"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -62,7 +62,7 @@ export const DashboardIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const AppsIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -98,7 +98,7 @@ export const AppsIcon = (props?: SvgIconProps) => (
       strokeLinecap="round"
       d="M9 7V13M12 9.5V13M15 7V13"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -106,7 +106,7 @@ export const AppsIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const LogsIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -127,7 +127,7 @@ export const LogsIcon = (props?: SvgIconProps) => (
       strokeLinecap="round"
       d="M8 7H16M8 11H14M8 15H12"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -135,7 +135,7 @@ export const LogsIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const AuditIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -157,7 +157,7 @@ export const AuditIcon = (props?: SvgIconProps) => (
       strokeLinejoin="round"
       d="M9 11.5L11.2 13.7L15.2 9.7"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -165,7 +165,7 @@ export const AuditIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const MetricsIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -186,7 +186,7 @@ export const MetricsIcon = (props?: SvgIconProps) => (
       strokeLinecap="round"
       d="M7 17V14M12 17V8M17 17V11"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -194,7 +194,7 @@ export const MetricsIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const AlertIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -223,7 +223,7 @@ export const AlertIcon = (props?: SvgIconProps) => (
       strokeLinecap="round"
       d="M12 7V11M12 13.5V13.51"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -231,7 +231,7 @@ export const AlertIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const NodesIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -272,7 +272,7 @@ export const NodesIcon = (props?: SvgIconProps) => (
       strokeLinecap="round"
       d="M12 9V15"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -280,7 +280,7 @@ export const NodesIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const ContainersIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -302,7 +302,7 @@ export const ContainersIcon = (props?: SvgIconProps) => (
       strokeLinejoin="round"
       d="M12 12L3 7M12 12V22M12 12L21 7"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -310,7 +310,7 @@ export const ContainersIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const DeployIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -339,17 +339,17 @@ export const DeployIcon = (props?: SvgIconProps) => (
       strokeLinejoin="round"
       d="M5 19L8 17M7 22L12 17"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // Original PauseIcon from the project’s Hugeicons duotone collection.
 export const PauseIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path opacity="0.4" d="M4 7C4 5.58579 4 4.87868 4.43934 4.43934C4.87868 4 5.58579 4 7 4C8.41421 4 9.12132 4 9.56066 4.43934C10 4.87868 10 5.58579 10 7V17C10 18.4142 10 19.1213 9.56066 19.5607C9.12132 20 8.41421 20 7 20C5.58579 20 4.87868 20 4.43934 19.5607C4 19.1213 4 18.4142 4 17V7Z" fill="currentColor" />
     <path d="M4 7C4 5.58579 4 4.87868 4.43934 4.43934C4.87868 4 5.58579 4 7 4C8.41421 4 9.12132 4 9.56066 4.43934C10 4.87868 10 5.58579 10 7V17C10 18.4142 10 19.1213 9.56066 19.5607C9.12132 20 8.41421 20 7 20C5.58579 20 4.87868 20 4.43934 19.5607C4 19.1213 4 18.4142 4 17V7Z" stroke="currentColor" strokeWidth="1.5" />
     <path opacity="0.4" d="M14 7C14 5.58579 14 4.87868 14.4393 4.43934C14.8787 4 15.5858 4 17 4C18.4142 4 19.1213 4 19.5607 4.43934C20 4.87868 20 5.58579 20 7V17C20 18.4142 20 19.1213 19.5607 19.5607C19.1213 20 18.4142 20 17 20C15.5858 20 14.8787 20 14.4393 19.5607C14 19.1213 14 18.4142 14 17V7Z" fill="currentColor" />
     <path d="M14 7C14 5.58579 14 4.87868 14.4393 4.43934C14.8787 4 15.5858 4 17 4C18.4142 4 19.1213 4 19.5607 4.43934C20 4.87868 20 5.58579 20 7V17C20 18.4142 20 19.1213 19.5607 19.5607C19.1213 20 18.4142 20 17 20C15.5858 20 14.8787 20 14.4393 19.5607C14 19.1213 14 18.4142 14 17V7Z" stroke="currentColor" strokeWidth="1.5" />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -358,11 +358,11 @@ export const PauseIcon = (props?: SvgIconProps) => (
 
 // Original Settings01Icon from the project’s Hugeicons duotone collection.
 export const SettingsIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path opacity="0.4" d="M20.8239 6.28479L21.3175 7.14139C21.6674 7.74864 21.8423 8.05227 21.8084 8.37549C21.7744 8.69871 21.5402 8.95918 21.0718 9.48012L20.0407 10.6328C19.7888 10.9518 19.6098 11.5078 19.6098 12.0077C19.6098 12.5078 19.7887 13.0636 20.0407 13.3827L21.0718 14.5354C21.5402 15.0564 21.7744 15.3168 21.8084 15.6401C21.8423 15.9633 21.6674 16.2669 21.3175 16.8741L20.8239 17.7307C20.4506 18.3785 20.264 18.7025 19.9464 18.8316C19.6288 18.9608 19.2696 18.8589 18.5513 18.655L17.3311 18.3113C16.8724 18.2055 16.3912 18.2656 15.9724 18.4808L15.6356 18.6752C15.2765 18.9052 15.0004 19.2442 14.8476 19.6428L14.5136 20.6403C14.294 21.3003 14.1842 21.6303 13.9228 21.8191C13.6615 22.0078 13.3143 22.0078 12.6199 22.0078H11.5051C10.8108 22.0078 10.4636 22.0078 10.2022 21.8191C9.94085 21.6303 9.83106 21.3003 9.61149 20.6403L9.2775 19.6428C9.12464 19.2442 8.84851 18.9052 8.4895 18.6752L8.15267 18.4808C7.73387 18.2656 7.25263 18.2055 6.79394 18.3113L5.57377 18.655C4.85542 18.8589 4.49625 18.9608 4.17867 18.8316C3.86109 18.7025 3.67443 18.3785 3.30114 17.7307L2.80757 16.8741C2.45766 16.2669 2.2827 15.9633 2.31666 15.6401C2.35062 15.3168 2.58483 15.0564 3.05326 14.5354L4.08433 13.3827C4.33636 13.0636 4.51521 12.5078 4.51521 12.0077C4.51521 11.5078 4.3363 10.9518 4.0843 10.6328L3.05326 9.48012C2.58483 8.95918 2.35061 8.69871 2.31666 8.37549C2.2827 8.05227 2.45766 7.74864 2.80757 7.14139L3.30115 6.28479C3.67445 5.63696 3.86109 5.31305 4.17867 5.18388C4.49625 5.05472 4.85541 5.15664 5.57375 5.36048L6.79398 5.70418C7.25259 5.80994 7.73374 5.74994 8.15249 5.53479L8.48937 5.34042C8.84845 5.11043 9.12465 4.77133 9.27753 4.37274L9.61149 3.37536C9.83106 2.71534 9.94085 2.38533 10.2022 2.19657C10.4636 2.00781 10.8108 2.00781 11.5051 2.00781H12.6199C13.3143 2.00781 13.6615 2.00781 13.9228 2.19657C14.1842 2.38533 14.294 2.71534 14.5136 3.37536L14.8475 4.37274C15.0004 4.77133 15.2766 5.11043 15.6357 5.34042L15.9726 5.53479C16.3913 5.74994 16.8725 5.80994 17.3311 5.70418L18.5513 5.36048C19.2696 5.15664 19.6288 5.05472 19.9464 5.18388C20.264 5.31305 20.4506 5.63696 20.8239 6.28479ZM12.0195 15.5C13.9525 15.5 15.5195 13.933 15.5195 12C15.5195 10.067 13.9525 8.5 12.0195 8.5C10.0865 8.5 8.51953 10.067 8.51953 12C8.51953 13.933 10.0865 15.5 12.0195 15.5Z" fill="currentColor" fillRule="evenodd" />
     <path d="M21.3175 7.14139L20.8239 6.28479C20.4506 5.63696 20.264 5.31305 19.9464 5.18388C19.6288 5.05472 19.2696 5.15664 18.5513 5.36048L17.3311 5.70418C16.8725 5.80994 16.3913 5.74994 15.9726 5.53479L15.6357 5.34042C15.2766 5.11043 15.0004 4.77133 14.8475 4.37274L14.5136 3.37536C14.294 2.71534 14.1842 2.38533 13.9228 2.19657C13.6615 2.00781 13.3143 2.00781 12.6199 2.00781H11.5051C10.8108 2.00781 10.4636 2.00781 10.2022 2.19657C9.94085 2.38533 9.83106 2.71534 9.61149 3.37536L9.27753 4.37274C9.12465 4.77133 8.84845 5.11043 8.48937 5.34042L8.15249 5.53479C7.73374 5.74994 7.25259 5.80994 6.79398 5.70418L5.57375 5.36048C4.85541 5.15664 4.49625 5.05472 4.17867 5.18388C3.86109 5.31305 3.67445 5.63696 3.30115 6.28479L2.80757 7.14139C2.45766 7.74864 2.2827 8.05227 2.31666 8.37549C2.35061 8.69871 2.58483 8.95918 3.05326 9.48012L4.0843 10.6328C4.3363 10.9518 4.51521 11.5078 4.51521 12.0077C4.51521 12.5078 4.33636 13.0636 4.08433 13.3827L3.05326 14.5354C2.58483 15.0564 2.35062 15.3168 2.31666 15.6401C2.2827 15.9633 2.45766 16.2669 2.80757 16.8741L3.30114 17.7307C3.67443 18.3785 3.86109 18.7025 4.17867 18.8316C4.49625 18.9608 4.85542 18.8589 5.57377 18.655L6.79394 18.3113C7.25263 18.2055 7.73387 18.2656 8.15267 18.4808L8.4895 18.6752C8.84851 18.9052 9.12464 19.2442 9.2775 19.6428L9.61149 20.6403C9.83106 21.3003 9.94085 21.6303 10.2022 21.8191C10.4636 22.0078 10.8108 22.0078 11.5051 22.0078H12.6199C13.3143 22.0078 13.6615 22.0078 13.9228 21.8191C14.1842 21.6303 14.294 21.3003 14.5136 20.6403L14.8476 19.6428C15.0004 19.2442 15.2765 18.9052 15.6356 18.6752L15.9724 18.4808C16.3912 18.2656 16.8724 18.2055 17.3311 18.3113L18.5513 18.655C19.2696 18.8589 19.6288 18.9608 19.9464 18.8316C20.264 18.7025 20.4506 18.3785 20.8239 17.7307L21.3175 16.8741C21.6674 16.2669 21.8423 15.9633 21.8084 15.6401C21.7744 15.3168 21.5402 15.0564 21.0718 14.5354L20.0407 13.3827C19.7887 13.0636 19.6098 12.5078 19.6098 12.0077C19.6098 11.5078 19.7888 10.9518 20.0407 10.6328L21.0718 9.48012C21.5402 8.95918 21.7744 8.69871 21.8084 8.37549C21.8423 8.05227 21.6674 7.74864 21.3175 7.14139Z" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" />
     <path d="M15.5195 12C15.5195 13.933 13.9525 15.5 12.0195 15.5C10.0865 15.5 8.51953 13.933 8.51953 12C8.51953 10.067 10.0865 8.5 12.0195 8.5C13.9525 8.5 15.5195 10.067 15.5195 12Z" stroke="currentColor" strokeWidth="1.5" />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -370,7 +370,7 @@ export const SettingsIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const SearchIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -391,7 +391,7 @@ export const SearchIcon = (props?: SvgIconProps) => (
       strokeLinejoin="round"
       d="M17.5 17.5L22 22"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -399,7 +399,7 @@ export const SearchIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const RefreshIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -421,7 +421,7 @@ export const RefreshIcon = (props?: SvgIconProps) => (
       strokeLinejoin="round"
       d="M20 4V10H14"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -429,7 +429,7 @@ export const RefreshIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const PlayIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -443,7 +443,7 @@ export const PlayIcon = (props?: SvgIconProps) => (
       strokeLinejoin="round"
       d="M18.89 11.15L7.38 4.17C6.55 3.66 5.5 4.26 5.5 5.22V18.78C5.5 19.74 6.55 20.34 7.38 19.83L18.89 12.85C19.67 12.37 19.67 11.63 18.89 11.15Z"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -451,7 +451,7 @@ export const PlayIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const StopIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -465,7 +465,7 @@ export const StopIcon = (props?: SvgIconProps) => (
       strokeLinejoin="round"
       d="M6 4C4.9 4 4 4.9 4 6V18C4 19.1 4.9 20 6 20H18C19.1 20 20 19.1 20 18V6C20 4.9 19.1 4 18 4H6Z"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -473,7 +473,7 @@ export const StopIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const RestartIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -495,7 +495,7 @@ export const RestartIcon = (props?: SvgIconProps) => (
       strokeLinejoin="round"
       d="M12 8V4H8"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -503,7 +503,7 @@ export const RestartIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const CloseIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -523,7 +523,7 @@ export const CloseIcon = (props?: SvgIconProps) => (
       strokeWidth="1.5"
       d="M12 22C6.48 22 2 17.52 2 12C2 6.48 6.48 2 12 2C17.52 2 22 6.48 22 12C22 17.52 17.52 22 12 22Z"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -531,7 +531,7 @@ export const CloseIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const CheckIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -551,7 +551,7 @@ export const CheckIcon = (props?: SvgIconProps) => (
       strokeLinejoin="round"
       d="M8 12.5L10.5 15L16 9"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -559,7 +559,7 @@ export const CheckIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const PlusIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -578,7 +578,7 @@ export const PlusIcon = (props?: SvgIconProps) => (
       strokeLinecap="round"
       d="M12 8V16M8 12H16"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -586,7 +586,7 @@ export const PlusIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const ChevronRightIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="none"
       stroke="currentColor"
@@ -595,7 +595,7 @@ export const ChevronRightIcon = (props?: SvgIconProps) => (
       strokeLinejoin="round"
       d="M9 6L15 12L9 18"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -603,7 +603,7 @@ export const ChevronRightIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const TerminalIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -632,7 +632,7 @@ export const TerminalIcon = (props?: SvgIconProps) => (
       strokeLinecap="round"
       d="M13 15H17"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -640,7 +640,7 @@ export const TerminalIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const PipelineIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -669,7 +669,7 @@ export const PipelineIcon = (props?: SvgIconProps) => (
       strokeLinecap="round"
       d="M12 8H14M14 8V14M8 12V14H14"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -677,7 +677,7 @@ export const PipelineIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const TraceIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -691,7 +691,7 @@ export const TraceIcon = (props?: SvgIconProps) => (
       strokeLinejoin="round"
       d="M3 12H7L9 7L12 17L15 9L17 12H21"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -699,7 +699,7 @@ export const TraceIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const BackupIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -720,7 +720,7 @@ export const BackupIcon = (props?: SvgIconProps) => (
       strokeLinejoin="round"
       d="M12 15V19M12 19L14 17M12 19L10 17"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -728,7 +728,7 @@ export const BackupIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const DashboardBuilderIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -756,7 +756,7 @@ export const DashboardBuilderIcon = (props?: SvgIconProps) => (
       strokeLinecap="round"
       d="M15 13V17M13 15H17"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -764,7 +764,7 @@ export const DashboardBuilderIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const KubernetesIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -786,7 +786,7 @@ export const KubernetesIcon = (props?: SvgIconProps) => (
       d="M12 8V16M8.5 10L15.5 14M15.5 10L8.5 14"
     />
     <circle cx="12" cy="12" r="2" fill="none" stroke="currentColor" strokeWidth="1.5" />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -794,7 +794,7 @@ export const KubernetesIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const ServerIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -829,7 +829,7 @@ export const ServerIcon = (props?: SvgIconProps) => (
       strokeLinecap="round"
       d="M14 5.5H16M14 12H16M14 18.5H16"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -837,7 +837,7 @@ export const ServerIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const StacksIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -881,7 +881,7 @@ export const StacksIcon = (props?: SvgIconProps) => (
       strokeLinecap="round"
       d="M9 10H15M9 14H13"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -889,7 +889,7 @@ export const StacksIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const ProjectIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -911,7 +911,7 @@ export const ProjectIcon = (props?: SvgIconProps) => (
       strokeLinecap="round"
       d="M12 11V10.5M12 15.5V15M14 12L14.5 11.7M9.5 14.3L10 14M14 14L14.5 14.3M9.5 11.7L10 12"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -919,7 +919,7 @@ export const ProjectIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const SyncIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -955,7 +955,7 @@ export const SyncIcon = (props?: SvgIconProps) => (
       strokeLinecap="round"
       d="M18 18H6"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -965,20 +965,20 @@ export const SyncIcon = (props?: SvgIconProps) => (
 
 export const EyeIcon = (props?: any & { open?: boolean }) =>
   props?.open ? (
-    <SvgIcon {...props}>
+    <DuotoneIcon {...props}>
       <path fill="currentColor" opacity="0.4" fillRule="evenodd" clipRule="evenodd" d="M22 12C22 11.6845 21.848 11.4713 21.544 11.045C20.1779 9.12944 16.6892 5 12 5C7.31078 5 3.8221 9.12944 2.45604 11.045C2.15201 11.4713 2 11.6845 2 12C2 12.3155 2.15201 12.5287 2.45604 12.955C3.8221 14.8706 7.31078 19 12 19C16.6892 19 20.1779 14.8706 21.544 12.955C21.848 12.5287 22 12.3155 22 12ZM12 9C13.6569 9 15 10.3431 15 12C15 13.6569 13.6569 15 12 15C10.3431 15 9 13.6569 9 12C9 10.3431 10.3431 9 12 9Z" />
       <path fill="none" stroke="currentColor" strokeWidth="1.5" d="M21.544 11.045C21.848 11.4713 22 11.6845 22 12C22 12.3155 21.848 12.5287 21.544 12.955C20.1779 14.8706 16.6892 19 12 19C7.31078 19 3.8221 14.8706 2.45604 12.955C2.15201 12.5287 2 12.3155 2 12C2 11.6845 2.15201 11.4713 2.45604 11.045C3.8221 9.12944 7.31078 5 12 5C16.6892 5 20.1779 9.12944 21.544 11.045Z" />
       <path fill="none" stroke="currentColor" strokeWidth="1.5" d="M15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15C13.6569 15 15 13.6569 15 12Z" />
-    </SvgIcon>
+    </DuotoneIcon>
   ) : (
-    <SvgIcon {...props}>
+    <DuotoneIcon {...props}>
       <path fill="currentColor" opacity="0.4" d="M12 14C18 14 22 8 22 8H2C2 8 6 14 12 14Z" />
       <path fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" d="M22 8C22 8 18 14 12 14C6 14 2 8 2 8" />
       <path fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" d="M15 13.5L16.5 16" />
       <path fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" d="M20 11L22 13" />
       <path fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" d="M2 13L4 11" />
       <path fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" d="M9 13.5L7.5 16" />
-    </SvgIcon>
+    </DuotoneIcon>
   );
 
 /** @deprecated Use EyeIcon with open prop instead */
@@ -991,7 +991,7 @@ export const VisibilityOffIcon = (props?: SvgIconProps) => <EyeIcon {...props} o
 // ---------------------------------------------------------------------------
 
 export const DeleteIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -1012,7 +1012,7 @@ export const DeleteIcon = (props?: SvgIconProps) => (
       strokeLinecap="round"
       d="M16.0575 5.5L15.3748 4.09173C14.9213 3.15626 14.6946 2.68852 14.3035 2.39681C14.2167 2.3321 14.1249 2.27454 14.0288 2.2247C13.5957 2 13.0759 2 12.0363 2C10.9706 2 10.4377 2 9.99745 2.23412C9.89986 2.28601 9.80675 2.3459 9.71906 2.41317C9.3234 2.7167 9.10239 3.20155 8.66037 4.17126L8.05469 5.5"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -1020,7 +1020,7 @@ export const DeleteIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const EditIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -1041,7 +1041,7 @@ export const EditIcon = (props?: SvgIconProps) => (
       strokeLinejoin="round"
       d="M18.9999 13.5C18.9999 16.7875 18.9999 18.4312 18.092 19.5376C17.9258 19.7401 17.7401 19.9258 17.5375 20.092C16.4312 21 14.7874 21 11.4999 21H11C7.22876 21 5.34316 21 4.17159 19.8284C3.00003 18.6569 3 16.7712 3 13V12.5C3 9.21252 3 7.56879 3.90794 6.46244C4.07417 6.2599 4.2599 6.07417 4.46244 5.90794C5.56879 5 7.21252 5 10.5 5"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -1049,7 +1049,7 @@ export const EditIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const LogoutIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -1068,7 +1068,7 @@ export const LogoutIcon = (props?: SvgIconProps) => (
       strokeLinecap="round"
       d="M7 12.0323H13.9756M13.9756 12.0323C13.9756 12.6028 11.8204 14.5197 11.8204 14.5197M13.9756 12.0323C13.9756 11.447 11.8204 9.56795 11.8204 9.56795M17 7.99997V16"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -1076,7 +1076,7 @@ export const LogoutIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const ZoomInIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -1091,7 +1091,7 @@ export const ZoomInIcon = (props?: SvgIconProps) => (
     />
     <path fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" d="M15.5 15.5L20 20" />
     <path fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" d="M8.5 11H13.5M11 8.5V13.5" />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -1099,7 +1099,7 @@ export const ZoomInIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const ZoomOutIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -1114,7 +1114,7 @@ export const ZoomOutIcon = (props?: SvgIconProps) => (
     />
     <path fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" d="M15.5 15.5L20 20" />
     <path fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" d="M8.5 11H13.5" />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -1122,7 +1122,7 @@ export const ZoomOutIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const FullscreenIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -1136,7 +1136,7 @@ export const FullscreenIcon = (props?: SvgIconProps) => (
       strokeLinejoin="round"
       d="M15.5 21C16.8956 21 17.5933 21 18.1611 20.8278C19.4395 20.44 20.44 19.4395 20.8278 18.1611C21 17.5933 21 16.8956 21 15.5M21 8.5C21 7.10444 21 6.40666 20.8278 5.83886C20.44 4.56046 19.4395 3.56004 18.1611 3.17224C17.5933 3 16.8956 3 15.5 3M8.5 21C7.10444 21 6.40666 21 5.83886 20.8278C4.56046 20.44 3.56004 19.4395 3.17224 18.1611C3 17.5933 3 16.8956 3 15.5M3 8.5C3 7.10444 3 6.40666 3.17224 5.83886C3.56004 4.56046 4.56046 3.56004 5.83886 3.17224C6.40666 3 7.10444 3 8.5 3"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -1144,7 +1144,7 @@ export const FullscreenIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const FullscreenExitIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -1158,7 +1158,7 @@ export const FullscreenExitIcon = (props?: SvgIconProps) => (
       strokeLinejoin="round"
       d="M9.5 3C9.5 3 9.5 5.10444 9.5 6.5C9.5 7.89556 8.89556 8.5 7.5 8.5C6.10444 8.5 3 8.5 3 8.5M14.5 3C14.5 3 14.5 5.10444 14.5 6.5C14.5 7.89556 15.1044 8.5 16.5 8.5C17.8956 8.5 21 8.5 21 8.5M9.5 21C9.5 21 9.5 18.8956 9.5 17.5C9.5 16.1044 8.89556 15.5 7.5 15.5C6.10444 15.5 3 15.5 3 15.5M14.5 21C14.5 21 14.5 18.8956 14.5 17.5C14.5 16.1044 15.1044 15.5 16.5 15.5C17.8956 15.5 21 15.5 21 15.5"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -1166,7 +1166,7 @@ export const FullscreenExitIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const LockIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       opacity="0.4"
       d="M4.26781 18.8447C4.49269 20.515 5.87612 21.8235 7.55965 21.9009C8.97627 21.966 10.4153 22 12 22C13.5847 22 15.0237 21.966 16.4403 21.9009C18.1239 21.8235 19.5073 20.515 19.7322 18.8447C19.879 17.7547 20 16.6376 20 15.5C20 14.3624 19.8789 13.2453 19.7322 12.1553C19.5073 10.485 18.1239 9.17649 16.4403 9.09909C15.0237 9.03397 13.5847 9 12 9C10.4153 9 8.97627 9.03397 7.55965 9.09909C5.87612 9.17649 4.49268 10.485 4.26781 12.1553C4.12104 13.2453 3.99999 14.3624 3.99999 15.5C3.99999 16.6376 4.12104 17.7547 4.26781 18.8447Z"
@@ -1187,7 +1187,7 @@ export const LockIcon = (props?: SvgIconProps) => (
       strokeLinecap="round"
       strokeLinejoin="round"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -1195,7 +1195,7 @@ export const LockIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const LockOpenIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       opacity="0.4"
       d="M4.26781 18.8447C4.49269 20.515 5.87612 21.8235 7.55965 21.9009C8.97627 21.966 10.4153 22 12 22C13.5847 22 15.0237 21.966 16.4403 21.9009C18.1239 21.8235 19.5073 20.515 19.7322 18.8447C19.879 17.7547 20 16.6376 20 15.5C20 14.3624 19.8789 13.2453 19.7322 12.1553C19.5073 10.485 18.1239 9.17649 16.4403 9.09909C15.0237 9.03397 13.5847 9 12 9C10.4153 9 8.97627 9.03397 7.55965 9.09909C5.87612 9.17649 4.49268 10.485 4.26781 12.1553C4.12104 13.2453 3.99999 14.3624 3.99999 15.5C3.99999 16.6376 4.12104 17.7547 4.26781 18.8447Z"
@@ -1216,7 +1216,7 @@ export const LockOpenIcon = (props?: SvgIconProps) => (
       strokeLinecap="round"
       strokeLinejoin="round"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -1224,7 +1224,7 @@ export const LockOpenIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const MoreVertIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="none"
       opacity="0.4"
@@ -1250,7 +1250,7 @@ export const MoreVertIcon = (props?: SvgIconProps) => (
       strokeLinecap="round"
       strokeLinejoin="round"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -1258,7 +1258,7 @@ export const MoreVertIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const ConstructionIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -1272,7 +1272,7 @@ export const ConstructionIcon = (props?: SvgIconProps) => (
       strokeLinejoin="round"
       d="M6 6L18 18M2.5 8.5L4 7L7 4L8.5 2.5M15.5 21.5L17 20L20 17L21.5 15.5M13 7L17 11"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -1280,10 +1280,10 @@ export const ConstructionIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const CircleIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <circle fill="currentColor" opacity="0.4" cx="12" cy="12" r="10" />
     <circle fill="none" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -1291,7 +1291,7 @@ export const CircleIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const UserIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -1317,7 +1317,7 @@ export const UserIcon = (props?: SvgIconProps) => (
       strokeLinecap="round"
       d="M5.56 18.5C6.67 16.42 9.16 15 12 15C14.84 15 17.33 16.42 18.44 18.5"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -1325,7 +1325,7 @@ export const UserIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const ChipIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -1354,7 +1354,7 @@ export const ChipIcon = (props?: SvgIconProps) => (
       strokeLinejoin="round"
       d="M8 2V4M16 2V4M12 2V4M8 20V22M12 20V22M16 20V22M22 16H20M4 8H2M4 16H2M4 12H2M22 8H20M22 12H20"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -1362,7 +1362,7 @@ export const ChipIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const FolderIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -1383,7 +1383,7 @@ export const FolderIcon = (props?: SvgIconProps) => (
       strokeLinejoin="round"
       d="M3.15802 15.5144L3.45643 14.7717C4.19029 12.9449 4.55723 12.0316 5.3224 11.5158C6.08757 11 7.07557 11 9.05157 11H17.1119C19.8004 11 21.1446 11 21.7422 11.8787C22.3397 12.7575 21.8405 14.0002 20.842 16.4856L20.5436 17.2283C19.8097 19.0551 19.4428 19.9684 18.6776 20.4842C17.9124 21 16.9244 21 14.9484 21H6.88812C4.19961 21 2.85535 21 2.25782 20.1213C1.66029 19.2425 2.15953 17.9998 3.15802 15.5144Z"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );
 
 // ---------------------------------------------------------------------------
@@ -1391,7 +1391,7 @@ export const FolderIcon = (props?: SvgIconProps) => (
 // ---------------------------------------------------------------------------
 
 export const ReleaseIcon = (props?: SvgIconProps) => (
-  <SvgIcon {...props}>
+  <DuotoneIcon {...props}>
     <path
       fill="currentColor"
       opacity="0.4"
@@ -1413,5 +1413,5 @@ export const ReleaseIcon = (props?: SvgIconProps) => (
       strokeLinejoin="round"
       d="M3.5 7L12 11.5L20.5 7M12 11.5V21.5"
     />
-  </SvgIcon>
+  </DuotoneIcon>
 );

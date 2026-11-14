@@ -1,7 +1,17 @@
 'use client';
 
 import { createContext, forwardRef, useContext, useMemo, type ComponentType, type ReactNode } from 'react';
+import SvgIcon from '@mui/material/SvgIcon';
 import type { SvgIconProps } from '@mui/material/SvgIcon';
+
+/** Stroke artwork must not inherit MUI's solid root fill. Paint each tonal layer explicitly. */
+export const DuotoneIcon = forwardRef<SVGSVGElement, SvgIconProps>(function DuotoneArtwork({ children, ...props }, ref) {
+  return (
+    <SvgIcon {...props} ref={ref}>
+      <g fill="none">{children}</g>
+    </SvgIcon>
+  );
+});
 
 /** Semantic slots shared by controls, layouts and scientific tools. */
 export const prismIconNames = [

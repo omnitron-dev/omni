@@ -50,13 +50,18 @@ async function workspace(directory: string) {
     // Standard externally managed tool mode: the prerequisite above owns the
     // strict version check. This mode does not generate a manager boot document.
     `packages:\n  - packages/*\noffline: true\npmOnFail: ignore\nverifyDepsBeforeRun: error\nstoreDir: ${path.join(root, 'store')}\ncacheDir: ${path.join(root, 'cache')}\n`);
-  await fs.writeFile(path.join(directory, '.gitignore'), 'node_modules/\n.omnitron/\n.turbo/\n');
+  await fs.writeFile(path.join(directory, '.gitignore'), 'node_modules/\n.omnitron/\n.turbo/\ndist/\n');
 }
 async function sdk(directory: string) {
   await workspace(directory);
   const rootManifest = path.join(directory, 'package.json');
   await write(rootManifest, { ...await json(rootManifest), devDependencies: { turbo: 'link:' + turbo } });
-  await write(path.join(directory, 'turbo.json'), { tasks: { build: { dependsOn: ['^build'], outputs: ['dist/**'] } } });
+  await write(path.join(directory, 'turbo.json'), {
+    globalDependencies: (await json(path.resolve(import.meta.dirname, '../../../../turbo.json'))).globalDependencies,
+    tasks: { build: { dependsOn: ['^build'], outputs: ['dist/**'] } },
+  });
+  await fs.mkdir(path.join(directory, 'scripts'));
+  await fs.writeFile(path.join(directory, 'scripts/build-package.sh'), '# fixture shared build input\n');
   for (const name of ['lumen', 'lumen-ast', 'titan']) {
     const pkg = path.join(directory, 'packages', name);
     await fs.mkdir(path.join(pkg, 'src'), { recursive: true });
@@ -432,13 +437,48 @@ it('retains the last successful build checkpoint when a repeated SDK build fails
   const script = path.join(source, 'packages/lumen-ast/build.js');
   const original = await fs.readFile(script, 'utf8');
   await fs.writeFile(script, 'throw Error("Build was not completed");\n');
-  await expect(select()).rejects.toThrow(/pnpm exec exited/);
+  await expect(select()).rejects.toThrow(/pnpm .* exited/);
   expect(await fs.readFile(checkpoint, 'utf8')).toBe(before);
   expect(await fs.readFile(active(), 'utf8')).toBe(profile);
   expect(await distribution()).toBe(rootLock);
   await fs.writeFile(script, original.replace('value = 42', 'value = 100'));
   await select();
   expect((await exec('pnpm', ['run', 'build'], { cwd: consumer })).stdout).toContain('Built with SDK value 100');
+}, 90_000);
+
+it('reports edited SDK inputs as stale without building, installing or changing checkpoints', async () => {
+  await initialize();
+  await select(source);
+  expect((await inspectSdk(consumer)).build).toMatchObject({ status: 'current' });
+  const manifest = await json(path.join(source, 'packages/lumen-ast/package.json'));
+  const edits: [string, string][] = [
+    ['packages/lumen-ast/src/new.ts', 'export const edited = true;\n'],
+    ['packages/lumen-ast/tsconfig.json', '{"compilerOptions":{"strict":true}}\n'],
+    ['tsconfig.base.json', '{"compilerOptions":{"target":"ES2023"}}\n'],
+    ['scripts/build-package.sh', '# changed shared build input\n'],
+    ['packages/lumen-ast/package.json', JSON.stringify({ ...manifest, devDependencies: { 'uninstalled-fixture': '1.0.0' } })],
+    ['pnpm-workspace.yaml', (await fs.readFile(path.join(source, 'pnpm-workspace.yaml'), 'utf8')) + '# changed workspace configuration\n'],
+  ];
+  const checkpoint = path.join(consumer, '.omnitron/dev-sdk/built.json');
+  const saved = await fs.readFile(checkpoint, 'utf8');
+  for (const [relative, changed] of edits) {
+    const file = path.join(source, relative);
+    const original = await fs.readFile(file, 'utf8').catch(error => {
+      if (error.code === 'ENOENT') return undefined;
+      throw error;
+    });
+    await fs.writeFile(file, changed);
+    const before = await filesystemSnapshot(root);
+    await expect(inspectSdk(consumer), relative).rejects.toThrow('SDK build inputs changed');
+    expect(await filesystemSnapshot(root), relative + ' inspection must be read-only').toEqual(before);
+    expect(await fs.readFile(checkpoint, 'utf8')).toBe(saved);
+    if (original === undefined) await fs.rm(file);
+    else await fs.writeFile(file, original);
+  }
+  expect((await inspectSdk(consumer)).build).toMatchObject({ status: 'current' });
+  await write(checkpoint, { ...JSON.parse(saved), schema: 2 });
+  await expect(inspectSdk(consumer)).rejects.toThrow('No source-verified build checkpoint');
+  expect((await json(checkpoint)).schema).toBe(2);
 }, 90_000);
 
 it.each([false, true])('bootstraps a standalone Lumen consumer with absent/stale distribution lock: %s', async stale => {

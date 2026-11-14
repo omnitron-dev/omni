@@ -24,7 +24,8 @@ reuse the selection. --no-watch builds the selected graph once without watching.
 --start-stopped binds the owner's first online generations to the SDK during a reviewed
 working-tree start. Obtain the digest with stack start PROJECT STACK --dry-run --infrastructure preserve.
 Applications declaring watch: false are reported separately. Missing required watchers fail.
-status --stack verifies existing build and application receipts without building or restarting.
+status verifies current Turbo inputs and build outputs; --stack also verifies application receipts.
+Inspection never builds, installs dependencies or restarts applications.
 registry restores the frozen distribution dependencies. Releases always read Git.`;
 
 const scope = '@omnitron-dev/';
@@ -128,17 +129,17 @@ function command(program, args, cwd, capture = false, signal) {
   });
 }
 
-async function readOnlyPnpm(root, args) {
+async function readOnlyPnpm(root, args, signal, capture = true) {
   // Even `pnpm list` can bootstrap package-manager metadata. Use pnpm's
   // externally managed mode only after checking the selected executable against
   // the project's pin. Never download a package manager during SDK inspection.
   const options = ['--config.pmOnFail=ignore', '--config.ignore-pnpmfile=true', '--config.offline=true'];
-  const version = await command('pnpm', [...options, '--version'], root, true);
+  const version = await command('pnpm', [...options, '--version'], root, true, signal);
   const { pm, warnings } = getWantedPackageManager(await readJson(path.join(root, 'package.json')));
   if (warnings.length || pm && (pm.name !== 'pnpm' || pm.version !== version))
     throw Error('Read-only SDK inspection requires the installed pnpm to match an exact project package-manager pin; ' +
       `selected pnpm ${version}, requested ${pm?.name ?? 'unknown'}@${pm?.version ?? 'unknown'}`);
-  return command('pnpm', [...options, ...args], root, true);
+  return command('pnpm', [...options, ...args], root, capture, signal);
 }
 
 async function inventory(root) {
@@ -431,10 +432,117 @@ async function frozen(root) {
   await command('pnpm', ['install', '--force', '--frozen-lockfile', '--config.confirm-modules-purge=false'], root);
 }
 
-async function build(source, names, signal) {
-  if (!names.length) return;
+const buildArguments = (names) => ['exec', 'turbo', 'run', 'build', ...[...names].sort().map(name => '--filter=' + name + '...')];
+
+async function buildPlan(source, names, signal) {
+  // Ask the same graph/cache engine that performs the build. Do not substitute
+  // a second file scanner or let pnpm repair dependencies during inspection.
+  const plan = JSON.parse(await readOnlyPnpm(source,
+    ['--config.verifyDepsBeforeRun=false', ...buildArguments(names), '--dry=json'], signal));
+  if (typeof plan.turboVersion !== 'string' || !Array.isArray(plan.tasks))
+    throw Error('Turbo did not report a verifiable SDK build graph');
+  return plan;
+}
+
+function planInputs(plan, names) {
+  return Object.fromEntries([...names].sort().map(name => {
+    const tasks = plan.tasks.filter(task => task.taskId === name + '#build');
+    if (tasks.length !== 1 || typeof tasks[0].hash !== 'string' || !/^[a-f0-9]+$/.test(tasks[0].hash))
+      throw Error('Turbo did not report a concrete build input hash for ' + name);
+    if (typeof tasks[0].command !== 'string' || !tasks[0].command || tasks[0].command === '<NONEXISTENT>')
+      throw Error('Turbo did not report a build command for ' + name);
+    return [name, { turbo: plan.turboVersion, node: process.version, platform: process.platform,
+      arch: process.arch, hash: tasks[0].hash }];
+  }));
+}
+
+async function buildInputs(source, names, signal) {
+  return planInputs(await buildPlan(source, names, signal), names);
+}
+
+async function watchGraph(profile, signal) {
+  const { source } = profile;
+  const plan = await buildPlan(source, Object.keys(profile.links), signal);
+  const roots = new Map([[source, false]]);
+  const declared = [];
+  const files = Object.keys(plan.globalCacheInputs?.files ?? {}).map(file => path.resolve(source, file));
+  const ignored = [];
+  function add(directory, recursive) {
+    if (!inside(source, directory)) throw Error('SDK watching requires build inputs inside its checkout: ' + directory);
+    roots.set(directory, recursive || roots.get(directory) || false);
+  }
+  function patternRoot(pattern, base, global = false) {
+    if (typeof pattern !== 'string') throw Error('Turbo reported an invalid SDK input pattern');
+    if (pattern.startsWith('!') || pattern === '$TURBO_DEFAULT$') return;
+    const expanded = pattern.replaceAll('$TURBO_ROOT$', source);
+    const wildcard = expanded.search(/[*?[\]{}()]/);
+    const prefix = wildcard === -1 ? expanded : expanded.slice(0, wildcard);
+    const slash = prefix.lastIndexOf('/');
+    const directory = path.resolve(base, prefix.slice(0, slash + 1) || '.');
+    const remaining = expanded.slice(slash + 1);
+    const recursive = wildcard !== -1 && (remaining.includes('/') || remaining.includes('**'));
+    // An unbounded global pattern can include caches and build outputs. Refuse
+    // that watch scope instead of silently excluding declared build inputs.
+    if (global && directory === source && recursive)
+      throw Error('SDK watching requires a bounded directory for global input pattern: ' + pattern);
+    add(directory, recursive);
+    declared.push([directory, recursive]);
+  }
+  const configuration = await readJson(path.join(source, 'turbo.json'));
+  for (const pattern of configuration.globalDependencies ?? []) patternRoot(pattern, source, true);
+  for (const task of plan.tasks) {
+    if (typeof task.directory !== 'string') throw Error('Turbo did not report an SDK task directory');
+    const directory = path.resolve(source, task.directory);
+    add(directory, true);
+    ignored.push(...['node_modules', '.git', '.turbo', '.pnpm-store'].map(name => path.join(directory, name) + path.sep));
+    for (const pattern of task.resolvedTaskDefinition?.inputs ?? []) patternRoot(pattern, directory);
+    files.push(...Object.keys(task.inputs ?? {}).map(file => path.resolve(directory, file)));
+    for (const output of task.outputs ?? []) {
+      const prefix = output.split(/[*?[\]{}()]/, 1)[0];
+      if (prefix.endsWith('/') && !output.startsWith('!')) ignored.push(path.resolve(directory, prefix) + path.sep);
+    }
+  }
+  for (const file of files) {
+    if (!inside(source, file)) throw Error('SDK watching requires build inputs inside its checkout: ' + file);
+  }
+  // A missing static glob directory cannot be observed nonrecursively by Xec.
+  // Require it explicitly; new files and subdirectories inside existing roots
+  // are then discovered by polling without native notification support.
+  for (const directory of roots.keys()) {
+    if (await fs.realpath(directory).catch(error => {
+      if (error.code === 'ENOENT') return undefined;
+      throw error;
+    }) !== directory) throw Error('SDK watch input directory must exist and be physical: ' + directory);
+  }
+  ignored.push(...['node_modules', '.git', '.turbo', '.pnpm-store'].map(name => path.join(source, name) + path.sep));
+  if (await fs.lstat(path.join(source, '.git')).then(() => true, error => {
+    if (error.code === 'ENOENT') return false;
+    throw error;
+  })) {
+    const entries = await command('git', ['ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z'], source, true, signal);
+    ignored.push(...entries.split('\0').filter(file => file.endsWith('/')).map(file => path.resolve(source, file) + path.sep));
+  }
+  // Turbo may explicitly include a gitignored file or output. Such declared
+  // inputs take precedence over polling exclusions.
+  const ignore = [...new Set(ignored)].filter(pattern => !files.some(file => inside(pattern, file)) &&
+    !declared.some(([directory, recursive]) => inside(pattern, directory) || recursive && inside(directory, pattern))).sort();
+  const directories = [...roots].filter(([directory]) => ![...roots].some(([parent, recursive]) =>
+    parent !== directory && recursive && inside(parent, directory))).sort(([left], [right]) => left.localeCompare(right));
+  return { inputs: planInputs(plan, Object.keys(profile.links)), directories, ignore };
+}
+
+async function verifyInputs(profile, inputs, signal) {
+  const current = await buildInputs(profile.source, Object.keys(inputs), signal);
+  const changed = Object.keys(inputs).filter(name => !isDeepStrictEqual(inputs[name], current[name]));
+  if (changed.length)
+    throw Error('SDK build inputs changed for ' + changed.join(', ') + '; run sdk dev to rebuild before confirming readiness');
+}
+
+async function build(profile, names, signal) {
+  if (!names.length) throw Error('No development SDK packages selected for building');
+  const source = profile.source;
   const dir = await prepareState(source);
-  await exclusively(dir, async () => {
+  return exclusively(dir, async () => {
     // pnpm's implicit pre-script install only warns on failure. Ask pnpm to
     // check its installation first, then require a successful frozen repair.
     try {
@@ -452,7 +560,14 @@ async function build(source, names, signal) {
       })) throw error;
       await command('pnpm', ['install', '--frozen-lockfile'], source, false, signal);
     }
-    await command('pnpm', ['exec', 'turbo', 'run', 'build', ...names.map((n) => '--filter=' + n + '...')], source, false, signal);
+    const inputs = await buildInputs(source, names, signal);
+    // Keep pnpm's effective configuration identical for the dry graph and the
+    // actual run, including any configuration variables declared as task inputs.
+    await readOnlyPnpm(source, ['--config.verifyDepsBeforeRun=false', ...buildArguments(names)], signal, false);
+    const hashes = {};
+    for (const name of names) hashes[name] = await buildDigest(profile.links[name]);
+    await verifyInputs(profile, inputs, signal);
+    return { inputs, hashes };
   }, signal);
 }
 
@@ -880,19 +995,22 @@ async function verifyOutputs(profile, hashes) {
   }
 }
 
-async function checkpointSdkBuild(profile, names, stack, signal, packages, review) {
+async function checkpointSdkBuild(profile, built, stack, signal, packages, review) {
   const checkpoint = path.join(statePath(profile.root), 'built.json');
   const prior = await optionalJson(checkpoint);
   const hashes = prior?.source === profile.source ? prior.hashes : {};
   const next = Object.fromEntries(Object.entries(hashes).filter(([name]) => Object.hasOwn(profile.links, name)));
+  const inputs = Object.fromEntries(Object.entries(prior?.schema === 3 && prior.source === profile.source ? prior.inputs ?? {} : {})
+    .filter(([name]) => Object.hasOwn(profile.links, name)));
   const changed = new Set();
-  for (const name of names) {
-    next[name] = await buildDigest(profile.links[name]);
+  for (const [name, digest] of Object.entries(built.hashes)) {
+    next[name] = digest;
+    inputs[name] = built.inputs[name];
     if (hashes[name] !== next[name]) changed.add(name);
   }
   signal?.throwIfAborted();
-  const nextCheckpoint = { schema: 2, source: profile.source, hashes: next,
-    applications: prior?.schema === 2 && prior.source === profile.source && prior.applications &&
+  const nextCheckpoint = { schema: 3, source: profile.source, hashes: next, inputs,
+    applications: prior?.schema === 3 && prior.source === profile.source && prior.applications &&
       typeof prior.applications === 'object' && !Array.isArray(prior.applications) ? prior.applications : {} };
   if (review) {
     const scope = review.target.project + '/' + stack;
@@ -902,7 +1020,12 @@ async function checkpointSdkBuild(profile, names, stack, signal, packages, revie
   const sourceState = await prepareState(profile.source);
   const persist = async (confirmLaunch) => {
     await verifyOutputs(profile, next);
-    if (confirmLaunch) await confirmLaunch();
+    await verifyInputs(profile, inputs, signal);
+    if (confirmLaunch) {
+      await confirmLaunch();
+      await verifyInputs(profile, inputs, signal);
+    }
+    await verifyOutputs(profile, next);
     signal?.throwIfAborted();
     await atomic(checkpoint, JSON.stringify(nextCheckpoint) + '\n');
   };
@@ -927,73 +1050,82 @@ export async function watchSdk(profile, stack, signal) {
     const { client } = await localStack(profile.root, stack);
     await client.disconnect();
   }
-  const packages = new Map([...(await inventory(profile.source)), ...(await inventory(profile.root))]);
-  const sdkPackages = new Map([...packages].filter(([name]) => Object.hasOwn(profile.links, name)));
-  const pending = new Set(Object.keys(profile.links));
-  const handles = [];
-  let closed = false;
-  let timer, running, onAbort;
+  const verified = {};
+  let pending = true, closed = false;
+  let handles = [], watching = '';
+  let timer, running, onAbort, rejectWatching;
+  function observe(graph) {
+    const configuration = JSON.stringify([graph.directories, graph.ignore]);
+    if (configuration === watching) return;
+    const next = [];
+    let failure;
+    for (const recursive of [false, true]) {
+      const directories = graph.directories.filter(([, deep]) => deep === recursive).map(([directory]) => directory);
+      if (!directories.length) continue;
+      const handle = new FileWatcher(directories, { poll: true, pollInterval: 1000, debounce: 150,
+        extensions: [], ignore: graph.ignore, recursive, persistent: true });
+      handle.on('change', schedule);
+      handle.once('error', error => { failure = error; rejectWatching(error); });
+      next.push(handle);
+    }
+    for (const handle of next) {
+      handle.start();
+      if (failure) {
+        for (const candidate of next) candidate.close();
+        throw failure;
+      }
+    }
+    for (const handle of handles) handle.close();
+    handles = next;
+    watching = configuration;
+    // Recheck after changing observers so an edit between Turbo's plan and a
+    // new polling baseline cannot disappear inside that setup window.
+    pending = true;
+  }
   async function rebuild() {
-    const edits = new Set(pending);
-    pending.clear();
-    const names = [...sdkPackages]
-      .filter(([name, pkg]) => edits.has(name) || dependsOn(pkg.manifest, edits, sdkPackages))
-      .map(([name]) => name);
-    await build(profile.source, names, signal);
+    pending = false;
+    const graph = await watchGraph(profile, signal);
+    observe(graph);
+    const names = Object.keys(graph.inputs).filter(name => !isDeepStrictEqual(verified[name], graph.inputs[name]));
+    if (!names.length) return false;
+    const built = await build(profile, names, signal);
     await verifyLinks(profile.root, profile);
-    await checkpointSdkBuild(profile, names, stack, signal, packages);
+    await checkpointSdkBuild(profile, built, stack, signal);
+    Object.assign(verified, built.inputs);
+    return true;
   }
   const flush = async () => {
-    if (closed || running || signal.aborted || !pending.size) return;
-    const attempted = [...pending];
+    if (closed || running || signal.aborted || !pending) return;
     running = rebuild();
     let replay = true;
     try {
-      await running;
-      if (!signal.aborted) console.log('Development SDK rebuild complete');
+      if (await running && !signal.aborted) console.log('Development SDK rebuild complete');
     } catch (error) {
       if (!signal.aborted) {
-        replay = pending.size > 0;
-        for (const name of attempted) pending.add(name);
+        replay = pending;
+        pending = true;
         console.error('SDK build or refresh failed:', error.message);
       }
     } finally {
       running = undefined;
-      if (!closed && !signal.aborted && pending.size && replay) queueMicrotask(flush);
+      if (!closed && !signal.aborted && pending && replay) queueMicrotask(flush);
     }
   };
-  function schedule(names) {
+  function schedule() {
     if (closed || signal.aborted) return;
-    for (const name of names) pending.add(name);
+    pending = true;
     clearTimeout(timer);
     timer = setTimeout(flush, 150);
   }
   try {
-    const selected = Object.entries(profile.links);
-    const options = { poll: true, pollInterval: 1000, debounce: 150, extensions: [], ignore: [], persistent: true };
-    const sources = new FileWatcher(selected.map(([, dir]) => path.join(dir, 'src')), options);
-    sources.on('change', event => {
-      schedule(selected.filter(([, dir]) => inside(path.join(dir, 'src'), event.path)).map(([name]) => name));
-    });
-    const configurations = new FileWatcher([profile.source, ...selected.map(([, dir]) => dir)], { ...options, recursive: false });
-    configurations.on('change', event => {
-      const file = path.basename(event.path), directory = path.dirname(event.path);
-      if (directory === profile.source && ['pnpm-lock.yaml', 'pnpm-workspace.yaml', 'turbo.json', 'tsconfig.json'].includes(file))
-        schedule(Object.keys(profile.links));
-      else if (/^(?:package\.json|tsconfig.*\.json|(?:tsup|vite)\.config\..+)$/.test(file))
-        schedule(selected.filter(([, dir]) => dir === directory).map(([name]) => name));
-    });
-    handles.push(sources, configurations);
+    await prepareState(profile.source);
+    const graph = await watchGraph(profile, signal);
     if (!signal.aborted) await new Promise((resolve, reject) => {
-      let failed = false;
+      rejectWatching = reject;
       onAbort = resolve;
       signal.addEventListener('abort', onAbort, { once: true });
-      for (const handle of handles) handle.once('error', error => { failed = true; reject(error); });
-      for (const handle of handles) {
-        handle.start();
-        if (failed) return;
-      }
-      console.log('Watching SDK sources at ' + profile.source + ' (polling every 1000 ms)');
+      observe(graph);
+      console.log('Watching SDK build inputs at ' + profile.source + ' (polling every 1000 ms)');
       void flush();
     });
   } finally {
@@ -1006,26 +1138,33 @@ export async function watchSdk(profile, stack, signal) {
   }
 }
 
-async function inspectRefresh(active, stack) {
+async function inspectBuild(active, stack) {
   const file = path.join(statePath(active.root), 'built.json');
   const checkpoint = await optionalJson(file);
-  if (checkpoint?.schema !== 2 || checkpoint.source !== active.source || !checkpoint.hashes ||
+  if (checkpoint?.schema !== 3 || checkpoint.source !== active.source || !checkpoint.hashes || !checkpoint.inputs ||
       !isDeepStrictEqual(Object.keys(checkpoint.hashes).sort(), Object.keys(active.links).sort()) ||
+      !isDeepStrictEqual(Object.keys(checkpoint.inputs).sort(), Object.keys(active.links).sort()) ||
       !checkpoint.applications || typeof checkpoint.applications !== 'object')
-    throw Error('No completed build checkpoint for the selected development SDK');
+    throw Error('No source-verified build checkpoint for the selected development SDK; run sdk dev');
   async function verifyOutput() {
     for (const [name, directory] of Object.entries(active.links))
       if (await buildDigest(directory) !== checkpoint.hashes[name]) throw Error('SDK build output changed for ' + name);
   }
+  await verifyInputs(active, checkpoint.inputs);
   await verifyOutput();
-  const packages = new Map([...(await inventory(active.source)), ...(await inventory(active.root))]);
-  // Inspection never saves a receipt or asks the owner to restart. The same
-  // comparison used by refresh determines whether an existing receipt counts.
-  const result = await refresh(active.root, stack, structuredClone(checkpoint), packages);
+  let refreshStatus;
+  if (stack) {
+    const packages = new Map([...(await inventory(active.source)), ...(await inventory(active.root))]);
+    // Inspection never saves a receipt or asks the owner to restart. The same
+    // comparison used by refresh determines whether an existing receipt counts.
+    refreshStatus = await refresh(active.root, stack, structuredClone(checkpoint), packages);
+  }
+  await verifyInputs(active, checkpoint.inputs);
   await verifyOutput();
   if (!isDeepStrictEqual(await optionalJson(file), checkpoint) || !isDeepStrictEqual(await profileStatus(active.root), active))
     throw Error('The SDK checkpoint or selection changed during inspection; repeat sdk status');
-  return result;
+  return { build: { status: 'current', packages: Object.keys(checkpoint.inputs).sort() },
+    ...(stack && { refresh: refreshStatus }) };
 }
 
 export async function inspectSdk(projectDirectory = process.cwd(), stack) {
@@ -1044,7 +1183,7 @@ export async function inspectSdk(projectDirectory = process.cwd(), stack) {
         verifiedImports: await verifyLinks(root, active),
         distributionLock: distribution === null ? 'absent' : applicationDocument(distribution) === null ? 'manager-only' : 'present',
         distributionLockChanged: lockIdentity(distribution) !== active.lockSha256,
-        ...(stack && { refresh: await inspectRefresh(active, stack) }),
+        ...await inspectBuild(active, stack),
       }
     : { mode: 'registry', verifiedImports: await verifyLinks(root, null) };
 }
@@ -1153,6 +1292,7 @@ export async function sdkCommand(argv) {
     process.once('SIGTERM', stop);
     try {
       const launch = values['start-stopped'] ? await reviewedSdkLaunch(root, values.stack, values.review) : undefined;
+      let built;
       if (interrupted || JSON.stringify(previous) !== JSON.stringify(desired)) {
         await requireStopped(root, values.stack);
         let registryAvailable = false;
@@ -1160,7 +1300,7 @@ export async function sdkCommand(argv) {
           try { await registryBaseline(root, distribution); registryAvailable = true; }
           catch { /* A missing or stale distribution is not a rollback target. */ }
         }
-        await build(source, Object.keys(desired.links), controller.signal);
+        built = await build(desired, Object.keys(desired.links), controller.signal);
         if (!isDeepStrictEqual(await desiredProfile(root, source, distribution), desired))
           throw Error('Consumer or SDK inputs changed while building; run sdk dev again');
         let prepared = distribution;
@@ -1170,7 +1310,7 @@ export async function sdkCommand(argv) {
           desired = { ...desired, lockSha256: lockIdentity(prepared) };
           installationStarted = true;
           await installDevelopment(root, desired);
-          if (!launch) await checkpointSdkBuild(desired, Object.keys(desired.links), undefined, controller.signal);
+          if (!launch) await checkpointSdkBuild(desired, built, undefined, controller.signal);
           await atomic(selection, JSON.stringify(desired, null, 2) + '\n');
           if (prepared !== distribution)
             console.log('Accepted pnpm package-manager metadata in the distribution lock; the application dependency graph is unchanged.');
@@ -1200,14 +1340,14 @@ export async function sdkCommand(argv) {
           }
           // Profile equality says nothing about source or built output. Let the
           // normal Turbo graph decide which tasks need rebuilding on every dev.
-          await build(source, Object.keys(desired.links), controller.signal);
+          built = await build(desired, Object.keys(desired.links), controller.signal);
           if (!isDeepStrictEqual(await desiredProfile(root, source, distribution), desired))
             throw Error('Consumer or SDK inputs changed while building; run sdk dev again');
           await verifyLinks(root, desired);
-          if (!launch) await checkpointSdkBuild(desired, Object.keys(desired.links), values.stack, controller.signal);
+          if (!launch) await checkpointSdkBuild(desired, built, values.stack, controller.signal);
         }
       }
-      if (launch) await checkpointSdkBuild(desired, Object.keys(desired.links), values.stack, controller.signal, undefined, launch);
+      if (launch) await checkpointSdkBuild(desired, built, values.stack, controller.signal, undefined, launch);
       if (!values['no-watch']) await watchSdk(desired, values.stack, controller.signal);
     } finally {
       process.off('SIGINT', stop);

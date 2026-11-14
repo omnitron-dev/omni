@@ -33,6 +33,7 @@ async function fixture() {
   const pkg = path.join(source, 'packages/probe'), state = path.join(consumer, '.omnitron/dev-sdk');
   for (const directory of [source, consumer]) {
     await fs.mkdir(path.join(directory, 'node_modules/.bin'), { recursive: true });
+    await fs.writeFile(path.join(directory, '.gitignore'), 'node_modules/\n.omnitron/\n.turbo/\ndist/\n');
     await fs.writeFile(path.join(directory, 'package.json'), JSON.stringify({ name: path.basename(directory),
       private: true, packageManager: 'pnpm@12.16.1', ...(directory === consumer && { dependencies: { '@omnitron-dev/probe': '1.0.0' } }) }));
     await fs.writeFile(path.join(directory, 'pnpm-workspace.yaml'), 'packages:\n  - packages/*\n');
@@ -413,6 +414,49 @@ it('requires a fresh application acknowledgement for a legacy build checkpoint',
     await fs.writeFile(f.checkpoint, JSON.stringify({ source: prior.source, hashes: prior.hashes, applications: prior.applications }));
     expect((await f.run('dev')).errors).toEqual([]);
     expect(rpc.automatic).toHaveBeenCalledTimes(1);
+  } finally { await f.close(); }
+}, 120_000);
+
+it('refuses unchanged application receipts when SDK source changes during read-only status', async () => {
+  const f = await fixture();
+  try {
+    expect((await f.run('dev')).errors).toEqual([]);
+    for (const name of ['active.json', 'install.json'])
+      await fs.writeFile(path.join(path.dirname(f.checkpoint), name), JSON.stringify(f.profile));
+    const checkpoint = await fs.readFile(f.checkpoint, 'utf8');
+    const output = await fs.readFile(path.join(f.pkg, 'dist/index.js'), 'utf8');
+    rpc.automatic.mockClear();
+    const originalWatch = rpc.watch.getMockImplementation()!;
+    rpc.watch.mockImplementationOnce(async () => {
+      await fs.writeFile(path.join(f.pkg, 'src/index.js'), 'export const version = 2;\n');
+      return originalWatch();
+    });
+    await expect(inspectSdk(f.consumer, 'dev')).rejects.toThrow('SDK build inputs changed');
+    expect(rpc.automatic).not.toHaveBeenCalled();
+    expect(await fs.readFile(f.checkpoint, 'utf8')).toBe(checkpoint);
+    expect(await fs.readFile(path.join(f.pkg, 'dist/index.js'), 'utf8')).toBe(output);
+    rpc.watch.mockClear();
+    await expect(inspectSdk(f.consumer, 'dev')).rejects.toThrow('SDK build inputs changed');
+    expect(rpc.watch).not.toHaveBeenCalled();
+  } finally { await f.close(); }
+}, 120_000);
+
+it('does not certify or refresh a build whose inputs changed while it was running', async () => {
+  const f = await fixture();
+  try {
+    expect((await f.run('dev')).errors).toEqual([]);
+    const checkpoint = await fs.readFile(f.checkpoint, 'utf8');
+    // A real build consumes version 1 and then changes its input to version 2.
+    // The completed output cannot certify either the edited source or apps.
+    await fs.writeFile(path.join(f.pkg, 'build.js'), `import fs from 'node:fs/promises';
+await fs.copyFile('src/index.js', 'dist/index.js');
+await fs.writeFile('src/index.js', 'export const version = 2;\\n');\n`);
+    const result = await f.run('dev');
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain('SDK build inputs changed');
+    expect(rpc.automatic).not.toHaveBeenCalled();
+    expect(await fs.readFile(f.checkpoint, 'utf8')).toBe(checkpoint);
+    expect(await fs.readFile(path.join(f.pkg, 'dist/index.js'), 'utf8')).toBe('export const version = 1;\n');
   } finally { await f.close(); }
 }, 120_000);
 

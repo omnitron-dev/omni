@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { JSDOM } from 'jsdom';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -47,7 +48,8 @@ describe('trusted example source projection', () => {
     const html = renderDocumentHtml(document.ast!);
     expect(html).toContain('data-example="sample"');
     expect(html).toContain('data-component="Demo"');
-    expect(html).toContain('<summary>Исходник</summary>');
+    const summary = JSDOM.fragment(html).querySelector('[data-example="sample"] details > summary');
+    expect(summary?.textContent).toBe('Исходник');
     expect(html).not.toContain('<script>alert');
     expect(html).toContain('// [!code highlight]');
     expect(html).toContain('example-1-');

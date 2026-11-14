@@ -27,7 +27,7 @@ afterEach(async () => {
 
 function service(docker = false) {
   const infra = { getConnectionInfo: () => ({ host: '127.0.0.1', port: 1, user: 'fixture', password: 'fixture' }),
-    getResolvedContainerName: () => docker ? 'private-test-fixture' : null, getPostgresDatabases: () => ['priceverse'] };
+    getResolvedContainerName: () => docker ? 'private-test-fixture' : null, getPostgresDatabases: () => ['ledger'] };
   const projects = { listProjectRegistrations: () => [{ name: 'fixture' }], getRunningStacks: () => ['dev'],
     getInfraManager: () => ({ listInstances: () => [], getInstance: () => infra }) };
   backups = new BackupService({ logger } as never, store, projects as never);
@@ -65,13 +65,13 @@ if (restore) { process.stdin.resume(); process.stdin.on('end', done); } else don
     vi.stubEnv('OMNI_BACKUP_FIXTURE_DELAY', '0');
     const backup = service(docker);
     backup.configure({ databaseTimeoutMs: 5_000 });
-    const record = await backup.createBackup('fixture/dev/priceverse');
+    const record = await backup.createBackup('fixture/dev/ledger');
     await backup.restoreBackup(record.id);
     expect((await backup.listBackups()).map(item => item.id)).toEqual([record.id]);
 
     backup.configure({ databaseTimeoutMs: 300 });
     vi.stubEnv('OMNI_BACKUP_FIXTURE_DELAY', '5000');
-    const dumping = backup.createBackup('fixture/dev/priceverse');
+    const dumping = backup.createBackup('fixture/dev/ledger');
     expect(() => backup.configure({ databaseTimeoutMs: 5_000 })).toThrow(/before starting/);
     await expect(dumping).rejects.toThrow(/300 ms deadline/);
     await expect(backup.restoreBackup(record.id)).rejects.toThrow(/300 ms deadline/);

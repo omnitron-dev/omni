@@ -30,6 +30,7 @@ afterEach(() => {
 describe('ordinary site build', () => {
   it.each([false, true])('canonical URLs match actual trailingSlash=%s output under the site base', async (trailingSlash) => {
     const root = fixture();
+    writeFileSync(join(root, 'docs/landing.md'), '---\nslug: /landing.html\n---\n# Landing\n');
     const config = defineLumenConfig({
       title: 'Site', pagesDir: 'pages', url: 'https://docs.example.test', baseUrl: '/product/', trailingSlash,
     });
@@ -40,6 +41,8 @@ describe('ordinary site build', () => {
     expect(html).toContain(`<link rel="canonical" href="https://docs.example.test/product/manual/start${trailingSlash ? '/' : ''}"`);
     expect(readFileSync(join(outDir, trailingSlash ? 'manual/start/index.html' : 'manual/start.html'), 'utf8')).toBe(html);
     expect(readFileSync(join(outDir, 'index.html'), 'utf8')).toContain('<link rel="canonical" href="https://docs.example.test/product/"');
+    expect(readFileSync(join(outDir, 'landing.html'), 'utf8')).toContain('<link rel="canonical" href="https://docs.example.test/product/landing.html"');
+    expect(result.manifest['routes/landing.html.html']).toMatchObject({ path: 'landing.html' });
   });
 
   it('distinguishes source links from the public Markdown mirrors of custom and root routes', async () => {

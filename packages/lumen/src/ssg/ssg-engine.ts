@@ -58,6 +58,12 @@ function normalizeBaseUrl(baseUrl?: string): string {
   return normalized;
 }
 
+function htmlOutputPath(route: string, trailingSlash?: boolean): string {
+  if (route === '/') return 'index.html';
+  const path = route.replace(/^\/+/, '');
+  return path.endsWith('.html') ? path : `${path}${trailingSlash ? '/index.html' : '.html'}`;
+}
+
 function createClientStylesheet(): string {
   return [
     BASE_LUMEN_THEME_CSS,
@@ -203,7 +209,7 @@ export async function buildStaticSite(
     const sri = computeSriHash(html);
 
     currentAssets[`routes${route}.html`] = {
-      path: route === '/' ? 'index.html' : route.slice(1) + (config.trailingSlash ? '/index.html' : '.html'),
+      path: htmlOutputPath(route, config.trailingSlash),
       sri,
       sizeBytes: Buffer.byteLength(html, 'utf8'),
       hash,
@@ -269,13 +275,7 @@ export async function buildStaticSite(
     };
 
     for (const [route, html] of pages.entries()) {
-      const cleanRoute = route === '/' ? 'index' : route.replace(/^\/+/, '');
-      const htmlRelPath = cleanRoute.endsWith('.html')
-        ? cleanRoute
-        : config.trailingSlash && route !== '/'
-          ? `${cleanRoute}/index.html`
-          : `${cleanRoute}.html`;
-      writeSafeDiskFile(htmlRelPath, html);
+      writeSafeDiskFile(htmlOutputPath(route, config.trailingSlash), html);
     }
 
     writeSafeDiskFile('llms.txt', llmsTxt);

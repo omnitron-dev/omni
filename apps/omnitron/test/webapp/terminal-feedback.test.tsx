@@ -13,6 +13,8 @@ const api = vi.hoisted(() => ({
   close: vi.fn(),
   read: vi.fn(),
   resize: vi.fn(),
+  inspectHost: vi.fn(),
+  trustHost: vi.fn(),
 }));
 vi.mock('src/netron/client', () => ({ nodes: api, terminal: api }));
 vi.mock('src/auth/store', () => ({
@@ -125,6 +127,39 @@ it('does not steal selection when a connection finishes in another tab', async (
   await act(async () => second.resolve(session('two')));
   expect(screen.getByRole('tab', { name: 'Remote 1' })).toHaveAttribute('aria-selected', 'true');
   expect(screen.getByRole('tab', { name: 'Remote 2' })).toHaveAttribute('aria-selected', 'false');
+});
+it('verifies the failed node even after selection changes and requires an independently entered fingerprint', async () => {
+  api.listNodes.mockResolvedValue([
+    { id: 'remote', name: 'Remote', host: 'example.test', sshUser: 'ops', isLocal: false },
+    { id: 'other', name: 'Other', host: 'other.test', sshUser: 'ops', isLocal: false },
+  ]);
+  api.open.mockRejectedValueOnce(new Error('Verify and trust this node’s SSH host key before opening a terminal'));
+  const observed = 'SHA256:independently-verified';
+  api.inspectHost.mockResolvedValue({ nodeId: 'remote', host: 'example.test', port: 22, observed, trusted: null });
+  api.trustHost.mockResolvedValue(undefined);
+  mount();
+  await open();
+  await act(async () => { fireEvent.mouseDown(screen.getByRole('combobox', { name: 'SSH node' })); });
+  await act(async () => { fireEvent.click(screen.getByRole('option', { name: /Other/ })); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Verify host key' })); });
+  const dialog = await screen.findByRole('dialog', { name: 'Verify SSH host identity' });
+  expect(api.inspectHost).toHaveBeenCalledExactlyOnceWith({ nodeId: 'remote' });
+  expect(within(dialog).getByText(observed)).toBeInTheDocument();
+  const trust = within(dialog).getByRole('button', { name: 'Trust verified key' });
+  expect(trust).toBeDisabled();
+  expect(api.trustHost).not.toHaveBeenCalled();
+  await act(async () => {
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Independently verified SHA256 fingerprint' }), {
+      target: { value: observed },
+    });
+  });
+  await act(async () => { fireEvent.click(trust); });
+  expect(api.trustHost).toHaveBeenCalledExactlyOnceWith({ nodeId: 'remote', fingerprint: observed, previous: null });
+  expect(api.open).toHaveBeenCalledOnce();
+  const retry = await screen.findByRole('button', { name: 'Retry connection' });
+  await act(async () => { fireEvent.click(retry); });
+  await screen.findByRole('tab', { name: 'Remote 1' });
+  expect(api.open).toHaveBeenLastCalledWith({ nodeId: 'remote', cols: 100, rows: 28 });
 });
 it('removes an expired tab without asking to close an already ended session', async () => {
   api.read.mockResolvedValueOnce({

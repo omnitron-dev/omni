@@ -176,9 +176,11 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
           setConnection({ node: target, state: 'failed', error: message(reason), unconfirmed: isRpcTimeout(reason) });
       }
     });
-  const inspect = () =>
+  const inspect = (targetId = nodeId) =>
     act('Checking SSH host identity', async () => {
-      const key = await terminal.inspectHost({ nodeId });
+      const run = generation.current;
+      const key = await terminal.inspectHost({ nodeId: targetId });
+      if (!mounted.current || run !== generation.current) return;
       setHost(key);
       setFingerprint('');
     });
@@ -466,9 +468,14 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
                           ? `Connection not confirmed: ${connection.error}. An unattached shell may still exist; the daemon closes it after ${Math.round((policy?.disconnectTimeoutMs ?? 30000) / 1000)} seconds without a client. No input was sent.`
                           : connection.error}
                       </Alert>
-                      <Button onClick={() => void open(connection.node.id)} disabled={busy} sx={{ mt: 1 }}>
-                        Retry connection
-                      </Button>
+                      <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap', rowGap: 1 }}>
+                        <Button onClick={() => void open(connection.node.id)} disabled={busy}>
+                          Retry connection
+                        </Button>
+                        <Button variant="outlined" onClick={() => void inspect(connection.node.id)} disabled={busy}>
+                          Verify host key
+                        </Button>
+                      </Stack>
                     </>
                   )}
                 </Box>

@@ -175,7 +175,7 @@ export async function prepareSupervisorTransition(directory: string, socket?: st
     if (socket) throw Error('Reviewed recovery derives the instance from its checkpoint, not a public socket');
     const installation = await RuntimeInstallation.openReadOnly(checkpointInstanceHome(retired));
     try {
-      assertOrdinaryRecoveryAllowed(installation?.activation());
+      await assertOrdinaryRecoveryAllowed(installation?.activation());
     } finally { await installation?.close(); }
     backendPid = retired.previousPid;
     controlAddress = { socket: path.join(path.dirname(recoveryCheckpoint!), `c-${retired.state.ticket.from.controllerId}.sock`) };

@@ -407,7 +407,7 @@ export async function recoverBackend(file: string): Promise<BackendReplacementRe
   if (!installation) throw new Error('Cannot open runtime installation for recovery');
   try { return await installation.exclusive(async () => {
     const activation = installation.activation();
-    assertOrdinaryRecoveryAllowed(activation);
+    await assertOrdinaryRecoveryAllowed(activation);
     const selected = installation.selection();
     const currentPid = new PidManager(previous.daemonConfig.pidFile).getPid();
     if (currentPid) {
@@ -471,7 +471,7 @@ export async function abortBackendReplacement(file: string): Promise<void> {
     if (installation) {
       await installation.exclusive(async () => {
         const activation = installation.activation();
-        assertOrdinaryRecoveryAllowed(activation);
+        await assertOrdinaryRecoveryAllowed(activation);
         if (activation && activation.checkpoint !== file) throw new Error('Another activation checkpoint owns the installation');
         await control.service.abort({ ticketId: record.state.ticket.id });
         installation.abortActivation();

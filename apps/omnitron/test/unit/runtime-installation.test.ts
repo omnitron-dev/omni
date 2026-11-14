@@ -1,7 +1,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
+import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -60,6 +61,26 @@ it('installs an independent verified copy without changing the running selection
   expect((await store.artifact(first.hash)).runtimeHash).toBe(first.hash);
   expect((await store.exclusive(() => store.install(artifact.runtimeRoot))).runtimeHash).toBe(first.hash);
   expect(await fs.readdir(store.releases)).toEqual([first.hash]);
+});
+
+it('resolves an installed control client in a fresh process without loading writer or backend admission modules', async () => {
+  const { root, home, store, make } = await fixture(), first = await make('first');
+  await store.exclusive(async () => { await store.install(first.source); await store.select(first.hash, 0); });
+  const script = path.join(root, 'readonly-launcher.mjs');
+  await fs.writeFile(script, `
+    import { registerHooks } from 'node:module';
+    registerHooks({ load(url, context, next) {
+      if (/daemon-state-store\\.service|backend-candidate|pid-manager|\\/modules\\/logger\\/|\\/kysely\\/|\\/zod\\//.test(url))
+        throw Error('Control client loaded a backend-only module: ' + url);
+      return next(url, context);
+    }});
+    const { selectedControlClient } = await import(${JSON.stringify(new URL('../../src/daemon/runtime-installation.ts', import.meta.url).href)});
+    const selected = await selectedControlClient(${JSON.stringify(home)});
+    process.stdout.write(JSON.stringify(selected));
+  `);
+  const { stdout, stderr } = await promisify(execFile)(process.execPath, ['--import', 'tsx', script], { timeout: 20_000 });
+  expect(stderr).toBe('');
+  expect(JSON.parse(stdout)).toMatchObject({ runtimeHash: first.hash, cliEntry: path.join(store.releasePath(first.hash), 'packages/0/dist/cli/omnitron.js') });
 });
 
 it('persists startup selection and rollback while keeping a stable bootstrap launcher', async () => {
@@ -200,6 +221,21 @@ it('blocks cold start after an interrupted activation until a proven commit or a
   await store.exclusive(() => store.select(next.hash, 1));
   expect(store.activation()).toBeNull();
   expect((await selectedBackend(home))?.runtimeHash).toBe(next.hash);
+});
+
+it('rejects concurrent mutations through the same registry while retaining the first lease', async () => {
+  const { store } = await fixture();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const secondOperation = vi.fn(async () => 'unexpected');
+  const first = store.exclusive(async () => { await gate; return 'first'; });
+  const second = store.exclusive(secondOperation);
+  try {
+    await expect(second).rejects.toThrow('Runtime operation is already in progress');
+    expect(secondOperation).not.toHaveBeenCalled();
+  } finally { release(); }
+  await expect(first).resolves.toBe('first');
+  await expect(store.exclusive(async () => 'next')).resolves.toBe('next');
 });
 
 it('serializes different registry connections and rejects stale selection revisions', async () => {

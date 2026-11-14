@@ -2,7 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import type { BackendArtifact } from './backend-candidate.js';
-import { selectedBackend, type InstalledRuntimeCli } from './runtime-installation.js';
+import type { InstalledRuntimeCli } from './runtime-installation.js';
 
 /** A stable launcher follows the verified selector; signals and exit status retain OS supervision semantics. */
 export function runRuntimeEntry(artifact: InstalledRuntimeCli, kind: 'cli', args: string[]): Promise<void>;
@@ -32,6 +32,7 @@ export async function runRuntimeEntry(artifact: BackendArtifact | InstalledRunti
 
 /** Explicit handoffs and preflight select their candidate themselves and must never be redirected. */
 export async function forwardSelectedRuntime(kind: 'cli' | 'daemon', currentEntry: string, args: string[]): Promise<boolean> {
+  const { selectedBackend } = await import('./runtime-installation.js');
   const artifact = await selectedBackend();
   if (!artifact) return false;
   const target = kind === 'cli' ? path.join(artifact.directory, 'cli/omnitron.js') : artifact.entry;

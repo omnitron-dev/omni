@@ -3,15 +3,11 @@ import { constants, type BigIntStats } from 'node:fs';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { randomUUID } from 'node:crypto';
-import { createNullLogger } from '@omnitron-dev/titan/module/logger';
-import { DomainError } from '@omnitron-dev/titan/errors';
 import { openSqliteDatabase } from '@omnitron-dev/titan-database/sqlite';
 import { OMNITRON_HOME } from '../config/defaults.js';
 import { readRuntimeManifest, verifyRuntimeArtifact } from '../shared/runtime-artifact.js';
-import { DaemonStateStore } from './daemon-state-store.service.js';
-import { assertBackendArtifactUnchanged, checkBackendCandidate, type BackendArtifact } from './backend-candidate.js';
-import { PidManager } from './pid-manager.js';
-import { writePrivateFile } from './execution-journal.js';
+import type { DaemonStateStore } from './daemon-state-store.service.js';
+import type { BackendArtifact } from './backend-candidate.js';
 
 export interface RuntimeSelection {
   protocol: 1;
@@ -56,9 +52,10 @@ export interface ColdRecoveryDecision {
 const HASH = /^[a-f0-9]{64}$/;
 
 /** Shared refusal for commands that cannot supersede a reviewed attempt. */
-export function assertOrdinaryRecoveryAllowed(activation: RuntimeActivation | null | undefined): void {
+export async function assertOrdinaryRecoveryAllowed(activation: RuntimeActivation | null | undefined): Promise<void> {
   const hold = activation?.reviewedRecovery;
   if (!activation || !hold) return;
+  const { DomainError } = await import('@omnitron-dev/titan/errors');
   throw new DomainError({ domainCode: 'REVIEWED_RECOVERY_HELD',
     message: `Recovery is held for reviewed plan ${hold.planId} (${hold.phase}). Inspect it with omnitron backend installation${hold.phase === 'unconfirmed' && hold.checkpoint ? ' --recovery' : ''}.`,
     details: { plan: hold.planFile, phase: hold.phase, originalCheckpoint: activation.checkpoint, admittedCheckpoint: hold.checkpoint ?? null } });
@@ -77,7 +74,7 @@ async function privateDirectory(directory: string, create: boolean): Promise<voi
 export class RuntimeInstallation {
   readonly directory: string;
   readonly releases: string;
-  private readonly store: DaemonStateStore;
+  private writer?: DaemonStateStore;
   private lease: InstallationLease | null = null;
   private verifiedArtifacts: Map<string, BackendArtifact> | null = null;
   private verificationFailed = false;
@@ -87,14 +84,19 @@ export class RuntimeInstallation {
   private constructor(readonly home: string) {
     this.directory = path.join(home, 'runtime');
     this.releases = path.join(this.directory, 'releases');
-    this.store = new DaemonStateStore(createNullLogger(), path.join(this.directory, 'state.db'));
+  }
+
+  private get store(): DaemonStateStore {
+    if (!this.writer) throw new Error('Runtime registry is not open for writing');
+    return this.writer;
   }
 
   static async open(home = OMNITRON_HOME, options: { existing?: boolean; readOnly?: boolean } = {}): Promise<RuntimeInstallation | null> {
     if (!path.isAbsolute(home)) throw new Error('Runtime installation requires an absolute instance directory');
     const installation = new RuntimeInstallation(path.resolve(home));
+    const database = path.join(installation.directory, 'state.db');
     if (options.existing || options.readOnly) {
-      try { await fs.lstat(installation.store.dbPath); }
+      try { await fs.lstat(database); }
       catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error; }
     }
     await privateDirectory(installation.directory, !options.readOnly);
@@ -102,13 +104,19 @@ export class RuntimeInstallation {
     // Do not follow an operator-supplied database link, including SQLite sidecars.
     for (const suffix of ['', '-wal', '-shm', '-journal']) {
       try {
-        const stat = await fs.lstat(installation.store.dbPath + suffix);
+        const stat = await fs.lstat(database + suffix);
         if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0 ||
             (process.getuid && stat.uid !== process.getuid())) throw new Error('Runtime registry must be a private regular file');
       } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
     }
-    if (options.readOnly) installation.inspection = openSqliteDatabase(installation.store.dbPath, { readonly: true, fileMustExist: true });
-    else installation.store.initSync().pragma('synchronous = FULL');
+    if (options.readOnly) installation.inspection = openSqliteDatabase(database, { readonly: true, fileMustExist: true });
+    else {
+      const [{ DaemonStateStore: Store }, { createNullLogger }] = await Promise.all([
+        import('./daemon-state-store.service.js'), import('@omnitron-dev/titan/module/logger'),
+      ]);
+      installation.writer = new Store(createNullLogger(), database);
+      installation.store.initSync().pragma('synchronous = FULL');
+    }
     return installation;
   }
 
@@ -238,6 +246,7 @@ export class RuntimeInstallation {
       const stat = await fs.lstat(root);
       if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('Installed runtime cannot be a symbolic link');
       const prior = operation?.get(id);
+      const { checkBackendCandidate, assertBackendArtifactUnchanged } = await import('./backend-candidate.js');
       const artifact = prior ?? await checkBackendCandidate(path.join(root, 'packages/0/dist'), undefined, id);
       if (prior) await assertBackendArtifactUnchanged(prior);
       if (artifact.runtimeHash !== id) throw new Error('Installed runtime content does not match its identity');
@@ -360,20 +369,17 @@ export class RuntimeInstallation {
     });
   }
 
-  private assertAvailable(): void {
-    const previous = this.read<InstallationLease>('runtime.lease');
-    if (previous && (!Number.isSafeInteger(previous.pid) || previous.pid < 1 || !previous.token || PidManager.isProcessAlive(previous.pid))) {
-      throw new Error(`Another runtime operation holds the installation lease (PID ${previous.pid}); no activation performed`);
-    }
-  }
-
   /** Exclusive across CLI processes; SQLite releases its own write lock even after SIGKILL. */
   async exclusive<T>(operation: () => Promise<T>): Promise<T> {
     if (this.inspection) throw new Error('A read-only runtime inspection cannot claim the installation lease');
+    const { PidManager } = await import('./pid-manager.js');
     if (this.lease) throw new Error('Runtime operation is already in progress');
     const lease = { token: randomUUID(), pid: process.pid, acquiredAt: new Date().toISOString() };
     this.store.initSync().transaction(() => {
-      this.assertAvailable();
+      const previous = this.read<InstallationLease>('runtime.lease');
+      if (previous && (!Number.isSafeInteger(previous.pid) || previous.pid < 1 || !previous.token || PidManager.isProcessAlive(previous.pid))) {
+        throw new Error(`Another runtime operation holds the installation lease (PID ${previous.pid}); no activation performed`);
+      }
       this.store.kvSetSync('runtime.lease', lease);
     }).immediate();
     this.lease = lease;
@@ -400,6 +406,7 @@ export class RuntimeInstallation {
       // same verification as cold start before running their preflight.
       return this.artifact(path.basename(sourceRoot));
     }
+    const { checkBackendCandidate } = await import('./backend-candidate.js');
     const candidate = await checkBackendCandidate(path.join(source, 'packages/0/dist'));
     const destination = this.releasePath(candidate.runtimeHash);
     try {
@@ -480,6 +487,7 @@ export class RuntimeInstallation {
     if (!selection.bootstrap) this.store.kvSetSync('runtime.selection', { ...selection, bootstrap });
     const quote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
     const launcher = path.join(this.directory, 'bin/omnitron');
+    const { writePrivateFile } = await import('./execution-journal.js');
     await writePrivateFile(launcher, `#!/bin/sh\nexport OMNITRON_HOME=${quote(this.home)}\nexec ${quote(artifact.execPath)} ${quote(entry)} "$@"\n`, 0o700);
     return launcher;
   }

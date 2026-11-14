@@ -6,7 +6,7 @@ config:
   layout: elk
 ---
 flowchart LR
-A[CLI input] --> B[Browser output]
+A[CLI input] --> B[Browser output with a deliberately long label for source scrolling]
 ```
 
 :::filetree{title="sample/"}

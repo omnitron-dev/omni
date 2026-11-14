@@ -16,7 +16,7 @@ export function renderDiagramHtml(code: string, diagramIndex = 0, filePath = 'do
   if (!Number.isSafeInteger(diagramIndex) || diagramIndex < 0) throw new RangeError('Invalid diagram index');
   const docSlug = filePath.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 200);
   const id = `lumen-diag-${docSlug}-${diagramIndex}`;
-  return `<figure class="lumen-diagram lumen-diagram-mermaid" id="${id}" data-lumen-island="${id}" data-component="MermaidDiagram" data-hydrate="visible" data-props="${escapeHtml(serializeIslandProps({ code }))}"><pre class="lumen-diagram-source" tabindex="0"><code>${escapeHtml(code)}</code></pre></figure>`;
+  return `<figure class="lumen-diagram lumen-diagram-mermaid" id="${id}" data-lumen-island="${id}" data-component="MermaidDiagram" data-hydrate="visible" data-props="${escapeHtml(serializeIslandProps({ code }))}"><pre class="lumen-diagram-source lumen-code-block" tabindex="0"><code>${escapeHtml(code)}</code></pre></figure>`;
 }
 
 // Bound this consumer's pending work. Serialization itself is shared with Prism

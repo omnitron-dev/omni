@@ -96,6 +96,31 @@ test('the component example exposes its real module without scripting and restor
   expect(sizes[1]).toEqual(sizes[0]);
 });
 
+test('diagram source keeps its own keyboard scroll area before and after activation', async ({ browser, cliSiteUrl }) => {
+  for (const javaScriptEnabled of [false, true]) {
+    const context = await browser.newContext({ javaScriptEnabled, viewport: { width: 320, height: 740 } });
+    try {
+      const page = await context.newPage();
+      await page.goto(cliSiteUrl);
+      const diagram = page.locator('.lumen-diagram');
+      if (javaScriptEnabled) {
+        await expect(diagram.locator('svg')).toBeVisible();
+        await diagram.locator('summary').focus();
+        await page.keyboard.press('Enter');
+      }
+      const source = diagram.locator('pre');
+      await expect(source).toBeVisible();
+      await expect(source).toHaveCSS('overflow-x', 'auto');
+      await source.focus();
+      await expect(source).toBeFocused();
+      await page.keyboard.press('ArrowRight');
+      await expect.poll(() => source.evaluate(element => element.scrollLeft)).toBeGreaterThan(0);
+      const bounds = await source.boundingBox();
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(320);
+    } finally { await context.close(); }
+  }
+});
+
 test('a failing island shows its runtime error while the static document and adjacent interactive island survive', async ({ page, cliSiteUrl }) => {
   await page.goto(cliSiteUrl);
   const counter = page.getByRole('figure', { name: 'Counter example' });

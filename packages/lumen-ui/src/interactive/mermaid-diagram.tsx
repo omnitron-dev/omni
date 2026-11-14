@@ -34,7 +34,7 @@ export function MermaidDiagram({ code }: MermaidDiagramProps): React.JSX.Element
     {state.status === 'ready' && <div className="lumen-diagram-content" tabIndex={0} role="group" aria-label="Diagram" style={{ overflowX: 'auto' }} dangerouslySetInnerHTML={{ __html: state.svg }} />}
     <details open={state.status === 'error'} className="lumen-diagram-source">
       <summary>Diagram source</summary>
-      <pre tabIndex={0}><code>{code}</code></pre>
+      <pre className="lumen-code-block" tabIndex={0}><code>{code}</code></pre>
     </details>
   </>;
 }

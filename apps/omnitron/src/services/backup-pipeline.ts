@@ -105,6 +105,12 @@ const DEFAULT_TIMEOUT_MS = 600_000;
 const MAX_TIMEOUT_MS = 86_400_000;
 const CLEANUP_TIMEOUT_MS = 3_000;
 
+export function resolveBackupTimeout(timeoutMs = DEFAULT_TIMEOUT_MS): number {
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > MAX_TIMEOUT_MS)
+    throw new Error(`Backup pipeline timeout must be an integer between 1 and ${MAX_TIMEOUT_MS} ms`);
+  return timeoutMs;
+}
+
 type ProcessResult = { code: number | null; signal: NodeJS.Signals | null };
 
 interface FileTransfer {
@@ -128,9 +134,7 @@ async function withinCleanup<T>(task: Promise<T>, deadline: number, location: st
 
 /** One lifecycle for a local child and its streams; remote exec ownership is separate. */
 async function runFileTransfer(command: string, args: string[], options: PipelineOptions, transfer: FileTransfer): Promise<void> {
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > MAX_TIMEOUT_MS)
-    throw new Error(`Backup pipeline timeout must be an integer between 1 and ${MAX_TIMEOUT_MS} ms`);
+  const timeoutMs = resolveBackupTimeout(options.timeoutMs);
 
   const deadline = performance.now() + timeoutMs;
   const controller = new AbortController();

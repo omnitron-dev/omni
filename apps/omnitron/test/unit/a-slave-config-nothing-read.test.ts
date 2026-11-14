@@ -86,7 +86,8 @@ const { savedDaemonOverrides } = await import('../../src/config/saved.js');
 describe('the file the daemon actually boots from', () => {
   it('merges the transport settings into the running config', async () => {
     const transport = { role: 'slave' as const, master: { host: '192.0.2.10', port: 9700 },
-      host: '127.0.0.1', port: 9710, httpPort: 9810, advertiseHost: 'node.example.com', files: { enabled: false } };
+      host: '127.0.0.1', port: 9710, httpPort: 9810, advertiseHost: 'node.example.com', files: { enabled: false },
+      backups: { databaseTimeoutMs: 1_800_000 } };
     expect(savedDaemonOverrides({ ...transport, initialized: true, initializedAt: '2026-10-30' })).toEqual(transport);
   });
 

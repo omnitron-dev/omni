@@ -754,6 +754,12 @@ export interface IDaemonConfig {
   /** Base log directory — omnitron auto-creates per-project/per-app subdirectories */
   logDir: string;
 
+  /** Database dump/restore policy, persisted in the daemon's config.json. */
+  backups?: {
+    /** Per PostgreSQL transfer, including compression and publication. Default: 30 min; maximum: 24 h. */
+    databaseTimeoutMs?: number;
+  };
+
   /**
    * Daemon role in the fleet topology.
    * - `master` (default): Control plane, aggregates data from slaves, serves webapp

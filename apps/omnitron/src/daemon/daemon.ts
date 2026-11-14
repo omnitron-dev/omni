@@ -1073,6 +1073,7 @@ export class OmnitronDaemon {
     // Backup RPC service (no DB dependency)
     const { BackupRpcService: BackupRpc } = await import('../services/backup.rpc-service.js');
     const backupService = await container.resolveAsync<BackupService>(BACKUP_SERVICE_TOKEN);
+    backupService.configure(this.dc.backups);
     this.backupService = backupService;
     const backupRpcService = new BackupRpc(backupService);
     await this.app.netron.peer.exposeService(backupRpcService);

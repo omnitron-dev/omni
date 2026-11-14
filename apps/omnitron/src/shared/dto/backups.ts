@@ -104,6 +104,8 @@ export interface BackupScheduleStatus {
 
 /** Everything `backup schedules` and `backup list` need beyond the index rows. */
 export interface BackupStatus {
+  /** Effective deadline for each PostgreSQL dump or restore, in milliseconds. */
+  databaseTimeoutMs: number;
   schedules: BackupScheduleStatus[];
   /** Every running stack, and whether this host backs its databases up. */
   stacks: BackupStackCoverage[];

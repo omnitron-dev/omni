@@ -24,7 +24,8 @@ import { DAEMON_STATE_STORE_TOKEN, PROJECT_SERVICE_TOKEN } from '../shared/token
 import { getEnv } from '../shared/env-config.js';
 import { resolveOmnitronPgConfig } from '../database/connection.js';
 import { ensurePrivateDir, sealFile, sealDirContents } from '../shared/private-files.js';
-import { dumpToFile, restoreFromFile, formatBackupSize, formatUtc, resolveBackupId } from './backup-pipeline.js';
+import { dumpToFile, restoreFromFile, formatBackupSize, formatUtc, resolveBackupId, resolveBackupTimeout } from './backup-pipeline.js';
+import type { IDaemonConfig } from '../config/types.js';
 import {
   parseSchedule,
   nextCronDelay,
@@ -303,6 +304,15 @@ export class BackupService {
   private static readonly SCHEDULES_KV_KEY = 'backup:schedules';
   private activeOperations = 0;
   private quiescing = false;
+  private databaseTimeoutMs = 30 * 60_000;
+
+  /** Set the persisted host policy before admitting work or arming schedules. */
+  configure(options?: IDaemonConfig['backups']): void {
+    if (this.activeOperations || this.schedules.size) throw new Error('Configure backups before starting transfers or schedules');
+    if (options !== undefined && (!options || typeof options !== 'object' || Array.isArray(options)))
+      throw new Error('backups must be a configuration object');
+    this.databaseTimeoutMs = resolveBackupTimeout(options?.databaseTimeoutMs === undefined ? 30 * 60_000 : options.databaseTimeoutMs);
+  }
 
   activeOperationCount(): number { return this.activeOperations; }
 
@@ -980,7 +990,7 @@ export class BackupService {
         nextRunAt: this.schedules.get(target)?.nextRunAt ?? null,
       };
     });
-    return { schedules, stacks: this.surveyStacks().stacks };
+    return { databaseTimeoutMs: this.databaseTimeoutMs, schedules, stacks: this.surveyStacks().stacks };
   }
 
   // ===========================================================================
@@ -1409,7 +1419,8 @@ export class BackupService {
       'docker',
       ['exec', container, 'pg_dump', '-U', config.user, '-d', config.database],
       outputPath,
-      compress
+      compress,
+      { timeoutMs: this.databaseTimeoutMs }
     );
   }
 
@@ -1423,7 +1434,8 @@ export class BackupService {
       'docker',
       ['exec', '-i', container, 'psql', '-U', config.user, '-d', config.database],
       inputPath,
-      compressed
+      compressed,
+      { timeoutMs: this.databaseTimeoutMs }
     );
   }
 
@@ -1439,7 +1451,7 @@ export class BackupService {
       ['-h', config.host, '-p', String(config.port), '-U', config.user, '-d', config.database],
       outputPath,
       compress,
-      { env: { ...process.env, PGPASSWORD: config.password } }
+      { timeoutMs: this.databaseTimeoutMs, env: { ...process.env, PGPASSWORD: config.password } }
     );
   }
 
@@ -1449,7 +1461,7 @@ export class BackupService {
       ['-h', config.host, '-p', String(config.port), '-U', config.user, '-d', config.database],
       inputPath,
       compressed,
-      { env: { ...process.env, PGPASSWORD: config.password } }
+      { timeoutMs: this.databaseTimeoutMs, env: { ...process.env, PGPASSWORD: config.password } }
     );
   }
 

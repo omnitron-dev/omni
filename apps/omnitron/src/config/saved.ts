@@ -40,6 +40,7 @@ export interface SavedDaemonConfig {
   files?: IDaemonConfig['files'];
   /** Exact-name HTTP readiness for immutable application releases. */
   applicationReadiness?: IDaemonConfig['applicationReadiness'];
+  backups?: IDaemonConfig['backups'];
 
   /**
    * Transport bind address and the address slaves dial to reach a master.
@@ -86,6 +87,7 @@ export function savedDaemonOverrides(saved: SavedDaemonConfig | null): Partial<I
     ...(saved.httpRateLimit ? { httpRateLimit: saved.httpRateLimit } : {}),
     ...(saved.files !== undefined ? { files: saved.files } : {}),
     ...(saved.applicationReadiness !== undefined ? { applicationReadiness: saved.applicationReadiness } : {}),
+    ...(saved.backups !== undefined ? { backups: saved.backups } : {}),
     ...(saved.executionHost !== undefined ? { executionHost: saved.executionHost } : {}),
     host: effectiveBindHost(saved),
     ...(saved.port ? { port: saved.port } : {}),

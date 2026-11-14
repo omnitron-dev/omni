@@ -36,6 +36,7 @@ beforeEach(() => {
   fixture.calls.length = 0;
 });
 afterEach(() => {
+  vi.restoreAllMocks();
   process.exitCode = previousExitCode;
   if (previousMode === undefined) delete process.env['OMNITRON_OUTPUT'];
   else process.env['OMNITRON_OUTPUT'] = previousMode;
@@ -43,6 +44,24 @@ afterEach(() => {
 });
 
 describe('backup command outcomes', () => {
+  it('shows the effective transfer deadline even without a schedule', async () => {
+    fixture.rpc['getBackupStatus'] = () => ({ databaseTimeoutMs: 1_800_000, schedules: [], stacks: [] });
+    await commands.backupSchedulesCommand();
+    expect(fixture.printed.some(line => line.text === 'Database transfer deadline: 30 min')).toBe(true);
+  });
+
+  it('returns the complete diagnostic status as machine-readable JSON', async () => {
+    process.env['OMNITRON_OUTPUT'] = 'json';
+    resetEnvCache();
+    const status = { databaseTimeoutMs: 1_800_000, schedules: [], stacks: [] };
+    fixture.rpc['getBackupStatus'] = () => status;
+    let output = '';
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk: string | Uint8Array) => { output += String(chunk); return true; });
+    await commands.backupSchedulesCommand();
+    expect(JSON.parse(output)).toEqual({ ok: true, data: status });
+    expect(fixture.printed).toEqual([]);
+  });
+
   it.each([
     ['createBackup', () => commands.backupCreateCommand('main')],
     ['createAllBackups', () => commands.backupCreateCommand()],

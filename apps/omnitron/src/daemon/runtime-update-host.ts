@@ -77,8 +77,9 @@ export function assertReviewedBoot(stack: RuntimeUpdateStack, digest: string, pr
   const preserved = stack.infrastructureMode === 'preserve' && stack.infrastructureReview === digest;
   const once = protocol === 1 && stack.infrastructureMode === 'reconcile' && stack.infrastructureReview === null;
   if (!stack.enabled || !hash.test(digest) || (!preserved && !once)) {
-    throw Error('The local owner cannot prove it will boot ' + stack.project + '/' + stack.stack +
-      ' with the reviewed infrastructure and unchanged policy. This host needs reviewed boot support');
+    const reason = !stack.enabled ? 'The saved stack is disabled.' : !hash.test(digest) ? 'The infrastructure review digest is invalid.' :
+      'Both candidate and rollback backends must support coldStackAdmissionProtocol@1, or the saved stack must already preserve this exact infrastructure review.';
+    throw Error('Local restart cannot prove reviewed boot for ' + stack.project + '/' + stack.stack + '. ' + reason);
   }
 }
 

@@ -24,7 +24,7 @@ test('one-shot admission requires both actual runtimes and preserves native serv
   const digest = 'a'.repeat(64);
   const stack = { project: 'example', stack: 'dev', enabled: true, infrastructureMode: 'reconcile', infrastructureReview: null };
   for (const [candidate, previous] of [[{}, {}], [supported, {}], [{}, supported], [supported, { coldStackAdmissionProtocol: 2 }]]) {
-    assert.throws(() => assertReviewedBoot(stack, digest, stackAdmissionProtocol(candidate, previous)), /cannot prove/);
+    assert.throws(() => assertReviewedBoot(stack, digest, stackAdmissionProtocol(candidate, previous)), /candidate and rollback backends/);
   }
   const protocol = stackAdmissionProtocol(supported, supported);
   assert.equal(protocol, 1);

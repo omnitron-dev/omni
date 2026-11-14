@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises';
-import { constants } from 'node:fs';
+import { constants, type BigIntStats } from 'node:fs';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { randomUUID } from 'node:crypto';
@@ -7,7 +7,7 @@ import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import { DomainError } from '@omnitron-dev/titan/errors';
 import { openSqliteDatabase } from '@omnitron-dev/titan-database/sqlite';
 import { OMNITRON_HOME } from '../config/defaults.js';
-import { verifyRuntimeArtifact } from '../shared/runtime-artifact.js';
+import { readRuntimeManifest, verifyRuntimeArtifact } from '../shared/runtime-artifact.js';
 import { DaemonStateStore } from './daemon-state-store.service.js';
 import { assertBackendArtifactUnchanged, checkBackendCandidate, type BackendArtifact } from './backend-candidate.js';
 import { PidManager } from './pid-manager.js';
@@ -21,6 +21,13 @@ export interface RuntimeSelection {
   /** A management-capable release remains available even after rollback to a legacy backend. */
   bootstrap: string | null;
   selectedAt: string;
+}
+
+/** A control-client command is not a verified backend artifact or an owner-start admission. */
+export interface InstalledRuntimeCli {
+  runtimeHash: string;
+  execPath: string;
+  cliEntry: string;
 }
 
 interface InstallationLease { token: string; pid: number; acquiredAt: string }
@@ -246,6 +253,57 @@ export class RuntimeInstallation {
     }
   }
 
+  /**
+   * CLI bootstrap has already executed as this user. Its trust boundary is the private installation
+   * admitted by install/select, not a fresh defense against that same user's code modifications.
+   * Backend starts and transitions still use artifact() and its complete content/capability checks.
+   */
+  async controlClient(purpose: 'control' | 'management'): Promise<InstalledRuntimeCli | null> {
+    if (!this.inspection) throw new Error('Control-client resolution requires a read-only installation');
+    const state = () => this.inspection!.transaction(() => ({ selection: this.selection(), activation: this.activation() })).deferred();
+    const initial = state(), selection = initial.selection;
+    if (!selection) return null;
+    const checked = new Map<string, BigIntStats>();
+    const boundary = async (file: string, kind: 'file' | 'directory'): Promise<void> => {
+      const stat = await fs.lstat(file, { bigint: true });
+      if (stat.isSymbolicLink() || (kind === 'file' ? !stat.isFile() : !stat.isDirectory()) ||
+          (stat.mode & 0o022n) !== 0n || (process.getuid && stat.uid !== BigInt(process.getuid())))
+        throw new Error(`Installed CLI ${kind} must be owned, regular and not writable by other users: ${file}`);
+      checked.set(file, stat);
+    };
+    const command = async (id: string): Promise<InstalledRuntimeCli> => {
+      const root = this.releasePath(id);
+      for (const relative of ['', 'packages', 'packages/0', 'packages/0/dist', 'packages/0/dist/cli'])
+        await boundary(path.join(root, relative), 'directory');
+      if (await fs.realpath(root) !== root) throw new Error('Installed CLI runtime path must not contain symbolic links');
+      await boundary(path.join(root, 'RUNTIME.json'), 'file');
+      const manifest = await readRuntimeManifest(root);
+      if (manifest.sha256 !== id || manifest.platform !== process.platform || manifest.arch !== process.arch)
+        throw new Error('Installed CLI manifest does not match its admitted selection or host');
+      const execPath = path.join(root, 'node'), cliEntry = path.join(root, 'packages/0/dist/cli/omnitron.js');
+      await boundary(execPath, 'file'); await fs.access(execPath, constants.X_OK);
+      await boundary(cliEntry, 'file');
+      return { runtimeHash: id, execPath, cliEntry };
+    };
+    let result = await command(initial.activation ? selection.bootstrap ?? selection.current : selection.current);
+    if (!initial.activation && purpose === 'management' && selection.bootstrap) {
+      try { await boundary(path.join(path.dirname(result.cliEntry), 'installed.js'), 'file'); }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        result = await command(selection.bootstrap);
+      }
+    }
+    // Reject selector or boundary replacement during resolution. This is not a dependency-byte proof.
+    for (const [file, before] of checked) {
+      const after = await fs.lstat(file, { bigint: true });
+      if ((['dev', 'ino', 'mode', 'uid', 'gid', 'nlink', 'size', 'mtimeNs', 'ctimeNs'] as const)
+        .some(key => before[key] !== after[key]))
+        throw new Error('Installed CLI boundary changed during resolution');
+    }
+    if (!isDeepStrictEqual(initial, state())) throw new Error('Runtime selection changed during CLI resolution; retry the command');
+    return Object.freeze(result);
+  }
+
   /** Read-only callers explicitly bound the lifetime of their verified filesystem snapshots. */
   async inspect<T>(operation: () => Promise<T>): Promise<T> {
     if (!this.inspection || this.verifiedArtifacts) throw new Error('Runtime inspection is unavailable or already active');
@@ -433,25 +491,24 @@ export class RuntimeInstallation {
 }
 
 /** Resolving a startup always revalidates Node, backend and the entire dependency closure. */
-export async function selectedBackend(home = OMNITRON_HOME, purpose: 'startup' | 'control' | 'management' = 'startup'): Promise<BackendArtifact | null> {
+export async function selectedBackend(home = OMNITRON_HOME): Promise<BackendArtifact | null> {
   const installation = await RuntimeInstallation.open(home, { existing: true });
   if (!installation) return null;
   try {
     const activation = installation.activation();
-    if (activation && purpose === 'startup') throw new Error(`Runtime activation is unfinished. Inspect and recover its checkpoint before cold start: ${activation.checkpoint}`);
+    if (activation) throw new Error(`Runtime activation is unfinished. Inspect and recover its checkpoint before cold start: ${activation.checkpoint}`);
     const selection = installation.selection();
     if (!selection) return null;
-    if (activation && purpose !== 'startup') return await installation.artifact(selection.bootstrap ?? selection.current);
-    const current = await installation.artifact(selection.current);
-    if (purpose === 'management' && selection.bootstrap) {
-      try { await fs.access(path.join(current.directory, 'cli/installed.js')); }
-      catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-        return await installation.artifact(selection.bootstrap);
-      }
-    }
-    return current;
+    return await installation.artifact(selection.current);
   } finally { await installation.close(); }
+}
+
+/** Resolve an admitted private control client without performing backend startup or capability admission. */
+export async function selectedControlClient(home = OMNITRON_HOME,
+  purpose: 'control' | 'management' = 'control'): Promise<InstalledRuntimeCli | null> {
+  const installation = await RuntimeInstallation.openReadOnly(home);
+  if (!installation) return null;
+  try { return await installation.controlClient(purpose); } finally { await installation.close(); }
 }
 
 /** Startup and version selection share a lease, closing the PID-file creation race. */

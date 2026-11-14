@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { afterEach, expect, it, vi } from 'vitest';
 import { inspectRuntimeArtifact, runtimeArtifactDigest, verifyRuntimeArtifact } from '../../src/shared/runtime-artifact.js';
 
@@ -30,6 +31,58 @@ it('preserves protocol 1 bytes and reuses a proof without reading file contents 
   const open = vi.spyOn(fs, 'open'), read = vi.spyOn(fs, 'readFile');
   await proof.assertUnchanged(); await proof.assertUnchanged();
   expect(open).not.toHaveBeenCalled(); expect(read).not.toHaveBeenCalled();
+});
+
+it('preserves the protocol byte order across directories, executable files, links and streamed files', async () => {
+  const { root } = await sealed();
+  await fs.mkdir(path.join(root, 'files/nested'));
+  await fs.writeFile(path.join(root, 'files/nested/z'), 'nested');
+  await fs.writeFile(path.join(root, 'files-last'), 'executable', { mode: 0o700 });
+  const large = Buffer.alloc(256 * 1024 + 1, 0x5a);
+  await fs.writeFile(path.join(root, 'stream'), large);
+  // A complete-path sort would put files-last before files/a. Protocol 1 visits the directory first.
+  const expected = createHash('sha256');
+  const file = (relative: string, executable: number, contents: string | Buffer) => {
+    expected.update(['file', relative, String(executable), ''].join('\0'));
+    expected.update(contents); expected.update('\0');
+  };
+  file('files/a', 0, 'first'); file('files/b', 0, 'other'); file('files/nested/z', 0, 'nested');
+  file('files-last', 0o100, 'executable');
+  expected.update(['link', 'linked', 'files/a', ''].join('\0'));
+  file('stream', 0, large);
+  expect(await runtimeArtifactDigest(root)).toBe(expected.digest('hex'));
+});
+
+it('overlaps small-file reads with a bounded number of open descriptors', async () => {
+  const { root } = await sealed();
+  for (let index = 0; index < 24; index++) await fs.writeFile(path.join(root, 'files', `extra-${index}`), Buffer.alloc(32 * 1024));
+  const original = fs.open.bind(fs);
+  let active = 0, maximum = 0;
+  vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+    const handle = await original(...args), close = handle.close.bind(handle);
+    active++; maximum = Math.max(maximum, active);
+    vi.spyOn(handle, 'close').mockImplementation(async () => { try { await close(); } finally { active--; } });
+    return handle;
+  });
+  await runtimeArtifactDigest(root);
+  expect(maximum).toBeGreaterThan(1);
+  expect(maximum).toBeLessThanOrEqual(16);
+  expect(active).toBe(0);
+});
+
+it('settles all prefetched reads and closes their descriptors before rejecting an audit', async () => {
+  const { root, entry } = await sealed(), original = fs.open.bind(fs);
+  for (let index = 0; index < 16; index++) await fs.writeFile(path.join(root, 'files', `extra-${index}`), 'other');
+  let active = 0;
+  vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+    const handle = await original(...args), close = handle.close.bind(handle);
+    active++;
+    vi.spyOn(handle, 'close').mockImplementation(async () => { try { await close(); } finally { active--; } });
+    if (args[0] === entry) vi.spyOn(handle, 'read').mockRejectedValue(new Error('injected read failure'));
+    return handle;
+  });
+  await expect(runtimeArtifactDigest(root)).rejects.toThrow('injected read failure');
+  expect(active).toBe(0);
 });
 
 const changes: Record<string, (root: string) => Promise<unknown>> = {
@@ -96,5 +149,6 @@ it('rejects a change to an earlier file while hashing later entries', async () =
     if (args[0] === path.join(root, 'files/b')) await fs.writeFile(entry, 'wrong');
     return handle;
   });
-  await expect(inspectRuntimeArtifact(root)).rejects.toThrow('changed after verification');
+  // Concurrent reads can detect the mutation while reading, before the final snapshot check.
+  await expect(inspectRuntimeArtifact(root)).rejects.toThrow(/Runtime entry changed (after|during|while)/);
 });

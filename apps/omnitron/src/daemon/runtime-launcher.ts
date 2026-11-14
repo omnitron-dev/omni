@@ -2,15 +2,18 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import type { BackendArtifact } from './backend-candidate.js';
-import { selectedBackend } from './runtime-installation.js';
+import { selectedBackend, type InstalledRuntimeCli } from './runtime-installation.js';
 
 /** A stable launcher follows the verified selector; signals and exit status retain OS supervision semantics. */
-export async function runRuntimeEntry(artifact: BackendArtifact, kind: 'cli' | 'daemon', args: string[]): Promise<void> {
-  const entry = kind === 'cli' ? path.join(artifact.directory, 'cli/omnitron.js') : artifact.entry;
+export function runRuntimeEntry(artifact: InstalledRuntimeCli, kind: 'cli', args: string[]): Promise<void>;
+export function runRuntimeEntry(artifact: BackendArtifact, kind: 'cli' | 'daemon', args: string[]): Promise<void>;
+export async function runRuntimeEntry(artifact: BackendArtifact | InstalledRuntimeCli, kind: 'cli' | 'daemon', args: string[]): Promise<void> {
+  if ('cliEntry' in artifact && kind !== 'cli') throw new Error('A control-client selection cannot admit a daemon start');
+  const entry = 'cliEntry' in artifact ? artifact.cliEntry : kind === 'cli' ? path.join(artifact.directory, 'cli/omnitron.js') : artifact.entry;
   const argv = kind === 'daemon' ? ['--import', 'tsx/esm', entry, ...args] : [entry, ...args];
   const child = spawn(artifact.execPath, argv, {
     stdio: 'inherit',
-    cwd: kind === 'daemon' ? path.dirname(artifact.directory) : process.cwd(),
+    cwd: kind === 'daemon' && 'directory' in artifact ? path.dirname(artifact.directory) : process.cwd(),
     env: { ...process.env, ...(kind === 'daemon' ? { OMNITRON_CWD: process.env['OMNITRON_CWD'] ?? process.cwd() } : {}) },
   });
   const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const;

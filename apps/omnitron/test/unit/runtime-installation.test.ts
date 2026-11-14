@@ -5,9 +5,11 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { afterEach, expect, it, vi } from 'vitest';
-import { RuntimeInstallation, selectedBackend } from '../../src/daemon/runtime-installation.js';
+import { RuntimeInstallation, selectedBackend, selectedControlClient } from '../../src/daemon/runtime-installation.js';
 import { runtimeArtifactDigest } from '../../src/shared/runtime-artifact.js';
 import { assertBackendArtifactUnchanged } from '../../src/daemon/backend-candidate.js';
+import * as candidates from '../../src/daemon/backend-candidate.js';
+import { runRuntimeEntry } from '../../src/daemon/runtime-launcher.js';
 import { DaemonStateStore } from '../../src/daemon/daemon-state-store.service.js';
 import { openSqliteDatabase } from '@omnitron-dev/titan-database/sqlite';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
@@ -35,6 +37,8 @@ async function fixture() {
     await fs.mkdir(path.join(dist, 'database/migrations'), { recursive: true });
     await fs.writeFile(path.join(dist, 'BUILD.json'), JSON.stringify(build));
     await fs.writeFile(path.join(dist, 'daemon/daemon-entry.js'), 'export {};');
+    await fs.writeFile(path.join(dist, 'cli/omnitron.js'), 'export {};');
+    await fs.writeFile(path.join(dist, 'dependency.js'), 'export const value = 1;');
     if (launcher) await fs.writeFile(path.join(dist, 'cli/installed.js'), 'export {};');
     // Only the preflight protocol is exercised here; runtime integration tests
     // use the sealed real Node executable and actual application processes.
@@ -74,6 +78,75 @@ it('persists startup selection and rollback while keeping a stable bootstrap lau
   expect((await selectedBackend(home))?.runtimeHash).toBe(next.hash);
 });
 
+it('resolves the admitted private CLI read-only without running backend capability preflight', async () => {
+  const { store, home, make } = await fixture(), first = await make('first');
+  await store.exclusive(async () => { await store.install(first.source); await store.select(first.hash, 0); });
+  const before = store.selection(), preflight = vi.spyOn(candidates, 'checkBackendCandidate');
+  const open = vi.spyOn(fs, 'open');
+  const command = await selectedControlClient(home);
+  expect(command).toEqual({ runtimeHash: first.hash, execPath: path.join(store.releasePath(first.hash), 'node'),
+    cliEntry: path.join(store.releasePath(first.hash), 'packages/0/dist/cli/omnitron.js') });
+  expect(Object.isFrozen(command)).toBe(true);
+  expect(preflight).not.toHaveBeenCalled(); expect(open).not.toHaveBeenCalled();
+  expect(store.selection()).toEqual(before);
+  await expect(runRuntimeEntry(command as never, 'daemon', [])).rejects.toThrow('cannot admit a daemon start');
+});
+
+it('keeps complete dependency verification on backend starts instead of treating a CLI selection as admission', async () => {
+  const { store, home, make } = await fixture(), first = await make('first');
+  await store.exclusive(async () => { await store.install(first.source); await store.select(first.hash, 0); });
+  // Same-user modifications are outside the control-client trust boundary, but invalidate backend admission.
+  await fs.writeFile(path.join(store.releasePath(first.hash), 'packages/0/dist/dependency.js'), 'export const value = 2;');
+  expect((await selectedControlClient(home))?.runtimeHash).toBe(first.hash);
+  await expect(selectedBackend(home)).rejects.toThrow('changed after sealing');
+});
+
+const cliChanges: Record<string, (root: string) => Promise<unknown>> = {
+  'linked Node executable': async root => {
+    await fs.unlink(path.join(root, 'node')); await fs.symlink(process.execPath, path.join(root, 'node'));
+  },
+  'linked CLI entry': async root => {
+    const entry = path.join(root, 'packages/0/dist/cli/omnitron.js');
+    await fs.unlink(entry); await fs.symlink('../daemon/daemon-entry.js', entry);
+  },
+  'linked CLI directory': async root => {
+    const directory = path.join(root, 'packages/0/dist/cli');
+    await fs.rename(directory, directory + '-original'); await fs.symlink('cli-original', directory);
+  },
+  'publicly writable CLI entry': root => fs.chmod(path.join(root, 'packages/0/dist/cli/omnitron.js'), 0o666),
+  'different manifest identity': async root => {
+    const file = path.join(root, 'RUNTIME.json'), manifest = JSON.parse(await fs.readFile(file, 'utf8'));
+    manifest.sha256 = 'f'.repeat(64); await fs.writeFile(file, JSON.stringify(manifest));
+  },
+  'different manifest host': async root => {
+    const file = path.join(root, 'RUNTIME.json'), manifest = JSON.parse(await fs.readFile(file, 'utf8'));
+    manifest.arch = 'other'; await fs.writeFile(file, JSON.stringify(manifest));
+  },
+};
+for (const [name, change] of Object.entries(cliChanges)) {
+  it('refuses a control client with a ' + name, async () => {
+    const { store, home, make } = await fixture(), first = await make('first');
+    await store.exclusive(async () => { await store.install(first.source); await store.select(first.hash, 0); });
+    await change(store.releasePath(first.hash));
+    await expect(selectedControlClient(home)).rejects.toThrow(/Installed CLI/);
+  });
+}
+
+it('refuses a selection change while resolving the control client', async () => {
+  const { store, home, make } = await fixture(), first = await make('first'), next = await make('next');
+  await store.exclusive(async () => {
+    await store.install(first.source); await store.install(next.source); await store.select(first.hash, 0);
+  });
+  const entry = path.join(store.releasePath(first.hash), 'packages/0/dist/cli/omnitron.js'), stat = fs.lstat.bind(fs);
+  let changed = false;
+  vi.spyOn(fs, 'lstat').mockImplementation(async (...args) => {
+    const result = await stat(...args);
+    if (!changed && args[0] === entry) { changed = true; await store.exclusive(() => store.select(next.hash, 1)); }
+    return result;
+  });
+  await expect(selectedControlClient(home)).rejects.toThrow('selection changed during CLI resolution');
+});
+
 it('refuses copied artifact metadata as a substitute for in-process verification', async () => {
   const { store, make } = await fixture(), first = await make('first');
   await store.exclusive(async () => {
@@ -95,7 +168,7 @@ it('retains installation and recovery commands after rollback to a backend witho
     expect(await fs.readFile(launcher, 'utf8')).toContain(current.hash);
   });
   expect((await selectedBackend(home))?.runtimeHash).toBe(legacy.hash);
-  expect((await selectedBackend(home, 'management'))?.runtimeHash).toBe(current.hash);
+  expect((await selectedControlClient(home, 'management'))?.runtimeHash).toBe(current.hash);
 });
 
 it('promotes proven management code and keeps it available through a subsequent interrupted activation', async () => {
@@ -105,10 +178,11 @@ it('promotes proven management code and keeps it available through a subsequent 
     await store.install(first.source); await store.install(next.source);
     await store.select(first.hash, 0); await store.writeLauncher();
     store.beginActivation(next.hash, first.hash, path.join(root, 'first-transition.json'));
-    expect((await selectedBackend(home, 'management'))?.runtimeHash).toBe(first.hash);
+    expect((await selectedControlClient(home, 'management'))?.runtimeHash).toBe(first.hash);
     await store.select(next.hash, 1, true);
     store.beginActivation(first.hash, next.hash, path.join(root, 'next-transition.json'));
-    expect((await selectedBackend(home, 'management'))?.runtimeHash).toBe(next.hash);
+    expect((await selectedControlClient(home, 'management'))?.runtimeHash).toBe(next.hash);
+    expect((await selectedControlClient(home))?.runtimeHash).toBe(next.hash);
     store.abortActivation();
     await store.select(first.hash, 2);
     expect(store.selection()?.bootstrap).toBe(next.hash);
@@ -243,6 +317,7 @@ it('rejects a resealed replacement before executing its preflight under an exist
 it('does not create state for an uninstalled instance and refuses public or symlink registries', async () => {
   const { root, home, store } = await fixture();
   expect(await selectedBackend(path.join(root, 'absent'))).toBeNull();
+  expect(await selectedControlClient(path.join(root, 'absent'))).toBeNull();
   await expect(fs.access(path.join(root, 'absent'))).rejects.toMatchObject({ code: 'ENOENT' });
   await store.close();
   const db = path.join(store.directory, 'state.db');

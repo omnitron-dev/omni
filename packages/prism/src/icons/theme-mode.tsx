@@ -3,7 +3,7 @@ import SvgIcon, { type SvgIconProps } from '@mui/material/SvgIcon';
 import type { ThemeMode } from '../types/theme.js';
 import { createPrismIcon } from './context.js';
 
-const Light = createPrismIcon('themeLight', forwardRef<SVGSVGElement, SvgIconProps>(function Light(props, ref) {
+const Light = createPrismIcon('themeLight', forwardRef<SVGSVGElement, SvgIconProps>(function LightGlyph(props, ref) {
   return <SvgIcon {...props} ref={ref} viewBox="0 0 24 24">
     <path opacity="0.4" d="M17 12C17 14.7614 14.7614 17 12 17C9.23858 17 7 14.7614 7 12C7 9.23858 9.23858 7 12 7C14.7614 7 17 9.23858 17 12Z" fill="currentColor" />
     <path fill="none" d="M17 12C17 14.7614 14.7614 17 12 17C9.23858 17 7 14.7614 7 12C7 9.23858 9.23858 7 12 7C14.7614 7 17 9.23858 17 12Z" stroke="currentColor" strokeWidth="1.5" />
@@ -11,14 +11,14 @@ const Light = createPrismIcon('themeLight', forwardRef<SVGSVGElement, SvgIconPro
   </SvgIcon>;
 }));
 
-const Dark = createPrismIcon('themeDark', forwardRef<SVGSVGElement, SvgIconProps>(function Dark(props, ref) {
+const Dark = createPrismIcon('themeDark', forwardRef<SVGSVGElement, SvgIconProps>(function DarkGlyph(props, ref) {
   return <SvgIcon {...props} ref={ref} viewBox="0 0 24 24">
     <path opacity="0.4" d="M21.5 14.0784C20.3003 14.7189 18.9301 15.0821 17.4751 15.0821C12.7491 15.0821 8.91792 11.2509 8.91792 6.52485C8.91792 5.06986 9.28105 3.69968 9.92163 2.5C5.66765 3.49698 2.5 7.31513 2.5 11.8731C2.5 17.1899 6.8101 21.5 12.1269 21.5C16.6849 21.5 20.503 18.3324 21.5 14.0784Z" fill="currentColor" />
     <path fill="none" d="M21.5 14.0784C20.3003 14.7189 18.9301 15.0821 17.4751 15.0821C12.7491 15.0821 8.91792 11.2509 8.91792 6.52485C8.91792 5.06986 9.28105 3.69968 9.92163 2.5C5.66765 3.49698 2.5 7.31513 2.5 11.8731C2.5 17.1899 6.8101 21.5 12.1269 21.5C16.6849 21.5 20.503 18.3324 21.5 14.0784Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" />
   </SvgIcon>;
 }));
 
-const System = createPrismIcon('themeSystem', forwardRef<SVGSVGElement, SvgIconProps>(function System(props, ref) {
+const System = createPrismIcon('themeSystem', forwardRef<SVGSVGElement, SvgIconProps>(function SystemGlyph(props, ref) {
   return <SvgIcon {...props} ref={ref} viewBox="0 0 24 24">
     <path opacity="0.4" d="M16 3H8C5.17157 3 3.75736 3 2.87868 3.87868C2 4.75736 2 6.17157 2 9V11C2 13.8284 2 15.2426 2.87868 16.1213C3.75736 17 5.17157 17 8 17H16C18.8284 17 20.2426 17 21.1213 16.1213C22 15.2426 22 13.8284 22 11V9C22 6.17157 22 4.75736 21.1213 3.87868C20.2426 3 18.8284 3 16 3Z" fill="currentColor" />
     <path fill="none" d="M16 3H8C5.17157 3 3.75736 3 2.87868 3.87868C2 4.75736 2 6.17157 2 9V11C2 13.8284 2 15.2426 2.87868 16.1213C3.75736 17 5.17157 17 8 17H16C18.8284 17 20.2426 17 21.1213 16.1213C22 15.2426 22 13.8284 22 11V9C22 6.17157 22 4.75736 21.1213 3.87868C20.2426 3 18.8284 3 16 3Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" />
@@ -30,7 +30,7 @@ const icons = { light: Light, dark: Dark, system: System };
 
 /** The chosen preference, independently of the system's resolved color scheme. */
 export const ThemeModeIcon = forwardRef<SVGSVGElement, SvgIconProps & { mode: ThemeMode }>(
-  function ThemeModeIcon({ mode, ...props }, ref) {
+  function ThemeModeGlyph({ mode, ...props }, ref) {
     const Icon = icons[mode];
     return <Icon {...props} ref={ref} data-theme-icon={mode} />;
   },

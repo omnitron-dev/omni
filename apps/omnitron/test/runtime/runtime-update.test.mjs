@@ -122,9 +122,9 @@ test('an in-flight operation must be clear before a review can stop the private 
   const { digest } = await runRuntimeUpdate({ ...config, operation: 'prepare' });
   assert.match(digest, /^[a-f0-9]{64}$/);
   blockers.backupOperations = 1;
-  await assert.rejects(runRuntimeUpdate({ ...config, operation: 'apply', digest: digest }), /backupOperations=1/);
+  await assert.rejects(runRuntimeUpdate({ ...config, operation: 'apply', digest }), /backupOperations=1/);
   delete blockers.backupOperations;
-  await assert.rejects(runRuntimeUpdate({ ...config, operation: 'apply', digest: digest }), /activity counters/);
+  await assert.rejects(runRuntimeUpdate({ ...config, operation: 'apply', digest }), /activity counters/);
   blockers.backupOperations = 0;
   assert.equal((await runRuntimeUpdate({ ...config, operation: 'prepare' })).digest, digest);
 });

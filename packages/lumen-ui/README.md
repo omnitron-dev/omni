@@ -79,6 +79,8 @@ A client-side preview render error stays inside the preview through Prism's shar
 
 `CodeBlock` progressively adds dual-theme syntax colors through the same tokenizer used by Markdown. It loads only the requested language grammar; the TypeScript compiler and Twoslash do not enter the browser bundle. Literal source, newlines and annotation comments remain unchanged for selection and copying. Unknown languages stay plain text. A failed grammar download shows a visible status while preserving the complete source. Server HTML and JavaScript-disabled pages retain readable, escaped source.
 
+Component source and built Markdown fences share `--lumen-code-font-size`, which defaults to `0.875rem`. Set that token on a common ancestor to change their code size together.
+
 ## Runtime boundaries
 
 Islands mount through portals into static hosts, preserving the shell's context. They do not create independent React roots or hydrate arbitrary third-party HTML. Use one manager per document, unique island IDs and host-owned component registrations. Activation supports `load`, `visible`, `interaction` and `idle`.

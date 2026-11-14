@@ -75,11 +75,11 @@ function createClientStylesheet(): string {
     'a{color:var(--lumen-accent);text-decoration:none;}',
     'a:hover{text-decoration:underline;}',
     'pre,code{font-family:var(--lumen-font-mono);background:var(--lumen-code-bg);border-radius:6px;}',
-    'pre{padding:1rem;overflow-x:auto;border:1px solid var(--lumen-border);}',
+    'pre{font-size:var(--lumen-code-font-size);padding:1rem;overflow-x:auto;border:1px solid var(--lumen-border);}',
     '}',
     // CodeBlock is also used outside prose, for example in a ComponentExample.
-    '.lumen-code-block{font-family:var(--lumen-font-mono);background:var(--lumen-code-bg);border-radius:6px;padding:1rem;overflow-x:auto;border:1px solid var(--lumen-border);}',
-    '.lumen-code-block code{font-family:inherit;background:transparent;}',
+    '.lumen-code-block{font-family:var(--lumen-font-mono);font-size:var(--lumen-code-font-size);background:var(--lumen-code-bg);border-radius:6px;padding:1rem;overflow-x:auto;border:1px solid var(--lumen-border);}',
+    '.lumen-code-block code{font-family:inherit;font-size:inherit;background:transparent;}',
     '.lumen-math-block,.lumen-admonition{border:1px solid var(--lumen-border);background:var(--lumen-surface);border-radius:8px;padding:1rem 1.25rem;margin:1.25rem 0;}',
     '.lumen-portal-island{display:block;position:relative;}',
   ].join('\n');

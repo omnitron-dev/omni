@@ -6,6 +6,7 @@ import createEmotionServer from '@emotion/server/create-instance';
  * and dark/light CSS custom properties without placeholder stubs.
  */
 export const BASE_LUMEN_THEME_CSS = [
+  ':root{--lumen-code-font-size:0.875rem;}',
   ':root,[data-theme="dark"]{--lumen-bg:#0b0f19;--lumen-surface:#111827;--lumen-fg:#e2e8f0;--lumen-muted:#94a3b8;--lumen-border:#1e293b;--lumen-accent:#38bdf8;--lumen-code-bg:#0f172a;--lumen-font-sans:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;--lumen-font-mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;--lumen-max-width:80rem;}',
   '[data-theme="light"]{--lumen-bg:#ffffff;--lumen-surface:#f8fafc;--lumen-fg:#0f172a;--lumen-muted:#475569;--lumen-border:#e2e8f0;--lumen-accent:#0284c7;--lumen-code-bg:#f1f5f9;}',
   '.lumen-shell{min-height:100vh;background-color:var(--lumen-bg);color:var(--lumen-fg);font-family:var(--lumen-font-sans);line-height:1.65;margin:0;box-sizing:border-box;}',

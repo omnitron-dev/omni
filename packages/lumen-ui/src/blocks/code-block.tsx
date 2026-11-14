@@ -72,7 +72,7 @@ export function CodeBlock({ code = '', language = 'ts', copyable = false, classN
       sx={theme => ({
         m: 0, boxSizing: 'border-box', maxWidth: '100%', overflow: 'auto',
         '&.lumen-code-block': { p: 2, border: 0, borderRadius: 'inherit' },
-        fontFamily: 'var(--lumen-font-mono, ui-monospace, monospace)', fontSize: '0.875rem', lineHeight: 1.65,
+        fontFamily: 'var(--lumen-font-mono, ui-monospace, monospace)', fontSize: 'var(--lumen-code-font-size, 0.875rem)', lineHeight: 1.65,
         bgcolor: 'transparent',
         '& > code': { font: 'inherit', background: 'transparent', padding: 0, border: 0 },
         '& > code span[style]': {

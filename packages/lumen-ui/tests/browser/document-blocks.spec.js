@@ -121,6 +121,24 @@ test('diagram source keeps its own keyboard scroll area before and after activat
   }
 });
 
+test('Markdown fences and component source inherit one code-size token', async ({ page, cliSiteUrl }) => {
+  await page.goto(cliSiteUrl);
+  const example = page.getByRole('figure', { name: 'Counter example' });
+  await expect(example.getByRole('button', { name: 'Reset example' })).toBeVisible();
+  await example.locator('summary').click();
+  const source = example.locator('pre');
+  const fence = page.locator('article.lumen-doc > pre.lumen-code-block').first();
+  for (const block of [source, fence]) {
+    await expect(block).toHaveCSS('font-size', '14px');
+    await expect(block.locator('code')).toHaveCSS('font-size', '14px');
+  }
+  await page.evaluate(() => document.documentElement.style.setProperty('--lumen-code-font-size', '18px'));
+  for (const block of [source, fence]) {
+    await expect(block).toHaveCSS('font-size', '18px');
+    await expect(block.locator('code')).toHaveCSS('font-size', '18px');
+  }
+});
+
 test('a failing island shows its runtime error while the static document and adjacent interactive island survive', async ({ page, cliSiteUrl }) => {
   await page.goto(cliSiteUrl);
   const counter = page.getByRole('figure', { name: 'Counter example' });

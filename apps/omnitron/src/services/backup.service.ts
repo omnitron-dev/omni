@@ -1432,7 +1432,7 @@ export class BackupService {
   ): Promise<void> {
     await restoreFromFile(
       'docker',
-      ['exec', '-i', container, 'psql', '-U', config.user, '-d', config.database],
+      ['exec', '-i', container, 'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-U', config.user, '-d', config.database],
       inputPath,
       compressed,
       { timeoutMs: this.databaseTimeoutMs }
@@ -1458,7 +1458,7 @@ export class BackupService {
   private async pgRestoreLocal(config: DbConfig, inputPath: string, compressed: boolean): Promise<void> {
     await restoreFromFile(
       'psql',
-      ['-h', config.host, '-p', String(config.port), '-U', config.user, '-d', config.database],
+      ['-X', '-v', 'ON_ERROR_STOP=1', '-h', config.host, '-p', String(config.port), '-U', config.user, '-d', config.database],
       inputPath,
       compressed,
       { timeoutMs: this.databaseTimeoutMs, env: { ...process.env, PGPASSWORD: config.password } }

@@ -3,9 +3,7 @@
  */
 
 import type { HighlighterCore } from 'shiki';
-import { createHighlighterCoreSync, createJavaScriptRegexEngine } from 'shiki';
-import githubDark from 'shiki/themes/github-dark.mjs';
-import githubLight from 'shiki/themes/github-light.mjs';
+import { getCodeTokenizer, resolveHighlightLanguage } from './tokenizer.js';
 import langBash from 'shiki/langs/bash.mjs';
 import langCss from 'shiki/langs/css.mjs';
 import langHtml from 'shiki/langs/html.mjs';
@@ -29,69 +27,22 @@ export interface HighlightOptions {
   lineNumbers?: boolean;
 }
 
-const LANGUAGE_ALIASES: Record<string, string> = {
-  typescript: 'typescript',
-  ts: 'typescript',
-  mts: 'typescript',
-  cts: 'typescript',
-  tsx: 'tsx',
-  javascript: 'javascript',
-  js: 'javascript',
-  mjs: 'javascript',
-  cjs: 'javascript',
-  jsx: 'jsx',
-  json: 'json',
-  jsonc: 'json',
-  bash: 'bash',
-  sh: 'bash',
-  shell: 'bash',
-  zsh: 'bash',
-  rust: 'rust',
-  rs: 'rust',
-  python: 'python',
-  py: 'python',
-  css: 'css',
-  html: 'html',
-  yaml: 'yaml',
-  yml: 'yaml',
-  markdown: 'markdown',
-  md: 'markdown',
-};
+let registered = false;
 
-let singletonShiki: HighlighterCore | null = null;
-let loadedLangSet: Set<string> | null = null;
-
+/** The compiler preloads its grammar set; browser consumers load one language on demand. */
 export function getShikiHighlighter(): HighlighterCore {
-  if (!singletonShiki) {
-    singletonShiki = createHighlighterCoreSync({
-      themes: [githubLight, githubDark],
-      langs: [
-        langTypescript,
-        langTsx,
-        langJavascript,
-        langJsx,
-        langJson,
-        langBash,
-        langRust,
-        langPython,
-        langCss,
-        langHtml,
-        langYaml,
-        langMarkdown,
-      ],
-      engine: createJavaScriptRegexEngine(),
-    });
-    loadedLangSet = new Set(singletonShiki.getLoadedLanguages());
+  const engine = getCodeTokenizer();
+  if (!registered) {
+    engine.loadLanguageSync(langTypescript, langTsx, langJavascript, langJsx, langJson, langBash,
+      langRust, langPython, langCss, langHtml, langYaml, langMarkdown);
+    registered = true;
   }
-  return singletonShiki;
+  return engine;
 }
 
 export function resolveShikiLanguage(rawLang: string): string | null {
-  const key = rawLang.trim().toLowerCase();
-  const mapped = LANGUAGE_ALIASES[key] ?? key;
-  const highlighter = getShikiHighlighter();
-  const available = loadedLangSet ?? new Set(highlighter.getLoadedLanguages());
-  return available.has(mapped) ? mapped : null;
+  const name = resolveHighlightLanguage(rawLang);
+  return getShikiHighlighter().getLoadedLanguages().includes(name) ? name : null;
 }
 
 export class LumenHighlighter {

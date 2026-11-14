@@ -26,7 +26,7 @@ test('one declared source survives disabled scripts, lazy mounting and the publi
       const full = example.locator('pre code');
       await expect(full).toHaveCount(1);
       await expect(full).not.toBeVisible();
-      await example.getByText('Source code', { exact: true }).focus();
+      await example.locator('details > summary').focus();
       await page.keyboard.press('Enter');
       await expect(full).toBeVisible();
       expect(await full.textContent()).toBe(source);

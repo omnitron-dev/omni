@@ -39,6 +39,7 @@ Use verified identity and explicit role grants for an authenticated audience. Ap
 | `/islands` | Plain-JSON props codec shared by producers and browser islands. |
 | `/execution` and `/execution/limits` | Bounded QuickJS execution and its limits. |
 | `/diagrams` | Diagram contracts and rendering helpers. |
+| `/highlight` | Literal-source tokens with dual-theme colors and lazy per-language loading, without the compiler or Twoslash. |
 | `/typst` | Node-only PDF compilation with bundled engine and fonts. |
 | `/mcp` | Node-only MCP integration. |
 

@@ -47,4 +47,15 @@ const greeting = "hello";
     expect(html).toContain('&lt;script&gt;');
     expect(html).not.toContain('<script>');
   });
+
+  it.each(['text', 'typescript'])('keeps mixed newline compiler lines and directives aligned for %s', language => {
+    const html = new LumenHighlighter().highlight(
+      'const first = 1;\r// [!code highlight]\rconst second = 2;\r\nconst third = 3;\nconst last = 4;',
+      { language },
+    );
+    const displayed = html.slice(html.indexOf('<code ')).replace(/<[^>]*>/g, '');
+    expect(displayed).toBe('const first = 1;\nconst second = 2;\nconst third = 3;\nconst last = 4;');
+    expect(html).toContain('class="line highlighted" data-line="2"');
+    expect(html).toContain('data-line="4"');
+  });
 });

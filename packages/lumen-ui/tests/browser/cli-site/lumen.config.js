@@ -20,7 +20,8 @@ function Layout({ children, document }) {
         createElement('div', { 'data-example': 'style-boundary' }, createElement(StyleBoundary))),
       children);
   }
-  return createElement('section', { 'data-ssr-layout': state },
+  return createElement(PrismProvider, { mode: 'light', disableCssBaseline: true },
+    createElement('section', { 'data-ssr-layout': state },
     createElement('h1', null, 'CLI browser boundary'), children,
     createElement(PortalIslandHost, { islandId: 'counter-example', component: 'CounterDemo', hydrate: 'load' },
       createElement(ComponentExample, { title: 'Counter example', code: counterSource, language: 'js', resettable: true },
@@ -34,7 +35,7 @@ function Layout({ children, document }) {
     }, createElement(DocPagination, {
       prev: kind === 'next' ? undefined : { href: '#native-cli-document', label: 'Previous documentation page' },
       next: kind === 'previous' ? undefined : { href: '#native-cli-document', label: 'Next documentation page' },
-    }))));
+    })))));
 }
 
 export default {

@@ -61,6 +61,7 @@ test('localized document pagination works from server HTML using the keyboard an
 
 test('the component example exposes its real module without scripting and restores state when activated', async ({ browser, cliSiteUrl }) => {
   const source = await readFile(new URL('./cli-site/counter-example.js', import.meta.url), 'utf8');
+  const sizes = [];
   for (const javaScriptEnabled of [false, true]) {
     const context = await browser.newContext({ javaScriptEnabled, viewport: { width: 320, height: 740 } });
     try {
@@ -70,12 +71,17 @@ test('the component example exposes its real module without scripting and restor
       const reset = example.getByRole('button', { name: 'Reset example' });
       if (javaScriptEnabled) await expect(reset).toBeVisible();
       else await expect(reset).toHaveCount(0);
-      const summary = example.getByText('Source code', { exact: true });
+      await page.evaluate(() => document.fonts.ready);
+      const closed = await example.boundingBox();
+      const summary = example.locator('details > summary');
       await summary.focus();
       await page.keyboard.press('Enter');
       const code = example.locator('details code');
       await expect(code).toBeVisible();
       expect(await code.textContent()).toBe(source);
+      if (javaScriptEnabled) await expect(example.locator('pre')).toHaveAttribute('data-highlight', 'ready');
+      const opened = await example.boundingBox();
+      sizes.push({ closed: { width: closed.width, height: closed.height }, opened: { width: opened.width, height: opened.height } });
       const count = example.getByRole('button', { name: 'Count 0' });
       await expect(count).toBeVisible();
       if (javaScriptEnabled) {
@@ -87,6 +93,7 @@ test('the component example exposes its real module without scripting and restor
       }
     } finally { await context.close(); }
   }
+  expect(sizes[1]).toEqual(sizes[0]);
 });
 
 test('a failing island shows its runtime error while the static document and adjacent interactive island survive', async ({ page, cliSiteUrl }) => {

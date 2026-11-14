@@ -2,58 +2,25 @@
  * Code Block HTML Emitter with Real Shiki Dual-Theme CSS Variable Token Mapping
  */
 
-import type { ThemedToken } from 'shiki';
-
 import { escapeHtml } from '../katex/render-math.js';
 import { parseCodeDirectives } from './directives.js';
-import { getShikiHighlighter, resolveShikiLanguage } from './highlighter.js';
+import { getShikiHighlighter } from './highlighter.js';
+import { tokenizeCode, type HighlightedToken } from './tokenizer.js';
 import type { TwoslashAnnotation } from './twoslash.js';
 import { parseTwoslashAnnotations } from './twoslash.js';
 
-const DEFAULT_ROOT_STYLE = '--shiki-light:#24292e;--shiki-dark:#e1e4e8;--shiki-light-bg:#fff;--shiki-dark-bg:#24292e';
-const MAX_FULL_TOKENIZE_LINES = 2500;
-const PARTIAL_TOKENIZE_HEAD = 400;
-
-function formatTokenStyle(token: ThemedToken): string {
-  const htmlStyle = token.htmlStyle;
-  if (!htmlStyle) {
-    return token.color ? `--shiki-light:${token.color};--shiki-dark:${token.color}` : '';
-  }
-
-  const parts: string[] = [];
-  const light = htmlStyle['--shiki-light'] ?? htmlStyle['color'];
-  const dark = htmlStyle['--shiki-dark'] ?? light;
-  if (light) {
-    parts.push(`--shiki-light:${light}`);
-  }
-  if (dark) {
-    parts.push(`--shiki-dark:${dark}`);
-  }
-  const fontStyle = htmlStyle['--shiki-light-font-style'] ?? htmlStyle['font-style'];
-  if (fontStyle) {
-    parts.push(`--shiki-light-font-style:${fontStyle}`);
-  }
-  const darkFontStyle = htmlStyle['--shiki-dark-font-style'];
-  if (darkFontStyle) {
-    parts.push(`--shiki-dark-font-style:${darkFontStyle}`);
-  }
-  return parts.join(';');
-}
-
-function renderTokenizedLine(tokens: ThemedToken[]): string {
-  if (tokens.length === 0) {
-    return '';
-  }
-  return tokens
-    .map((tok) => {
-      const escapedContent = escapeHtml(tok.content);
-      const style = formatTokenStyle(tok);
-      return style ? `<span style="${escapeHtml(style)}">${escapedContent}</span>` : `<span>${escapedContent}</span>`;
-    })
-    .join('');
+function renderTokenizedLine(tokens: HighlightedToken[]): string {
+  return tokens.map(token => {
+    const content = escapeHtml(token.content);
+    const style = Object.entries(token.style).map(([key, value]) => `${key}:${value}`).join(';');
+    return style ? `<span style="${escapeHtml(style)}">${content}</span>` : `<span>${content}</span>`;
+  }).join('');
 }
 
 export function renderCodeBlockHtml(code: string, language?: string, meta?: string): string {
+  // Compiler directives and Twoslash use line indexes. Normalize their input
+  // together so tokenization cannot split a different number of display lines.
+  code = code.replace(/\r\n?/g, '\n');
   const lang = (language || 'text').trim().toLowerCase();
   const isTwoslash = Boolean(meta?.includes('twoslash') || /\btwoslash\b/.test(lang));
   const cleanLang = lang.replace(/\s*\btwoslash\b\s*/g, '').trim() || 'text';
@@ -83,35 +50,8 @@ export function renderCodeBlockHtml(code: string, language?: string, meta?: stri
     }
   }
 
-  let tokenLines: ThemedToken[][] | null = null;
-  let rootStyle = DEFAULT_ROOT_STYLE;
-  const resolvedLang = resolveShikiLanguage(cleanLang);
-
-  if (resolvedLang && cleanCodeText.length > 0) {
-    try {
-      const highlighter = getShikiHighlighter();
-      const targetCode =
-        parsedLines.length <= MAX_FULL_TOKENIZE_LINES
-          ? cleanCodeText
-          : parsedLines
-              .slice(0, PARTIAL_TOKENIZE_HEAD)
-              .map((l) => l.text)
-              .join('\n');
-
-      const tokenized = highlighter.codeToTokens(targetCode, {
-        lang: resolvedLang,
-        themes: { light: 'github-light', dark: 'github-dark' },
-        defaultColor: false,
-      });
-
-      tokenLines = tokenized.tokens;
-      if (tokenized.rootStyle) {
-        rootStyle = tokenized.rootStyle;
-      }
-    } catch {
-      tokenLines = null;
-    }
-  }
+  getShikiHighlighter();
+  const highlighted = tokenizeCode(cleanCodeText, cleanLang);
 
   const linesHtml = parsedLines
     .map((line, idx) => {
@@ -126,7 +66,7 @@ export function renderCodeBlockHtml(code: string, language?: string, meta?: stri
         lineClass += ' has-twoslash';
       }
 
-      const lineTokens = tokenLines?.[idx];
+      const lineTokens = highlighted.lines[idx]?.tokens;
       const innerTokensHtml = lineTokens ? renderTokenizedLine(lineTokens) : escapeHtml(line.text);
 
       let popupHtml = '';
@@ -150,5 +90,5 @@ export function renderCodeBlockHtml(code: string, language?: string, meta?: stri
   const escapedLang = escapeHtml(cleanLang);
   const codeClasses = `shiki language-${escapedLang}${hasFocusedLines ? ' has-focused-lines' : ''}`;
 
-  return `<pre class="lumen-code-block language-${escapedLang}"${cleanCodeText ? ' tabindex="0"' : ''} data-language="${escapedLang}" data-code="${escapeHtml(cleanCodeText)}" style="${escapeHtml(rootStyle)}"><code class="${codeClasses}">${linesHtml}</code></pre>`;
+  return `<pre class="lumen-code-block language-${escapedLang}"${cleanCodeText ? ' tabindex="0"' : ''} data-language="${escapedLang}" data-code="${escapeHtml(cleanCodeText)}" style="${escapeHtml(highlighted.rootStyle)}"><code class="${codeClasses}">${linesHtml}</code></pre>`;
 }

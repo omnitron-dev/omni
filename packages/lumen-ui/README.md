@@ -73,7 +73,11 @@ import source from './counter.tsx?raw';
 </ComponentExample>
 ```
 
-Both the preview and source render on the server. The native source disclosure works with a keyboard and with JavaScript disabled. After hydration, `resettable` lets readers restore the preview's initial state while keeping the source open. Set `language` for a non-TSX module and translate the control labels through `labels.source` and `labels.reset`.
+Both the preview and source render on the server. The native source disclosure works with a keyboard and with JavaScript disabled. After hydration, `resettable` restores only the preview while keeping the source open. The frame keeps preview, source disclosure and source actions separate. Code has its own bounded scroll area; the copy icon remains inside the code frame without covering text or moving when its state changes. Controls support keyboard focus and announce copy results. Set `language` for a non-TSX module and translate the controls through `labels.source`, `labels.reset`, `labels.copy`, `labels.copied`, `labels.copyFailed` and `labels.highlightUnavailable`.
+
+A client-side preview render error stays inside the preview through Prism's shared error boundary. The source remains available, and Reset remounts the preview and clears its error state.
+
+`CodeBlock` progressively adds dual-theme syntax colors through the same tokenizer used by Markdown. It loads only the requested language grammar; the TypeScript compiler and Twoslash do not enter the browser bundle. Literal source, newlines and annotation comments remain unchanged for selection and copying. Unknown languages stay plain text. A failed grammar download shows a visible status while preserving the complete source. Server HTML and JavaScript-disabled pages retain readable, escaped source.
 
 ## Runtime boundaries
 

@@ -46,13 +46,17 @@ describe('Documentation Content Blocks', () => {
   });
 
   it('renders CodeBlock with exact empty match and language classes', () => {
-    const emptyHtml = renderToStaticMarkup(CodeBlock({ code: '', language: 'python' }));
-    expect(emptyHtml).toBe('<pre class="lumen-code-block language-python"><code></code></pre>');
+    const emptyHtml = renderToStaticMarkup(<CodeBlock code="" language="python" />);
+    const empty = document.createElement('div');
+    empty.innerHTML = emptyHtml;
+    expect(empty.querySelector('pre')?.className).toContain('language-python');
+    expect(empty.querySelector('code')?.textContent).toBe('');
+    expect(empty.querySelector('pre')?.hasAttribute('tabindex')).toBe(false);
 
-    const withCode = renderToStaticMarkup(CodeBlock({ code: 'const x = 10;', language: 'typescript' }));
-    expect(withCode).toContain('class="lumen-code-block language-typescript"');
+    const withCode = renderToStaticMarkup(<CodeBlock code="const x = 10;" language="typescript" />);
+    expect(withCode).toContain('lumen-code-block language-typescript');
     expect(withCode).toContain('tabindex="0"');
-    expect(withCode).toContain('<code>const x = 10;</code>');
+    expect(withCode).toContain('<code class="language-typescript">const x = 10;</code>');
   });
 
   it('copies exact code through Prism and exposes clipboard failure', async () => {
@@ -66,10 +70,10 @@ describe('Documentation Content Blocks', () => {
       await act(async () => root.render(<CodeBlock code={code} copyable />));
       await act(async () => (container.querySelector('button') as HTMLButtonElement).click());
       expect(writeText).toHaveBeenCalledExactlyOnceWith(code);
-      expect(container.querySelector('[role="status"]')?.textContent).toBe('Copied');
+      expect(container.querySelector('[role="status"]')?.textContent).toBe('Code copied');
       writeText.mockRejectedValue(new Error('Clipboard denied'));
       await act(async () => (container.querySelector('button') as HTMLButtonElement).click());
-      expect(container.querySelector('[role="alert"]')?.textContent).toContain('Copy failed');
+      expect(container.querySelector('[role="status"]')?.textContent).toContain('Copy failed');
       expect(container.querySelector('code')?.textContent).toBe(code);
     } finally {
       await act(async () => root.unmount());
@@ -117,7 +121,7 @@ describe('Documentation Content Blocks', () => {
       const before = Array.from(host.querySelectorAll('button')).find(button => button.textContent === '0')!;
       await act(async () => before.click());
       expect(before.textContent).toBe('1');
-      const reset = Array.from(host.querySelectorAll('button')).find(button => button.textContent === 'Restore')!;
+      const reset = Array.from(host.querySelectorAll('button')).find(button => button.getAttribute('aria-label') === 'Restore')!;
       await act(async () => reset.click());
       expect(host.contains(before)).toBe(false);
       expect(Array.from(host.querySelectorAll('button')).some(button => button.textContent === '0')).toBe(true);

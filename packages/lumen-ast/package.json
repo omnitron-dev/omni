@@ -39,6 +39,11 @@
       "types": "./dist/mcp/index.d.ts",
       "node": "./dist/mcp/index.js"
     },
+    "./highlight": {
+      "types": "./dist/highlight/tokenizer.d.ts",
+      "import": "./dist/highlight/tokenizer.js",
+      "default": "./dist/highlight/tokenizer.js"
+    },
     "./diagrams": {
       "types": "./dist/diagrams/index.d.ts",
       "import": "./dist/diagrams/index.js",

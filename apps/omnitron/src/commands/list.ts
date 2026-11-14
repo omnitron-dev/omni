@@ -14,27 +14,23 @@ import {
   formatRestarts,
   formatPort,
 } from '../shared/format.js';
-import { emitJson } from './output.js';
+import { emitError, emitJson } from './output.js';
 import { requireDaemon } from './daemon-required.js';
 
 export async function listCommand(): Promise<void> {
   const client = createDaemonClient();
 
-  if (!(await requireDaemon(client))) {
-    await client.disconnect();
-    return;
-  }
-
   try {
-    const apps = await client.list();
-    if (emitJson({ apps })) {
-      await client.disconnect();
+    if (!(await requireDaemon(client))) {
+      process.exitCode = 1;
       return;
     }
 
+    const apps = await client.list();
+    if (emitJson({ apps })) return;
+
     if (apps.length === 0) {
       log.info('No apps registered');
-      await client.disconnect();
       return;
     }
 
@@ -109,8 +105,9 @@ export async function listCommand(): Promise<void> {
 
     console.log(prism.dim('  * = critical'));
   } catch (err) {
-    log.error((err as Error).message);
+    emitError(err);
+    process.exitCode = 1;
+  } finally {
+    await client.disconnect();
   }
-
-  await client.disconnect();
 }

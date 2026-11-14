@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/lumen-migrate",
-  "version": "0.4.9",
+  "version": "0.4.10",
   "description": "Docusaurus to Lumen migration engine and URL/anchor parity verification tool",
   "type": "module",
   "main": "./dist/index.js",

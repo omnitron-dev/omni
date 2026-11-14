@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/cuid",
-  "version": "0.4.9",
+  "version": "0.4.10",
   "description": "CUID implementation",
   "author": "LuxQuant",
   "license": "MIT",

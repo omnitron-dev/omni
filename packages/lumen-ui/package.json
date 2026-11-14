@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/lumen-ui",
-  "version": "0.4.9",
+  "version": "0.4.10",
   "description": "Documentation UI blocks and Shared-Context Selective Portal Hydration runtime on Prism",
   "type": "module",
   "main": "./dist/index.js",

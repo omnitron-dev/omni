@@ -7,7 +7,7 @@ import { parseStoreConfig, resolveStore, S3ObjectStore } from '../../src/release
 import { configuredReleaseStore } from '../../src/release/configured-store.js';
 
 const driver = vi.hoisted(() => ({ connect: vi.fn(), open: vi.fn(), dispose: vi.fn() }));
-vi.mock('@xec-sh/core/ssh', () => ({ NodeSSH: class { connect = driver.connect; createTunnel = driver.open; dispose = driver.dispose; } }));
+vi.mock('@xec-sh/ssh', () => ({ SSHClient: class { connect = driver.connect; createTunnel = driver.open; dispose = driver.dispose; } }));
 const ssh = { host: 'store.internal', username: 'releases', port: 22,
   hostFingerprint: 'SHA256:' + 'A'.repeat(43), privateKey: { secret: 'ssh-key' } };
 const raw = { endpoint: 'http://127.0.0.1:9000', bucket: 'artifacts', accessKey: { secret: 'access' }, secretKey: { secret: 'secret' }, ssh };

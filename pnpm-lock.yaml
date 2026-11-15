@@ -191,10 +191,11 @@ overrides:
   react: 19.3.1
   react-dom: 19.3.1
   react-router-dom: 7.18.5
-  '@xec-sh/core': 0.12.0
-  '@xec-sh/kit': 0.12.0
-  '@xec-sh/loader': 0.12.0
-  '@xec-sh/ops': 0.12.0
+  '@xec-sh/core': 0.13.0
+  '@xec-sh/kit': 0.13.0
+  '@xec-sh/loader': 0.13.0
+  '@xec-sh/ops': 0.13.0
+  '@xec-sh/ssh': 0.13.0
 
 patchedDependencies:
   '@ts-morph/common@0.29.0': 0410e2a72a770cb3c724f5e414d1acf8c5d5e27e829beccb320fc1fe89a13cbc
@@ -236,14 +237,14 @@ importers:
         specifier: npm:typescript@^7.0.2
         version: typescript@7.0.2
       '@xec-sh/cli':
-        specifier: 0.12.0
-        version: 0.12.0
+        specifier: 0.13.0
+        version: 0.13.0
       '@xec-sh/kit':
-        specifier: 0.12.0
-        version: 0.12.0
+        specifier: 0.13.0
+        version: 0.13.0
       '@xec-sh/ops':
-        specifier: 0.12.0
-        version: 0.12.0
+        specifier: 0.13.0
+        version: 0.13.0
       add:
         specifier: ^2.0.9
         version: 2.0.9
@@ -335,17 +336,20 @@ importers:
         specifier: 1100.1.24
         version: 1100.1.24(@pnpm/logger@1100.0.0)
       '@xec-sh/core':
-        specifier: 0.12.0
-        version: 0.12.0
+        specifier: 0.13.0
+        version: 0.13.0
       '@xec-sh/kit':
-        specifier: 0.12.0
-        version: 0.12.0
+        specifier: 0.13.0
+        version: 0.13.0
       '@xec-sh/loader':
-        specifier: 0.12.0
-        version: 0.12.0
+        specifier: 0.13.0
+        version: 0.13.0
       '@xec-sh/ops':
-        specifier: 0.12.0
-        version: 0.12.0
+        specifier: 0.13.0
+        version: 0.13.0
+      '@xec-sh/ssh':
+        specifier: 0.13.0
+        version: 0.13.0
       acorn:
         specifier: 8.19.0
         version: 8.19.0
@@ -5102,28 +5106,30 @@ packages:
   '@vitest/utils@5.0.5':
     resolution: {integrity: sha512-/rBu7gzLDQI/SC79Tn98b5DwOgaHU/Gt4I9OVeP3YofzNaYtbImRCOJQmT1S6vOJg9gEIlWC+r3QxKkjuSa1nQ==}
 
-  '@xec-sh/cli@0.12.0':
-    resolution: {integrity: sha512-QPrF7tK6LKBzgSVgK64Of1u4bXK3Tv2LGsYNlF+3u0HSfW2Hufq+HiB2LEX38x777zxyszNrG+Wy+7Vu/nrh7Q==}
+  '@xec-sh/cli@0.13.0':
+    resolution: {integrity: sha512-tyqbwSRZ1S0x1uVBsefW9gmwlQb+0UDJK7EAspg8w5ex7YtOxwGdU+huKEbbuJAGBlx/KERbC66cHnzq+LwGfg==}
     engines: {node: '>=22.18.0'}
     hasBin: true
 
-  '@xec-sh/core@0.12.0':
-    resolution: {integrity: sha512-FSs2loyMmjML2ZMRhAmttPGNHl7IWLiWkpGJSVR1ZSFfBxAP9ucOVewrEL8cVzJPE3UpsiN1U30wu5tMN4griQ==}
-    engines: {node: '>=20.0.0'}
-    bundledDependencies:
-      - ssh2
+  '@xec-sh/core@0.13.0':
+    resolution: {integrity: sha512-54c9ixd6a7boFAKigH2AkNtJDBaLjdxODjAJgREKy0I9W4LnB0C2pa0/q8u6iXrk2AVuf27aygcTBcOKbNYwhg==}
+    engines: {node: '>=20.19.0'}
 
-  '@xec-sh/kit@0.12.0':
-    resolution: {integrity: sha512-wywnfibdxKcNsCjm6EkIulMW0xSkRyVc/i/nnhFBbjzykVm6FYUhruW+7M1Om31kE0DdyZFl3jWz6jeTnKcrQw==}
+  '@xec-sh/kit@0.13.0':
+    resolution: {integrity: sha512-4hCygQJTsiiRP8XCNrjG6at//QIVvd44ENXQaaAdUdqjih/fELryaoW0hEedyomnhGXLtZBgO3SjW0ViRLom8A==}
     engines: {bun: '>=1.2.0', node: '>=20.0.0'}
 
-  '@xec-sh/loader@0.12.0':
-    resolution: {integrity: sha512-+vkTCYMshEAJNCDaZIq0w5PrAEYStjvGL5mY/fhR1zqYFMAgLXROIsWwFK9Y/dMqg4YlNYd6OGbJDtdHnXenHQ==}
+  '@xec-sh/loader@0.13.0':
+    resolution: {integrity: sha512-NIPCvWro8K+1RG8xLMbShKKQsHajmS7XQHMzZvNVvnz62FQ7//PbqYtJqeb7wFN69sSxBFKSKrcysuaDcRX0bg==}
     engines: {node: '>=20.0.0'}
 
-  '@xec-sh/ops@0.12.0':
-    resolution: {integrity: sha512-B3nT/cH3YsfE0WFaaNJLRSmFAgpWuOLIqdNxzEr3AcrBtVr1EsFILwJAspCsoVbQm460mFy/vJ76jWayjgrHUQ==}
+  '@xec-sh/ops@0.13.0':
+    resolution: {integrity: sha512-IssyJENyhdNfv5RDHQaNpAKsqhdybC99Cgerv9RNlrlU9Savg+rua0hrK1y7G7No471Zwl7QS+XclU62lXthvQ==}
     engines: {node: '>=20.0.0'}
+
+  '@xec-sh/ssh@0.13.0':
+    resolution: {integrity: sha512-7Et39aLbIKhNyIzyfT65v54Eue/cTUqO5zL+79ivWZXDEw76G+joCGRuxnPhdFZHZFthxpflinsbyQ/LhFdI/A==}
+    engines: {node: '>=20.19.0'}
 
   '@xterm/addon-fit@0.11.0':
     resolution: {integrity: sha512-jYcgT6xtVYhnhgxh3QgYDnnNMYTcf8ElbxxFzX0IZo+vabQqSPAjC3c1wJrKB5E19VwQei89QCiZZP86DCPF7g==}
@@ -8011,10 +8017,6 @@ packages:
   sirv@3.0.2:
     resolution: {integrity: sha512-2wcC/oGxHis/BoHkkPwldgiPSYcpZK3JU28WoMVv55yHJgcZ8rlXvuG9iZggz+sU1d4bRgIGASwyWqjxu3FM0g==}
     engines: {node: '>=18'}
-
-  sisteransi@2.0.0:
-    resolution: {integrity: sha512-2WCqLdt12eN6ehLI50S2/ZxoowXU3DD1KVPRyVP0WEsFahrGZZmCdq1K59qjJljMRIDTwx1D9YaRK+hDneBUMg==}
-    engines: {node: '>=20'}
 
   smart-buffer@4.2.0:
     resolution: {integrity: sha512-94hK0Hh8rPqQl2xXc3HsaBoOXKV20MToPkcXvwbISWLEs+64sBq5kFgn2kJDHb1Pry9yrP0dxrCI9RRci7RXKg==}
@@ -11652,12 +11654,12 @@ snapshots:
       convert-source-map: 2.0.0
       tinyrainbow: 3.2.0
 
-  '@xec-sh/cli@0.12.0':
+  '@xec-sh/cli@0.13.0':
     dependencies:
-      '@xec-sh/core': 0.12.0
-      '@xec-sh/kit': 0.12.0
-      '@xec-sh/loader': 0.12.0
-      '@xec-sh/ops': 0.12.0
+      '@xec-sh/core': 0.13.0
+      '@xec-sh/kit': 0.13.0
+      '@xec-sh/loader': 0.13.0
+      '@xec-sh/ops': 0.13.0
       commander: 15.1.0
       fs-extra: 11.4.1
       glob: 14.0.6
@@ -11665,28 +11667,30 @@ snapshots:
       yaml: 2.9.1
       zod: 4.6.7
 
-  '@xec-sh/core@0.12.0': {}
-
-  '@xec-sh/kit@0.12.0':
+  '@xec-sh/core@0.13.0':
     dependencies:
-      sisteransi: 2.0.0
+      '@xec-sh/ssh': 0.13.0
 
-  '@xec-sh/loader@0.12.0':
+  '@xec-sh/kit@0.13.0': {}
+
+  '@xec-sh/loader@0.13.0':
     dependencies:
-      '@xec-sh/kit': 0.12.0
+      '@xec-sh/kit': 0.13.0
       esbuild: 0.28.2
 
-  '@xec-sh/ops@0.12.0':
+  '@xec-sh/ops@0.13.0':
     dependencies:
-      '@xec-sh/core': 0.12.0
-      '@xec-sh/kit': 0.12.0
-      '@xec-sh/loader': 0.12.0
+      '@xec-sh/core': 0.13.0
+      '@xec-sh/kit': 0.13.0
+      '@xec-sh/loader': 0.13.0
       dotenv: 18.0.10
       fs-extra: 11.4.1
       glob: 14.0.6
       js-yaml: 5.5.0
       semver: 7.8.6
       zod: 4.6.7
+
+  '@xec-sh/ssh@0.13.0': {}
 
   '@xterm/addon-fit@0.11.0': {}
 
@@ -15160,8 +15164,6 @@ snapshots:
       '@polka/url': 1.0.0-next.29
       mrmime: 2.0.1
       totalist: 3.0.1
-
-  sisteransi@2.0.0: {}
 
   smart-buffer@4.2.0: {}
 

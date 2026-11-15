@@ -18,12 +18,12 @@ export interface TerminalDriver {
   ): Promise<TerminalPty>;
 }
 
-/** A policy boundary around Xec's existing NodeSSH; no independent SSH transport. */
+/** Human session policy around the shared Xec SSH client. */
 export class XecTerminalDriver implements TerminalDriver {
   async probe(target: Pick<SSHTarget, 'host' | 'port'>): Promise<string> {
-    const { NodeSSH } = await import('@xec-sh/core/ssh');
+    const { SSHClient } = await import('@xec-sh/ssh');
     try {
-      return await NodeSSH.probeHostKey({ host: target.host, port: target.port ?? 22 });
+      return await SSHClient.probeHostKey({ host: target.host, port: target.port ?? 22 });
     } catch {
       throw new Error('SSH host key inspection failed');
     }
@@ -38,8 +38,8 @@ export class XecTerminalDriver implements TerminalDriver {
     onClose: (reason: string, exitCode?: number) => void,
     signal: AbortSignal
   ): Promise<TerminalPty> {
-    const { NodeSSH } = await import('@xec-sh/core/ssh');
-    const ssh = new NodeSSH();
+    const { SSHClient } = await import('@xec-sh/ssh');
+    const ssh = new SSHClient();
     let channel: Awaited<ReturnType<typeof ssh.requestShell>> | undefined;
     let done = false,
       exitCode: number | undefined;
@@ -79,7 +79,7 @@ export class XecTerminalDriver implements TerminalDriver {
       }
       channel.on('data', onData);
       channel.stderr.on('data', onData);
-      channel.once('exit', (code: number) => {
+      channel.once('exit', code => {
         if (typeof code === 'number') exitCode = code;
       });
       channel.once('close', () => finish('shell_exited'));

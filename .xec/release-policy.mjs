@@ -11,6 +11,7 @@ const policy = {
     // Durable backup ownership uses the inspection/termination contract added
     // after Xec 0.12. Do not qualify a candidate against an older installed SDK.
     { workspace: 'apps/omnitron', name: '@xec-sh/core', range: '^0.13.0' },
+    { workspace: 'apps/omnitron', name: '@xec-sh/ssh', range: '^0.13.0' },
     { workspace: '.', section: 'devDependencies', name: '@xec-sh/ops', range: '^0.13.0' },
   ],
   preparation: {

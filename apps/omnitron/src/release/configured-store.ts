@@ -32,8 +32,8 @@ export async function configuredReleaseStore(
   const passphrase = route.passphrase ? await readSecret(route.passphrase.secret) : undefined;
   if (route.passphrase && !passphrase) throw new Error('The S3 SSH passphrase is missing from the vault');
   signal?.throwIfAborted();
-  const { NodeSSH } = await import('@xec-sh/core/ssh');
-  const ssh = new NodeSSH();
+  const { SSHClient } = await import('@xec-sh/ssh');
+  const ssh = new SSHClient();
   const abort = () => ssh.dispose(true);
   try {
     await ssh.connect({

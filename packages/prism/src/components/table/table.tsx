@@ -320,6 +320,8 @@ export function Table<T>({
                 >
                   {sortable && column.sortable !== false ? (
                     <TableSortLabel
+                      component="button"
+                      type="button"
                       active={sortBy === column.id}
                       direction={sortBy === column.id ? sortOrder : 'asc'}
                       onClick={() => handleSort(String(column.id))}

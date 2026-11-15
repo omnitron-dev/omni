@@ -62,3 +62,25 @@ describe.each(['Table', 'AdminDataTable'])('%s workspace navigation', (kind) => 
     expect(onRowClick).toHaveBeenCalledTimes(2);
   });
 });
+
+it('uses a native non-submitting sort button that respects an enclosing disabled fieldset', () => {
+  const sort = vi.fn();
+  const submit = vi.fn();
+  const content = (disabled: boolean) => <form onSubmit={event => { event.preventDefault(); submit(); }}>
+    <fieldset disabled={disabled}>
+      <Table data={[{ id: 'worker', latency: 12 }]} columns={[{ id: 'latency', label: 'Latency' }]}
+        sortable sortBy="latency" sortOrder="asc" onSortChange={sort} />
+    </fieldset>
+  </form>;
+  const { rerender } = render(content(true));
+  const control = screen.getByRole('button', { name: 'Latency' });
+  expect(control.tagName).toBe('BUTTON');
+  expect(control).toHaveAttribute('type', 'button');
+  expect(control).toBeDisabled();
+  expect(screen.getByRole('columnheader')).toHaveAttribute('aria-sort', 'ascending');
+  rerender(content(false));
+  expect(control).toBeEnabled();
+  control.click();
+  expect(sort).toHaveBeenCalledExactlyOnceWith('latency', 'desc');
+  expect(submit).not.toHaveBeenCalled();
+});

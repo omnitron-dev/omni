@@ -86,7 +86,7 @@ Component source and built Markdown fences share `--lumen-code-font-size`, which
 
 ## Runtime boundaries
 
-Islands mount through portals into static hosts, preserving the shell's context. They do not create independent React roots or hydrate arbitrary third-party HTML. Use one manager per document, unique island IDs and host-owned component registrations. Activation supports `load`, `visible`, `interaction` and `idle`.
+Islands mount through portals into static hosts, preserving the shell's context. They do not create independent React roots or hydrate arbitrary third-party HTML. Use one manager per document, unique island IDs and host-owned component registrations. Activation supports `load`, `visible`, `interaction` and `idle`. The server content stays visible while a lazy component waits. Its live portal replaces that content in the same React commit; a suspended island does not block its neighbours. Ordinary counter, chart and menu updates do not trigger a full document scan.
 
 Props use the shared Lumen AST JSON codec. Invalid metadata reports an error instead of mounting with empty props; unknown components retain their static fallback. Documents cannot register application code or grant network permissions. Live API and Netron playgrounds require explicit host capabilities and server authorization. Mermaid uses strict configuration and sanitized SVG images.
 

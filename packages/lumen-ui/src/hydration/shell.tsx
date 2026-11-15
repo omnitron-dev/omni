@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react';
+import React, { Suspense, useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { PrismProvider } from '@omnitron-dev/prism/core';
 import { ErrorBoundary } from '@omnitron-dev/prism/components/error-boundary';
@@ -89,6 +89,20 @@ function discoverIsland(element: HTMLElement, previous?: DiscoveredIsland): Disc
   }
 }
 
+/** Replace server content only in the commit that inserts its live counterpart. */
+function IslandPortal({ host, children }: { host: HTMLElement; children: ReactNode }) {
+  const fallback = useRef<Node[] | null>(null);
+  if (fallback.current === null) fallback.current = Array.from(host.childNodes);
+  useLayoutEffect(() => {
+    // A suspended or abandoned render must leave the server document intact.
+    // React has committed the portal children before this layout effect runs,
+    // so removal cannot expose a blank frame or touch React-owned live nodes.
+    for (const node of fallback.current ?? []) if (node.parentNode === host) host.removeChild(node);
+    fallback.current = []; // Release detached server trees after the atomic swap.
+  }, [host]);
+  return createPortal(children, host);
+}
+
 export function PortalIslandManager({
   registry,
   onActiveIslandsChange,
@@ -101,12 +115,9 @@ export function PortalIslandManager({
   // Element-identity keyed lifecycle refs (prevents stale string-ID collisions across DOM replacements)
   const cleanupsRef = useRef<Map<HTMLElement, () => void>>(new Map());
   const activeElementsRef = useRef<Set<HTMLElement>>(new Set());
-  const clearedSsrElementsRef = useRef<WeakSet<HTMLElement>>(new WeakSet());
   const discoveredListRef = useRef<DiscoveredIsland[]>([]);
-  const registryRef = useRef<IslandRegistry>(registry);
   const onActiveIslandsChangeRef = useRef(onActiveIslandsChange);
 
-  registryRef.current = registry;
   onActiveIslandsChangeRef.current = onActiveIslandsChange;
 
   useEffect(() => {
@@ -125,16 +136,6 @@ export function PortalIslandManager({
         }
       }
       onActiveIslandsChangeRef.current?.(nextIds);
-    };
-
-    const clearStaticFallbackIfReady = (el: HTMLElement, componentName: string) => {
-      if (clearedSsrElementsRef.current.has(el)) {
-        return;
-      }
-      if (registryRef.current[componentName]) {
-        clearedSsrElementsRef.current.add(el);
-        el.replaceChildren();
-      }
     };
 
     const activateElement = (el: HTMLElement) => {
@@ -163,8 +164,6 @@ export function PortalIslandManager({
         return;
       }
       activeElements.add(el);
-
-      clearStaticFallbackIfReady(el, item.componentName);
 
       notifyActiveIds();
       setRenderVersion((v) => v + 1);
@@ -282,14 +281,22 @@ export function PortalIslandManager({
     // Observe dynamic DOM changes (e.g. client router transitions, replaced island nodes, modals)
     let mutationObserver: MutationObserver | null = null;
     if (typeof MutationObserver !== 'undefined') {
-      mutationObserver = new MutationObserver(() => {
-        scanAndAttach();
+      const containsIsland = (node: Node) => node instanceof Element &&
+        (node.matches(ISLAND_SELECTOR) || Boolean(node.querySelector(ISLAND_SELECTOR)));
+      mutationObserver = new MutationObserver((records) => {
+        // Counters, charts, menus and Emotion insertions do not change the
+        // island inventory. Inspect changed subtrees before traversing a page.
+        const changed = records.some(record => record.type === 'attributes'
+          ? record.target instanceof Element && (record.target.matches(ISLAND_SELECTOR) ||
+            discoveredListRef.current.some(item => item.element === record.target))
+          : [...record.addedNodes, ...record.removedNodes].some(containsIsland));
+        if (changed) scanAndAttach();
       });
       mutationObserver.observe(document.body, {
         childList: true,
         subtree: true,
         attributes: true,
-        attributeFilter: ['data-props', 'data-hydrate', 'data-component', 'data-widget', 'data-lumen-island'],
+        attributeFilter: ['class', 'data-props', 'data-hydrate', 'data-component', 'data-widget', 'data-lumen-island'],
       });
     }
 
@@ -308,34 +315,28 @@ export function PortalIslandManager({
     return null;
   }
 
-  const portals: React.ReactPortal[] = [];
+  const portals: React.ReactNode[] = [];
 
   for (const item of discovered) {
     if (item.element.isConnected && item.metadataError) {
-      if (!clearedSsrElementsRef.current.has(item.element)) {
-        clearedSsrElementsRef.current.add(item.element);
-        item.element.replaceChildren();
-      }
-      portals.push(createPortal(<p className="lumen-island-error" role="alert">Unable to load this component: invalid island metadata.</p>, item.element, item.instanceKey));
+      portals.push(<IslandPortal key={item.instanceKey} host={item.element}>
+        <p className="lumen-island-error" role="alert">Unable to load this component: invalid island metadata.</p>
+      </IslandPortal>);
       continue;
     }
     if (item.element.isConnected && activeElementsRef.current.has(item.element)) {
       const Component = registry[item.componentName];
       if (Component) {
-        // Clear static SSR fallback children once right before mounting the live portal component
-        if (!clearedSsrElementsRef.current.has(item.element)) {
-          clearedSsrElementsRef.current.add(item.element);
-          item.element.replaceChildren();
-        }
-        portals.push(createPortal(
-          <ErrorBoundary resetKeys={[Component, item.islandId, item.rawProps]}
-            fallback={({ error }) => <p className="lumen-island-error" role="alert">
-              {item.componentName} could not render. {error.message}
-            </p>}>
-            {React.createElement(Component, item.props)}
-          </ErrorBoundary>,
-          item.element, item.instanceKey,
-        ));
+        portals.push(
+          <ErrorBoundary key={item.instanceKey} resetKeys={[Component, item.islandId, item.rawProps]}
+            fallback={({ error }) => <IslandPortal host={item.element}>
+              <p className="lumen-island-error" role="alert">{item.componentName} could not render. {error.message}</p>
+            </IslandPortal>}>
+            <Suspense fallback={null}>
+              <IslandPortal host={item.element}>{React.createElement(Component, item.props)}</IslandPortal>
+            </Suspense>
+          </ErrorBoundary>
+        );
       }
     }
   }

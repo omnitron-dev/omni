@@ -218,6 +218,66 @@ describe('Hydration Runtime & Triggers', () => {
     } finally { await act(async () => root.unmount()); }
   });
 
+  it('keeps server content until a suspended island commits without blocking siblings', async () => {
+    container.innerHTML = '<div data-lumen-island="slow" data-component="Slow" data-hydrate="load"><p>Server content</p></div>' +
+      '<div data-lumen-island="fast" data-component="Fast" data-hydrate="load">Server counter</div>';
+    const slow = container.querySelector('[data-lumen-island="slow"]')!;
+    const fast = container.querySelector('[data-lumen-island="fast"]')!;
+    const serverContent = slow.firstChild;
+    let resolve!: (value: { default: React.ComponentType }) => void;
+    const pending = new Promise<{ default: React.ComponentType }>(done => { resolve = done; });
+    const Slow = React.lazy(() => pending);
+    function Fast() {
+      const [count, setCount] = useState(0);
+      return <button onClick={() => setCount(value => value + 1)}>Counter {count}</button>;
+    }
+    const mount = document.createElement('div'); container.append(mount);
+    const root = createRoot(mount);
+    try {
+      await act(async () => root.render(<PortalIslandManager registry={{ Slow, Fast }} />));
+      expect(slow.firstChild).toBe(serverContent);
+      expect(slow.textContent).toBe('Server content');
+      const button = fast.querySelector('button')!;
+      expect(button).not.toBeNull();
+      await act(async () => button.click());
+      expect(button.textContent).toBe('Counter 1');
+      let serverPresentDuringRender = false;
+      await act(async () => resolve({ default: () => {
+        serverPresentDuringRender = slow.contains(serverContent);
+        return <p>Interactive content</p>;
+      } }));
+      expect(serverPresentDuringRender).toBe(true);
+      expect(slow.querySelectorAll('p')).toHaveLength(1);
+      expect(slow.textContent).toBe('Interactive content');
+      expect(fast.querySelector('button')).toBe(button);
+      expect(button.textContent).toBe('Counter 1');
+    } finally { await act(async () => root.unmount()); }
+  });
+
+  it('does not rescan the document for unrelated component updates', async () => {
+    const mount = document.createElement('div'); container.append(mount);
+    const root = createRoot(mount);
+    await act(async () => root.render(<PortalIslandManager registry={{ Badge: () => <span>Ready</span> }} />));
+    const scan = vi.spyOn(document, 'querySelectorAll');
+    try {
+      const unrelated = document.createElement('section');
+      await act(async () => {
+        container.append(unrelated);
+        for (let i = 0; i < 100; i++) unrelated.append(document.createElement('span'));
+      });
+      expect(scan).not.toHaveBeenCalled();
+      const host = document.createElement('div');
+      host.dataset.lumenIsland = 'new-badge'; host.dataset.component = 'Badge'; host.dataset.hydrate = 'interaction';
+      await act(async () => unrelated.append(host));
+      expect(scan).toHaveBeenCalledTimes(1);
+      await act(async () => host.click());
+      expect(host.textContent).toBe('Ready');
+    } finally {
+      scan.mockRestore();
+      await act(async () => root.unmount());
+    }
+  });
+
   it('allows calling LumenShell as a pure function without hook error', () => {
     const result = LumenShell({
       theme: 'dark',

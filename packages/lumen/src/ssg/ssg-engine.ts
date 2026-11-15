@@ -192,6 +192,7 @@ export async function buildStaticSite(
           currentPath: route,
           signal: renderSignal,
           renderTimeoutMs: options?.renderTimeoutMs,
+          islands: config.islands,
           extraHead: [
             stylesheetLinkTag,
             ...[...(config.stylesheets ?? []), ...(client.styles ?? [])].map(

@@ -12,6 +12,7 @@ import {
   setupIdleTrigger,
   setupEventTrigger,
   PortalIslandManager,
+  getIslandComponent,
   setupInteractionTrigger,
 } from '../src/hydration/index.js';
 
@@ -101,6 +102,25 @@ describe('Hydration Runtime & Triggers', () => {
     expect(el.props['data-component']).toBe('Counter');
     expect(el.props['data-hydrate']).toBe('interaction');
     expect(JSON.parse(el.props['data-props'])).toEqual({ step: 5, initial: 10 });
+  });
+
+  it('looks up only explicitly registered components in SSR and the client', async () => {
+    const Badge = () => <span>Registered</span>;
+    expect(getIslandComponent({}, 'constructor')).toBeUndefined();
+    expect(getIslandComponent(Object.create({ Badge }), 'Badge')).toBeUndefined();
+    expect(getIslandComponent({ Badge }, 'Badge')).toBe(Badge);
+    container.innerHTML = '<div data-lumen-island="unregistered" data-component="constructor" data-hydrate="load">Static content</div><div id="runtime"></div>';
+    const root = createRoot(container.querySelector('#runtime')!);
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await act(async () => root.render(<PortalIslandManager registry={{}} />));
+      expect(container.querySelector('[data-lumen-island]')?.textContent).toBe('Static content');
+      expect(container.querySelector('[role="alert"]')).toBeNull();
+      expect(errors).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => root.unmount());
+      errors.mockRestore();
+    }
   });
 
   it('uses the same strict metadata contract for React hosts and AST SSR widgets', () => {

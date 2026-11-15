@@ -8,6 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import { build, createServer, preview } from 'vite';
 import { test as base } from '@playwright/test';
+import { typescriptLibrariesVitePlugin } from '../../../lumen-ast/build/typescript-libraries.js';
 
 const consumer = process.env.LUMEN_CONSUMER_ROOT && realpathSync(process.env.LUMEN_CONSUMER_ROOT);
 const execute = promisify(execFile);
@@ -20,7 +21,9 @@ if (consumer && process.env.LUMEN_AST_ROOT)
 // compiled by Vite without rebuilding the SDK used by running applications;
 // archive acceptance always uses the consumer's ordinary package resolution.
 const sourceEntries = consumer ? {} : {
+  '@omnitron-dev/lumen': '../../../lumen/src/index.ts',
   '@omnitron-dev/lumen-ui': '../../src/index.ts',
+  '@omnitron-dev/lumen-ui/blocks': '../../src/blocks/index.ts',
   '@omnitron-dev/lumen-ui/layout': '../../src/navigation/index.ts',
   '@omnitron-dev/lumen-ui/runtime': '../../src/hydration/index.ts',
   '@omnitron-dev/prism/core': '../../../prism/src/core/index.ts',
@@ -28,6 +31,15 @@ const sourceEntries = consumer ? {} : {
   '@omnitron-dev/prism/identity': '../../../prism/src/identity/index.ts',
   '@omnitron-dev/prism/components/doc-layout': '../../../prism/src/components/doc-layout/index.ts',
 };
+if (!consumer && !process.env.LUMEN_AST_ROOT) {
+  const ast = JSON.parse(readFileSync(new URL('../../../lumen-ast/package.json', import.meta.url), 'utf8'));
+  for (const [entry, value] of Object.entries(ast.exports)) {
+    const runtime = value.import ?? value.node;
+    if (!runtime) continue;
+    sourceEntries['@omnitron-dev/lumen-ast' + (entry === '.' ? '' : entry.slice(1))] =
+      '../../../lumen-ast/' + runtime.replace(/^\.\/dist\//, 'src/').replace(/\.js$/, '.ts');
+  }
+}
 const sourceAliases = Object.entries(sourceEntries).map(([find, relative]) => ({
   find: new RegExp(`^${find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`),
   replacement: fileURLToPath(new URL(relative, import.meta.url)),
@@ -45,14 +57,23 @@ if (astRoot) {
 }
 
 /** SSR uses the same source or installed archive as the browser bundle. */
-export async function withBrowserModules(render) {
-  if (consumer) return render(importConsumer);
+export async function withBrowserModules(render, fixtureUrl) {
+  if (consumer && !fixtureUrl) return render(importConsumer);
   const cache = await mkdtemp(path.join(os.tmpdir(), 'lumen-source-ssr-'));
   let server;
+  let fixtureRoot;
   try {
+    let fixture = fixtureUrl && fileURLToPath(fixtureUrl);
+    if (consumer && fixture) {
+      fixtureRoot = await mkdtemp(path.join(consumer, '.lumen-ssr-fixture-'));
+      const copied = path.join(fixtureRoot, path.basename(fixture));
+      await cp(fixture, copied);
+      fixture = copied;
+    }
     server = await createServer({
-      configFile: false, root: fileURLToPath(new URL('../../', import.meta.url)),
+      configFile: false, root: fixtureRoot ?? fileURLToPath(new URL('../../', import.meta.url)),
       cacheDir: cache, publicDir: false, appType: 'custom', logLevel: 'error',
+      plugins: consumer ? [] : [typescriptLibrariesVitePlugin()],
       resolve: { alias: sourceAliases },
       server: { middlewareMode: true, hmr: false, ws: false, watch: null },
       optimizeDeps: { noDiscovery: true, include: [] },
@@ -61,10 +82,11 @@ export async function withBrowserModules(render) {
     return await render(specifier => {
       const entry = sourceAliases.find(alias => alias.find.test(specifier));
       return entry ? server.ssrLoadModule(entry.replacement) : importConsumer(specifier);
-    });
+    }, fixture ? () => server.ssrLoadModule(fixture) : undefined);
   } finally {
     await server?.close();
     await rm(cache, { recursive: true, force: true });
+    if (fixtureRoot) await rm(fixtureRoot, { recursive: true, force: true });
   }
 }
 
@@ -109,7 +131,9 @@ export const createBrowserTest = (entry, {
           await cp(path.join(import.meta.dirname, file), path.join(root, file));
       }
       const config = {
-        root, configFile: false, publicDir: false, logLevel: 'error', plugins, worker: { format: 'es' },
+        root, configFile: false, publicDir: false, logLevel: 'error', plugins: [
+          ...(!consumer && source ? [typescriptLibrariesVitePlugin()] : []), ...plugins,
+        ], worker: { format: 'es' },
         resolve: { alias: source ? sourceAliases : [], dedupe: ['react', 'react-dom', '@emotion/react', '@emotion/styled', '@emotion/cache'] },
         build: { outDir: output, rolldownOptions: { input: path.join(root, entry) } },
         preview: { host: '127.0.0.1', port: 0, headers: {

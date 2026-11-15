@@ -1,22 +1,19 @@
 import React from 'react';
-import { renderToString } from 'react-dom/server';
 import { prerenderToNodeStream } from 'react-dom/static';
 import { text } from 'node:stream/consumers';
 import createCache from '@emotion/cache';
 import { CacheProvider, ClassNames, Global } from '@emotion/react';
 import createEmotionServer from '@emotion/server/create-instance';
-import { LumenShell } from '@omnitron-dev/lumen-ui';
-import { ComponentExample } from '@omnitron-dev/lumen-ui/blocks';
+import { LumenShell, type IslandRegistry } from '@omnitron-dev/lumen-ui';
 import { mixins } from '@omnitron-dev/prism/theme';
-import { PrismThemeProvider, useTheme } from '@omnitron-dev/prism/ui';
 import {
-  toHtmlSsr,
   createDocumentAccessPredicate,
   projectDocumentAccess,
   type LumenDocumentAst,
 } from '@omnitron-dev/lumen-ast';
 import type { CorpusProjectionOptions } from '../corpus/projection.js';
 import { buildHtmlPage } from './assemble-html.js';
+import { renderDocumentContent } from './render-react.js';
 
 export interface RenderDocumentHtmlOptions extends CorpusProjectionOptions {
   macros?: Record<string, string>;
@@ -27,6 +24,7 @@ export interface RenderDocumentHtmlOptions extends CorpusProjectionOptions {
   extraHead?: string[];
   bodyScripts?: string[];
   renderLayout?: (content: React.ReactNode) => React.ReactNode;
+  islands?: IslandRegistry;
   /** Cancels this document without producing a partial static page. */
   signal?: AbortSignal;
   /** Maximum asynchronous render time per document. Defaults to 30 seconds. */
@@ -87,28 +85,9 @@ export async function renderDocumentHtml(ast: LumenDocumentAst, options?: Render
   const cache = createCache({ key: 'css' });
   // Enable Emotion's SSR cache before rendering; extraction happens once in buildHtmlPage.
   createEmotionServer(cache);
-  function Article({ className }: { className: string }): React.ReactNode {
-    const prismTheme = useTheme();
-    const articleHtml = docAllowed
-      ? toHtmlSsr(effectiveAst, {
-          macros: options?.macros,
-          renderExample: ({ id, ...source }, islandHtml, ordinal) => renderToString(
-            React.createElement(CacheProvider, { value: cache },
-              React.createElement(PrismThemeProvider, { theme: prismTheme },
-                React.createElement('section', { 'data-example': id, 'aria-label': `${id} example` },
-                  React.createElement(ComponentExample, {
-                    ...source,
-                    children: React.createElement('div', { dangerouslySetInnerHTML: { __html: islandHtml } }),
-                  })
-                )
-              )
-            ),
-            { identifierPrefix: `example-${ordinal}-` }
-          ),
-        })
-      : '<article class="lumen-doc"><h1>Restricted</h1></article>';
-    return React.createElement('div', { className, dangerouslySetInnerHTML: { __html: articleHtml } });
-  }
+  const article = docAllowed
+    ? renderDocumentContent(effectiveAst, { macros: options?.macros, islands: options?.islands })
+    : React.createElement('article', { className: 'lumen-doc' }, React.createElement('h1', null, 'Restricted'));
 
   const renderedShellHtml = await prerenderDocument(
     React.createElement(
@@ -125,9 +104,9 @@ export async function renderDocumentHtml(ast: LumenDocumentAst, options?: Render
         children: ({ css, cx }) =>
           React.createElement(
             LumenShell,
-            { theme, locale, currentPath, disablePrismProvider: Boolean(options?.renderLayout) },
+            { theme, locale, currentPath, islands: options?.islands, disablePrismProvider: Boolean(options?.renderLayout) },
             (options?.renderLayout ?? ((content) => content))(
-              React.createElement(Article, {
+              React.createElement('div', {
                 className: cx(
                   'lumen-doc-container',
                   css`
@@ -136,7 +115,7 @@ export async function renderDocumentHtml(ast: LumenDocumentAst, options?: Render
                     color: inherit;
                   `
                 ),
-              })
+              }, article)
             )
           ),
       })

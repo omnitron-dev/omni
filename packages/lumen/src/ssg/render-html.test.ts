@@ -1,4 +1,4 @@
-import React, { lazy, Suspense } from 'react';
+import React, { createContext, lazy, memo, Suspense, useContext, useId } from 'react';
 import { ClassNames } from '@emotion/react';
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -8,7 +8,10 @@ import { parseDocument } from '@omnitron-dev/lumen-ast';
 import { renderDocumentHtml } from './render-html.js';
 import { buildStaticSite } from './ssg-engine.js';
 import { defineLumenConfig } from '../config/define.js';
+import type { LumenUserConfig } from '../config/schema.js';
+import { expandEnvVariables } from '../config/env.js';
 import { CorpusGraph } from '../corpus/graph.js';
+import { useLumen } from '@omnitron-dev/lumen-ui';
 
 afterEach(() => vi.useRealTimers());
 
@@ -28,6 +31,76 @@ function suspendedLayout() {
 }
 
 describe('complete static React rendering', () => {
+  it('renders registered Markdown widgets inside the original layout and Lumen contexts', async () => {
+    const Context = createContext('MISSING CONTEXT');
+    function Counter({ initial }: { initial: number }) {
+      const label = useContext(Context);
+      const { currentPath } = useLumen();
+      return React.createElement('output', { id: useId(), 'data-context': label, 'data-path': currentPath }, initial);
+    }
+    const ast = await parseDocument('<Counter initial={2} hydrate="visible" />\n\n<Counter initial={3} />');
+    const html = await renderDocumentHtml(ast, {
+      currentPath: '/guide', islands: { Counter },
+      renderLayout: children => React.createElement(Context.Provider, { value: 'SITE CONTEXT' }, children),
+    });
+    expect(html.match(/data-context="SITE CONTEXT"/g)).toHaveLength(2);
+    expect(html.match(/data-path="\/guide"/g)).toHaveLength(2);
+    expect(html).toContain('>2</output>');
+    expect(html).toContain('>3</output>');
+    const ids = [...html.matchAll(/<output id="([^"]+)"/g)].map(match => match[1]);
+    expect(new Set(ids).size).toBe(2);
+    expect(html.match(/data-component="Counter"/g)).toHaveLength(2);
+  });
+
+  it('waits for lazy registered widgets rather than emitting an empty preview', async () => {
+    const Counter = lazy(async () => ({ default: () => React.createElement('output', null, 'READY ON FIRST PAINT') }));
+    const ast = await parseDocument('<Counter hydrate="visible" />');
+    const html = await renderDocumentHtml(ast, { islands: { Counter } });
+    expect(html).toContain('READY ON FIRST PAINT');
+  });
+
+  it('projects access before invoking a registered server component', async () => {
+    const Secret = vi.fn(() => React.createElement('p', null, 'PRIVATE WIDGET'));
+    const ast = await parseDocument('# Public\n\n<Secret access="internal" />\n\n## Hidden {access=internal}\n\n<Secret />');
+    const html = await renderDocumentHtml(ast, { islands: { Secret } });
+    expect(Secret).not.toHaveBeenCalled();
+    expect(html).not.toContain('PRIVATE WIDGET');
+    expect(html).not.toContain('data-component="Secret"');
+  });
+
+  it('does not turn authored HTML attributes into a trusted server component', async () => {
+    const Secret = vi.fn(() => React.createElement('p', null, 'EXECUTED'));
+    const ast = await parseDocument('<div data-lumen-island="spoof" data-component="Secret" data-props="{}">Static fallback</div>');
+    const html = await renderDocumentHtml(ast, { islands: { Secret } });
+    expect(Secret).not.toHaveBeenCalled();
+    expect(html).toContain('Static fallback');
+    expect(html).not.toContain('EXECUTED');
+  });
+
+  it('validates trusted component registration while preserving React lazy and memo identity', () => {
+    const View = () => null;
+    const Memo = memo(View);
+    const Lazy = lazy(async () => ({ default: View }));
+    const config = defineLumenConfig(expandEnvVariables({ title: 'Registry', islands: { View, Memo, Lazy } }));
+    expect(config.islands).toEqual({ View, Memo, Lazy });
+    expect(config.islands?.['Memo']).toBe(Memo);
+    expect(config.islands?.['Lazy']).toBe(Lazy);
+    for (const invalid of ['script', 42, null, {}, { render: View }]) {
+      expect(() => defineLumenConfig({ title: 'Registry', islands: { Invalid: invalid } } as unknown as LumenUserConfig))
+        .toThrow('islands.Invalid');
+    }
+  });
+
+  it('expands configuration values without changing prototypes or recursing through cycles', () => {
+    const input = JSON.parse('{"__proto__":{"polluted":true}}');
+    const expanded = expandEnvVariables(input);
+    expect(Object.getPrototypeOf(expanded)).toBe(Object.prototype);
+    expect(Object.hasOwn(expanded, '__proto__')).toBe(true);
+    expect(expanded.polluted).toBeUndefined();
+    const cycle: { child?: unknown } = {};
+    cycle.child = cycle;
+    expect(() => expandEnvVariables(cycle)).toThrow('configuration contains a cycle');
+  });
   it('waits for suspended content and extracts its CSS before publishing HTML', async () => {
     const ast = await parseDocument('# Permanent article');
     const deferred = suspendedLayout();

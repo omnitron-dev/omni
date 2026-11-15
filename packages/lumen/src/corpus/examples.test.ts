@@ -52,7 +52,10 @@ describe('trusted example source projection', () => {
     expect(summary?.textContent).toBe('Исходник');
     expect(html).not.toContain('<script>alert');
     expect(html).toContain('// [!code highlight]');
-    expect(html).toContain('example-1-');
+    const fragment = JSDOM.fragment(html);
+    const labelId = fragment.querySelector('figure[data-example]')?.getAttribute('aria-labelledby');
+    expect(labelId).toBeTruthy();
+    expect(fragment.getElementById(labelId!)?.textContent).toBe('Literal example');
     const markdown = generateRouteMirrors(projected).get('/guide.md')!;
     expect(markdown).toContain(source);
     expect(markdown).not.toContain('data-props');

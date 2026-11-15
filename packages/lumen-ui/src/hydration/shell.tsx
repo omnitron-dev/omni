@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { PrismProvider } from '@omnitron-dev/prism/core';
 import { ErrorBoundary } from '@omnitron-dev/prism/components/error-boundary';
 import { parseIslandProps, parseHydrationTrigger } from '@omnitron-dev/lumen-ast/islands';
-import { LumenContext, type LumenContextValue, type IslandComponent, type IslandRegistry } from './context.js';
+import { LumenContext, getIslandComponent, type LumenContextValue, type IslandComponent, type IslandRegistry } from './context.js';
 import { setupTrigger, type HydrationTrigger } from './triggers.js';
 import { DocumentTabs } from './document-tabs.js';
 
@@ -325,7 +325,7 @@ export function PortalIslandManager({
       continue;
     }
     if (item.element.isConnected && activeElementsRef.current.has(item.element)) {
-      const Component = registry[item.componentName];
+      const Component = getIslandComponent(registry, item.componentName);
       if (Component) {
         portals.push(
           <ErrorBoundary key={item.instanceKey} resetKeys={[Component, item.islandId, item.rawProps]}
@@ -372,7 +372,7 @@ function LumenShellProvider({
     });
   }, []);
 
-  const getIsland = useCallback((name: string): IslandComponent | undefined => latestRegistryRef.current[name], []);
+  const getIsland = useCallback((name: string): IslandComponent | undefined => getIslandComponent(latestRegistryRef.current, name), []);
 
   const hydrateIsland = useCallback((islandId: string) => {
     if (!islandId) return;

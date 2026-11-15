@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import type { CorpusGate } from '../gates/types.js';
 import type { ReactNode } from 'react';
+import { isValidElementType } from 'react-is';
+import type { IslandComponent, IslandRegistry } from '@omnitron-dev/lumen-ui';
 import type { CorpusDocument } from '../corpus/types.js';
 
 /** Layouts receive only the audience-projected corpus, never restricted source. */
@@ -65,6 +67,11 @@ const exampleGroup = z.object({
   labels: z.object({ source: z.string().min(1).optional() }).strict().optional(),
 }).strict();
 
+const islandComponent = z.custom<IslandComponent>(value =>
+  (typeof value === 'function' || (typeof value === 'object' && value !== null)) && isValidElementType(value),
+  'Expected a trusted React component',
+);
+
 export const LumenLocalesConfigSchema = z.union([
   z.array(z.string()),
   z.object({
@@ -86,6 +93,7 @@ export const LumenUserConfigSchema = z.object({
   publicDir: z.string().optional(),
   pagesDir: z.string().optional(),
   clientEntry: z.string().optional(),
+  islands: z.record(z.string().min(1).max(256), islandComponent).optional(),
   examples: z.record(z.string().min(1), exampleGroup).optional(),
   stylesheets: z.array(z.string()).optional(),
   sidebars: z.record(z.string(), z.array(LumenSidebarItemSchema)).optional(),
@@ -115,6 +123,8 @@ export interface LumenConfig {
   publicDir?: string;
   pagesDir?: string;
   clientEntry?: string;
+  /** Explicit server components; share the same registry with the client LumenShell. */
+  islands?: IslandRegistry;
   examples?: Record<string, z.output<typeof exampleGroup>>;
   stylesheets?: string[];
   sidebars: Record<string, LumenSidebarItem[]>;

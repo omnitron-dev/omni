@@ -42,6 +42,7 @@ export function defineLumenConfig(input: LumenUserConfig): LumenConfig {
     publicDir: userConfig.publicDir,
     pagesDir: userConfig.pagesDir,
     clientEntry: userConfig.clientEntry,
+    islands: userConfig.islands,
     examples: userConfig.examples,
     stylesheets: userConfig.stylesheets ?? [],
     sidebars: (userConfig.sidebars ?? {}) as Record<string, import('./schema.js').LumenSidebarItem[]>,

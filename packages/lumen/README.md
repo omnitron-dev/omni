@@ -61,13 +61,30 @@ The builder validates a staged generation before publishing it. Failed rebuilds 
 
 Configuration is trusted executable code. Documents cannot import arbitrary JavaScript or register host components. Static output uses the anonymous audience projection by default; private hosting still needs server-side authorization. `theme.layout` receives projected documents, and its React dependencies are compiled with the renderer in one SSR graph.
 
-`renderDocumentHtml` returns a promise and waits for suspended React layout content before extracting styles. A render error, cancellation or incomplete render fails the build instead of publishing a temporary client fallback. Programmatic `renderDocumentHtml` and `buildStaticSite` callers can pass an `AbortSignal` and `renderTimeoutMs`; the default asynchronous render deadline is 30 seconds per document. Client-only Markdown widgets still need an explicit static representation.
+`renderDocumentHtml` returns a promise and waits for suspended React content before extracting styles. A render error, cancellation or incomplete render fails the build instead of publishing a temporary client fallback. Programmatic `renderDocumentHtml` and `buildStaticSite` callers can pass an `AbortSignal` and `renderTimeoutMs`; the default asynchronous render deadline is 30 seconds per document.
 
 SSR and custom client builds share the consumer's installed React, Emotion, React Hook Form and React Router contexts with linked SDK packages. Install a provider in the website when composing its public API with Prism components. Integrations absent from the website keep their ordinary package resolution.
 
 Critical Emotion CSS retains each cache key, independently owned `Global` block and CSP nonce so the browser can reuse the server styles. Extraction runs once per page and fails on an invalid cache; markup class names alone never mark a style as inserted. Lumen's static baseline has its own style block outside Emotion's ownership.
 
 Use `lumen pdf --outDir pdf` for PDF files, `lumen types --outDir generated` for corpus types, and `lumen mcp --stdio` for a local read-only corpus server. Keep export directories separate from the static generation. The source directory must exist; a missing corpus is an error.
+
+## Server-rendered islands
+
+Export a registry of trusted React components from a module shared by the site configuration and client entry:
+
+```ts
+// src/islands.ts
+import { Counter } from './counter.js';
+
+export const islands = { Counter };
+```
+
+Pass this registry as `islands` to `defineLumenConfig` and to the client `LumenShell`. `<Counter initial={2} hydrate="visible" />` then includes the component's initial HTML in the static page and activates the same component in the browser. Configure `clientEntry` to mount that shell; the registry does not implicitly bundle the server configuration into browser code.
+
+The compiler creates one sanitized HTML tree for both the string serializer and React. Registered components render inside the page's existing React, Prism and Lumen contexts, including lazy components. Names and literal JSON props select registered code; documents never import or evaluate modules. Access projection runs before components execute. Treat component props as document input: validate application-specific values before performing I/O.
+
+Use a block widget on its own line for components containing block elements. Inline widgets use a `span` host and must render phrasing content. A widget absent from the server registry retains its authored static children; provide a useful static representation for browser-only components. The client retains that HTML until its replacement commits. Controls that require JavaScript should expose their pending state until their handlers are active.
 
 ## Component examples
 

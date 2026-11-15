@@ -1,5 +1,6 @@
 import { reconcilePaletteOverrides, type PaletteOverrides } from './palette/overrides.js';
 import { prismIconDefaults } from '../icons/theme.js';
+import { addSystemColorSchemeDefault } from './color-scheme.js';
 /**
  * Theme Factory
  *
@@ -19,7 +20,7 @@ import { prismIconDefaults } from '../icons/theme.js';
 
 import { createTheme as muiCreateTheme, responsiveFontSizes } from '@mui/material/styles';
 import * as locales from '@mui/material/locale';
-import type { PaletteOptions, ThemeOptions } from '@mui/material/styles';
+import type { PaletteOptions, ThemeOptions, Theme } from '@mui/material/styles';
 import type {
   ThemePreset,
   ThemeMode,
@@ -62,6 +63,15 @@ export type SupportedLocale = keyof typeof locales;
 
 type ThemeOverrideOptions = Omit<ThemeOptions, 'palette'> & { palette?: PaletteOverrides };
 
+export interface PrismThemeOverrideContext {
+  /** Palette being compiled. Both schemes are compiled before the first paint. */
+  mode: 'light' | 'dark';
+}
+
+export type PrismThemeOverrides =
+  | ThemeOverrideOptions
+  | ((context: PrismThemeOverrideContext) => ThemeOverrideOptions);
+
 /**
  * Options for creating a Prism theme.
  *
@@ -103,8 +113,8 @@ export interface CreatePrismThemeOptions {
   borderRadius?: number;
   /** Enable responsive font sizes (default: true) */
   responsiveFonts?: boolean;
-  /** Custom MUI theme overrides */
-  overrides?: ThemeOverrideOptions;
+  /** MUI overrides. Mode-dependent component CSS uses theme.applyStyles(), not conditional rendering. */
+  overrides?: PrismThemeOverrides;
   /** Typography configuration (optional override) */
   typography?: Partial<ThemeOptions['typography']>;
   /** CSS variables configuration (optional override) */
@@ -581,6 +591,16 @@ function deepMergeThemeOptions(base: ThemeOptions, overrides: Partial<ThemeOptio
     // the callback discards density, state selectors and palette-dependent rules.
     // Let MUI evaluate both in order so the consumer overrides only its own rules.
     if (
+      key === 'styleOverrides' && baseVal && overrideVal &&
+      (typeof baseVal === 'function' || typeof overrideVal === 'function')
+    ) {
+      // Global CSS (MuiCssBaseline) has no component slots. Resolve both native
+      // theme callbacks before handing their interpolation array to Emotion.
+      result[key] = (theme: Theme) => [
+        typeof baseVal === 'function' ? baseVal(theme) : baseVal,
+        typeof overrideVal === 'function' ? overrideVal(theme) : overrideVal,
+      ];
+    } else if (
       key === 'styleOverrides' &&
       baseVal &&
       overrideVal &&
@@ -661,9 +681,6 @@ export function createPrismTheme(options: CreatePrismThemeOptions = {}): PrismTh
   // Get preset configuration
   const presetConfig = getPresetConfig(preset);
 
-  // Note: MUI 7 handles 'system' mode automatically via CSS media queries
-  // No need to resolve mode here - CSS variables handle light/dark switching
-
   // Apply primary color override if provided
   let lightPalette = applyPrimaryOverride(presetConfig.lightPalette, primaryColor, 'light');
   let darkPalette = applyPrimaryOverride(presetConfig.darkPalette, primaryColor, 'dark');
@@ -703,6 +720,7 @@ export function createPrismTheme(options: CreatePrismThemeOptions = {}): PrismTh
     prefix: cssVarPrefix,
     colorSchemeSelector: `data-${cssVarPrefix}-color-scheme`,
     enabled: true,
+    ...options.cssVariables,
   };
 
   // Build MUI locale
@@ -714,25 +732,22 @@ export function createPrismTheme(options: CreatePrismThemeOptions = {}): PrismTh
   // Dark mode uses subtle shadows with reduced opacity
   const darkShadows = createShadows(primaryMain, 0.4);
 
-  // Resolve effective mode ('system' → actual light/dark)
-  // Note: PrismProvider resolves 'system' before calling this, but handle fallback here
+  // A deterministic server default; native MUI selection owns the live mode.
+  // Both palettes are emitted so the bootstrap can select either before React.
   const effectiveMode = mode === 'dark' ? 'dark' : 'light';
 
   // Select palette and shadows based on active mode
-  const activePalette = effectiveMode === 'dark' ? darkPalette : lightPalette;
   const activeShadows = effectiveMode === 'dark' ? darkShadows : lightShadows;
 
   // Build base theme options
   const themeOptions: ThemeOptions = {
     // CSS Variables integration - enables theme.vars.palette.*
-    cssVariables: {
-      cssVarPrefix,
+    cssVariables: cssVariablesConfig.enabled ? {
+      cssVarPrefix: cssVariablesConfig.prefix,
       colorSchemeSelector: cssVariablesConfig.colorSchemeSelector,
-    },
+    } : false,
 
-    // Active palette based on resolved mode
-    // PrismProvider recreates the theme on mode change, so we use the resolved palette directly
-    palette: activePalette,
+    defaultColorScheme: effectiveMode,
 
     // Active shadows based on resolved mode
     shadows: activeShadows,
@@ -769,13 +784,38 @@ export function createPrismTheme(options: CreatePrismThemeOptions = {}): PrismTh
 
   // Deep merge with custom overrides (preserves nested component overrides)
   const themedIcons = deepMergeThemeOptions(themeOptions, { components: prismIconDefaults() });
-  const finalOptions = overrides ? deepMergeThemeOptions(themedIcons, overrides) : themedIcons;
+  const lightOverrides = typeof overrides === 'function' ? overrides({ mode: 'light' }) : overrides;
+  const darkOverrides = typeof overrides === 'function' ? overrides({ mode: 'dark' }) : overrides;
+  const activeOverrides = effectiveMode === 'dark' ? darkOverrides : lightOverrides;
+  const finalOptions = activeOverrides ? deepMergeThemeOptions(themedIcons, activeOverrides) : themedIcons;
 
   const variableOptions = typeof finalOptions.cssVariables === 'object' ? finalOptions.cssVariables : undefined;
-  finalOptions.palette = reconcilePaletteOverrides(finalOptions.palette!, overrides?.palette, {
+  const reconciliation = {
     nativeColor: variableOptions?.nativeColor,
     cssVarPrefix: variableOptions?.cssVarPrefix ?? cssVarPrefix,
-  });
+  };
+  const paletteFor = (palette: PaletteOptions, scheme: 'light' | 'dark', supplied?: ThemeOverrideOptions) => {
+    const ownScheme = supplied?.colorSchemes?.[scheme];
+    const schemePalette = typeof ownScheme === 'object' ? ownScheme.palette : undefined;
+    const combined = deepMergeThemeOptions(
+      deepMergeThemeOptions({ palette: {} }, { palette: supplied?.palette ?? {} }),
+      { palette: schemePalette ?? {} }
+    ).palette;
+    const merged = deepMergeThemeOptions({ palette }, { palette: combined }).palette!;
+    return reconcilePaletteOverrides({ ...merged, mode: scheme }, combined, reconciliation);
+  };
+  const palettes = { light: paletteFor(lightPalette, 'light', lightOverrides), dark: paletteFor(darkPalette, 'dark', darkOverrides) };
+  finalOptions.colorSchemes = {
+    ...finalOptions.colorSchemes,
+    light: { ...typeof finalOptions.colorSchemes?.light === 'object' && finalOptions.colorSchemes.light, palette: palettes.light },
+    dark: { ...typeof finalOptions.colorSchemes?.dark === 'object' && finalOptions.colorSchemes.dark, palette: palettes.dark },
+  };
+  // A top-level palette would override the selected native color scheme.
+  delete finalOptions.palette;
+  if (finalOptions.cssVariables === false) {
+    finalOptions.palette = palettes[effectiveMode];
+    delete finalOptions.colorSchemes;
+  }
 
   // Create base theme
   let theme = muiCreateTheme(finalOptions, muiLocale);
@@ -795,6 +835,7 @@ export function createPrismTheme(options: CreatePrismThemeOptions = {}): PrismTh
     densityMultiplier,
     cssVariables: cssVariablesConfig,
   };
+  addSystemColorSchemeDefault(prismTheme);
 
   return prismTheme;
 }

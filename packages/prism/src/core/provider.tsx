@@ -8,10 +8,12 @@
  */
 
 import type { ReactNode } from 'react';
+import type {} from '@mui/material/themeCssVarsAugmentation';
 import { useMemo, useEffect, useCallback } from 'react';
 import createCache from '@emotion/cache';
 import { CacheProvider } from '@emotion/react';
-import { ThemeProvider as MuiThemeProvider } from '@mui/material/styles';
+import { ThemeProvider as MuiThemeProvider, useColorScheme, useTheme } from '@mui/material/styles';
+import useEnhancedEffect from '@mui/utils/useEnhancedEffect';
 import CssBaseline from '@mui/material/CssBaseline';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -21,19 +23,10 @@ import type { PrismConfig, PartialPrismConfig } from '../types/config.js';
 import type { PrismTheme, ThemeMode } from '../types/theme.js';
 import { defaultPrismConfig } from '../types/config.js';
 import { PrismContext } from './context.js';
-import type { PrismSettingsState } from './context.js';
-import { useResolvedMode } from './hooks/use-media-query.js';
-import { createPrismTheme } from '../theme/create-theme.js';
+import type { PrismSettingsState, PrismContextValue } from './context.js';
+import { createPrismTheme, type PrismThemeOverrides } from '../theme/create-theme.js';
 import { useSettingsStore } from '../state/stores/settings.js';
-
-export interface PrismThemeOverrideContext {
-  /** Actual palette mode after resolving the operating-system preference. */
-  mode: 'light' | 'dark';
-}
-
-export type PrismThemeOverrides =
-  | Record<string, unknown>
-  | ((context: PrismThemeOverrideContext) => Record<string, unknown>);
+import { useResolvedMode } from './hooks/use-media-query.js';
 
 /**
  * Props for PrismProvider.
@@ -47,11 +40,15 @@ export interface PrismProviderProps {
   mode?: ThemeMode;
   /** Receives mode changes requested through Prism context. With mode set, the owner updates that prop. */
   onModeChange?: (mode: ThemeMode) => void;
+  /** Opt into MUI's persisted light/dark/system selection instead of the application settings store. */
+  modeStorageKey?: string;
+  /** Initial selection for modeStorageKey; also pass it to PrismThemeScript. */
+  defaultMode?: ThemeMode;
   /** Default settings (overrides defaults but not persisted values) */
   defaultSettings?: Partial<PrismSettingsState>;
   /** Disable CSS baseline */
   disableCssBaseline?: boolean;
-  /** Static overrides or an application palette derived from the resolved native mode. */
+  /** Static overrides or palettes compiled for both native modes before first paint. */
   themeOverrides?: PrismThemeOverrides;
   /**
    * Locale code passed to MUI's `LocalizationProvider` as
@@ -127,12 +124,17 @@ export function PrismProvider({
   config: configOverrides,
   mode: controlledMode,
   onModeChange,
+  modeStorageKey,
+  defaultMode = 'system',
   defaultSettings,
   disableCssBaseline = false,
   themeOverrides,
   dateAdapterLocale,
   dateLocaleText,
 }: PrismProviderProps): ReactNode {
+  if (modeStorageKey !== undefined && controlledMode !== undefined) {
+    throw new Error('PrismProvider: choose controlled mode or modeStorageKey, not both.');
+  }
   // Merge configuration
   const config = useMemo(() => mergeConfig(defaultPrismConfig, configOverrides), [configOverrides]);
 
@@ -158,7 +160,7 @@ export function PrismProvider({
     reset: resetSettings,
   } = useSettingsStore();
 
-  const mode = controlledMode ?? storeMode;
+  const mode = controlledMode ?? (modeStorageKey !== undefined ? defaultMode : storeMode);
   const setMode = useCallback((nextMode: ThemeMode) => {
     if (controlledMode === undefined) setStoreMode(nextMode);
     onModeChange?.(nextMode);
@@ -166,7 +168,7 @@ export function PrismProvider({
 
   // Initialize store with config values on first mount
   useEffect(() => {
-    if (controlledMode === undefined && defaultSettings?.mode) setStoreMode(defaultSettings.mode);
+    if (controlledMode === undefined && modeStorageKey === undefined && defaultSettings?.mode) setStoreMode(defaultSettings.mode);
     if (defaultSettings?.preset) setPreset(defaultSettings.preset);
     if (defaultSettings?.direction) setDirection(defaultSettings.direction);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -237,18 +239,12 @@ export function PrismProvider({
     }
   }, [storeFontSize]);
 
-  // Resolve 'system' mode to actual 'light' or 'dark' based on OS preference
-  const resolvedMode = useResolvedMode(mode);
-  const toggleMode = useCallback(() => {
-    setMode(resolvedMode === 'dark' ? 'light' : 'dark');
-  }, [resolvedMode, setMode]);
-
   // Create theme based on current settings
-  const theme = useMemo<PrismTheme>(
-    () =>
+  const buildTheme = useCallback(
+    (themeMode: ThemeMode) =>
       createPrismTheme({
         preset: storePreset,
-        mode: resolvedMode,
+        mode: themeMode,
         direction: storeDirection,
         primaryColor: storePrimaryColor || config.theme.primaryColor,
         typography: config.theme.typography,
@@ -257,13 +253,10 @@ export function PrismProvider({
         contrast: storeContrast,
         fontFamily: storeFontFamily,
         fontSize: storeFontSize,
-        overrides: typeof themeOverrides === 'function'
-          ? themeOverrides({ mode: resolvedMode })
-          : themeOverrides,
+        overrides: themeOverrides,
       }),
     [
       storePreset,
-      resolvedMode,
       storeDirection,
       storePrimaryColor,
       storeContrast,
@@ -273,6 +266,10 @@ export function PrismProvider({
       themeOverrides,
     ]
   );
+  const theme = useMemo(() => buildTheme(mode), [buildTheme, mode]);
+  if (modeStorageKey !== undefined && !theme.vars) {
+    throw new Error('PrismProvider: modeStorageKey requires CSS variables.');
+  }
 
   // Context value
   // Zustand actions are stable, so they don't need to be in deps
@@ -283,7 +280,6 @@ export function PrismProvider({
       settings,
       // Zustand actions (stable references)
       setMode,
-      toggleMode,
       setPreset,
       setDirection,
       toggleSidebar,
@@ -299,7 +295,6 @@ export function PrismProvider({
       theme,
       settings,
       setMode,
-      toggleMode,
       setPreset,
       setDirection,
       toggleSidebar,
@@ -308,10 +303,18 @@ export function PrismProvider({
     ]
   );
 
-  return (
+  const content = (selectedTheme: PrismTheme) => (
     <CacheProvider value={emotionCache}>
-      <PrismContext.Provider value={contextValue}>
-        <MuiThemeProvider theme={theme}>
+      <MuiThemeProvider
+        theme={selectedTheme}
+        defaultMode={mode}
+        modeStorageKey={modeStorageKey}
+        colorSchemeStorageKey={modeStorageKey === undefined ? undefined : `${modeStorageKey}-scheme`}
+        storageManager={modeStorageKey === undefined ? null : undefined}
+        forceThemeRerender={Boolean(selectedTheme.vars)}
+        disableTransitionOnChange
+      >
+        <PrismThemeState value={contextValue} persisted={modeStorageKey !== undefined} onModeChange={onModeChange}>
           <LocalizationProvider
             dateAdapter={AdapterDayjs}
             adapterLocale={dateAdapterLocale}
@@ -320,8 +323,50 @@ export function PrismProvider({
             {!disableCssBaseline && <CssBaseline />}
             {children}
           </LocalizationProvider>
-        </MuiThemeProvider>
-      </PrismContext.Provider>
+        </PrismThemeState>
+      </MuiThemeProvider>
     </CacheProvider>
   );
+  return !theme.vars
+    ? <StaticThemeMode mode={mode} theme={theme} buildTheme={buildTheme}>{content}</StaticThemeMode>
+    : content(theme);
+}
+
+/** Only non-variable themes require JS media resolution; native schemes keep one MUI listener. */
+function StaticThemeMode({ mode: requestedMode, theme, buildTheme, children }: {
+  mode: ThemeMode;
+  theme: PrismTheme;
+  buildTheme: (mode: ThemeMode) => PrismTheme;
+  children: (theme: PrismTheme) => ReactNode;
+}): ReactNode {
+  const mode = useResolvedMode(requestedMode);
+  const resolved = useMemo(() => theme.palette.mode === mode ? theme : buildTheme(mode), [theme, mode, buildTheme]);
+  return children(resolved);
+}
+
+/** MUI owns CSS scheme selection; application state remains the authority when controlled. */
+function PrismThemeState({ value, persisted, onModeChange, children }: {
+  value: Omit<PrismContextValue, 'toggleMode'>;
+  persisted: boolean;
+  onModeChange?: (mode: ThemeMode) => void;
+  children: ReactNode;
+}): ReactNode {
+  const theme = useTheme() as PrismTheme;
+  const { mode: nativeMode, setMode: setNativeMode } = useColorScheme();
+  const setOwnedMode = value.setMode;
+  const hasNativeSchemes = Boolean(theme.vars);
+  useEnhancedEffect(() => {
+    if (hasNativeSchemes && !persisted && nativeMode !== value.settings.mode) setNativeMode(value.settings.mode);
+  }, [hasNativeSchemes, nativeMode, persisted, setNativeMode, value.settings.mode]);
+  const mode = persisted ? nativeMode ?? value.settings.mode : value.settings.mode;
+  const setMode = useCallback((next: ThemeMode) => {
+    if (persisted) {
+      setNativeMode(next);
+      onModeChange?.(next);
+    } else setOwnedMode(next);
+  }, [onModeChange, persisted, setNativeMode, setOwnedMode]);
+  const toggleMode = useCallback(() => setMode(theme.palette.mode === 'dark' ? 'light' : 'dark'), [setMode, theme.palette.mode]);
+  const context = useMemo(() => ({ ...value, theme, settings: { ...value.settings, mode }, setMode, toggleMode }),
+    [mode, setMode, theme, toggleMode, value]);
+  return <PrismContext.Provider value={context}>{children}</PrismContext.Provider>;
 }

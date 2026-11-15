@@ -25,6 +25,7 @@ const sourceEntries = consumer ? {} : {
   '@omnitron-dev/lumen-ui/runtime': '../../src/hydration/index.ts',
   '@omnitron-dev/prism/core': '../../../prism/src/core/index.ts',
   '@omnitron-dev/prism/theme': '../../../prism/src/theme/index.ts',
+  '@omnitron-dev/prism/identity': '../../../prism/src/identity/index.ts',
   '@omnitron-dev/prism/components/doc-layout': '../../../prism/src/components/doc-layout/index.ts',
 };
 const sourceAliases = Object.entries(sourceEntries).map(([find, relative]) => ({

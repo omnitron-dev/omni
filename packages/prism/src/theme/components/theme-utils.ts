@@ -21,7 +21,7 @@ import { channelFor } from '../palette/overrides.js';
  */
 export function getGreyChannel(theme: Theme, shade: '500' | '900' = '500'): string {
   const channelKey = `${shade}Channel` as const;
-  const vars = theme.vars?.palette.grey as Record<string, string> | undefined;
+  const vars = theme.vars?.palette.grey as Partial<Record<'500Channel' | '900Channel', string>> | undefined;
   const palette = theme.palette.grey as unknown as Record<string, string>;
   return vars?.[channelKey] ?? palette[channelKey] ?? channelFor(palette[shade]!);
 }

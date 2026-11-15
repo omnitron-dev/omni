@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { renderToString } from 'react-dom/server';
 import { hydrateRoot } from 'react-dom/client';
 import { useTheme } from '@mui/material/styles';
+import Button from '@mui/material/Button';
 import { PrismProvider } from './provider.js';
 import { usePrismContext } from './context.js';
 import { useSettingsStore } from '../state/stores/settings.js';
@@ -18,7 +19,7 @@ function Probe() {
   </>;
 }
 const state = () => JSON.parse(screen.getByTestId('theme').textContent!);
-beforeEach(() => useSettingsStore.setState({ mode: 'light' }));
+beforeEach(() => useSettingsStore.setState({ mode: 'light', direction: 'ltr' }));
 afterEach(cleanup);
 
 describe('mode-aware application themes at the provider boundary', () => {
@@ -40,14 +41,14 @@ describe('mode-aware application themes at the provider boundary', () => {
     expect(state().mode).toBe('dark');
     expect(state().primary).toBe('#123456');
   });
-  it('passes a resolved mode rather than system to the application theme', () => {
+  it('compiles both palettes without passing system to the application theme', () => {
     useSettingsStore.setState({ mode: 'system' });
     const modes: string[] = [];
     render(<PrismProvider themeOverrides={({ mode }) => { modes.push(mode); return {}; }}><Probe /></PrismProvider>);
     expect(modes.length).toBeGreaterThan(0);
     expect(modes.every(mode => mode === 'light' || mode === 'dark')).toBe(true);
     expect(state().requested).toBe('system');
-    expect(modes.at(-1)).toBe(state().mode);
+    expect(new Set(modes)).toEqual(new Set(['light', 'dark']));
   });
   it('renders independent explicit modes on the server without changing the shared store', () => {
     const theme = (mode: 'dark' | 'light') => renderToString(
@@ -93,5 +94,37 @@ describe('mode-aware application themes at the provider boundary', () => {
       await act(async () => root.unmount());
       container.remove();
     }
+  });
+  it('keeps RTL ownership and physical CSS transformation in the provider cache', () => {
+    useSettingsStore.setState({ direction: 'rtl' });
+    render(<PrismProvider mode="dark"><Button sx={{ paddingLeft: '9px' }}>RTL</Button></PrismProvider>);
+    expect(document.documentElement.dir).toBe('rtl');
+    expect(screen.getByText('RTL').className).toContain('prism-rtl-');
+    expect(getComputedStyle(screen.getByText('RTL')).paddingRight).toBe('9px');
+  });
+  it('rejects competing controlled and persisted mode authorities', () => {
+    expect(() => renderToString(<PrismProvider mode="dark" modeStorageKey="theme"><Probe /></PrismProvider>))
+      .toThrow('choose controlled mode or modeStorageKey');
+  });
+  it('resolves system changes for applications that explicitly disable CSS variables', () => {
+    const media = Object.assign(new EventTarget(), {
+      matches: true, media: '(prefers-color-scheme: dark)', onchange: null,
+      addListener() {}, removeListener() {},
+    });
+    const query = vi.spyOn(window, 'matchMedia').mockReturnValue(media);
+    try {
+      const { rerender } = render(<PrismProvider mode="system" config={{ theme: { cssVariables: { enabled: false } } }} themeOverrides={omnitronTheme}><Probe /></PrismProvider>);
+      const original = screen.getByTestId('theme');
+      expect(state()).toMatchObject({ requested: 'system', mode: 'dark', primary: '#71DDE3' });
+      act(() => { media.matches = false; media.dispatchEvent(new Event('change')); });
+      expect(state()).toMatchObject({ requested: 'system', mode: 'light', primary: '#006D75' });
+      rerender(<PrismProvider mode="dark" config={{ theme: { cssVariables: { enabled: false } } }} themeOverrides={omnitronTheme}><Probe /></PrismProvider>);
+      expect(state().mode).toBe('dark');
+      expect(screen.getByTestId('theme')).toBe(original);
+    } finally { query.mockRestore(); }
+  });
+  it('requires precompiled CSS schemes for the native persisted selection', () => {
+    expect(() => renderToString(<PrismProvider modeStorageKey="theme" config={{ theme: { cssVariables: { enabled: false } } }}><Probe /></PrismProvider>))
+      .toThrow('modeStorageKey requires CSS variables');
   });
 });

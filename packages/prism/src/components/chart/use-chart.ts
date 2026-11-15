@@ -12,6 +12,7 @@ import type { ChartOptions } from './types.js';
 
 import { useTheme } from '@mui/material/styles';
 import useMediaQuery from '@mui/material/useMediaQuery';
+import { getGreyChannel } from '../../theme/components/theme-utils.js';
 
 // =============================================================================
 // USE CHART HOOK
@@ -82,7 +83,7 @@ function baseChartOptions(theme: Theme): ChartOptions {
   };
 
   // Get grey channel for opacity calculations
-  const greyChannel = getColorChannel(theme, 'grey', '500');
+  const greyChannel = getGreyChannel(theme);
   const dividerColor = vars?.divider ?? palette.divider;
   const paperColor = vars?.background.paper ?? palette.background.paper;
 
@@ -281,22 +282,6 @@ function baseChartOptions(theme: Theme): ChartOptions {
 // =============================================================================
 // HELPERS
 // =============================================================================
-
-/**
- * Get color channel from theme safely.
- */
-function getColorChannel(theme: Theme, color: 'grey' | 'primary' | 'secondary', shade?: string): string {
-  const channelKey = shade ? `${shade}Channel` : 'mainChannel';
-  const vars = theme.vars?.palette[color] as Record<string, string> | undefined;
-
-  const fallbacks: Record<string, string> = {
-    '500Channel': '145 158 171',
-    '900Channel': '0 0 0',
-    mainChannel: '51 133 240',
-  };
-
-  return vars?.[channelKey] ?? fallbacks[channelKey] ?? '145 158 171';
-}
 
 /**
  * Deep merge two objects.

@@ -112,7 +112,7 @@ export const defaultPrismConfig: PrismConfig = {
     direction: 'ltr',
     cssVariables: {
       prefix: 'prism',
-      colorSchemeSelector: 'data-theme',
+      colorSchemeSelector: 'data-prism-color-scheme',
       enabled: true,
     },
   },

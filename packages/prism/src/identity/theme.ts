@@ -1,16 +1,18 @@
-import { alpha, type ThemeOptions } from '@mui/material/styles';
+import { alpha, type Theme, type ThemeOptions } from '@mui/material/styles';
 import { createTypography, typography } from '../theme/typography.js';
+import { rootColorSchemeStyles, systemColorSchemeStyles } from '../theme/color-scheme.js';
 import { omnitronCssVariables, omnitronTokens, type OmnitronColorMode } from './tokens.js';
 
 /** Use as PrismProvider.themeOverrides in both Console and the public website. */
 export function omnitronTheme({ mode }: { mode: OmnitronColorMode }): ThemeOptions & Record<string, unknown> {
   const color = omnitronTokens.color[mode];
-  const focus = { outline: `2px solid ${color.accent}`, outlineOffset: 3 };
-  const overlay = {
+  const focus = { outline: '2px solid var(--omni-accent)', outlineOffset: 3 };
+  const overlay = ({ theme }: { theme: Theme }) => ({
     borderRadius: omnitronTokens.radius,
-    border: `1px solid ${color.border}`,
-    boxShadow: `0 8px 24px ${alpha('#000000', mode === 'dark' ? 0.24 : 0.1)}`,
-  };
+    border: '1px solid var(--omni-border)',
+    boxShadow: '0 8px 24px rgb(0 0 0 / .1)',
+    ...theme.applyStyles('dark', { boxShadow: '0 8px 24px rgb(0 0 0 / .24)' }),
+  });
   return {
     palette: {
       primary: { main: color.accent, contrastText: color.onAccent },
@@ -43,14 +45,17 @@ export function omnitronTheme({ mode }: { mode: OmnitronColorMode }): ThemeOptio
     },
     components: {
       MuiCssBaseline: {
-        styleOverrides: {
-          ':root': omnitronCssVariables(mode),
+        styleOverrides: (theme) => ({
+          ':root': omnitronCssVariables((theme.defaultColorScheme ?? theme.palette.mode) === 'dark' ? 'dark' : 'light'),
+          ...rootColorSchemeStyles(theme, 'light', omnitronCssVariables('light')),
+          ...rootColorSchemeStyles(theme, 'dark', omnitronCssVariables('dark')),
+          ...systemColorSchemeStyles(theme, 'dark', omnitronCssVariables('dark')),
           body: { WebkitFontSmoothing: 'antialiased' },
           'code, kbd, pre, samp': { fontFamily: omnitronTokens.font.mono },
           'a:focus-visible, button:focus-visible, [tabindex]:focus-visible': focus,
-          '::selection': { backgroundColor: alpha(color.accent, 0.24) },
+          '::selection': { backgroundColor: 'color-mix(in srgb, var(--omni-accent) 24%, transparent)' },
           '@media (prefers-reduced-motion: reduce)': { html: { scrollBehavior: 'auto' } },
-        },
+        }),
       },
       MuiButtonBase: { styleOverrides: { root: { '&.Mui-focusVisible': focus } } },
       MuiButton: {
@@ -58,8 +63,8 @@ export function omnitronTheme({ mode }: { mode: OmnitronColorMode }): ThemeOptio
           root: { borderRadius: omnitronTokens.radius, boxShadow: 'none', '&:hover': { boxShadow: 'none' } },
         },
       },
-      MuiOutlinedInput: { styleOverrides: { root: { borderRadius: omnitronTokens.radius }, notchedOutline: { borderColor: color.controlBorder } } },
-      MuiPaper: { styleOverrides: { root: { backgroundImage: 'none' }, rounded: { borderRadius: omnitronTokens.radius }, outlined: { borderColor: color.border } } },
+      MuiOutlinedInput: { styleOverrides: { root: { borderRadius: omnitronTokens.radius }, notchedOutline: { borderColor: 'var(--omni-control-border)' } } },
+      MuiPaper: { styleOverrides: { root: { backgroundImage: 'none' }, rounded: { borderRadius: omnitronTokens.radius }, outlined: { borderColor: 'var(--omni-border)' } } },
       MuiCard: { styleOverrides: { root: { minWidth: 0, borderRadius: omnitronTokens.radius, boxShadow: 'none' } } },
       MuiCardHeader: {
         styleOverrides: {
@@ -72,9 +77,9 @@ export function omnitronTheme({ mode }: { mode: OmnitronColorMode }): ThemeOptio
       MuiMenu: { styleOverrides: { paper: overlay } },
       MuiPopover: { styleOverrides: { paper: overlay } },
       MuiAlert: { styleOverrides: { root: { borderRadius: omnitronTokens.radius } } },
-      MuiDivider: { styleOverrides: { root: { borderColor: color.border } } },
+      MuiDivider: { styleOverrides: { root: { borderColor: 'var(--omni-border)' } } },
       MuiChip: { styleOverrides: { root: { borderRadius: 4 } } },
-      MuiTableCell: { styleOverrides: { head: { backgroundColor: color.raised, color: color.muted, fontWeight: 600 } } },
+      MuiTableCell: { styleOverrides: { head: { backgroundColor: 'var(--omni-surface-raised)', color: 'var(--omni-text-muted)', fontWeight: 600 } } },
     },
   };
 }

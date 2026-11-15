@@ -20,7 +20,7 @@ export {
   getPresetDisplayName,
 } from './create-theme.js';
 
-export type { CreatePrismThemeOptions, SupportedLocale } from './create-theme.js';
+export type { CreatePrismThemeOptions, SupportedLocale, PrismThemeOverrides, PrismThemeOverrideContext } from './create-theme.js';
 
 // =============================================================================
 // PALETTE SYSTEM

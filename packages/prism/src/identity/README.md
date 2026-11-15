@@ -15,7 +15,7 @@ export function BrandedShell() {
 }
 ```
 
-Use controlled `mode` and `onModeChange` when the host owns theme selection. SSR must use the same initial mode as the client. Static shell styles can consume `omnitronCssVariables('light' | 'dark')`; tokens and React components share that palette. Load the Inter font weights used by the application.
+Use controlled `mode` and `onModeChange` when the host owns theme selection. A public site can use `modeStorageKey="site-theme"` and `PrismThemeScript` from `@omnitron-dev/prism/core` to share native MUI persistence and first-paint selection. Use the same provider configuration for SSR and the client. The identity's CSS baseline exposes `--omni-*` variables from the shared palettes; static shell styles consume those variables without a second site bootstrap. `omnitronCssVariables('light' | 'dark')` also provides an explicit palette projection. Load the Inter font weights used by the application.
 
 - [Tokens](tokens.ts) and [theme overrides](theme.ts): surfaces, text, borders, focus, spacing, and typography.
 - [Mark geometry](geometry.ts): shared SVG geometry and `omnitronMarkSvg` for static assets.

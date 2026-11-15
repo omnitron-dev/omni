@@ -10,7 +10,7 @@
 import type { Theme, Components, ComponentsVariants, CSSObject } from '@mui/material/styles';
 import type { ComponentsConfig } from '../../types/theme.js';
 import { varAlpha } from '../mixins.js';
-import { getGreyChannel } from './theme-utils.js';
+import { getGreyChannel, getColorChannel } from './theme-utils.js';
 
 import { inputBaseClasses } from '@mui/material/InputBase';
 import { outlinedInputClasses } from '@mui/material/OutlinedInput';
@@ -76,18 +76,6 @@ export function getInputTypography(theme: Theme, keys: Array<'fontSize' | 'heigh
     ...Object.fromEntries(keys.map((k) => [k, baseStyles[k]])),
     [theme.breakpoints.down('sm')]: Object.fromEntries(keys.map((k) => [k, responsiveStyles[k]])),
   };
-}
-
-// =============================================================================
-// COLOR CHANNEL HELPERS
-// =============================================================================
-
-/**
- * Safely access error channel from theme with fallback.
- */
-function getErrorChannel(theme: Theme): string {
-  const vars = theme.vars?.palette.error as Record<string, string> | undefined;
-  return vars?.mainChannel ?? '208 34 65';
 }
 
 // =============================================================================
@@ -330,7 +318,7 @@ export function createOutlinedInputOverrides(config: ComponentsConfig): Componen
 export const filledInputStyles = {
   root: (theme: Theme, borderRadius: number | string): CSSObject => {
     const greyChannel = getGreyChannel(theme);
-    const errChannel = getErrorChannel(theme);
+    const errChannel = getColorChannel(theme, 'error');
     const baseBg = varAlpha(greyChannel, 0.08);
     const hoverBg = varAlpha(greyChannel, 0.16);
     const errorBg = varAlpha(errChannel, 0.08);

@@ -37,6 +37,9 @@ test('release uses native generated help, conflict checks and strict arguments',
     error => error.code === 'commander.helpDisplayed' && error.exitCode === 0);
   assert.match(output.join(''), /Usage:.*release \[options\] \[version\]/);
   assert.match(output.join(''), /--from-qualified <commit>/);
+  assert.match(output.join(''), /Prepare accepted npm bytes: xec release VERSION --prepare/);
+  assert.match(output.join(''), /Qualify runtime activation: xec release VERSION --qualify/);
+  assert.match(output.join(''), /Npm acceptance does not qualify a runtime transition/);
   assert.doesNotMatch(output.join(''), /\[args\.\.\.\]/);
   for (const args of [
     ['--preapre'], [version, 'extra'], [version, '--prepare', '--finish'],
@@ -188,20 +191,28 @@ else if (cmd === 'release' && op === 'view' && fs.readFileSync(state, 'utf8') ==
   // Its explicit policy has no application SDK requirements; the real guard is
   // independently exercised above before any version/Git/build state exists.
   await fs.appendFile(path.join(workspace, '.xec/release-policy.mjs'), '\npolicy.buildDependencies = [];\n');
-  // CI qualification has its own failure/resume suite; this loopback suite exercises registry publication.
-  await fs.writeFile(path.join(workspace, '.xec/qualification.mjs'), 'export async function qualifyRelease() {}\nexport async function verifyReleaseQualification() { return {fixture:true}; }\nexport async function verifyQualifiedRevision() { throw Error("This fixture does not qualify a previous runtime"); }\n');
+  // Npm publication must not invoke runtime qualification. Its independent
+  // transition/rollback failure and resume contracts have a separate suite.
+  await fs.writeFile(path.join(workspace, '.xec/qualification.mjs'), 'export async function qualifyRelease() { throw Error("Npm publication invoked runtime qualification"); }\nexport async function verifyQualifiedRevision() { throw Error("This fixture does not qualify a previous runtime"); }\n');
   // These two registry fixtures have no backend/Console graph or pnpm registry
   // metadata. The real producer and retained-output verifier have separate tests.
   const buildHelper = path.join(workspace, '.xec/release/build.js');
   await fs.writeFile(buildHelper, (await fs.readFile(buildHelper, 'utf8'))
-    .replace("const packageManager = (await json(path.join(root, 'package.json'))).packageManager;",
-      "const packageManager = 'pnpm@' + await run(root, 'pnpm', ['--version']);")
+    .replaceAll("(await json(path.join(root, 'package.json'))).packageManager",
+      "'pnpm@' + await run(root, 'pnpm', ['--version'])")
     .replace('export async function retainPreparationRuntime(root, workspace, context) {',
       'export async function retainPreparationRuntime(root, workspace, context) { return;\n')
     .replace('export async function verifyPreparationRuntime(directory, identity) {',
       'export async function verifyPreparationRuntime(directory, identity) { return {};\n')
     .replace('export async function finalizePreparationBuild(root, version, context) {',
-      'export async function finalizePreparationBuild(root, version, context) { return {};\n')
+      `export async function finalizePreparationBuild(root, version, context) {
+        const fixturePrepared = await releaseOps.loadPreparedRelease(root, version);
+        await saveEvidence(path.join(preparationBuildDirectory(root, fixturePrepared.commit), 'PREPARATION.json'), {
+          kind: 'clean-package-preparation', identity: context.identity, consumerVerified: true,
+          acceptedArtifacts: acceptedInventory(fixturePrepared.artifacts),
+          publicationReceipts: await publicationReceipts(root, fixturePrepared, context.identity),
+        });
+        return {};\n`)
     .replace('export async function prepareReleaseArchive({ workspace, file }, revision) {',
       `export async function prepareReleaseArchive({ workspace, file }, revision) {
         const target = await fs.mkdtemp(path.join(path.dirname(file), 'fixture-'));
@@ -290,7 +301,10 @@ for (const name of ['base', 'client']) writeFileSync('packages/' + name + '/inde
   const client = JSON.parse(await fs.readFile(path.join(workspace, 'packages/client/package.json'), 'utf8'));
   client.peerDependencies[first] = 'workspace:*';
   await json('packages/client/package.json', client);
-  await exec('pnpm', ['install', '--lockfile-only', '--offline']);
+  // A lockfile operation must never write through the shared read-only driver link.
+  await fs.unlink(path.join(workspace, 'node_modules'));
+  try { await exec('pnpm', ['install', '--lockfile-only', '--offline']); }
+  finally { await fs.symlink(path.join(repo, 'node_modules'), path.join(workspace, 'node_modules'), 'junction'); }
   await git('add', '--', 'packages/client/package.json', 'pnpm-lock.yaml');
   await git('commit', '-qm', 'Fix internal workspace peer');
   await assert.rejects(release('--prepare', '--registry', registry), /synthetic consumer rejection/);

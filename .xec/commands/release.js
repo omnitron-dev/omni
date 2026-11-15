@@ -11,10 +11,10 @@ import {
 import semver from 'semver';
 import policy, { assertBuildDependencies } from '../release-policy.mjs';
 import { supersedeDraft } from '../supersede-draft.mjs';
-import { qualifyRelease, verifyReleaseQualification, verifyQualifiedRevision } from '../qualification.mjs';
+import { qualifyRelease, verifyQualifiedRevision } from '../qualification.mjs';
 import { assertReleaseVersionAvailable } from '../release-registry.js';
 import { prepareVersionQualification } from '../version-qualification.js';
-import { releaseBuildContext, finalizePreparationBuild, assertReleaseProducerApi } from '../release/build.js';
+import { releaseBuildContext, finalizePreparationBuild, assertReleaseProducerApi, verifyPublicationPreparation } from '../release/build.js';
 import { releasePreparation } from '../release/recipe.js';
 
 const defaultRoot = fileURLToPath(new URL('../../', import.meta.url));
@@ -102,14 +102,15 @@ async function runRelease(version, operation, values, root = defaultRoot) {
       await writeFile(path.join(root, '.release-artifacts', version, prepared.commit, 'NOTES.md'), notes);
       await ensureReleaseTag(root, version);
       if (values.previous || values.fromQualified) await qualify();
-      console.log(`Prepared ${prepared.artifacts.length} archives. ${values.previous || values.fromQualified ? "Qualification verified; publish with xec release " + version + " --finish." : "Complete qualification with xec release " + version + " --qualify --previous <commit>."}`);
+      console.log(`Accepted ${prepared.artifacts.length} archives. Publish with xec release ${version} --finish.`);
+      if (!values.previous && !values.fromQualified)
+        console.log(`Runtime activation is separate: xec release ${version} --qualify --previous <commit>.`);
       return;
     }
 
-    const prepared = await loadPreparedRelease(root, version);
+    const { prepared, publication } = await verifyPublicationPreparation(root, version);
     if (!await assertReleaseHead(root, version)) throw new Error('Missing local release tag; finish --prepare first');
-    const qualification = await verifyReleaseQualification(root, version);
-    if (operation === 'status') { console.log(JSON.stringify({ prepared, qualification }, null, 2)); return; }
+    if (operation === 'status') { console.log(JSON.stringify({ prepared, publication }, null, 2)); return; }
     if (operation === 'push') { await pushReleaseRefs(root, version); return; }
 
     const registry = registryAddress(typeof values.registry === 'string' ? values.registry : undefined);
@@ -146,15 +147,15 @@ async function runRelease(version, operation, values, root = defaultRoot) {
 /** Native project command; Xec owns parsing, conflicts, generated help and errors. */
 export function command(program, options = {}) {
   const release = program.command('release [version]')
-    .description('Qualify immutable Omnitron packages and publish the accepted archives')
+    .description('Prepare and publish accepted Omnitron archives; qualify runtime activation separately')
     .allowExcessArguments(false);
   const operations = [
     ['--list', 'List public workspaces in dependency order', 'list'],
     ['--dry-run', 'Print the release plan without preparation or publication (default)', 'plan'],
     ['--prepare', 'Commit versions, build and verify archives, then create a local tag', 'prepare'],
-    ['--qualify', 'Verify independent builds, CI and native transition/rollback', 'qualify'],
-    ['--status', 'Recheck selected qualification and prepared archives without changing them', 'status'],
-    ['--finish', 'Verify qualification and npm access, push the tag and publish sealed archives', 'finish'],
+    ['--qualify', 'Qualify runtime activation: independent builds, CI and native transition/rollback', 'qualify'],
+    ['--status', 'Recheck accepted archives and publication receipts without changing them', 'status'],
+    ['--finish', 'Verify accepted archives and npm access, push the tag and publish', 'finish'],
     ['--push', 'Push the prepared commit and its single annotated tag atomically', 'push'],
     ['--publish', 'Publish sealed archives from the exact remotely tagged commit', 'publish'],
     ['--resume', 'Resume interrupted publication with the same sealed archives', 'publish'],
@@ -173,10 +174,12 @@ export function command(program, options = {}) {
     .option('--push-source', 'Push the exact source branch for CI before qualification, without tags')
     .option('--registry <url>', 'HTTPS npm registry or a loopback test registry')
     .addHelpText('after', `
-Prepare and qualify: xec release VERSION --prepare --previous COMMIT --push-source
+Prepare accepted npm bytes: xec release VERSION --prepare
 Publish accepted bytes: xec release VERSION --finish
+Qualify runtime activation: xec release VERSION --qualify --previous COMMIT --push-source
 Publication never repeats the build or tests. Archives and receipts are retained
 under .release-artifacts/. An interrupted publication resumes from the same commit.
+Npm acceptance does not qualify a runtime transition or activate applications.
 `)
     .action((version, values) => runRelease(version,
       choices.find(choice => values[choice.option.attributeName()])?.operation ?? 'plan',

@@ -245,14 +245,67 @@ export async function verifyPreparationRuntime(directory, identity) {
   return record.result;
 }
 
+const acceptedInventory = artifacts => artifacts.map(({ name, version, integrity }) => ({ name, version, integrity }));
+
+/** Xec's accepted record exists only after consumer verification and cleanup. */
+async function publicationReceipts(root, prepared, identity) {
+  const directory = path.join(root, '.release-artifacts', prepared.version, prepared.commit);
+  const records = {};
+  for (const name of ['producer', 'release']) {
+    const file = path.join(directory, name + '.json');
+    assert.ok((await fs.lstat(file)).isFile(), 'Canonical release receipt must be a regular file');
+    const bytes = await fs.readFile(file);
+    records[name] = { value: JSON.parse(bytes), sha256: hash(bytes) };
+  }
+  const expected = { schema: 1, commit: prepared.commit, version: prepared.version,
+    artifacts: prepared.artifacts.map(artifact => ({ ...artifact, file: path.basename(artifact.file) })) };
+  assert.deepEqual(records.release.value, expected, 'Canonical accepted archive inventory differs');
+  const producer = records.producer.value;
+  const { stage: _stage, identity: _identity, ...producerBatch } = producer;
+  assert.deepEqual(producerBatch, expected, 'Canonical producer archive inventory differs');
+  assert.equal(producer.stage, 'producer');
+  assert.equal(producer.identity?.protocol, 1, 'Canonical producer protocol differs');
+  assert.equal(producer.identity.policy, hash(JSON.stringify(identity.policy)), 'Accepted producer policy differs');
+  assert.equal(producer.identity.inputs?.build, hash(JSON.stringify(identity)), 'Accepted producer build identity differs');
+  assert.equal(producer.identity.runtime?.platform, identity.platform);
+  assert.equal(producer.identity.runtime?.arch, identity.arch);
+  assert.equal('v' + producer.identity.runtime?.versions?.node, identity.node);
+  return Object.fromEntries(Object.entries(records).map(([name, record]) => [name, record.sha256]));
+}
+
+/** Reobserve accepted npm bytes; runtime transition authority belongs to qualification. */
+export async function verifyPublicationPreparation(root, version, run = releaseCommand) {
+  const prepared = await releaseOps.loadPreparedRelease(root, version, run);
+  const receipt = path.join(preparationBuildDirectory(root, prepared.commit), 'PREPARATION.json');
+  const proof = await json(receipt), identity = proof.identity;
+  assert.equal(proof.kind, 'clean-package-preparation');
+  assert.equal(proof.consumerVerified, true, 'Preparation consumer acceptance is incomplete');
+  assert.equal(identity?.schema, 2, 'Accepted producer identity is missing');
+  assert.equal(identity.revision, prepared.commit, 'Accepted producer source differs');
+  assert.deepEqual(identity.policy, policy, 'Accepted publication policy differs');
+  assert.deepEqual(identity.recipe, recipe, 'Accepted producer recipe differs');
+  assert.equal(identity.packageManager, (await json(path.join(root, 'package.json'))).packageManager, 'Accepted package manager differs');
+  assert.equal(identity.lockfile, hash(await fs.readFile(path.join(root, 'pnpm-lock.yaml'))), 'Accepted dependency lockfile differs');
+  assert.equal(identity.epoch, await run(root, 'git', ['show', '-s', '--format=%ct', prepared.commit]), 'Accepted source epoch differs');
+  assert.deepEqual(proof.acceptedArtifacts, acceptedInventory(prepared.artifacts), 'Accepted preparation archive batch differs');
+  assert.deepEqual(proof.publicationReceipts, await publicationReceipts(root, prepared, identity), 'Canonical publication receipts changed');
+  // No runtime tree or derived SDK copies are published. Their independent
+  // verification remains in verifyPreparationBuild/verifyReleaseQualification.
+  return { prepared, publication: { kind: 'accepted-npm-archives', commit: prepared.commit,
+    version, receipt, producerNode: identity.node, artifacts: prepared.artifacts.length } };
+}
+
 /** Called only after Xec has accepted the exact batch and confirmed all cleanup. */
 export async function finalizePreparationBuild(root, version, context) {
   const prepared = await releaseOps.loadPreparedRelease(root, version);
   assert.equal(prepared.commit, context.identity.revision, 'Accepted producer source differs');
   const directory = preparationBuildDirectory(root, context.identity.revision);
-  const acceptedArtifacts = prepared.artifacts.map(({ name, version, integrity }) => ({ name, version, integrity }));
+  const acceptedArtifacts = acceptedInventory(prepared.artifacts);
+  const receipts = await publicationReceipts(root, prepared, context.identity);
   if (await fs.stat(path.join(directory, 'PREPARATION.json')).catch(error => { if (error.code !== 'ENOENT') throw error; return null; })) {
-    assert.deepEqual((await json(path.join(directory, 'PREPARATION.json'))).acceptedArtifacts, acceptedArtifacts, 'Accepted preparation archive batch differs');
+    const existing = await json(path.join(directory, 'PREPARATION.json'));
+    assert.deepEqual(existing.acceptedArtifacts, acceptedArtifacts, 'Accepted preparation archive batch differs');
+    assert.deepEqual(existing.publicationReceipts, receipts, 'Canonical publication receipts changed');
     return verifyPreparationBuild(directory, context.identity);
   }
   const result = await verifyPreparationRuntime(directory, context.identity);
@@ -265,7 +318,7 @@ export async function finalizePreparationBuild(root, version, context) {
     inventory = measured.inventory;
     const inventoryBytes = JSON.stringify(inventory) + '\n';
     await fs.writeFile(path.join(temporary, 'sdk-inventory.json'), inventoryBytes, { flag: 'wx' });
-    record = { kind: 'clean-package-preparation', identity: context.identity, consumerVerified: true, acceptedArtifacts,
+    record = { kind: 'clean-package-preparation', identity: context.identity, consumerVerified: true, acceptedArtifacts, publicationReceipts: receipts,
       result: { ...result, sdk: measured.sdk }, inventorySha256: hash(inventoryBytes) };
     // Retried finalization can discard only these uncommitted, derived copies.
     for (const name of ['sdk', 'sdk-inventory.json']) {

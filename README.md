@@ -48,15 +48,23 @@ The current unreleased runtime requires Xec 0.13: Core supplies execution owners
 
 ```sh
 pnpm exec xec release <version> --dry-run
-pnpm exec xec release <version> --prepare --previous <full-commit> --push-source
+pnpm exec xec release <version> --prepare
 pnpm exec xec release <version> --finish
 ```
 
 Preparation builds and packs once against the exact source commit. Xec retains those archives before checking three independent npm consumers: the minimal runtime, all public packages together and Lumen on its own. Rejected acceptance can retry the same producer without rebuilding or repacking. Changed source, build environment, driver or archive bytes cause refusal. The final release record appears only after acceptance and cleanup succeed.
 
-`xec release-build`, `xec check-packages` and `xec reproduce` are the native project commands behind this workflow. The independent second build remains mandatory. Each consumer checks the installed archive identities and runs an audit; the runtime uses ordinary `npm install`, while the other profiles verify fresh lockfiles through `npm ci`.
+`xec release-build`, `xec check-packages` and `xec reproduce` are the native project commands behind this workflow. Each consumer checks the installed archive identities and runs an audit; the runtime uses ordinary `npm install`, while the other profiles verify fresh lockfiles through `npm ci`. Lumen also runs its installed-package SSR, MCP and browser checks.
 
-Finish verifies the recorded Node producer, independent builds and native transition evidence, then publishes the sealed archives.
+Finish verifies the accepted archive inventory, canonical producer/acceptance receipts and recorded source, recipe, policy and dependency lockfile. It publishes those exact bytes without repeating builds, consumer checks or runtime-tree hashing. The publisher may use a different Node version or environment from the recorded producer. Missing acceptance, failed cleanup or changed evidence prevents publication.
+
+Runtime qualification is a separate operation:
+
+```sh
+pnpm exec xec release <version> --qualify --previous <full-commit> --push-source
+```
+
+It retains the required independent second build, CI and native transition/rollback checks on the configured Node versions. Managed fleet updates use that qualification; publishing npm packages does not grant activation authority. The complete runtime qualification is not a prerequisite for npm publication.
 
 Source development and npm publication do not activate managed applications. Backend and resident-owner updates, application release selection and infrastructure reconciliation have separate reviewed operations. Use the [Omnitron lifecycle documentation](apps/omnitron/README.md) for those boundaries.
 

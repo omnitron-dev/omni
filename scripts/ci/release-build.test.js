@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { releaseCommand } from '@xec-sh/ops/release';
-import { releaseBuildContext, releaseEnvironment, releaseProducerInputs, assertReleaseProducerApi, preparationBuildDirectory, verifyPreparationBuild, publishPreparationRuntime, finalizePreparationBuild } from '../../.xec/release/build.js';
+import { releaseBuildContext, releaseEnvironment, releaseProducerInputs, assertReleaseProducerApi, preparationBuildDirectory, verifyPreparationBuild, publishPreparationRuntime, finalizePreparationBuild, verifyPublicationPreparation } from '../../.xec/release/build.js';
 import { runtimeArtifactDigest } from '../../apps/omnitron/src/shared/runtime-artifact.ts';
 
 const revision = 'a'.repeat(40);
@@ -88,6 +88,93 @@ async function fixture(t) {
   await writeJson(receipt, proof);
   return { root, directory, runtime, sdk, receipt, proof, context };
 }
+
+async function publicationFixture(t) {
+  const f = await fixture(t), version = '0.4.9';
+  const workspace = path.join(f.root, 'packages/example');
+  await fs.mkdir(workspace, { recursive: true });
+  await writeJson(path.join(workspace, 'package.json'), { name: '@omnitron-dev/example', version });
+  const directory = path.join(f.root, '.release-artifacts', version, revision);
+  await fs.mkdir(directory, { recursive: true });
+  await fs.copyFile(path.join(f.sdk, 'fixture.tgz'), path.join(directory, 'fixture.tgz'));
+  const artifacts = [{ name: '@omnitron-dev/example', version, file: 'fixture.tgz',
+    integrity: integrity(await fs.readFile(path.join(directory, 'fixture.tgz'))) }];
+  const accepted = { schema: 1, commit: revision, version, artifacts };
+  // The fixture deliberately records a producer different from the test process.
+  // Publication verifies its provenance, rather than claiming another build.
+  f.proof.identity.node = process.version === 'v22.18.0' ? 'v24.13.0' : 'v22.18.0';
+  const producer = { ...accepted, stage: 'producer', identity: { protocol: 1,
+    policy: hash(JSON.stringify(f.proof.identity.policy)), inputs: { build: hash(JSON.stringify(f.proof.identity)) },
+    runtime: { platform: f.proof.identity.platform, arch: f.proof.identity.arch,
+      versions: { node: f.proof.identity.node.slice(1) } } } };
+  await writeJson(path.join(directory, 'producer.json'), producer);
+  await writeJson(path.join(directory, 'release.json'), accepted);
+  f.proof.acceptedArtifacts = artifacts.map(({ name, version, integrity }) => ({ name, version, integrity }));
+  f.proof.publicationReceipts = {
+    producer: hash(await fs.readFile(path.join(directory, 'producer.json'))),
+    release: hash(await fs.readFile(path.join(directory, 'release.json'))),
+  };
+  await writeJson(f.receipt, f.proof);
+  const observed = [];
+  const execute = async (cwd, executable, args) => {
+    assert.equal(cwd, f.root);
+    observed.push([executable, ...args]);
+    if (executable === 'git' && args.join(' ') === 'rev-parse HEAD') return revision;
+    if (executable === 'git' && args.join(' ') === `show -s --format=%ct ${revision}`) return f.proof.identity.epoch;
+    if (executable === 'pnpm' && args.join(' ') === '--config.lockfile=false --config.ignore-pnpmfile=true --recursive list --depth -1 --json')
+      return JSON.stringify([{ path: workspace }]);
+    throw Error('Publication must not build, pack, run consumers or dispatch qualification: ' + executable + ' ' + args.join(' '));
+  };
+  return { ...f, version, archives: directory, execute, observed };
+}
+
+test('npm publication verifies exact accepted bytes without runtime qualification or a repeated build', async t => {
+  const f = await publicationFixture(t);
+  const before = await fs.readFile(f.receipt);
+  // These retained outputs belong to runtime reproduction/activation. Npm
+  // publication reads only its actual archives and canonical acceptance receipts.
+  await fs.rm(f.runtime, { recursive: true });
+  await fs.rm(f.sdk, { recursive: true });
+  const result = await verifyPublicationPreparation(f.root, f.version, f.execute);
+  assert.equal(result.publication.kind, 'accepted-npm-archives');
+  assert.equal(result.publication.producerNode, f.proof.identity.node);
+  assert.notEqual(result.publication.producerNode, process.version);
+  assert.equal(result.prepared.artifacts.length, 1);
+  assert.deepEqual(await fs.readFile(f.receipt), before, 'read-only publication cannot create or rewrite acceptance');
+  assert.deepEqual(f.observed.map(([executable]) => executable), ['git', 'pnpm', 'git']);
+});
+
+test('unaccepted, changed or incomplete release evidence cannot authorize npm publication', async t => {
+  for (const change of ['release-missing', 'producer-missing', 'acceptance-missing', 'consumer', 'archives',
+    'accepted-inventory', 'producer-receipt', 'release-receipt', 'receipt-binding', 'producer-source',
+    'source', 'policy', 'recipe', 'lockfile', 'package-manager']) await t.test(change, async sub => {
+    const f = await publicationFixture(sub);
+    if (change === 'release-missing') await fs.unlink(path.join(f.archives, 'release.json'));
+    else if (change === 'producer-missing') await fs.unlink(path.join(f.archives, 'producer.json'));
+    else if (change === 'acceptance-missing') await fs.unlink(f.receipt);
+    else if (change === 'archives') await fs.appendFile(path.join(f.archives, 'fixture.tgz'), 'altered');
+    else if (change === 'producer-receipt' || change === 'release-receipt')
+      await fs.appendFile(path.join(f.archives, change.split('-')[0] + '.json'), '\n');
+    else if (change === 'producer-source') {
+      const file = path.join(f.archives, 'producer.json'), record = await readJson(file);
+      record.commit = 'b'.repeat(40);
+      await writeJson(file, record);
+      f.proof.publicationReceipts.producer = hash(await fs.readFile(file));
+      await writeJson(f.receipt, f.proof);
+    } else if (change === 'lockfile') await fs.appendFile(path.join(f.root, 'pnpm-lock.yaml'), '# changed\n');
+    else if (change === 'package-manager') await writeJson(path.join(f.root, 'package.json'), { packageManager: 'pnpm@0.0.1' });
+    else {
+      if (change === 'consumer') f.proof.consumerVerified = false;
+      if (change === 'accepted-inventory') f.proof.acceptedArtifacts[0].integrity = integrity(Buffer.from('other bytes'));
+      if (change === 'receipt-binding') delete f.proof.publicationReceipts;
+      if (change === 'source') f.proof.identity.revision = 'b'.repeat(40);
+      if (change === 'policy') f.proof.identity.policy.preparation.consumerTimeoutMs++;
+      if (change === 'recipe') f.proof.identity.recipe.turboForce = false;
+      await writeJson(f.receipt, f.proof);
+    }
+    await assert.rejects(verifyPublicationPreparation(f.root, f.version, f.execute));
+  });
+});
 
 test('an unaccepted producer cannot finalize preparation without the canonical accepted release record', async t => {
   const f = await fixture(t);

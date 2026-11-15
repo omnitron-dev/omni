@@ -239,6 +239,7 @@
     "@mui/icons-material": "^9.5.0",
     "@mui/material": "^9.5.0",
     "@mui/system": "^9.5.0",
+    "@mui/utils": "^9.5.0",
     "@mui/x-data-grid": "^9.17.0",
     "@mui/x-date-pickers": "^9.17.0",
     "@omnitron-dev/common": "workspace:*",

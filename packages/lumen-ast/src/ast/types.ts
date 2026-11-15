@@ -7,11 +7,15 @@ import type { LumenDiagnostic } from './diagnostics.js';
 import type { MathEnvType, MathStatus } from '../math/environments.js';
 
 export interface Point {
+  /** One-based line in the original parse input; CRLF counts as one newline. */
   line: number;
+  /** One-based UTF-16 column in that line. */
   column: number;
+  /** Zero-based UTF-16 offset in the original input, including any BOM/frontmatter. */
   offset?: number;
 }
 
+/** Half-open range in the original source, never in a masked or dedented fragment. */
 export interface Position {
   start: Point;
   end: Point;
@@ -230,6 +234,7 @@ export interface LumenDocumentAst {
   children: LumenNode[];
   toc: LumenTocItem[];
   diagnostics: LumenDiagnostic[];
+  /** Body without frontmatter; node positions still address the original parse input. */
   rawContent?: string;
 }
 

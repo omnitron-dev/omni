@@ -7,6 +7,7 @@ import ts from 'typescript';
 import type { LumenDiagnostic } from '../ast/diagnostics.js';
 import { createDiagnostic } from '../ast/diagnostics.js';
 import type { LumenJsxWidgetNode, LumenNode, LumenRawHtmlPlaceholderNode } from '../ast/types.js';
+import { SourceText, type SourceEdit } from './source-text.js';
 
 export function isPascalCaseTag(tagName: string): boolean {
   return /^[A-Z][A-Za-z0-9_]*$/.test(tagName);
@@ -217,16 +218,21 @@ export function matchCompletePascalJsxElement(
  * so CommonMark (`fromMarkdown`) never splits multi-line JSX or drops `{...}` attributes,
  * while ignoring fenced code blocks, inline code, and math spans.
  */
-export function maskPascalJsxElements(content: string): {
+export function maskPascalJsxElements(input: string | SourceText): {
   maskedContent: string;
   jsxMap: Map<string, string>;
+  ranges: Map<string, { start: number; end: number }>;
+  source: SourceText;
 } {
+  const source = typeof input === 'string' ? SourceText.original(input) : input;
+  const content = source.value;
   const jsxMap = new Map<string, string>();
+  const ranges = new Map<string, { start: number; end: number }>();
+  const edits: SourceEdit[] = [];
   if (!content.includes('<')) {
-    return { maskedContent: content, jsxMap };
+    return { maskedContent: content, jsxMap, ranges, source };
   }
 
-  let out = '';
   let i = 0;
   let counter = 0;
   const len = content.length;
@@ -254,7 +260,6 @@ export function maskPascalJsxElements(content: string): {
           cursor = nl + 1;
         }
 
-        out += content.slice(i, closedEnd);
         i = closedEnd;
         continue;
       }
@@ -269,11 +274,9 @@ export function maskPascalJsxElements(content: string): {
       const ticks = '`'.repeat(tickCount);
       const closeIdx = content.indexOf(ticks, i + tickCount);
       if (closeIdx !== -1) {
-        out += content.slice(i, closeIdx + tickCount);
         i = closeIdx + tickCount;
         continue;
       }
-      out += ticks;
       i += tickCount;
       continue;
     }
@@ -283,7 +286,6 @@ export function maskPascalJsxElements(content: string): {
       if (content[i + 1] === '$') {
         const closeMath = content.indexOf('$$', i + 2);
         if (closeMath !== -1) {
-          out += content.slice(i, closeMath + 2);
           i = closeMath + 2;
           continue;
         }
@@ -291,7 +293,6 @@ export function maskPascalJsxElements(content: string): {
         const closeInlineMath = content.indexOf('$', i + 1);
         const nextNl = content.indexOf('\n', i + 1);
         if (closeInlineMath !== -1 && (nextNl === -1 || closeInlineMath < nextNl)) {
-          out += content.slice(i, closeInlineMath + 1);
           i = closeInlineMath + 1;
           continue;
         }
@@ -302,7 +303,6 @@ export function maskPascalJsxElements(content: string): {
     if (ch === '<' && content.startsWith('<!--', i)) {
       const closeComment = content.indexOf('-->', i + 4);
       if (closeComment !== -1) {
-        out += content.slice(i, closeComment + 3);
         i = closeComment + 3;
         continue;
       }
@@ -314,17 +314,18 @@ export function maskPascalJsxElements(content: string): {
       if (matched) {
         const token = `__LUMEN_JSX_TOKEN_${counter++}__`;
         jsxMap.set(token, matched.rawElement);
-        out += `<!--${token}-->`;
+        ranges.set(token, { start: i, end: matched.endIndex });
+        edits.push({ start: i, end: matched.endIndex, value: `<!--${token}-->` });
         i = matched.endIndex;
         continue;
       }
     }
 
-    out += ch;
     i += 1;
   }
 
-  return { maskedContent: out, jsxMap };
+  const masked = source.rewrite(edits);
+  return { maskedContent: masked.value, jsxMap, ranges, source: masked };
 }
 
 function evaluateStaticAstExpression(
@@ -544,20 +545,30 @@ function parseOpeningTagPropsViaTsAst(
 }
 
 export function dedentJsxInnerContent(raw: string): string {
-  const normalized = raw.replace(/\r\n/g, '\n');
-  const lines = normalized.split('\n');
+  return dedentJsxSource(SourceText.original(raw)).value;
+}
+
+function dedentJsxSource(source: SourceText): SourceText {
+  const newlines = [...source.value.matchAll(/\r\n|\r/g)].map((match) => ({
+    start: match.index,
+    end: match.index + match[0].length,
+    value: '\n',
+  }));
+  const normalized = source.rewrite(newlines);
+  const lines = normalized.value.split('\n');
+  let first = 0,
+    last = lines.length;
 
   // Trim leading and trailing blank-only lines
-  while (lines.length > 0 && lines[0]!.trim() === '') {
-    lines.shift();
-  }
-  while (lines.length > 0 && lines[lines.length - 1]!.trim() === '') {
-    lines.pop();
-  }
-  if (lines.length === 0) return '';
+  while (first < last && lines[first]!.trim() === '') first++;
+  while (last > first && lines[last - 1]!.trim() === '') last--;
+  if (first === last) return normalized.slice(0, 0);
+  const start = lines.slice(0, first).reduce((length, line) => length + line.length + 1, 0);
+  const selected = lines.slice(first, last);
+  const trimmed = normalized.slice(start, start + selected.join('\n').length);
 
   let minIndent = Infinity;
-  for (const line of lines) {
+  for (const line of selected) {
     if (line.trim().length === 0) continue;
     const match = line.match(/^[ \t]*/);
     const indent = match ? match[0].length : 0;
@@ -567,15 +578,23 @@ export function dedentJsxInnerContent(raw: string): string {
   }
 
   if (!Number.isFinite(minIndent) || minIndent === 0) {
-    return lines.join('\n');
+    return trimmed;
   }
 
-  return lines.map((line) => (line.trim().length === 0 ? '' : line.slice(minIndent))).join('\n');
+  let offset = 0;
+  const edits = selected.flatMap((line) => {
+    const width = line.trim().length ? minIndent : line.length;
+    const edit = { start: offset, end: offset + width, value: '' };
+    offset += line.length + 1;
+    return width ? [edit] : [];
+  });
+  return trimmed.rewrite(edits);
 }
 
 export type InnerFragmentParser = (
   markdown: string,
-  filePath?: string
+  filePath?: string,
+  source?: SourceText
 ) => { children: LumenNode[]; diagnostics: LumenDiagnostic[] };
 
 let registeredFragmentParser: InnerFragmentParser | null = null;
@@ -587,57 +606,55 @@ export function registerJsxFragmentParser(parser: InnerFragmentParser): void {
 export function parseJsxTag(
   htmlContent: string,
   filePath?: string,
-  fragmentParser?: InnerFragmentParser
+  fragmentParser?: InnerFragmentParser,
+  source: SourceText = SourceText.original(htmlContent)
 ): { node: LumenJsxWidgetNode | LumenRawHtmlPlaceholderNode; diagnostics: LumenDiagnostic[] } {
   const diagnostics: LumenDiagnostic[] = [];
   const trimmed = htmlContent.trim();
+  const leading = htmlContent.length - htmlContent.trimStart().length;
+  const trimmedSource = source.slice(leading, leading + trimmed.length);
+  const position = trimmedSource.position(0, trimmed.length);
+  const result = (node: LumenJsxWidgetNode | LumenRawHtmlPlaceholderNode) => {
+    for (const diagnostic of diagnostics) {
+      if (diagnostic.line !== undefined) continue;
+      diagnostic.line = position.start.line;
+      diagnostic.column = position.start.column;
+      diagnostic.length = position.end.offset! - position.start.offset!;
+    }
+    return { node: { ...node, position }, diagnostics };
+  };
 
   if (!trimmed.startsWith('<')) {
-    return {
-      node: { type: 'rawHtmlPlaceholder', raw: htmlContent },
-      diagnostics,
-    };
+    return result({ type: 'rawHtmlPlaceholder', raw: htmlContent });
   }
 
   const tagMatch = trimmed.slice(1).match(/^([A-Za-z0-9_]+)/);
   const tagName = tagMatch?.[1] ?? '';
 
   if (!tagName || !isPascalCaseTag(tagName)) {
-    return {
-      node: { type: 'rawHtmlPlaceholder', raw: htmlContent },
-      diagnostics,
-    };
+    return result({ type: 'rawHtmlPlaceholder', raw: htmlContent });
   }
 
   const afterName = 1 + tagName.length;
   const nextChar = trimmed[afterName];
   if (nextChar !== undefined && !/[\s/>]/.test(nextChar)) {
-    return {
-      node: { type: 'rawHtmlPlaceholder', raw: htmlContent },
-      diagnostics,
-    };
+    return result({ type: 'rawHtmlPlaceholder', raw: htmlContent });
   }
 
   const openEnd = scanJsxOpeningTagEnd(trimmed, afterName);
   if (!openEnd) {
-    return {
-      node: { type: 'rawHtmlPlaceholder', raw: htmlContent },
-      diagnostics,
-    };
+    return result({ type: 'rawHtmlPlaceholder', raw: htmlContent });
   }
 
   // Case 1: Self-closing <Widget ... />
   if (openEnd.selfClosing && openEnd.endIndex === trimmed.length) {
     const props = parseOpeningTagPropsViaTsAst(trimmed, tagName, filePath, diagnostics);
-    return {
-      node: {
-        type: 'jsxWidget',
-        name: tagName,
-        props,
-        isSelfClosing: true,
-      },
-      diagnostics,
-    };
+    return result({
+      type: 'jsxWidget',
+      name: tagName,
+      props,
+      isSelfClosing: true,
+    });
   }
 
   // Case 2: Paired <Widget ...>...</Widget>
@@ -649,36 +666,29 @@ export function parseJsxTag(
       const syntheticSelfClosing = `${openSliceWithoutGt} />`;
       const props = parseOpeningTagPropsViaTsAst(syntheticSelfClosing, tagName, filePath, diagnostics);
 
-      const rawBody = trimmed.slice(openEnd.endIndex, closeMatch.index);
-      const dedented = dedentJsxInnerContent(rawBody);
+      const dedented = dedentJsxSource(trimmedSource.slice(openEnd.endIndex, closeMatch.index));
 
       let children: LumenNode[] = [];
       const activeParser = fragmentParser ?? registeredFragmentParser;
-      if (dedented) {
+      if (dedented.value) {
         if (activeParser) {
-          const parsedInner = activeParser(dedented, filePath);
+          const parsedInner = activeParser(dedented.value, filePath, dedented);
           children = parsedInner.children;
           diagnostics.push(...parsedInner.diagnostics);
         } else {
-          children = [{ type: 'text', value: dedented }];
+          children = [{ type: 'text', value: dedented.value, position: dedented.position(0, dedented.value.length) }];
         }
       }
 
-      return {
-        node: {
-          type: 'jsxWidget',
-          name: tagName,
-          props,
-          isSelfClosing: false,
-          children,
-        },
-        diagnostics,
-      };
+      return result({
+        type: 'jsxWidget',
+        name: tagName,
+        props,
+        isSelfClosing: false,
+        children,
+      });
     }
   }
 
-  return {
-    node: { type: 'rawHtmlPlaceholder', raw: htmlContent },
-    diagnostics,
-  };
+  return result({ type: 'rawHtmlPlaceholder', raw: htmlContent });
 }

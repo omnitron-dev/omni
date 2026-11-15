@@ -6,6 +6,7 @@ import { fromMarkdown } from 'mdast-util-from-markdown';
 import { MAX_ATTRIBUTE_STRING_LENGTH, parseAttributeString } from './lexer-attrs.js';
 import { parseDirectiveAttributes } from '../math/environments.js';
 import type { MathEnvType } from '../math/environments.js';
+import { SourceText, type SourceEdit } from './source-text.js';
 import type {
   AdmonitionKind,
   LumenAdmonitionNode,
@@ -24,12 +25,15 @@ export function isAdmonitionKind(kind: string): kind is AdmonitionKind {
 export interface DirectivePreProcessResult {
   processedContent: string;
   attrMap: Map<string, Record<string, unknown>>;
+  source: SourceText;
 }
 
-export function preProcessDirectives(content: string): DirectivePreProcessResult {
+export function preProcessDirectives(input: string | SourceText): DirectivePreProcessResult {
+  const source = typeof input === 'string' ? SourceText.original(input) : input;
+  const content = source.value;
   const attrMap = new Map<string, Record<string, unknown>>();
   if (!content.includes(':::')) {
-    return { processedContent: content, attrMap };
+    return { processedContent: content, attrMap, source };
   }
   let counter = 0;
 
@@ -47,16 +51,17 @@ export function preProcessDirectives(content: string): DirectivePreProcessResult
   protect(fromMarkdown(content));
 
   // First pass: normalize nested :::tabs so outer tabs container fence has 4 colons
-  const normalizedTabs = normalizeTabsDirectives(content, protectedLines);
+  const edits = normalizeTabsDirectives(content, protectedLines);
 
   // Second pass: mask complex attributes containing [ or nested {
-  const lines = normalizedTabs.split('\n');
-  const processedLines: string[] = [];
+  const lines = content.split('\n');
+  let offset = 0;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? '';
+    const start = offset;
+    offset += line.length + 1;
     if (protectedLines.has(i) || line.length > MAX_ATTRIBUTE_STRING_LENGTH * 2 || !line.startsWith(':::')) {
-      processedLines.push(line);
       continue;
     }
     // Look for lines like :::theorem{id="thm-1" dependsOn=["a", "b"]}
@@ -65,7 +70,6 @@ export function preProcessDirectives(content: string): DirectivePreProcessResult
       const prefix = match[1] ?? ':::';
       const dirName = match[2] ?? '';
       const rawAttrs = match[3] ?? '';
-      const suffix = match[4] ?? '';
 
       // Only mask if attributes contain unquoted brackets/braces that micromark rejects
       if (rawAttrs.includes('[') || rawAttrs.includes('{', 1)) {
@@ -73,24 +77,18 @@ export function preProcessDirectives(content: string): DirectivePreProcessResult
         const parsed = parseAttributeString(rawAttrs);
         attrMap.set(token, parsed);
 
-        // Replace with {#token} padded with spaces to the exact same length
-        const baseToken = `{#${token}}`;
-        const paddedToken = baseToken.length <= rawAttrs.length ? baseToken.padEnd(rawAttrs.length, ' ') : baseToken;
-
-        processedLines.push(`${prefix}${dirName}${paddedToken}${suffix}`);
+        const attrStart = start + prefix.length + dirName.length;
+        edits.push({ start: attrStart, end: attrStart + rawAttrs.length, value: `{#${token}}` });
         continue;
       }
     }
-    processedLines.push(line);
   }
 
-  return {
-    processedContent: processedLines.join('\n'),
-    attrMap,
-  };
+  const processed = source.rewrite(edits.sort((a, b) => a.start - b.start));
+  return { processedContent: processed.value, attrMap, source: processed };
 }
 
-function normalizeTabsDirectives(content: string, protectedLines: ReadonlySet<number>): string {
+function normalizeTabsDirectives(content: string, protectedLines: ReadonlySet<number>): SourceEdit[] {
   const lines = content.split('\n');
 
   // Pass 1: find max tabs nesting depth
@@ -134,7 +132,7 @@ function normalizeTabsDirectives(content: string, protectedLines: ReadonlySet<nu
   }
 
   if (maxTabsDepth === 0) {
-    return content;
+    return [];
   }
 
   // Helper to compute colons:
@@ -145,34 +143,34 @@ function normalizeTabsDirectives(content: string, protectedLines: ReadonlySet<nu
   const getTabColons = (level: number) => ':'.repeat(2 * (maxTabsDepth - level) + 3);
 
   // Pass 2: rewrite opening and closing fences for tabs and tab
-  const result: string[] = [];
+  const result: SourceEdit[] = [];
   const renderStack: Array<{ type: string; colons: string }> = [];
   let curTabsLevel = 0;
+  let offset = 0;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? '';
+    const start = offset;
+    offset += line.length + 1;
     if (protectedLines.has(i)) {
-      result.push(line);
       continue;
     }
     const dirMatch = line.match(/^(:{3,})([a-zA-Z0-9_-]+)(\b.*)$/);
     if (dirMatch) {
       const name = dirMatch[2] ?? '';
-      const suffix = dirMatch[3] ?? '';
       if (name === 'tabs') {
         curTabsLevel++;
         const colons = getTabsColons(curTabsLevel);
         renderStack.push({ type: 'tabs', colons });
-        result.push(colons + name + suffix);
+        result.push({ start, end: start + dirMatch[1]!.length, value: colons });
         continue;
       } else if (name === 'tab') {
         const colons = getTabColons(curTabsLevel);
         renderStack.push({ type: 'tab', colons });
-        result.push(colons + name + suffix);
+        result.push({ start, end: start + dirMatch[1]!.length, value: colons });
         continue;
       } else {
         renderStack.push({ type: 'other', colons: dirMatch[1] ?? ':::' });
-        result.push(line);
         continue;
       }
     }
@@ -183,19 +181,17 @@ function normalizeTabsDirectives(content: string, protectedLines: ReadonlySet<nu
       if (popped) {
         if (popped.type === 'tabs') {
           curTabsLevel = Math.max(0, curTabsLevel - 1);
-          result.push(popped.colons);
+          result.push({ start, end: start + closeMatch[1]!.length, value: popped.colons });
           continue;
         } else if (popped.type === 'tab') {
-          result.push(popped.colons);
+          result.push({ start, end: start + closeMatch[1]!.length, value: popped.colons });
           continue;
         }
       }
     }
-
-    result.push(line);
   }
 
-  return result.join('\n');
+  return result;
 }
 
 export function resolveDirectiveAttributes(

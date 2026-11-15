@@ -6,6 +6,7 @@ import { mathToMarkdown } from 'mdast-util-math';
 import { toMarkdown } from 'mdast-util-to-markdown';
 import type { LumenDocumentAst, LumenNode } from '../ast/types.js';
 import { normalizeLumenHtml } from '../compiler/html.js';
+import { smartReferenceToMarkdown } from '../compiler/smart-ref-syntax.js';
 import { LumenMacroRegistry } from '../katex/macro-registry.js';
 import { isInteractiveHtmlElement } from './safe-html.js';
 import { renderNodesToHtml, sanitizeUrl } from './to-html-ssr.js';
@@ -47,7 +48,7 @@ export function toCleanMarkdown(ast: LumenDocumentAst, options: CleanMarkdownOpt
   const body = toMarkdown(
     { type: 'root', children },
     {
-      extensions: [gfmToMarkdown(), mathToMarkdown(), directiveToMarkdown()],
+      extensions: [gfmToMarkdown(), mathToMarkdown(), directiveToMarkdown(), smartReferenceToMarkdown()],
       bullet: '-',
       fences: true,
     }
@@ -61,6 +62,7 @@ function isPhrasing(node: MarkdownContent): node is PhrasingContent {
     'text',
     'inlineCode',
     'inlineMath',
+    'lumenSmartReference',
     'strong',
     'emphasis',
     'delete',
@@ -182,7 +184,7 @@ function mapNode(node: LumenNode, options: CleanMarkdownOptions): MarkdownConten
       const target = String(node.target ?? '');
       return options.expandSmartRefs
         ? [{ type: 'link', url: sanitizeUrl(`#${target}`), children: [text(target)] }]
-        : [text(node.raw ?? `@${node.domain ?? 'ref'}:${target}`)];
+        : [{ type: 'lumenSmartReference', value: String(node.raw ?? `@${node.domain ?? 'ref'}:${target}`) }];
     }
     case 'strong':
     case 'emphasis':

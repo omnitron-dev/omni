@@ -51,6 +51,8 @@ Twoslash uses actual default libraries from the exact TypeScript dependency. Bro
 
 `toCleanMarkdown` is a read/export representation, not a lossless editing format. It can simplify presentation constructs. The authoring path is `LumenService.getEditableDocument` → Prism `ResearchEditor.initialSource` → snapshot `getSource()` → `saveLiveEdit` with the original revision and hash. Do not overwrite the original document with an audience projection.
 
+Parser positions address the original input, including BOM and frontmatter: offsets are zero-based UTF-16 indices, lines and columns are one-based, and the end is exclusive. Nested JSX, directive attributes and smart references use the same coordinates. `rawContent` contains the body only; slice the original input when applying a node range. Raw HTML normalization may omit positions; consumers must handle their absence. Escaped smart-reference syntax, code, math and link destinations remain literal.
+
 ## Document presentation
 
 The `filetree` container directive accepts an optional `title` and one nested unordered Markdown list. Start each item with an inline-code filename, then an optional annotation; a trailing `/` or child list identifies a directory. HTML uses native, initially open disclosures, while Markdown and Typst retain the nested list and annotations. Lumen supplies the shared stylesheet. Prism ResearchEditor preserves the directive as opaque source; the standalone ResearchDocument reader does not interpret it.

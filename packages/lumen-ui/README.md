@@ -7,7 +7,9 @@ React components for Lumen documentation: navigation, document blocks, search an
 - A shared document shell and selective island activation.
 - Document tabs preserve labelled sections in static HTML. The shell adds Prism tabs with keyboard selection, fragment navigation and optional same-page synchronization through `syncKey`.
 - Navigation, mathematical blocks, code examples and reference cards.
-- Pagefind and Netron search adapters.
+- Pagefind and Netron search adapters. Search uses the shared Prism dialog for its portal, keyboard focus, Escape handling and focus restoration.
+- Navbar menus, selectors, search fields and playground controls use Prism/MUI components and the host theme. Keep host CSS focused on layout and prose rather than overriding control states.
+- Recorded playground output uses an expanded Prism disclosure, so the static result remains readable before hydration.
 - Mermaid diagrams and host-controlled API or Netron playgrounds.
 
 ## Quick start

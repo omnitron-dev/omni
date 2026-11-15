@@ -9,11 +9,12 @@ import {
   NetronAdapter,
   PagefindAdapter,
   LumenSearchDialog,
+  LumenSearchDialogContent,
   parseSearchSnippet,
   sanitizeSearchResultUrl,
 } from '../src/search/index.js';
 
-(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
 describe('Search Dialog & Adapters', () => {
   let container: HTMLDivElement;
@@ -28,19 +29,22 @@ describe('Search Dialog & Adapters', () => {
     };
   });
 
-  it('returns null when open is false and renders accessible dialog when true', () => {
-    expect(LumenSearchDialog({ open: false })).toBeNull();
-
-    const html = renderToStaticMarkup(React.createElement(LumenSearchDialog, { open: true, onClose: () => {} }));
-    expect(html).toContain('role="dialog"');
-    expect(html).toContain('aria-modal="true"');
-    expect(html).toContain('aria-label="Search documentation"');
-    expect(html).toContain('class="lumen-search-dialog"');
-    expect(html).toContain('<button type="button">Close</button>');
+  it('renders the shared modal in a portal only when open', async () => {
+    expect(renderToStaticMarkup(<LumenSearchDialog open={false} />)).toBe('');
+    const root = createRoot(container);
+    try {
+      await act(async () => root.render(<LumenSearchDialog open onClose={() => {}} />));
+      const dialog = document.querySelector('[role="dialog"]');
+      expect(dialog?.getAttribute('aria-modal')).toBe('true');
+      expect(dialog?.getAttribute('aria-label')).toBe('Search documentation');
+      expect(dialog?.querySelector('input[type="search"]')).toBe(document.activeElement);
+      expect(dialog?.querySelector('button[aria-label="Close search"]')).not.toBeNull();
+      expect(container.contains(dialog)).toBe(false);
+    } finally { await act(async () => root.unmount()); }
   });
 
   it('offers local search without advertising an unconnected semantic service', () => {
-    const html = renderToStaticMarkup(React.createElement(LumenSearchDialog, { open: true }));
+    const html = renderToStaticMarkup(<LumenSearchDialogContent />);
     expect(html).not.toContain('Semantic AI');
     expect(html).toContain('Search query');
   });
@@ -60,8 +64,8 @@ describe('Search Dialog & Adapters', () => {
         await vi.waitFor(() => expect(search).toHaveBeenCalledWith('test', 10), { timeout: 5000 });
         await expect(search.mock.results[0]?.value).rejects.toThrow('Local search index is unavailable');
       });
-      expect(container.querySelector('[role="alert"]')?.textContent).toContain('Local search index is unavailable');
-      expect(container.textContent).not.toContain('No results found');
+      expect(document.querySelector('[role="alert"]')?.textContent).toContain('Local search index is unavailable');
+      expect(document.body.textContent).not.toContain('No results found');
     } finally {
       await act(async () => { root.unmount(); });
       search.mockRestore();
@@ -81,8 +85,8 @@ describe('Search Dialog & Adapters', () => {
         await vi.waitFor(() => expect(rpcClient.search).toHaveBeenCalledWith('@package/entry[0]', { limit: 10 }), { timeout: 5000 });
         await expect(rpcClient.search.mock.results[0]?.value).rejects.toThrow('Search service unavailable');
       });
-      expect(container.querySelector('[role="alert"]')?.textContent).toBe('Search service unavailable');
-      expect(container.textContent).not.toContain('No results found');
+      expect(document.querySelector('[role="alert"]')?.textContent).toBe('Search service unavailable');
+      expect(document.body.textContent).not.toContain('No results found');
     } finally {
       await act(async () => { root.unmount(); });
     }
@@ -200,12 +204,12 @@ describe('Search Dialog & Adapters', () => {
         await rpcClient.search.mock.results[0]?.value;
       });
 
-      const link = container.querySelector('.lumen-search-result-item a') as HTMLAnchorElement | null;
+      const link = document.querySelector('.lumen-search-result-item a') as HTMLAnchorElement | null;
       expect(link).not.toBeNull();
       expect(link?.getAttribute('href')).toBe('#');
-      expect(container.querySelector('.lumen-search-result-item img')).toBeNull();
-      expect(container.querySelector('.lumen-search-result-item script')).toBeNull();
-      expect(container.querySelector('.lumen-search-result-item mark')?.textContent).toBe('term');
+      expect(document.querySelector('.lumen-search-result-item img')).toBeNull();
+      expect(document.querySelector('.lumen-search-result-item script')).toBeNull();
+      expect(document.querySelector('.lumen-search-result-item mark')?.textContent).toBe('term');
 
       await act(async () => {
         link?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
@@ -239,9 +243,9 @@ describe('Search Dialog & Adapters', () => {
         await vi.waitFor(() => expect(rpcClient.search).toHaveBeenCalledWith('slow-query', { limit: 10 }), { timeout: 5000 });
       });
 
-      expect(container.textContent).toContain('Searching...');
+      expect(document.body.textContent).toContain('Searching...');
 
-      const input = container.querySelector('input[type="search"]') as HTMLInputElement;
+      const input = document.querySelector('input[type="search"]') as HTMLInputElement;
       await act(async () => {
         const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
         setter?.call(input, '');
@@ -249,7 +253,7 @@ describe('Search Dialog & Adapters', () => {
         input.dispatchEvent(new Event('change', { bubbles: true }));
       });
 
-      expect(container.textContent).not.toContain('Searching...');
+      expect(document.body.textContent).not.toContain('Searching...');
 
       await act(async () => {
         resolveSlowSearch(staleResults);
@@ -257,68 +261,31 @@ describe('Search Dialog & Adapters', () => {
       });
 
       expect(rpcClient.search).toHaveBeenCalledTimes(1);
-      expect(container.textContent).not.toContain('Searching...');
-      expect(container.textContent).not.toContain('Stale Result');
+      expect(document.body.textContent).not.toContain('Searching...');
+      expect(document.body.textContent).not.toContain('Stale Result');
     } finally {
       await act(async () => { root.unmount(); });
     }
   });
 
-  it('UI-07: traps Tab and Shift+Tab focus strictly inside dialog and restores prior focus on close', async () => {
-    const outsideTrigger = document.createElement('button');
-    outsideTrigger.type = 'button';
-    outsideTrigger.textContent = 'Open Search';
-    document.body.appendChild(outsideTrigger);
-    outsideTrigger.focus();
-    expect(document.activeElement).toBe(outsideTrigger);
-
+  it('closes through the shared modal and restores the invoking control', async () => {
+    const trigger = document.createElement('button');
+    trigger.textContent = 'Open search';
+    document.body.append(trigger);
+    trigger.focus();
     const root = createRoot(container);
-    await act(async () => {
-      root.render(React.createElement(LumenSearchDialog, { open: true, onClose: () => {} }));
-    });
-
-    const dialog = container.querySelector('.lumen-search-dialog') as HTMLElement;
-    expect(dialog.getAttribute('aria-label')).toBe('Search documentation');
-
-    const focusables = Array.from(
-      dialog.querySelectorAll<HTMLElement>('input:not([disabled]), button:not([disabled]), a[href]')
-    );
-    expect(focusables.length).toBeGreaterThanOrEqual(2);
-
-    const firstEl = focusables[0]!;
-    const lastEl = focusables[focusables.length - 1]!;
-
-    lastEl.focus();
-    expect(document.activeElement).toBe(lastEl);
-
-    const forwardTab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
-    await act(async () => {
-      dialog.dispatchEvent(forwardTab);
-    });
-    expect(forwardTab.defaultPrevented).toBe(true);
-    expect(document.activeElement).toBe(firstEl);
-
-    const backwardTab = new KeyboardEvent('keydown', {
-      key: 'Tab',
-      shiftKey: true,
-      bubbles: true,
-      cancelable: true,
-    });
-    await act(async () => {
-      dialog.dispatchEvent(backwardTab);
-    });
-    expect(backwardTab.defaultPrevented).toBe(true);
-    expect(document.activeElement).toBe(lastEl);
-
-    await act(async () => {
-      root.render(React.createElement(LumenSearchDialog, { open: false, onClose: () => {} }));
-    });
-
-    expect(document.activeElement).toBe(outsideTrigger);
-
-    await act(async () => {
-      root.unmount();
-    });
-    document.body.removeChild(outsideTrigger);
+    const onClose = vi.fn();
+    try {
+      await act(async () => root.render(<LumenSearchDialog open onClose={onClose} />));
+      const dialog = document.querySelector('[role="dialog"]')!;
+      await act(async () => { dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+      expect(onClose).toHaveBeenCalledOnce();
+      await act(async () => root.render(<LumenSearchDialog open={false} onClose={onClose} />));
+      expect(document.querySelector('[role="dialog"]')).toBeNull();
+      expect(document.activeElement).toBe(trigger);
+    } finally {
+      await act(async () => root.unmount());
+      trigger.remove();
+    }
   });
 });

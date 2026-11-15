@@ -1,57 +1,43 @@
 import { describe, it, expect, vi } from 'vitest';
-import React from 'react';
+import React, { act } from 'react';
+import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { LumenNavbar, LumenFooter, DocPagination, DocSectionNav, DocLayout } from '../src/navigation/index.js';
 
+(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+
 describe('Navigation Layout Components', () => {
-  it('renders LumenNavbar with logo, items, and search button', () => {
-    let searchTriggered = false;
-    const el = LumenNavbar({
-      title: 'Quantum Framework',
-      logo: { src: '/logo.svg', alt: 'Quantum Logo', href: '/home' },
-      items: [
-        { label: 'Docs', to: '/docs', active: true },
-        { label: 'GitHub', href: 'https://github.com', external: true },
-      ],
-      onSearchClick: () => {
-        searchTriggered = true;
-      },
-    });
-
-    const html = renderToStaticMarkup(el);
-    expect(html).toContain('Quantum Framework');
-    expect(html).toContain('src="/logo.svg"');
-    expect(html).toContain('href="/docs"');
-    expect(html).toContain('https://github.com');
-    expect(html).toContain('target="_blank"');
-    expect(html).toContain('class="lumen-navbar-search-btn"');
-
-    // Verify search button click compatibility at children[2]
-    el.props.children[2].props.onClick();
-    expect(searchTriggered).toBe(true);
+  it('renders native links and invokes search through a mounted shared button', async () => {
+    const search = vi.fn();
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    try {
+      await act(async () => root.render(<LumenNavbar title="Quantum Framework"
+        logo={{ src: '/logo.svg', alt: 'Quantum Logo', href: '/home' }}
+        items={[{ label: 'Docs', to: '/docs', active: true }, { label: 'GitHub', href: 'https://github.com', external: true }]}
+        onSearchClick={search} />));
+      expect(container.querySelector('nav')?.getAttribute('aria-label')).toBe('Main navigation');
+      expect(container.querySelector('a[aria-current="page"]')?.getAttribute('href')).toBe('/docs');
+      expect(container.querySelector('a[href="https://github.com"]')?.getAttribute('rel')).toBe('noopener noreferrer');
+      const button = Array.from(container.querySelectorAll('button')).find(item => item.textContent === 'Search')!;
+      await act(async () => button.click());
+      expect(search).toHaveBeenCalledOnce();
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+    }
   });
 
-  it('renders LumenNavbar with version and locale selectors', () => {
-    const onVersion = vi.fn();
-    const onLocale = vi.fn();
-
-    const html = renderToStaticMarkup(
-      LumenNavbar({
-        versions: ['v1.0', 'v2.0'],
-        currentVersion: 'v2.0',
-        onVersionChange: onVersion,
-        locales: ['en', 'de'],
-        currentLocale: 'de',
-        onLocaleChange: onLocale,
-        onThemeToggle: () => {},
-      })
-    );
-
-    expect(html).toContain('class="lumen-navbar-version-select"');
-    expect(html).toContain('v2.0');
-    expect(html).toContain('class="lumen-navbar-locale-select"');
-    expect(html).toContain('de');
-    expect(html).toContain('class="lumen-navbar-theme-btn"');
+  it('keeps version and locale controls disabled when their changes have no handler', () => {
+    const container = document.createElement('div');
+    container.innerHTML = renderToStaticMarkup(<LumenNavbar versions={['v1.0', 'v2.0']} currentVersion="v2.0"
+      locales={['en', 'de']} currentLocale="de" />);
+    const controls = container.querySelectorAll('[role="combobox"]');
+    expect(controls).toHaveLength(2);
+    for (const control of controls) expect(control.getAttribute('aria-disabled')).toBe('true');
+    expect(controls[0]?.textContent).toBe('v2.0');
+    expect(controls[1]?.textContent).toBe('de');
   });
 
   it('renders LumenFooter with columns and operational status', () => {
@@ -137,14 +123,9 @@ describe('Navigation Layout Components', () => {
 
   it('renders DocLayout with sidebar, content, and sectionNav', () => {
     const html = renderToStaticMarkup(
-      React.createElement(
-        DocLayout,
-        {
-          sidebar: React.createElement('div', { id: 'test-sidebar' }, 'Sidebar'),
-          sectionNav: React.createElement('div', { id: 'test-toc' }, 'ToC'),
-        },
-        React.createElement('article', null, 'Main Article')
-      )
+      <DocLayout sidebar={<div id="test-sidebar">Sidebar</div>} sectionNav={<div id="test-toc">ToC</div>}>
+        <article>Main Article</article>
+      </DocLayout>
     );
 
     expect(html).toContain('class="lumen-doc-layout"');

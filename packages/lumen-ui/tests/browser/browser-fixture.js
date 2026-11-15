@@ -1,28 +1,37 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { createRequire } from 'node:module';
 import { realpathSync } from 'node:fs';
 import { cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import { build, preview } from 'vite';
 import { test as base } from '@playwright/test';
 
 const consumer = process.env.LUMEN_CONSUMER_ROOT && realpathSync(process.env.LUMEN_CONSUMER_ROOT);
 const execute = promisify(execFile);
+const resolvedEntries = new Map();
 
-function resolveConsumer(specifier, workspaceManifest) {
-  const require = createRequire(consumer ? path.join(consumer, 'package.json') : workspaceManifest);
-  const entry = realpathSync(require.resolve(specifier));
-  if (consumer) assert.ok(entry.startsWith(path.join(consumer, 'node_modules') + path.sep), `${specifier} escaped the archive consumer`);
-  return entry;
+async function resolveConsumer(specifier, workspaceManifest) {
+  const directory = consumer ?? path.dirname(workspaceManifest instanceof URL ? fileURLToPath(workspaceManifest) : workspaceManifest);
+  const key = JSON.stringify([directory, specifier]);
+  if (!resolvedEntries.has(key)) resolvedEntries.set(key, (async () => {
+    // Native ESM resolution selects the package's import condition. require.resolve
+    // rejects valid ESM-only entry points and can select a different implementation.
+    const { stdout } = await execute(process.execPath, [
+      '--input-type=module', '--eval', 'process.stdout.write(import.meta.resolve(process.argv[1]))', specifier,
+    ], { cwd: directory, timeout: 10_000, maxBuffer: 32 * 1024 });
+    const entry = realpathSync(fileURLToPath(stdout));
+    if (consumer) assert.ok(entry.startsWith(path.join(consumer, 'node_modules') + path.sep), `${specifier} escaped the archive consumer`);
+    return entry;
+  })());
+  return resolvedEntries.get(key);
 }
 
 /** Tooling stays in the checkout; executable package code resolves from the installed archives. */
 export async function importConsumer(specifier, workspaceManifest = new URL('../../package.json', import.meta.url)) {
-  return import(pathToFileURL(resolveConsumer(specifier, workspaceManifest)).href);
+  return import(pathToFileURL(await resolveConsumer(specifier, workspaceManifest)).href);
 }
 
 export const createBrowserTest = (entry, {
@@ -85,7 +94,7 @@ export const createBrowserTest = (entry, {
     }
   }, { scope: 'worker', timeout: 120_000 }],
   cliSiteUrl: [async ({}, provide) => {
-    const lumenEntry = resolveConsumer('@omnitron-dev/lumen', new URL('../../../lumen/package.json', import.meta.url));
+    const lumenEntry = await resolveConsumer('@omnitron-dev/lumen', new URL('../../../lumen/package.json', import.meta.url));
     const lumenDirectory = path.dirname(path.dirname(lumenEntry));
     // In archive mode the fixture inherits only the consumer's installed
     // packages. The linked SDK case uses the package's ordinary dependency tree.

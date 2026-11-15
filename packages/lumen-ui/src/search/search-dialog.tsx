@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useId } from 'react';
+import { Alert, Box, Dialog, DialogContent, IconButton, List, ListItem, ListItemButton, ListItemText, Stack, Tab, Tabs, TextField, Typography } from '@omnitron-dev/prism/ui';
+import { CloseIcon } from '@omnitron-dev/prism/icons';
 import { PagefindAdapter } from './pagefind-adapter.js';
 import { NetronAdapter, type NetronSearchClient } from './netron-adapter.js';
 
@@ -21,9 +23,6 @@ export interface LumenSearchDialogProps {
   onSelectResult?: (result: { url: string; title: string }) => void;
   className?: string;
 }
-
-const FOCUSABLE_SELECTOR =
-  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 const ENTITY_MAP: Record<string, string> = {
   '&amp;': '&',
@@ -230,95 +229,13 @@ export function LumenSearchDialogContent({
   const [isLoading, setIsLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
 
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(
-    typeof document !== 'undefined' && document.activeElement instanceof HTMLElement ? document.activeElement : null
-  );
+  const tabsId = useId();
   const requestIdRef = useRef(0);
 
   const pagefindAdapter = useMemo(() => new PagefindAdapter(pagefindUrl), [pagefindUrl]);
   const netronAdapter = useMemo(() => rpcClient ? new NetronAdapter(rpcClient) : null, [rpcClient]);
 
   useEffect(() => { if (!rpcClient) setActiveTab('local'); }, [rpcClient]);
-
-  // Focus search input on open and restore previously focused element on close/unmount
-  useEffect(() => {
-    if (typeof document === 'undefined') {
-      return undefined;
-    }
-
-    if (!previousFocusRef.current) {
-      const active = document.activeElement;
-      if (active instanceof HTMLElement && active !== inputRef.current) {
-        previousFocusRef.current = active;
-      }
-    }
-
-    inputRef.current?.focus();
-
-    return () => {
-      const prev = previousFocusRef.current;
-      if (prev && typeof prev.focus === 'function' && prev.isConnected) {
-        prev.focus();
-      }
-    };
-  }, []);
-
-  const trapTabFocus = useCallback((e: { key: string; shiftKey: boolean; preventDefault: () => void }) => {
-    if (typeof document === 'undefined') return;
-    const container = dialogRef.current;
-    if (!container) return;
-
-    const focusable = Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
-    if (focusable.length === 0) {
-      e.preventDefault();
-      return;
-    }
-
-    const activeEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const currentIndex = activeEl ? focusable.indexOf(activeEl) : -1;
-
-    e.preventDefault();
-    if (e.shiftKey) {
-      const prevIndex = currentIndex <= 0 ? focusable.length - 1 : currentIndex - 1;
-      focusable[prevIndex]?.focus();
-    } else {
-      const nextIndex = currentIndex === -1 || currentIndex >= focusable.length - 1 ? 0 : currentIndex + 1;
-      focusable[nextIndex]?.focus();
-    }
-  }, []);
-
-  const handleDialogKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLDivElement>) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onClose?.();
-      } else if (e.key === 'Tab') {
-        trapTabFocus(e);
-      }
-    },
-    [onClose, trapTabFocus]
-  );
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return undefined;
-    }
-
-    const handleWindowKeyDown = (e: KeyboardEvent) => {
-      if (e.defaultPrevented) return;
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onClose?.();
-      } else if (e.key === 'Tab') {
-        trapTabFocus(e);
-      }
-    };
-
-    window.addEventListener('keydown', handleWindowKeyDown);
-    return () => window.removeEventListener('keydown', handleWindowKeyDown);
-  }, [onClose, trapTabFocus]);
 
   useEffect(() => {
     const raw = query.trim();
@@ -371,81 +288,42 @@ export function LumenSearchDialogContent({
   }, [query, activeTab, maxResults, pagefindAdapter, netronAdapter]);
 
   return (
-    <div
-      ref={dialogRef}
-      className="lumen-search-dialog"
-      aria-label="Search documentation"
-      onKeyDown={handleDialogKeyDown}
-    >
-      <header className="lumen-search-header">
-        <div className="lumen-search-input-wrapper">
-          <input
-            ref={inputRef}
-            type="search"
-            className="lumen-search-input"
-            placeholder="Search documentation..."
-            aria-label="Search query"
-            value={query}
-            maxLength={256}
-            autoFocus
-            onChange={(e) => setQuery(e.target.value)}
-          />
-        </div>
-        {onClose && (
-          <button type="button" onClick={onClose}>
-            Close
-          </button>
-        )}
-      </header>
-
-      {rpcClient && <div className="lumen-search-tabs">
-        <button
-          type="button"
-          className={`lumen-search-tab ${activeTab === 'local' ? 'active' : ''}`}
-          onClick={() => setActiveTab('local')}
-        >
-          Local Docs
-        </button>
-        <button
-          type="button"
-          className={`lumen-search-tab ${activeTab === 'semantic' ? 'active' : ''}`}
-          onClick={() => setActiveTab('semantic')}
-        >
-          Semantic AI
-        </button>
-      </div>}
-
-      <div className="lumen-search-results">
-        {isLoading && <div className="lumen-search-loading">Searching...</div>}
-        {!isLoading && searchError && <p className="lumen-search-error" role="alert">{searchError}</p>}
+    <Box className="lumen-search-content">
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+        <TextField type="search" fullWidth autoFocus label="Search query" placeholder="Search documentation..."
+          value={query} slotProps={{ htmlInput: { maxLength: 256 } }}
+          onChange={event => setQuery(event.target.value)} />
+        {onClose && <IconButton type="button" aria-label="Close search" onClick={onClose}><CloseIcon /></IconButton>}
+      </Stack>
+      {rpcClient && <Tabs value={activeTab} onChange={(_, tab: 'local' | 'semantic') => setActiveTab(tab)}
+        aria-label="Search source" sx={{ mt: 2 }}>
+        <Tab value="local" label="Local Docs" id={`${tabsId}-local`} aria-controls={`${tabsId}-results`} />
+        <Tab value="semantic" label="Semantic AI" id={`${tabsId}-semantic`} aria-controls={`${tabsId}-results`} />
+      </Tabs>}
+      <Box id={`${tabsId}-results`} role={rpcClient ? 'tabpanel' : undefined}
+        aria-labelledby={rpcClient ? `${tabsId}-${activeTab}` : undefined} sx={{ mt: 2 }}>
+        {isLoading && <Typography role="status">Searching...</Typography>}
+        {!isLoading && searchError && <Alert severity="error">{searchError}</Alert>}
         {!isLoading && !searchError && query.trim() && results.length === 0 && (
-          <div className="lumen-search-empty">No results found for &quot;{query.slice(0, 32)}&quot;</div>
+          <Typography role="status">No results found for &quot;{query.slice(0, 32)}&quot;</Typography>
         )}
-        {!isLoading && results.length > 0 && (
-          <ul className="lumen-search-results-list">
-            {results.map((r) => {
-              const safeUrl = sanitizeSearchResultUrl(r.url);
-              const snippetNodes = r.snippet ? parseSearchSnippet(r.snippet) : [];
-              return (
-                <li
-                  key={r.id}
-                  className="lumen-search-result-item"
-                  onClick={() => {
-                    onSelectResult?.({ url: safeUrl, title: r.title });
-                    onClose?.();
-                  }}
-                >
-                  <a href={safeUrl} className="lumen-search-result-link">
-                    <span className="lumen-search-result-title">{r.title}</span>
-                    {snippetNodes.length > 0 && <span className="lumen-search-result-snippet">{snippetNodes}</span>}
-                  </a>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
-    </div>
+        {!isLoading && results.length > 0 && <List disablePadding aria-label="Search results">
+          {results.map(result => {
+            const safeUrl = sanitizeSearchResultUrl(result.url);
+            const snippetNodes = result.snippet ? parseSearchSnippet(result.snippet) : [];
+            return <ListItem key={result.id} disablePadding className="lumen-search-result-item">
+              <ListItemButton component="a" href={safeUrl} className="lumen-search-result-link"
+                onClick={() => {
+                  onSelectResult?.({ url: safeUrl, title: result.title });
+                  onClose?.();
+                }}>
+                <ListItemText primary={result.title} secondary={snippetNodes.length ? snippetNodes : undefined} />
+              </ListItemButton>
+            </ListItem>;
+          })}
+        </List>}
+      </Box>
+    </Box>
   );
 }
 
@@ -462,25 +340,11 @@ export function LumenSearchDialog({
 }: LumenSearchDialogProps): React.JSX.Element | null {
   if (!open) return null;
 
-  return React.createElement(
-    'div',
-    {
-      className: className ? `lumen-search-dialog-backdrop ${className}` : 'lumen-search-dialog-backdrop',
-      role: 'dialog',
-      'aria-modal': true,
-      'aria-label': 'Search documentation',
-      onClick: (e: React.MouseEvent) => {
-        if (e.target === e.currentTarget) onClose?.();
-      },
-    },
-    React.createElement(LumenSearchDialogContent, {
-      onClose,
-      initialQuery,
-      defaultTab,
-      pagefindUrl,
-      rpcClient,
-      maxResults,
-      onSelectResult,
-    })
-  );
+  return <Dialog open onClose={onClose} maxWidth="sm" fullWidth className={className}
+    slotProps={{ paper: { 'aria-label': 'Search documentation' } }}>
+    <DialogContent sx={{ pt: 3 }}>
+      <LumenSearchDialogContent onClose={onClose} initialQuery={initialQuery} defaultTab={defaultTab}
+        pagefindUrl={pagefindUrl} rpcClient={rpcClient} maxResults={maxResults} onSelectResult={onSelectResult} />
+    </DialogContent>
+  </Dialog>;
 }

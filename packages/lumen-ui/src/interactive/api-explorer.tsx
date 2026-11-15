@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, useId, useTransition } from 'react';
 import clsx from 'clsx';
+import { ListItemButton, TextField } from '@omnitron-dev/prism/ui';
 
 export interface ApiExplorerMethod {
   name: string;
@@ -135,12 +136,10 @@ export function ApiExplorer({
 
       {symbols.length > 0 && (
         <div className="lumen-api-explorer-search">
-          <input
-            type="search"
-            className="lumen-api-explorer-filter-input"
+          <TextField
+            type="search" fullWidth size="small" label="Filter API symbols"
             placeholder="Filter symbols..."
-            aria-label="Filter API symbols"
-            aria-controls={listId}
+            slotProps={{ htmlInput: { 'aria-controls': listId } }}
             value={filter}
             onChange={(e) => {
               const val = e.target.value;
@@ -166,16 +165,17 @@ export function ApiExplorer({
           <div style={{ height: totalHeight, position: 'relative', width: '100%' }}>
             <div style={{ transform: `translateY(${offsetY}px)`, position: 'absolute', width: '100%' }}>
               {visibleItems.map((sym, idx) => (
-                <div
+                <ListItemButton component="div" tabIndex={-1}
                   key={sym.id || sym.name || idx}
                   id={`${listId}-${startIndex + idx}`}
                   role="option"
                   aria-selected={selectedSymbol === sym.name}
+                  selected={selectedSymbol === sym.name}
                   aria-posinset={startIndex + idx + 1}
                   aria-setsize={totalItems}
-                  className={`lumen-api-symbol-item ${selectedSymbol === sym.name ? 'active' : ''}`}
+                  className="lumen-api-symbol-item"
                   data-focused={focusedIndex === startIndex + idx || undefined}
-                  style={{ height: itemHeight, display: 'flex', alignItems: 'center' }}
+                  sx={{ height: itemHeight, minHeight: itemHeight, gap: 1 }}
                   onClick={() => {
                     selectSymbol(startIndex + idx);
                     listRef.current?.focus();
@@ -183,7 +183,7 @@ export function ApiExplorer({
                 >
                   {sym.kind && <span className={`lumen-kind-badge kind-${sym.kind}`}>{sym.kind}</span>}
                   <span className="lumen-symbol-name">{sym.name}</span>
-                </div>
+                </ListItemButton>
               ))}
             </div>
           </div>

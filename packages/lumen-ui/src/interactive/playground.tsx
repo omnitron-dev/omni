@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useId, useCallback } from 'react';
 import clsx from 'clsx';
+import { Accordion, AccordionDetails, AccordionSummary, Button, TextField } from '@omnitron-dev/prism/ui';
+import { ChevronDownIcon, PlayIcon } from '@omnitron-dev/prism/icons';
 import { PLAYGROUND_LIMITS } from '@omnitron-dev/lumen-ast/execution/limits';
 import { executeSandboxedCode } from './playground-execution.js';
 
@@ -98,10 +100,13 @@ export function NetronPlayground({ code = '', mode, execute, timeoutMs = PLAYGRO
           <label className="lumen-playground-badge" htmlFor={editorId}>JavaScript playground</label>
           <span className="lumen-playground-runtime">{executionMode === 'server' ? 'Server' : 'Local'}</span>
         </div>
-        {!readOnly && <button type="button" className="lumen-playground-run-btn" onClick={executeCode} disabled={run.status === 'running'}>Run code</button>}
+        {!readOnly && <Button type="button" startIcon={<PlayIcon />} onClick={executeCode} disabled={run.status === 'running'}>Run code</Button>}
       </header>
       <div className="lumen-playground-editor">
-        <textarea id={editorId} className="lumen-playground-textarea" value={currentCode} onChange={event => setCurrentCode(event.target.value)} readOnly={readOnly || run.status === 'running'} rows={Math.min(16, Math.max(4, currentCode.split('\n').length + 1))} placeholder="Enter JavaScript to execute" spellCheck={false} />
+        <TextField id={editorId} multiline fullWidth value={currentCode} onChange={event => setCurrentCode(event.target.value)}
+          slotProps={{ input: { readOnly: readOnly || run.status === 'running' }, htmlInput: { spellCheck: false } }}
+          rows={Math.min(16, Math.max(4, currentCode.split('\n').length + 1))} placeholder="Enter JavaScript to execute"
+          sx={{ '& .MuiInputBase-input': { fontFamily: 'monospace' } }} />
       </div>
       {run.status === 'running' && <p role="status">Running code…</p>}
       {execution && (
@@ -113,7 +118,12 @@ export function NetronPlayground({ code = '', mode, execute, timeoutMs = PLAYGRO
         </section>
       )}
       {snapshot?.code === currentCode && (
-        <details className="lumen-playground-snapshot"><summary>Recorded output</summary><pre>{formatResult(snapshot.result)}</pre></details>
+        <Accordion className="lumen-playground-snapshot" defaultExpanded>
+          <AccordionSummary expandIcon={<ChevronDownIcon />} id={`${editorId}-snapshot-title`} aria-controls={`${editorId}-snapshot`}>
+            Recorded output
+          </AccordionSummary>
+          <AccordionDetails><pre>{formatResult(snapshot.result)}</pre></AccordionDetails>
+        </Accordion>
       )}
     </div>
   );

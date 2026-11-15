@@ -63,7 +63,8 @@ describe('interactive documentation', () => {
     await run();
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('Web Worker runtime is unavailable');
     expect(container.querySelector('.lumen-playground-result')).toBeNull();
-    expect(container.querySelector('details')?.textContent).toContain('Recorded output42');
+    expect(container.querySelector('.lumen-playground-snapshot')?.textContent).toContain('Recorded output42');
+    expect(container.querySelector('.lumen-playground-snapshot button')?.getAttribute('aria-expanded')).toBe('true');
     expect(onExecute).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ result: undefined, error: expect.any(String) }));
   });
 

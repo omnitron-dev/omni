@@ -21,7 +21,8 @@ import { recoverBackendAfterCrash } from '../../src/daemon/backend-crash-recover
 import { readManagedRuntime, managedRuntimeFile } from '../../src/daemon/managed-runtime.js';
 import { BackendRecoveryJournal, type BackendRecoveryRecord } from '../../src/daemon/backend-recovery-journal.js';
 import { writePrivateRecord } from '../../src/daemon/execution-journal.js';
-import type { BackendBootRecord } from '../../src/daemon/backend-handoff-types.js';
+import type { OperationReceipt } from '../../src/shared/dto/execution-operations.js';
+import { backendConfigurationDigest, type BackendBootRecord } from '../../src/daemon/backend-handoff-types.js';
 
 const roots: string[] = [];
 beforeEach(() => { vi.resetAllMocks(); mocks.ambientHome = '/ambient-instance-must-not-be-used'; mocks.supervised.mockReturnValue(false);
@@ -38,21 +39,22 @@ async function fixture(managed = false, certified = true) {
   };
   if (managed) await writePrivateRecord(managedRuntimeFile(home), config);
   const socket = path.join(root, 'custom-public.sock'), control = path.join(execution, 'c-test.sock');
-  const status = { pid: 741, instanceHome: home, entry: '/prior/packages/0/dist/daemon/daemon-entry.js', runtime: { owner: { id: 'fixture-owner', pid: 123 }, epoch: 1 } };
+  const status = { backendHandoffReviewProtocol: 1, pid: 741, instanceHome: home, entry: '/prior/packages/0/dist/daemon/daemon-entry.js', runtime: { owner: { id: 'fixture-owner', pid: 123 }, epoch: 1 } };
   const snapshot = { inventoryDigest: 'd'.repeat(64), protocol: 1, status: { owner: status.runtime.owner }, capabilities: {} as Record<string, number> };
   const observe = vi.fn().mockImplementation(async () => snapshot);
-  const prepare = vi.fn();
+  const prepare = vi.fn(), getOperation = vi.fn();
   const upgrade = vi.fn().mockResolvedValue({ checked: true, build: { commit: 'target' } });
   const recover = vi.fn().mockResolvedValue({ pid: 456 });
-  const supervisorStatus = vi.fn().mockResolvedValue({ migrationChecksumMetadata: 1, infrastructureAdoptionPreflight: 1 });
-  mocks.daemon.mockReturnValue({ service: async () => ({ status: async () => ({ handoffSupported: true }), controlAddress: async () => ({ socket: control }) }), disconnect: vi.fn() });
+  const supervisorStatus = vi.fn().mockResolvedValue({ migrationChecksumMetadata: 1, infrastructureAdoptionPreflight: 1, backendHandoffReviewProtocol: 1 });
+  mocks.daemon.mockReturnValue({ service: async (name: string) => name === 'OmnitronBackups' ? { getOperation } :
+    { status: async () => ({ handoffSupported: true }), controlAddress: async () => ({ socket: control }) }, disconnect: vi.fn() });
   mocks.control.mockImplementation(async (target, service) => {
-    if (target === control && service === 'OmnitronBackendControl') return { service: { status: async () => status, prepare }, close: vi.fn() };
+    if (target === control && service === 'OmnitronBackendControl') return { service: { status: async () => status, prepare, handoffReview }, close: vi.fn() };
     if (target === path.join(execution, 'owner.sock') && service === 'OmnitronExecution') return { service: { snapshot: observe }, close: vi.fn() };
     if (target === path.join(execution, 'supervisor.sock') && service === 'OmnitronSupervisor') return { service: { upgrade, recover, status: supervisorStatus }, close: vi.fn() };
     throw new Error(`Unexpected private control target: ${target}`);
   });
-  mocks.candidate.mockResolvedValue({ build: { commit: 'fixture' } });
+  mocks.candidate.mockResolvedValue({ runtimeHash: 'a'.repeat(64), build: { commit: 'fixture' } });
   mocks.installation.mockResolvedValue(null);
   const record: BackendBootRecord = { protocol: 1, state: { protocol: 1,
     ticket: { id: 'ticket', ownerId: 'fixture-owner',
@@ -60,17 +62,23 @@ async function fixture(managed = false, certified = true) {
       to: { ownerId: 'fixture-owner', controllerId: 'next', epoch: 2 } },
     watchConfig: { ...DEFAULT_ECOSYSTEM, apps: [] },
     projects: { projects: [], stacks: [], infrastructure: [], resumeBackoff: [], reconciling: false },
-    infrastructure: null, executionInventory: 'c'.repeat(64) },
+    infrastructure: null, executionInventory: 'd'.repeat(64) },
     daemonConfig: { ...DEFAULT_DAEMON_CONFIG, pidFile: path.join(home, 'daemon.pid'), socketPath: socket, executionHost: { enabled: true, directory: execution } },
     previousEntry: status.entry, previousPid: status.pid, createdAt: new Date().toISOString(), cwd: home,
     environment: { OMNITRON_HOME: home },
   };
+  const { ticket: _ticket, ...observedState } = record.state;
+  const observedRecord = { ...record, state: observedState, controller: record.state.ticket.from, runtimeHash: 'a'.repeat(64), registryDigest: 'b'.repeat(64) };
+  const admission = { backend: { pid: status.pid, controller: observedRecord.controller }, backups: [] as OperationReceipt[], configuration: {
+    registryDigest: observedRecord.registryDigest, sha256: backendConfigurationDigest(observedRecord, observedRecord.registryDigest),
+  } };
+  const handoffReview = vi.fn(async () => ({ record: observedRecord, admission }));
   if (certified) {
     const journal = new BackendRecoveryJournal(execution);
     journal.publish({ ...record, controller: record.state.ticket.from, runtimeHash: 'a'.repeat(64), registryDigest: 'b'.repeat(64) });
     await journal.close();
   }
-  return { root, home, execution, socket, control, config, record, upgrade, recover, status, snapshot, observe, prepare, supervisorStatus };
+  return { root, home, execution, socket, control, config, record, upgrade, recover, status, snapshot, observe, prepare, supervisorStatus, admission, handoffReview, observedRecord, getOperation };
 }
 
 it('uses the selected socket identity even when its location differs from instance home', async () => {
@@ -82,23 +90,33 @@ it('uses the selected socket identity even when its location differs from instan
   expect(mocks.migrations.mock.calls[0]?.[2]).toBe('all');
 });
 
-it.each(['invalid', 'pid', 'owner', 'epoch'])('refuses a %s recovery certificate before candidate adoption or lifecycle changes', async changed => {
+it.each(['unavailable', 'pid', 'owner', 'epoch'])('refuses a %s handoff review before candidate adoption or lifecycle changes', async changed => {
+  const target = await fixture();
+  if (changed === 'unavailable') target.handoffReview.mockRejectedValue(Error('Unfinished ownership mutation'));
+  if (changed === 'pid') target.observedRecord.previousPid++;
+  if (changed === 'owner') target.observedRecord.controller.ownerId = 'another-owner';
+  if (changed === 'epoch') target.observedRecord.controller.epoch++;
+  await expect(replaceBackend('/candidate', { socket: target.socket })).rejects.toThrow();
+  expect(mocks.adoption).not.toHaveBeenCalled(); expect(target.prepare).not.toHaveBeenCalled();
+  expect(target.upgrade).not.toHaveBeenCalled(); expect(mocks.installation).not.toHaveBeenCalled();
+});
+
+it('uses the fresh read-only review while the recovery certificate remains invalid', async () => {
   const target = await fixture();
   const journal = new BackendRecoveryJournal(target.execution);
   try {
-    const saved = journal.read();
-    if (saved?.status !== 'ready') throw new Error('Fixture certificate missing');
-    if (changed === 'invalid') journal.invalidate('Unfinished ownership mutation');
-    else {
-      if (changed === 'pid') saved.record.previousPid++;
-      if (changed === 'owner') saved.record.controller.ownerId = 'another-owner';
-      if (changed === 'epoch') saved.record.controller.epoch++;
-      journal.publish(saved.record);
-    }
+    journal.invalidate('Backup or restore in progress');
+    await expect(replaceBackend('/candidate', { socket: target.socket, checkOnly: true })).resolves.toMatchObject({ admission: target.admission });
+    expect(journal.read()?.status).toBe('invalid');
+    expect(target.prepare).not.toHaveBeenCalled();
+    expect(mocks.adoption).toHaveBeenCalledExactlyOnceWith(expect.anything(), target.observedRecord);
   } finally { await journal.close(); }
-  await expect(replaceBackend('/candidate', { socket: target.socket })).rejects.toThrow('current recovery certificate');
-  expect(mocks.adoption).not.toHaveBeenCalled(); expect(target.prepare).not.toHaveBeenCalled();
-  expect(target.upgrade).not.toHaveBeenCalled(); expect(mocks.installation).not.toHaveBeenCalled();
+});
+
+it('refuses a backend without reviewed admission without cancelling work', async () => {
+  const target = await fixture(); target.status.backendHandoffReviewProtocol = 0;
+  await expect(replaceBackend('/candidate', { socket: target.socket })).rejects.toThrow('lacks reviewed handoff');
+  expect(target.handoffReview).not.toHaveBeenCalled(); expect(target.prepare).not.toHaveBeenCalled();
 });
 
 it('uses only the migration scope attested by the selected private control peer', async () => {
@@ -115,7 +133,7 @@ it('delegates to the selected managed instance and never the ambient instance', 
   const target = await fixture(true);
   await expect(readManagedRuntime(target.home)).resolves.toMatchObject({ instanceHome: target.home });
   await expect(replaceBackend('/candidate', { socket: target.socket, checkOnly: true })).resolves.toMatchObject({ build: { commit: 'target' } });
-  expect(target.upgrade).toHaveBeenCalledWith({ directory: '/candidate', checkOnly: true });
+  expect(target.upgrade).toHaveBeenCalledWith({ directory: '/candidate', checkOnly: true, admission: target.admission });
   expect(mocks.control.mock.calls.map(call => call[0])).toEqual([target.control, path.join(target.execution, 'supervisor.sock')]);
   expect(mocks.candidate).toHaveBeenCalledWith('/candidate', undefined, undefined);
   expect(mocks.installation).not.toHaveBeenCalled();
@@ -169,7 +187,7 @@ it('does not refresh or promote a launcher after the managed guardian refuses ha
 it.each([true, false])('explains an old guardian metadata refusal before any lifecycle change (check=%s)', async checkOnly => {
   const target = await fixture(true);
   mocks.migrations.mockResolvedValue({ kind: 'checksum-metadata', changes: [] });
-  target.supervisorStatus.mockResolvedValue({ infrastructureAdoptionPreflight: 1 });
+  target.supervisorStatus.mockResolvedValue({ infrastructureAdoptionPreflight: 1, backendHandoffReviewProtocol: 1 });
   await expect(replaceBackend('/candidate', { socket: target.socket, checkOnly })).rejects.toThrow('backend guardian transition');
   expect(target.upgrade).not.toHaveBeenCalled(); expect(target.prepare).not.toHaveBeenCalled();
   expect(mocks.installation).not.toHaveBeenCalled();
@@ -268,7 +286,7 @@ it.each(['revision', 'inventory'])('refuses stale %s under the native selection 
   const previous = 'a'.repeat(64), candidate = 'b'.repeat(64), inventory = 'd'.repeat(64);
   mocks.ambientHome = target.home; mocks.supervised.mockReturnValue(true);
   const install = vi.fn(), selection = { current: previous, revision: 4 };
-  const fence = { current: previous, candidate, selectionRevision: 4, backendPid: 741, ownerId: 'fixture-owner', ownerPid: 123, appsDigest: inventory };
+  const fence = { current: previous, candidate, selectionRevision: 4, backendPid: 741, ownerId: 'fixture-owner', ownerPid: 123, appsDigest: inventory, admission: target.admission };
   mocks.candidate.mockImplementation(async directory => ({ directory, runtimeHash: directory === '/candidate' ? candidate : previous }));
   mocks.installation.mockResolvedValue({
     close: vi.fn(), activation: () => null, selection: () => selection, install,
@@ -278,7 +296,61 @@ it.each(['revision', 'inventory'])('refuses stale %s under the native selection 
       return work();
     },
   });
-  await expect(replaceBackend('/candidate', { socket: target.socket, fence })).rejects.toThrow(
-    change === 'revision' ? 'selection changed since rollout planning' : 'application inventory changed');
+  const managedEntry = vi.spyOn(fs, 'access').mockResolvedValue(undefined);
+  try { await expect(replaceBackend('/candidate', { socket: target.socket, fence })).rejects.toThrow(
+    change === 'revision' ? 'selection changed since rollout planning' : 'application inventory changed'); }
+  finally { managedEntry.mockRestore(); }
   expect(install).not.toHaveBeenCalled(); expect(target.prepare).not.toHaveBeenCalled();
+});
+
+
+const pendingBackup = (): OperationReceipt => ({ protocol: 1, id: 'reviewed-backup', kind: 'backup', revision: 3, state: 'running',
+  resources: [{ kind: 'database', project: 'one', stack: 'dev', name: 'ledger' }], inputDigest: 'f'.repeat(64),
+  createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:01.000Z' });
+
+it('preserves reviewed authority when the same backup finishes before backend apply', async () => {
+  const target = await fixture();
+  const expected = { ...structuredClone(target.admission), backups: [pendingBackup(), { ...pendingBackup(), id: 'second-backup',
+    resources: [{ kind: 'database', project: 'two', stack: 'dev', name: 'ledger' }] }] };
+  target.getOperation.mockImplementation(async ({ id }: { id: string }) => ({ ...expected.backups.find(value => value.id === id), state: 'succeeded', revision: 4 }));
+  const checked = await replaceBackend('/candidate', { socket: target.socket, checkOnly: true, admission: expected });
+  expect(checked).toMatchObject({ checked: true, admission: expected });
+  expect(target.getOperation.mock.calls).toEqual([[{ id: 'reviewed-backup' }], [{ id: 'second-backup' }]]);
+  expect(mocks.daemon).toHaveBeenCalledTimes(2); // initial capability + one reused receipt reader
+  expect(target.prepare).not.toHaveBeenCalled();
+});
+
+it('refuses a new or revised active backup after review without installing or preparing', async () => {
+  const target = await fixture();
+  const expected = { ...structuredClone(target.admission), backups: [pendingBackup()] };
+  target.admission.backups = [{ ...pendingBackup(), revision: 4 }];
+  await expect(replaceBackend('/candidate', { socket: target.socket, admission: expected })).rejects.toThrow('Backup operations changed');
+  expect(target.getOperation).not.toHaveBeenCalled(); expect(target.prepare).not.toHaveBeenCalled();
+  expect(mocks.installation).not.toHaveBeenCalled(); expect(mocks.adoption).not.toHaveBeenCalled();
+});
+
+
+it('binds infrastructure declarations and native identities while allowing new health observations', async () => {
+  const target = await fixture();
+  // A desired container and its last native observation are separate facts.
+  // The candidate must inspect native resources again after the freeze.
+  const desired = { name: 'database', image: 'postgres', ports: [], environment: {}, volumes: [],
+    labels: { 'omnitron.project': 'one', 'omnitron.stack': 'dev' }, restart: 'unless-stopped' };
+  const infrastructure = { config: {}, normalizedServices: {}, containers: [desired],
+    state: { ready: true, services: { database: { name: 'database', image: 'postgres', status: 'running' as const,
+      containerId: '1'.repeat(64), health: 'healthy' as const, healthCheck: { completedAt: '2026-01-01T00:00:00Z', exitCode: 0 } } } },
+    usingGlobalOmnitronPg: false, needsControlPlaneDatabase: false, monitoring: true, janitorNetworks: [],
+    controlPlaneContainer: { ...desired, name: 'omnitron-pg' },
+    nativeState: { protocol: 1 as const }, unhealthyTicks: [], restartBackoff: [] };
+  target.observedRecord.state.infrastructure = infrastructure;
+  const original = backendConfigurationDigest(target.observedRecord, target.observedRecord.registryDigest);
+  const frozen = structuredClone(target.observedRecord);
+  frozen.state.infrastructure!.state.services['database']!.healthCheck!.completedAt = '2026-01-01T00:00:05Z';
+  frozen.state.infrastructure!.nativeState = { protocol: 1, observations: [{ name: 'database', containerId: '1'.repeat(12) }] };
+  expect(backendConfigurationDigest(frozen, frozen.registryDigest)).toBe(original);
+  frozen.state.infrastructure!.state.services['database']!.containerId = '2'.repeat(64);
+  expect(backendConfigurationDigest(frozen, frozen.registryDigest)).not.toBe(original);
+  const changed = structuredClone(target.observedRecord);
+  changed.state.infrastructure!.janitorNetworks.push('foreign-network');
+  expect(backendConfigurationDigest(changed, changed.registryDigest)).not.toBe(original);
 });

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fork, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
+import { isDeepStrictEqual } from 'node:util';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import { DomainError } from '@omnitron-dev/titan/errors';
 import { createDaemonClient } from './daemon-client.js';
@@ -10,7 +11,8 @@ import type { BackendRpcService } from './backend.rpc-service.js';
 import type { BackendControlService } from './backend-control.js';
 import { privateControlClient, withControlDeadline } from './private-control-client.js';
 import { assertBackendMigrationsCompatible, checkBackendAdoption, checkBackendCandidate, verifyBackendEntry, type BackendArtifact } from './backend-candidate.js';
-import { readBackendBootRecord, checkpointInstanceHome, type BackendBootRecord } from './backend-handoff-types.js';
+import { readBackendBootRecord, checkpointInstanceHome, backendConfigurationDigest, assertBackendHandoffAdmission, assertBackendHandoffReview, backendHandoffAdmissionForApply,
+  type BackendBootRecord, type BackendHandoffAdmission } from './backend-handoff-types.js';
 import { writePrivateRecord } from './execution-journal.js';
 import { ExecutionClient } from './execution-client.js';
 import { executionDirectory } from './execution-launcher.js';
@@ -24,7 +26,8 @@ import type { BackendSupervisorService } from './backend-supervisor.js';
 import type { ExecutionHostService } from './execution-host.js';
 import { assertExecutionCapabilities } from './execution-capabilities.js';
 import { describeError } from '../shared/describe-error.js';
-import { BackendRecoveryJournal } from './backend-recovery-journal.js';
+import { retainReviewedBackups } from '../shared/backup-admission.js';
+import type { IOmnitronBackupsService } from '../shared/dto/services.js';
 
 export interface BackendReplacementResult {
   pid: number;
@@ -33,6 +36,13 @@ export interface BackendReplacementResult {
   epoch: number;
   checkpoint: string;
   build: BackendArtifact['build'];
+}
+
+export interface BackendReplacementPreflight {
+  checked: true;
+  build: BackendArtifact['build'];
+  /** Public plan data only: no resolved environment or private checkpoint. */
+  admission: BackendHandoffAdmission;
 }
 
 type ReplacementFailurePhase = 'candidate' | 'stop-candidate' | 'prepare-recovery' | 'restore' |
@@ -155,6 +165,7 @@ async function freshRecoveryRecord(record: BackendBootRecord): Promise<{ file: s
 export interface KernelHandoffFence {
   current: string; candidate: string; selectionRevision: number;
   backendPid: number; ownerId: string; ownerPid: number; appsDigest: string;
+  admission: BackendHandoffAdmission;
 }
 
 export function assertKernelHandoffFence(fence: KernelHandoffFence): void {
@@ -162,15 +173,20 @@ export function assertKernelHandoffFence(fence: KernelHandoffFence): void {
       ![fence.selectionRevision, fence.backendPid, fence.ownerPid].every(v => Number.isSafeInteger(v) && v > 0) ||
       typeof fence.ownerId !== 'string' || !fence.ownerId || fence.ownerId.length > 128 || fence.current === fence.candidate)
     throw Error('Invalid managed kernel handoff fence');
+  assertBackendHandoffAdmission(fence.admission);
+  if (fence.admission.backend.pid !== fence.backendPid || fence.admission.backend.controller.ownerId !== fence.ownerId)
+    throw Error('Managed kernel admission belongs to another backend or owner');
 }
 
 /** Installs verified local artifacts; never downloads packages, migrates schemas or restarts applications. */
 export async function replaceBackend(directory: string, options: {
-  socket?: string; checkOnly?: boolean; schemaPlan?: string; fence?: KernelHandoffFence; progress?: (message: string) => void;
-} = {}): Promise<BackendReplacementResult | { checked: true; build: BackendArtifact['build'] }> {
+  socket?: string; checkOnly?: boolean; schemaPlan?: string; fence?: KernelHandoffFence;
+  admission?: BackendHandoffAdmission; progress?: (message: string) => void;
+} = {}): Promise<BackendReplacementResult | BackendReplacementPreflight> {
   const fence = options.fence;
   if (fence) {
     assertKernelHandoffFence(fence);
+    if (options.admission && !isDeepStrictEqual(options.admission, fence.admission)) throw Error('Conflicting managed backend admission');
     if (!supervisesBackendChildren()) throw Error('Fenced handoff requires the native guardian');
   }
   const progress = options.progress ?? (() => {});
@@ -202,6 +218,10 @@ export async function replaceBackend(directory: string, options: {
     // guardian or draining the current backend, and again immediately before
     // preparing the handoff. Observation never claims controller authority.
     const artifact = await checkBackendCandidate(directory, undefined, fence?.candidate);
+    if (managed && supervisesBackendChildren()) {
+      try { await fs.access(path.join(artifact.directory, 'daemon/managed-entry.js')); }
+      catch { throw Error('This candidate cannot replace an OS-managed backend'); }
+    }
     const validateOwner = async () => {
       if (!fence && !Object.keys(artifact.executionRequirements ?? {}).length) return;
       const owner = await privateControlClient<ExecutionHostService>(path.join(path.dirname(address.socket), 'owner.sock'), 'OmnitronExecution');
@@ -217,21 +237,20 @@ export async function replaceBackend(directory: string, options: {
       } finally { await owner.close(); }
     };
     await validateOwner();
-    // This is a read-only certificate, not a request to drain the current
-    // controller. The candidate checks its own adoption logic before that
-    // controller gives up listeners or infrastructure monitoring.
-    const journal = new BackendRecoveryJournal(path.dirname(address.socket), { readOnly: true });
+    // A busy backup does not certify recovery, but it can be reviewed without
+    // draining. The frozen checkpoint, not this observation, authorizes adoption.
+    if (previous.retired || previous.ticketId || previous.backendHandoffReviewProtocol !== 1)
+      throw Error('Backend is prepared, retired or lacks reviewed handoff admission; no work was cancelled');
+    const reviewed = await control.service.handoffReview();
+    assertBackendHandoffReview(reviewed, { pid: previous.pid, entry: previous.entry, instanceHome: previous.instanceHome,
+      ownerId: previous.runtime?.owner?.id, epoch: previous.runtime?.epoch, ...(fence && { inventory: fence.appsDigest }) });
+    const expected = options.admission ?? fence?.admission;
+    const admission = expected ? backendHandoffAdmissionForApply(expected, reviewed.admission) : structuredClone(reviewed.admission);
+    const reader = createDaemonClient(options.socket, 15_000);
     try {
-      const certificate = journal.read();
-      if (previous.retired || previous.ticketId || certificate?.status !== 'ready' ||
-          certificate.record.previousPid !== previous.pid || certificate.record.previousEntry !== previous.entry ||
-          checkpointInstanceHome(certificate.record) !== path.resolve(previous.instanceHome) ||
-          certificate.record.controller.ownerId !== previous.runtime?.owner?.id ||
-          certificate.record.controller.epoch !== previous.runtime?.epoch) {
-        throw new Error('Wait for a current recovery certificate for this backend before checking infrastructure adoption');
-      }
-      await checkBackendAdoption(artifact, certificate.record);
-    } finally { await journal.close(); }
+      admission.backups = await retainReviewedBackups(reviewed.admission.backups, expected?.backups, async id =>
+        (await reader.service<IOmnitronBackupsService>('OmnitronBackups')).getOperation({ id }));
+    } finally { await reader.disconnect(); }
     if (managed && !supervisesBackendChildren()) {
       const compatibility = options.schemaPlan ? null : await assertBackendMigrationsCompatible(
         path.dirname(path.dirname(previous.entry)), artifact.directory, previous.schemaScope === 'node' ? 'node' : 'all');
@@ -241,6 +260,8 @@ export async function replaceBackend(directory: string, options: {
         if (guardian.infrastructureAdoptionPreflight !== 1) {
           throw new Error('The running guardian cannot verify candidate infrastructure adoption before retirement. Prepare a capable backend guardian before retrying. No backend was retired.');
         }
+        if (guardian.backendHandoffReviewProtocol !== 1)
+          throw Error('The running guardian cannot enforce reviewed backend admission; no work was cancelled');
         if (compatibility?.kind === 'checksum-metadata' && guardian.migrationChecksumMetadata !== 1) {
           throw new Error('Only migration checksum metadata changed, but the running guardian cannot verify that transition. Prepare and apply a backend guardian transition with this candidate, then retry backend upgrade. No backend or application was stopped.');
         }
@@ -253,7 +274,7 @@ export async function replaceBackend(directory: string, options: {
             expectedRevision = selected ? selected.revision + 1 : 2;
           } finally { await inspection?.close(); }
         }
-        const result = await supervisor.service.upgrade({ directory, checkOnly: options.checkOnly === true,
+        const result = await supervisor.service.upgrade({ directory, checkOnly: options.checkOnly === true, admission,
           ...(options.schemaPlan ? { schemaPlan: path.resolve(options.schemaPlan) } : {}) });
         if (!('checked' in result)) {
           // An older guardian can commit the proven bootstrap without refreshing
@@ -277,8 +298,10 @@ export async function replaceBackend(directory: string, options: {
       }
       finally { await supervisor.close(); }
     }
+    await checkBackendAdoption(artifact, reviewed.record);
     progress('Validating candidate and rollback artifacts');
     const rollback = await checkBackendCandidate(path.dirname(path.dirname(previous.entry)));
+    if (reviewed.record.runtimeHash !== rollback.runtimeHash) throw Error('Reviewed backend differs from its verified rollback artifact');
     const validateSchema = async () => {
       if (!options.schemaPlan) {
         // Older private peers did not attest their database scope.
@@ -289,7 +312,7 @@ export async function replaceBackend(directory: string, options: {
       await validateSchemaTransitionForUpgrade(options.schemaPlan, rollback, artifact, previous.instanceHome);
     };
     await validateSchema();
-    if (options.checkOnly) return { checked: true, build: artifact.build };
+    if (options.checkOnly) return { checked: true, build: artifact.build, admission };
     const installation = await RuntimeInstallation.open(previous.instanceHome);
     if (!installation) throw new Error('Could not open the runtime installation');
     try { return await installation.exclusive(async () => {
@@ -312,11 +335,18 @@ export async function replaceBackend(directory: string, options: {
       await installation.writeLauncher(installedCandidate.runtimeHash);
       await validateOwner();
       progress('Draining backend requests and execution mutations');
-      const prepared = await control.service.prepare({ candidateId: randomUUID() });
+      // A lost reply is not retried: status/ticket and its private checkpoint
+      // must be reconciled before any subsequent activation.
+      const prepared = await control.service.prepare({ candidateId: randomUUID(), admission });
       let record: BackendBootRecord;
       // All fallible pre-retirement checks still have an abort path.
       try {
         record = await readBackendBootRecord(prepared.file);
+        if (record.previousPid !== admission.backend.pid || record.previousEntry !== previous.entry ||
+            !isDeepStrictEqual(record.state.ticket.from, admission.backend.controller) ||
+            !isDeepStrictEqual(record.configuration, admission.configuration) ||
+            backendConfigurationDigest(record, admission.configuration.registryDigest) !== admission.configuration.sha256)
+          throw Error('Frozen backend checkpoint differs from the reviewed admission');
         if (fence && (record.previousPid !== fence.backendPid || record.state.ticket.ownerId !== fence.ownerId ||
             record.state.executionInventory !== fence.appsDigest)) throw Error('Prepared application inventory differs from the kernel rollout plan');
         // The certificate may change while requests drain. Check the exact

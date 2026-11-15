@@ -20,7 +20,8 @@ this fleet workflow.
 
 Planning binds the source commit, ordered targets, staging choice, pinned SSH
 endpoint, both runtime digests, selection revision, backend PID, owner and complete
-application/worker inventory. Staging verifies and installs a catalog artifact
+application/worker inventory, effective configuration digest and exact cancellable
+backup attempts. Staging verifies and installs a catalog artifact
 without selecting it. The first guardian bootstrap cannot rely on a handoff
 protocol the incumbent does not implement. Prepare its management runtime through
 the separately qualified native installation path.
@@ -49,12 +50,40 @@ before retirement. Unknown outcomes, restores and foreign operations remain
 blockers. A lost preparation acknowledgement leaves `preparing`; continuation
 must observe the original controller's ticket and cannot send preparation again.
 
-The standalone warm-backend path still has a separate admission boundary in
-[`src/daemon/backend-upgrade.ts`](src/daemon/backend-upgrade.ts): candidate
-infrastructure adoption requires a ready recovery certificate before handoff.
-An active backup can therefore still defer `backend upgrade` and the fleet path
-that invokes it. This gate must use the same reviewed-operation admission before
-strict adoption; the local-runtime and guardian changes do not bypass it.
+Warm backend and fleet updates use `backendHandoffReviewProtocol: 1` on both the
+serving controller and guardian. Their read-only review uses the same ownership
+observer as local runtime review and the same snapshot builder as recovery and
+handoff. It can describe exact owned backups while recovery remains `pending`;
+it never publishes a ready certificate or permits retirement. A controller or
+guardian without this protocol refuses before cancelling work.
+
+`backend upgrade --check --json` exposes the reviewed controller grant,
+configuration digest and backup receipts. The private resolved snapshot stays on
+the node. A standalone upgrade is an immediate operation with a fresh in-memory
+admission; a separate `--check` invocation is inspection, not a saved approval.
+Managed plans retain these values, and CLI and Console display the
+per-node cancellation scope before applying. A completed attempt is observed;
+new attempts, changed revisions, unknown outcomes and foreign operations refuse.
+The guardian revalidates admission under its native operation boundary. It
+performs candidate verification and read-only infrastructure adoption once there,
+instead of repeating the same native probe in the delegating CLI.
+
+After CAS cancellation and ingress drain, preparation freezes project and
+infrastructure ownership and obtains the owner ticket. The exact frozen checkpoint
+must retain the reviewed controller PID/grant, registry digest, effective project
+and watch definitions, resolved infrastructure declarations and native IDs,
+execution environment and complete application inventory.
+The candidate validates every native infrastructure resource in that checkpoint
+before retirement. This final check is necessary: health observations can advance
+between read-only review and freeze. It is not replaced by a cached probe or a
+previous recovery certificate.
+
+A lost preparation reply is never replayed or guessed to have failed. Inspect the
+original backend ticket and private checkpoint. Automatic rollback may follow the
+successor's exact grant while preserving the reviewed configuration, but its backup
+list is empty: it cannot cancel attempts started after review. Such a backup must
+finish before rollback. Historical plans without admission remain readable and
+require a new plan before activation.
 
 Normal pool recycling can invalidate a reviewed inventory. Before dispatch, a
 stale owner/PID/inventory/selection refuses the operation without handing off.

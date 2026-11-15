@@ -114,3 +114,14 @@ it.each([
   expect(output.emitError).toHaveBeenCalledWith(expect.stringContaining(error));
   expect(process.exitCode).toBe(1);
 });
+
+
+it('prints the reviewed backup attempts without applying a status request', async () => {
+  output.emitJson.mockReturnValue(false);
+  rpc.getKernelRollout.mockResolvedValue({ ...plan, targets: [{ name: 'west', state: 'ready', previous: 'b'.repeat(64),
+    candidate: 'c'.repeat(64), backupOperations: [{ id: 'backup-attempt-1', revision: 7,
+      resources: [{ project: 'one', stack: 'dev', name: 'ledger' }] }] }] });
+  await fleetRolloutCommand({ kind: 'status', id, wait: false });
+  expect(output.emitInfo).toHaveBeenCalledWith(expect.stringContaining('backup-attempt-1 · revision 7 · one/dev/ledger'));
+  expect(rpc.startKernelRollout).not.toHaveBeenCalled();
+});

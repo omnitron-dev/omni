@@ -8,7 +8,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { DomainError } from '@omnitron-dev/titan/errors';
 import { DEFAULT_DAEMON_CONFIG, DEFAULT_ECOSYSTEM } from '../../src/config/defaults.js';
 import type { BackendArtifact } from '../../src/daemon/backend-candidate.js';
-import type { BackendBootRecord } from '../../src/daemon/backend-handoff-types.js';
+import { backendConfigurationDigest, type BackendBootRecord } from '../../src/daemon/backend-handoff-types.js';
 import { writePrivateRecord } from '../../src/daemon/execution-journal.js';
 import { BackendRecoveryJournal } from '../../src/daemon/backend-recovery-journal.js';
 import { resetEnvCache, setEnvOverride } from '../../src/shared/env-config.js';
@@ -108,6 +108,12 @@ async function fixture(restoreReady = true, candidateReady = false) {
     previousEntry: previous.entry, previousPid: 999999, createdAt: owner.startedAt, cwd: home,
     environment: { OMNITRON_HOME: home, PATH: process.env['PATH'] ?? '', TMPDIR: os.tmpdir() },
   };
+  const registryDigest = 'a'.repeat(64);
+  record.configuration = { registryDigest, sha256: backendConfigurationDigest(record, registryDigest) };
+  const admission = { backend: { pid: record.previousPid, controller: ticket.from }, backups: [], configuration: record.configuration };
+  const { ticket: _ticket, ...observedState } = record.state;
+  const reviewed = { record: { ...record, state: observedState, controller: ticket.from, runtimeHash: previous.runtimeHash, registryDigest }, admission };
+  const handoffReview = vi.fn(async () => structuredClone(reviewed));
   const checkpoint = path.join(execution, 'handoff-initial.json');
   await writePrivateRecord(checkpoint, record);
   const journal = new BackendRecoveryJournal(execution);
@@ -116,9 +122,10 @@ async function fixture(restoreReady = true, candidateReady = false) {
   const complete = vi.fn(), select = vi.fn(), abort = vi.fn(), retire = vi.fn(), prepare = vi.fn(async () => ({ file: checkpoint, ticketId: ticket.id }));
   const beginActivation = vi.fn();
   mocks.candidate.mockImplementation(async directory => artifacts.find(item => item.directory === directory));
+  const controlStatus = { backendHandoffReviewProtocol: 1, instanceHome: home, entry: previous.entry, pid: record.previousPid, runtime: { owner, epoch: 1 }, ticketId: null as string | null };
   mocks.control.mockResolvedValue({ service: {
-    status: async () => ({ instanceHome: home, entry: previous.entry, pid: record.previousPid, runtime: { owner, epoch: 1 } }),
-    prepare, retire, abort, complete,
+    status: async () => controlStatus,
+    prepare, retire, abort, complete, handoffReview,
   }, close: vi.fn() });
   mocks.daemon.mockReturnValue({ service: async () => ({ status: async () => ({ handoffSupported: true }),
     controlAddress: async () => ({ socket: path.join(execution, 'control.sock') }) }),
@@ -131,7 +138,7 @@ async function fixture(restoreReady = true, candidateReady = false) {
   mocks.observe.mockResolvedValue({ inventoryDigest: digest });
   mocks.replacement.mockResolvedValue({ ...ticket, id: 'recovery-ticket', from: ticket.to,
     to: { ownerId: owner.id, controllerId: 'restored', epoch: 3 } });
-  return { root, home, candidate, previous, checkpoint, record, complete, select, abort, prepare, retire, beginActivation };
+  return { root, home, candidate, previous, checkpoint, record, complete, select, abort, prepare, retire, beginActivation, admission, reviewed, handoffReview, controlStatus };
 }
 
 async function persistedInstallation(target: Awaited<ReturnType<typeof fixture>>) {
@@ -334,4 +341,34 @@ it('reports confirmed rollback without hiding the original candidate refusal thr
   expect(error.details.failures).toEqual([{ phase: 'candidate', message: expect.stringContaining('readiness identity') }]);
   expect(target.complete).toHaveBeenCalledOnce(); expect(target.select).toHaveBeenCalledOnce();
   await throughSharedOutput(error);
+});
+
+
+it('does not replay or guess an abort after a lost prepare acknowledgement', async () => {
+  const target = await fixture();
+  target.prepare.mockImplementation(async () => {
+    target.controlStatus.ticketId = target.record.state.ticket.id;
+    throw Error('prepare acknowledgement lost');
+  });
+  await expect(replaceBackend(target.candidate.directory)).rejects.toThrow('prepare acknowledgement lost');
+  await expect(replaceBackend(target.candidate.directory)).rejects.toThrow('prepared, retired');
+  expect(target.prepare).toHaveBeenCalledOnce(); expect(target.abort).not.toHaveBeenCalled();
+  expect(target.retire).not.toHaveBeenCalled(); expect(target.beginActivation).not.toHaveBeenCalled();
+  expect(mocks.children).toHaveLength(0);
+});
+
+it.each(['configuration', 'environment', 'controller'] as const)('refuses a changed frozen %s before backend retirement', async change => {
+  const target = await fixture();
+  target.prepare.mockImplementation(async () => {
+    const changed = structuredClone(target.record);
+    if (change === 'configuration') changed.state.watchConfig = { ...changed.state.watchConfig, project: 'unreviewed' };
+    if (change === 'environment') changed.environment['UNREVIEWED'] = 'value';
+    if (change === 'controller') changed.state.ticket.from.epoch++;
+    await writePrivateRecord(target.checkpoint, changed);
+    return { file: target.checkpoint, ticketId: changed.state.ticket.id };
+  });
+  await expect(replaceBackend(target.candidate.directory)).rejects.toThrow('differs from the reviewed admission');
+  expect(target.abort).toHaveBeenCalledExactlyOnceWith({ ticketId: target.record.state.ticket.id });
+  expect(target.retire).not.toHaveBeenCalled(); expect(target.beginActivation).not.toHaveBeenCalled();
+  expect(mocks.children).toHaveLength(0);
 });

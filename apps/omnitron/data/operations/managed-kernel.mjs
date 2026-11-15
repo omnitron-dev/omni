@@ -6,6 +6,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 import { execFileSync, spawnSync } from 'node:child_process';
+import { isDeepStrictEqual } from 'node:util';
 const [home, bootstrap, guardian, request] = process.argv.slice(1);
 const wanted = JSON.parse(request);
 const dir = path.join(home, 'runtime'),
@@ -158,7 +159,23 @@ try {
     console.log(JSON.stringify({ bundle }));
   } else {
     if (!live.blockers || !wanted.requiredCounters.every(key => Object.hasOwn(live.blockers, key)) ||
-        Object.values(live.blockers).some(count => count !== 0)) throw Error('Active or unknown backend operations block kernel qualification');
+        !Object.hasOwn(live.blockers, 'backupOperations') ||
+        Object.entries(live.blockers).some(([key, count]) => !Number.isSafeInteger(count) || count < 0 || key !== 'backupOperations' && count !== 0))
+      throw Error('Active or unknown backend operations block kernel qualification');
+    const { assertBackendHandoffReview, assertBackendHandoffAdmission, backendHandoffAdmissionForApply } = await sdk('daemon/backend-handoff-types');
+    const address = await (await client.service('OmnitronBackend')).controlAddress();
+    if (path.dirname(path.resolve(address.socket)) !== path.resolve(config.directory)) throw Error('Foreign backend control directory');
+    const backend = await privateControlClient(address.socket, 'OmnitronBackendControl');
+    let admission;
+    try {
+      const control = await backend.service.status();
+      if (control.pid !== status.pid || control.instanceHome !== home || control.retired || control.ticketId ||
+          control.backendHandoffReviewProtocol !== 1) throw Error('Serving backend lacks stable reviewed admission');
+      const reviewed = await backend.service.handoffReview();
+      assertBackendHandoffReview(reviewed, { pid: status.pid, entry: current.entry, instanceHome: home,
+        ownerId: live.owner.id, epoch: snap.status.controller.epoch, inventory: snap.inventoryDigest, runtimeHash: current.runtimeHash });
+      admission = reviewed.admission;
+    } finally { await backend.close(); }
     const health = await client.getHealth({});
     const unhealthy = status.apps
       .filter(
@@ -195,6 +212,7 @@ try {
       selectionRevision: selection.revision,
       priorSelection: selection.previous,
       unhealthy,
+      admission,
     };
     {
       const supervisor = await privateControlClient(
@@ -208,6 +226,8 @@ try {
           throw Error(
             'Native guardian lacks kernelHandoff@1. Qualify and apply a backend guardian transition before the fleet rollout'
           );
+        if (supervisorState.backendHandoffReviewProtocol !== 1)
+          throw Error('Native guardian lacks reviewed backend admission; no work was cancelled');
         if (
           supervisorState.operationPending !== false ||
           supervisorState.state !== 'ready' ||
@@ -256,11 +276,21 @@ try {
         const result = JSON.parse(check.stdout);
         if (result.ok !== true || result.data?.checked !== true)
           throw Error('Native backend preflight failed: ' + (typeof result.error === 'string' ? result.error : 'candidate was not confirmed'));
+        assertBackendHandoffAdmission(result.data.admission);
+        if (!isDeepStrictEqual(result.data.admission.backend, admission.backend) ||
+            !isDeepStrictEqual(result.data.admission.configuration, admission.configuration))
+          throw Error('Backend identity or configuration changed during candidate qualification');
+        // Planning is read-only. Bind the final observation, including backups
+        // which started or finished while the candidate was inspected.
+        evidence.admission = result.data.admission;
       }
       evidence.qualified = candidate.runtimeHash;
     }
     if (wanted.operation === 'switch') {
       const { expected, from, to, revision, pid } = wanted;
+      assertBackendHandoffAdmission(expected.admission);
+      if (!(from === expected.previous && to === expected.candidate || from === expected.candidate && to === expected.previous))
+        throw Error('Switch is outside the reviewed transition and rollback pair');
       if (from === expected.previous && unhealthy.length) throw Error('Application readiness changed before handoff');
       if (
         evidence.current !== from ||
@@ -274,6 +304,9 @@ try {
       const destination = await checkout(to);
       if (to === expected.candidate && destination.build.commit !== expected.commit)
         throw Error('Planned source changed');
+      const reviewedAdmission = backendHandoffAdmissionForApply(expected.admission, admission, from === expected.candidate);
+      // Recovery may observe the successor's exact grant, but does not acquire
+      // permission to cancel backups started after the original review.
       assertSelection();
       const supervisor = await privateControlClient(
         path.join(config.directory, 'supervisor.sock'),
@@ -289,6 +322,7 @@ try {
           ownerId: expected.ownerId,
           ownerPid: expected.ownerPid,
           appsDigest: expected.appsDigest,
+          admission: reviewedAdmission,
         });
       } finally {
         await supervisor.close();

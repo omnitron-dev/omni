@@ -5,6 +5,7 @@ import { compareExecutionIdentityEvidence, describeExecutionIdentityDrift, isExe
 import type { InstalledBundle } from './host-upgrade.js';
 import { remoteNode } from './host-upgrade.js';
 import { targetRuntime } from '../release/target-runtime.js';
+import { assertBackendHandoffAdmission, type BackendHandoffAdmission } from '../daemon/backend-handoff-types.js';
 
 export interface ManagedRolloutObservation {
   identity?: ExecutionIdentityEvidence;
@@ -16,6 +17,7 @@ export interface ManagedRolloutObservation {
   backendPid: number;
   appsDigest: string;
   selectionRevision: number;
+  admission: BackendHandoffAdmission;
 }
 
 export class ManagedRolloutFailure extends Error {
@@ -36,6 +38,7 @@ export interface ManagedHostEvidence {
   qualified?: string;
   priorSelection: string | null;
   unhealthy: string[];
+  admission: BackendHandoffAdmission;
 }
 
 export type ManagedHostRequest = { operation: 'inspect' | 'observe' } | { operation: 'plan'; commit: string } |
@@ -78,8 +81,11 @@ export async function planManagedRollout(run: ManagedCall, commit: string): Prom
   if (!/^[0-9a-f]{40}$/.test(commit)) throw Error('A full lowercase Git commit is required');
   const report = await run({ operation: 'plan', commit });
   if (!report?.qualified) throw Error('No qualified managed target; a coupled owner requires a separate transition');
+  assertBackendHandoffAdmission(report.admission);
+  if (report.admission.backend.pid !== report.backendPid || report.admission.backend.controller.ownerId !== report.ownerId)
+    throw Error('Managed rollout admission does not match its backend and owner');
   return { previous: report.current, candidate: report.qualified, commit, ownerId: report.ownerId, ownerPid: report.ownerPid,
-    backendPid: report.backendPid, appsDigest: report.appsDigest, selectionRevision: report.selectionRevision,
+    backendPid: report.backendPid, appsDigest: report.appsDigest, selectionRevision: report.selectionRevision, admission: report.admission,
     ...(isExecutionIdentityEvidence(report.identity) && report.identity.owner.id === report.ownerId && report.identity.owner.pid === report.ownerPid ? { identity: report.identity } : {}) };
 }
 

@@ -40,6 +40,15 @@ function RolloutReceipt({ receipt }: { receipt: KernelRollout }) {
               <Chip size="small" variant="outlined" color={tone[target.state]} label={target.state} />
             </Stack>
             {target.reason && <Typography variant="body2">{target.reason}</Typography>}
+            {target.previous !== target.candidate && !!target.backupOperations?.length && <Alert severity="info" sx={{ my: 1 }}>
+              <Typography variant="body2">This plan authorizes cancellation of these backup attempts before the update. Completed backup archives are retained.</Typography>
+              <Stack component="ul" spacing={0.5} sx={{ my: 0.5, pl: 2 }}>
+                {target.backupOperations.map(backup => <Typography component="li" variant="caption" key={backup.id}>
+                  {backup.resources.map(resource => [resource.project, resource.stack, resource.name].filter(Boolean).join('/')).join(', ')}
+                  {' · '}{backup.id}{' · revision '}{backup.revision}
+                </Typography>)}
+              </Stack>
+            </Alert>}
             <Box component="details" open={['blocked', 'failed', 'rolled-back', 'uncertain'].includes(target.state)}
               sx={{ typography: 'caption', color: 'text.secondary', '& summary': { cursor: 'pointer' } }}>
               <summary>Owner and rollback details</summary>

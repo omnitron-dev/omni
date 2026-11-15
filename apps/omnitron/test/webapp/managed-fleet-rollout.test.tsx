@@ -240,3 +240,18 @@ it('retains a confirmed reconciliation outcome when the follow-up read fails', a
   expect(screen.getByText('rolled-back')).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Reconcile node status' })).toBeNull();
 });
+
+
+it('shows the exact backup cancellation scope before applying the selected plan', async () => {
+  grant('getKernelRollout', 'startKernelRollout');
+  rpc.getKernelRollout.mockResolvedValue({ ...report, targets: [{ ...report.targets[0], backupOperations: [{
+    protocol: 1, id: 'backup-attempt-1', revision: 7, state: 'running', kind: 'backup',
+    resources: [{ kind: 'database', project: 'one', stack: 'dev', name: 'ledger' }],
+    inputDigest: 'f'.repeat(64), createdAt: report.createdAt, updatedAt: report.updatedAt,
+  }] }] });
+  mount('/nodes?rollout=plan-1');
+  await screen.findByText(/one\/dev\/ledger.*backup-attempt-1.*revision 7/);
+  expect(screen.getByText(/Completed backup archives are retained/)).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Apply reviewed plan' })).toBeTruthy();
+  expect(rpc.startKernelRollout).not.toHaveBeenCalled();
+});

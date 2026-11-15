@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import type { ControllerGrant } from '@omnitron-dev/titan-pm';
-import type { BackendBootRecord, BackendHandoffState } from './backend-handoff-types.js';
+import type { BackendBootRecord, BackendHandoffState, BackendHandoffAdmission } from './backend-handoff-types.js';
 import { DaemonStateStore } from './daemon-state-store.service.js';
 import { openSqliteDatabase } from '@omnitron-dev/titan-database/sqlite';
 
@@ -11,6 +11,12 @@ export interface BackendRecoveryRecord extends Omit<BackendBootRecord, 'state'> 
   controller: ControllerGrant;
   runtimeHash: string;
   registryDigest: string;
+}
+
+/** Inspection only. This does not certify readiness or permit retirement. */
+export interface BackendHandoffReview {
+  record: BackendRecoveryRecord;
+  admission: BackendHandoffAdmission;
 }
 
 export type BackendRecoveryState =

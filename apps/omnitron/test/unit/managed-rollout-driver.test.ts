@@ -1,13 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 import { commandFailure } from '../../src/execution/command-failure.js';
 import { stageCatalogRuntime } from '../../src/services/kernel-distribution.js';
+import { backendHandoffAdmissionForApply } from '../../src/daemon/backend-handoff-types.js';
 import { assertKernelHandoffFence } from '../../src/daemon/backend-upgrade.js';
 import { activateManagedTarget, planManagedRollout, reconcileManagedTarget,
   type ManagedHostEvidence, type ManagedHostRequest, type ManagedRolloutObservation } from '../../src/services/managed-rollout.js';
 
 const previous = 'a'.repeat(64), candidate = 'b'.repeat(64), commit = 'c'.repeat(40);
 const plan: ManagedRolloutObservation = { previous, candidate, commit, ownerId: 'owner', ownerPid: 81,
-  backendPid: 103, appsDigest: 'd'.repeat(64), selectionRevision: 5 };
+  backendPid: 103, appsDigest: 'd'.repeat(64), selectionRevision: 5, admission: {
+    backend: { pid: 103, controller: { ownerId: 'owner', controllerId: 'backend', epoch: 1 } },
+    configuration: { sha256: 'e'.repeat(64), registryDigest: 'f'.repeat(64) }, backups: [],
+  } };
 
 function fixture() {
   const initial: ManagedHostEvidence = {
@@ -51,7 +55,7 @@ describe('fenced resident kernel transitions', () => {
   });
 
   it('checks the native fence before accepting digest IDs or a selection revision', () => {
-    const valid = { current: previous, candidate, selectionRevision: 5, backendPid: 103, ownerId: 'owner', ownerPid: 81, appsDigest: plan.appsDigest };
+    const valid = { current: previous, candidate, selectionRevision: 5, backendPid: 103, ownerId: 'owner', ownerPid: 81, appsDigest: plan.appsDigest, admission: plan.admission };
     expect(() => assertKernelHandoffFence(valid)).not.toThrow();
     for (const change of [{ candidate: '../runtime' }, { candidate: previous }, { current: 'main' },
       { selectionRevision: 0 }, { appsDigest: 'bad' }, { ownerPid: -2 }, { backendPid: NaN }]) {
@@ -153,4 +157,21 @@ it('rejects an SSH alias of the coordinating owner before staging or uploading a
     .rejects.toThrow('coordinating execution owner');
   expect(sender.readFromNode).not.toHaveBeenCalled();
   expect(sender.uploadToNode).not.toHaveBeenCalled();
+});
+
+
+it('carries the reviewed attempts forward but gives rollback no authority over successor backups', () => {
+  const reviewed = structuredClone(plan.admission);
+  const backup = { protocol: 1 as const, id: 'backup', revision: 3, kind: 'backup', state: 'running' as const,
+    resources: [], inputDigest: 'f'.repeat(64), createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' };
+  reviewed.backups = [backup];
+  expect(backendHandoffAdmissionForApply(reviewed, { ...reviewed, backups: [] })).toEqual(reviewed);
+  const successor = { ...structuredClone(reviewed), backend: { pid: 104, controller: { ownerId: 'owner', controllerId: 'candidate', epoch: 2 } },
+    backups: [{ ...backup, id: 'successor-backup' }] };
+  const rollback = backendHandoffAdmissionForApply(reviewed, successor, true);
+  expect(rollback).toEqual({ ...successor, backups: [] });
+  expect(successor.backups).toHaveLength(1);
+  expect(() => backendHandoffAdmissionForApply(reviewed, successor)).toThrow('identity or configuration changed');
+  expect(() => backendHandoffAdmissionForApply(reviewed, { ...successor, configuration: { ...successor.configuration, sha256: '9'.repeat(64) } }, true))
+    .toThrow('configuration changed');
 });

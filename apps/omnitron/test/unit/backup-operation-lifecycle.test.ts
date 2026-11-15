@@ -10,6 +10,12 @@ import { ExecutionService } from '../../src/execution/execution.service.js';
 import { recoveryState } from '../../src/daemon/recovery-state.js';
 import { OmnitronDaemon } from '../../src/daemon/daemon.js';
 import { restartConfigurationDigest } from '../../src/project/runtime-restart.js';
+import { BackendRecoveryMonitor } from '../../src/daemon/backend-recovery-monitor.js';
+import { BackendRecoveryJournal } from '../../src/daemon/backend-recovery-journal.js';
+import { BackendControlService } from '../../src/daemon/backend-control.js';
+import { readBackendBootRecord, backendConfigurationDigest } from '../../src/daemon/backend-handoff-types.js';
+import { DEFAULT_DAEMON_CONFIG, DEFAULT_ECOSYSTEM } from '../../src/config/defaults.js';
+import { fileURLToPath } from 'node:url';
 
 const fixture = vi.hoisted(() => ({ home: '' }));
 vi.mock('../../src/config/defaults.js', async original => ({
@@ -30,6 +36,34 @@ const projects = {
     getPostgresDatabases: () => ['ledger'], getResolvedContainerName: () => project,
   }) }),
 };
+
+async function liveControllerFixture() {
+  const directory = path.join(fixture.home, 'execution'); fs.mkdirSync(directory, { mode: 0o700 });
+  const grant = { ownerId: 'fixture-owner', controllerId: 'fixture-controller', epoch: 1 };
+  const snapshot = { status: { owner: { id: grant.ownerId, pid: 123 }, controller: grant, phase: 'active', inFlight: 0 }, inventoryDigest: 'e'.repeat(64) };
+  const projectState = { projects: [], stacks: [], infrastructure: [], resumeBackoff: [], reconciling: false };
+  const project = { recoveryRegistryDigest: () => 'd'.repeat(64), captureRecoveryState: () => structuredClone(projectState),
+    prepareHandoff: vi.fn(async () => structuredClone(projectState)), resumeAfterHandoff: vi.fn() };
+  const dc = { ...DEFAULT_DAEMON_CONFIG, executionHost: { enabled: true, directory },
+    socketPath: path.join(fixture.home, 'daemon.sock'), pidFile: path.join(fixture.home, 'daemon.pid') };
+  const execution = { state: () => ({ phase: 'active', owner: snapshot.status.owner, epoch: grant.epoch }),
+    recoverySnapshot: vi.fn(async () => structuredClone(snapshot)), controlledOwnerSnapshot: vi.fn(async () => structuredClone(snapshot)),
+    prepare: vi.fn(async (candidateId: string) => ({ snapshot, ticket: { id: randomUUID(), ownerId: grant.ownerId,
+      from: grant, to: { ...grant, controllerId: candidateId, epoch: 2 } } })), abort: vi.fn(), abortCandidate: vi.fn() };
+  const watchConfig = { ...DEFAULT_ECOSYSTEM, apps: [] };
+  const daemon = Object.create(OmnitronDaemon.prototype) as OmnitronDaemon;
+  const gate = { drain: vi.fn(async () => ({ drained: true })), reopen: vi.fn() };
+  const monitor = new BackendRecoveryMonitor(directory, { runtimeHash: 'a'.repeat(64),
+    entry: fileURLToPath(new URL('../../src/daemon/daemon-entry.js', import.meta.url)) } as never, dc, execution as never,
+  () => ({ watchConfig, projects: project as never, infrastructure: null }));
+  const journal = new BackendRecoveryJournal(directory);
+  Object.assign(daemon, { dc, watchConfig, backupService: backups, execution, recoveryMonitor: monitor,
+    app: { netron: { inbound: gate }, container: { resolveAsync: async () => project } },
+    initializeRecoveryMonitor: async () => null });
+  await monitor.start();
+  return { daemon, control: new BackendControlService(daemon, vi.fn()), journal, gate, execution,
+    close: async () => { await monitor.close(false); await journal.close(); } };
+}
 
 beforeEach(() => {
   fixture.home = fs.mkdtempSync(path.join(os.tmpdir(), 'backup-operation-'));
@@ -157,6 +191,55 @@ describe('durable backup execution', () => {
     expect(cancel).not.toHaveBeenCalled();
     expect(executor.execute).toHaveBeenCalledTimes(1);
     await backups.resumeAfterHandoff('reviewed-plan');
+  });
+
+  it.each([false, true])('freezes the reviewed backend checkpoint through the real backup journal (completed before apply=%s)', async completed => {
+    const controller = await liveControllerFixture();
+    mode = 'wait';
+    const run = backups.createBackup('one/dev/ledger').catch(error => error);
+    try {
+      await vi.waitFor(() => expect(submitted).toHaveLength(1));
+      const review = await controller.control.handoffReview();
+      expect(controller.journal.read()?.status).toBe('invalid');
+      expect(review.admission.backups).toHaveLength(1);
+      expect(controller.execution.prepare).not.toHaveBeenCalled(); expect(controller.gate.drain).not.toHaveBeenCalled();
+      if (completed) {
+        const receipt = review.admission.backups[0]!;
+        await backups.cancelOperation(receipt.id, receipt.revision); await run;
+      }
+      const cancel = vi.spyOn(backups, 'cancelOperation');
+      const prepared = await controller.control.prepare({ candidateId: randomUUID(), admission: review.admission });
+      const record = await readBackendBootRecord(prepared.file);
+      expect(record.configuration).toEqual(review.admission.configuration);
+      expect(record.state.ticket.from).toEqual(review.admission.backend.controller);
+      expect(record.state.projects).toEqual(review.record.state.projects);
+      expect(record.state.infrastructure).toEqual(review.record.state.infrastructure);
+      expect(backendConfigurationDigest(record, review.admission.configuration.registryDigest)).toBe(review.admission.configuration.sha256);
+      expect(await run).toBeInstanceOf(Error);
+      expect(cancel).toHaveBeenCalledTimes(completed ? 0 : 1);
+      expect(executor.execute).toHaveBeenCalledTimes(1);
+      await expect(backups.createBackup('two/dev/ledger')).rejects.toThrow('paused');
+      await controller.control.abort({ ticketId: prepared.ticketId });
+      mode = 'complete'; await expect(backups.createBackup('two/dev/ledger')).resolves.toBeTruthy();
+    } finally { await controller.close(); }
+  });
+
+  it('refuses a new backup after review before cancelling any operation or draining ingress', async () => {
+    const controller = await liveControllerFixture();
+    mode = 'wait';
+    const first = backups.createBackup('one/dev/ledger').catch(error => error);
+    try {
+      await vi.waitFor(() => expect(submitted).toHaveLength(1));
+      const review = await controller.control.handoffReview();
+      const second = backups.createBackup('two/dev/ledger').catch(error => error);
+      await vi.waitFor(() => expect(submitted).toHaveLength(2));
+      const cancel = vi.spyOn(backups, 'cancelOperation');
+      await expect(controller.control.prepare({ candidateId: randomUUID(), admission: review.admission })).rejects.toThrow(/review|changed/i);
+      expect(cancel).not.toHaveBeenCalled(); expect(controller.execution.prepare).not.toHaveBeenCalled();
+      expect(controller.gate.drain).not.toHaveBeenCalled();
+      for (const receipt of backups.listOperations()) await backups.cancelOperation(receipt.id, receipt.revision);
+      await Promise.all([first, second]);
+    } finally { await controller.close(); }
   });
 
   it('reviews a busy backup without a certificate, then admits only after cancellation and strict capture', async () => {

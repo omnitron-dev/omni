@@ -4,6 +4,7 @@
  * Declared away from the service implementation for the reason set out in
  * `./auth.ts`.
  */
+import type { OperationReceipt } from './execution-operations.js';
 
 export interface INode {
   id: string;
@@ -427,6 +428,8 @@ export interface KernelRolloutTarget {
   candidate: string | null;
   ownerId: string | null;
   ownerPid: number | null;
+  /** Reviewed attempts only. Absent on historical plans without cancellation authority. */
+  backupOperations?: OperationReceipt[];
   reason: string | null;
 }
 

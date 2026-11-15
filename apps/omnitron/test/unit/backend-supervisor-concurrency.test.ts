@@ -31,6 +31,9 @@ beforeEach(() => {
 });
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
+const admission = { backend: { pid: 20, controller: { ownerId: 'owner', controllerId: 'backend', epoch: 1 } },
+  configuration: { registryDigest: 'a'.repeat(64), sha256: 'b'.repeat(64) }, backups: [] };
+
 function fixture() {
   const service = new BackendSupervisorService({ directory: '/isolated-owner', instanceHome: '/isolated-home' } as ManagedRuntime, vi.fn());
   Object.assign(service, { children: new Map([[20, {}]]), state: { pid: 30, backendPid: 20, ownerPid: 10, state: 'ready', reason: null, at: '' } });
@@ -47,13 +50,13 @@ async function inspecting(service: BackendSupervisorService) {
 it('admits one operator request after an in-flight health inspection without racing it', async () => {
   const service = fixture(), observation = await inspecting(service);
   expect((await service.status()).operationPending).toBe(false);
-  const operation = service.upgrade({ directory: '/candidate', checkOnly: true });
+  const operation = service.upgrade({ directory: '/candidate', checkOnly: true, admission });
   // Observe early refusal as a value, so this regression cannot leak an unhandled rejection.
   const result = operation.catch(error => error);
   await Promise.resolve();
   expect((await service.status()).operationPending).toBe(true);
   expect(mocks.replace).not.toHaveBeenCalled();
-  await expect(service.upgrade({ directory: '/candidate', checkOnly: true })).rejects.toThrow(/busy/);
+  await expect(service.upgrade({ directory: '/candidate', checkOnly: true, admission })).rejects.toThrow(/busy/);
   observation.release(); await observation.tick;
   expect(await result).toMatchObject({ checked: true });
   expect(mocks.replace).toHaveBeenCalledTimes(1);
@@ -63,7 +66,7 @@ it('admits one operator request after an in-flight health inspection without rac
 it('bounds admission and never executes a timed-out request after the probe finishes', async () => {
   const service = fixture(), observation = await inspecting(service);
   vi.useFakeTimers();
-  const result = service.upgrade({ directory: '/candidate', checkOnly: true }).catch(error => error);
+  const result = service.upgrade({ directory: '/candidate', checkOnly: true, admission }).catch(error => error);
   await vi.advanceTimersByTimeAsync(10_001);
   expect(await result).toBeInstanceOf(Error);
   observation.release(); await observation.tick;
@@ -73,7 +76,7 @@ it('bounds admission and never executes a timed-out request after the probe fini
 
 it('refuses a request waiting for observation if shutdown starts before admission', async () => {
   const service = fixture(), observation = await inspecting(service);
-  const result = service.upgrade({ directory: '/candidate', checkOnly: true }).catch(error => error);
+  const result = service.upgrade({ directory: '/candidate', checkOnly: true, admission }).catch(error => error);
   // stop() owns the shutdown side effects; this test isolates its admission barrier.
   Object.assign(service, { stopping: true });
   observation.release(); await observation.tick;
@@ -84,10 +87,10 @@ it('refuses a request waiting for observation if shutdown starts before admissio
 it('does not queue behind a recovery operation or bypass failed isolation', async () => {
   const service = fixture();
   Object.assign(service, { busy: true });
-  await expect(service.upgrade({ directory: '/candidate', checkOnly: true })).rejects.toThrow(/busy/);
+  await expect(service.upgrade({ directory: '/candidate', checkOnly: true, admission })).rejects.toThrow(/busy/);
   Object.assign(service, { busy: false });
   const observation = await inspecting(service);
-  const result = service.upgrade({ directory: '/candidate', checkOnly: true }).catch(error => error);
+  const result = service.upgrade({ directory: '/candidate', checkOnly: true, admission }).catch(error => error);
   mocks.isolation.mockRejectedValueOnce(new Error('Owner isolation cannot be verified'));
   observation.release(); await observation.tick;
   expect(await result).toMatchObject({ message: 'Owner isolation cannot be verified' });
@@ -125,10 +128,10 @@ it('yields initial inspection to a reserved command before any automatic recover
   const open = vi.spyOn(RuntimeInstallation, 'open').mockResolvedValue(null);
   const tick = (service as unknown as { tick(): Promise<void> }).tick();
   await reading.promise;
-  const result = service.upgrade({ directory: '/candidate', checkOnly: true }).catch(error => error);
+  const result = service.upgrade({ directory: '/candidate', checkOnly: true, admission }).catch(error => error);
   try {
     expect(mocks.replace).not.toHaveBeenCalled();
-    await expect(service.upgrade({ directory: '/other-candidate', checkOnly: true })).rejects.toThrow(/busy/);
+    await expect(service.upgrade({ directory: '/other-candidate', checkOnly: true, admission })).rejects.toThrow(/busy/);
   } finally { read.resolve(null); await tick; }
   expect(await result).toMatchObject({ checked: true });
   expect(mocks.replace).toHaveBeenCalledTimes(1);
@@ -171,6 +174,6 @@ it.each(['held', 'applying', 'unconfirmed'] as const)('retains durable %s recove
     reason: expect.stringContaining(`reviewed-plan (${phase})`) });
   expect(mocks.isolation).not.toHaveBeenCalled();
   await expect(service.recover({ checkpoint: '/ignored-original' })).rejects.toThrow('held for reviewed plan');
-  await expect(service.upgrade({ directory: '/candidate' })).rejects.toThrow('held for reviewed plan');
+  await expect(service.upgrade({ directory: '/candidate', admission })).rejects.toThrow('held for reviewed plan');
   expect(mocks.replace).not.toHaveBeenCalled(); expect(close).toHaveBeenCalledTimes(3);
 });

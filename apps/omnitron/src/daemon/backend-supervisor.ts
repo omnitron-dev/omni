@@ -14,18 +14,20 @@ import { PidManager } from './pid-manager.js';
 import { ExecutionClient } from './execution-client.js';
 import { RuntimeInstallation } from './runtime-installation.js';
 import { ownBackendChildren } from './backend-child.js';
-import { assertKernelHandoffFence, replaceBackend, recoverBackend, type KernelHandoffFence, type BackendReplacementResult } from './backend-upgrade.js';
+import { assertKernelHandoffFence, replaceBackend, recoverBackend, type KernelHandoffFence, type BackendReplacementResult, type BackendReplacementPreflight } from './backend-upgrade.js';
+import { assertBackendHandoffAdmission, type BackendHandoffAdmission } from './backend-handoff-types.js';
 import { recoverBackendAfterCrash } from './backend-crash-recovery.js';
 import { readPrivateRecord, writePrivateRecord } from './execution-journal.js';
 import { managedJobPid, verifyManagedIsolation, hostBootIdentity, type ManagedRuntime } from './managed-runtime.js';
 import type { BackendArtifact } from './backend-candidate.js';
-import { checkBackendCandidate, verifyBackendEntry } from './backend-candidate.js';
+import { verifyBackendEntry } from './backend-candidate.js';
 import { recoverReviewedBackend } from './reviewed-backend-recovery.js';
 
 export interface SupervisorStatus {
   kernelHandoff?: 1;
   migrationChecksumMetadata?: 1;
   infrastructureAdoptionPreflight?: 1;
+  backendHandoffReviewProtocol?: 1;
   reviewedRecovery?: 1;
   operationPending?: boolean;
   pid: number;
@@ -68,30 +70,29 @@ export class BackendSupervisorService {
 
   @Public({ auth: { roles: ADMIN_ROLES } })
   async status(): Promise<SupervisorStatus> {
-    return { ...this.state, kernelHandoff: 1, migrationChecksumMetadata: 1, infrastructureAdoptionPreflight: 1, reviewedRecovery: 1,
+    return { ...this.state, kernelHandoff: 1, migrationChecksumMetadata: 1, infrastructureAdoptionPreflight: 1, reviewedRecovery: 1, backendHandoffReviewProtocol: 1,
       operationPending: this.operationClaimed || (this.busy && !this.inspection) };
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
-  async upgrade(data: { directory: string; checkOnly?: boolean; schemaPlan?: string }): Promise<BackendReplacementResult | { checked: true; build: BackendArtifact['build'] }> {
+  async upgrade(data: { directory: string; checkOnly?: boolean; schemaPlan?: string; admission: BackendHandoffAdmission }): Promise<BackendReplacementResult | BackendReplacementPreflight> {
+    assertBackendHandoffAdmission(data.admission);
     return this.replace(data);
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
-  async upgradeIfCurrent(fence: KernelHandoffFence): Promise<BackendReplacementResult | { checked: true; build: BackendArtifact['build'] }> {
+  async upgradeIfCurrent(fence: KernelHandoffFence): Promise<BackendReplacementResult | BackendReplacementPreflight> {
     assertKernelHandoffFence(fence);
     return this.replace({ directory: path.join(this.config.instanceHome, 'runtime/releases', fence.candidate, 'packages/0/dist'), fence });
   }
 
-  private async replace(data: { directory: string; checkOnly?: boolean; schemaPlan?: string; fence?: KernelHandoffFence }): Promise<BackendReplacementResult | { checked: true; build: BackendArtifact['build'] }> {
+  private async replace(data: { directory: string; checkOnly?: boolean; schemaPlan?: string; fence?: KernelHandoffFence; admission?: BackendHandoffAdmission }): Promise<BackendReplacementResult | BackendReplacementPreflight> {
     if (!path.isAbsolute(data.directory)) throw new Error('An absolute installed candidate path is required');
     return this.exclusive(async () => {
       await this.assertNoReviewedRecovery();
       await this.isolation();
-      const candidate = await checkBackendCandidate(data.directory);
-      try { await fs.access(path.join(candidate.directory, 'daemon/managed-entry.js')); }
-      catch { throw new Error('This candidate predates independent supervision and cannot replace an OS-managed backend'); }
       const result = await replaceBackend(data.directory, { socket: this.daemonConfig.socketPath, checkOnly: data.checkOnly === true,
+        ...(data.admission ? { admission: data.admission } : {}),
         ...(data.fence ? { fence: data.fence } : {}),
         ...(data.schemaPlan ? { schemaPlan: data.schemaPlan } : {}) });
       if (!('checked' in result)) await this.ready(result.pid);

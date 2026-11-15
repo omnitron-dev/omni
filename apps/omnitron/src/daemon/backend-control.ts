@@ -7,7 +7,9 @@ import { Service, Public } from '@omnitron-dev/titan/decorators';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import { ADMIN_ROLES } from '../shared/roles.js';
 import type { OmnitronDaemon } from './daemon.js';
-import type { BackendBootRecord } from './backend-handoff-types.js';
+import { backendSnapshot, backendConfigurationDigest, assertBackendHandoffAdmission,
+  type BackendBootRecord, type BackendHandoffAdmission } from './backend-handoff-types.js';
+import { isDeepStrictEqual } from 'node:util';
 import { executionDirectory } from './execution-launcher.js';
 import { ExecutionJournal, writePrivateRecord } from './execution-journal.js';
 import { PidManager } from './pid-manager.js';
@@ -34,6 +36,7 @@ export class BackendControlService {
       runtimeRestartProtocol: 1,
       runtimeRestartAdmissionProtocol: 1,
       backupHandoffProtocol: 1,
+      backendHandoffReviewProtocol: 1,
       daemonSocket: expandPath(this.daemon.daemonConfig.socketPath),
       instanceHome: OMNITRON_HOME, schemaScope: backendSchemaScope(this.daemon.daemonConfig),
       ticketId: this.prepared?.state.ticket.id ?? null, build: OWN_BUILD,
@@ -70,23 +73,39 @@ export class BackendControlService {
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
-  async prepare(data: { candidateId: string; backups?: OperationReceipt[] }): Promise<{ file: string; ticketId: string }> {
+  async handoffReview() {
+    this.assertRestartReview([]);
+    return this.daemon.reviewBackendHandoff();
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async prepare(data: { candidateId: string; backups?: OperationReceipt[]; admission?: BackendHandoffAdmission }): Promise<{ file: string; ticketId: string }> {
     if (!/^[0-9a-f-]{36}$/i.test(data.candidateId)) throw new Error('A candidate UUID is required');
     if (data.backups !== undefined && (!Array.isArray(data.backups) || data.backups.length > 1000))
       throw Error('Invalid reviewed backup operations');
+    if (data.admission) {
+      assertBackendHandoffAdmission(data.admission);
+      if (data.backups !== undefined || data.admission.backend.pid !== process.pid)
+        throw Error('Reviewed admission targets another backend or duplicates backup authority');
+    }
     if (this.preparing || this.prepared || this.retired) throw new Error('A backend transfer already exists');
     this.preparing = true;
     try {
-      const state = await this.daemon.prepareBackendHandoff(data.candidateId, data.backups);
-      this.prepared = { protocol: 1, state, daemonConfig: this.daemon.daemonConfig,
-        previousEntry: fileURLToPath(new URL('./daemon-entry.js', import.meta.url)), previousPid: process.pid,
-        createdAt: new Date().toISOString(), cwd: process.cwd(),
-        environment: { ...Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined)), OMNITRON_HOME },
-      };
-      const file = path.join(executionDirectory(this.daemon.daemonConfig), `handoff-${state.ticket.id}.json`);
-      try { await writePrivateRecord(file, this.prepared); }
+      const admission = data.admission && structuredClone(data.admission);
+      const state = await this.daemon.prepareBackendHandoff(data.candidateId, admission?.backups ?? data.backups, admission);
+      try {
+        this.prepared = backendSnapshot(state, this.daemon.daemonConfig, fileURLToPath(new URL('./daemon-entry.js', import.meta.url)));
+        const file = path.join(executionDirectory(this.daemon.daemonConfig), `handoff-${state.ticket.id}.json`);
+        if (admission) {
+          if (!isDeepStrictEqual(state.ticket.from, admission.backend.controller) ||
+              backendConfigurationDigest(this.prepared, admission.configuration.registryDigest) !== admission.configuration.sha256)
+            throw Error('Frozen backend configuration differs from its reviewed admission');
+          this.prepared.configuration = structuredClone(admission.configuration);
+        }
+        await writePrivateRecord(file, this.prepared);
+        return { file, ticketId: state.ticket.id };
+      }
       catch (error) { await this.daemon.abortBackendHandoff(state); this.prepared = null; throw error; }
-      return { file, ticketId: state.ticket.id };
     } finally { this.preparing = false; }
   }
 

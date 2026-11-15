@@ -1,10 +1,12 @@
 import { readProcessLifetime, compareProcessLifetimes } from '@omnitron-dev/common/process-identity';
 import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import type { KernelRollout, KernelRolloutTarget } from '../shared/dto/nodes.js';
 import type { DeployTarget } from './remote-deployer.service.js';
 import { describeFailure } from './audit.service.js';
 import { ManagedRolloutFailure, type ManagedRolloutObservation, type ManagedSelection } from './managed-rollout.js';
+import { assertBackendHandoffAdmission } from '../daemon/backend-handoff-types.js';
 
 type Store = Pick<DaemonStateStore, 'kvGetSync' | 'kvSetSync' | 'kvUpdateSync'>;
 type Revalidate = () => Promise<void>;
@@ -23,7 +25,11 @@ const uuid = (id: unknown): id is string => typeof id === 'string' && /^[a-f0-9]
 const now = () => new Date().toISOString();
 const hash = (value: unknown, length: number) => typeof value === 'string' && value.length === length && /^[a-f0-9]+$/.test(value);
 const positive = (n: number) => Number.isSafeInteger(n) && n > 0;
-function validObservation(p: ManagedRolloutObservation, commit: string) {
+function validObservation(p: ManagedRolloutObservation, commit: string, requireAdmission = true) {
+  if (requireAdmission || p?.admission !== undefined) {
+    try { assertBackendHandoffAdmission(p?.admission); } catch { return false; }
+    if (p.admission.backend.pid !== p.backendPid || p.admission.backend.controller.ownerId !== p.ownerId) return false;
+  }
   return p && p.commit === commit && hash(p.previous, 64) && hash(p.candidate, 64) && hash(p.appsDigest, 64) &&
     typeof p.ownerId === 'string' && p.ownerId.length > 0 && positive(p.ownerPid) && positive(p.backendPid) && positive(p.selectionRevision);
 }
@@ -95,7 +101,8 @@ export class KernelRolloutService {
             const pin = observations[i];
             if (node.state === 'pending') return pin !== null || rollout.state !== 'planning';
             if (node.state === 'blocked') return pin !== null || !['planning','blocked'].includes(rollout.state);
-            return !pin || typeof pin.endpoint !== 'string' || !validObservation(pin.preflight, rollout.commit) ||
+            return !pin || typeof pin.endpoint !== 'string' || !validObservation(pin.preflight, rollout.commit, false) ||
+              !isDeepStrictEqual(node.backupOperations, pin.preflight.admission?.backups) ||
               node.previous !== pin.preflight.previous || node.candidate !== pin.preflight.candidate ||
               node.ownerId !== pin.preflight.ownerId || node.ownerPid !== pin.preflight.ownerPid;
           })) throw Error('Corrupt kernel rollout record: ' + id);
@@ -178,7 +185,7 @@ export class KernelRolloutService {
       const at = now();
       const rollout: KernelRollout = { id, commit, stage, createdAt: existing?.rollout.createdAt ?? at, updatedAt: at, state: 'planning', reason: null,
         targets: ids.map(nodeId => ({ nodeId, name: nodes.find(n => n.id === nodeId)?.name ?? nodeId, state: 'pending', reason: null,
-          previous: null, candidate: null, ownerId: null, ownerPid: null })) };
+          previous: null, candidate: null, ownerId: null, ownerPid: null, backupOperations: [] })) };
       pending = { rollout, requestNodes: nodeIds ?? null, observations: ids.map(() => null), writer: this.writer, revision: (existing?.revision ?? -1) + 1 };
       this.store.kvSetSync(recordKey(id), pending);
       return { latest: id, active: id };
@@ -225,7 +232,7 @@ export class KernelRolloutService {
         owners.add(observed.ownerId);
         pin = { endpoint, preflight: observed };
         Object.assign(target, { previous: observed.previous, candidate: observed.candidate, ownerId: observed.ownerId, ownerPid: observed.ownerPid,
-          state: observed.previous === observed.candidate ? 'current' : 'ready' });
+          backupOperations: structuredClone(observed.admission.backups), state: observed.previous === observed.candidate ? 'current' : 'ready' });
       } catch (error) { target.state = 'blocked'; target.reason = describeFailure(error); }
       this.change(id, (record, index) => {
         if (index.active !== id || record.writer?.token !== this.writer.token || record.rollout.state !== 'planning')
@@ -247,6 +254,8 @@ export class KernelRolloutService {
       if (run.rollout.state === 'running' || run.rollout.state === 'succeeded') return false;
       this.assertController();
       if (run.rollout.state !== 'planned') throw Error('Only a reviewed ready plan can start. Reconcile uncertain outcomes or create a new plan.');
+      if (run.observations.some(pin => !pin || !validObservation(pin.preflight, run.rollout.commit)))
+        throw Error('This historical plan has no reviewed backup admission. Prepare a new plan before activation.');
       if (index.active) throw Error('Another kernel rollout holds the controller: ' + index.active);
       index.latest = id; index.active = id; run.writer = this.writer; run.rollout.state = 'running'; execute = true;
       return true;

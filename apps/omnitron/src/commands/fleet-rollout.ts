@@ -44,6 +44,8 @@ function show(plan: KernelRollout): void {
     const from = node.previous?.slice(0, 12) ?? '?';
     const to = node.candidate?.slice(0, 12) ?? '?';
     emitInfo(`  ${node.name}  ${node.state}  ${from} → ${to}${node.reason ? ' · ' + node.reason : ''}`);
+    for (const backup of node.previous !== node.candidate ? node.backupOperations ?? [] : []) emitInfo(`    Reviewed backup cancellation: ${backup.id} · revision ${backup.revision} · ` +
+      backup.resources.map(resource => [resource.project, resource.stack, resource.name].filter(Boolean).join('/')).join(', '));
   }
   if (plan.reason) emitInfo(plan.reason);
 }

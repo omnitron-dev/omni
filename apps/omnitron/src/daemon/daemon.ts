@@ -132,7 +132,9 @@ import { expandPath } from '../shared/paths.js';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import { connectExecutionOwner } from './execution-launcher.js';
 import type { ExecutionClient } from './execution-client.js';
-import type { BackendHandoffState } from './backend-handoff-types.js';
+import { backendConfigurationDigest, type BackendHandoffState, type BackendHandoffAdmission } from './backend-handoff-types.js';
+import type { BackendHandoffReview } from './backend-recovery-journal.js';
+import type { ExecutionSnapshot } from './execution-host.js';
 import type { BackendRuntimeStatus } from '../shared/dto/backend.js';
 import { BackendRpcService } from './backend.rpc-service.js';
 import { startBackendControl } from './backend-control.js';
@@ -414,6 +416,28 @@ export class OmnitronDaemon {
   }
 
   private async observeRuntimeRestart(scopes: Array<{ project: string; stack: string }>, review: boolean): Promise<RuntimeRestartReview> {
+    const { value: configuration, backups } = await this.observeRuntimeState(review, async (projects, owner, registryDigest) => ({
+      protocol: 1 as const, registryDigest, ownerId: owner.status.owner.id, inventoryDigest: owner.inventoryDigest,
+      watchConfig: structuredClone(this.watchConfig!), ...await projects.captureRuntimeRestart(scopes),
+    }));
+    return { configuration, backups };
+  }
+
+  async reviewBackendHandoff(): Promise<BackendHandoffReview> {
+    const { value: record, backups } = await this.observeRuntimeState(true, (projects, owner) => {
+      if (!this.recoveryMonitor) throw Error('Backend snapshot provenance is unavailable');
+      return this.recoveryMonitor.snapshotRecord(owner, { watchConfig: this.watchConfig!, projects, infrastructure: this.infraService });
+    });
+    return { record, admission: { backend: { pid: record.previousPid, controller: structuredClone(record.controller) }, backups, configuration: {
+      registryDigest: record.registryDigest, sha256: backendConfigurationDigest(record, record.registryDigest),
+    } } };
+  }
+
+  /** Shared read-only ownership observation. Only explicitly owned backups may
+   * remain active; this never publishes a ready certificate or drains work. */
+  private async observeRuntimeState<T>(review: boolean,
+    capture: (projects: ProjectService, owner: ExecutionSnapshot, registryDigest: string) => T | Promise<T>,
+  ): Promise<{ value: T; backups: OperationReceipt[] }> {
     const { recoveryState } = await import('./recovery-state.js');
     const backups = review ? this.backupService?.reviewHandoffOperations() ?? [] : [];
     const activeBackups = this.backupService?.activeOperationCount() ?? 0;
@@ -428,14 +452,13 @@ export class OmnitronDaemon {
     const before = await this.execution.controlledOwnerSnapshot();
     const projects = await this.app.container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
     const registryDigest = projects.recoveryRegistryDigest();
-    const configuration = await projects.captureRuntimeRestart(scopes);
+    const value = await capture(projects, before, registryDigest);
     const after = await this.execution.controlledOwnerSnapshot(before.status.controller);
     if ((review ? reviewToken() !== token || activeBackups !== (this.backupService?.activeOperationCount() ?? 0) ||
         !isDeepStrictEqual(backups, this.backupService?.reviewHandoffOperations() ?? []) : !recoveryState.unchanged(token)) ||
         before.inventoryDigest !== after.inventoryDigest || registryDigest !== projects.recoveryRegistryDigest())
       throw Error('Effective configuration or application ownership changed during restart review');
-    return { backups, configuration: { protocol: 1, registryDigest, ownerId: before.status.owner.id, inventoryDigest: before.inventoryDigest,
-      watchConfig: structuredClone(this.watchConfig), ...configuration } };
+    return { backups, value };
   }
 
   /** Apply the reviewed cancellation inside the existing runtime-update transaction. */
@@ -490,8 +513,14 @@ export class OmnitronDaemon {
   }
 
   /** Called after the initiating RPC has returned, so it is not waiting for itself. */
-  async prepareBackendHandoff(candidateId: string, backups?: readonly OperationReceipt[]): Promise<BackendHandoffState> {
+  async prepareBackendHandoff(candidateId: string, backups?: readonly OperationReceipt[], admission?: BackendHandoffAdmission): Promise<BackendHandoffState> {
     if (!this.execution || !this.app?.netron || !this.watchConfig) throw new Error(this.backendRuntimeStatus().reason ?? 'Backend is not ready');
+    const configuration = admission?.configuration;
+    if (admission) {
+      const current = await this.reviewBackendHandoff();
+      if (!isDeepStrictEqual(current.admission.configuration, configuration) || !isDeepStrictEqual(current.admission.backend, admission.backend))
+        throw Error('Reviewed backend identity or configuration changed before cancellation');
+    }
     if (this.runtimeRestartAdmission) throw new Error('Runtime restart admission is held by another transition');
     if (this.handingOffBackend || this.preparingBackend) throw new Error('A backend handoff is already in progress');
     const assertIdle = (allowBackupCancellation = false) => {
@@ -517,6 +546,8 @@ export class OmnitronDaemon {
         'Metric collection has not drained to storage; the current backend will remain active');
       const prepared = await withControlDeadline(this.execution.prepare(candidateId), 30_000,
         'Execution mutations have not drained; the current backend will remain active');
+      if (configuration && projects.recoveryRegistryDigest() !== configuration.registryDigest)
+        throw Error('Project registry changed during backend admission');
       return { protocol: 1, ticket: prepared.ticket, projects: projectState, infrastructure,
         executionInventory: prepared.snapshot.inventoryDigest, watchConfig: this.watchConfig };
     } catch (error) {

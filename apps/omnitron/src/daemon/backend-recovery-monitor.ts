@@ -6,7 +6,10 @@ import type { IEcosystemConfig, IDaemonConfig } from '../config/types.js';
 import type { ProjectService } from '../services/project.service.js';
 import type { InfrastructureService } from '../infrastructure/infrastructure.service.js';
 import { runtimeDiagnostics } from '../monitoring/runtime-diagnostics.js';
-import { OMNITRON_HOME } from '../config/defaults.js';
+import { backendSnapshot } from './backend-handoff-types.js';
+import type { ExecutionSnapshot } from './execution-host.js';
+
+interface RecoverySource { watchConfig: IEcosystemConfig; projects: ProjectService; infrastructure: InfrastructureService | null }
 
 /** Certify quiet controller state without draining public ingress or Docker. */
 export class BackendRecoveryMonitor {
@@ -24,7 +27,7 @@ export class BackendRecoveryMonitor {
 
   constructor(directory: string, private readonly artifact: BackendArtifact,
     private readonly config: IDaemonConfig, private readonly execution: ExecutionClient,
-    private readonly snapshot: () => { watchConfig: IEcosystemConfig; projects: ProjectService; infrastructure: InfrastructureService | null },
+    private readonly snapshot: () => RecoverySource,
   ) {
     this.journal = new BackendRecoveryJournal(directory);
     this.detach = recoveryState.attach(reason => {
@@ -59,23 +62,25 @@ export class BackendRecoveryMonitor {
     return capture;
   }
 
+  /** Caller must bracket this read with the canonical ownership token and
+   * controlled owner observations. It never publishes a ready certificate. */
+  snapshotRecord(owner: ExecutionSnapshot, source: RecoverySource): BackendRecoveryRecord {
+    if (this.closed || owner.status.phase !== 'active' || owner.status.inFlight !== 0)
+      throw new RecoveryBusyError('Execution mutations have not settled');
+    return { ...backendSnapshot({ protocol: 1, watchConfig: source.watchConfig,
+      projects: source.projects.captureRecoveryState(), infrastructure: source.infrastructure?.captureRecoveryState() ?? null,
+      executionInventory: owner.inventoryDigest }, this.config, this.artifact.entry, this.startedAt),
+    controller: structuredClone(owner.status.controller), runtimeHash: this.artifact.runtimeHash,
+    registryDigest: source.projects.recoveryRegistryDigest() };
+  }
+
   private async captureOnce(retryBusy: boolean): Promise<void> {
     const token = recoveryState.token();
     if (token === null) return;
     try {
       const owner = await this.execution.recoverySnapshot();
       if (owner.status.phase !== 'active' || owner.status.inFlight !== 0) throw new RecoveryBusyError('Execution mutations have not settled');
-      const source = this.snapshot();
-      const record: BackendRecoveryRecord = {
-        protocol: 1, state: { protocol: 1, watchConfig: structuredClone(source.watchConfig),
-          projects: source.projects.captureRecoveryState(), infrastructure: source.infrastructure?.captureRecoveryState() ?? null,
-          executionInventory: owner.inventoryDigest },
-        controller: owner.status.controller, runtimeHash: this.artifact.runtimeHash,
-        registryDigest: source.projects.recoveryRegistryDigest(),
-        daemonConfig: this.config, previousEntry: this.artifact.entry, previousPid: process.pid,
-        createdAt: this.startedAt, cwd: process.cwd(),
-        environment: { ...Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined)), OMNITRON_HOME },
-      };
+      const record = this.snapshotRecord(owner, this.snapshot());
       if (this.closed || !recoveryState.unchanged(token)) return;
       const serialized = JSON.stringify(record);
       if (serialized !== this.lastRecord) {

@@ -40,6 +40,8 @@ function fixture() {
   };
   const proof = (host: string): ManagedRolloutObservation => ({
     commit, previous, candidate, ownerId: 'owner-' + host, ownerPid: 10, backendPid: 11, appsDigest: 'a'.repeat(64), selectionRevision: 2,
+    admission: { backend: { pid: 11, controller: { ownerId: 'owner-' + host, controllerId: 'backend', epoch: 1 } },
+      configuration: { sha256: 'b'.repeat(64), registryDigest: 'c'.repeat(64) }, backups: [] },
   });
   const switchRuntime = vi.fn(async () => {});
   const driver = {
@@ -401,4 +403,35 @@ describe('durable managed fleet kernel controller', () => {
     await expect(runWithAuth(context, () => rpc.startKernelRollout({ id: plan.id }))).rejects.toThrow('audit unavailable');
     expect(driver.activateManagedRollout).not.toHaveBeenCalled();
   });
+});
+
+
+it('retains historical rollout evidence without granting missing backup cancellation authority', async () => {
+  const { service, store, driver } = fixture();
+  const plan = await ready(service, commit, ['a']);
+  const historical = store.kvGetSync<{ rollout: import('../../src/shared/dto/nodes.js').KernelRollout;
+    observations: Array<{ preflight: Partial<ManagedRolloutObservation> }> }>(recordKey(plan.id))!;
+  delete historical.observations[0]!.preflight.admission;
+  delete historical.rollout.targets[0]!.backupOperations;
+  store.kvSetSync(recordKey(plan.id), historical);
+  expect(service.get(plan.id)?.state).toBe('planned');
+  expect(() => service.start(plan.id)).toThrow('historical plan has no reviewed backup admission');
+  expect(driver.activateManagedRollout).not.toHaveBeenCalled();
+  historical.rollout.state = 'succeeded'; historical.rollout.targets[0]!.state = 'succeeded';
+  store.kvSetSync(recordKey(plan.id), historical);
+  expect(service.get(plan.id)?.state).toBe('succeeded');
+});
+
+it('exposes exactly the backup attempts bound by each durable node plan', async () => {
+  const { service, driver, proof } = fixture();
+  const backup = { protocol: 1 as const, id: 'reviewed-backup', kind: 'backup', state: 'running' as const, revision: 4,
+    resources: [{ kind: 'database', project: 'one', stack: 'dev', name: 'ledger' }], inputDigest: 'd'.repeat(64),
+    createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:01.000Z' };
+  driver.inspectManagedRollout.mockImplementation(async target => {
+    const observed = proof(target.host); observed.admission.backups = [backup]; return observed;
+  });
+  const plan = await ready(service, commit, ['a']);
+  expect(plan.targets[0]!.backupOperations).toEqual([backup]);
+  expect(service.get(plan.id)?.targets[0]!.backupOperations).toEqual([backup]);
+  expect(driver.activateManagedRollout).not.toHaveBeenCalled();
 });

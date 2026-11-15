@@ -42,9 +42,9 @@ To use a source checkout from another application, follow the [Omnitron SDK work
 
 ## Releases and runtime changes
 
-Use the canonical Xec workflow:
+The repository driver is the pinned published Xec CLI. Its native project commands own release/update arguments, generated help and validation; `pnpm exec xec release --help` and `pnpm exec xec update --help` describe the supported operations. Turbo supplies the build graph and cache.
 
-The workspace uses Xec 0.12 for command execution, SDK source watching, kernel locks and CLI progress. Turbo supplies the build graph and cache; project scripts and release commands use the same installed tools.
+The current unreleased runtime requires the Xec Core 0.13 execution-ownership contract. Preparation refuses incompatible declared or installed dependencies before changing versions or building. This does not prevent inspection or publication of already sealed archives; see the [build policy](.xec/release-policy.mjs).
 
 ```sh
 pnpm exec xec release <version> --dry-run
@@ -68,7 +68,7 @@ and recovery instructions. Use `--status` to inspect an interrupted operation.
 
 ## Documentation
 
-[Project documentation](https://omnitron.dev) · [Repository workflow](AGENTS.md) · [Release workflow](.xec/release.mjs) · [Qualification policy](.xec/release-policy.mjs)
+[Project documentation](https://omnitron.dev) · [Repository workflow](AGENTS.md) · [Release workflow](.xec/commands/release.js) · [Qualification policy](.xec/release-policy.mjs)
 
 ## License
 

@@ -13,7 +13,7 @@ const SHA = /^[a-f0-9]{40}$/;
 const VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/;
 const CORE = '@omnitron-dev/omnitron';
 const CONTROL_FILES = [
-  '.xec/release.mjs', '.xec/qualification.mjs', '.xec/version-qualification.js', '.xec/release-registry.js',
+  '.xec/commands/release.js', '.xec/qualification.mjs', '.xec/version-qualification.js', '.xec/release-registry.js',
   'scripts/ci/version-qualification.test.mjs', 'scripts/ci/release-registry.test.mjs',
   'scripts/ci/release.test.mjs', 'scripts/ci/xec-qualification.test.mjs',
 ];

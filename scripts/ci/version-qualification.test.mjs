@@ -44,6 +44,7 @@ async function fixture(t, packageCount = 35) {
   const baseCommit = git('rev-parse', 'HEAD');
   for (const item of packages) await write(path.join(root, item.directory, 'package.json'), { ...item.manifest, version });
   await write(path.join(root, '.xec/version-qualification.js'), '// Reviewed release orchestration only.\n');
+  await write(path.join(root, '.xec/commands/release.js'), '// Reviewed native release command.\n');
   git('add', '.'); git('commit', '--quiet', '-m', 'Version metadata only');
   const commit = git('rev-parse', 'HEAD');
   const storage = path.join(root, '.release-artifacts');
@@ -115,6 +116,8 @@ test('fresh 35-package archives receive explicit base attribution; verification 
   const control = proof.sourceEquivalence.controlFiles.find(item => item.file === '.xec/version-qualification.js');
   assert.equal(control.baseSha256, null);
   assert.match(control.candidateSha256, /^[a-f0-9]{64}$/);
+  assert.match(proof.sourceEquivalence.controlFiles.find(item => item.file === '.xec/commands/release.js').candidateSha256, /^[a-f0-9]{64}$/);
+  assert(!proof.sourceEquivalence.controlFiles.some(item => item.file === '.xec/release.mjs'));
   const receipt = await fs.readFile(proof.receipt);
   await verifyVersionQualification(f.root, version, f.options);
   assert.equal(f.baseChecks(), 2);
@@ -204,6 +207,7 @@ test('Git delta allows only exact public versions and the named orchestration fi
   await changed('pnpm-lock.yaml', 'lockfileVersion: 10\n', /Non-version source change/);
   await changed('apps/omnitron/src/index.js', 'export const answer = 43;\n', /Non-version source change/);
   await changed('.xec/not-reviewed.js', 'export const bypass = true;\n', /Non-version source change/);
+  await changed('.xec/release.mjs', 'export const bypass = true;\n', /Non-version source change/);
   const source = await json(path.join(f.root, 'apps/omnitron/package.json'));
   await changed('apps/omnitron/package.json', { ...source, engines: { node: '>=26' } }, /Only the public package version/);
   await changed('apps/omnitron/package.json', { ...source, dependencies: { [f.packages[1].name]: '^0.4.0' } }, /Only the public package version/);

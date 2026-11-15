@@ -1,47 +1,28 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
-import { parseArgs } from 'node:util';
 import { Pipeline } from '@xec-sh/ops/pipeline';
 import { UserError } from '@xec-sh/ops';
 import { releaseCommand, ReleaseCommandError } from '@xec-sh/ops/release';
-import { qualifiedRuntimes } from './qualification.mjs';
-import { localRuntime, verifyLocalRuntime } from './local-runtime.mjs';
-import { CommandResultError, readCommandResult } from '../apps/omnitron/src/shared/command-result.ts';
+import { qualifiedRuntimes } from '../qualification.mjs';
+import { localRuntime, verifyLocalRuntime } from '../local-runtime.mjs';
+import { CommandResultError, readCommandResult } from '../../apps/omnitron/src/shared/command-result.ts';
 
 /** Xec orchestrates; the daemon remains the authority for pins, roles, locks and recovery. */
-export async function runUpdate(args, options = {}) {
-  const { values, positionals } = parseArgs({ args, allowPositionals: true, options: {
-    cli: { type: 'string' }, runtime: { type: 'string', multiple: true },
-    node: { type: 'string', multiple: true }, 'request-id': { type: 'string' }, help: { type: 'boolean' },
-    'cache-dir': { type: 'string' },
-    review: { type: 'string' }, rollback: { type: 'boolean' }, status: { type: 'boolean' },
-  } });
-  const usage = 'xec update plan <commit> [--runtime <sealed-linux-runtime>] --node <registered-node> [--node ...]\n' +
-    'xec update apply <plan-id>\nxec update status [plan-id]\nxec update reconcile <plan-id>\n' +
-    'xec update local-check [dist] [--cache-dir <private-directory>]\nxec update local-apply [dist] [--cache-dir <private-directory>]\n' +
-    'xec update local-sync [--cache-dir <private-directory>] [--review <sha256> [--rollback] | --status]\n' +
-    '  Set OMNITRON_DEV_CACHE to retain builds on a development volume between batches.\n' +
-    '  --cli <executable> Select the controller CLI for fleet operations or local status/recovery\n' +
-    'local-sync prepares the completed development batch. Its review covers local supervision, Console and the listed stacks.';
-  if (values.help) { console.log(usage); return; }
-  const [operation, target] = positionals;
-  const local = operation?.startsWith('local-');
-  if (positionals.length > 2 || !['plan', 'apply', 'status', 'reconcile', 'local-check', 'local-apply', 'local-sync'].includes(operation) ||
-      (operation !== 'status' && !local && !target)) throw Error(usage);
-  if (operation !== 'plan' && (values.runtime || values.node || values['request-id'])) throw Error('Runtime, node and request ID options belong to plan');
-  if ((values.review || values.rollback || values.status) && operation !== 'local-sync') throw Error('Local sync review, recovery and status options belong to local-sync');
-  if ((values.rollback && !values.review) || (values.review !== undefined && !/^[a-f0-9]{64}$/.test(values.review)) ||
-      (values.status && (values.review || values.rollback || target || values['cache-dir']))) throw Error(usage);
+async function runUpdate(operation, target, values, options) {
+  const local = operation.startsWith('local-');
+  if (values.rollback && !values.review) throw new UserError('--rollback requires the exact --review digest');
+  if (values.review !== undefined && !/^[a-f0-9]{64}$/.test(values.review))
+    throw new UserError('--review requires the exact 64-character SHA-256 digest');
   const root = options.root ?? process.cwd();
   const run = options.run ?? releaseCommand;
   const progress = options.progress ?? console.log;
-  if (values['cache-dir'] && (!local || target)) throw Error('--cache-dir applies only when building the current local revision');
+  if (values.cacheDir && (!local || target)) throw Error('--cache-dir applies only when building the current local revision');
   const inspection = operation === 'local-sync' && (values.status || values.rollback);
   if (local && values.cli && !inspection) throw new UserError('Local updates require the candidate and its own CLI');
   if (operation === 'local-sync' && target) throw new UserError('local-sync finalizes the current clean checkout');
-  if (values.rollback && values['cache-dir']) throw new UserError('Recovery uses the reviewed installed runtime; inspect local-sync --status');
-  const cache = values['cache-dir'] ?? process.env.OMNITRON_DEV_CACHE;
+  if (values.rollback && values.cacheDir) throw new UserError('Recovery uses the reviewed installed runtime; inspect local-sync --status');
+  const cache = values.cacheDir ?? process.env.OMNITRON_DEV_CACHE;
   const candidate = local && !inspection ? (target ? path.resolve(root, target) :
     await localRuntime(root, cache && path.resolve(root, cache), run, progress)) : null;
   const runtime = candidate ? path.resolve(candidate, '../../..') : null;
@@ -91,7 +72,7 @@ export async function runUpdate(args, options = {}) {
       throw Error('Plan requires a full commit, qualified Linux runtimes and explicit registered nodes');
     if (new Set(values.node).size !== values.node.length || values.node.some(node => !node || node.startsWith('-') || node.trim() !== node))
       throw Error('Use distinct registered node names or IDs, not command options');
-    const id = values['request-id'] ?? randomUUID();
+    const id = values.requestId ?? randomUUID();
     if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(id)) throw Error('Invalid request ID');
     const runtimes = values.runtime ? values.runtime.map(value => path.resolve(root, value)) : await qualifiedRuntimes(root, target);
     if (!runtimes.length) throw Error('No qualified native runtime is available');
@@ -124,4 +105,46 @@ export async function runUpdate(args, options = {}) {
   const result = await call(argv);
   progress(JSON.stringify(result, null, 2));
   return result;
+}
+
+/** Register the actual operation shapes, rather than forwarding an argv array. */
+export function command(program, options = {}) {
+  const update = program.command('update')
+    .description('Prepare and follow managed updates through the authoritative Omnitron daemon')
+    .allowExcessArguments(false)
+    .addHelpText('after', `
+Local preparation preserves verified builds in OMNITRON_DEV_CACHE (or --cache-dir).
+Review the returned digest before local-sync --review DIGEST. After an interrupted
+operation inspect status; use reconciliation/recovery instead of replaying apply.
+`);
+  const operation = (signature, description) => update.command(signature)
+    .description(description).allowExcessArguments(false)
+    .option('--cli <executable>', 'Controller CLI for fleet operations or local status/recovery');
+  const collect = (value, previous = []) => [...previous, value];
+  operation('plan <commit>', 'Stage qualified runtimes on explicit registered nodes; do not activate')
+    .option('--runtime <directory>', 'Sealed Linux runtime (repeat for distinct native candidates)', collect)
+    .requiredOption('--node <name-or-id>', 'Registered target node (repeat for each node)', collect)
+    .option('--request-id <uuid>', 'Stable operation ID for inspection after interruption')
+    .action((commit, values) => runUpdate('plan', commit, values, options));
+  for (const [name, description] of [
+    ['apply', 'Apply the exact prepared fleet rollout once'],
+    ['reconcile', 'Reconcile a fleet rollout after an interrupted or unknown result'],
+  ]) operation(`${name} <plan-id>`, description)
+    .action((id, values) => runUpdate(name, id, values, options));
+  operation('status [plan-id]', 'Inspect fleet rollout state and receipts')
+    .action((id, values) => runUpdate('status', id, values, options));
+  for (const [name, description] of [
+    ['local-check', 'Check admission using the sealed candidate and its own CLI'],
+    ['local-apply', 'Apply the sealed backend candidate after admission'],
+  ]) operation(`${name} [dist]`, description)
+    .option('--cache-dir <directory>', 'Private retained build directory for the current local revision')
+    .action((dist, values) => runUpdate(name, dist, values, options));
+  operation('local-sync', 'Prepare or apply a reviewed local batch, including Console and selected stacks')
+    .option('--cache-dir <directory>', 'Private retained build directory for the current local revision')
+    .option('--review <sha256>', 'Apply or recover exactly this reviewed local plan')
+    .option('--rollback', 'Recover the reviewed local plan; requires --review')
+    .addOption(program.createOption('--status', 'Inspect local state without preparing a build')
+      .conflicts(['review', 'rollback', 'cacheDir']))
+    .action(values => runUpdate('local-sync', undefined, values, options));
+  update.action(() => update.help());
 }

@@ -14,12 +14,48 @@ import { discoverReleasePackages } from '@xec-sh/ops/release';
 import { supersedeDraft } from '../../.xec/supersede-draft.mjs';
 import { assertPipelineSucceeded } from '../lib/pipeline-result.mjs';
 import './release-registry.test.mjs';
+import './build-dependencies.test.js';
+import { command as registerRelease } from '../../.xec/commands/release.js';
 
 const run = promisify(execFile);
 const repo = fileURLToPath(new URL('../../', import.meta.url));
 const first = '@fixture/base';
 const second = '@fixture/client';
 const version = '0.2.0-rc.1';
+
+const { Command } = createRequire(import.meta.resolve('@xec-sh/cli'))('commander');
+
+function releaseProgram(options = {}, output = []) {
+  const program = new Command().exitOverride().configureOutput({ writeOut: text => output.push(text), writeErr() {} });
+  registerRelease(program, options);
+  return program;
+}
+
+test('release uses native generated help, conflict checks and strict arguments', async () => {
+  const output = [];
+  await assert.rejects(releaseProgram({}, output).parseAsync(['release', '--help'], { from: 'user' }),
+    error => error.code === 'commander.helpDisplayed' && error.exitCode === 0);
+  assert.match(output.join(''), /Usage:.*release \[options\] \[version\]/);
+  assert.match(output.join(''), /--from-qualified <commit>/);
+  assert.doesNotMatch(output.join(''), /\[args\.\.\.\]/);
+  for (const args of [
+    ['--preapre'], [version, 'extra'], [version, '--prepare', '--finish'],
+    [version, '--registry'], [version, '--skip-publish'], [version, '--list-packages'],
+  ]) await assert.rejects(releaseProgram().parseAsync(['release', ...args], { from: 'user' }),
+    error => error.code?.startsWith('commander.'));
+});
+
+test('release prepare refuses an incompatible runtime dependency before Git, builds or version changes', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'omnitron-release-admission-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const app = path.join(root, 'apps/omnitron');
+  await fs.mkdir(app, { recursive: true });
+  const manifest = JSON.stringify({ name: '@omnitron-dev/omnitron', version: '0.4.10', dependencies: { '@xec-sh/core': '^0.12.0' } });
+  await fs.writeFile(path.join(app, 'package.json'), manifest);
+  await assert.rejects(releaseProgram({ root }).parseAsync(['release', '0.4.11', '--prepare'], { from: 'user' }), /requires @xec-sh\/core \^0\.13\.0/);
+  assert.deepEqual(await fs.readdir(root), ['apps']);
+  assert.equal(await fs.readFile(path.join(app, 'package.json'), 'utf8'), manifest);
+});
 
 test('package builds use the installed compiler on an isolated builder', async t => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'omnitron-package-build-'));
@@ -147,6 +183,10 @@ else if (cmd === 'release' && op === 'view' && fs.readFileSync(state, 'utf8') ==
   // A hand-picked entrypoint list silently drops new shared dependencies.
   await fs.cp(path.join(repo, 'scripts'), path.join(workspace, 'scripts'), { recursive: true });
   await fs.cp(path.join(repo, '.xec'), path.join(workspace, '.xec'), { recursive: true, filter: file => !file.includes('/.tmp') });
+  // This registry fixture publishes two tiny packages and has no Omnitron app.
+  // Its explicit policy has no application SDK requirements; the real guard is
+  // independently exercised above before any version/Git/build state exists.
+  await fs.appendFile(path.join(workspace, '.xec/release-policy.mjs'), '\npolicy.buildDependencies = [];\n');
   // CI qualification has its own failure/resume suite; this loopback suite exercises registry publication.
   await fs.writeFile(path.join(workspace, '.xec/qualification.mjs'), 'export async function qualifyRelease() {}\nexport async function verifyReleaseQualification() { return {fixture:true}; }\nexport async function verifyQualifiedRevision() { throw Error("This fixture does not qualify a previous runtime"); }\n');
   // These two registry fixtures have no backend/Console graph or pnpm registry
@@ -182,7 +222,9 @@ else if (cmd === 'release' && op === 'view' && fs.readFileSync(state, 'utf8') ==
   await fs.mkdir(path.join(workspace, 'tools/lint'), { recursive: true });
   await json('tools/lint/package.json', { name: '@fixture/lint', private: true,
     devDependencies: { typescript: `file:${compilerDirectory}`, '@fixture/native': 'file:../../vendor/native-dependency' } });
-  await json('package.json', { name: 'fixture', private: true, type: 'module', scripts: { build: 'node scripts/build.mjs' } });
+  await json('package.json', { name: 'fixture', private: true, type: 'module',
+    devDependencies: { semver: 'file:' + path.dirname(createRequire(path.join(repo, 'package.json')).resolve('semver/package.json')) },
+    scripts: { build: 'node scripts/build.mjs' } });
   await fs.writeFile(path.join(workspace, 'scripts/build.mjs'), `
 import assert from 'node:assert/strict';
 import { realpathSync, writeFileSync, readFileSync } from 'node:fs';

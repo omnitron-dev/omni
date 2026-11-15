@@ -4,10 +4,39 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
 import { ReleaseCommandError } from '@xec-sh/ops/release';
-import { runUpdate } from '../../.xec/update.mjs';
+import { command as registerUpdate } from '../../.xec/commands/update.js';
 import { locateQualifiedLocalRuntime } from '../../.xec/qualification.mjs';
 import { runtimeArtifactDigest, verifyRuntimeArtifact } from '../../apps/omnitron/src/shared/runtime-artifact.ts';
+
+const { Command } = createRequire(import.meta.resolve('@xec-sh/cli'))('commander');
+
+async function runUpdate(args, options = {}) {
+  const program = new Command().exitOverride().configureOutput({ writeOut() {}, writeErr() {} });
+  const outputs = [];
+  registerUpdate(program, { ...options, progress(value) { outputs.push(value); options.progress?.(value); } });
+  await program.parseAsync(['update', ...args], { from: 'user' });
+  return outputs.length ? JSON.parse(outputs.at(-1)) : undefined;
+}
+
+test('update help and validation are owned by the registered native command tree', async () => {
+  const output = [];
+  const program = new Command().exitOverride().configureOutput({ writeOut: text => output.push(text), writeErr() {} });
+  registerUpdate(program, { run() { throw Error('Help must not execute'); } });
+  await assert.rejects(program.parseAsync(['update', 'local-sync', '--help'], { from: 'user' }),
+    error => error.code === 'commander.helpDisplayed' && error.exitCode === 0);
+  assert.match(output.join(''), /Usage:.*update local-sync/);
+  assert.match(output.join(''), /--review <sha256>/);
+  let calls = 0;
+  for (const args of [
+    ['plan', 'a'.repeat(40)], ['unknown'], ['status', 'one', 'two'],
+    ['local-sync', 'unexpected'], ['local-apply', '--review', 'a'.repeat(64)],
+    ['local-sync', '--status', '--cache-dir', '/never-build'], ['local-sync', '--review'],
+  ]) await assert.rejects(runUpdate(args, { run() { calls++; throw Error('Parser must reject before effects'); } }),
+    error => error.code?.startsWith('commander.'));
+  assert.equal(calls, 0);
+});
 
 test('local status and recovery use the public CLI without a build or private instance reads', async () => {
   const digest = 'e'.repeat(64);
@@ -23,8 +52,8 @@ test('local status and recovery use the public CLI without a build or private in
   assert.deepEqual(calls, [
     ['--json', 'runtime', 'update', 'status'], ['--json', 'runtime', 'update', 'recover', digest],
   ]);
-  await assert.rejects(runUpdate(['local-sync', '--status', '--review', digest], options), /xec update local-sync/);
-  await assert.rejects(runUpdate(['local-apply', '--review', digest], options), /belong to local-sync/);
+  await assert.rejects(runUpdate(['local-sync', '--status', '--review', digest], options), /cannot be used with option/);
+  await assert.rejects(runUpdate(['local-apply', '--review', digest], options), /unknown option/);
   assert.equal(calls.length, 2);
 });
 

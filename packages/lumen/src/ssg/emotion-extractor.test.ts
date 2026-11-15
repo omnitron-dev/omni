@@ -3,6 +3,7 @@ import { renderToString } from 'react-dom/server';
 import createCache from '@emotion/cache';
 import createEmotionServer from '@emotion/server/create-instance';
 import { CacheProvider, ClassNames, Global } from '@emotion/react';
+import { CardSkeleton } from '@omnitron-dev/prism/components/skeleton';
 import { describe, expect, it } from 'vitest';
 import { extractCriticalEmotionCss } from './emotion-extractor.js';
 
@@ -64,12 +65,52 @@ describe('critical Emotion style ownership', () => {
     expect(() => extractCriticalEmotionCss('<main>Document</main>', cache)).toThrow('Cache unavailable');
   });
 
-  it('rejects partially overlapping chunks that cannot be split without changing their rules', () => {
-    expect(() =>
-      extractCriticalEmotionCss(
-        '<style data-emotion="site a b">.a{color:red}.b{color:blue}</style>' +
-          '<style data-emotion="site b c">.b{color:blue}.c{color:black}</style>'
+  it('preserves shared serialized dependencies in native ClassNames output', () => {
+    const cache = createCache({ key: 'site' });
+    const body = renderToString(
+      React.createElement(CacheProvider, { value: cache },
+        React.createElement(ClassNames, { children: ({ css }) =>
+          React.createElement('div', { className: `${css({ color: 'red' })} ${css({ fontWeight: 600 })}` }, 'First'),
+        }),
+        React.createElement(ClassNames, { children: ({ css }) =>
+          React.createElement('div', { className: `${css({ fontWeight: 600 })} ${css({ color: 'blue' })}` }, 'Second'),
+        }),
       )
-    ).toThrow('Overlapping Emotion chunks');
+    );
+    const tags = [...body.matchAll(/<style\b[^>]*>[\s\S]*?<\/style>/g)].map(match => match[0]);
+    expect(tags).toHaveLength(2);
+    const result = extractCriticalEmotionCss(`<head></head><body>${body}</body>`);
+    expect(result.styleTag.endsWith(tags.join(''))).toBe(true);
+    expect(result.css.match(/font-weight:600/g)).toHaveLength(1);
+    expect(result.css).toContain('color:red');
+    expect(result.css).toContain('color:blue');
+  });
+
+  it('preserves shared keyframes emitted by the real Prism card skeleton', () => {
+    const body = renderToString(React.createElement(CacheProvider, { value: createCache({ key: 'prism-ltr' }) },
+      React.createElement(CardSkeleton, { hasAvatar: false, lines: 2 }),
+    ));
+    const tags = [...body.matchAll(/<style\b[^>]*>[\s\S]*?<\/style>/g)].map(match => match[0]);
+    expect(tags.length).toBeGreaterThan(2);
+    expect(tags.join('')).toContain('@keyframes');
+    const result = extractCriticalEmotionCss(`<head></head><body>${body}</body>`);
+    expect(result.styleTag.endsWith(tags.join(''))).toBe(true);
+    expect(extractCriticalEmotionCss(result.html).html).toBe(result.html);
+  });
+
+  it('retains repeated Global instances in their cascade order', () => {
+    const body = renderToString(React.createElement(CacheProvider, { value: createCache({ key: 'site' }) },
+      ...['red', 'blue', 'red'].map((color, key) => React.createElement(Global, { key, styles: { body: { color } } })),
+    ));
+    const tags = [...body.matchAll(/<style\b[^>]*>[\s\S]*?<\/style>/g)].map(match => match[0]);
+    expect(tags).toHaveLength(3);
+    const result = extractCriticalEmotionCss(`<head></head><body>${body}</body>`);
+    expect(result.styleTag.endsWith(tags.join(''))).toBe(true);
+    expect(result.css.match(/body\{color:[^}]+\}/g)).toEqual(['body{color:red;}', 'body{color:blue;}', 'body{color:red;}']);
+  });
+
+  it('rejects inline metadata without an Emotion cache key', () => {
+    expect(() => extractCriticalEmotionCss('<style data-emotion=" ">body{color:red}</style>'))
+      .toThrow('Emotion style is missing its cache key');
   });
 });

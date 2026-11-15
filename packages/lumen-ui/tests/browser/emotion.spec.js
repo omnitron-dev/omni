@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test';
-import { createBrowserTest, importConsumer } from './browser-fixture.js';
+import { createBrowserTest, withBrowserModules } from './browser-fixture.js';
 
 const test = createBrowserTest('emotion.html', {
   source: true,
@@ -7,62 +7,30 @@ const test = createBrowserTest('emotion.html', {
     {
       name: 'ssr-emotion-probe',
       async transformIndexHtml(html) {
-        const [
-          { default: React },
-          { renderToString },
-          { default: createCache },
-          { default: createServer },
-          emotion,
-          lumen,
-        ] = await Promise.all([
-          importConsumer('react'),
-          importConsumer('react-dom/server'),
-          importConsumer('@emotion/cache'),
-          importConsumer('@emotion/server/create-instance'),
-          importConsumer('@emotion/react'),
-          process.env.LUMEN_CONSUMER_ROOT
-            ? importConsumer('@omnitron-dev/lumen', new URL('../../../lumen/package.json', import.meta.url))
-            : import('../../../lumen/src/ssg/emotion-extractor.ts'),
-        ]);
-        const caches = ['css', 'site'].map((key) => createCache({ key }));
-        let body = '';
-        for (const cache of caches) {
-          const server = createServer(cache);
-          const markup = renderToString(
-            React.createElement(
-              emotion.CacheProvider,
-              { value: cache },
-              React.createElement(emotion.Global, {
-                styles: {
-                  [`[data-probe="${cache.key}"]`]: { '--probe-padding': '17px', border: '3px solid rgb(10, 20, 30)' },
-                },
-              }),
-              React.createElement(emotion.ClassNames, {
-                children: ({ css }) =>
-                  React.createElement(
-                    'button',
-                    {
-                      'data-probe': cache.key,
-                      className: css({
-                        color: 'rgb(30, 40, 50)',
-                        backgroundColor: 'rgb(230, 240, 250)',
-                        padding: 'var(--probe-padding)',
-                        width: 180,
-                        height: 64,
-                      }),
-                    },
-                    cache.key,
-                    ' ',
-                    0
-                  ),
-              })
-            )
-          );
-          body +=
-            server.constructStyleTagsFromChunks(server.extractCriticalToChunks(markup)) +
-            `<div id="root-${cache.key}">${markup}</div>`;
-        }
-        return lumen.extractCriticalEmotionCss(html.replace('<!--emotion-ssr-->', body), caches[0]).html;
+        return withBrowserModules(async (load, loadFixture) => {
+          const [
+            { default: React },
+            { renderToString },
+            { default: createCache },
+            { default: createServer },
+            lumen,
+            { Probe, InlineProbe },
+          ] = await Promise.all([
+            load('react'), load('react-dom/server'), load('@emotion/cache'),
+            load('@emotion/server/create-instance'), load('@omnitron-dev/lumen'), loadFixture(),
+          ]);
+          const caches = ['css', 'site'].map((key) => createCache({ key }));
+          let body = '';
+          for (const cache of caches) {
+            const server = createServer(cache);
+            const markup = renderToString(React.createElement(Probe, { cache }));
+            body += server.constructStyleTagsFromChunks(server.extractCriticalToChunks(markup)) +
+              `<div id="root-${cache.key}">${markup}</div>`;
+          }
+          const native = renderToString(React.createElement(InlineProbe, { cache: createCache({ key: 'native' }) }));
+          body += `<div id="root-native">${native}</div>`;
+          return lumen.extractCriticalEmotionCss(html.replace('<!--emotion-ssr-->', body), caches[0]).html;
+        }, new URL('./emotion.tsx', import.meta.url));
       },
     },
   ],
@@ -109,9 +77,9 @@ test('SSR Global and custom cache styles survive native hydration and reload wit
     });
     const expected = await page.evaluate(() => window.emotionSnapshot());
     expect(expected).toEqual(
-      ['css', 'site'].map((key) => ({
+      ['css', 'site', 'native-one', 'native-two'].map((key) => ({
         key,
-        color: 'rgb(30, 40, 50)',
+        color: key.startsWith('native-') ? 'rgb(210, 30, 40)' : 'rgb(30, 40, 50)',
         background: 'rgb(230, 240, 250)',
         padding: '17px',
         border: '3px',
@@ -119,20 +87,24 @@ test('SSR Global and custom cache styles survive native hydration and reload wit
         height: 64,
       }))
     );
-    await expect(page.locator('style[data-emotion]')).toHaveCount(4);
+    await expect(page.locator('style[data-emotion]')).toHaveCount(9);
     await page.evaluate(() => window.hydrateEmotionProbe());
     await page.waitForFunction(
-      () => document.body.dataset.hydratedcss === 'true' && document.body.dataset.hydratedsite === 'true'
+      () => document.body.dataset.hydratedcss === 'true' && document.body.dataset.hydratedsite === 'true' && document.body.dataset.hydratednative === 'true'
     );
     await page.locator('[data-probe="site"]').click();
     await expect(page.locator('[data-probe="site"]')).toHaveText('site 1');
+    await page.locator('[data-probe="native-two"]').click();
+    await expect(page.locator('[data-probe="native-two"]')).toHaveText('Second 1');
+    await expect(page.locator('[data-probe="native-two"]')).toHaveCSS('font-style', 'italic');
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     const frames = await page.evaluate(() => window.emotionFrames);
     expect(frames.length).toBeGreaterThan(1);
     for (const snapshot of frames) expect(snapshot).toEqual(expected);
-    await expect(page.locator('style[data-emotion]')).toHaveCount(4);
+    await expect(page.locator('style[data-emotion]')).toHaveCount(9);
     await expect(page.locator('style[data-emotion="css-global"]')).toHaveCount(1);
     await expect(page.locator('style[data-emotion="site-global"]')).toHaveCount(1);
+    await expect(page.locator('style[data-emotion="native-global"]')).toHaveCount(3);
     expect(await page.evaluate(() => window.serverProbes.every((element) => element.isConnected))).toBe(true);
   }
   expect(errors).toEqual([]);

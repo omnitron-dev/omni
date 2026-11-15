@@ -1,5 +1,7 @@
 import React from 'react';
 import { renderToString } from 'react-dom/server';
+import { prerenderToNodeStream } from 'react-dom/static';
+import { text } from 'node:stream/consumers';
 import createCache from '@emotion/cache';
 import { CacheProvider, ClassNames, Global } from '@emotion/react';
 import createEmotionServer from '@emotion/server/create-instance';
@@ -25,9 +27,53 @@ export interface RenderDocumentHtmlOptions extends CorpusProjectionOptions {
   extraHead?: string[];
   bodyScripts?: string[];
   renderLayout?: (content: React.ReactNode) => React.ReactNode;
+  /** Cancels this document without producing a partial static page. */
+  signal?: AbortSignal;
+  /** Maximum asynchronous render time per document. Defaults to 30 seconds. */
+  renderTimeoutMs?: number;
 }
 
-export function renderDocumentHtml(ast: LumenDocumentAst, options?: RenderDocumentHtmlOptions): string {
+async function prerenderDocument(
+  content: React.ReactNode,
+  options: RenderDocumentHtmlOptions | undefined,
+): Promise<string> {
+  const timeoutMs = options?.renderTimeoutMs ?? 30_000;
+  if (!Number.isInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) {
+    throw new RangeError('renderTimeoutMs must be a positive integer no greater than 2147483647');
+  }
+  options?.signal?.throwIfAborted();
+  const controller = new AbortController();
+  const signal = options?.signal
+    ? AbortSignal.any([options.signal, controller.signal])
+    : controller.signal;
+  const timer = setTimeout(() => {
+    controller.abort(new Error(`Static rendering exceeded ${timeoutMs} ms for ${options?.currentPath ?? '/'}`));
+  }, timeoutMs);
+  const rejectIncompleteRender = (cause: unknown) => {
+    if (!signal.aborted) {
+      controller.abort(new Error(`Static rendering failed for ${options?.currentPath ?? '/'}`, { cause }));
+    }
+  };
+  try {
+    const { prelude, postponed } = await prerenderToNodeStream(content, {
+      signal,
+      onError: rejectIncompleteRender,
+      onBrowserBailout: rejectIncompleteRender,
+    });
+    const html = await text(prelude);
+    signal.throwIfAborted();
+    if (postponed !== null) throw new Error('Static rendering returned an incomplete document');
+    return html;
+  } catch (error) {
+    signal.throwIfAborted();
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function renderDocumentHtml(ast: LumenDocumentAst, options?: RenderDocumentHtmlOptions): Promise<string> {
+  options?.signal?.throwIfAborted();
   const theme = options?.theme ?? 'dark';
   const locale = options?.locale ?? 'en';
   const currentPath = options?.currentPath ?? '/';
@@ -64,7 +110,7 @@ export function renderDocumentHtml(ast: LumenDocumentAst, options?: RenderDocume
     return React.createElement('div', { className, dangerouslySetInnerHTML: { __html: articleHtml } });
   }
 
-  const renderedShellHtml = renderToString(
+  const renderedShellHtml = await prerenderDocument(
     React.createElement(
       CacheProvider,
       { value: cache },
@@ -94,7 +140,8 @@ export function renderDocumentHtml(ast: LumenDocumentAst, options?: RenderDocume
             )
           ),
       })
-    )
+    ),
+    options,
   );
 
   return buildHtmlPage({

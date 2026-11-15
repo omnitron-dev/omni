@@ -40,7 +40,7 @@ Paragraph content for SSR extraction.
       'docs/styled.pdx'
     );
 
-    const html = renderDocumentHtml(ast, {
+    const html = await renderDocumentHtml(ast, {
       theme: 'dark',
       locale: 'en',
       currentPath: '/docs/styled',

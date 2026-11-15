@@ -8,7 +8,7 @@ import type { LumenNode } from '@omnitron-dev/lumen-ast';
 import { BASE_LUMEN_THEME_CSS } from './emotion-extractor.js';
 import { FILE_TREE_CSS } from './file-tree-styles.js';
 import { escapeHtml } from './assemble-html.js';
-import { renderDocumentHtml } from './render-html.js';
+import { renderDocumentHtml, type RenderDocumentHtmlOptions } from './render-html.js';
 import { generateLlmsTxt } from '../ai/llms-txt.js';
 import { generateLlmsFullTxt } from '../ai/llms-full.js';
 import { generateRouteMirrors } from '../ai/route-mirrors.js';
@@ -21,7 +21,7 @@ import type { CorpusGraph } from '../corpus/graph.js';
 import type { LumenConfig } from '../config/schema.js';
 import type { AssetManifest } from '../manifest/types.js';
 
-export interface SsgBuildOptions extends CorpusProjectionOptions {
+export interface SsgBuildOptions extends CorpusProjectionOptions, Pick<RenderDocumentHtmlOptions, 'signal' | 'renderTimeoutMs'> {
   rootDir?: string;
   clientAssets?: Map<string, string | Uint8Array>;
   clientScripts?: string[];
@@ -90,6 +90,7 @@ export async function buildStaticSite(
   config: LumenConfig,
   options?: SsgBuildOptions
 ): Promise<SsgBuildResult> {
+  options?.signal?.throwIfAborted();
   const audience: CorpusProjectionOptions = {
     roles: options?.roles ?? ['anonymous'],
     accessFilter: options?.accessFilter,
@@ -106,6 +107,7 @@ export async function buildStaticSite(
     !options?.clientAssets && needsClient
       ? await buildClientAssets(options?.rootDir ?? process.cwd(), config)
       : { assets: options?.clientAssets, scripts: options?.clientScripts, styles: options?.clientStyles };
+  options?.signal?.throwIfAborted();
 
   const pages = new Map<string, string>();
   const assets = new Map<string, string | Uint8Array>(client.assets);
@@ -172,18 +174,24 @@ export async function buildStaticSite(
   const stylesheetLinkTag = `<link rel="stylesheet" href="${normalizedBase}${stylesRelPath}" />`;
 
   // 2. Concurrently render all projected HTML pages without cross-document state leakage (TC-B20-03)
+  const renderController = new AbortController();
+  const renderSignal = options?.signal
+    ? AbortSignal.any([options.signal, renderController.signal])
+    : renderController.signal;
   const renderPromises = documents.map(async (doc) => {
     const rawRoute = (doc.routePath ?? doc.path.replace(/\\/g, '/')).replace(/\.(pdx|md)$/, '');
     const route = rawRoute.startsWith('/') ? rawRoute : `/${rawRoute}`;
     const canonicalRoute = config.trailingSlash && route !== '/' && !route.endsWith('.html') ? `${route}/` : route;
 
     const html = doc.ast
-      ? renderDocumentHtml(doc.ast, {
+      ? await renderDocumentHtml(doc.ast, {
           theme: config.theme?.defaultMode ?? 'dark',
           macros: config.katexMacros,
           locale: doc.locale ?? config.defaultLocale,
           baseUrl: config.baseUrl,
           currentPath: route,
+          signal: renderSignal,
+          renderTimeoutMs: options?.renderTimeoutMs,
           extraHead: [
             stylesheetLinkTag,
             ...[...(config.stylesheets ?? []), ...(client.styles ?? [])].map(
@@ -218,7 +226,12 @@ export async function buildStaticSite(
     return { route, html };
   });
 
-  const rendered = await Promise.all(renderPromises);
+  const rendered = await Promise.all(renderPromises).catch(async error => {
+    renderController.abort(error);
+    await Promise.allSettled(renderPromises);
+    throw error;
+  });
+  renderSignal.throwIfAborted();
   for (const { route, html } of rendered) {
     if (pages.has(route)) throw new Error(`Duplicate output route: ${route}`);
     pages.set(route, html);
@@ -265,6 +278,7 @@ export async function buildStaticSite(
   let writtenFiles: string[] | undefined;
 
   if (options?.writeToDisk) {
+    options.signal?.throwIfAborted();
     resolvedOutDir = resolve(options.outDir ?? config.outDir ?? 'dist');
 
     const files = new Map<string, StaticFile>();

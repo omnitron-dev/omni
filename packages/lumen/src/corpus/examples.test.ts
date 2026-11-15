@@ -45,7 +45,7 @@ describe('trusted example source projection', () => {
     const document = projected.getDocument('guide')!;
     expect(document.ast!.children[0]?.props).toEqual({ example: 'sample', title: 'Literal example', hydrate: 'visible' });
     expect(raw.getDocument('guide')!.ast!.children[0]?.children).toBeUndefined();
-    const html = renderDocumentHtml(document.ast!);
+    const html = await renderDocumentHtml(document.ast!);
     expect(html).toContain('data-example="sample"');
     expect(html).toContain('data-component="Demo"');
     const summary = JSDOM.fragment(html).querySelector('[data-example="sample"] details > summary');
@@ -70,7 +70,7 @@ describe('trusted example source projection', () => {
     const projected = projectCorpus(graph);
     resolveExampleSources(projected, config(), root);
     expect(projected.getAllDocuments()).toHaveLength(1);
-    const html = renderDocumentHtml(projected.getDocument('guide')!.ast!);
+    const html = await renderDocumentHtml(projected.getDocument('guide')!.ast!);
     expect(html).toContain('MUST NOT EXECUTE');
     expect(html).not.toContain('private');
     expect(html).not.toContain('Secret');

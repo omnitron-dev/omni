@@ -52,18 +52,13 @@ export async function stackListCommand(options?: { project?: string }): Promise<
     const svc = await client.service<IProjectRpcService>('OmnitronProject');
     const projects = await svc.listProjects();
 
-    if (projects.length === 0) {
-      log.info('No projects registered.');
-      log.info('Register one: omnitron project add <name> <path>');
-      return;
-    }
+    const filtered = options?.project === undefined
+      ? projects
+      : projects.filter((p) => p.name === options.project);
 
-    const filtered = options?.project
-      ? projects.filter((p) => p.name === options.project)
-      : projects;
-
-    if (filtered.length === 0) {
-      log.error(`Project '${options?.project}' not found`);
+    if (options?.project !== undefined && filtered.length === 0) {
+      emitError(`Project '${options.project}' not found`, { code: 'PROJECT_NOT_FOUND', project: options.project });
+      process.exitCode = 1;
       return;
     }
 
@@ -77,6 +72,12 @@ export async function stackListCommand(options?: { project?: string }): Promise<
         });
       }
       emitJson(data);
+      return;
+    }
+
+    if (projects.length === 0) {
+      log.info('No projects registered.');
+      log.info('Register one: omnitron project add <name> <path>');
       return;
     }
 
@@ -113,7 +114,8 @@ export async function stackListCommand(options?: { project?: string }): Promise<
       });
     }
   } catch (err) {
-    log.error((err as Error).message);
+    emitError(err);
+    process.exitCode = 1;
   } finally {
     await client.disconnect();
   }

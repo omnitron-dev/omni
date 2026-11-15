@@ -69,6 +69,15 @@ describe('actual CLI machine output boundary', () => {
     expect(JSON.parse(result.stderr)).toMatchObject({ ok: false, code: 'DAEMON_NOT_RUNNING', outcome: 'not-started' });
     expect(result.stderr).not.toContain('JSON_OUTPUT_CONTRACT_VIOLATION');
   });
+  it.each([false, true])('keeps the stack list connection failure in its declared JSON result (environment=%s)', environment => {
+    const result = run([...(environment ? [] : ['--json']), 'stack', 'list'], undefined, environment);
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(JSON.parse(result.stderr)).toMatchObject({ ok: false, error: expect.any(String) });
+    expect(result.stderr).not.toContain('JSON_OUTPUT_CONTRACT_VIOLATION');
+    expect(result.instanceCreated).toBe(false);
+  });
   it.each([false, true])(
     'admits backup diagnostics and reports the unavailable daemon as JSON (environment=%s)',
     (environment) => {

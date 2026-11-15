@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useId } from 'react';
 import { Alert, Box, Dialog, DialogContent, IconButton, List, ListItem, ListItemButton, ListItemText, Stack, Tab, Tabs, TextField, Typography } from '@omnitron-dev/prism/ui';
 import { CloseIcon } from '@omnitron-dev/prism/icons';
+import { Scrollbar } from '@omnitron-dev/prism/components';
 import { PagefindAdapter } from './pagefind-adapter.js';
 import { NetronAdapter, type NetronSearchClient } from './netron-adapter.js';
 
@@ -67,7 +68,7 @@ export function sanitizeSearchResultUrl(rawUrl: string): string {
   }
 
   // Reject protocol-relative URLs (//evil.example)
-  if (trimmed.startsWith('//')) {
+  if (trimmed.startsWith('//') || trimmed.includes('\\')) {
     return '#';
   }
 
@@ -231,6 +232,8 @@ export function LumenSearchDialogContent({
 
   const tabsId = useId();
   const requestIdRef = useRef(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
 
   const pagefindAdapter = useMemo(() => new PagefindAdapter(pagefindUrl), [pagefindUrl]);
   const netronAdapter = useMemo(() => rpcClient ? new NetronAdapter(rpcClient) : null, [rpcClient]);
@@ -239,6 +242,7 @@ export function LumenSearchDialogContent({
 
   useEffect(() => {
     const raw = query.trim();
+    if (resultsRef.current) resultsRef.current.scrollTop = 0;
     setSearchError(null);
     if (!raw) {
       requestIdRef.current += 1;
@@ -287,42 +291,73 @@ export function LumenSearchDialogContent({
     };
   }, [query, activeTab, maxResults, pagefindAdapter, netronAdapter]);
 
+  const moveResultFocus = (event: React.KeyboardEvent, index: number) => {
+    if (event.nativeEvent.isComposing || event.altKey || event.ctrlKey || event.metaKey || isLoading) return;
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    const links = resultsRef.current?.querySelectorAll<HTMLAnchorElement>('.lumen-search-result-link');
+    if (!links?.length) return;
+    event.preventDefault();
+    const next = index < 0
+      ? (event.key === 'ArrowDown' ? 0 : links.length - 1)
+      : index + (event.key === 'ArrowDown' ? 1 : -1);
+    if (next < 0 || next >= links.length) inputRef.current?.focus();
+    else links[next]?.focus();
+  };
+  const status = isLoading ? 'Searching…' : searchError ? 'Search unavailable'
+    : !query.trim() ? 'Type to search the documentation'
+      : `${results.length} ${results.length === 1 ? 'result' : 'results'}`;
+
   return (
-    <Box className="lumen-search-content">
-      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+    <Box className="lumen-search-content" sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexShrink: 0 }}>
         <TextField type="search" fullWidth autoFocus label="Search query" placeholder="Search documentation..."
-          value={query} slotProps={{ htmlInput: { maxLength: 256 } }}
+          value={query} inputRef={inputRef} slotProps={{ htmlInput: { maxLength: 256, 'aria-controls': `${tabsId}-results` } }}
+          onKeyDown={event => moveResultFocus(event, -1)}
           onChange={event => setQuery(event.target.value)} />
         {onClose && <IconButton type="button" aria-label="Close search" onClick={onClose}><CloseIcon /></IconButton>}
       </Stack>
       {rpcClient && <Tabs value={activeTab} onChange={(_, tab: 'local' | 'semantic') => setActiveTab(tab)}
-        aria-label="Search source" sx={{ mt: 2 }}>
+        aria-label="Search source" sx={{ mt: 1, flexShrink: 0 }}>
         <Tab value="local" label="Local Docs" id={`${tabsId}-local`} aria-controls={`${tabsId}-results`} />
         <Tab value="semantic" label="Semantic AI" id={`${tabsId}-semantic`} aria-controls={`${tabsId}-results`} />
       </Tabs>}
-      <Box id={`${tabsId}-results`} role={rpcClient ? 'tabpanel' : undefined}
-        aria-labelledby={rpcClient ? `${tabsId}-${activeTab}` : undefined} sx={{ mt: 2 }}>
-        {isLoading && <Typography role="status">Searching...</Typography>}
+      <Typography role="status" aria-live="polite" aria-atomic="true" variant="caption" color="text.secondary"
+        sx={{ py: 1.5, flexShrink: 0 }}>
+        {status}
+      </Typography>
+      <Scrollbar ref={resultsRef} id={`${tabsId}-results`} role={rpcClient ? 'tabpanel' : 'region'}
+        aria-label={rpcClient ? undefined : 'Search matches'} aria-busy={isLoading}
+        aria-labelledby={rpcClient ? `${tabsId}-${activeTab}` : undefined}
+        sx={{ flex: 1, minHeight: 0, overscrollBehavior: 'contain', scrollbarGutter: 'stable', overflowWrap: 'anywhere' }}>
         {!isLoading && searchError && <Alert severity="error">{searchError}</Alert>}
         {!isLoading && !searchError && query.trim() && results.length === 0 && (
-          <Typography role="status">No results found for &quot;{query.slice(0, 32)}&quot;</Typography>
+          <Typography color="text.secondary" sx={{ py: 3 }}>No results found for &quot;{query.slice(0, 32)}&quot;.</Typography>
         )}
-        {!isLoading && results.length > 0 && <List disablePadding aria-label="Search results">
-          {results.map(result => {
+        {!query.trim() && <Typography color="text.secondary" variant="body2" sx={{ py: 3 }}>
+          Search by topic, API name or phrase.
+        </Typography>}
+        {results.length > 0 && <List disablePadding aria-label="Search results" inert={isLoading || undefined}
+          sx={{ opacity: isLoading ? 0.5 : 1 }}>
+          {results.map((result, index) => {
             const safeUrl = sanitizeSearchResultUrl(result.url);
             const snippetNodes = result.snippet ? parseSearchSnippet(result.snippet) : [];
             return <ListItem key={result.id} disablePadding className="lumen-search-result-item">
               <ListItemButton component="a" href={safeUrl} className="lumen-search-result-link"
+                onKeyDown={event => moveResultFocus(event, index)} sx={{ borderRadius: 1, alignItems: 'flex-start' }}
                 onClick={() => {
                   onSelectResult?.({ url: safeUrl, title: result.title });
                   onClose?.();
                 }}>
-                <ListItemText primary={result.title} secondary={snippetNodes.length ? snippetNodes : undefined} />
+                <ListItemText primary={result.title} secondary={snippetNodes.length ? snippetNodes : undefined}
+                  slotProps={{ secondary: { sx: { display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 3, overflow: 'hidden' } } }} />
               </ListItemButton>
             </ListItem>;
           })}
         </List>}
-      </Box>
+      </Scrollbar>
+      <Typography variant="caption" color="text.secondary" sx={{ pt: 1.5, flexShrink: 0, borderTop: 1, borderColor: 'divider' }}>
+        ↑ ↓ Navigate · Enter Open{onClose ? ' · Esc Close' : ''}
+      </Typography>
     </Box>
   );
 }
@@ -341,8 +376,18 @@ export function LumenSearchDialog({
   if (!open) return null;
 
   return <Dialog open onClose={onClose} maxWidth="sm" fullWidth className={className}
-    slotProps={{ paper: { 'aria-label': 'Search documentation' } }}>
-    <DialogContent sx={{ pt: 3 }}>
+    slotProps={{
+      container: { sx: { alignItems: 'flex-start' } },
+      paper: {
+        'aria-label': 'Search documentation',
+        sx: {
+          m: 2, mt: 'clamp(16px, 8dvh, 64px)', width: 'calc(100% - 32px)',
+          height: '38rem', maxHeight: 'calc(100dvh - clamp(16px, 8dvh, 64px) - 16px)',
+          overflow: 'hidden',
+        },
+      },
+    }}>
+    <DialogContent sx={{ p: { xs: 2, sm: 3 }, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       <LumenSearchDialogContent onClose={onClose} initialQuery={initialQuery} defaultTab={defaultTab}
         pagefindUrl={pagefindUrl} rpcClient={rpcClient} maxResults={maxResults} onSelectResult={onSelectResult} />
     </DialogContent>

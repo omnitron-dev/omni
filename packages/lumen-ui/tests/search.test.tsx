@@ -169,6 +169,7 @@ describe('Search Dialog & Adapters', () => {
     expect(sanitizeSearchResultUrl('vbscript:msgbox(1)')).toBe('#');
     expect(sanitizeSearchResultUrl('data:text/html,<script>alert(1)</script>')).toBe('#');
     expect(sanitizeSearchResultUrl('//evil.example/phish')).toBe('#');
+    expect(sanitizeSearchResultUrl('/\\evil.example/phish')).toBe('#');
     expect(sanitizeSearchResultUrl('java\tscript:alert(1)')).toBe('#');
     expect(sanitizeSearchResultUrl('/docs/getting-started#setup')).toBe('/docs/getting-started#setup');
     expect(sanitizeSearchResultUrl('https://docs.example.com/guide')).toBe('https://docs.example.com/guide');
@@ -243,7 +244,7 @@ describe('Search Dialog & Adapters', () => {
         await vi.waitFor(() => expect(rpcClient.search).toHaveBeenCalledWith('slow-query', { limit: 10 }), { timeout: 5000 });
       });
 
-      expect(document.body.textContent).toContain('Searching...');
+      expect(document.body.textContent).toContain('Searching…');
 
       const input = document.querySelector('input[type="search"]') as HTMLInputElement;
       await act(async () => {
@@ -253,7 +254,7 @@ describe('Search Dialog & Adapters', () => {
         input.dispatchEvent(new Event('change', { bubbles: true }));
       });
 
-      expect(document.body.textContent).not.toContain('Searching...');
+      expect(document.body.textContent).not.toContain('Searching…');
 
       await act(async () => {
         resolveSlowSearch(staleResults);
@@ -261,7 +262,7 @@ describe('Search Dialog & Adapters', () => {
       });
 
       expect(rpcClient.search).toHaveBeenCalledTimes(1);
-      expect(document.body.textContent).not.toContain('Searching...');
+      expect(document.body.textContent).not.toContain('Searching…');
       expect(document.body.textContent).not.toContain('Stale Result');
     } finally {
       await act(async () => { root.unmount(); });

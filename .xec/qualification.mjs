@@ -162,7 +162,7 @@ export async function verifyReleaseQualification(root, version, options = {}) {
   if (!selected?.identity || selected.identity.schema !== 1 || typeof selected.identity.node !== 'string' ||
       !/^v\d+\.\d+\.\d+$/.test(selected.identity.node) ||
       selected.identity.version !== version || selected.identity.commit !== commit ||
-      selected.key !== digest(selected.identity)) throw Error('Run xec release ' + version + ' --qualify --previous <commit> before publication');
+      selected.key !== digest(selected.identity)) throw Error('Run xec release ' + version + ' --qualify --previous <commit> before runtime activation');
   return runQualification(root, version, { ...options, previous: selected.identity.previous, observeOnly: true }, selected.identity);
 }
 

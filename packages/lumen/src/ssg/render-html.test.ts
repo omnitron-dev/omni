@@ -31,6 +31,24 @@ function suspendedLayout() {
 }
 
 describe('complete static React rendering', () => {
+  it('publishes the server resource closure below the base path and rejects conflicting client bytes', async () => {
+    const graph = new CorpusGraph();
+    graph.addDocument({ id: 'guide', path: 'guide.md', title: 'Guide', hash: 'guide', anchors: [],
+      mathObjects: [], backlinks: [], ast: await parseDocument('# Guide') });
+    const config = defineLumenConfig({ title: 'Resources', baseUrl: '/manual/' });
+    const css = '.probe{color:blue}';
+    const serverAssets = new Map([['assets/shared.css', css]]);
+    const result = await buildStaticSite(graph, config, {
+      clientAssets: new Map([['assets/shared.css', Buffer.from(css)]]),
+      serverAssets, serverStyles: ['assets/shared.css'], clientStyles: ['assets/shared.css'],
+    });
+    expect(result.pages.get('/guide')?.match(/href="\/manual\/assets\/shared.css"/g)).toHaveLength(1);
+    expect(result.assets.get('assets/shared.css')).toBe(css);
+    await expect(buildStaticSite(graph, config, {
+      clientAssets: new Map([['assets/shared.css', 'DIFFERENT BYTES']]), serverAssets,
+    })).rejects.toThrow('Conflicting server and client asset: assets/shared.css');
+  });
+
   it('renders registered Markdown widgets inside the original layout and Lumen contexts', async () => {
     const Context = createContext('MISSING CONTEXT');
     function Counter({ initial }: { initial: number }) {

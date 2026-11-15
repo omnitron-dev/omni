@@ -26,6 +26,9 @@ export interface SsgBuildOptions extends CorpusProjectionOptions, Pick<RenderDoc
   clientAssets?: Map<string, string | Uint8Array>;
   clientScripts?: string[];
   clientStyles?: string[];
+  /** Resources emitted by the trusted SSR compiler, published with the same generation. */
+  serverAssets?: Map<string, string | Uint8Array>;
+  serverStyles?: string[];
   outDir?: string;
   writeToDisk?: boolean;
   previousManifest?: AssetManifest | null;
@@ -111,6 +114,13 @@ export async function buildStaticSite(
 
   const pages = new Map<string, string>();
   const assets = new Map<string, string | Uint8Array>(client.assets);
+  for (const [name, content] of options?.serverAssets ?? []) {
+    const existing = assets.get(name);
+    if (existing !== undefined && !Buffer.from(existing).equals(Buffer.from(content))) {
+      throw new Error(`Conflicting server and client asset: ${name}`);
+    }
+    assets.set(name, content);
+  }
   const currentAssets: AssetManifest = {};
   const normalizedBase = normalizeBaseUrl(config.baseUrl);
   const assetUrl = (path: string) =>
@@ -195,7 +205,7 @@ export async function buildStaticSite(
           islands: config.islands,
           extraHead: [
             stylesheetLinkTag,
-            ...[...(config.stylesheets ?? []), ...(client.styles ?? [])].map(
+            ...[...new Set([...(options?.serverStyles ?? []), ...(config.stylesheets ?? []), ...(client.styles ?? [])])].map(
               (path) => `<link rel="stylesheet" href="${escapeHtml(assetUrl(path))}" />`
             ),
             ...(config.url

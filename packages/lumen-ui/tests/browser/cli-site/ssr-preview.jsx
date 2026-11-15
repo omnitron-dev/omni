@@ -2,6 +2,7 @@ import { memo, useState } from 'react';
 import { useIsClient } from '@omnitron-dev/prism/core';
 import { Button, useTheme } from '@omnitron-dev/prism/ui';
 import literalSource from './counter-example.js?raw';
+import './ssr-preview.css';
 
 export default memo(function SharedPreview() {
   const theme = useTheme();

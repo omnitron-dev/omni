@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { expect, it } from 'vitest';
 import { withProjectBuild } from '../src/ssg/server-build.js';
+import { CorpusGraph } from '../src/corpus/graph.js';
 
 it('reloads project modules once per build and releases temporary graphs on success and failure', async () => {
   const temporary = mkdtempSync(join(tmpdir(), 'lumen-build-lifecycle-'));
@@ -82,23 +83,36 @@ export default {
   }
 }, 60_000);
 
-it('rejects separately emitted layout resources while retaining self-contained imports', async () => {
+it('publishes imported styles and their relative resources while retaining inline imports', async () => {
   const root = mkdtempSync(join(tmpdir(), 'lumen-build-resources-'));
   const configFile = join(root, 'lumen.config.js');
   try {
     writeFileSync(join(root, 'package.json'), '{"type":"module"}');
-    writeFileSync(join(root, 'theme.css'), '.reference { color: rebeccapurple; }');
+    writeFileSync(join(root, 'theme.css'), '.reference { color: rebeccapurple; } @font-face { font-family: sample; src: url("./font.woff2?no-inline"); }');
+    writeFileSync(join(root, 'font.woff2'), Buffer.alloc(8192, 42));
     writeFileSync(join(root, 'mark.svg'), `<svg xmlns="http://www.w3.org/2000/svg"><!--${'asset'.repeat(2_000)}--><circle r="1" /></svg>`);
-    for (const source of [
-      'import "./theme.css"; export default { title: "Styled site" };',
-      'import mark from "./mark.svg?url"; export default { title: mark };',
-    ]) {
-      writeFileSync(configFile, source);
-      await expect(withProjectBuild(root, async () => { throw new Error('Must not execute'); }))
-        .rejects.toThrow(/cannot publish imported resources.*publicDir.*stylesheets.*clientEntry/);
-    }
+    writeFileSync(configFile, 'import "./theme.css"; export default { title: "Styled site", baseUrl: "/manual/" };');
+    await withProjectBuild(root, async (config, build) => {
+      const result = await build(new CorpusGraph(), config, { clientAssets: new Map() });
+      const stylesheet = [...result.assets].find(([name]) => name.startsWith('assets/server.') && name.endsWith('.css'))!;
+      expect(stylesheet).toBeDefined();
+      const css = String(stylesheet[1]);
+      expect(css).toMatch(/color:\s*(?:rebeccapurple|#639)/);
+      const font = [...result.assets.keys()].find(name => name.endsWith('.woff2'))!;
+      expect(font).toBeDefined();
+      expect(Buffer.from(result.assets.get(font)!)).toEqual(Buffer.alloc(8192, 42));
+      const url = css.match(/url\(["']?([^"')]+)["']?\)/)?.[1];
+      expect(new URL(url!, `https://example.test/manual/${stylesheet[0]}`).pathname).toBe(`/manual/${font}`);
+    });
+
+    writeFileSync(configFile, 'import mark from "./mark.svg?url"; export default { title: mark };');
+    await expect(withProjectBuild(root, async () => { throw new Error('Must not execute'); }))
+      .rejects.toThrow(/resource URLs in JavaScript require an inline import or publicDir/);
 
     writeFileSync(configFile, 'import css from "./theme.css?inline"; export default { title: "Inline value", tagline: css };');
+    await expect(withProjectBuild(root, async () => { throw new Error('Must not execute'); }))
+      .rejects.toThrow(/resource URLs in JavaScript require an inline import or publicDir/);
+    writeFileSync(join(root, 'theme.css'), '.reference { color: rebeccapurple; }');
     expect(await withProjectBuild(root, async config => config.tagline)).toMatch(/\.reference\s*\{\s*color:/);
   } finally {
     rmSync(root, { recursive: true, force: true });

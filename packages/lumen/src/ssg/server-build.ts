@@ -1,7 +1,7 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { builtinModules } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, extname, isAbsolute, join } from 'node:path';
+import { dirname, extname, isAbsolute, join, posix } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { resolveConfigFile } from '../config/loader.js';
 import { defineLumenConfig } from '../config/define.js';
@@ -14,6 +14,7 @@ import type { ViteDevServer } from 'vite';
 // These packages own Node resources or compiler entry points. Frontend packages
 // stay in the compiled graph, including arbitrary React-dependent user packages.
 const NODE_PACKAGES = ['@omnitron-dev/lumen', '@omnitron-dev/lumen-ast', '@omnitron-dev/common', 'pagefind', 'vite'];
+const assetDirectory = 'assets';
 
 /** One disposable SSR graph owns the project layout, React and the existing SSG. */
 export async function withProjectBuild<T>(
@@ -34,6 +35,19 @@ export async function withProjectBuild<T>(
       configFile: false,
       root: rootDir,
       publicDir: false,
+      experimental: {
+        renderBuiltUrl(filename, context) {
+          // CSS resources resolve against their emitted stylesheet, including
+          // sites published below a base path. A JS asset URL is evaluated
+          // before the executable config supplies that base; do not invent one.
+          if (context.hostType !== 'css') {
+            throw new Error('Lumen SSR resource URLs in JavaScript require an inline import or publicDir. CSS imports and their relative resources are supported.');
+          }
+          // Vite supplies a provisional CSS name before assetFileNames runs.
+          // Resolve from our declared output directory, not that provisional name.
+          return './' + posix.relative(assetDirectory, filename);
+        },
+      },
       resolve: { dedupe: consumerContextPackages(rootDir) },
       ssr: { noExternal: true },
       plugins: [{
@@ -107,7 +121,11 @@ export async function withProjectBuild<T>(
         reportCompressedSize: false,
         rolldownOptions: {
           input: entry,
-          output: { format: 'esm', codeSplitting: false },
+          output: {
+            format: 'esm', entryFileNames: 'server.js', chunkFileNames: 'chunks/[name].[hash].js',
+            assetFileNames: asset => asset.names.some(name => name.endsWith('.css'))
+              ? `${assetDirectory}/server.[hash][extname]` : `${assetDirectory}/[name].[hash][extname]`,
+          },
           onwarn(warning, warn) {
             // This is ordinary SSR, not a React Server Components boundary.
             if (warning.code !== 'MODULE_LEVEL_DIRECTIVE') warn(warning);
@@ -118,13 +136,17 @@ export async function withProjectBuild<T>(
     const bundles = Array.isArray(result) ? result : [result];
     const chunks = bundles.flatMap(bundle => 'output' in bundle ? bundle.output : []);
     const resources = chunks.filter(chunk => chunk.type === 'asset');
-    if (resources.length) {
-      throw new Error(`Lumen SSR layouts cannot publish imported resources (${resources.map(resource => resource.fileName).join(', ')}). Use publicDir with stylesheets, or import browser resources from clientEntry.`);
-    }
+    const serverAssets = new Map(resources.map(resource => [resource.fileName, resource.source]));
+    const serverStyles = resources.filter(resource => resource.fileName.endsWith('.css')).map(resource => resource.fileName);
     const compiled = chunks.find(chunk => chunk.type === 'chunk' && chunk.isEntry);
     if (!compiled || compiled.type !== 'chunk') throw new Error('Lumen SSR build did not produce an entry');
-    const file = join(directory, 'server.js');
-    await writeFile(file, compiled.code);
+    for (const chunk of chunks) {
+      if (chunk.type !== 'chunk') continue;
+      const file = join(directory, chunk.fileName);
+      await mkdir(dirname(file), { recursive: true });
+      await writeFile(file, chunk.code);
+    }
+    const file = join(directory, compiled.fileName);
 
     // Vite's scoped runner evaluates the already compiled ESM. Native import()
     // would retain a new module forever on each dev rebuild. No dev optimizer,
@@ -148,7 +170,9 @@ export async function withProjectBuild<T>(
       buildStaticSite: typeof buildStaticSite;
     };
     const config = defineLumenConfig(expandEnvVariables(compiledModule.config));
-    return await run(config, compiledModule.buildStaticSite);
+    return await run(config, (corpus, selectedConfig, options) => compiledModule.buildStaticSite(corpus, selectedConfig, {
+      ...options, serverAssets, serverStyles,
+    }));
   } finally {
     try { await server?.close(); } finally { await rm(directory, { recursive: true, force: true }); }
   }

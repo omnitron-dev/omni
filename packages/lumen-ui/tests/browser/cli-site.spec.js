@@ -22,6 +22,7 @@ test('the native CLI preserves a shared lazy/memo registry, raw imports and Pris
     await expect(preview).toBeVisible();
     await expect(preview).toBeDisabled();
     await expect(preview).toHaveCSS('min-height', '52px');
+    await expect(preview).toHaveCSS('--static-preview-style', 'published');
     await expect(preview).toHaveCSS('border-radius', '13px');
     await expect(preview).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   } finally { await noScript.close(); }
@@ -34,6 +35,7 @@ test('the native CLI preserves a shared lazy/memo registry, raw imports and Pris
   await expect(preview).toHaveAttribute('data-mode', 'light');
   await expect(preview).toHaveAttribute('data-source-loaded', 'yes');
   await expect(preview).toHaveCSS('min-height', '52px');
+  await expect(preview).toHaveCSS('--static-preview-style', 'published');
   await expect(preview).toBeEnabled();
   await preview.click();
   await expect(preview).toHaveText('Shared preview 1');

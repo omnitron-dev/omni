@@ -14,8 +14,13 @@ export function Counter() {
   const label = useContext(Label);
   const [count, setCount] = useState(0);
   useEffect(() => { document.body.dataset.counterInteractive = 'true'; }, []);
-  return <Button variant="contained" data-probe="counter" onClick={() => setCount(value => value + 1)}
-    sx={{ width: 200, height: 64 }}>{label}: {count}</Button>;
+  return <>
+    <Button variant="contained" data-probe="counter" onClick={() => setCount(value => value + 1)}
+      sx={{ width: 200, height: 64 }}>{label}: {count}</Button>
+    <pre data-static-preview style={{ maxHeight: 80, overflow: 'auto', maxWidth: '100%' }}>
+      {'Complete static preview. '.repeat(2000)}
+    </pre>
+  </>;
 }
 
 declare global {

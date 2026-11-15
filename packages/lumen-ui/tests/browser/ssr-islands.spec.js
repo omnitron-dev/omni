@@ -11,8 +11,10 @@ const test = createBrowserTest('ssr-islands.html', {
           load('react'), load('@omnitron-dev/lumen-ast'), load('@omnitron-dev/lumen'), loadFixture(),
         ]);
         const ast = await parseDocument('# Static component\n\n<Counter hydrate="load" />');
+        const Deferred = React.lazy(async () => ({ default: Counter }));
+        const ServerCounter = () => React.createElement(React.Suspense, { fallback: 'INCOMPLETE SERVER PREVIEW' }, React.createElement(Deferred));
         const rendered = await renderDocumentHtml(ast, {
-          theme: 'light', islands: { Counter },
+          theme: 'light', islands: { Counter: ServerCounter },
           renderLayout: children => React.createElement(Layout, null, children),
         });
         const head = rendered.match(/<head>([\s\S]*?)<\/head>/)?.[1];
@@ -69,6 +71,9 @@ test('the registered preview is complete without JavaScript', async ({ browser, 
     const page = await context.newPage();
     await page.goto(url);
     await expect(page.locator('[data-probe="counter"]')).toHaveText('Requests: 0');
+    await expect(page.locator('[data-static-preview]')).toBeVisible();
+    await expect(page.locator('[data-static-preview]')).toContainText('Complete static preview.');
+    await expect(page.getByText('INCOMPLETE SERVER PREVIEW', { exact: true })).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'Static component' })).toBeVisible();
   } finally { await context.close(); }
 });

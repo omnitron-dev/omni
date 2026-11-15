@@ -55,6 +55,9 @@ async function prerenderDocument(
   try {
     const { prelude, postponed } = await prerenderToNodeStream(content, {
       signal,
+      // Static pages are buffered in full. React's streaming-size heuristic
+      // otherwise outlines complete large boundaries behind browser-only scripts.
+      progressiveChunkSize: Number.MAX_SAFE_INTEGER,
       onError: rejectIncompleteRender,
       onBrowserBailout: rejectIncompleteRender,
     });

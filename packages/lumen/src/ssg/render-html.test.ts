@@ -77,6 +77,27 @@ describe('complete static React rendering', () => {
     expect(html).toContain('READY ON FIRST PAINT');
   });
 
+  it('inlines large nested Suspense previews without a browser completion script or a second render', async () => {
+    const renderPreview = vi.fn(() => React.createElement('pre', { 'data-large-preview': true }, 'Complete static preview. '.repeat(2000)));
+    const loadPreview = vi.fn(async () => ({ default: renderPreview }));
+    const Preview = lazy(loadPreview);
+    const Inner = () => React.createElement('section', null,
+      React.createElement(Suspense, { fallback: 'INCOMPLETE LARGE PREVIEW' }, React.createElement(Preview)));
+    const Outer = lazy(async () => ({ default: Inner }));
+    const Widget = () => React.createElement('div', null,
+      React.createElement(Suspense, { fallback: 'INCOMPLETE OUTER PREVIEW' }, React.createElement(Outer)));
+    const ast = await parseDocument('<Widget hydrate="visible" />');
+    const html = await renderDocumentHtml(ast, { islands: { Widget } });
+    expect(html).toContain('data-large-preview="true"');
+    expect(html).not.toContain('INCOMPLETE LARGE PREVIEW');
+    expect(html).not.toContain('INCOMPLETE OUTER PREVIEW');
+    expect(html).not.toContain('<!--$?-->');
+    expect(html).not.toContain('hidden id="S:');
+    expect(html).not.toContain('<script');
+    expect(loadPreview).toHaveBeenCalledTimes(1);
+    expect(renderPreview).toHaveBeenCalledTimes(1);
+  });
+
   it('projects access before invoking a registered server component', async () => {
     const Secret = vi.fn(() => React.createElement('p', null, 'PRIVATE WIDGET'));
     const ast = await parseDocument('# Public\n\n<Secret access="internal" />\n\n## Hidden {access=internal}\n\n<Secret />');

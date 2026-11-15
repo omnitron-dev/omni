@@ -18,7 +18,9 @@ if (flag === '--publish-from') {
 } else {
   const stage = fs.mkdtempSync(path.join(webapp, 'node_modules/.console-build-'));
   try {
-    run(require.resolve('typescript/lib/tsc.js'), ['--noEmit', '--incremental', 'false']);
+    const compilerManifest = require.resolve('@typescript/native/package.json');
+    const compiler = JSON.parse(fs.readFileSync(compilerManifest, 'utf8')).bin.tsc;
+    run(path.resolve(path.dirname(compilerManifest), compiler), ['--noEmit', '--incremental', 'false']);
     const vite = path.join(path.dirname(require.resolve('vite/package.json')), 'bin/vite.js');
     run(vite, ['build', '--outDir', stage]);
     stampConsole(stage);

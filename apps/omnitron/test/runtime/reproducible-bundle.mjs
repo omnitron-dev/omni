@@ -10,6 +10,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
+const compilerManifest = require.resolve('@typescript/native/package.json');
+const compiler = path.resolve(path.dirname(compilerManifest), JSON.parse(await fs.readFile(compilerManifest, 'utf8')).bin.tsc);
 const stamp = path.resolve(here, '../../scripts/stamp-build.mjs');
 const dist = path.resolve(process.argv[2] ?? 'dist');
 const { archiveBundle, buildBundle } = await import(pathToFileURL(path.join(dist, 'services/bundle-builder.js')));
@@ -32,7 +34,7 @@ try {
     const root = path.join(tmp, label);
     run(tmp, 'git', ['clone', '-q', '--no-local', origin, root]);
     const pkg = path.join(root, 'packages/lib');
-    run(pkg, process.execPath, [require.resolve('typescript/lib/tsc.js'), '--ignoreConfig', '--skipLibCheck', '--target', 'ES2022', '--outDir', 'dist', 'src.ts']);
+    run(pkg, process.execPath, [compiler, '--ignoreConfig', '--skipLibCheck', '--target', 'ES2022', '--outDir', 'dist', 'src.ts']);
     run(pkg, process.execPath, [stamp, 'dist']);
     const dir = path.join(tmp, 'bundle-' + label);
     await buildBundle({ workspaceRoot: root, rootPackage: '@fixture/api', outDir: dir });

@@ -282,6 +282,17 @@ export function createButtonBaseOverrides(): Components<Theme>['MuiButtonBase'] 
     defaultProps: {
       disableRipple: false,
     },
+    styleOverrides: {
+      root: ({ theme }) => ({
+        // Native keyboard focus must remain visible in static SSR markup,
+        // before ButtonBase can attach its focus-visible class or ripple.
+        '&:focus-visible, &.Mui-focusVisible': {
+          outline: `2px solid ${theme.vars?.palette.primary.main ?? theme.palette.primary.main}`,
+          outlineOffset: 2,
+          '@media (forced-colors: active)': { outlineColor: 'Highlight' },
+        },
+      }),
+    },
   };
 }
 

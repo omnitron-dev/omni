@@ -2,6 +2,8 @@ import { render, fireEvent } from '@testing-library/react';
 import { ThemeProvider, type ThemeOptions } from '@mui/material/styles';
 import Box from '@mui/material/Box';
 import Backdrop from '@mui/material/Backdrop';
+import Button from '@mui/material/Button';
+import IconButton from '@mui/material/IconButton';
 import Table from '@mui/material/Table';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
@@ -34,6 +36,22 @@ function styles(container: HTMLElement, selector: string) {
   return getComputedStyle(element);
 }
 describe('component style composition at the rendered MUI boundary', () => {
+  it.each(['light', 'dark'] as const)('keeps the %s keyboard focus ring when ripples are disabled', (mode) => {
+    const theme = createPrismTheme({ mode, cssVariables: { enabled: false } });
+    const { getByRole } = render(
+      <ThemeProvider theme={theme}>
+        <Button component="a" href="/docs" disableRipple className="Mui-focusVisible">Read the guide</Button>
+        <IconButton disableRipple className="Mui-focusVisible" aria-label="Search"><svg /></IconButton>
+      </ThemeProvider>,
+    );
+    for (const control of [getByRole('link', { name: 'Read the guide' }), getByRole('button', { name: 'Search' })]) {
+      const style = getComputedStyle(control);
+      expect(style.outlineStyle).toBe('solid');
+      expect(style.outlineWidth).toBe('2px');
+      expect(style.outlineOffset).toBe('2px');
+    }
+  });
+
   it('reserves outline space only for fields with a visible label', () => {
     const { container, getByRole } = render(
       <ThemeProvider theme={createPrismTheme()}>

@@ -63,6 +63,8 @@ Configuration is trusted executable code. Documents cannot import arbitrary Java
 
 SSR and custom client builds share the consumer's installed React, Emotion, React Hook Form and React Router contexts with linked SDK packages. Install a provider in the website when composing its public API with Prism components. Integrations absent from the website keep their ordinary package resolution.
 
+Critical Emotion CSS retains each cache key, independently owned `Global` block and CSP nonce so the browser can reuse the server styles. Extraction runs once per page and fails on an invalid cache; markup class names alone never mark a style as inserted. Lumen's static baseline has its own style block outside Emotion's ownership.
+
 Use `lumen pdf --outDir pdf` for PDF files, `lumen types --outDir generated` for corpus types, and `lumen mcp --stdio` for a local read-only corpus server. Keep export directories separate from the static generation. The source directory must exist; a missing corpus is an error.
 
 ## Component examples

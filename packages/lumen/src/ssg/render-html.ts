@@ -39,7 +39,8 @@ export function renderDocumentHtml(ast: LumenDocumentAst, options?: RenderDocume
   );
 
   const cache = createCache({ key: 'css' });
-  const emotionServer = createEmotionServer(cache);
+  // Enable Emotion's SSR cache before rendering; extraction happens once in buildHtmlPage.
+  createEmotionServer(cache);
   function Article({ className }: { className: string }): React.ReactNode {
     const prismTheme = useTheme();
     const articleHtml = docAllowed
@@ -96,15 +97,12 @@ export function renderDocumentHtml(ast: LumenDocumentAst, options?: RenderDocume
     )
   );
 
-  const criticalChunks = emotionServer.extractCriticalToChunks(renderedShellHtml);
-  const chunkStyleTags = emotionServer.constructStyleTagsFromChunks(criticalChunks);
-
   return buildHtmlPage({
     title: String(effectiveAst.frontmatter?.title ?? 'Documentation'),
     description: effectiveAst.frontmatter?.description ? String(effectiveAst.frontmatter.description) : undefined,
     lang: locale,
     theme,
-    contentHtml: `${chunkStyleTags}${renderedShellHtml}`,
+    contentHtml: renderedShellHtml,
     baseUrl: options?.baseUrl,
     extraHead: options?.extraHead,
     bodyScripts: options?.bodyScripts,

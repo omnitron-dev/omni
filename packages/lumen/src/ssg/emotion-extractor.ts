@@ -27,113 +27,52 @@ export interface EmotionExtractionResult {
 }
 
 export function extractCriticalEmotionCss(html: string, cache?: EmotionCache): EmotionExtractionResult {
-  const ids: string[] = [];
-  const seenIds = new Set<string>();
-  const cssBlocks: string[] = [];
-  const seenCss = new Set<string>();
-
-  const addId = (id: string) => {
-    const trimmed = id.trim();
-    if (trimmed && !seenIds.has(trimmed)) {
-      seenIds.add(trimmed);
-      ids.push(trimmed);
-    }
+  const chunks: Array<{ key: string; ids: string[]; css: string; tag: string }> = [];
+  const inserted = new Map<string, Set<string>>();
+  const add = (chunk: (typeof chunks)[number]) => {
+    if (!chunk.css.trim()) return;
+    const known = inserted.get(chunk.key) ?? new Set<string>();
+    const overlap = chunk.ids.filter((id) => known.has(id)).length;
+    if (chunk.ids.length && overlap === chunk.ids.length) return;
+    if (overlap) throw new Error(`Overlapping Emotion chunks for cache ${chunk.key}`);
+    for (const id of chunk.ids) known.add(id);
+    inserted.set(chunk.key, known);
+    chunks.push(chunk);
   };
 
-  const addCss = (ruleText: string) => {
-    const trimmed = ruleText.trim();
-    if (trimmed && !seenCss.has(trimmed)) {
-      seenCss.add(trimmed);
-      cssBlocks.push(trimmed);
-    }
-  };
-
-  // 1. Extract critical chunks via @emotion/server when an EmotionCache instance is provided
+  // Emotion owns the cache classification and the order of Global/style chunks.
+  // An extraction failure is an SSR failure, never a reason to guess inserted IDs.
   if (cache) {
-    try {
-      const emotionServer = createEmotionServer(cache);
-      const criticalChunks = emotionServer.extractCriticalToChunks(html);
-      for (const styleChunk of criticalChunks.styles) {
-        for (const chunkId of styleChunk.ids) {
-          addId(chunkId);
-        }
-        if (styleChunk.css) {
-          addCss(styleChunk.css);
-        }
-      }
-    } catch {
-      // Fallback to direct cache.inserted inspection
-    }
-
-    if (cache.inserted && typeof cache.inserted === 'object') {
-      for (const [key, val] of Object.entries(cache.inserted)) {
-        if (typeof val === 'string' && val.trim().length > 0) {
-          addId(key);
-          addCss(val);
-        }
-      }
+    const server = createEmotionServer(cache);
+    const critical = server.extractCriticalToChunks(html);
+    for (const chunk of critical.styles) {
+      add({ ...chunk, tag: server.constructStyleTagsFromChunks({ html: '', styles: [chunk] }) });
     }
   }
 
-  // 2. Extract inline <style data-emotion="...">REAL_RULES</style> emitted during React 19 / Emotion SSR
-  const inlineStyleMatches = html.matchAll(/<style\b[^>]*\bdata-emotion=["']([^"']*)["'][^>]*>([\s\S]*?)<\/style>/gi);
-  for (const match of inlineStyleMatches) {
-    const attrTokens = (match[1] ?? '').trim().split(/\s+/).filter(Boolean);
-    for (let i = 1; i < attrTokens.length; i++) {
-      const token = attrTokens[i];
-      if (token) {
-        addId(token);
-      }
-    }
+  // Keep independently owned inline caches/Globals and their CSP nonce intact.
+  // IDs are scoped to their real cache key; the same hash in two caches is distinct.
+  const inline = /<style\b[^>]*\bdata-emotion=(["'])(.*?)\1[^>]*>([\s\S]*?)<\/style>/gi;
+  const cleaned = html
+    .replace(inline, (tag: string, _quote: string, attribute: string, css: string) => {
+      const [key, ...ids] = attribute.trim().split(/\s+/);
+      if (!key) throw new Error('Emotion style is missing its cache key');
+      add({ key, ids, css, tag });
+      return '';
+    })
+    .replace(/<style data-lumen-theme>[\s\S]*?<\/style>/g, '');
 
-    const cssContent = (match[2] ?? '').trim();
-    if (cssContent) {
-      addCss(cssContent);
-    }
-  }
-
-  // 3. Collect matched css-<id> class tokens in markup so all referenced Emotion IDs are tracked
-  const classMatches = html.matchAll(/\bclass=["']([^"']+)["']/g);
-  for (const match of classMatches) {
-    const classList = (match[1] ?? '').split(/\s+/);
-    for (const cls of classList) {
-      if (cls.startsWith('css-')) {
-        const id = cls.slice(4);
-        if (id) {
-          addId(id);
-          const cachedRule = cache?.inserted?.[id];
-          if (typeof cachedRule === 'string' && cachedRule.trim().length > 0) {
-            addCss(cachedRule);
-          }
-        }
-      }
-    }
-  }
-
-  // 4. Ensure base theme variables and .lumen-shell rules are always included
-  const alreadyHasBaseTheme = cssBlocks.some(
-    (block) => block.includes('--lumen-bg:') && block.includes('.lumen-shell{')
-  );
-  if (!alreadyHasBaseTheme) {
-    addCss(BASE_LUMEN_THEME_CSS);
-  }
-
-  if (ids.length === 0) {
-    addId('lumen-theme');
-  }
-
-  const criticalCss = cssBlocks.join('\n');
-  const styleTag = `<style data-emotion="css ${ids.join(' ')}">${criticalCss}</style>`;
-
-  const cleanedHtml = html.replace(/<style\b[^>]*\bdata-emotion=["'][^"']*["'][^>]*>[\s\S]*?<\/style>/gi, '');
-  const finalHtml = cleanedHtml.includes('</head>')
-    ? cleanedHtml.replace('</head>', `${styleTag}</head>`)
-    : `${styleTag}\n${cleanedHtml}`;
+  // Lumen's static baseline is not an Emotion insertion and must not occupy its IDs.
+  const styleTag =
+    `<style data-lumen-theme>${BASE_LUMEN_THEME_CSS}</style>` + chunks.map((chunk) => chunk.tag).join('');
+  const finalHtml = /<\/head\s*>/i.test(cleaned)
+    ? cleaned.replace(/<\/head\s*>/i, (closing) => styleTag + closing)
+    : `${styleTag}\n${cleaned}`;
 
   return {
     html: finalHtml,
-    ids,
-    css: criticalCss,
+    ids: [...new Set(chunks.flatMap((chunk) => chunk.ids))],
+    css: [BASE_LUMEN_THEME_CSS, ...chunks.map((chunk) => chunk.css)].join('\n'),
     styleTag,
   };
 }

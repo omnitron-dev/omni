@@ -243,7 +243,7 @@ describe('@omnitron-dev/lumen', () => {
   });
 
   describe('SSG & HTML SSR', () => {
-    it('builds full HTML page with escaped entities and critical emotion CSS', () => {
+    it('builds escaped HTML with a static baseline outside Emotion ownership', () => {
       const page = buildHtmlPage({
         title: 'Physics & Chemistry <Test>',
         description: 'Observation of "atoms" & molecules',
@@ -253,13 +253,14 @@ describe('@omnitron-dev/lumen', () => {
       expect(page).toContain('&lt;Test&gt;');
       expect(page).toContain('&amp;');
       expect(page).toContain('&quot;atoms&quot;');
-      expect(page).toMatch(/<style data-emotion="css [^"]*">/);
+      expect(page).toContain('<style data-lumen-theme>');
+      expect(page).not.toContain('data-emotion');
     });
 
-    it('extracts critical emotion CSS styles', () => {
+    it('does not mark unknown class IDs as inserted Emotion styles', () => {
       const extracted = extractCriticalEmotionCss('<div class="css-abc1234">Test</div>');
-      expect(extracted.ids).toContain('abc1234');
-      expect(extracted.styleTag).toContain('data-emotion="css');
+      expect(extracted.ids).toEqual([]);
+      expect(extracted.styleTag).toContain('<style data-lumen-theme>');
     });
   });
 

@@ -6,6 +6,9 @@ import { promisify } from 'node:util';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import { renderLaunchdPlist, renderSystemdUnit } from '../commands/service-units.js';
 import { BACKEND_ACTIVITY_COUNTERS } from '../shared/dto/backend.js';
+import { retainReviewedBackups } from '../shared/backup-admission.js';
+import type { OperationReceipt } from '../shared/dto/execution-operations.js';
+import type { BackupRpcService } from '../services/backup.rpc-service.js';
 import { RuntimeInstallation, assertOrdinaryRecoveryAllowed } from './runtime-installation.js';
 import { readManagedRuntime, managedRuntimeFile, managedSupervisorSocket, managedJobPid, managedGuardianStopFence, assertGuardianStopped, managedSystemdProperties, verifyManagedIsolation, type ManagedRuntime } from './managed-runtime.js';
 import { privateControlClient, withControlDeadline } from './private-control-client.js';
@@ -33,6 +36,8 @@ export interface SupervisorTransition {
   after: ManagedRuntime;
   unit: { file: string; before: string; after: string };
   backend: { runtime: string; pid: number; control: string; socket: string };
+  /** Required before a new handoff; an existing checkpoint retains its own admission. */
+  backupOperations?: OperationReceipt[];
   owner: { id: string; pid: number; inventory: string; identity?: ExecutionIdentityEvidence };
   guardianPid: number;
   selectionRevision?: number;
@@ -47,9 +52,9 @@ const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(valu
  * can advance without changing the operator's reviewed intent. */
 export function supervisorTransitionIntentDigest(plan: SupervisorTransition): string {
   const { protocol, id, createdAt, before, after, unit, backend, owner, guardianPid,
-    selectionRevision, linuxStop, recovery } = plan;
+    selectionRevision, linuxStop, recovery, backupOperations } = plan;
   return hash({ protocol, id, createdAt, before, after, unit, backend, owner, guardianPid,
-    selectionRevision, linuxStop, recovery });
+    selectionRevision, linuxStop, recovery, backupOperations });
 }
 const execute = promisify(execFile);
 async function native(command: string, args: string[]): Promise<string> {
@@ -140,6 +145,7 @@ export async function readSupervisorTransition(file: string): Promise<Supervisor
       !path.isAbsolute(plan.backend.control ?? '') || !path.isAbsolute(plan.backend.socket ?? '') ||
       !plan.owner?.id || !Number.isSafeInteger(plan.owner.pid) || plan.owner.pid < 1 || !/^[a-f0-9]{64}$/.test(plan.owner.inventory ?? '') ||
       !Number.isSafeInteger(plan.guardianPid) || plan.guardianPid < 1 ||
+      (plan.backupOperations !== undefined && (!Array.isArray(plan.backupOperations) || plan.backupOperations.length > 1000)) ||
       (plan.linuxStop !== undefined && (!plan.linuxStop || !path.isAbsolute(plan.linuxStop.group ?? '') ||
         [plan.linuxStop.directoryId, plan.linuxStop.guardianProcess, plan.linuxStop.backendProcess].some(value => !/^[a-f0-9]{64}$/.test(value)))) ||
       (plan.selectionRevision !== undefined && (!Number.isSafeInteger(plan.selectionRevision) || plan.selectionRevision < 1)) ||
@@ -161,6 +167,33 @@ export async function readSupervisorTransition(file: string): Promise<Supervisor
     throw new Error('Reviewed recovery does not match the guardian transition');
   }
   return plan;
+}
+
+/** The private serving backend owns this address. Reading configuration does
+ * not require, or grant, a recovery certificate for process replacement. */
+function guardianBackendSocket(state: Awaited<ReturnType<BackendControlService['status']>>, pid: number, instance: string): string {
+  if (state.pid !== pid || state.instanceHome !== instance || state.retired || state.ticketId ||
+      state.backupHandoffProtocol !== 1 || state.runtimeRestartAdmissionProtocol !== 1 ||
+      typeof state.daemonSocket !== 'string' || !path.isAbsolute(state.daemonSocket) ||
+      state.runtime.phase !== 'active' || state.runtime.connection?.status !== 'connected')
+    throw Error('The serving backend cannot review backup admission for this guardian transition');
+  const counters = state.runtime.blockers;
+  if (!counters || ![...BACKEND_ACTIVITY_COUNTERS, 'backupOperations'].every(key => Object.hasOwn(counters, key)) ||
+      Object.entries(counters).some(([name, count]) => !Number.isSafeInteger(count) || count < 0 || name !== 'backupOperations' && count !== 0))
+    throw Error('Active or unknown backend operations block guardian transition');
+  return state.daemonSocket;
+}
+
+async function guardianBackupReview(service: BackendControlService, owner: SupervisorTransition['owner'], socket: string,
+  reviewed?: OperationReceipt[]): Promise<OperationReceipt[]> {
+  const observation = await service.runtimeRestartReview({ stacks: [] });
+  if (observation.configuration.ownerId !== owner.id || observation.configuration.inventoryDigest !== owner.inventory)
+    throw Error('Execution owner or application inventory changed during guardian backup review');
+  const client = createDaemonClient(socket, 15_000);
+  try {
+    return await retainReviewedBackups(observation.backups, reviewed, async id =>
+      (await client.service<BackupRpcService>('OmnitronBackups')).getOperation({ id }));
+  } finally { await client.disconnect(); }
 }
 
 /** Install a management artifact and save a reviewable plan; running services are untouched. */
@@ -197,8 +230,9 @@ export async function prepareSupervisorTransition(directory: string, socket?: st
           current.instanceHome !== checkpointInstanceHome(retired)) : (current.retired || current.ticketId))) {
       throw new Error('The backend is not ready for a guardian transition in this instance');
     }
+    const daemonSocket = retired ? expandPath(retired.daemonConfig.socketPath) : guardianBackendSocket(current, backendPid, config.instanceHome);
     const guardianPid = await managedJobPid(config, 'backend');
-    await verifyManagedIsolation(config, current.runtime.owner.pid, guardianPid);
+    await verifyManagedIsolation(config, current.runtime.owner.pid, guardianPid, retired ? undefined : backendPid);
     const file = await unitFile(config);
     if (config.scope === 'system') await assertSystemGuardianProcess(config, guardianPid);
     installation = await RuntimeInstallation.open(config.instanceHome, { existing: true });
@@ -229,8 +263,11 @@ export async function prepareSupervisorTransition(directory: string, socket?: st
       const plan: SupervisorTransition = { protocol: 1, id: randomUUID(), phase: 'prepared', createdAt: new Date().toISOString(),
         before: config, after, unit: { file, before: beforeUnit, after: afterUnit },
         backend: { runtime: running.runtimeHash, pid: backendPid, control: controlAddress.socket,
-          socket: retired ? expandPath(retired.daemonConfig.socketPath) : await readCertificateSocket(config, backendPid) },
+          socket: daemonSocket },
         owner: { id: view.status.owner.id, pid: view.status.owner.pid, inventory: view.inventoryDigest, ...(identity ? { identity } : {}) }, guardianPid };
+      plan.backupOperations = retired ? [] : await guardianBackupReview(control.service, plan.owner, daemonSocket);
+      if (!retired && guardianBackendSocket(await control.service.status(), backendPid, config.instanceHome) !== daemonSocket)
+        throw Error('Serving backend address changed during guardian preparation');
       plan.selectionRevision = selected.revision;
       if (process.platform === 'linux') plan.linuxStop = await managedGuardianStopFence(config, guardianPid, backendPid);
       if (recovery) {
@@ -246,16 +283,6 @@ export async function prepareSupervisorTransition(directory: string, socket?: st
   } finally { await installation?.close(); await control.close(); }
 }
 
-async function readCertificateSocket(config: ManagedRuntime, pid: number): Promise<string> {
-  const { BackendRecoveryJournal } = await import('./backend-recovery-journal.js');
-  const journal = new BackendRecoveryJournal(config.directory);
-  try {
-    const state = journal.read();
-    if (state?.status !== 'ready' || state.record.previousPid !== pid) throw new Error('Wait for a current recovery certificate before preparing the guardian');
-    return expandPath(state.record.daemonConfig.socketPath);
-  } finally { await journal.close(); }
-}
-
 async function verifyStopBoundary(plan: SupervisorTransition, retired: boolean): Promise<void> {
   if (!plan.linuxStop) {
     if (plan.phase === 'prepared' && !plan.checkpoint) throw Error('This Linux guardian plan predates the stop fence. Prepare a new plan before retirement.');
@@ -268,6 +295,7 @@ function summarize(plan: SupervisorTransition) {
   return { id: plan.id, phase: plan.phase, instanceHome: plan.before.instanceHome,
     from: plan.before.backend.artifact, to: plan.after.backend.artifact, backendRuntime: plan.backend.runtime,
     ownerPid: plan.owner.pid, backendPid: plan.backend.pid, guardianPid: plan.guardianPid,
+    backupOperations: plan.backupOperations ?? null,
     unit: plan.unit.file, checkpoint: plan.checkpoint ?? null, result: plan.result ?? null,
     ...(plan.recovery ? { reviewedRecovery: { intentSha256: supervisorTransitionIntentDigest(plan),
       originalCheckpointSha256: plan.recovery.originalCheckpointSha256,
@@ -343,11 +371,10 @@ export async function applySupervisorTransition(file: string, options: { checkOn
                 state.runtime.phase !== 'active' || state.runtime.connection?.status !== 'connected') {
               throw Error('The original backend is not connected to the reviewed resident owner');
             }
-            const blockers = state.runtime.blockers;
-            if (!blockers || !BACKEND_ACTIVITY_COUNTERS.every(key => Object.hasOwn(blockers, key)) ||
-                Object.values(blockers).some(count => count !== 0)) {
-              throw Error('Active or unknown backend operations block guardian transition');
-            }
+            if (!plan.backupOperations) throw Error('Prepare a guardian plan with reviewed backup operations before a new handoff');
+            if (guardianBackendSocket(state, plan.backend.pid, plan.before.instanceHome) !== plan.backend.socket)
+              throw Error('Serving backend address changed since guardian preparation');
+            await guardianBackupReview(control.service, plan.owner, plan.backend.socket, plan.backupOperations);
           }
           if (process.platform === 'linux') await verifyStopBoundary(plan, !!plan.recovery);
           if (options.checkOnly) {
@@ -365,9 +392,11 @@ export async function applySupervisorTransition(file: string, options: { checkOn
             plan.phase = 'retired';
             await writePrivateRecord(file, plan);
           } else {
+            if (plan.phase === 'preparing' && !state.ticketId)
+              throw Error('Guardian handoff preparation is unconfirmed; reconcile the original backend before continuing');
             plan.phase = 'preparing'; await writePrivateRecord(file, plan);
             const prepared = state.ticketId ? { ticketId: state.ticketId, file: path.join(plan.before.directory, `handoff-${state.ticketId}.json`) }
-              : await control.service.prepare({ candidateId: plan.id });
+              : await control.service.prepare({ candidateId: plan.id, backups: plan.backupOperations! });
             try {
               if (!/^[0-9a-f-]{36}$/i.test(prepared.ticketId) ||
                   prepared.file !== path.join(plan.before.directory, `handoff-${prepared.ticketId}.json`)) {

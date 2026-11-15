@@ -33,11 +33,28 @@ planning. Administrative authority is revalidated before staging and dispatch.
 Viewers and operators can inspect receipts without gaining activation rights.
 
 Guardian preparation installs a sealed management artifact and records its native
-stop boundary. `backend guardian apply <plan> --check` performs read-only validation
+stop boundary. The authenticated serving backend supplies its public socket path;
+reading that address does not require a recovery certificate. A controller with
+`backupHandoffProtocol: 1` also records the exact owned backup attempts that the
+transition may cancel. `backend guardian apply <plan> --check` performs read-only validation
 of a prepared plan using the same guards as apply. It requires `checked: true` for
 a fresh approval. A completed receipt reports `checked: false`. Apply rechecks
 under the installation lease before retirement and changes only the guardian job,
 retaining the selected backend and execution owner.
+
+Apply passes those exact references to the existing backend handoff. Completed
+attempts are observed without cancellation; a new or changed active attempt needs
+a new review. The handoff drains owned backups, then obtains its strict checkpoint
+before retirement. Unknown outcomes, restores and foreign operations remain
+blockers. A lost preparation acknowledgement leaves `preparing`; continuation
+must observe the original controller's ticket and cannot send preparation again.
+
+The standalone warm-backend path still has a separate admission boundary in
+[`src/daemon/backend-upgrade.ts`](src/daemon/backend-upgrade.ts): candidate
+infrastructure adoption requires a ready recovery certificate before handoff.
+An active backup can therefore still defer `backend upgrade` and the fleet path
+that invokes it. This gate must use the same reviewed-operation admission before
+strict adoption; the local-runtime and guardian changes do not bypass it.
 
 Normal pool recycling can invalidate a reviewed inventory. Before dispatch, a
 stale owner/PID/inventory/selection refuses the operation without handing off.

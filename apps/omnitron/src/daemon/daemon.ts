@@ -26,6 +26,7 @@ import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { restartConfigurationDigest, type RuntimeRestartConfiguration } from '../project/runtime-restart.js';
 import type { RuntimeRestartReview, RuntimeRestartPrepareRequest } from '../shared/dto/runtime-update.js';
+import type { OperationReceipt } from '../shared/dto/execution-operations.js';
 import { Application, ShutdownReason, ShutdownPriority, ApplicationEvent } from '@omnitron-dev/titan';
 import { UnixSocketTransport } from '@omnitron-dev/titan/netron/transport/unix';
 import { TcpTransport } from '@omnitron-dev/titan/netron/transport/tcp';
@@ -489,7 +490,7 @@ export class OmnitronDaemon {
   }
 
   /** Called after the initiating RPC has returned, so it is not waiting for itself. */
-  async prepareBackendHandoff(candidateId: string): Promise<BackendHandoffState> {
+  async prepareBackendHandoff(candidateId: string, backups?: readonly OperationReceipt[]): Promise<BackendHandoffState> {
     if (!this.execution || !this.app?.netron || !this.watchConfig) throw new Error(this.backendRuntimeStatus().reason ?? 'Backend is not ready');
     if (this.runtimeRestartAdmission) throw new Error('Runtime restart admission is held by another transition');
     if (this.handingOffBackend || this.preparingBackend) throw new Error('A backend handoff is already in progress');
@@ -505,7 +506,7 @@ export class OmnitronDaemon {
     const gate = this.app.netron.inbound;
     let projects: ProjectService | undefined;
     try {
-      await this.backupService?.prepareHandoff();
+      await this.backupService?.prepareHandoff(backups);
       projects = await this.app.container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
       const drained = await gate.drain(30_000);
       if (!drained.drained) throw new Error(`${drained.left} inbound request(s) have not drained; backend transfer was refused`);

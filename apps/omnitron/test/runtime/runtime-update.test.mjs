@@ -7,7 +7,8 @@ import path from 'node:path';
 import test from 'node:test';
 import { tsImport } from 'tsx/esm/api';
 const { runRuntimeUpdate, readRuntimeUpdateReceipt } = await tsImport('../../src/daemon/runtime-update.ts', import.meta.url);
-const { assertLocalIdle, assertLocalReview, retainReviewedBackups, assertReviewedBoot, assertSameSavedSelection, assertLocalServiceTargets } = await tsImport('../../src/daemon/runtime-update-host.ts', import.meta.url);
+const { assertLocalIdle, assertLocalReview, assertReviewedBoot, assertSameSavedSelection, assertLocalServiceTargets } = await tsImport('../../src/daemon/runtime-update-host.ts', import.meta.url);
+const { retainReviewedBackups } = await tsImport('../../src/shared/backup-admission.ts', import.meta.url);
 import { BACKEND_ACTIVITY_COUNTERS } from '../../src/shared/dto/backend.ts';
 
 test('only boots with the exact native admission and unchanged desired state', () => {

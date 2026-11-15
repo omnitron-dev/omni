@@ -15,6 +15,8 @@ import { OWN_BUILD } from '../shared/build-stamp.js';
 import { OMNITRON_HOME } from '../config/defaults.js';
 import { backendSchemaScope } from './backend-candidate.js';
 import type { RuntimeRestartPrepareRequest, RuntimeRestartReleaseRequest } from '../shared/dto/runtime-update.js';
+import type { OperationReceipt } from '../shared/dto/execution-operations.js';
+import { expandPath } from '../shared/paths.js';
 
 /** Kept separate from public ingress: it must answer while that ingress is drained. */
 @Service({ name: 'OmnitronBackendControl' })
@@ -31,6 +33,8 @@ export class BackendControlService {
     return { pid: process.pid, runtime: this.daemon.backendRuntimeStatus(), retired: this.retired,
       runtimeRestartProtocol: 1,
       runtimeRestartAdmissionProtocol: 1,
+      backupHandoffProtocol: 1,
+      daemonSocket: expandPath(this.daemon.daemonConfig.socketPath),
       instanceHome: OMNITRON_HOME, schemaScope: backendSchemaScope(this.daemon.daemonConfig),
       ticketId: this.prepared?.state.ticket.id ?? null, build: OWN_BUILD,
       entry: fileURLToPath(new URL('./daemon-entry.js', import.meta.url)) };
@@ -66,12 +70,14 @@ export class BackendControlService {
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
-  async prepare(data: { candidateId: string }): Promise<{ file: string; ticketId: string }> {
+  async prepare(data: { candidateId: string; backups?: OperationReceipt[] }): Promise<{ file: string; ticketId: string }> {
     if (!/^[0-9a-f-]{36}$/i.test(data.candidateId)) throw new Error('A candidate UUID is required');
+    if (data.backups !== undefined && (!Array.isArray(data.backups) || data.backups.length > 1000))
+      throw Error('Invalid reviewed backup operations');
     if (this.preparing || this.prepared || this.retired) throw new Error('A backend transfer already exists');
     this.preparing = true;
     try {
-      const state = await this.daemon.prepareBackendHandoff(data.candidateId);
+      const state = await this.daemon.prepareBackendHandoff(data.candidateId, data.backups);
       this.prepared = { protocol: 1, state, daemonConfig: this.daemon.daemonConfig,
         previousEntry: fileURLToPath(new URL('./daemon-entry.js', import.meta.url)), previousPid: process.pid,
         createdAt: new Date().toISOString(), cwd: process.cwd(),

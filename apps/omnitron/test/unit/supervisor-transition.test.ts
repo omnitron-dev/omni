@@ -5,7 +5,18 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 const fake = vi.hoisted(() => ({ config: null as any, selection: null as any, activation: null as any, snapshot: null as any,
-  control: vi.fn(), opened: vi.fn(), job: vi.fn(), stopFence: vi.fn(), stopped: vi.fn(), readBoot: vi.fn(), recoveryCheck: vi.fn(), hold: vi.fn() }));
+  control: vi.fn(), opened: vi.fn(), job: vi.fn(), stopFence: vi.fn(), stopped: vi.fn(), readBoot: vi.fn(), recoveryCheck: vi.fn(), hold: vi.fn(),
+  native: vi.fn(), isolation: vi.fn(), candidate: vi.fn(), ping: vi.fn(), publicService: vi.fn() }));
+vi.mock('node:child_process', async original => ({
+  ...await original<typeof import('node:child_process')>(),
+  execFile: Object.assign(vi.fn(), { [Symbol.for('nodejs.util.promisify.custom')]: (...args: unknown[]) => fake.native(...args) }),
+}));
+vi.mock('../../src/daemon/daemon-client.js', () => ({ createDaemonClient: () => ({
+  ping: fake.ping, service: fake.publicService, disconnect: vi.fn(),
+}) }));
+vi.mock('../../src/daemon/backend-candidate.js', async original => ({
+  ...await original<typeof import('../../src/daemon/backend-candidate.js')>(), checkBackendCandidate: fake.candidate,
+}));
 vi.mock('../../src/daemon/reviewed-backend-recovery.js', async original => ({
   ...await original<typeof import('../../src/daemon/reviewed-backend-recovery.js')>(),
   checkReviewedBackendRecovery: fake.recoveryCheck, prepareReviewedBackendRecovery: vi.fn(),
@@ -13,6 +24,7 @@ vi.mock('../../src/daemon/reviewed-backend-recovery.js', async original => ({
 vi.mock('../../src/daemon/managed-runtime.js', async original => ({
   ...await original<typeof import('../../src/daemon/managed-runtime.js')>(),
   readManagedRuntime: async () => fake.config, managedJobPid: fake.job, managedGuardianStopFence: fake.stopFence, assertGuardianStopped: fake.stopped,
+  verifyManagedIsolation: fake.isolation,
 }));
 vi.mock('../../src/daemon/backend-handoff-types.js', async original => ({
   ...await original<typeof import('../../src/daemon/backend-handoff-types.js')>(), readBackendBootRecord: fake.readBoot,
@@ -32,10 +44,12 @@ import type { ManagedRuntime } from '../../src/daemon/managed-runtime.js';
 import { applySupervisorTransition, prepareSupervisorTransition, readSupervisorTransition, supervisorTransitionIntentDigest, type SupervisorTransition } from '../../src/daemon/supervisor-transition.js';
 import { writePrivateRecord } from '../../src/daemon/execution-journal.js';
 import { projectExecutionIdentity } from '../../src/shared/execution-identity.js';
+import type { OperationReceipt } from '../../src/shared/dto/execution-operations.js';
 
 const roots: string[] = [];
 beforeEach(() => {
   vi.resetAllMocks(); fake.activation = null;
+  fake.native.mockRejectedValue(Error('Unexpected native service action'));
   fake.opened.mockResolvedValue({ exclusive: vi.fn(async (fn: () => unknown) => fn()), close: vi.fn(), artifact: vi.fn(), settledSelection: () => fake.selection,
     selection: () => fake.selection, activation: () => fake.activation, holdReviewedRecovery: fake.hold });
 });
@@ -50,13 +64,130 @@ async function fixture(phase = 'prepared') {
   const plan = { protocol: 1, id, phase, createdAt: new Date().toISOString(), before, after,
     unit: { file: path.join(home, 'backend.unit'), before: 'original unit', after: 'replacement unit' },
     backend: { runtime: 'b'.repeat(64), pid: 1001, control: path.join(home, 'e/c.sock'), socket: path.join(home, 'daemon.sock') },
-    guardianPid: 1002, owner: { id: 'owner', pid: 1003, inventory: 'd'.repeat(64) } };
+    backupOperations: [] as OperationReceipt[], guardianPid: 1002, owner: { id: 'owner', pid: 1003, inventory: 'd'.repeat(64) } };
   fake.config = phase === 'started' ? after : before; fake.selection = { current: plan.backend.runtime };
   fake.snapshot = { status: { owner: { id: plan.owner.id, pid: plan.owner.pid } }, inventoryDigest: plan.owner.inventory };
   await fs.writeFile(plan.unit.file, phase === 'started' ? plan.unit.after : plan.unit.before, { mode: 0o600 });
   await writePrivateRecord(file, plan);
   return { file, plan };
 }
+
+const backup: OperationReceipt = {
+  protocol: 1, id: '01234567-0000-4000-8000-000000000001', kind: 'backup', revision: 2, state: 'running',
+  resources: [{ kind: 'database', name: 'fixture', project: 'sample', stack: 'dev' }], inputDigest: 'd'.repeat(64),
+  createdAt: '2026-11-15T00:00:00Z', updatedAt: '2026-11-15T00:00:01Z',
+};
+function backupView(plan: { owner: { id: string; inventory: string } }, backups: OperationReceipt[] = []) {
+  return { configuration: { ownerId: plan.owner.id, inventoryDigest: plan.owner.inventory }, backups };
+}
+
+async function backupFixture() {
+  const value = await fixture();
+  const { plan, file } = value;
+  plan.backupOperations = [backup];
+  const state = { pid: plan.backend.pid, instanceHome: plan.before.instanceHome, daemonSocket: plan.backend.socket,
+    entry: path.join(plan.before.instanceHome, 'running/dist/daemon/daemon-entry.js'),
+    backupHandoffProtocol: 1, runtimeRestartAdmissionProtocol: 1, retired: false, ticketId: null as string | null,
+    runtime: { phase: 'active', owner: plan.owner, connection: { status: 'connected' },
+      recovery: { status: 'invalid', reason: 'Backup or restore in progress' },
+      blockers: { terminalSessions: 0, fileTransfers: 0, pipelineRuns: 0, releaseBuilds: 0, backupOperations: 1 } } };
+  const control = { status: vi.fn(async () => state), runtimeRestartReview: vi.fn(async () => backupView(plan, [backup])),
+    prepare: vi.fn(), retire: vi.fn(), abort: vi.fn() };
+  const getOperation = vi.fn();
+  fake.control.mockResolvedValue({ service: control, close: vi.fn() });
+  fake.publicService.mockResolvedValue({ controlAddress: async () => ({ socket: plan.backend.control }), getOperation });
+  fake.ping.mockResolvedValue({ pid: plan.backend.pid });
+  fake.job.mockResolvedValue(plan.guardianPid);
+  const fence = { group: '/user.slice/fixture.service', directoryId: '1'.repeat(64),
+    guardianProcess: '2'.repeat(64), backendProcess: '3'.repeat(64) };
+  Object.assign(plan, { linuxStop: fence });
+  fake.stopFence.mockResolvedValue(fence);
+  await writePrivateRecord(file, plan);
+  return { ...value, state, control, getOperation };
+}
+
+it('prepares a read-only guardian plan from the authenticated backend address while its owned backup is active', async () => {
+  const { plan, state, control } = await backupFixture();
+  const directory = path.join(plan.before.instanceHome, 'candidate');
+  await fs.mkdir(path.join(directory, 'daemon'), { recursive: true });
+  for (const entry of ['managed-entry.js', 'backend-supervisor-entry.js']) await fs.writeFile(path.join(directory, 'daemon', entry), '// private fixture');
+  fake.native.mockResolvedValue({ stdout: process.platform === 'darwin' ? `path = ${plan.unit.file}\n` : plan.unit.file });
+  fake.candidate.mockResolvedValue({ runtimeHash: plan.backend.runtime });
+  const installation = await fake.opened();
+  Object.assign(installation, { directory: path.join(plan.before.instanceHome, 'runtime'),
+    install: vi.fn(async () => ({ directory, execPath: process.execPath, runtimeHash: plan.after.backend.artifact })) });
+  const result = await prepareSupervisorTransition(directory);
+  const observed = await readSupervisorTransition(result.file);
+  expect(observed.backend.socket).toBe(state.daemonSocket);
+  expect(observed.backupOperations).toEqual([backup]);
+  expect(result.plan.backupOperations).toEqual([backup]);
+  expect(control.runtimeRestartReview).toHaveBeenCalledWith({ stacks: [] });
+  expect(control.prepare).not.toHaveBeenCalled(); expect(control.retire).not.toHaveBeenCalled();
+  expect(fake.isolation).toHaveBeenCalledWith(plan.before, plan.owner.pid, plan.guardianPid, plan.backend.pid);
+  expect(fake.native).toHaveBeenCalledOnce();
+  expect(fake.native.mock.calls[0]![1]).toContain(process.platform === 'darwin' ? 'print' : 'show');
+});
+
+it('refuses a foreign backend PID, changed address or a controller without the reviewed handoff protocol', async () => {
+  const { file, state, control } = await backupFixture();
+  const bytes = await fs.readFile(file);
+  for (const change of [{ pid: state.pid + 1 }, { daemonSocket: '/different/daemon.sock' }, { backupHandoffProtocol: 0 }]) {
+    control.status.mockResolvedValueOnce({ ...state, ...change });
+    await expect(applySupervisorTransition(file, { checkOnly: true })).rejects.toThrow(/backend changed|address changed|cannot review/);
+  }
+  expect(control.prepare).not.toHaveBeenCalled(); expect(control.retire).not.toHaveBeenCalled();
+  expect(await fs.readFile(file)).toEqual(bytes);
+});
+
+it('observes a completed reviewed backup without replay and rejects a new or changed active attempt', async () => {
+  const { file, plan, state, control, getOperation } = await backupFixture();
+  const bytes = await fs.readFile(file);
+  state.runtime.blockers.backupOperations = 0;
+  control.runtimeRestartReview.mockResolvedValue(backupView(plan));
+  getOperation.mockResolvedValue({ ...backup, state: 'succeeded', revision: 3 });
+  await expect(applySupervisorTransition(file, { checkOnly: true })).resolves.toMatchObject({ checked: true, backupOperations: [backup] });
+  expect(getOperation).toHaveBeenCalledWith({ id: backup.id });
+  for (const changed of [{ ...backup, id: randomUUID() }, { ...backup, revision: 3 }, { ...backup, state: 'unknown' as const }]) {
+    state.runtime.blockers.backupOperations = 1;
+    control.runtimeRestartReview.mockResolvedValue(backupView(plan, [changed]));
+    await expect(applySupervisorTransition(file, { checkOnly: true })).rejects.toThrow(/changed after review|unknown/);
+  }
+  expect(control.prepare).not.toHaveBeenCalled(); expect(control.retire).not.toHaveBeenCalled();
+  expect(await fs.readFile(file)).toEqual(bytes);
+});
+
+it('passes the exact backup references to canonical handoff once and never replays an unacknowledged preparation', async () => {
+  const { file, plan, control } = await backupFixture();
+  control.prepare.mockImplementation(async () => {
+    expect((await readSupervisorTransition(file)).phase).toBe('preparing');
+    throw Error('handoff acknowledgement lost');
+  });
+  await expect(applySupervisorTransition(file)).rejects.toThrow('handoff acknowledgement lost');
+  expect(control.prepare).toHaveBeenCalledWith({ candidateId: plan.id, backups: [backup] });
+  await expect(applySupervisorTransition(file)).rejects.toThrow('preparation is unconfirmed');
+  expect(control.prepare).toHaveBeenCalledOnce(); expect(control.retire).not.toHaveBeenCalled(); expect(control.abort).not.toHaveBeenCalled();
+  expect((await readSupervisorTransition(file)).phase).toBe('preparing');
+  expect(await fs.readFile(plan.unit.file, 'utf8')).toBe(plan.unit.before);
+});
+
+it('cannot let an older unreviewed plan cancel current backups', async () => {
+  const { file, plan, control } = await backupFixture();
+  await writePrivateRecord(file, { ...plan, backupOperations: undefined });
+  await expect(applySupervisorTransition(file, { checkOnly: true })).rejects.toThrow('reviewed backup operations');
+  expect(control.prepare).not.toHaveBeenCalled(); expect(control.retire).not.toHaveBeenCalled();
+});
+
+it('a resumed preparation inspects its existing ticket and never cancels a foreign checkpoint', async () => {
+  const { file, plan, state, control } = await backupFixture();
+  plan.phase = 'preparing'; await writePrivateRecord(file, plan);
+  state.ticketId = randomUUID();
+  fake.readBoot.mockResolvedValue({ previousPid: plan.backend.pid, state: { executionInventory: plan.owner.inventory,
+    ticket: { id: state.ticketId, ownerId: plan.owner.id, from: { ownerId: plan.owner.id },
+      to: { controllerId: randomUUID(), ownerId: plan.owner.id } } } });
+  await expect(applySupervisorTransition(file)).rejects.toThrow('checkpoint does not match');
+  expect(control.prepare).not.toHaveBeenCalled(); expect(control.abort).not.toHaveBeenCalled(); expect(control.retire).not.toHaveBeenCalled();
+  expect((await readSupervisorTransition(file)).phase).toBe('preparing');
+});
 
 it('refuses an edited native unit before preparing or retiring a backend', async () => {
   const { file, plan } = await fixture();
@@ -129,10 +260,11 @@ it('checks prepare, admission and rollback without taking the installation lease
   await writePrivateRecord(file, plan);
   const source = await fs.readFile(file);
   fake.job.mockResolvedValue(plan.guardianPid);
-  const state = { pid: plan.backend.pid, instanceHome: plan.before.instanceHome, runtime: {
+  const state = { pid: plan.backend.pid, instanceHome: plan.before.instanceHome, daemonSocket: plan.backend.socket,
+    backupHandoffProtocol: 1, runtimeRestartAdmissionProtocol: 1, runtime: {
     phase: 'active', owner: plan.owner, connection: { status: 'connected' }, blockers: { terminalSessions: 0, fileTransfers: 0, pipelineRuns: 0, releaseBuilds: 0, backupOperations: 0 } },
     retired: false, ticketId: null as string | null };
-  const control = { status: vi.fn(async () => state), prepare: vi.fn(), retire: vi.fn() };
+  const control = { status: vi.fn(async () => state), runtimeRestartReview: vi.fn(async () => backupView(plan)), prepare: vi.fn(), retire: vi.fn() };
   fake.control.mockResolvedValue({ service: control, close: vi.fn() });
   await expect(applySupervisorTransition(file, { checkOnly: true })).resolves.toMatchObject({ id: plan.id, phase: 'prepared', checked: true });
   const installation = await fake.opened.mock.results[0]!.value;
@@ -187,8 +319,10 @@ it.each([false, true])('rechecks the kill scope after drain and fences retiremen
   await writePrivateRecord(file, plan);
   const original = Object.getOwnPropertyDescriptor(process, 'platform')!;
   const ticketId = randomUUID(), operations = {
-    status: async () => ({ pid: plan.backend.pid, instanceHome: plan.before.instanceHome, runtime: { phase: 'active', owner: plan.owner,
+    status: async () => ({ pid: plan.backend.pid, instanceHome: plan.before.instanceHome, daemonSocket: plan.backend.socket,
+      backupHandoffProtocol: 1, runtimeRestartAdmissionProtocol: 1, runtime: { phase: 'active', owner: plan.owner,
       blockers: { terminalSessions: 0, fileTransfers: 0, pipelineRuns: 0, releaseBuilds: 0, backupOperations: 0 }, connection: { status: 'connected' } } }),
+    runtimeRestartReview: vi.fn(async () => backupView(plan)),
     prepare: vi.fn(async () => ({ file: path.join(plan.before.directory, 'handoff-' + ticketId + '.json'), ticketId })),
     abort: vi.fn(async () => { if (abortFails) throw Error('Retirement is uncertain'); }), retire: vi.fn(),
   };
@@ -330,7 +464,7 @@ it('seals every authority-bearing field while allowing only progress and result 
   const digest = supervisorTransitionIntentDigest(plan);
   expect(supervisorTransitionIntentDigest({ ...plan, phase: 'started', result: { backendPid: 4001, guardianPid: 4002, ownerPid: plan.owner.pid } })).toBe(digest);
   for (const key of ['protocol', 'id', 'createdAt', 'before', 'after', 'unit', 'backend', 'owner',
-    'guardianPid', 'selectionRevision', 'linuxStop', 'recovery'] as const) {
+    'guardianPid', 'selectionRevision', 'linuxStop', 'recovery', 'backupOperations'] as const) {
     const modified = { ...plan, [key]: 'edited' } as unknown as SupervisorTransition;
     expect(supervisorTransitionIntentDigest(modified), key).not.toBe(digest);
   }

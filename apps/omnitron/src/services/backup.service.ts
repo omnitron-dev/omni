@@ -25,6 +25,7 @@ import { DAEMON_STATE_STORE_TOKEN, PROJECT_SERVICE_TOKEN, EXECUTION_SERVICE_TOKE
 import { ExecutionService } from '../execution/execution.service.js';
 import { OperationJournal, OperationJournalError } from '../execution/operation-journal.js';
 import type { OperationReceipt, OperationArtifact } from '../shared/dto/execution-operations.js';
+import { assertReviewedBackupCompletion } from '../shared/backup-admission.js';
 import type { ExecutionResourceObservation } from '@xec-sh/core';
 import type { PipelineOptions } from './backup-pipeline.js';
 import { getEnv } from '../shared/env-config.js';
@@ -362,11 +363,7 @@ export class BackupService {
         if (!current || receipt.kind !== 'backup' || !['prepared', 'running'].includes(receipt.state))
           throw new Error('Reviewed backup operation is invalid');
         if (pending.some(item => item.id === receipt.id)) continue;
-        if (!['succeeded', 'failed', 'cancelled'].includes(current.state) || current.revision <= receipt.revision ||
-            !isDeepStrictEqual([current.protocol, current.id, current.kind, current.resources, current.inputDigest, current.createdAt],
-              [receipt.protocol, receipt.id, receipt.kind, receipt.resources, receipt.inputDigest, receipt.createdAt]) ||
-            receipt.execution && !isDeepStrictEqual(receipt.execution, current.execution))
-          throw new Error('Reviewed backup has no confirmed terminal outcome');
+        assertReviewedBackupCompletion(receipt, current);
       }
     }
     this.quiescing = true;

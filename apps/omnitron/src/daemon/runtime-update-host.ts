@@ -4,6 +4,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
 import { verifyRuntimeArtifact } from '../shared/runtime-artifact.js';
 import { BACKEND_ACTIVITY_COUNTERS } from '../shared/dto/backend.js';
+import { retainReviewedBackups } from '../shared/backup-admission.js';
 import { LAUNCHD_LABEL, OWNER_LAUNCHD_LABEL } from '../commands/service-units.js';
 import { localStackInventory } from '../project/local-stack-inventory.js';
 import { readRestartConfiguration, saveRestartConfiguration, restartConfigurationDigest, restartLaunchIntent, assertRestartOwnerDefaults, type RuntimeRestartConfiguration } from '../project/runtime-restart.js';
@@ -82,35 +83,6 @@ export function assertLocalIdle(status: RuntimeUpdateStatusObservation) {
   const backups = execution.blockers.backupOperations!;
   if (backups > 0) throw Error('Local update deferred while work is active: backupOperations=' + backups);
   if (execution.recovery?.status !== 'ready') throw Error(execution.recovery?.reason || 'Waiting for the current recovery certificate');
-}
-
-/** Completion of the same attempt does not invalidate an otherwise unchanged
- * review. A different attempt, changed active revision or unknown outcome does. */
-export async function retainReviewedBackups(current: OperationReceipt[], reviewed: OperationReceipt[] | undefined,
-  read: (id: string) => Promise<OperationReceipt | null>): Promise<OperationReceipt[]> {
-  if (reviewed && new Set(reviewed.map(value => value.id)).size !== reviewed.length ||
-      new Set(current.map(value => value.id)).size !== current.length)
-    throw Error('Duplicate backup operation in the runtime update review');
-  if (current.some(value => value.kind !== 'backup' || !['prepared', 'running'].includes(value.state)))
-    throw Error('Runtime update review contains an unknown or non-backup operation');
-  if (!reviewed) return [...current].sort((a, b) => a.id.localeCompare(b.id));
-  const expected = new Map(reviewed.map(value => [value.id, value]));
-  for (const receipt of current) {
-    if (!isDeepStrictEqual(receipt, expected.get(receipt.id)))
-      throw Error('Backup operations changed after review; prepare the current update plan');
-  }
-  const pending = new Set(current.map(value => value.id));
-  for (const previous of reviewed) {
-    if (pending.has(previous.id)) continue;
-    const actual = await read(previous.id);
-    const intent = (receipt: OperationReceipt) => ({ protocol: receipt.protocol, id: receipt.id, kind: receipt.kind,
-      resources: receipt.resources, inputDigest: receipt.inputDigest, createdAt: receipt.createdAt });
-    if (!actual || previous.kind !== 'backup' || !['succeeded', 'failed', 'cancelled'].includes(actual.state) ||
-        actual.revision <= previous.revision || !isDeepStrictEqual(intent(previous), intent(actual)) ||
-        previous.execution && !isDeepStrictEqual(previous.execution, actual.execution))
-      throw Error('Reviewed backup completion is unconfirmed: ' + previous.id);
-  }
-  return structuredClone(reviewed);
 }
 
 // The controller which restores both directions must admit the exact review.
@@ -287,8 +259,8 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
     if (!reviewed) return retainReviewedBackups(current, reviewed, async () => null);
     const client = createDaemonClient();
     try {
-      const service = await client.service<BackupRpcService>('OmnitronBackups');
-      return await retainReviewedBackups(current, reviewed, id => service.getOperation({ id }));
+      return await retainReviewedBackups(current, reviewed, async id =>
+        (await client.service<BackupRpcService>('OmnitronBackups')).getOperation({ id }));
     } finally { await client.disconnect(); }
   };
   const verifyPreviousOwnerDefaults = async (configuration: RuntimeRestartConfiguration) => {

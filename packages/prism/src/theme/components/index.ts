@@ -18,6 +18,7 @@ import { scrollbarStyles } from '../mixins.js';
 import type { Components, Theme } from '@mui/material/styles';
 import type { ComponentsConfig } from '../../types/theme.js';
 import { semanticSurfaceStyles } from '../semantic-surface.js';
+import { syntaxHighlightStyles } from '../syntax-highlight.js';
 
 import { iconButtonClasses } from '@mui/material/IconButton';
 import { accordionClasses } from '@mui/material/Accordion';
@@ -1143,6 +1144,7 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
 
     MuiCssBaseline: {
       styleOverrides: (theme) => ({
+        '.shiki span[style]': syntaxHighlightStyles(theme),
         html: {
           scrollBehavior: 'smooth',
         },

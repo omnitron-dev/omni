@@ -3,6 +3,7 @@ import clsx from 'clsx';
 import { Box, IconButton, Tooltip } from '@omnitron-dev/prism/ui';
 import { CheckIcon, CopyIcon, ErrorIcon } from '@omnitron-dev/prism/icons';
 import { useCopyToClipboard } from '@omnitron-dev/prism/core';
+import { syntaxHighlightStyles } from '@omnitron-dev/prism/theme';
 import { useIntersectionObserver } from '@omnitron-dev/prism/hooks';
 import type { HighlightedSource } from '@omnitron-dev/lumen-ast/highlight';
 
@@ -75,12 +76,7 @@ export function CodeBlock({ code = '', language = 'ts', copyable = false, classN
         fontFamily: 'var(--lumen-font-mono, ui-monospace, monospace)', fontSize: 'var(--lumen-code-font-size, 0.875rem)', lineHeight: 1.65,
         bgcolor: 'transparent',
         '& > code': { font: 'inherit', background: 'transparent', padding: 0, border: 0 },
-        '& > code span[style]': {
-          color: `var(--shiki-${theme.palette.mode}, inherit)`,
-          fontStyle: `var(--shiki-${theme.palette.mode}-font-style, normal)`,
-          fontWeight: `var(--shiki-${theme.palette.mode}-font-weight, inherit)`,
-          textDecoration: `var(--shiki-${theme.palette.mode}-text-decoration, none)`,
-        },
+        '& > code span[style]': syntaxHighlightStyles(theme),
       })}>
       <code className={clsx(highlighted && 'shiki', `language-${language}`)}>{source
         ? source.lines.map((line, lineIndex) => <React.Fragment key={lineIndex}>

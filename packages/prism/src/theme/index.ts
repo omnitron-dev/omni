@@ -21,6 +21,7 @@ export {
 } from './create-theme.js';
 
 export type { CreatePrismThemeOptions, SupportedLocale, PrismThemeOverrides, PrismThemeOverrideContext } from './create-theme.js';
+export { syntaxHighlightStyles } from './syntax-highlight.js';
 
 // =============================================================================
 // PALETTE SYSTEM

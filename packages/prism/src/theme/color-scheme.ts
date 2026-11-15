@@ -25,6 +25,21 @@ export function systemColorSchemeStyles(theme: ThemeWithPolicy, mode: 'light' | 
 /** Reuse MUI's emitted declarations; do not recalculate palettes or install a second mode listener. */
 export function addSystemColorSchemeDefault(theme: PrismTheme): void {
   if (theme.prism.mode !== 'system' || !theme.generateStyleSheets || theme.colorSchemeSelector === 'media') return;
+  const applyStyles = theme.applyStyles;
+  theme.applyStyles = function applySystemStyles(mode, styles) {
+    const native = applyStyles.call(this, mode, styles);
+    if (mode !== 'light' && mode !== 'dark') return native;
+    const fallback = systemColorSchemeStyles(this, mode, styles);
+    const media = `@media (prefers-color-scheme: ${mode})`;
+    const roots = fallback[media];
+    if (!roots || typeof roots !== 'object') return native;
+    return {
+      ...native,
+      // Match MUI's explicit-selector form: leading pseudo selectors otherwise
+      // bind to the component itself when Emotion expands nested global styles.
+      [media]: Object.fromEntries(Object.entries(roots).map(([selector, rules]) => [`*:where(${selector}) &`, rules])),
+    };
+  };
   const generate = theme.generateStyleSheets;
   theme.generateStyleSheets = () => {
     const sheets = generate();

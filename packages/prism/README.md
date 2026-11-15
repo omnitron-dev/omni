@@ -41,6 +41,8 @@ Use `theme.vars` and `theme.applyStyles()` for mode-dependent component CSS. App
 
 Native persisted selection requires CSS variables. An application that explicitly disables them can still use controlled or settings-store modes; its system mode resolves in JavaScript and cannot promise a system-matched first paint on the server.
 
+The CSS baseline styles Shiki's dual-theme tokens for static and interactive code. `syntaxHighlightStyles(theme)` from the theme entry provides the same rules for a standalone code component. Keep the shared styles; sites do not need separate light/dark syntax selectors.
+
 Public component subpaths provide lazy-loading boundaries. Import the documented CSS entry for components that need it. Unused editor, map and chart modules can be removed from production bundles. UI entries declare a React client boundary; `@omnitron-dev/prism/http` is also available to server code.
 
 ## Shared application controls

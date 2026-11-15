@@ -11,7 +11,8 @@ it.each(['0', '1'])('the ordinary serve CLI retains its generation and releases 
   const root = mkdtempSync(join(tmpdir(), 'lumen-serve-'));
   const output = join(root, 'out');
   // External fixture without a package.json: explicit ESM config boundary.
-  writeFileSync(join(root, 'lumen.config.mjs'), 'export default { title: "Preview", outDir: "out", baseUrl: "/manual/", trailingSlash: true };');
+  writeFileSync(join(root, 'title.js'), 'export default "Preview";');
+  writeFileSync(join(root, 'lumen.config.mjs'), 'const modules = import.meta.glob("./title.js", { eager: true, import: "default" }); export default { title: modules["./title.js"], outDir: "out", baseUrl: "/manual/", trailingSlash: true };');
   publishGeneration(output, new Map([
     ['index.html', '<h1>Previous generation</h1>'], ['previous.js', 'previous asset'],
     ['docs/api/index.html', '<h1>API directory</h1>'],

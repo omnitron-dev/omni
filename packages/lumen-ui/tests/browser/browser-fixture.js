@@ -187,6 +187,10 @@ export const createBrowserTest = (entry, {
       // Exercise the shipped bin, including its disposable SSR graph, before
       // loading the emitted client in a browser. Calling buildStaticSite here
       // would bypass the CLI's compiler boundary.
+      const checked = await execute(process.execPath, [path.join(lumenDirectory, 'bin/lumen.js'), 'check', '--root', directory, '--json', '--gates', 'linksGate,anchorsGate'], {
+        cwd: directory, timeout: 30_000, killSignal: 'SIGKILL', maxBuffer: 1024 * 1024,
+      });
+      assert.deepEqual(JSON.parse(checked.stdout), []);
       await execute(process.execPath, [path.join(lumenDirectory, 'bin/lumen.js'), 'build', '--root', directory, '--outDir', outDir], {
         cwd: directory, timeout: 90_000, killSignal: 'SIGKILL', maxBuffer: 8 * 1024 * 1024,
       });

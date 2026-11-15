@@ -1,38 +1,55 @@
+import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { builtinModules } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, extname, isAbsolute, join, posix } from 'node:path';
+import { dirname, extname, isAbsolute, join, posix, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { resolveConfigFile } from '../config/loader.js';
-import { defineLumenConfig } from '../config/define.js';
-import { expandEnvVariables } from '../config/env.js';
-import { consumerContextPackages } from './client-build.js';
-import type { LumenConfig, LumenUserConfig } from '../config/schema.js';
-import type { buildStaticSite } from './ssg-engine.js';
-import type { ViteDevServer } from 'vite';
+import { defineLumenConfig } from './define.js';
+import { expandEnvVariables } from './env.js';
+import { consumerContextPackages } from '../ssg/client-build.js';
+import type { LumenConfig, LumenUserConfig } from './schema.js';
+import type { buildStaticSite } from '../ssg/ssg-engine.js';
+import type { LogLevel, ViteDevServer } from 'vite';
 
 // These packages own Node resources or compiler entry points. Frontend packages
 // stay in the compiled graph, including arbitrary React-dependent user packages.
 const NODE_PACKAGES = ['@omnitron-dev/lumen', '@omnitron-dev/lumen-ast', '@omnitron-dev/common', 'pagefind', 'vite'];
 const assetDirectory = 'assets';
 
-/** One disposable SSR graph owns the project layout, React and the existing SSG. */
-export async function withProjectBuild<T>(
+const CONFIG_FILENAMES = ['lumen.config.ts', 'lumen.config.js', 'lumen.config.mjs'];
+
+export function resolveConfigFile(rootDir: string = process.cwd()): string | null {
+  return CONFIG_FILENAMES.map(filename => resolve(rootDir, filename)).find(existsSync) ?? null;
+}
+
+export interface LumenProject {
+  readonly config: LumenConfig;
+  readonly build: typeof buildStaticSite;
+}
+
+/**
+ * Execute project work in one disposable module graph. Config, gates, layout and
+ * lazy islands keep the same React context until the callback has completed.
+ * Do not retain executable configuration or the build function after it returns.
+ */
+export async function withLumenProject<T>(
   rootDir: string,
-  run: (config: LumenConfig, build: typeof buildStaticSite) => Promise<T>
+  run: (project: LumenProject) => Promise<T>,
+  options: { logLevel?: LogLevel } = {}
 ): Promise<T> {
   const directory = await mkdtemp(join(tmpdir(), 'lumen-ssr-'));
   let server: ViteDevServer | undefined;
   try {
     const { build, createServer, transformWithOxc } = await import('vite');
-    const configFile = await resolveConfigFile(rootDir);
-    const engine = fileURLToPath(new URL(`./ssg-engine${extname(import.meta.url)}`, import.meta.url));
+    const configFile = resolveConfigFile(rootDir);
+    const engine = fileURLToPath(new URL(`../ssg/ssg-engine${extname(import.meta.url)}`, import.meta.url));
     const entry = 'virtual:lumen-server';
     const resolverEntry = 'virtual:lumen-source-resolve';
     const sourceResolver = import.meta.resolve('import-meta-resolve');
     const nativeModules = new Set([sourceResolver]);
     const result = await build({
       configFile: false,
+      logLevel: options.logLevel ?? 'info',
       root: rootDir,
       publicDir: false,
       experimental: {
@@ -153,6 +170,7 @@ export async function withProjectBuild<T>(
     // watcher, listening socket or custom process-wide loader participates here.
     server = await createServer({
       configFile: false,
+      logLevel: options.logLevel ?? 'info',
       root: rootDir,
       publicDir: false,
       cacheDir: join(directory, 'cache'),
@@ -170,9 +188,12 @@ export async function withProjectBuild<T>(
       buildStaticSite: typeof buildStaticSite;
     };
     const config = defineLumenConfig(expandEnvVariables(compiledModule.config));
-    return await run(config, (corpus, selectedConfig, options) => compiledModule.buildStaticSite(corpus, selectedConfig, {
-      ...options, serverAssets, serverStyles,
-    }));
+    return await run({
+      config,
+      build: (corpus, selectedConfig, buildOptions) => compiledModule.buildStaticSite(corpus, selectedConfig, {
+        ...buildOptions, serverAssets, serverStyles,
+      }),
+    });
   } finally {
     try { await server?.close(); } finally { await rm(directory, { recursive: true, force: true }); }
   }

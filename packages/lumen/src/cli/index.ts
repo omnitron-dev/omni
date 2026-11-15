@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { compileTypst } from '@omnitron-dev/lumen-ast/typst';
+import { Command, CommanderError, InvalidArgumentError, Option } from 'commander';
 /**
  * Lumen SSG CLI dispatcher
  * Platforms: Vite 8, Rolldown, Pagefind WASM, Typst, MCP.
@@ -9,7 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { parseDocument, type LumenNode } from '@omnitron-dev/lumen-ast';
-import { loadLumenConfig } from '../config/loader.js';
+import { withLumenProject, type LumenProject } from '../config/project.js';
 import type { LumenConfig } from '../config/schema.js';
 import { CorpusGraph } from '../corpus/graph.js';
 import { projectCorpus } from '../corpus/projection.js';
@@ -25,7 +26,6 @@ import {
   mathKernelGate,
 } from '../gates/builtins/index.js';
 import { computeContentHash } from '../manifest/hashing.js';
-import { withProjectBuild } from '../ssg/server-build.js';
 import { captureGeneration, recoverGeneration } from '../ssg/publish-generation.js';
 import { directoryRouteRedirects } from '../ssg/serve-routes.js';
 import { runLumenMcpServer } from '../ai/mcp-server.js';
@@ -40,84 +40,21 @@ interface ParsedCliOptions {
   write: boolean;
   strict: boolean;
   json: boolean;
-  pureJson: boolean;
-  stdio: boolean;
-  help: boolean;
   host: string;
   port: number;
   gatesFilter?: string[];
 }
 
-function parseCliOptions(argv: string[]): ParsedCliOptions {
-  let rootDir = process.cwd();
-  let outDir: string | undefined;
-  let write = false;
-  let strict = false;
-  let json = false;
-  let pureJson = false;
-  let stdio = false;
-  let help = false;
-  let host = '127.0.0.1';
-  let port = 4173;
-  let gatesFilter: string[] | undefined;
-
-  for (let i = 1; i < argv.length; i++) {
-    const arg = argv[i] ?? '';
-    if (arg === '--write') {
-      write = true;
-    } else if (arg === '--strict') {
-      strict = true;
-    } else if (arg === '--json') {
-      json = true;
-      pureJson = true;
-    } else if (arg.startsWith('--format=json')) {
-      json = true;
-    } else if (arg === '--stdio') {
-      stdio = true;
-    } else if (arg === '--help' || arg === '-h') {
-      help = true;
-    } else if (arg === '--host' && argv[i + 1]) {
-      host = argv[++i]!;
-    } else if (arg === '--port' && argv[i + 1]) {
-      port = Number(argv[++i]);
-    } else if (arg === '--root' && argv[i + 1]) {
-      rootDir = resolve(process.cwd(), argv[i + 1]!);
-      i += 1;
-    } else if (arg.startsWith('--root=')) {
-      rootDir = resolve(process.cwd(), arg.slice('--root='.length));
-    } else if (arg === '--outDir' && argv[i + 1]) {
-      outDir = argv[i + 1];
-      i += 1;
-    } else if (arg.startsWith('--outDir=')) {
-      outDir = arg.slice('--outDir='.length);
-    } else if (arg === '--gates' && argv[i + 1]) {
-      gatesFilter = argv[i + 1]!.split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
-      i += 1;
-    } else if (arg.startsWith('--gates=')) {
-      gatesFilter = arg
-        .slice('--gates='.length)
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
-    }
-  }
-
-  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Port must be an integer from 1 to 65535');
-  return {
-    rootDir,
-    outDir,
-    write,
-    strict,
-    json,
-    pureJson,
-    stdio,
-    help,
-    host,
-    port,
-    gatesFilter,
-  };
+interface CliValues {
+  root: string;
+  outDir?: string;
+  write?: boolean;
+  strict?: boolean;
+  json?: boolean;
+  format?: 'json';
+  host?: string;
+  port?: number;
+  gates?: string;
 }
 
 function extractNodePlainText(node: LumenNode): string {
@@ -157,8 +94,8 @@ function scanDocFilesRecursively(dir: string): string[] {
 }
 
 export async function loadCorpusFromDirectory(
-  rootDir: string = process.cwd(),
-  explicitConfig?: LumenConfig
+  rootDir: string,
+  config: LumenConfig
 ): Promise<{
   config: LumenConfig;
   graph: CorpusGraph;
@@ -166,7 +103,6 @@ export async function loadCorpusFromDirectory(
   docsDirExists: boolean;
   astDiagnostics: LumenGateDiagnostic[];
 }> {
-  const config = explicitConfig ?? (await loadLumenConfig(rootDir));
   const docsDir = resolve(rootDir, config.srcDir);
   const docsDirExists = existsSync(docsDir) && statSync(docsDir).isDirectory();
   const graph = new CorpusGraph();
@@ -375,36 +311,77 @@ function buildReferenceGates(config: LumenConfig): CorpusGate[] {
 }
 
 export async function runLumenCli(argv: string[] = process.argv.slice(2)): Promise<void> {
-  const command = argv[0];
-
-  if (!command || command === 'help' || command === '--help' || command === '-h') {
-    console.log(`Lumen CLI v${VERSION}
-Commands:
-  dev       Start the Vite documentation dev server
-  build     Build static documentation assets and html
-  serve     Preview static production build
-  check     Run corpus graph verification gates
-  pdf       Compile academic PDFs via Typst
-  mcp       Start Lumen Model Context Protocol server
-  types     Generate TypeScript contracts from corpus
-`);
-    return;
+  const program = new Command('lumen')
+    .description('Build, verify and serve a Lumen documentation project')
+    .version(VERSION, '-v, --version')
+    .exitOverride()
+    .configureOutput({
+      writeOut: text => console.log(text.trimEnd()),
+      writeErr: text => console.error(text.trimEnd()),
+    });
+  const descriptions = {
+    dev: 'Build and serve documentation with live updates',
+    build: 'Build verified static documentation',
+    serve: 'Preview a verified static generation',
+    check: 'Run corpus verification gates',
+    pdf: 'Compile academic PDFs through Typst',
+    mcp: 'Serve the corpus through Model Context Protocol on stdio',
+    types: 'Generate TypeScript contracts from the corpus',
+  };
+  for (const [name, description] of Object.entries(descriptions)) {
+    const command = program.command(name).description(description)
+      .allowExcessArguments(false)
+      .option('--root <directory>', 'Project directory', process.cwd());
+    if (['dev', 'build', 'serve', 'pdf', 'types'].includes(name)) {
+      command.option('--outDir <directory>', 'Output directory relative to the project');
+    }
+    if (['build', 'pdf', 'types'].includes(name)) command.option('--write', 'Write output even for an empty corpus');
+    if (['dev', 'serve'].includes(name)) {
+      command.option('--host <host>', 'Listening interface', '127.0.0.1')
+        .option('--port <port>', 'Listening port', value => {
+          const port = Number(value);
+          if (!/^\d+$/.test(value) || !Number.isInteger(port) || port < 1 || port > 65535) {
+            throw new InvalidArgumentError('Port must be an integer from 1 to 65535');
+          }
+          return port;
+        }, 4173);
+    }
+    if (name === 'check') {
+      command.option('--json', 'Write only JSON diagnostics to stdout')
+        .addOption(new Option('--format <format>', 'Diagnostic output format').choices(['json']))
+        .option('--strict', 'Throw when corpus verification fails')
+        .option('--gates <names>', 'Comma-separated built-in gate names');
+    }
+    if (name === 'mcp') command.option('--stdio', 'Use the stdio transport');
+    command.action(async (values: CliValues) => {
+      const options: ParsedCliOptions = {
+        rootDir: resolve(values.root), outDir: values.outDir,
+        write: values.write ?? false, strict: values.strict ?? false,
+        json: Boolean(values.json || values.format === 'json'),
+        host: values.host ?? '127.0.0.1', port: values.port ?? 4173,
+        gatesFilter: values.gates?.split(',').map((value: string) => value.trim()).filter(Boolean),
+      };
+      await withLumenProject(options.rootDir, project => executeLumenCommand(name, options, project), {
+        logLevel: options.json || name === 'mcp' ? 'silent' : 'info',
+      });
+    });
   }
-
-  if (command === '--version' || command === '-v') {
-    console.log(VERSION);
-    return;
+  if (!argv.length) { program.outputHelp(); return; }
+  try {
+    await program.parseAsync(argv, { from: 'user' });
+  } catch (error) {
+    if (!(error instanceof CommanderError)) throw error;
+    if (error.exitCode !== 0) process.exitCode = error.exitCode;
   }
+}
 
-  const cliOpts = parseCliOptions(argv);
-
-  // Handle known and unknown subcommands
+async function executeLumenCommand(command: string, cliOpts: ParsedCliOptions, project: LumenProject): Promise<void> {
+  const initialConfig = project.config;
   switch (command) {
     case 'dev': {
       console.log(`Lumen CLI v${VERSION} (command: dev)`);
-      if (cliOpts.help) break;
-      await runLumenCli(['build', '--root', cliOpts.rootDir, ...(cliOpts.outDir ? ['--outDir', cliOpts.outDir] : [])]);
-      const config = await loadLumenConfig(cliOpts.rootDir);
+      await executeLumenCommand('build', cliOpts, project);
+      const config = initialConfig;
       const { createServer } = await import('vite');
       // Vite's default cache is inside its root. The served generation is
       // verified publication output and must never contain compiler state.
@@ -484,38 +461,34 @@ Commands:
 
     case 'build': {
       console.log(`Lumen CLI v${VERSION} (command: build)`);
-      if (cliOpts.help) break;
 
-      await withProjectBuild(cliOpts.rootDir, async (initialConfig, buildStaticSite) => {
-        recoverGeneration(resolve(cliOpts.rootDir, cliOpts.outDir ?? initialConfig.outDir));
-        const { config, graph, docsDirExists, astDiagnostics } = await loadCorpusFromDirectory(cliOpts.rootDir, initialConfig);
-        const gateResult = await runCorpusGates(
-          { documents: graph.getAllDocuments(), graph, config, reportDiagnostic: () => {} },
-          [...buildReferenceGates(config), ...(config.gates ?? [])]
-        );
-        const errors = [...astDiagnostics, ...gateResult.diagnostics].filter((item) => item.severity === 'error');
-        if (!gateResult.passed || errors.length)
-          throw new Error(errors.length
-            ? errors.map((item) => `${item.file}: ${item.code}: ${item.message}`).join('\n')
-            : `Corpus gates failed: ${gateResult.results.filter(result => !result.passed).map(result => result.name).join(', ')}`);
-        const targetOutDir = cliOpts.outDir
-          ? resolve(cliOpts.rootDir, cliOpts.outDir)
-          : resolve(cliOpts.rootDir, config.outDir || 'dist');
+      recoverGeneration(resolve(cliOpts.rootDir, cliOpts.outDir ?? initialConfig.outDir));
+      const { config, graph, docsDirExists, astDiagnostics } = await loadCorpusFromDirectory(cliOpts.rootDir, initialConfig);
+      const gateResult = await runCorpusGates(
+        { documents: graph.getAllDocuments(), graph, config, reportDiagnostic: () => {} },
+        [...buildReferenceGates(config), ...(config.gates ?? [])]
+      );
+      const errors = [...astDiagnostics, ...gateResult.diagnostics].filter((item) => item.severity === 'error');
+      if (!gateResult.passed || errors.length)
+        throw new Error(errors.length
+          ? errors.map((item) => `${item.file}: ${item.code}: ${item.message}`).join('\n')
+          : `Corpus gates failed: ${gateResult.results.filter(result => !result.passed).map(result => result.name).join(', ')}`);
+      const targetOutDir = cliOpts.outDir
+        ? resolve(cliOpts.rootDir, cliOpts.outDir)
+        : resolve(cliOpts.rootDir, config.outDir || 'dist');
 
-        const shouldWriteToDisk = cliOpts.write || docsDirExists;
-        await buildStaticSite(graph, config, {
-          rootDir: cliOpts.rootDir,
-          outDir: targetOutDir,
-          writeToDisk: shouldWriteToDisk,
-        });
+      const shouldWriteToDisk = cliOpts.write || docsDirExists;
+      await project.build(graph, config, {
+        rootDir: cliOpts.rootDir,
+        outDir: targetOutDir,
+        writeToDisk: shouldWriteToDisk,
       });
       break;
     }
 
     case 'serve': {
       console.log(`Lumen CLI v${VERSION} (command: serve)`);
-      if (cliOpts.help) break;
-      const config = await loadLumenConfig(cliOpts.rootDir);
+      const config = initialConfig;
       const outDir = resolve(cliOpts.rootDir, cliOpts.outDir ?? config.outDir);
       recoverGeneration(outDir);
       if (!existsSync(outDir)) throw new Error(`Build output does not exist: ${outDir}. Run lumen build first.`);
@@ -543,12 +516,11 @@ Commands:
     }
 
     case 'check': {
-      if (!cliOpts.pureJson) {
+      if (!cliOpts.json) {
         console.log(`Lumen CLI v${VERSION} (command: check)`);
       }
-      if (cliOpts.help) break;
 
-      const { config, graph, astDiagnostics } = await loadCorpusFromDirectory(cliOpts.rootDir);
+      const { config, graph, astDiagnostics } = await loadCorpusFromDirectory(cliOpts.rootDir, initialConfig);
       const builtinGates: CorpusGate[] = [
         linksGate,
         anchorsGate,
@@ -558,6 +530,13 @@ Commands:
         mathKernelGate,
       ];
 
+      if (cliOpts.gatesFilter) {
+        const names = new Set(builtinGates.map(gate => gate.name));
+        const unknown = cliOpts.gatesFilter.filter(name => !names.has(name));
+        if (!cliOpts.gatesFilter.length || unknown.length) {
+          throw new Error(`Unknown built-in gates: ${unknown.join(', ') || '(empty selection)'}. Available: ${[...names].join(', ')}`);
+        }
+      }
       const filteredBuiltins = cliOpts.gatesFilter
         ? builtinGates.filter((g) => cliOpts.gatesFilter!.includes(g.name))
         : builtinGates;
@@ -596,9 +575,8 @@ Commands:
 
     case 'pdf': {
       console.log(`Lumen CLI v${VERSION} (command: pdf)`);
-      if (cliOpts.help) break;
 
-      const { config, graph, docsDirExists } = await loadCorpusFromDirectory(cliOpts.rootDir);
+      const { config, graph, docsDirExists } = await loadCorpusFromDirectory(cliOpts.rootDir, initialConfig);
       const projectedGraph = projectCorpus(graph, { roles: ['anonymous'] });
       const allDocs = projectedGraph.getAllDocuments();
       const paperSections = config.pdf?.paperSections ?? [];
@@ -625,9 +603,8 @@ Commands:
 
     case 'mcp': {
       console.error(`Lumen CLI v${VERSION} (command: mcp)`);
-      if (cliOpts.help) break;
 
-      const { graph, docsDirExists, astDiagnostics } = await loadCorpusFromDirectory(cliOpts.rootDir);
+      const { graph, docsDirExists, astDiagnostics } = await loadCorpusFromDirectory(cliOpts.rootDir, initialConfig);
       if (!docsDirExists) throw new Error('Configured corpus directory does not exist');
       if (astDiagnostics.some(diagnostic => diagnostic.severity === 'error')) throw new Error('Corpus parsing failed; run lumen check for diagnostics');
       await runLumenMcpServer(graph);
@@ -636,9 +613,8 @@ Commands:
 
     case 'types': {
       console.log(`Lumen CLI v${VERSION} (command: types)`);
-      if (cliOpts.help) break;
 
-      const { graph, docsDirExists } = await loadCorpusFromDirectory(cliOpts.rootDir);
+      const { graph, docsDirExists } = await loadCorpusFromDirectory(cliOpts.rootDir, initialConfig);
       const projectedGraph = projectCorpus(graph, { roles: ['anonymous'] });
       const dtsContent = generateCorpusTypesDeclaration(projectedGraph);
       const shouldWriteTypes =
@@ -652,13 +628,7 @@ Commands:
       break;
     }
 
-    default: {
-      console.error(`Unknown command: ${command}`);
-      process.exitCode = 1;
-      if (cliOpts.strict) {
-        throw new Error(`Unknown command: ${command}`);
-      }
-      break;
-    }
+    default:
+      throw new Error(`Unknown Lumen command: ${command}`);
   }
 }

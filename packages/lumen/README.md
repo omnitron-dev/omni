@@ -61,6 +61,8 @@ The builder validates a staged generation before publishing it. Failed rebuilds 
 
 Configuration is trusted executable code. Documents cannot import arbitrary JavaScript or register host components. Static output uses the anonymous audience projection by default; private hosting still needs server-side authorization. `theme.layout` receives projected documents, and its React dependencies are compiled with the renderer in one SSR graph.
 
+Every CLI command loads the same project graph, including Vite imports such as `import.meta.glob` and raw source files. Programmatic consumers use `withLumenProject(root, async ({ config, build }) => { ... })`; perform corpus loading, verification and rendering inside that callback. `loadCorpusFromDirectory(root, config)` takes this explicit configuration. The graph is released after the callback settles, including on failure; do not retain its executable configuration or build function for later use.
+
 `renderDocumentHtml` returns a promise and waits for suspended React content before extracting styles. A render error, cancellation or incomplete render fails the build instead of publishing a temporary client fallback. Programmatic `renderDocumentHtml` and `buildStaticSite` callers can pass an `AbortSignal` and `renderTimeoutMs`; the default asynchronous render deadline is 30 seconds per document.
 
 SSR and custom client builds share the consumer's installed React, Emotion, React Hook Form and React Router contexts with linked SDK packages. Install a provider in the website when composing its public API with Prism components. Integrations absent from the website keep their ordinary package resolution.

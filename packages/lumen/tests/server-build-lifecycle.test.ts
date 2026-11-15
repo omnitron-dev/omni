@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { expect, it } from 'vitest';
-import { withProjectBuild } from '../src/ssg/server-build.js';
+import { withLumenProject } from '../src/config/project.js';
 import { CorpusGraph } from '../src/corpus/graph.js';
 
 it('reloads project modules once per build and releases temporary graphs on success and failure', async () => {
@@ -24,7 +24,7 @@ export default { title: ${JSON.stringify(title)}, tagline: 'import.meta.url' };
   const stages = () => readdirSync(temporary).filter(name => name.startsWith('lumen-ssr-'));
   try {
     configure('First');
-    expect(await withProjectBuild(root, async config => {
+    expect(await withLumenProject(root, async ({ config }) => {
       expect(stages()).toHaveLength(1);
       expect(config.tagline).toBe('import.meta.url');
       return config.title;
@@ -33,7 +33,7 @@ export default { title: ${JSON.stringify(title)}, tagline: 'import.meta.url' };
     expect(readFileSync(join(root, 'evaluations'), 'utf8')).toBe('1');
 
     configure('Second');
-    await expect(withProjectBuild(root, async config => {
+    await expect(withLumenProject(root, async ({ config }) => {
       expect(config.title).toBe('Second');
       throw new Error('Rejected by the build gate');
     })).rejects.toThrow('Rejected by the build gate');
@@ -41,7 +41,7 @@ export default { title: ${JSON.stringify(title)}, tagline: 'import.meta.url' };
     expect(readFileSync(join(root, 'evaluations'), 'utf8')).toBe('2');
 
     writeFileSync(configFile, 'export default { title:');
-    await expect(withProjectBuild(root, async () => { throw new Error('Must not execute'); })).rejects.toThrow();
+    await expect(withLumenProject(root, async () => { throw new Error('Must not execute'); })).rejects.toThrow();
     expect(stages()).toEqual([]);
   } finally {
     if (previousTmp === undefined) delete process.env['TMPDIR'];
@@ -73,7 +73,7 @@ export default {
   url: bracket('conditional-child'),
 };
 `);
-    await withProjectBuild(root, async config => {
+    await withLumenProject(root, async ({ config }) => {
       expect(config.title).toBe(pathToFileURL(join(dependency, 'esm.js')).href);
       expect(config.url).toBe(config.title);
       expect(config.tagline).toBe(pathToFileURL(join(root, 'local-resource.txt')).href);
@@ -92,7 +92,7 @@ it('publishes imported styles and their relative resources while retaining inlin
     writeFileSync(join(root, 'font.woff2'), Buffer.alloc(8192, 42));
     writeFileSync(join(root, 'mark.svg'), `<svg xmlns="http://www.w3.org/2000/svg"><!--${'asset'.repeat(2_000)}--><circle r="1" /></svg>`);
     writeFileSync(configFile, 'import "./theme.css"; export default { title: "Styled site", baseUrl: "/manual/" };');
-    await withProjectBuild(root, async (config, build) => {
+    await withLumenProject(root, async ({ config, build }) => {
       const result = await build(new CorpusGraph(), config, { clientAssets: new Map() });
       const stylesheet = [...result.assets].find(([name]) => name.startsWith('assets/server.') && name.endsWith('.css'))!;
       expect(stylesheet).toBeDefined();
@@ -106,14 +106,14 @@ it('publishes imported styles and their relative resources while retaining inlin
     });
 
     writeFileSync(configFile, 'import mark from "./mark.svg?url"; export default { title: mark };');
-    await expect(withProjectBuild(root, async () => { throw new Error('Must not execute'); }))
+    await expect(withLumenProject(root, async () => { throw new Error('Must not execute'); }))
       .rejects.toThrow(/resource URLs in JavaScript require an inline import or publicDir/);
 
     writeFileSync(configFile, 'import css from "./theme.css?inline"; export default { title: "Inline value", tagline: css };');
-    await expect(withProjectBuild(root, async () => { throw new Error('Must not execute'); }))
+    await expect(withLumenProject(root, async () => { throw new Error('Must not execute'); }))
       .rejects.toThrow(/resource URLs in JavaScript require an inline import or publicDir/);
     writeFileSync(join(root, 'theme.css'), '.reference { color: rebeccapurple; }');
-    expect(await withProjectBuild(root, async config => config.tagline)).toMatch(/\.reference\s*\{\s*color:/);
+    expect(await withLumenProject(root, async ({ config }) => config.tagline)).toMatch(/\.reference\s*\{\s*color:/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

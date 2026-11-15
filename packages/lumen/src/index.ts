@@ -6,7 +6,7 @@
 // 1. Configuration Subsystem
 export {
   defineLumenConfig,
-  loadLumenConfig,
+  withLumenProject,
   resolveConfigFile,
   expandEnvVariables,
   LumenUserConfigSchema,
@@ -18,7 +18,7 @@ export {
   LumenSidebarLinkItemSchema,
   LumenSidebarCategoryItemSchema,
 } from './config/index.js';
-export type { LumenConfig, LumenUserConfig, LumenSidebarItem, LumenPageLayoutProps } from './config/index.js';
+export type { LumenProject, LumenConfig, LumenUserConfig, LumenSidebarItem, LumenPageLayoutProps } from './config/index.js';
 
 // 2. Corpus Knowledge Graph Subsystem
 export {

@@ -3,14 +3,15 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { withKernelFileLock } from '@xec-sh/ops/utils/file-lock';
 import { readPrivateRecord, writePrivateRecord } from './execution-journal.js';
+import { RUNTIME_UPDATE_TERMINAL_PHASES } from '../shared/dto/runtime-update.js';
 import type {
   PreparedRuntimeUpdate, RuntimeUpdateAcceptance, RuntimeUpdateIdentity, RuntimeUpdatePhase,
   RuntimeUpdatePlan, RuntimeUpdateReceipt, RuntimeUpdateReference,
 } from '../shared/dto/runtime-update.js';
 
 const hash = /^[a-f0-9]{64}$/;
-const finished = new Set<RuntimeUpdatePhase>(['accepted', 'rolled-back']);
-const phases = new Set<RuntimeUpdatePhase>(['stopping', 'starting', 'verifying', 'accepted', 'failed',
+const finished = new Set<RuntimeUpdatePhase>(RUNTIME_UPDATE_TERMINAL_PHASES);
+const phases = new Set<RuntimeUpdatePhase>(['draining', 'aborted', 'stopping', 'starting', 'verifying', 'accepted', 'failed',
   'stopping-candidate', 'restoring', 'rolled-back', 'recovery-required']);
 
 export interface RuntimeUpdateRestoration {
@@ -26,7 +27,11 @@ function assertGuardianReference(plan: RuntimeUpdatePlan, reference: NonNullable
 }
 
 export interface RuntimeUpdateActions {
-  prepare(): Promise<RuntimeUpdatePlan>;
+  prepare(reviewed?: RuntimeUpdatePlan): Promise<RuntimeUpdatePlan>;
+  /** Quiesce only the reviewed backup attempts, then obtain the strict certificate. */
+  admit(plan: RuntimeUpdatePlan, digest: string): Promise<void>;
+  /** Release only this plan's admission; never stop or restore application processes. */
+  releaseAdmission(plan: RuntimeUpdatePlan, digest: string): Promise<void>;
   validateStop(previous: RuntimeUpdateIdentity, plan?: RuntimeUpdatePlan): Promise<void>;
   stop(previous: RuntimeUpdateIdentity): Promise<unknown>;
   assertStopped(previous: RuntimeUpdateIdentity): Promise<unknown>;
@@ -98,8 +103,24 @@ export async function runRuntimeUpdate({ actions, directory, operation, digest: 
         await save('restoring', { restoreGuardian: reference });
       },
     };
+    const releaseAdmission = async (error?: string) => {
+      if (!record || record.phase !== 'draining') throw Error('No runtime update admission is pending');
+      try {
+        await actions.releaseAdmission(record.plan, record.digest);
+        delete record.recoveryError;
+        return await save('aborted', { ...(error && { error }) });
+      } catch (cause) {
+        const recoveryError = cause instanceof Error ? cause.message : String(cause);
+        await save('draining', { ...(error && { error }), recoveryError });
+        throw Error('Runtime admission release is unconfirmed; inspect and recover this plan: ' + recoveryError, { cause });
+      }
+    };
     const recover = async () => {
       if (!record) throw Error('No local update is available for recovery');
+      // Admission precedes every process effect. Losing its acknowledgement
+      // requires releasing this exact quiesce, never an application restart.
+      if (record.phase === 'aborted') return record;
+      if (record.phase === 'draining') return releaseAdmission(record.error);
       const plan = record.plan;
       try {
         if (record.restoreAttempted || record.phase === 'restoring') {
@@ -136,11 +157,12 @@ export async function runRuntimeUpdate({ actions, directory, operation, digest: 
       return record;
     }
     if (review && record?.phase === 'rolled-back' && review === record.digest) throw Error('This attempt was rolled back. Prepare a fresh plan');
+    let prepared: PreparedRuntimeUpdate | null = null;
     if (operation === 'apply') {
-      const prepared = await readPreparedRuntimeUpdate(directory);
+      prepared = await readPreparedRuntimeUpdate(directory);
       if (prepared?.digest !== review) throw Error('The requested local update is not the prepared plan' + (prepared ? '. Current plan ' + prepared.digest : ''));
     }
-    const plan = await actions.prepare();
+    const plan = await actions.prepare(prepared?.plan);
     if (operation === 'prepare' && record?.phase === 'accepted' && record.plan.target.artifact === plan.target.artifact &&
         plan.before.backend === plan.target.artifact && plan.before.owner === plan.target.artifact && plan.before.guardian === plan.target.artifact) {
       const declarations = (snapshot: RuntimeUpdatePlan) => snapshot.stacks.map(({ project, stack, enabled, startReview, selection, savedSelection }) =>
@@ -153,14 +175,21 @@ export async function runRuntimeUpdate({ actions, directory, operation, digest: 
     }
     const digest = runtimeUpdatePlanDigest(plan);
     if (operation === 'prepare') {
-      const prepared: PreparedRuntimeUpdate = { protocol: 1, digest, plan };
-      await writePrivateRecord(path.join(directory, 'prepared.json'), prepared);
-      return prepared;
+      const preview: PreparedRuntimeUpdate = { protocol: 1, digest, plan };
+      await writePrivateRecord(path.join(directory, 'prepared.json'), preview);
+      return preview;
     }
     if (review !== digest) throw Error('Local placement, roles, launch selection, infrastructure or process identities changed. Inspect the current plan ' + digest);
-    await actions.validateStop(plan.before, plan);
     if (record) await writePrivateRecord(path.join(directory, record.digest + '.json'), record);
-    record = { protocol: 1, digest, plan, phase: 'stopping', updatedAt: new Date().toISOString() };
+    record = { protocol: 1, digest, plan, phase: 'draining', updatedAt: new Date().toISOString() };
+    await save('draining');
+    try {
+      await actions.admit(plan, digest);
+      await actions.validateStop(plan.before, plan);
+    } catch (error) {
+      await releaseAdmission(error instanceof Error ? error.message : String(error));
+      throw error;
+    }
     await save('stopping');
     try {
       await actions.stop(plan.before);

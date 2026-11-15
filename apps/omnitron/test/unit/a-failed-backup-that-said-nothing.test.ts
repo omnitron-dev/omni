@@ -1,3 +1,4 @@
+import { testExecution } from '../fixtures/execution.js';
 /**
  * A scheduled backup of one database failed, and nothing said so.
  *
@@ -126,7 +127,7 @@ afterEach(async () => {
 
 /** A service whose dumps succeed except `main`'s, which times out as it did at 06:04Z. */
 function withMainTimingOut(lines?: ReturnType<typeof fakeLogger>): InstanceType<typeof BackupService> {
-  const service = new BackupService((lines ?? fakeLogger()).module, store, sampleDev());
+  const service = new BackupService((lines ?? fakeLogger()).module, store, testExecution, sampleDev());
   vi.spyOn(service, 'createBackup').mockImplementation(async (database: string) => {
     if (database === 'main' || database.endsWith('/main')) {
       throw new Error(TIMEOUT, { cause: new Error('docker did not finish within 600 s and was killed') });
@@ -172,7 +173,7 @@ describe('the failure is written down where it happens', () => {
     service.dispose();
 
     // A new daemon on the same state.
-    const after = new BackupService(fakeLogger().module, store, sampleDev());
+    const after = new BackupService(fakeLogger().module, store, testExecution, sampleDev());
     const status = await after.getStatus();
     const all = status.schedules.find((s) => s.target === 'all');
 
@@ -200,7 +201,7 @@ describe('the failure is written down where it happens', () => {
 
   it('a pass that found nothing is not called a success', async () => {
     const log = fakeLogger();
-    const service = new BackupService(log.module, store);
+    const service = new BackupService(log.module, store, testExecution);
     await service.createAllBackups();
     const summary = log.lines.find((l) => /createAllBackups complete/.test(l.msg));
     expect(summary?.level).toBe('warn');
@@ -212,7 +213,7 @@ describe('the dump says why it was killed', () => {
   it('a deadline refusal reports the budget, without claiming remote process termination', async () => {
     const out = path.join(dir, 'slow.sql.gz');
     await expect(
-      dumpToFile('/bin/sh', ['-c', 'printf HEADER; sleep 5'], out, true, { timeoutMs: 300 }),
+      dumpToFile(testExecution, '/bin/sh', ['-c', 'printf HEADER; sleep 5'], out, true, { timeoutMs: 300 }),
     ).rejects.toThrow('/bin/sh pipeline exceeded its 300 ms deadline');
   });
 });

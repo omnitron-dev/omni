@@ -2,6 +2,25 @@ import type { ServiceScope } from '../../commands/service-units.js';
 import type { DaemonStatusDto, ProcessInfoDto } from '../../config/types.js';
 import type { IProjectInfo, IStackInfo, SelectedRelease } from './project.js';
 import type { StackExecutionScope } from './stack-execution.js';
+import type { OperationReceipt } from './execution-operations.js';
+import type { RuntimeRestartConfiguration } from '../../project/runtime-restart.js';
+
+/** Read-only next-start intent. It is not a recovery or shutdown certificate. */
+export interface RuntimeRestartReview {
+  configuration: RuntimeRestartConfiguration;
+  backups: OperationReceipt[];
+}
+
+export interface RuntimeRestartPrepareRequest {
+  planDigest: string;
+  stacks: StackExecutionScope[];
+  configurationSha256: string;
+  backups: OperationReceipt[];
+}
+
+export interface RuntimeRestartReleaseRequest {
+  planDigest: string;
+}
 
 export type RuntimeUpdateSelection =
   | { kind: 'unreported' }
@@ -96,6 +115,8 @@ export interface RuntimeUpdatePlan {
   stackAdmissionProtocol?: 1;
   /** Private effective definitions; never contains environment values in the public plan. */
   configuration?: { sha256: string; basis: 'retained-next-start' };
+  /** Only these reviewed, locally owned attempts may be cancelled before shutdown. */
+  backupOperations: OperationReceipt[];
   instance: string;
   target: RuntimeUpdateReference;
   before: RuntimeUpdateIdentity & { console: string | null; consoleCommit: string | null };
@@ -111,8 +132,10 @@ export interface PreparedRuntimeUpdate {
   plan: RuntimeUpdatePlan;
 }
 
-export type RuntimeUpdatePhase = 'stopping' | 'starting' | 'verifying' | 'accepted' | 'failed'
+export type RuntimeUpdatePhase = 'draining' | 'aborted' | 'stopping' | 'starting' | 'verifying' | 'accepted' | 'failed'
   | 'stopping-candidate' | 'restoring' | 'rolled-back' | 'recovery-required';
+
+export const RUNTIME_UPDATE_TERMINAL_PHASES = ['accepted', 'rolled-back', 'aborted'] as const satisfies readonly RuntimeUpdatePhase[];
 
 export interface RuntimeUpdateAcceptance {
   backend: string;

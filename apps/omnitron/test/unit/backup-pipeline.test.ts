@@ -1,3 +1,4 @@
+import { testExecution } from '../fixtures/execution.js';
 /**
  * Running a dump or restore without a shell.
  *
@@ -50,14 +51,14 @@ async function readGzipped(p: string): Promise<string> {
 describe('dumpToFile', () => {
   it('writes what the command produced', async () => {
     const out = path.join(dir, 'plain.sql');
-    await dumpToFile('printf', ['CREATE TABLE t;'], out, false);
+    await dumpToFile(testExecution, 'printf', ['CREATE TABLE t;'], out, false);
 
     expect(read(out)).toBe('CREATE TABLE t;');
   });
 
   it('gzips when asked, and the result decompresses to the same bytes', async () => {
     const out = path.join(dir, 'dump.sql.gz');
-    await dumpToFile('printf', ['CREATE TABLE t;'], out, true);
+    await dumpToFile(testExecution, 'printf', ['CREATE TABLE t;'], out, true);
 
     expect(await readGzipped(out)).toBe('CREATE TABLE t;');
   });
@@ -66,7 +67,7 @@ describe('dumpToFile', () => {
     // The defect this module exists for. `false | gzip > file` exits 0.
     const out = path.join(dir, 'failed.sql.gz');
 
-    await expect(dumpToFile('false', [], out, true)).rejects.toThrow(/exited with code 1/);
+    await expect(dumpToFile(testExecution, 'false', [], out, true)).rejects.toThrow(/exited with code 1/);
   });
 
   it('leaves no file behind when the command fails', async () => {
@@ -74,7 +75,7 @@ describe('dumpToFile', () => {
     // in the backup store, and restores nothing.
     const out = path.join(dir, 'failed.sql.gz');
 
-    await expect(dumpToFile('false', [], out, true)).rejects.toThrow();
+    await expect(dumpToFile(testExecution, 'false', [], out, true)).rejects.toThrow();
     expect(fs.existsSync(out)).toBe(false);
   });
 
@@ -84,14 +85,14 @@ describe('dumpToFile', () => {
     const out = path.join(dir, 'x.sql');
 
     await expect(
-      dumpToFile('sh', ['-c', 'echo "FATAL: database does not exist" >&2; exit 1'], out, false)
+      dumpToFile(testExecution, 'sh', ['-c', 'echo "FATAL: database does not exist" >&2; exit 1'], out, false)
     ).rejects.toThrow(/database does not exist/);
   });
 
   it('fails when the command does not exist at all', async () => {
     const out = path.join(dir, 'x.sql');
 
-    await expect(dumpToFile('definitely-not-a-command', [], out, false)).rejects.toThrow();
+    await expect(dumpToFile(testExecution, 'definitely-not-a-command', [], out, false)).rejects.toThrow();
     expect(fs.existsSync(out)).toBe(false);
   });
 
@@ -109,7 +110,7 @@ describe('dumpToFile', () => {
     const leaked: string[] = [];
     for (let i = 0; i < 60; i++) {
       const out = path.join(dir, `enoent-${i}.sql`);
-      await dumpToFile('definitely-not-a-command', [], out, false).catch(() => undefined);
+      await dumpToFile(testExecution, 'definitely-not-a-command', [], out, false).catch(() => undefined);
       if (fs.existsSync(out)) leaked.push(path.basename(out));
     }
 
@@ -120,7 +121,7 @@ describe('dumpToFile', () => {
     // A database or container name containing a space or a quote broke the
     // interpolated command string. As an argv entry it is just a string.
     const out = path.join(dir, 'quoted.sql');
-    await dumpToFile('printf', ['%s', 'a name; with "quotes" and $VARS'], out, false);
+    await dumpToFile(testExecution, 'printf', ['%s', 'a name; with "quotes" and $VARS'], out, false);
 
     expect(read(out)).toBe('a name; with "quotes" and $VARS');
   });
@@ -130,7 +131,7 @@ describe('dumpToFile', () => {
     // ceiling. This is only 8 MB — enough to exceed any small buffer without
     // making the suite slow.
     const out = path.join(dir, 'big.sql');
-    await dumpToFile('sh', ['-c', 'yes "0123456789abcdef" | head -c 8000000'], out, false);
+    await dumpToFile(testExecution, 'sh', ['-c', 'yes "0123456789abcdef" | head -c 8000000'], out, false);
 
     expect(fs.statSync(out).size).toBe(8_000_000);
   });
@@ -142,7 +143,7 @@ describe('restoreFromFile', () => {
     const output = path.join(dir, 'out.txt');
     fs.writeFileSync(input, 'SELECT 1;');
 
-    await restoreFromFile('sh', ['-c', `cat > "${output}"`], input, false);
+    await restoreFromFile(testExecution, 'sh', ['-c', `cat > "${output}"`], input, false);
 
     expect(read(output)).toBe('SELECT 1;');
   });
@@ -150,9 +151,9 @@ describe('restoreFromFile', () => {
   it('gunzips a compressed backup on the way in', async () => {
     const gz = path.join(dir, 'in.sql.gz');
     const output = path.join(dir, 'out.txt');
-    await dumpToFile('printf', ['SELECT 2;'], gz, true);
+    await dumpToFile(testExecution, 'printf', ['SELECT 2;'], gz, true);
 
-    await restoreFromFile('sh', ['-c', `cat > "${output}"`], gz, true);
+    await restoreFromFile(testExecution, 'sh', ['-c', `cat > "${output}"`], gz, true);
 
     expect(read(output)).toBe('SELECT 2;');
   });
@@ -162,13 +163,13 @@ describe('restoreFromFile', () => {
     fs.writeFileSync(input, 'SELECT 1;');
 
     await expect(
-      restoreFromFile('sh', ['-c', 'cat >/dev/null; echo "ERROR: relation exists" >&2; exit 3'], input, false)
+      restoreFromFile(testExecution, 'sh', ['-c', 'cat >/dev/null; echo "ERROR: relation exists" >&2; exit 3'], input, false)
     ).rejects.toThrow(/exited with code 3.*relation exists/s);
   });
 
   it('fails rather than reporting success when the input is missing', async () => {
     await expect(
-      restoreFromFile('cat', [], path.join(dir, 'nope.sql'), false)
+      restoreFromFile(testExecution, 'cat', [], path.join(dir, 'nope.sql'), false)
     ).rejects.toThrow();
   });
 });

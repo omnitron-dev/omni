@@ -11,6 +11,8 @@ import { privateControlClient } from './private-control-client.js';
 import type { BackendControlService } from './backend-control.js';
 import type { BackendRpcService } from './backend.rpc-service.js';
 import type { ExecutionHostService } from './execution-host.js';
+import type { BackupRpcService } from '../services/backup.rpc-service.js';
+import type { OperationReceipt } from '../shared/dto/execution-operations.js';
 
 import type { ReleaseCommand } from '@xec-sh/ops/release';
 import type { BuildStamp } from '../shared/build-stamp.js';
@@ -18,7 +20,7 @@ import type { ManagedRuntime } from './managed-runtime.js';
 import type { RuntimeSelection } from './runtime-installation.js';
 import type { StackStartReview, SelectedRelease } from '../shared/dto/project.js';
 import type { RuntimeUpdateActions, RuntimeUpdateRestoration } from './runtime-update.js';
-import type { RuntimeUpdateIdentity, RuntimeUpdateInfrastructure, RuntimeUpdatePlan, RuntimeUpdateProjectObservation, RuntimeUpdateStack, RuntimeUpdateStackObservation, RuntimeUpdateStatusObservation, RuntimeUpdateSelection, ReviewedRuntimeUpdateStack, VerifiedRuntimeReference } from '../shared/dto/runtime-update.js';
+import type { RuntimeRestartReview, RuntimeUpdateIdentity, RuntimeUpdateInfrastructure, RuntimeUpdatePlan, RuntimeUpdateProjectObservation, RuntimeUpdateStack, RuntimeUpdateStackObservation, RuntimeUpdateStatusObservation, RuntimeUpdateSelection, ReviewedRuntimeUpdateStack, VerifiedRuntimeReference } from '../shared/dto/runtime-update.js';
 
 export type RuntimeUpdateCall = <T>(argv: readonly string[], runtimeRoot?: string) => Promise<T>;
 interface ColdStartObservation {
@@ -61,7 +63,8 @@ async function until<T>(label: string, body: () => Promise<T>, budget: number): 
   }
 }
 
-export function assertLocalIdle(status: RuntimeUpdateStatusObservation) {
+/** A review may observe an owned backup; it never certifies shutdown admission. */
+export function assertLocalReview(status: RuntimeUpdateStatusObservation) {
   const execution = status?.execution;
   if (execution?.mode !== 'resident' || execution.phase !== 'active' || execution.connection?.status !== 'connected' ||
       execution.supervision?.type !== 'independent' || !execution.owner?.id || !Number.isSafeInteger(execution.epoch))
@@ -69,9 +72,45 @@ export function assertLocalIdle(status: RuntimeUpdateStatusObservation) {
   const counters = execution.blockers;
   if (!counters || ![...BACKEND_ACTIVITY_COUNTERS, 'backupOperations'].every(name => Object.hasOwn(counters, name)) ||
       Object.values(counters).some(n => !Number.isSafeInteger(n) || n < 0)) throw Error('Incomplete backend activity counters');
-  const busy = Object.entries(counters).filter(([, n]) => n > 0);
+  const busy = Object.entries(counters).filter(([name, n]) => n > 0 && name !== 'backupOperations');
   if (busy.length) throw Error('Local update deferred while work is active: ' + busy.map(([name, n]) => `${name}=${n}`).join(', '));
+}
+
+export function assertLocalIdle(status: RuntimeUpdateStatusObservation) {
+  assertLocalReview(status);
+  const execution = status.execution!;
+  const backups = execution.blockers.backupOperations!;
+  if (backups > 0) throw Error('Local update deferred while work is active: backupOperations=' + backups);
   if (execution.recovery?.status !== 'ready') throw Error(execution.recovery?.reason || 'Waiting for the current recovery certificate');
+}
+
+/** Completion of the same attempt does not invalidate an otherwise unchanged
+ * review. A different attempt, changed active revision or unknown outcome does. */
+export async function retainReviewedBackups(current: OperationReceipt[], reviewed: OperationReceipt[] | undefined,
+  read: (id: string) => Promise<OperationReceipt | null>): Promise<OperationReceipt[]> {
+  if (reviewed && new Set(reviewed.map(value => value.id)).size !== reviewed.length ||
+      new Set(current.map(value => value.id)).size !== current.length)
+    throw Error('Duplicate backup operation in the runtime update review');
+  if (current.some(value => value.kind !== 'backup' || !['prepared', 'running'].includes(value.state)))
+    throw Error('Runtime update review contains an unknown or non-backup operation');
+  if (!reviewed) return [...current].sort((a, b) => a.id.localeCompare(b.id));
+  const expected = new Map(reviewed.map(value => [value.id, value]));
+  for (const receipt of current) {
+    if (!isDeepStrictEqual(receipt, expected.get(receipt.id)))
+      throw Error('Backup operations changed after review; prepare the current update plan');
+  }
+  const pending = new Set(current.map(value => value.id));
+  for (const previous of reviewed) {
+    if (pending.has(previous.id)) continue;
+    const actual = await read(previous.id);
+    const intent = (receipt: OperationReceipt) => ({ protocol: receipt.protocol, id: receipt.id, kind: receipt.kind,
+      resources: receipt.resources, inputDigest: receipt.inputDigest, createdAt: receipt.createdAt });
+    if (!actual || previous.kind !== 'backup' || !['succeeded', 'failed', 'cancelled'].includes(actual.state) ||
+        actual.revision <= previous.revision || !isDeepStrictEqual(intent(previous), intent(actual)) ||
+        previous.execution && !isDeepStrictEqual(previous.execution, actual.execution))
+      throw Error('Reviewed backup completion is unconfirmed: ' + previous.id);
+  }
+  return structuredClone(reviewed);
 }
 
 // The controller which restores both directions must admit the exact review.
@@ -226,7 +265,7 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
       }).sort((a, b) => a.name.localeCompare(b.name));
     } finally { await client.disconnect(); }
   };
-  const retainedConfiguration = async (stacks: RuntimeUpdateStack[]): Promise<RuntimeRestartConfiguration> => {
+  const runtimeControl = async <T>(body: (service: BackendControlService) => Promise<T>, expectedPid?: number): Promise<T> => {
     const client = createDaemonClient();
     let address: { socket: string };
     try { address = await (await client.service<BackendRpcService>('OmnitronBackend')).controlAddress(); }
@@ -234,10 +273,23 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
     const control = await privateControlClient<BackendControlService>(address.socket, 'OmnitronBackendControl', 10 * 60_000);
     try {
       const status = await control.service.status();
-      if (status.instanceHome !== home || status.runtimeRestartProtocol !== 1)
-        throw Error('The serving controller cannot review retained next-start definitions; perform a verified warm backend upgrade before preparing an owner update');
-      return await control.service.runtimeRestart({ stacks: stacks.map(stack => stack.runtimeScope) });
+      if (status.instanceHome !== home || status.runtimeRestartProtocol !== 1 || status.runtimeRestartAdmissionProtocol !== 1 ||
+          expectedPid !== undefined && status.pid !== expectedPid)
+        throw Error('The serving controller cannot admit the reviewed local update; update the backend through its managed handoff before preparing an owner update');
+      return await body(control.service);
     } finally { await control.close(); }
+  };
+  const retainedConfiguration = async (stacks: RuntimeUpdateStack[]): Promise<RuntimeRestartConfiguration> =>
+    runtimeControl(service => service.runtimeRestart({ stacks: stacks.map(stack => stack.runtimeScope) }));
+  const retainedReview = async (stacks: RuntimeUpdateStack[]): Promise<RuntimeRestartReview> =>
+    runtimeControl(service => service.runtimeRestartReview({ stacks: stacks.map(stack => stack.runtimeScope) }));
+  const backupReview = async (current: OperationReceipt[], reviewed?: OperationReceipt[]) => {
+    if (!reviewed) return retainReviewedBackups(current, reviewed, async () => null);
+    const client = createDaemonClient();
+    try {
+      const service = await client.service<BackupRpcService>('OmnitronBackups');
+      return await retainReviewedBackups(current, reviewed, id => service.getOperation({ id }));
+    } finally { await client.disconnect(); }
   };
   const verifyPreviousOwnerDefaults = async (configuration: RuntimeRestartConfiguration) => {
     const managed = await readManagedRuntime(home);
@@ -349,10 +401,10 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
     () => accept(plan, 'previous', false, true), call, restoration);
   };
   return {
-    async prepare(): Promise<RuntimeUpdatePlan> {
+    async prepare(reviewed?: RuntimeUpdatePlan): Promise<RuntimeUpdatePlan> {
       const live = await call<RuntimeUpdateStatusObservation>(['status']);
-      assertLocalIdle(live);
-      const [before, stacks, web] = await Promise.all([identity(live), inventory(live), consoleState()]);
+      assertLocalReview(live);
+      const [before, stacks, web] = await Promise.all([identity(live, false), inventory(live), consoleState()]);
       const existing = await fs.lstat(installed(manifest.sha256)).catch(error => { if (error.code !== 'ENOENT') throw error; return null; });
       let candidate;
       if (existing) {
@@ -371,7 +423,9 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
       const protocol = 1;
       // Both directions use the target controller for application restoration.
       // The previous backend is restored through its existing warm handoff.
-      const configuration = await retainedConfiguration(stacks.targets);
+      const review = await retainedReview(stacks.targets);
+      const configuration = review.configuration;
+      const backupOperations = await backupReview(review.backups, reviewed?.backupOperations);
       if (configuration.ownerId !== before.ownerId) throw Error('Retained configuration belongs to another owner');
       await verifyPreviousOwnerDefaults(configuration);
       const targets: ReviewedRuntimeUpdateStack[] = [];
@@ -386,11 +440,24 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
       for (const id of new Set([before.backend, before.owner, before.guardian, web.artifact].filter((artifact): artifact is string => typeof artifact === 'string'))) {
         if (id !== candidate.id) await verifyRuntimeArtifact(installed(id), id);
       }
-      const after = await identity(await call<RuntimeUpdateStatusObservation>(['status']));
+      const finalStatus = await call<RuntimeUpdateStatusObservation>(['status']);
+      assertLocalReview(finalStatus);
+      const after = await identity(finalStatus, false);
       if (!isDeepStrictEqual(before, after)) throw Error('Local execution changed during preparation. Inspect the current plan');
       const sha256 = await saveRestartConfiguration(home, configuration);
-      return { protocol: 1, stackAdmissionProtocol: protocol, configuration: { sha256, basis: 'retained-next-start' }, instance: home, target: { artifact: candidate.id, commit: candidate.build.commit },
+      return { protocol: 1, stackAdmissionProtocol: protocol, configuration: { sha256, basis: 'retained-next-start' }, backupOperations, instance: home, target: { artifact: candidate.id, commit: candidate.build.commit },
         before: { ...before, console: web.artifact, consoleCommit: web.commit }, stacks: targets, excluded: stacks.excluded, watches: watching, infrastructure };
+    },
+    async admit(plan, planDigest) {
+      if (!plan.configuration) throw Error('Runtime update admission requires retained next-start intent');
+      const configuration = await runtimeControl(service => service.runtimeRestartPrepare({ planDigest,
+        stacks: plan.stacks.map(stack => stack.runtimeScope), configurationSha256: plan.configuration!.sha256,
+        backups: plan.backupOperations }), plan.before.backendPid);
+      if (restartConfigurationDigest(configuration) !== plan.configuration.sha256)
+        throw Error('Retained next-start intent changed during backup admission');
+    },
+    async releaseAdmission(plan, planDigest) {
+      await runtimeControl(service => service.runtimeRestartRelease({ planDigest }), plan.before.backendPid);
     },
     async validateStop(previous, plan) {
       if (plan) {

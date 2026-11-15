@@ -66,7 +66,7 @@ it('serializes uploads to one node while a different node may transfer independe
   await two;
   expect(f.dispose).toHaveBeenCalledTimes(3);
 });
-it('abandons two stalled isolated connections, preserves the destination and releases the queue', async () => {
+it('reports a stalled transfer as unknown without replay and lets an independent destination progress', async () => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
   const f = fixture();
   const destination = join(f.dir, 'first');
@@ -74,18 +74,16 @@ it('abandons two stalled isolated connections, preserves the destination and rel
   const stuck = f.svc.uploadFile({ host: 'a' }, f.source, destination);
   const verdict = stuck.then(
     () => 'resolved',
-    (e: Error) => e.message
+    (e: Error) => e
   );
   const next = f.svc.uploadFile({ host: 'a' }, f.source, join(f.dir, 'next'));
   await count(f.started, 1);
   await vi.advanceTimersByTimeAsync(UPLOAD_STALL_MS);
   await count(f.started, 2);
-  await vi.advanceTimersByTimeAsync(UPLOAD_STALL_MS);
-  expect(await verdict).toContain('made no progress for 120 s');
-  await count(f.started, 3);
-  f.started[2]!.finish();
+  expect(await verdict).toMatchObject({ kind: 'outcome-unknown', cause: { message: expect.stringContaining('made no progress for 120 s') } });
+  f.started[1]!.finish();
   await next;
-  expect(f.dispose).toHaveBeenCalledTimes(3);
+  expect(f.dispose).toHaveBeenCalledTimes(2);
 });
 it('retains a size-dependent total deadline in addition to no-progress detection', () => {
   expect(uploadDeadlineMs(0)).toBe(60000);

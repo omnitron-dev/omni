@@ -52,6 +52,11 @@ function serviceWithSpy() {
   };
 
   (service as unknown as { engine: unknown }).engine = {
+    execute: async (command: { command: string; adapterOptions: Record<string, unknown> }) => {
+      const { type: _type, ...config } = command.adapterOptions;
+      configs.push(config);
+      return { stdout: answer(command.command), stderr: '', exitCode: 0 };
+    },
     ssh: (config: Record<string, unknown>) => { configs.push(config); return handle; },
     on: () => {},
   };

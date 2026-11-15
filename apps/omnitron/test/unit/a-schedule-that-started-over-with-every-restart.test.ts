@@ -1,3 +1,4 @@
+import { testExecution } from '../fixtures/execution.js';
 /**
  * Interval schedules restarted from zero at every daemon start.
  *
@@ -109,7 +110,7 @@ beforeEach(() => {
   backups = path.join(dir, '.omnitron', 'backups');
   fs.mkdirSync(backups, { recursive: true });
   store = new DaemonStateStore(quietLogger().logger, path.join(dir, '.omnitron', 'data', 'daemon-state.db'));
-  service = new BackupService(quietLogger().module, store);
+  service = new BackupService(quietLogger().module, store, testExecution);
   printed.length = 0;
   for (const k of Object.keys(rpc)) delete rpc[k];
 });
@@ -164,7 +165,7 @@ describe('a schedule starts from its last run, not from the daemon start', () =>
     let runs = 0;
 
     for (let restart = 0; restart < 10; restart++) {
-      const daemon = new BackupService(quietLogger().module, store);
+      const daemon = new BackupService(quietLogger().module, store, testExecution);
       vi.spyOn(daemon, 'createAllBackups').mockImplementation(async () => {
         runs++;
         indexed('main', new Date().toISOString());

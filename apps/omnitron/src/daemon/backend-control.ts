@@ -14,6 +14,7 @@ import { PidManager } from './pid-manager.js';
 import { OWN_BUILD } from '../shared/build-stamp.js';
 import { OMNITRON_HOME } from '../config/defaults.js';
 import { backendSchemaScope } from './backend-candidate.js';
+import type { RuntimeRestartPrepareRequest, RuntimeRestartReleaseRequest } from '../shared/dto/runtime-update.js';
 
 /** Kept separate from public ingress: it must answer while that ingress is drained. */
 @Service({ name: 'OmnitronBackendControl' })
@@ -29,6 +30,7 @@ export class BackendControlService {
   async status() {
     return { pid: process.pid, runtime: this.daemon.backendRuntimeStatus(), retired: this.retired,
       runtimeRestartProtocol: 1,
+      runtimeRestartAdmissionProtocol: 1,
       instanceHome: OMNITRON_HOME, schemaScope: backendSchemaScope(this.daemon.daemonConfig),
       ticketId: this.prepared?.state.ticket.id ?? null, build: OWN_BUILD,
       entry: fileURLToPath(new URL('./daemon-entry.js', import.meta.url)) };
@@ -37,9 +39,30 @@ export class BackendControlService {
   /** Private next-start review; unlike prepare(), this does not drain or freeze ownership. */
   @Public({ auth: { roles: ADMIN_ROLES } })
   async runtimeRestart(data: { stacks: Array<{ project: string; stack: string }> }) {
-    if (this.preparing || this.prepared || this.retired || !Array.isArray(data.stacks) || data.stacks.length > 1000)
-      throw Error('A stable local stack inventory is required for runtime restart review');
+    this.assertRestartReview(data.stacks);
     return this.daemon.captureRuntimeRestart(data.stacks);
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async runtimeRestartReview(data: { stacks: Array<{ project: string; stack: string }> }) {
+    this.assertRestartReview(data.stacks);
+    return this.daemon.reviewRuntimeRestart(data.stacks);
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async runtimeRestartPrepare(data: RuntimeRestartPrepareRequest) {
+    this.assertRestartReview(data.stacks);
+    return this.daemon.prepareRuntimeRestart(data);
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async runtimeRestartRelease(data: RuntimeRestartReleaseRequest): Promise<void> {
+    await this.daemon.releaseRuntimeRestart(data.planDigest);
+  }
+
+  private assertRestartReview(stacks: unknown): void {
+    if (this.preparing || this.prepared || this.retired || !Array.isArray(stacks) || stacks.length > 1000)
+      throw Error('A stable local stack inventory is required for runtime restart review');
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })

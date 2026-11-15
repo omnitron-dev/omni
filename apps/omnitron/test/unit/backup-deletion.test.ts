@@ -1,3 +1,4 @@
+import { testExecution } from '../fixtures/execution.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -48,7 +49,7 @@ beforeEach(() => {
     getResolvedContainerName: () => null, getPostgresDatabases: () => ['ledger'] };
   const projects = { listProjectRegistrations: () => [{ name: 'fixture' }], getRunningStacks: () => ['dev'],
     getInfraManager: () => ({ listInstances: () => [], getInstance: () => infra }) };
-  backups = new BackupService({ logger } as never, store, projects as never);
+  backups = new BackupService({ logger } as never, store, testExecution, projects as never);
   rpc = new BackupRpcService(backups);
 });
 
@@ -76,7 +77,7 @@ describe('backup retirement shares the application lifecycle', () => {
       expect(synchronous).not.toHaveBeenCalled();
       expect(backups.activeOperationCount()).toBe(1);
       expect(recoveryState.token()).toBeNull();
-      expect(() => backups.prepareHandoff()).toThrow('Backup or restore is active');
+      await expect(backups.prepareHandoff()).rejects.toThrow(/Backup or restore is active|restore is active/);
       expect(store.selectBackupsSync().map(row => row.id)).toEqual(['slow']);
       expect((await backups.listBackups()).map(row => row.id)).toEqual(['slow']);
     } finally { release.resolve(); await deleting; }
@@ -131,7 +132,7 @@ describe('backup retirement shares the application lifecycle', () => {
 
   it('does not admit deletion after handoff preparation', async () => {
     const file = archive('held');
-    backups.prepareHandoff();
+    await backups.prepareHandoff();
     await expect(rpc.deleteBackup({ backupId: 'held' })).rejects.toThrow('paused for backend handoff');
     expect(fs.existsSync(file)).toBe(true);
     expect(store.selectBackupsSync()).toHaveLength(1);
@@ -166,7 +167,7 @@ describe('backup retirement shares the application lifecycle', () => {
       expect(fs.existsSync(other)).toBe(false);
       expect(fs.existsSync(file)).toBe(true);
       expect(backups.activeOperationCount()).toBe(2);
-      expect(() => backups.prepareHandoff()).toThrow('Backup or restore is active');
+      await expect(backups.prepareHandoff()).rejects.toThrow(/Backup or restore is active|restore is active/);
     } finally { release.resolve(); await restoring; await deleting; }
     expect(fs.existsSync(file)).toBe(false);
     expect(backups.activeOperationCount()).toBe(0);

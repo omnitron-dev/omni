@@ -1,12 +1,14 @@
 /**
- * Streaming backup transfers with one deadline for the local command, streams
+ * Streaming backup transfers with one deadline for execution, streams
  * and durable file publication. Partial files never take the final backup name;
  * uncertain cleanup retains private staging and reports the unresolved state.
- * Container exec ownership must be verified by its caller: closing the local
- * Docker client alone is not evidence that its remote process has stopped.
+ * Xec owns process/resource completion; a transport closing alone never proves
+ * that an owned remote effect has stopped.
  */
 
-import { spawn, type ChildProcess } from 'node:child_process';
+import { PassThrough } from 'node:stream';
+import type { Command, ExecutionResult } from '@xec-sh/core';
+import type { ExecutionService } from '../execution/execution.service.js';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import type { FileHandle } from 'node:fs/promises';
@@ -99,6 +101,9 @@ export interface PipelineOptions {
   timeoutMs?: number;
   /** Environment for the spawned command (e.g. PGPASSWORD). */
   env?: NodeJS.ProcessEnv;
+  signal?: AbortSignal;
+  /** Execution target and ownership hook are supplied by the operation journal. */
+  execution?: Pick<Command, 'adapter' | 'adapterOptions' | 'operationId' | 'onResource'>;
 }
 
 const DEFAULT_TIMEOUT_MS = 600_000;
@@ -111,13 +116,11 @@ export function resolveBackupTimeout(timeoutMs = DEFAULT_TIMEOUT_MS): number {
   return timeoutMs;
 }
 
-type ProcessResult = { code: number | null; signal: NodeJS.Signals | null };
-
 interface FileTransfer {
   direction: 'dump' | 'restore';
   location: string;
   prepare?(): Promise<void>;
-  pipe(child: ChildProcess, signal: AbortSignal): Promise<void>;
+  pipe(streams: { stdout: PassThrough; stdin: PassThrough }, signal: AbortSignal): Promise<void>;
   publish?(checkDeadline: () => void): Promise<void>;
   cleanup?(settled: boolean): Promise<void>;
 }
@@ -132,17 +135,19 @@ async function withinCleanup<T>(task: Promise<T>, deadline: number, location: st
   } finally { clearTimeout(timer); }
 }
 
-/** One lifecycle for a local child and its streams; remote exec ownership is separate. */
-async function runFileTransfer(command: string, args: string[], options: PipelineOptions, transfer: FileTransfer): Promise<void> {
+/** Xec owns command completion; this layer owns file streams and durable publication. */
+async function runFileTransfer(execution: Pick<ExecutionService, 'execute'>, command: string, args: string[], options: PipelineOptions, transfer: FileTransfer): Promise<void> {
   const timeoutMs = resolveBackupTimeout(options.timeoutMs);
 
   const deadline = performance.now() + timeoutMs;
   const controller = new AbortController();
-  let stderr = '';
   const expire = () => {
     const limit = timeoutMs >= 1000 ? `${timeoutMs / 1000} s` : `${timeoutMs} ms`;
-    controller.abort(new Error(`${command} pipeline exceeded its ${limit} deadline${stderr ? `: ${stderr.trim()}` : ''}`));
+    controller.abort(new Error(`${command} pipeline exceeded its ${limit} deadline`));
   };
+  const cancel = () => controller.abort(options.signal!.reason);
+  options.signal?.addEventListener('abort', cancel, { once: true });
+  if (options.signal?.aborted) cancel();
   const timer = setTimeout(expire, timeoutMs);
   const checkDeadline = () => {
     if (performance.now() >= deadline && !controller.signal.aborted) expire();
@@ -154,8 +159,9 @@ async function runFileTransfer(command: string, args: string[], options: Pipelin
   // A deadline can expire during setup, before the execution race is awaited.
   void aborted.catch(() => undefined);
 
-  let child: ChildProcess | undefined;
-  let stopChild: ((graceMs: number) => Promise<boolean>) | undefined;
+  const streams = { stdin: new PassThrough(), stdout: new PassThrough() };
+  let processResult: Promise<ExecutionResult> | undefined;
+  let executionConfirmed = true;
   const pending = new Set<Promise<unknown>>();
   const track = <T>(task: Promise<T>): Promise<T> => {
     pending.add(task);
@@ -167,44 +173,22 @@ async function runFileTransfer(command: string, args: string[], options: Pipelin
   let failure: unknown;
   const cleanupErrors: unknown[] = [];
   try {
-    // Keep the CLI formatting/read path free of the PM graph. Load the existing
-    // verified shutdown primitive before spawning, never only after a failure.
-    const [{ killChildAndVerify }, { createNullLogger }] = await Promise.race([Promise.all([
-      import('@omnitron-dev/titan-pm'), import('@omnitron-dev/titan/module/logger'),
-    ]), aborted]);
     checkDeadline();
     const preparation = transfer.prepare?.();
     if (preparation) await wait(preparation);
     checkDeadline();
-    const processGroup = process.platform !== 'win32';
-    child = spawn(command, args, {
-      env: options.env ?? process.env,
-      detached: processGroup,
-      stdio: transfer.direction === 'dump' ? ['ignore', 'pipe', 'pipe'] : ['pipe', 'ignore', 'pipe'],
+    const pumping = track(transfer.pipe(streams, controller.signal));
+    processResult = execution.execute({ ...options.execution, command, args, shell: false, nothrow: true,
+      env: Object.fromEntries(Object.entries(options.env ?? {}).filter((entry): entry is [string, string] => entry[1] !== undefined)),
+      signal: controller.signal, timeout: Math.max(1, Math.ceil(deadline - performance.now())),
+      stdout: transfer.direction === 'dump' ? streams.stdout : 'ignore',
+      ...(transfer.direction === 'restore' && { stdin: streams.stdin }),
+      stderr: 'pipe', maxBuffer: 8192 });
+    const successfulExit = processResult.then(result => {
+      if (result.exitCode !== 0 || result.signal || result.aborted)
+        throw new Error(`${command} exited with ${result.signal ? `signal ${result.signal}` : `code ${result.exitCode}`}${result.stderr ? `: ${result.stderr.trim()}` : ''}`);
     });
-    const ownedChild = child;
-    stopChild = graceMs => killChildAndVerify(ownedChild, createNullLogger(), { command }, 0,
-      { force: true, processGroup, killGraceMs: graceMs });
-    child.stderr!.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString().slice(0, Math.max(0, 8192 - stderr.length));
-    });
-    const started = new Promise<void>((resolve, reject) => {
-      ownedChild.once('spawn', resolve);
-      ownedChild.once('error', reject);
-    });
-    const exited = new Promise<ProcessResult>((resolve, reject) => {
-      ownedChild.once('exit', (code, signal) => resolve({ code, signal }));
-      ownedChild.once('error', reject);
-    });
-    const closed = track(new Promise<void>(resolve => ownedChild.once('close', () => resolve())));
-    void exited.catch(() => undefined);
-    await wait(started);
-    checkDeadline();
-    const pumping = track(transfer.pipe(child, controller.signal));
-    const successfulExit = exited.then(({ code, signal }) => {
-      if (code !== 0) throw new Error(`${command} exited with ${signal ? `signal ${signal}` : `code ${code}`}${stderr ? `: ${stderr.trim()}` : ''}`);
-    });
-    await wait(Promise.all([pumping, successfulExit, closed]));
+    await wait(Promise.all([pumping, successfulExit]));
     checkDeadline();
     const publication = transfer.publish?.(checkDeadline);
     if (publication) await wait(publication);
@@ -212,25 +196,30 @@ async function runFileTransfer(command: string, args: string[], options: Pipelin
   } catch (error) {
     failure = controller.signal.aborted ? controller.signal.reason : error;
     controller.abort(failure);
-    cleanupDeadline = performance.now() + CLEANUP_TIMEOUT_MS;
-    if (child) {
-      // Abort the transfer as well as its process. A dead producer does not
-      // settle a blocked gzip/file stream, and a broken output does not kill
-      // a producer that ignores a closed pipe.
-      child.stdin?.destroy();
-      child.stdout?.destroy();
-      child.stderr?.destroy();
-      try {
-        const stopped = await withinCleanup(stopChild!(Math.max(0, cleanupDeadline - performance.now())), cleanupDeadline, transfer.location);
-        if (!stopped) throw new Error(`Local process cleanup was not confirmed for ${command} (pid ${child.pid})`, { cause: error });
-      } catch (cleanupError) { cleanupErrors.push(cleanupError); }
+    streams.stdin.destroy();
+    streams.stdout.destroy();
+    // Xec's bounded adapter cleanup is authoritative. Closing our local stream
+    // never certifies that the owned remote operation has stopped.
+    if (processResult) {
+      try { await processResult; }
+      catch (executionError) {
+        const { ExecutionOutcomeUnknownError } = await import('@xec-sh/core');
+        if (executionError instanceof ExecutionOutcomeUnknownError) {
+          executionConfirmed = false;
+          failure = executionError;
+        }
+      }
     }
+    cleanupDeadline = performance.now() + CLEANUP_TIMEOUT_MS;
     try { await withinCleanup(Promise.allSettled([...pending]), cleanupDeadline, transfer.location); }
     catch (cleanupError) { cleanupErrors.push(cleanupError); }
   } finally {
     clearTimeout(timer);
+    options.signal?.removeEventListener('abort', cancel);
+    streams.stdin.destroy();
+    streams.stdout.destroy();
     try {
-      const cleanup = transfer.cleanup?.(pending.size === 0);
+      const cleanup = transfer.cleanup?.(pending.size === 0 && executionConfirmed);
       if (cleanup) await withinCleanup(cleanup, cleanupDeadline ?? performance.now() + CLEANUP_TIMEOUT_MS, transfer.location);
     } catch (cleanupError) { cleanupErrors.push(cleanupError); }
   }
@@ -244,6 +233,7 @@ async function runFileTransfer(command: string, args: string[], options: Pipelin
 
 /** Stream a command into a private file, then durably publish it without replacing any destination. */
 export async function dumpToFile(
+  execution: Pick<ExecutionService, 'execute'>,
   command: string,
   args: string[],
   outputPath: string,
@@ -262,7 +252,7 @@ export async function dumpToFile(
     file = undefined;
   };
   try {
-    await runFileTransfer(command, args, options, {
+    await runFileTransfer(execution, command, args, options, {
       direction: 'dump',
       location: staging,
       async prepare() {
@@ -325,13 +315,14 @@ export async function dumpToFile(
 
 /** Stream a file into a command; report explicitly if local cleanup cannot be confirmed. */
 export async function restoreFromFile(
+  execution: Pick<ExecutionService, 'execute'>,
   command: string,
   args: string[],
   inputPath: string,
   compressed: boolean,
   options: PipelineOptions = {},
 ): Promise<void> {
-  await runFileTransfer(command, args, options, {
+  await runFileTransfer(execution, command, args, options, {
     direction: 'restore',
     location: inputPath,
     pipe(child, signal) {

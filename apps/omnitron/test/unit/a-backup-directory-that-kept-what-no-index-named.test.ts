@@ -1,3 +1,4 @@
+import { testExecution } from '../fixtures/execution.js';
 /**
  * The backup directory kept 75.6 MiB that no listing could see.
  *
@@ -137,7 +138,7 @@ describe('what an interrupted pass leaves is removed when the daemon starts', ()
     fs.writeFileSync(path.join(backups, '.storage-stage-0a1b2c3d', '_bk_storage', 'object'), Buffer.alloc(500));
 
     const { module, lines } = fakeLogger();
-    new BackupService(module, store);
+    new BackupService(module, store, testExecution);
 
     for (const gone of [
       'main_2026-09-21T13-13-05-468Z_b10c629e.sql.gz.partial',
@@ -174,7 +175,7 @@ describe('what an interrupted pass leaves is removed when the daemon starts', ()
     put('main_2026-09-14T07-51-04-542Z_a50d8328.sql.gz', 98_304);
 
     const { module, lines } = fakeLogger();
-    new BackupService(module, store);
+    new BackupService(module, store, testExecution);
 
     for (const kept of [
       'geo_2026-09-23T08-19-04-290Z_a63dbcf4.sql.gz',
@@ -200,14 +201,14 @@ describe('what an interrupted pass leaves is removed when the daemon starts', ()
 
   it('a start with nothing to remove says nothing about removing', () => {
     const { module, lines } = fakeLogger();
-    new BackupService(module, store);
+    new BackupService(module, store, testExecution);
     expect(lines.filter((l) => l.level === 'warn')).toEqual([]);
   });
 });
 
 describe('retention takes the sidecars with the database', () => {
   it('deleteBackup removes the -shm and -wal beside the file it deletes', async () => {
-    const service = new BackupService(fakeLogger().module, store);
+    const service = new BackupService(fakeLogger().module, store, testExecution);
     const db = put('daemon-state_2026-07-23T11-35-18-957Z_0bd59213.db', 192_512);
     put('daemon-state_2026-07-23T11-35-18-957Z_0bd59213.db-shm', 32_768);
     put('daemon-state_2026-07-23T11-35-18-957Z_0bd59213.db-wal', 0);
@@ -244,7 +245,7 @@ describe.runIf(hasSqlite3)('a daemon-state backup is one file', () => {
     // The live store is WAL-mode, as the daemon's is; its path is the one
     // `createSecretsBackup` copies.
     store.kvSetSync('probe', { rows: 1 });
-    const service = new BackupService(fakeLogger().module, store);
+    const service = new BackupService(fakeLogger().module, store, testExecution);
 
     const info = await service.createSecretsBackup();
 

@@ -1,3 +1,4 @@
+import { testExecution } from '../fixtures/execution.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -19,11 +20,12 @@ const logger = createNullLogger();
 let store: InstanceType<typeof DaemonStateStore>;
 let backups: InstanceType<typeof BackupService>;
 
-function destination(): string { return state.dump.mock.calls[0]![2] as string; }
-const runProducer = (output: string, compress: boolean) => dumpToFile(process.execPath,
+function destination(): string { return state.dump.mock.calls[0]![3] as string; }
+const runProducer = (output: string, compress: boolean) => dumpToFile(testExecution, process.execPath,
   ['-e', 'process.stdout.end("verified harmless backup bytes")'], output, compress);
 
 beforeEach(() => {
+  vi.spyOn(testExecution, 'inspectDockerTarget').mockResolvedValue({ id: 'a'.repeat(64), image: `sha256:${'b'.repeat(64)}` });
   state.home = fs.mkdtempSync(path.join(os.tmpdir(), 'backup-publication-'));
   store = new DaemonStateStore(logger, path.join(state.home, 'state.db'));
   const infra = {
@@ -35,8 +37,8 @@ beforeEach(() => {
     listProjectRegistrations: () => [{ name: 'example' }], getRunningStacks: () => ['dev'],
     getInfraManager: () => ({ getInstance: () => infra, listInstances: () => [{ project: 'example', stack: 'dev', infra }] }),
   };
-  backups = new BackupService({ logger } as never, store, projects as never);
-  state.dump.mockReset().mockImplementation(async (_command, _args, output, compress) => {
+  backups = new BackupService({ logger } as never, store, testExecution, projects as never);
+  state.dump.mockReset().mockImplementation(async (_execution, _command, _args, output, compress) => {
     await runProducer(output as string, compress as boolean);
   });
 });
@@ -50,7 +52,7 @@ afterEach(async () => {
 
 describe('database backup publication ownership', () => {
   it('does not delete an existing destination refused by the real pipeline', async () => {
-    state.dump.mockImplementation(async (_command, _args, output, compress) => {
+    state.dump.mockImplementation(async (_execution, _command, _args, output, compress) => {
       fs.writeFileSync(output as string, 'another writer owns this destination', { flag: 'wx' });
       await runProducer(output as string, compress as boolean);
     });
@@ -60,7 +62,7 @@ describe('database backup publication ownership', () => {
   });
 
   it('preserves a completed destination when publication acknowledgement is lost', async () => {
-    state.dump.mockImplementation(async (_command, _args, output, compress) => {
+    state.dump.mockImplementation(async (_execution, _command, _args, output, compress) => {
       await runProducer(output as string, compress as boolean);
       throw new Error('publication acknowledgement unavailable');
     });

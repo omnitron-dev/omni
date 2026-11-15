@@ -6,6 +6,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { backupStorageObjects, restoreStorageObjects } from '../../src/services/backup-storage.js';
+import { testExecution } from '../fixtures/execution.js';
 
 // Explicit opt-in to a cached image. No host ports, network, application volumes or registry downloads.
 const image = process.env['OMNITRON_TEST_MINIO_IMAGE'];
@@ -55,20 +56,20 @@ describe.skipIf(!image)('storage backup through a real MinIO with tmpfs', () => 
     if (directory) await fs.rm(directory, { recursive: true, force: true });
   });
   it('restores exact nested and empty object bytes', async () => {
-    await backupStorageObjects(target(), file('objects'));
+    await backupStorageObjects(target(), file('objects'), testExecution);
     await shell('export MC_CONFIG_DIR=/tmp/proof-client; mc rm proof/proof-bucket/sub/object.txt proof/proof-bucket/empty >/dev/null');
-    await restoreStorageObjects(target(), file('objects'));
+    await restoreStorageObjects(target(), file('objects'), testExecution);
     expect(await shell('export MC_CONFIG_DIR=/tmp/proof-client; mc cat proof/proof-bucket/sub/object.txt')).toBe('native backup\n');
     expect(await shell('export MC_CONFIG_DIR=/tmp/proof-client; mc cat proof/proof-bucket/empty')).toBe('');
   }, 60_000);
   it('isolates concurrent copies and credentials, including cleanup', async () => {
-    await Promise.all([backupStorageObjects(target(), file('a')), backupStorageObjects(target(), file('b'))]);
+    await Promise.all([backupStorageObjects(target(), file('a'), testExecution), backupStorageObjects(target(), file('b'), testExecution)]);
     expect((await shell('for item in /tmp/omnitron-backup-*; do if test -e "$item"; then printf "%s\\n" "$item"; fi; done')).trim()).toBe('');
     expect((await fs.readdir(directory)).filter(name => name.startsWith('.storage-') || name.endsWith('.partial'))).toEqual([]);
   }, 60_000);
   it('refuses absent buckets and invalid credentials without publishing an archive', async () => {
-    await expect(backupStorageObjects({ ...target(), bucket: 'missing-bucket' }, file('missing'))).rejects.toThrow();
-    await expect(backupStorageObjects({ ...target(), secretKey: 'incorrect-proof-secret' }, file('auth'))).rejects.toThrow();
+    await expect(backupStorageObjects({ ...target(), bucket: 'missing-bucket' }, file('missing'), testExecution)).rejects.toThrow();
+    await expect(backupStorageObjects({ ...target(), secretKey: 'incorrect-proof-secret' }, file('auth'), testExecution)).rejects.toThrow();
     for (const name of ['missing', 'auth']) await expect(fs.stat(file(name))).rejects.toThrow();
   }, 60_000);
 });

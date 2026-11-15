@@ -12,6 +12,7 @@ import {
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { ExecutionOutcomeUnknownError } from '@xec-sh/core';
 import { ExecutionService } from '../../src/execution/execution.service.js';
 const dirs: string[] = [];
 const target = { host: 'test.invalid', username: 'root' };
@@ -74,25 +75,39 @@ describe('a verified upload is atomically promoted', () => {
     expect(f.dispose).toHaveBeenCalledTimes(2);
     expect(readFileSync(f.remote, 'utf8')).toBe('checked replacement');
   });
-  it.each(['short', 'corrupt', 'disconnect'])('refuses %s transfers without replacing prior content', async (fault) => {
+  it.each(['short', 'corrupt'])('refuses %s completed transfers without replacing prior content', async (fault) => {
     const f = fixture(async (source, temporary) => {
-      if (fault === 'disconnect') throw Error('connection lost');
       writeFileSync(temporary, fault === 'short' ? 'short' : Buffer.alloc(statSync(source).size, 7));
     });
     await expect(f.svc.uploadFile(target, f.source, f.remote)).rejects.toThrow(
-      fault === 'corrupt' ? 'SHA256' : fault === 'short' ? 'landed' : 'connection lost'
+      fault === 'corrupt' ? 'SHA256' : 'landed'
     );
     expect(readFileSync(f.remote, 'utf8')).toBe('prior content');
     expect(f.dispose).toHaveBeenCalledTimes(2);
     expect(readdirSync(f.dir).filter((p) => p.endsWith('.part'))).toEqual([]);
   });
+  it('preserves an interrupted transfer without guessing remote completion or retrying', async () => {
+    const f = fixture(async (_source, temporary) => {
+      writeFileSync(temporary, 'partial');
+      throw Error('connection lost');
+    });
+    await expect(f.svc.uploadFile(target, f.source, f.remote)).rejects.toMatchObject({
+      kind: 'outcome-unknown', cause: { message: 'connection lost' },
+    });
+    expect(readFileSync(f.remote, 'utf8')).toBe('prior content');
+    expect(f.svc.createTransferEngine).toHaveBeenCalledTimes(1);
+    expect(f.dispose).toHaveBeenCalledTimes(1);
+    expect(readdirSync(f.dir).filter(p => p.endsWith('.part'))).toHaveLength(1);
+  });
   it('cannot promote bytes after its lease is lost during the real temporary-file transfer', async () => {
     const f = fixture(async (source, temporary) => copyFileSync(source, temporary));
     const runControl = vi.fn(async () => { throw Error('Node lease lost'); });
-    await expect(f.svc.uploadFile(target, f.source, f.remote, { runControl })).rejects.toThrow('Node lease lost');
-    expect(runControl).toHaveBeenCalledTimes(2);
+    await expect(f.svc.uploadFile(target, f.source, f.remote, { runControl })).rejects.toMatchObject({
+      kind: 'outcome-unknown', cause: { message: 'Node lease lost' },
+    });
+    expect(runControl).toHaveBeenCalledTimes(1);
     expect(readFileSync(f.remote, 'utf8')).toBe('prior content');
-    expect(readdirSync(f.dir).filter((p) => p.endsWith('.part'))).toEqual([]);
+    expect(readdirSync(f.dir).filter((p) => p.endsWith('.part'))).toHaveLength(1);
     expect(f.svc.ssh.mock.calls.some(([, command]: [unknown, string]) => command.includes('mv -f --'))).toBe(false);
   });
   it('verifies complete bytes inside the same guard that promotes the destination', async () => {
@@ -105,7 +120,7 @@ describe('a verified upload is atomically promoted', () => {
     await expect(f.svc.uploadFile(target, f.source, f.remote, { runControl })).rejects.toThrow('promotion rejected');
     expect(readFileSync(f.remote, 'utf8')).toBe('prior content');
   });
-  it('safely retries a lost acknowledgement after the first atomic promotion', async () => {
+  it('never repeats promotion after its acknowledgement is lost', async () => {
     const f = fixture(async (source, temporary) => copyFileSync(source, temporary));
     const original = f.svc.ssh;
     let lost = false;
@@ -117,9 +132,20 @@ describe('a verified upload is atomically promoted', () => {
       }
       return result;
     };
-    await f.svc.uploadFile(target, f.source, f.remote);
+    await expect(f.svc.uploadFile(target, f.source, f.remote)).rejects.toBeInstanceOf(ExecutionOutcomeUnknownError);
     expect(lost).toBe(true);
     expect(readFileSync(f.remote, 'utf8')).toBe('checked replacement');
-    expect(f.svc.createTransferEngine).toHaveBeenCalledTimes(2);
+    expect(f.svc.createTransferEngine).toHaveBeenCalledTimes(1);
+    expect(original.mock.calls.filter(([, command]: [unknown, string]) => command.includes('mv -f --'))).toHaveLength(1);
+  });
+  it('reports unconfirmed isolated connection disposal and retains transfer evidence', async () => {
+    const f = fixture(async (_source, temporary) => { writeFileSync(temporary, 'partial'); });
+    f.dispose.mockRejectedValue(new Error('connection did not close'));
+    await expect(f.svc.uploadFile(target, f.source, f.remote)).rejects.toMatchObject({
+      kind: 'outcome-unknown', cause: { message: 'connection did not close' },
+    });
+    expect(f.svc.createTransferEngine).toHaveBeenCalledTimes(1);
+    expect(readFileSync(f.remote, 'utf8')).toBe('prior content');
+    expect(readdirSync(f.dir).filter(p => p.endsWith('.part'))).toHaveLength(1);
   });
 });

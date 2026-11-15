@@ -6,6 +6,7 @@
 export class RecoveryState {
   private revision = 0;
   private readonly active = new Map<string, number>();
+  private readonly held = new Map<string, string>();
   private invalidate: ((reason: string) => void) | null = null;
 
   attach(invalidate: (reason: string) => void): () => void {
@@ -15,13 +16,41 @@ export class RecoveryState {
     return () => { if (this.invalidate === invalidate) this.invalidate = null; };
   }
 
-  token(): number | null { return this.active.size === 0 ? this.revision : null; }
-  unchanged(token: number): boolean { return this.active.size === 0 && token === this.revision; }
+  token(): number | null { return this.active.size === 0 && this.held.size === 0 ? this.revision : null; }
+  unchanged(token: number): boolean { return this.token() === token; }
+
+  /** Read-only review may account for exact known operations. This token is
+   * never a recovery certificate: token()/unchanged() remain strictly idle. */
+  reviewToken(active: ReadonlyMap<string, number>, holds: ReadonlySet<string>): number | null {
+    if (this.active.size !== active.size || this.held.size !== holds.size ||
+        [...this.active].some(([reason, count]) => active.get(reason) !== count) ||
+        [...this.held.keys()].some(id => !holds.has(id))) return null;
+    return this.revision;
+  }
+
+  /** A durable operation outlives its caller. Only its journal may release this
+   * hold, after recording a known outcome; a rejected promise is insufficient. */
+  hold(id: string, reason: string): void {
+    const previous = this.held.get(id);
+    if (previous !== undefined) {
+      if (previous !== reason) throw new Error(`Recovery hold ${id} has a different reason`);
+      return;
+    }
+    this.invalidate?.(reason);
+    this.revision++;
+    this.held.set(id, reason);
+  }
+
+  release(id: string): void {
+    if (this.held.delete(id)) this.revision++;
+  }
 
   /** A current observation, not a history of the last invalidation. Nested
    * operations with the same name remain active until every caller settles. */
   pendingOperations(): Array<{ reason: string; count: number }> {
-    return [...this.active].map(([reason, count]) => ({ reason, count }));
+    const pending = new Map(this.active);
+    for (const reason of this.held.values()) pending.set(reason, (pending.get(reason) ?? 0) + 1);
+    return [...pending].map(([reason, count]) => ({ reason, count }));
   }
 
   run<T>(reason: string, work: () => T): T {

@@ -15,7 +15,7 @@ export class BackendRecoveryMonitor {
   private readonly startedAt = new Date().toISOString();
   private timer: NodeJS.Timeout | null = null;
   private busyRetry: NodeJS.Timeout | null = null;
-  private capturing = false;
+  private capturePromise: Promise<void> | null = null;
   private closed = false;
   private lastRecord: string | null = null;
   private state: { status: 'pending' | 'ready' | 'unavailable'; at: string | null; reason: string | null } = {
@@ -51,11 +51,17 @@ export class BackendRecoveryMonitor {
     this.timer.unref();
   }
 
-  async capture(retryBusy = true): Promise<void> {
-    if (this.closed || this.capturing) return;
+  capture(retryBusy = true): Promise<void> {
+    if (this.closed) return Promise.resolve();
+    if (this.capturePromise) return this.capturePromise;
+    const capture = this.captureOnce(retryBusy).finally(() => { if (this.capturePromise === capture) this.capturePromise = null; });
+    this.capturePromise = capture;
+    return capture;
+  }
+
+  private async captureOnce(retryBusy: boolean): Promise<void> {
     const token = recoveryState.token();
     if (token === null) return;
-    this.capturing = true;
     try {
       const owner = await this.execution.recoverySnapshot();
       if (owner.status.phase !== 'active' || owner.status.inFlight !== 0) throw new RecoveryBusyError('Execution mutations have not settled');
@@ -98,7 +104,7 @@ export class BackendRecoveryMonitor {
           title: 'A current automatic backend recovery checkpoint is unavailable', evidence: [this.state.reason!],
           remedy: 'Inspect ownership operations and the private recovery journal. Applications remain with their execution owner.' });
       }
-    } finally { this.capturing = false; }
+    }
   }
 
   async close(invalidate: boolean): Promise<void> {

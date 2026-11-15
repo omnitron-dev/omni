@@ -1,6 +1,9 @@
+import { testExecution } from '../fixtures/execution.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
+import type { ExecutionResource } from '@xec-sh/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({ home: '' }));
@@ -20,6 +23,7 @@ beforeEach(() => {
 });
 afterEach(async () => {
   backups?.dispose();
+  vi.restoreAllMocks();
   vi.unstubAllEnvs();
   await store.dispose();
   fs.rmSync(state.home, { recursive: true, force: true });
@@ -30,7 +34,7 @@ function service(docker = false) {
     getResolvedContainerName: () => docker ? 'private-test-fixture' : null, getPostgresDatabases: () => ['ledger'] };
   const projects = { listProjectRegistrations: () => [{ name: 'fixture' }], getRunningStacks: () => ['dev'],
     getInfraManager: () => ({ listInstances: () => [], getInstance: () => infra }) };
-  backups = new BackupService({ logger } as never, store, projects as never);
+  backups = new BackupService({ logger } as never, store, testExecution, projects as never);
   return backups;
 }
 
@@ -60,9 +64,23 @@ const restore = process.argv.includes('psql') || process.argv[1].endsWith('/psql
 const done = () => setTimeout(() => { if (!restore) process.stdout.write('SELECT 1;\\n'); }, Number(process.env.OMNI_BACKUP_FIXTURE_DELAY));
 if (restore) { process.stdin.resume(); process.stdin.on('end', done); } else done();
 `;
-    for (const name of ['docker', 'pg_dump', 'psql']) fs.writeFileSync(path.join(commands, name), program, { mode: 0o700 });
+    for (const name of ['pg_dump', 'psql']) fs.writeFileSync(path.join(commands, name), program, { mode: 0o700 });
     vi.stubEnv('PATH', `${commands}${path.delimiter}${process.env['PATH']}`);
     vi.stubEnv('OMNI_BACKUP_FIXTURE_DELAY', '0');
+    if (docker) {
+      vi.spyOn(testExecution, 'inspectDockerTarget').mockResolvedValue({ id: 'a'.repeat(64), image: `sha256:${'b'.repeat(64)}` });
+      const execute = testExecution.execute.bind(testExecution);
+      vi.spyOn(testExecution, 'execute').mockImplementation(async command => {
+        if (command.adapterOptions?.type !== 'docker') return execute(command);
+        const entrypoint = command.adapterOptions.entrypoint;
+        if (typeof entrypoint !== 'string') throw new Error('The deadline fixture requires a single executable');
+        const intent: ExecutionResource = { type: 'docker-container', operationId: command.operationId!, daemonId: 'deadline-fixture' };
+        await command.onResource!(intent, command.signal!);
+        await command.onResource!({ ...intent, id: createHash('sha256').update(intent.operationId).digest('hex') }, command.signal!);
+        return execute({ ...command, adapter: 'local', adapterOptions: { type: 'local' },
+          command: entrypoint, args: [command.command, ...(command.args ?? [])] });
+      });
+    }
     const backup = service(docker);
     backup.configure({ databaseTimeoutMs: 5_000 });
     const record = await backup.createBackup('fixture/dev/ledger');

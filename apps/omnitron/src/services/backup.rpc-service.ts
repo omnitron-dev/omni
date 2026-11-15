@@ -10,14 +10,18 @@ import type { BackupService, BackupInfo, BackupStatus } from './backup.service.j
 
 import type { IOmnitronBackupsService } from '../shared/dto/services.js';
 import type { BackupArtifactRequest, BackupRecord } from '../shared/dto/backups.js';
+import type { OperationReceipt } from '../shared/dto/execution-operations.js';
 
 @Service({ name: 'OmnitronBackups' })
 export class BackupRpcService implements IOmnitronBackupsService {
   constructor(private readonly backups: BackupService) {}
 
   @Public({ auth: { roles: ADMIN_ROLES } })
-  async createBackup(data: { database: string; compress?: boolean }): Promise<BackupInfo> {
-    return this.backups.createBackup(data.database, data.compress != null ? { compress: data.compress } : undefined);
+  async createBackup(data: { database: string; compress?: boolean; operationId?: string }): Promise<BackupInfo> {
+    return this.backups.createBackup(data.database, {
+      ...(data.compress !== undefined && { compress: data.compress }),
+      ...(data.operationId !== undefined && { operationId: data.operationId }),
+    });
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
@@ -43,8 +47,8 @@ export class BackupRpcService implements IOmnitronBackupsService {
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
-  async restoreBackup(data: { backupId: string }): Promise<{ success: boolean }> {
-    await this.backups.restoreBackup(data.backupId);
+  async restoreBackup(data: { backupId: string; operationId?: string }): Promise<{ success: boolean }> {
+    await this.backups.restoreBackup(data.backupId, data.operationId);
     return { success: true };
   }
 
@@ -84,5 +88,21 @@ export class BackupRpcService implements IOmnitronBackupsService {
   @Public({ auth: { roles: VIEWER_ROLES } })
   async getBackupStatus(): Promise<BackupStatus> {
     return this.backups.getStatus();
+  }
+
+  @Public({ auth: { roles: VIEWER_ROLES } })
+  async listOperations(): Promise<OperationReceipt[]> { return this.backups.listOperations(); }
+
+  @Public({ auth: { roles: VIEWER_ROLES } })
+  async getOperation(data: { id: string }): Promise<OperationReceipt | null> { return this.backups.getOperation(data.id); }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async cancelOperation(data: { id: string; revision: number }): Promise<OperationReceipt> {
+    return this.backups.cancelOperation(data.id, data.revision);
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async reconcileOperation(data: { id: string; revision: number }): Promise<OperationReceipt> {
+    return this.backups.reconcileOperation(data.id, data.revision);
   }
 }

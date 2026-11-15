@@ -1,3 +1,4 @@
+import { testExecution } from '../fixtures/execution.js';
 import { TEST_POSTGRES_URL } from '@omnitron-dev/testing/env';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { mkdtemp, readFile, rm, access } from 'node:fs/promises';
@@ -16,7 +17,7 @@ describe.skipIf(!postgres.ok)('durable Xec automation lifecycle', () => {
   let own: OwnDatabase, service: PipelineService, dir: string;
   beforeAll(async () => {
     own = await databaseOfItsOwn(postgres.url, `pipeline_lifecycle_${process.pid}`);
-    service = new PipelineService(own.db, logger);
+    service = new PipelineService(own.db, logger, testExecution);
     await service.initialize();
     dir = await mkdtemp(join(tmpdir(), 'omnitron-pipeline-'));
   });
@@ -63,7 +64,7 @@ describe.skipIf(!postgres.ok)('durable Xec automation lifecycle', () => {
   });
   it('allows only one concurrent editor to replace a reviewed definition', async () => {
     const def = await service.createPipeline({ name: 'concurrent', steps: [{ name: 'one', run: 'echo first' }] });
-    const other = new PipelineService(own.db, logger);
+    const other = new PipelineService(own.db, logger, testExecution);
     const results = await Promise.allSettled([service, other].map((editor, index) =>
       editor.updatePipeline(def.id, { name: 'concurrent', steps: [{ name: 'one', run: `echo edit-${index}` }] }, def.revision)));
     const success = results.filter((result) => result.status === 'fulfilled');
@@ -143,7 +144,7 @@ describe.skipIf(!postgres.ok)('durable Xec automation lifecycle', () => {
         completedAt: null,
       })
       .execute();
-    const restarted = new PipelineService(own.db, logger);
+    const restarted = new PipelineService(own.db, logger, testExecution);
     await restarted.initialize();
     expect(await restarted.getRunStatus('ab224566-899c-49d4-b7ec-087563cf13f7')).toMatchObject({
       status: 'interrupted',

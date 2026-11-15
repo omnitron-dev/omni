@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import type { ExecutionService } from '../execution/execution.service.js';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -20,15 +20,17 @@ export function validateStorageBucket(bucket: unknown): asserts bucket is string
 }
 
 /** Bounded argv execution: credentials are environment values, never shell text or argv. */
-async function command(args: string[], env?: NodeJS.ProcessEnv): Promise<string> {
-  return new Promise<string>((resolve, reject) => {
-    execFile('docker', args, { env: { ...process.env, ...env }, timeout: 600_000, maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => {
-      if (!error) { resolve(stdout); return; }
-      let detail = String(stderr || error.message).slice(0, 4096);
-      for (const value of [env?.['MC_AK'], env?.['MC_SK']]) if (value) detail = detail.split(value).join('[redacted]');
-      reject(new Error(`Storage backup command failed: ${detail}`));
-    });
-  });
+async function command(execution: Pick<ExecutionService, 'execute'>, args: string[], env?: NodeJS.ProcessEnv): Promise<string> {
+  const result = await execution.execute({ command: 'docker', args, adapter: 'local', shell: false,
+    env: Object.fromEntries(Object.entries({ ...process.env, ...env })
+      .filter((entry): entry is [string, string] => entry[1] !== undefined)),
+    timeout: 600_000, maxBuffer: 16 * 1024 * 1024, nothrow: true,
+    // Object keys are data. Diagnostic masking must not rewrite the inventory.
+    redactOutput: false });
+  if (result.exitCode === 0 && !result.signal && !result.aborted) return result.stdout;
+  let detail = (result.stderr || `docker exited with ${result.signal ? `signal ${result.signal}` : `code ${result.exitCode}`}`).slice(0, 4096);
+  for (const value of [env?.['MC_AK'], env?.['MC_SK']]) if (value) detail = detail.split(value).join('[redacted]');
+  throw new Error(`Storage backup command failed: ${detail}`);
 }
 
 const initialize = 'set -eu; umask 077; mkdir "$OMNI_BACKUP_STAGE"; ' +
@@ -59,8 +61,8 @@ function inventory(data: string): Array<{ key: string; size: number; etag: strin
   return records.sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
 }
 
-async function listInventory(target: StorageBackupTarget, remote: string) {
-  return inventory(await inContainer(target, remote, 'set -eu; export MC_CONFIG_DIR="$OMNI_BACKUP_STAGE/config"; ' +
+async function listInventory(execution: Pick<ExecutionService, 'execute'>, target: StorageBackupTarget, remote: string) {
+  return inventory(await inContainer(execution, target, remote, 'set -eu; export MC_CONFIG_DIR="$OMNI_BACKUP_STAGE/config"; ' +
     'mc ls --recursive --json "omniBackup/$MC_BUCKET"'));
 }
 
@@ -95,8 +97,8 @@ async function verifyMirroredKeys(directory: string, objects: Array<{ key: strin
   if (remaining.size) throw new Error('Storage mirror omitted objects from the source inventory');
 }
 
-async function inContainer(target: StorageBackupTarget, remote: string, script: string): Promise<string> {
-  return command(['exec', '-e', 'MC_AK', '-e', 'MC_SK', '-e', 'MC_BUCKET', '-e', 'OMNI_BACKUP_STAGE',
+async function inContainer(execution: Pick<ExecutionService, 'execute'>, target: StorageBackupTarget, remote: string, script: string): Promise<string> {
+  return command(execution, ['exec', '-e', 'MC_AK', '-e', 'MC_SK', '-e', 'MC_BUCKET', '-e', 'OMNI_BACKUP_STAGE',
     target.container, 'sh', '-c', script], {
     MC_AK: target.accessKey, MC_SK: target.secretKey, MC_BUCKET: target.bucket, OMNI_BACKUP_STAGE: remote,
   });
@@ -118,7 +120,7 @@ export async function validateStorageArchive(file: string): Promise<void> {
   if (!entries) throw new Error('Storage backup archive is empty');
 }
 
-async function withStorageStage<T>(target: StorageBackupTarget, directory: string, mode: 'stage' | 'restore',
+async function withStorageStage<T>(execution: Pick<ExecutionService, 'execute'>, target: StorageBackupTarget, directory: string, mode: 'stage' | 'restore',
   work: (local: string, remote: string) => Promise<T>): Promise<T> {
   validateStorageBucket(target.bucket);
   if (!/^[a-f0-9]{64}$/.test(target.container)) throw new Error('Storage backup requires an immutable container identity');
@@ -130,7 +132,7 @@ async function withStorageStage<T>(target: StorageBackupTarget, directory: strin
   const outcome = await work(local, remote).then(value => ({ ok: true as const, value }), error => ({ ok: false as const, error }));
   // Every operation owns its paths. Concurrent passes cannot delete one another's snapshot.
   const cleanup = await Promise.allSettled([
-    command(['exec', target.container, 'rm', '-rf', remote]), fs.rm(local, { recursive: true, force: true }),
+    command(execution, ['exec', target.container, 'rm', '-rf', remote]), fs.rm(local, { recursive: true, force: true }),
   ]);
   if (!outcome.ok) throw outcome.error;
   if (cleanup.some(result => result.status === 'rejected'))
@@ -139,22 +141,22 @@ async function withStorageStage<T>(target: StorageBackupTarget, directory: strin
 }
 
 /** Current object contents only; this is not a versioned-volume or cross-service transaction snapshot. */
-export async function backupStorageObjects(target: StorageBackupTarget, destination: string): Promise<void> {
+export async function backupStorageObjects(target: StorageBackupTarget, destination: string, execution: Pick<ExecutionService, 'execute'>): Promise<void> {
   const partial = destination + '.partial';
   try {
-    await withStorageStage(target, path.dirname(destination), 'stage', async (local, remote) => {
-      await inContainer(target, remote, initialize + 'mc stat "omniBackup/$MC_BUCKET" >/dev/null');
-      const before = await listInventory(target, remote);
+    await withStorageStage(execution, target, path.dirname(destination), 'stage', async (local, remote) => {
+      await inContainer(execution, target, remote, initialize + 'mc stat "omniBackup/$MC_BUCKET" >/dev/null');
+      const before = await listInventory(execution, target, remote);
       await fs.mkdir(path.join(local, '_bk_storage'));
       // Stream through the common backup pipeline. Docker cp cannot read tmpfs mounts.
       await transferObjects(before, async object => {
         const objectFile = path.join(local, '_bk_storage', object.key);
         await fs.mkdir(path.dirname(objectFile), { recursive: true });
         const { args, options } = objectCommand(target, remote, 'cat', object.key);
-        await dumpToFile('docker', args, objectFile, false, options);
+        await dumpToFile(execution, 'docker', args, objectFile, false, options);
       });
       await verifyMirroredKeys(path.join(local, '_bk_storage'), before);
-      if (JSON.stringify(before) !== JSON.stringify(await listInventory(target, remote)))
+      if (JSON.stringify(before) !== JSON.stringify(await listInventory(execution, target, remote)))
         throw new Error('Storage changed during the snapshot; quiesce writers and retry');
       await create({ file: partial, cwd: local, gzip: true, strict: true, portable: true }, ['_bk_storage']);
       await fs.chmod(partial, 0o600);
@@ -164,15 +166,15 @@ export async function backupStorageObjects(target: StorageBackupTarget, destinat
   } catch (error) { await fs.rm(partial, { force: true }); throw error; }
 }
 
-export async function restoreStorageObjects(target: StorageBackupTarget, file: string): Promise<void> {
-  await withStorageStage(target, path.dirname(file), 'restore', async (local, remote) => {
+export async function restoreStorageObjects(target: StorageBackupTarget, file: string, execution: Pick<ExecutionService, 'execute'>): Promise<void> {
+  await withStorageStage(execution, target, path.dirname(file), 'restore', async (local, remote) => {
     // Validate and extract the same private copy even if the caller replaces its input path.
     const snapshot = path.join(local, 'snapshot.tar.gz');
     await fs.copyFile(file, snapshot); await fs.chmod(snapshot, 0o600);
     await validateStorageArchive(snapshot);
     await extract({ file: snapshot, cwd: local, strict: true, preserveOwner: false });
     if (!(await fs.lstat(path.join(local, '_bk_storage'))).isDirectory()) throw new Error('Storage backup has no object directory');
-    await inContainer(target, remote, initialize + 'mc stat "omniBackup/$MC_BUCKET" >/dev/null');
+    await inContainer(execution, target, remote, initialize + 'mc stat "omniBackup/$MC_BUCKET" >/dev/null');
     const files: string[] = [];
     const visit = async (folder: string) => {
       for (const name of await fs.readdir(path.join(local, '_bk_storage', folder))) {
@@ -184,7 +186,7 @@ export async function restoreStorageObjects(target: StorageBackupTarget, file: s
     await visit('');
     await transferObjects(files, async key => {
       const { args, options } = objectCommand(target, remote, 'pipe', key);
-      await restoreFromFile('docker', args, path.join(local, '_bk_storage', key), false, options);
+      await restoreFromFile(execution, 'docker', args, path.join(local, '_bk_storage', key), false, options);
     });
   });
 }

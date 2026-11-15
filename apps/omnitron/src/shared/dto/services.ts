@@ -601,12 +601,12 @@ export interface IOmnitronSystemInfoService {
 
 /** Database and volume backups, plus their schedules. */
 export interface IOmnitronBackupsService {
-  createBackup(data: { database: string; compress?: boolean }): Promise<BackupInfo>;
+  createBackup(data: { database: string; compress?: boolean; operationId?: string }): Promise<BackupInfo>;
   createArtifactBackup(data: import('./backups.js').BackupArtifactRequest): Promise<import('./backups.js').BackupRecord>;
   createAllBackups(): Promise<Array<{ database: string; ok: boolean; id?: string; size?: number; error?: string }>>;
   createFullBackup(): Promise<Array<{ target: string; ok: boolean; id?: string; size?: number; error?: string }>>;
   listBackups(data?: { database?: string }): Promise<BackupInfo[]>;
-  restoreBackup(data: { backupId: string }): Promise<{ success: boolean }>;
+  restoreBackup(data: { backupId: string; operationId?: string }): Promise<{ success: boolean }>;
   deleteBackup(data: { backupId: string }): Promise<{ success: boolean }>;
   setSchedule(data: { database: string; cron: string }): Promise<{ success: boolean }>;
   getSchedule(data: { database: string }): Promise<string | null>;
@@ -614,6 +614,10 @@ export interface IOmnitronBackupsService {
   removeSchedule(data: { database: string }): Promise<{ success: boolean }>;
   /** Each schedule's last pass and next run, and which stacks this host backs up. */
   getBackupStatus(): Promise<import('./backups.js').BackupStatus>;
+  listOperations(): Promise<import('./execution-operations.js').OperationReceipt[]>;
+  getOperation(data: { id: string }): Promise<import('./execution-operations.js').OperationReceipt | null>;
+  cancelOperation(data: { id: string; revision: number }): Promise<import('./execution-operations.js').OperationReceipt>;
+  reconcileOperation(data: { id: string; revision: number }): Promise<import('./execution-operations.js').OperationReceipt>;
 }
 
 /** Kubernetes workloads on the cluster this daemon is pointed at. */

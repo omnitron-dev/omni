@@ -27,6 +27,7 @@ import type { InfrastructureGate } from '../infrastructure/infrastructure-gate.j
 import type { InfrastructureService } from '../infrastructure/infrastructure.service.js';
 import type { ProjectService } from '../services/project.service.js';
 import type { SyncService } from '../services/sync.service.js';
+import type { ExecutionService } from '../execution/execution.service.js';
 
 type Token<T> = ReturnType<typeof createToken<T>>;
 
@@ -39,6 +40,7 @@ export const STATE_STORE_TOKEN: Token<StateStore> = createToken<StateStore>('Sta
  * a daemon restart WITHOUT requiring PostgreSQL to be up first.
  */
 export const DAEMON_STATE_STORE_TOKEN: Token<DaemonStateStore> = createToken<DaemonStateStore>('DaemonStateStore');
+export const EXECUTION_SERVICE_TOKEN: Token<ExecutionService> = createToken<ExecutionService>('ExecutionService');
 export const ECOSYSTEM_CONFIG_TOKEN: Token<IEcosystemConfig> = createToken<IEcosystemConfig>('EcosystemConfig');
 
 /** Kysely connection to omnitron-pg (port 5480) */

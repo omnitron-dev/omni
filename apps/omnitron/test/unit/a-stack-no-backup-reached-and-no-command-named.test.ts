@@ -1,3 +1,4 @@
+import { testExecution } from '../fixtures/execution.js';
 /**
  * A stack no backup reached, and no command said so.
  *
@@ -26,6 +27,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
+import type { PipelineOptions } from '../../src/services/backup-pipeline.js';
 
 const env = vi.hoisted(() => ({ home: '' }));
 vi.mock('../../src/config/defaults.js', async importOriginal => ({
@@ -37,20 +40,25 @@ vi.mock('../../src/shared/paths.js', () => ({
 
 /** Dumps and restores are recorded, not run: the subject is what they are pointed at. */
 const calls = vi.hoisted(() => ({
-  dumps: [] as Array<{ command: string; args: string[]; out: string }>,
-  restores: [] as Array<{ command: string; args: string[]; file: string }>,
+  targets: new Map<string, string>(),
+  dumps: [] as Array<{ command: string; args: string[]; out: string; target: string | undefined }>,
+  restores: [] as Array<{ command: string; args: string[]; file: string; target: string | undefined }>,
 }));
 vi.mock('../../src/services/backup-pipeline.js', async (importOriginal) => {
   const real = await importOriginal<typeof import('../../src/services/backup-pipeline.js')>();
   const nodeFs = await import('node:fs');
   return {
     ...real,
-    dumpToFile: async (command: string, args: string[], out: string) => {
-      calls.dumps.push({ command, args, out });
+    dumpToFile: async (_execution: unknown, command: string, args: string[], out: string, _compressed: boolean, options: PipelineOptions) => {
+      const adapter = options.execution?.adapterOptions;
+      const target = adapter?.type === 'docker' ? calls.targets.get(adapter.network?.replace(/^container:/, '') ?? '') : undefined;
+      calls.dumps.push({ command, args, out, target });
       nodeFs.writeFileSync(out, 'dump');
     },
-    restoreFromFile: async (command: string, args: string[], file: string) => {
-      calls.restores.push({ command, args, file });
+    restoreFromFile: async (_execution: unknown, command: string, args: string[], file: string, _compressed: boolean, options: PipelineOptions) => {
+      const adapter = options.execution?.adapterOptions;
+      const target = adapter?.type === 'docker' ? calls.targets.get(adapter.network?.replace(/^container:/, '') ?? '') : undefined;
+      calls.restores.push({ command, args, file, target });
     },
   };
 });
@@ -152,6 +160,12 @@ let backups: string;
 let store: InstanceType<typeof DaemonStateStore>;
 
 beforeEach(() => {
+  calls.targets.clear();
+  vi.spyOn(testExecution, 'inspectDockerTarget').mockImplementation(async name => {
+    const id = createHash('sha256').update(name).digest('hex');
+    calls.targets.set(id, name);
+    return { id, image: `sha256:${'a'.repeat(64)}` };
+  });
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bk-stacks-'));
   env.home = dir;
   backups = path.join(dir, '.omnitron', 'backups');
@@ -171,11 +185,11 @@ afterEach(async () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-const dumpedFrom = (): string[] => calls.dumps.map((d) => `${d.args[1]}:${d.args[d.args.length - 1]}`);
+const dumpedFrom = (): string[] => calls.dumps.map((d) => `${d.target}:${d.args[d.args.length - 1]}`);
 
 describe('a stack whose databases are not here is named, not skipped', () => {
   it('the status says sample/test is not backed up, and where its databases are', async () => {
-    const service = new BackupService(fakeLogger().module, store, fakeProjects(MASTER));
+    const service = new BackupService(fakeLogger().module, store, testExecution, fakeProjects(MASTER));
 
     const { stacks } = await service.getStatus();
 
@@ -187,7 +201,7 @@ describe('a stack whose databases are not here is named, not skipped', () => {
 
   it('every all pass reports the stack it could not reach, and still counts only what it dumped', async () => {
     const log = fakeLogger();
-    const service = new BackupService(log.module, store, fakeProjects(MASTER));
+    const service = new BackupService(log.module, store, testExecution, fakeProjects(MASTER));
 
     const results = await service.createAllBackups();
 
@@ -206,7 +220,7 @@ describe('a stack whose databases are not here is named, not skipped', () => {
 
 describe('each backup records the stack it came from', () => {
   it('the index row and the listing carry project and stack', async () => {
-    const service = new BackupService(fakeLogger().module, store, fakeProjects(MASTER));
+    const service = new BackupService(fakeLogger().module, store, testExecution, fakeProjects(MASTER));
 
     await service.createAllBackups();
     const listed = await service.listBackups();
@@ -219,7 +233,7 @@ describe('each backup records the stack it came from', () => {
   });
 
   it('a second stack with a database of the same name is dumped too', async () => {
-    const service = new BackupService(fakeLogger().module, store, fakeProjects(TWO_MAINS));
+    const service = new BackupService(fakeLogger().module, store, testExecution, fakeProjects(TWO_MAINS));
 
     await service.createAllBackups();
 
@@ -230,7 +244,7 @@ describe('each backup records the stack it came from', () => {
   });
 
   it('a bare name two stacks share is refused, naming both', async () => {
-    const service = new BackupService(fakeLogger().module, store, fakeProjects(TWO_MAINS));
+    const service = new BackupService(fakeLogger().module, store, testExecution, fakeProjects(TWO_MAINS));
 
     await expect(service.createBackup('main')).rejects.toThrow(/shop\/dev\/main.*sample\/dev\/main|sample\/dev\/main.*shop\/dev\/main/);
     expect(calls.dumps).toEqual([]);
@@ -239,7 +253,7 @@ describe('each backup records the stack it came from', () => {
 
 describe('a restore goes where the backup came from', () => {
   it('a sample/dev backup of main is restored into sample/dev, even when another stack is first', async () => {
-    const service = new BackupService(fakeLogger().module, store, fakeProjects(TWO_MAINS));
+    const service = new BackupService(fakeLogger().module, store, testExecution, fakeProjects(TWO_MAINS));
     const file = path.join(backups, 'main_2026-09-23T08-18-17-763Z_a66402d0.sql.gz');
     fs.writeFileSync(file, 'dump');
     store.insertBackupSync({
@@ -252,18 +266,20 @@ describe('a restore goes where the backup came from', () => {
 
     await service.restoreBackup('a66402d0');
 
-    expect(calls.restores.map((r) => r.args[2])).toEqual(['sample-dev-postgres']);
+    expect(calls.restores.map((r) => r.target)).toEqual(['sample-dev-postgres']);
+    expect(calls.restores[0]?.args).toContain('--single-transaction');
   });
 });
 
 describe('full includes the control plane', () => {
   it('dumps the omnitron database through omnitron-pg and records it as the control plane', async () => {
-    const service = new BackupService(fakeLogger().module, store, fakeProjects(MASTER));
+    const service = new BackupService(fakeLogger().module, store, testExecution, fakeProjects(MASTER));
 
     const results = await service.createFullBackup();
 
     expect(results).toContainEqual(expect.objectContaining({ target: 'omnitron', ok: true }));
-    expect(calls.dumps.map((d) => d.args)).toContainEqual(['exec', 'omnitron-pg', 'pg_dump', '-U', 'omnitron', '-d', 'omnitron']);
+    expect(calls.dumps).toContainEqual(expect.objectContaining({ target: 'omnitron-pg', command: '-h',
+      args: ['127.0.0.1', '-U', 'omnitron', '-d', 'omnitron'] }));
     const row = (await service.listBackups('omnitron'))[0];
     expect(row).toMatchObject({ database: 'omnitron', scope: 'control-plane' });
   });
@@ -290,7 +306,7 @@ describe('retention keeps each stack its own history', () => {
     (service as unknown as { pruneOldBackups(t: string): Promise<void> }).pruneOldBackups('all');
 
   it('48 per stack, not 48 shared between two stacks', async () => {
-    const service = new BackupService(fakeLogger().module, store, fakeProjects(TWO_MAINS));
+    const service = new BackupService(fakeLogger().module, store, testExecution, fakeProjects(TWO_MAINS));
     rows(50, { type: 'postgres', project: 'sample', stack: 'dev' }, 'sample');
     rows(50, { type: 'postgres', project: 'shop', stack: 'dev' }, 'shop');
 
@@ -302,7 +318,7 @@ describe('retention keeps each stack its own history', () => {
   });
 
   it('rows from before the stack was recorded are bounded as they always were', async () => {
-    const service = new BackupService(fakeLogger().module, store, fakeProjects(MASTER));
+    const service = new BackupService(fakeLogger().module, store, testExecution, fakeProjects(MASTER));
     rows(48, {}, 'legacy');
     // Two newer passes, recorded with their stack.
     for (let i = 0; i < 2; i++) {

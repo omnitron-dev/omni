@@ -1,3 +1,4 @@
+import { testExecution } from '../fixtures/execution.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -21,7 +22,7 @@ const sidecar = () => path.join(directory(), info.filename + '.meta.json');
 const archive = () => path.join(directory(), info.filename);
 const row = () => ({ id: info.id, app: info.database, path: archive(), size_bytes: info.size,
   created_at: info.createdAt, metadata: { filename: info.filename, compressed: info.compressed } });
-const start = () => { service = new BackupService({ logger } as never, store); return service; };
+const start = () => { service = new BackupService({ logger } as never, store, testExecution); return service; };
 const synchronous = () => store.initSync().pragma('synchronous', { simple: true });
 const preserved = () => expect(JSON.parse(fs.readFileSync(sidecar(), 'utf8'))).toEqual(info);
 

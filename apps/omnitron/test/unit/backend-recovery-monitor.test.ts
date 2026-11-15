@@ -117,3 +117,32 @@ it('refuses a mutation before tracking it when write-ahead invalidation fails', 
   expect(state.pendingOperations()).toEqual([]);
   expect(state.token()).toBe(before);
 });
+
+it('permits a read-only token for exact known operations without certifying them', async () => {
+  const state = new RecoveryState(), done = Promise.withResolvers<void>();
+  state.hold('owned-backup', 'backup');
+  const active = state.run('backup', () => done.promise);
+  try {
+    const allowed = new Map([['backup', 1]]), holds = new Set(['owned-backup']);
+    expect(state.reviewToken(allowed, holds)).not.toBeNull();
+    expect(state.token()).toBeNull();
+    expect(state.reviewToken(new Map(), holds)).toBeNull();
+    state.hold('foreign-operation', 'restore');
+    expect(state.reviewToken(allowed, holds)).toBeNull();
+    state.release('foreign-operation');
+    expect(state.reviewToken(allowed, holds)).not.toBeNull();
+  } finally { done.resolve(); await active; state.release('owned-backup'); }
+});
+
+it('joins the current certification instead of returning before its ownership observation', async () => {
+  const { monitor, snapshot } = fixture(() => 0);
+  const observe = snapshot.getMockImplementation()!;
+  const barrier = Promise.withResolvers<void>();
+  snapshot.mockImplementation(async () => { await barrier.promise; return observe(); });
+  const first = monitor.capture(), second = monitor.capture();
+  expect(second).toBe(first);
+  expect(snapshot).toHaveBeenCalledTimes(1);
+  expect(monitor.status().status).toBe('pending');
+  barrier.resolve(); await Promise.all([first, second]);
+  expect(monitor.status().status).toBe('ready');
+});

@@ -1,3 +1,4 @@
+import { testExecution } from '../fixtures/execution.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -23,7 +24,7 @@ const targets = ['one', 'two'].map((project, index) => ({ project, stack: 'dev',
 function service(selected = targets) {
   const projects = { getInfraManager: () => ({ listInstances: () => selected }),
     listProjectRegistrations: () => [], getRunningStacks: () => [] };
-  return new BackupService({ logger } as never, store, projects as never);
+  return new BackupService({ logger } as never, store, testExecution, projects as never);
 }
 beforeEach(() => {
   state.home = fs.mkdtempSync(path.join(os.tmpdir(), 'backup-scope-'));
@@ -117,15 +118,15 @@ describe('artifact backups belong to one allocation', () => {
     const operation = internal.runScheduledBackup('all');
     await Promise.resolve();
     expect(backups.activeOperationCount()).toBe(1);
-    expect(() => backups.prepareHandoff()).toThrow('Backup or restore is active');
+    await expect(backups.prepareHandoff()).rejects.toThrow(/Backup or restore is active|restore is active/);
     finish(); await operation;
-    backups.prepareHandoff();
+    await backups.prepareHandoff();
     await expect(backups.setSchedule('all', 'hourly')).rejects.toThrow('paused');
     expect(await backups.listSchedules()).toEqual({});
     await expect(internal.runScheduledBackup('all')).resolves.toBe('empty');
     await backups.resumeAfterHandoff();
     await backups.setSchedule('all', 'hourly');
-    backups.prepareHandoff();
+    await backups.prepareHandoff();
     expect((await backups.getStatus()).schedules[0]?.armed).toBe(false);
     await backups.resumeAfterHandoff();
     expect((await backups.getStatus()).schedules[0]?.armed).toBe(true);
@@ -138,10 +139,10 @@ describe('artifact backups belong to one allocation', () => {
     state.copy.mockImplementation(async (_target, destination) => { await delayed; fs.writeFileSync(destination, 'test'); });
     const operation = backups.createStorageBackup();
     expect(backups.activeOperationCount()).toBe(1);
-    expect(() => backups.prepareHandoff()).toThrow('Backup or restore is active');
+    await expect(backups.prepareHandoff()).rejects.toThrow(/Backup or restore is active|restore is active/);
     finish(); await operation;
     expect(backups.activeOperationCount()).toBe(0);
-    backups.prepareHandoff();
+    await backups.prepareHandoff();
     await expect(backups.createStorageBackup()).rejects.toThrow('paused');
     await backups.resumeAfterHandoff();
     await expect(backups.createStorageBackup()).resolves.toMatchObject({ project: 'one' });

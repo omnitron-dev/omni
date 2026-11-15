@@ -1,19 +1,12 @@
-/**
- * ExecutionService — Titan service wrapping @xec-sh/core ExecutionEngine
- *
- * Provides unified command execution across local, SSH, Docker, and Kubernetes
- * targets. Routes adapter events to logging and metrics.
- *
- * Usage in other services:
- *   const result = await executionService.local`docker ps`;
- *   const result = await executionService.ssh('prod-1')`systemctl status app`;
- *   const result = await executionService.docker('container-name')`cat /etc/config`;
- */
+/** Shared Xec lifecycle and diagnostics for Omnitron command execution. */
 
 import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { shellEscape } from '../shared/shell-escape.js';
-import type { SSHAdapterOptions } from '@xec-sh/core';
+import type {
+  Command, ExecutionEngine, ExecutionResult, ExecutionResource, ExecutionResourceObservation,
+  SSHAdapterOptions, CommandStartEvent, CommandCompleteEvent, CommandErrorEvent,
+} from '@xec-sh/core';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 
 // =============================================================================
@@ -55,48 +48,17 @@ export interface ExecOptions {
   timeout?: number;
   /** Suppress stderr in logs */
   quiet?: boolean;
+  signal?: AbortSignal;
 }
 
-// =============================================================================
-// xec event payloads
-// =============================================================================
-
-/**
- * The three `command:*` payloads `@xec-sh/core` emits, mirrored locally.
- *
- * The package declares them (`CommandStartEvent` and friends) but re-exports
- * only `EventFilter` from its root, so importing them means reaching into
- * `dist/types/` — a path that is not part of its public surface and would
- * break on any repackaging. Twelve lines of structural typing buys the same
- * checking without that coupling; if the payloads drift, the handlers below
- * stop compiling, which is the whole point.
- */
-interface XecCommandStart {
-  command?: string;
-  args?: string[];
-  cwd?: string;
+function commandOptions(options?: ExecOptions): Pick<Command, 'cwd' | 'env' | 'timeout' | 'signal'> {
+  return { ...(options?.cwd !== undefined && { cwd: options.cwd }),
+    ...(options?.env !== undefined && { env: options.env }),
+    ...(options?.timeout !== undefined && { timeout: options.timeout }),
+    ...(options?.signal !== undefined && { signal: options.signal }) };
 }
 
-interface XecCommandComplete {
-  command?: string;
-  exitCode?: number;
-  duration?: number;
-}
-
-interface XecCommandError {
-  command?: string;
-  /** Flattened by the engine: `error instanceof Error ? error.message : String(error)`. */
-  error?: string;
-  duration?: number;
-}
-
-/**
- * Render the `command:error` reason.
- *
- * The contract says `string`, and the fallbacks are for the version that
- * does not: an engine that starts passing the Error itself must not silently
- * turn this log line back into `[object Object]`.
- */
+/** Render an already sanitized diagnostic without losing its useful message. */
 export function describeXecError(error: unknown): string {
   if (typeof error === 'string') return error || 'unknown error';
   if (error instanceof Error) return error.message || error.name;
@@ -213,8 +175,9 @@ export function sshConfig(target: SSHTarget): Omit<SSHAdapterOptions, 'type'> {
 }
 
 export class ExecutionService {
-  private engine: any = null;
+  private engine?: Promise<ExecutionEngine>;
   private initialized = false;
+  private closed = false;
 
   constructor(private readonly logger: ILogger) {}
 
@@ -222,12 +185,11 @@ export class ExecutionService {
    * Lazy-initialize the xec ExecutionEngine.
    * Dynamic import to avoid loading xec until actually needed.
    */
-  private async getEngine(): Promise<any> {
-    if (this.engine) return this.engine;
-
-    try {
-      const xec = await import('@xec-sh/core');
-      this.engine = new xec.ExecutionEngine({
+  private getEngine(): Promise<ExecutionEngine> {
+    if (this.closed) return Promise.reject(new Error('Execution service is disposed'));
+    return this.engine ??= import('@xec-sh/core').then(xec => {
+      if (this.closed) throw new Error('Execution service is disposed');
+      const engine = new xec.ExecutionEngine({
         defaultTimeout: 30_000,
         defaultShell: '/bin/sh',
         // The pool is configured HERE and nowhere else: the SSH adapter is
@@ -237,26 +199,17 @@ export class ExecutionService {
         adapters: { ssh: { connectionPool: SSH_CONNECTION_POOL } },
       });
 
-      // Wire adapter events to logger.
-      //
-      // The payloads are typed locally rather than inferred from `any`: the
-      // engine handle has to stay `any` (the import is dynamic and optional),
-      // and without these shapes nothing checks what the handlers read. That
-      // is not hypothetical — `command:error` carries `error` as a *string*,
-      // already flattened by the engine, and this handler used to log
-      // `event.error?.message`, which is `undefined` on a string. Every
-      // failed remote command logged `Exec error {"error":undefined}`: a
-      // warning that names the problem and then withholds it.
-      this.engine.on('command:start', (event: XecCommandStart) => {
+      // Xec sanitizes these public diagnostic events before emission.
+      engine.on('command:start', (event: CommandStartEvent) => {
         this.logger.debug({ command: event.command?.slice(0, 100) }, 'Exec start');
       });
-      this.engine.on('command:complete', (event: XecCommandComplete) => {
+      engine.on('command:complete', (event: CommandCompleteEvent) => {
         this.logger.debug(
           { command: event.command?.slice(0, 100), exitCode: event.exitCode, duration: event.duration },
           'Exec complete'
         );
       });
-      this.engine.on('command:error', (event: XecCommandError) => {
+      engine.on('command:error', (event: CommandErrorEvent) => {
         this.logger.warn(
           { command: event.command?.slice(0, 100), error: describeXecError(event.error), duration: event.duration },
           'Exec error'
@@ -265,51 +218,45 @@ export class ExecutionService {
 
       this.initialized = true;
       this.logger.info('ExecutionEngine initialized (xec/core)');
-    } catch (err) {
-      this.logger.warn(
-        { error: (err as Error).message },
-        'Xec execution engine unavailable; SSH disabled, local commands use child_process'
-      );
-    }
+      return engine;
+    });
+  }
 
-    return this.engine;
+  /** The shared typed executor. Transport uncertainty always remains an error. */
+  async execute(command: Command): Promise<ExecutionResult> {
+    return (await this.getEngine()).execute(command);
+  }
+
+  async inspectExecution(resource: ExecutionResource): Promise<ExecutionResourceObservation> {
+    return (await this.getEngine()).inspectExecution(resource);
+  }
+
+  async terminateExecution(resource: ExecutionResource): Promise<ExecutionResourceObservation> {
+    return (await this.getEngine()).terminateExecution(resource);
+  }
+
+  /** Resolve a running container and its immutable image through the same pinned adapter. */
+  async inspectDockerTarget(container: string): Promise<{ id: string; image: string }> {
+    const engine = await this.getEngine();
+    const { DockerAdapter } = await import('@xec-sh/core');
+    const adapter = engine.getAdapter('docker');
+    if (!(adapter instanceof DockerAdapter)) throw new Error('Docker execution adapter is unavailable');
+    const value = await adapter.inspectContainer(container) as { Id?: unknown; Image?: unknown; State?: { Running?: unknown } };
+    if (typeof value.Id !== 'string' || !/^[a-f0-9]{64}$/.test(value.Id) ||
+        typeof value.Image !== 'string' || !/^sha256:[a-f0-9]{64}$/.test(value.Image) || value.State?.Running !== true)
+      throw new Error('Database container identity, image or running state is unconfirmed');
+    return { id: value.Id, image: value.Image };
   }
 
   /**
    * Execute a local command.
    */
   async exec(command: string, options?: ExecOptions): Promise<ExecResult> {
-    const engine = await this.getEngine();
     const start = Date.now();
-
-    if (engine) {
-      try {
-        // Use xec raw template literal API — engine.run() interpolates options into
-        // the command string which corrupts it. Raw mode passes command as-is.
-        let proc = engine.raw([command] as any);
-        if (options?.timeout) proc = proc.timeout(options.timeout);
-        if (options?.cwd) proc = proc.cwd(options.cwd);
-        if (options?.env) proc = proc.env(options.env);
-
-        const result = await proc.nothrow();
-        return {
-          stdout: result.stdout?.trim() ?? '',
-          stderr: result.stderr?.trim() ?? '',
-          exitCode: result.exitCode ?? 0,
-          duration: Date.now() - start,
-        };
-      } catch (err: any) {
-        return {
-          stdout: err.stdout?.trim() ?? '',
-          stderr: err.stderr?.trim() ?? err.message,
-          exitCode: err.exitCode ?? 1,
-          duration: Date.now() - start,
-        };
-      }
-    }
-
-    // Fallback: child_process
-    return this.execFallback(command, options);
+    const result = await this.execute({ command, shell: '/bin/sh', nothrow: true,
+      ...commandOptions(options) });
+    return { stdout: result.stdout.trim(), stderr: result.stderr.trim(), exitCode: result.exitCode,
+      duration: Date.now() - start };
   }
 
   /**
@@ -343,13 +290,7 @@ export class ExecutionService {
     options?: { remoteHost?: string; localHost?: string }
   ): Promise<{ host: string; port: number; close(): Promise<void> }> {
     const engine = await this.getEngine();
-    if (!engine) throw new Error('SSH tunnelling needs the xec engine, which is not available');
-
     const ssh = engine.ssh(sshConfig(target));
-
-    if (typeof ssh.tunnel !== 'function') {
-      throw new Error('The installed @xec-sh/core has no SSH tunnel support');
-    }
 
     // `remoteHost` is resolved ON the node, so loopback is the node's own
     // daemon rather than ours.
@@ -375,33 +316,12 @@ export class ExecutionService {
   }
 
   async ssh(target: SSHTarget, command: string, options?: ExecOptions & { stdin?: string | Buffer }): Promise<ExecResult> {
-    const engine = await this.getEngine();
     const start = Date.now();
-
-    if (!engine) return { stdout: '', stderr: 'SSH requires the Xec execution engine', exitCode: 1, duration: Date.now() - start };
-    try {
-      let ssh = engine.ssh(sshConfig(target));
-      // Input travels through the SSH channel, never through the command or its logs.
-      if (options?.stdin !== undefined) ssh = ssh.with({ stdin: options.stdin });
-      // Use raw template literal to avoid options interpolation into command
-      let proc = ssh.raw([command] as any);
-      if (options?.timeout) proc = proc.timeout(options.timeout);
-      if (options?.env) proc = proc.env(options.env);
-      const result = await proc.nothrow();
-      return {
-        stdout: result.stdout?.trim() ?? '',
-        stderr: result.stderr?.trim() ?? '',
-        exitCode: result.exitCode ?? 0,
-        duration: Date.now() - start,
-      };
-    } catch (err: any) {
-      return {
-        stdout: '',
-        stderr: err.message,
-        exitCode: 1,
-        duration: Date.now() - start,
-      };
-    }
+    const result = await this.execute({ command, shell: '/bin/sh', nothrow: true,
+      adapter: 'ssh', adapterOptions: { type: 'ssh', ...sshConfig(target) },
+      ...commandOptions(options), ...(options?.stdin !== undefined && { stdin: options.stdin }) });
+    return { stdout: result.stdout.trim(), stderr: result.stderr.trim(), exitCode: result.exitCode,
+      duration: Date.now() - start };
   }
 
   /**
@@ -437,7 +357,7 @@ export class ExecutionService {
   private transfersByNode?: Map<string, Promise<void>>;
 
   /** Bulk channels must never share a pool with deployment lease/control commands. */
-  private async createTransferEngine(): Promise<any> {
+  private async createTransferEngine(): Promise<ExecutionEngine> {
     const xec = await import('@xec-sh/core');
     return new xec.ExecutionEngine({
       defaultTimeout: 30_000,
@@ -466,6 +386,13 @@ export class ExecutionService {
       let poll: ReturnType<typeof setTimeout> | undefined;
       let wake: (() => void) | undefined;
       let watch: Promise<never> | undefined;
+      let transferStarted = false;
+      let transferCompleted = false;
+      let promotionAttempted = false;
+      let promotionCompleted = false;
+      let uncertain = false;
+      let failure: Error | undefined;
+      let retry = false;
       try {
         await control(`umask 077 && (set -C; : > ${shellEscape(temporary)})`);
         let lastSize = 0;
@@ -491,6 +418,7 @@ export class ExecutionService {
           }
           return await new Promise<never>(() => {});
         })();
+        transferStarted = true;
         await this.withinDeadline(
           Promise.race([engine.ssh(sshConfig(target)).uploadFile(localPath, temporary), watch]),
           uploadDeadlineMs(expected),
@@ -499,6 +427,7 @@ export class ExecutionService {
               `Upload of ${localPath} (${expected} bytes) to ${target.host}:${remotePath} did not finish in ${Math.round(ms / 1000)} s; temporary file was not promoted`
             )
         );
+        transferCompleted = true;
         stop = true;
         clearTimeout(poll);
         wake?.();
@@ -521,15 +450,22 @@ export class ExecutionService {
           `actual=$(if command -v sha256sum >/dev/null 2>&1; then sha256sum ${shellEscape(temporary)}; else shasum -a 256 ${shellEscape(temporary)}; fi) && ` +
           `test "\${actual%% *}" = ${shellEscape(digest)} && ` +
           `chmod ${(stat.mode & 0o777).toString(8)} ${shellEscape(temporary)} && test ! -d ${shellEscape(remotePath)} && mv -f -- ${shellEscape(temporary)} ${shellEscape(remotePath)}`;
-        if (options?.runControl) {
-          const out = await options.runControl(promote, 30_000);
-          if (out.exitCode !== 0)
-            throw new Error(`Upload promotion rejected (${out.exitCode}): ${out.stderr}`);
-        } else await control(promote);
-        return;
+        promotionAttempted = true;
+        const out = options?.runControl
+          ? await options.runControl(promote, 30_000)
+          : await this.ssh(target, promote, { timeout: 30_000 });
+        promotionCompleted = true;
+        if (out.exitCode !== 0)
+          throw new Error(`Upload promotion rejected (${out.exitCode}): ${out.stderr}`);
       } catch (error) {
-        if (attempt === 2) throw error;
-        this.logger.warn(
+        const { ExecutionOutcomeUnknownError } = await import('@xec-sh/core');
+        uncertain = error instanceof ExecutionOutcomeUnknownError || (transferStarted && !transferCompleted) ||
+          (promotionAttempted && !promotionCompleted);
+        const cause = error instanceof Error ? error : new Error(String(error));
+        failure = uncertain && !(error instanceof ExecutionOutcomeUnknownError)
+          ? new ExecutionOutcomeUnknownError({ adapter: 'ssh', cause }) : cause;
+        retry = !uncertain && !promotionAttempted && attempt < 2;
+        if (retry) this.logger.warn(
           { remotePath, attempt, error: describeXecError(error) },
           'Upload failed before promotion; retrying with a fresh isolated connection'
         );
@@ -538,13 +474,27 @@ export class ExecutionService {
         clearTimeout(poll);
         wake?.();
         // Disposing only this engine cannot close the lease/control connection.
-        await this.withinDeadline(
-          engine.dispose(),
-          10_000,
-          () => new Error('Isolated transfer connection did not close')
-        ).catch(() => undefined);
-        await control(`rm -f -- ${shellEscape(temporary)}`).catch(() => undefined);
+        try {
+          await this.withinDeadline(engine.dispose(), 10_000, () => new Error('Isolated transfer connection did not close'));
+        } catch (cause) {
+          const { ExecutionOutcomeUnknownError } = await import('@xec-sh/core');
+          failure = new ExecutionOutcomeUnknownError({ adapter: 'ssh', cause: cause instanceof Error ? cause : new Error(String(cause)) });
+          uncertain = true;
+          retry = false;
+        }
+        // An unknown write/promotion retains its evidence. No second attempt
+        // may race a request whose completion the transport could not confirm.
+        if (!uncertain) {
+          try { await control(`rm -f -- ${shellEscape(temporary)}`); }
+          catch (error) {
+            failure = error instanceof Error ? error : new Error(String(error));
+            retry = false;
+          }
+        }
       }
+      if (retry) continue;
+      if (failure) throw failure;
+      return;
     }
   }
 
@@ -570,19 +520,22 @@ export class ExecutionService {
   async docker(target: DockerTarget, command: string, options?: ExecOptions): Promise<ExecResult> {
     // If remote Docker host, pipe through SSH
     if (target.sshTarget) {
-      return this.ssh(target.sshTarget, `docker exec ${target.container} ${command}`, options);
+      return this.ssh(target.sshTarget, `docker exec ${shellEscape(target.container)} /bin/sh -c ${shellEscape(command)}`, options);
     }
-    return this.exec(`docker exec ${target.container} ${command}`, options);
+    const start = Date.now();
+    const result = await this.execute({ command: 'docker', args: ['exec', target.container, '/bin/sh', '-c', command],
+      shell: false, nothrow: true, ...commandOptions(options) });
+    return { stdout: result.stdout.trim(), stderr: result.stderr.trim(), exitCode: result.exitCode,
+      duration: Date.now() - start };
   }
 
   /**
    * Dispose the execution engine and close all connections.
    */
   async dispose(): Promise<void> {
-    if (this.engine && typeof this.engine.dispose === 'function') {
-      await this.engine.dispose();
-    }
-    this.engine = null;
+    this.closed = true;
+    const engine = await this.engine;
+    if (engine) await engine.dispose();
     this.initialized = false;
   }
 
@@ -593,36 +546,4 @@ export class ExecutionService {
     return this.initialized;
   }
 
-  // ===========================================================================
-  // Private — Fallback execution via child_process
-  // ===========================================================================
-
-  private async execFallback(command: string, options?: ExecOptions): Promise<ExecResult> {
-    const { execFile } = await import('node:child_process');
-    const { promisify } = await import('node:util');
-    const execAsync = promisify(execFile);
-    const start = Date.now();
-
-    try {
-      const { stdout, stderr } = await execAsync('/bin/sh', ['-c', command], {
-        cwd: options?.cwd,
-        env: options?.env ? { ...process.env, ...options.env } : undefined,
-        timeout: options?.timeout ?? 30_000,
-        maxBuffer: 10 * 1024 * 1024,
-      });
-      return {
-        stdout: stdout.trim(),
-        stderr: stderr.trim(),
-        exitCode: 0,
-        duration: Date.now() - start,
-      };
-    } catch (err: any) {
-      return {
-        stdout: err.stdout?.trim() ?? '',
-        stderr: err.stderr?.trim() ?? err.message,
-        exitCode: err.code ?? 1,
-        duration: Date.now() - start,
-      };
-    }
-  }
 }

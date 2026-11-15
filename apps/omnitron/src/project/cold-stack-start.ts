@@ -6,6 +6,7 @@ import { readManagedRuntime, verifyManagedIsolation } from '../daemon/managed-ru
 import { RuntimeInstallation } from '../daemon/runtime-installation.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import { stackExecutionKey, type StackExecutionScope } from '../shared/dto/stack-execution.js';
+import { RUNTIME_UPDATE_TERMINAL_PHASES } from '../shared/dto/runtime-update.js';
 import type { RuntimeUpdateOwner, RuntimeUpdatePlan, RuntimeUpdateReceipt, ReviewedRuntimeUpdateStack } from '../shared/dto/runtime-update.js';
 
 const sha = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
@@ -19,7 +20,7 @@ export interface ColdBatch {
 export interface ColdStartPermit extends RuntimeUpdateOwner {
   digest: string; direction: Direction; scope: StackExecutionScope; review: string;
 }
-const terminal = new Set(['accepted', 'rolled-back']);
+const terminal = new Set<string>(RUNTIME_UPDATE_TERMINAL_PHASES);
 const targetPhases = new Set(['starting', 'verifying']);
 const previousPhases = new Set(['restoring']);
 

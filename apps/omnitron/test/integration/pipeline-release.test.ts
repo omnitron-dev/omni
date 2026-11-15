@@ -1,3 +1,4 @@
+import { testExecution } from '../fixtures/execution.js';
 import 'reflect-metadata';
 import { afterEach, expect, it, vi } from 'vitest';
 import fs from 'node:fs/promises';
@@ -122,7 +123,7 @@ console.log('release completed');
   raw.exec(`CREATE TABLE pipelines(id TEXT PRIMARY KEY,name TEXT UNIQUE NOT NULL,description TEXT,steps TEXT NOT NULL,triggers TEXT NOT NULL,createdAt TEXT NOT NULL,updatedAt TEXT NOT NULL);
     CREATE TABLE pipeline_runs(id TEXT PRIMARY KEY,pipelineId TEXT NOT NULL,status TEXT NOT NULL,steps TEXT NOT NULL,startedAt TEXT NOT NULL,completedAt TEXT,triggeredBy TEXT NOT NULL,params TEXT);`);
   db = new Kysely<OmnitronDatabase>({ dialect: new SqliteDialect({ database: withDateBinding(raw) }) });
-  pipelines = new PipelineService(db, logger as never);
+  pipelines = new PipelineService(db, logger as never, testExecution);
   const gate = vi.fn();
   pipelines.configure({ getNode: () => undefined, nodeToSshTarget: async () => { throw Error('No remote execution'); } } as never, undefined,
     { projects, assertLifecycle: gate });
@@ -334,7 +335,7 @@ it('reconciles interrupted prepared/started attempts durably as unconfirmed with
     steps: JSON.stringify([{ name: 'publish', status: 'running', duration: 1, executions:
       ['prepared', 'started', 'completed'].map((state, index) => ({ ...operation.evidence, state, attempt: index + 1 })) }]),
   }).execute();
-  const restarted = new PipelineService(f.db, logger as never);
+  const restarted = new PipelineService(f.db, logger as never, testExecution);
   await restarted.initialize();
   const observed = await restarted.getRunStatus('interrupted-fixture');
   expect(observed!.status).toBe('interrupted');

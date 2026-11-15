@@ -109,7 +109,10 @@ logical project and stack names, application generations, source watches and
 verified release pins. Review the affected stacks and rollback identities with
 their operators. A change to reviewed launch policy, payload or process inventory
 requires reviewing the new digest. Active work, including backups, is reported
-by the controller.
+by the controller. The plan records the exact locally owned backup attempts
+that application may cancel. Preparation does not cancel work, pause schedules
+or grant shutdown authority. Restores, unknown outcomes and operations without
+confirmed local ownership block admission.
 
 Runtime-only preparation captures the serving controller's effective project
 definitions and resolved next-start environments in a private file; the public
@@ -117,11 +120,45 @@ plan records its digest and `basis: retained-next-start`. It compares those
 definitions with the owner's current restart entries, without claiming the
 original environment of a running process. The serving and target controllers
 must advertise `runtimeRestartProtocol: 1`; an older serving controller first
-needs a verified warm backend upgrade. Ordinary release deployment keeps its
+needs a verified warm backend upgrade. The serving controller also advertises
+`runtimeRestartAdmissionProtocol: 1` for read-only review and scoped backup
+admission. Ordinary release deployment keeps its
 source-closure admission checks. Updating unused project imports therefore
 does not redeploy them during this reviewed runtime restart.
 
-Application replaces the user launchd services through Omnitron. The resident
+Application first records `draining`, pauses backup admission for this plan,
+and cancels only its reviewed backup attempts through the operation journal.
+A backup that already finished keeps its terminal receipt and is not replayed.
+A new attempt or changed active revision requires a new review. Before any
+process is stopped, the controller must publish a fresh recovery certificate
+and capture the exact reviewed configuration digest again. Scheduled and manual
+backups remain paused until the old controller stops. If admission fails,
+Omnitron releases only this plan's pause and records `aborted`; applications
+continue without a rollback restart. A lost release acknowledgement remains
+`draining`. Recovery of that phase only releases the same plan's pause.
+
+Database backup execution uses the shared Xec executor. PostgreSQL in Docker
+runs each dump or restore in an owned, resource-limited job using the database
+container's immutable image and network identity. The operation journal records
+intent before effects, then the daemon identity and full job ID before start.
+Cancellation waits for Xec's confirmed cleanup; it does not inspect the same
+completed job a second time or infer termination from a closed Docker client.
+Existing completed archives and persisted schedules survive cancellation.
+
+Backup RPC exposes operation receipts through `listOperations` and
+`getOperation`. Administrative `cancelOperation` and `reconcileOperation` take
+only an operation ID and its reviewed revision; the controller obtains any
+execution observation itself. A repeated operation ID never repeats its effect.
+An unknown outcome retains its resource claims and staging files across restart.
+For a local command whose leader exited while a descendant retained a pipe,
+Xec reports uncertainty instead of signalling a potentially reused process
+group. Such an operation cannot grant update admission.
+
+These ownership APIs require Xec 0.13 or newer. Source qualification against a
+private Core build is not npm compatibility or permission to activate a runtime
+still declaring Xec 0.12.
+
+Application then replaces the user launchd services through Omnitron. The resident
 owner restores enabled local stacks from the private reviewed definitions and
 their saved launch selections. The existing release installer verifies and
 stages the same payload for the replacement owner's runtime, preserving

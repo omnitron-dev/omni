@@ -23,6 +23,9 @@ import { fileURLToPath } from 'node:url';
  */
 
 import path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
+import { restartConfigurationDigest, type RuntimeRestartConfiguration } from '../project/runtime-restart.js';
+import type { RuntimeRestartReview, RuntimeRestartPrepareRequest } from '../shared/dto/runtime-update.js';
 import { Application, ShutdownReason, ShutdownPriority, ApplicationEvent } from '@omnitron-dev/titan';
 import { UnixSocketTransport } from '@omnitron-dev/titan/netron/transport/unix';
 import { TcpTransport } from '@omnitron-dev/titan/netron/transport/tcp';
@@ -324,6 +327,7 @@ export class OmnitronDaemon {
   private stopApplicationsOnExit = false;
   private backendControl: Awaited<ReturnType<typeof startBackendControl>> | null = null;
   private recoveryMonitor: BackendRecoveryMonitor | null = null;
+  private runtimeRestartAdmission: { digest: string; request: RuntimeRestartPrepareRequest; ready: Promise<RuntimeRestartConfiguration> } | null = null;
   private supervision: BackendRuntimeStatus['supervision'];
 
   /** Daemon config accessor for external use (e.g., DaemonRpcService) */
@@ -400,40 +404,108 @@ export class OmnitronDaemon {
   }
 
   /** Read-only capture through the authenticated private controller endpoint. */
-  async captureRuntimeRestart(scopes: Array<{ project: string; stack: string }>): Promise<import('../project/runtime-restart.js').RuntimeRestartConfiguration> {
+  async captureRuntimeRestart(scopes: Array<{ project: string; stack: string }>): Promise<RuntimeRestartConfiguration> {
+    return (await this.observeRuntimeRestart(scopes, false)).configuration;
+  }
+
+  async reviewRuntimeRestart(scopes: Array<{ project: string; stack: string }>): Promise<RuntimeRestartReview> {
+    return this.observeRuntimeRestart(scopes, true);
+  }
+
+  private async observeRuntimeRestart(scopes: Array<{ project: string; stack: string }>, review: boolean): Promise<RuntimeRestartReview> {
     const { recoveryState } = await import('./recovery-state.js');
-    const token = recoveryState.token(), status = this.backendRuntimeStatus();
-    if (token === null || !this.execution || !this.app || !this.watchConfig || status.recovery?.status !== 'ready' ||
-        status.phase !== 'active' || Object.values(status.blockers).some(count => count !== 0))
-      throw Error('Runtime restart requires a current, idle recovery certificate');
+    const backups = review ? this.backupService?.reviewHandoffOperations() ?? [] : [];
+    const activeBackups = this.backupService?.activeOperationCount() ?? 0;
+    const reviewToken = () => recoveryState.reviewToken(new Map(activeBackups ? [['Backup or restore in progress', activeBackups]] : []),
+      new Set(backups.map(receipt => `execution.operation.${receipt.id}`)));
+    const token = review ? reviewToken() : recoveryState.token(), status = this.backendRuntimeStatus();
+    if (token === null || !this.execution || !this.app || !this.watchConfig || this.isShuttingDown || this.preparingBackend || this.handingOffBackend ||
+        (review ? !status.recovery || status.recovery.status === 'unavailable' : status.recovery?.status !== 'ready') ||
+        status.phase !== 'active' || Object.entries(status.blockers).some(([name, count]) => count !== 0 && !(review && name === 'backupOperations' && count === activeBackups)))
+      throw Error(review ? 'Runtime review requires stable ownership and only known cancellable backups'
+        : 'Runtime restart requires a current, idle recovery certificate');
     const before = await this.execution.controlledOwnerSnapshot();
     const projects = await this.app.container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
     const registryDigest = projects.recoveryRegistryDigest();
     const configuration = await projects.captureRuntimeRestart(scopes);
     const after = await this.execution.controlledOwnerSnapshot(before.status.controller);
-    if (!recoveryState.unchanged(token) || before.inventoryDigest !== after.inventoryDigest || registryDigest !== projects.recoveryRegistryDigest())
+    if ((review ? reviewToken() !== token || activeBackups !== (this.backupService?.activeOperationCount() ?? 0) ||
+        !isDeepStrictEqual(backups, this.backupService?.reviewHandoffOperations() ?? []) : !recoveryState.unchanged(token)) ||
+        before.inventoryDigest !== after.inventoryDigest || registryDigest !== projects.recoveryRegistryDigest())
       throw Error('Effective configuration or application ownership changed during restart review');
-    return { protocol: 1, registryDigest, ownerId: before.status.owner.id, inventoryDigest: before.inventoryDigest,
-      watchConfig: structuredClone(this.watchConfig), ...configuration };
+    return { backups, configuration: { protocol: 1, registryDigest, ownerId: before.status.owner.id, inventoryDigest: before.inventoryDigest,
+      watchConfig: structuredClone(this.watchConfig), ...configuration } };
+  }
+
+  /** Apply the reviewed cancellation inside the existing runtime-update transaction. */
+  async prepareRuntimeRestart(request: RuntimeRestartPrepareRequest): Promise<RuntimeRestartConfiguration> {
+    if (!/^[a-f0-9]{64}$/.test(request.planDigest) || !/^[a-f0-9]{64}$/.test(request.configurationSha256) ||
+        !Array.isArray(request.backups) || request.backups.length > 1000)
+      throw Error('Invalid runtime restart admission');
+    const previous = this.runtimeRestartAdmission;
+    if (previous) {
+      if (previous.digest !== request.planDigest || !isDeepStrictEqual(previous.request, request))
+        throw Error('Runtime restart admission belongs to another reviewed plan');
+      await previous.ready;
+      const current = await this.captureRuntimeRestart(request.stacks);
+      if (restartConfigurationDigest(current) !== request.configurationSha256) throw Error('Runtime restart configuration changed');
+      return current;
+    }
+    const owner = `runtime-update:${request.planDigest}`;
+    const prepare = async () => {
+      try {
+        const reviewed = await this.reviewRuntimeRestart(request.stacks);
+        if (restartConfigurationDigest(reviewed.configuration) !== request.configurationSha256)
+          throw Error('Runtime restart configuration changed before cancellation');
+        await this.backupService?.prepareHandoff(request.backups, owner);
+        if (!this.recoveryMonitor) throw Error('Recovery certification is unavailable');
+        await withControlDeadline(this.recoveryMonitor.capture(), 30_000, 'Recovery certification did not settle after backup cancellation');
+        const configuration = await this.captureRuntimeRestart(request.stacks);
+        if (restartConfigurationDigest(configuration) !== request.configurationSha256)
+          throw Error('Runtime restart configuration changed during cancellation');
+        return configuration;
+      } catch (error) {
+        try { await this.backupService?.resumeAfterHandoff(owner); }
+        catch (recoveryError) {
+          throw new AggregateError([error, recoveryError], 'Runtime restart admission failed and backup scheduling could not resume', { cause: recoveryError });
+        }
+        this.runtimeRestartAdmission = null;
+        throw error;
+      }
+    };
+    const ready = prepare();
+    this.runtimeRestartAdmission = { digest: request.planDigest, request: structuredClone(request), ready };
+    return ready;
+  }
+
+  async releaseRuntimeRestart(planDigest: string): Promise<void> {
+    if (!/^[a-f0-9]{64}$/.test(planDigest)) throw Error('Invalid runtime restart plan digest');
+    const admission = this.runtimeRestartAdmission;
+    if (!admission) return;
+    if (admission.digest !== planDigest) throw Error('Runtime restart admission belongs to another plan');
+    await admission.ready.catch(() => undefined);
+    await this.backupService?.resumeAfterHandoff(`runtime-update:${planDigest}`);
+    if (this.runtimeRestartAdmission === admission) this.runtimeRestartAdmission = null;
   }
 
   /** Called after the initiating RPC has returned, so it is not waiting for itself. */
   async prepareBackendHandoff(candidateId: string): Promise<BackendHandoffState> {
     if (!this.execution || !this.app?.netron || !this.watchConfig) throw new Error(this.backendRuntimeStatus().reason ?? 'Backend is not ready');
+    if (this.runtimeRestartAdmission) throw new Error('Runtime restart admission is held by another transition');
     if (this.handingOffBackend || this.preparingBackend) throw new Error('A backend handoff is already in progress');
-    const assertIdle = () => {
+    const assertIdle = (allowBackupCancellation = false) => {
       const blockers = this.backendRuntimeStatus().blockers;
-      const active = Object.entries(blockers).filter(([, count]) => count > 0);
+      const active = Object.entries(blockers).filter(([name, count]) => count > 0 && !(allowBackupCancellation && name === 'backupOperations'));
       if (active.length) throw new Error(`Finish active work before replacing the backend: ${active.map(([name, count]) => `${name}=${count}`).join(', ')}`);
     };
-    assertIdle();
+    assertIdle(true);
     this.preparingBackend = true;
     await this.recoveryMonitor?.close(true);
     this.recoveryMonitor = null;
     const gate = this.app.netron.inbound;
     let projects: ProjectService | undefined;
     try {
-      this.backupService?.prepareHandoff();
+      await this.backupService?.prepareHandoff();
       projects = await this.app.container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
       const drained = await gate.drain(30_000);
       if (!drained.drained) throw new Error(`${drained.left} inbound request(s) have not drained; backend transfer was refused`);

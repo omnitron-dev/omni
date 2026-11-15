@@ -1,3 +1,4 @@
+import { testExecution } from '../fixtures/execution.js';
 /**
  * `backup restore <id>` could not be called from anything the CLI printed.
  *
@@ -167,7 +168,7 @@ describe('the daemon takes a prefix too', () => {
     env.home = dir;
     fs.mkdirSync(path.join(dir, '.omnitron', 'backups'), { recursive: true });
     store = new DaemonStateStore(quietLogger().logger, path.join(dir, '.omnitron', 'data', 'daemon-state.db'));
-    service = new BackupService(quietLogger().module, store);
+    service = new BackupService(quietLogger().module, store, testExecution);
     for (const [id, name] of [
       ['0dcf9f7a-aaaa-4bbb-8ccc-dddddddddddd', 'daemon-state_2026-09-19T17-18-04-620Z_0dcf9f7a.db'],
       ['0dcf1234-aaaa-4bbb-8ccc-eeeeeeeeeeee', 'daemon-state_2026-09-18T17-18-04-282Z_0dcf1234.db'],

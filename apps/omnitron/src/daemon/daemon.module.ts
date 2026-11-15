@@ -35,6 +35,7 @@ import {
   LOG_MANAGER_TOKEN,
   STATE_STORE_TOKEN,
   DAEMON_STATE_STORE_TOKEN,
+  EXECUTION_SERVICE_TOKEN,
   ECOSYSTEM_CONFIG_TOKEN,
   OMNITRON_DB_TOKEN,
   AUTH_SERVICE_TOKEN,
@@ -70,6 +71,7 @@ import { HealthCheckService } from '../services/health-check.service.js';
 import { DiscoveryService } from '../services/discovery.service.js';
 import { KubernetesService } from '../services/kubernetes.service.js';
 import { PipelineService } from '../services/pipeline.service.js';
+import { ExecutionService } from '../execution/execution.service.js';
 import { TraceCollectorService } from '../services/trace-collector.service.js';
 import { BackupService } from '../services/backup.service.js';
 import { SecretsService } from '../services/secrets.service.js';
@@ -386,6 +388,14 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
           scope: Scope.Singleton,
         },
       ],
+      [
+        EXECUTION_SERVICE_TOKEN,
+        {
+          useFactory: (loggerModule: ILoggerModule) => new ExecutionService(loggerModule.logger),
+          inject: [LOGGER_SERVICE_TOKEN],
+          scope: Scope.Singleton,
+        },
+      ],
 
       // State persistence — thin wrapper that hands writes to the
       // DaemonStateStore. The legacy JSON path is passed through
@@ -664,9 +674,9 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
       ...(!isSlave ? [[
         PIPELINE_SERVICE_TOKEN,
         {
-          useFactory: (db: Kysely<OmnitronDatabase>, loggerModule: ILoggerModule) =>
-            new PipelineService(db, loggerModule.logger),
-          inject: [OMNITRON_DB_TOKEN, LOGGER_SERVICE_TOKEN],
+          useFactory: (db: Kysely<OmnitronDatabase>, loggerModule: ILoggerModule, executor: ExecutionService) =>
+            new PipelineService(db, loggerModule.logger, executor),
+          inject: [OMNITRON_DB_TOKEN, LOGGER_SERVICE_TOKEN, EXECUTION_SERVICE_TOKEN],
           scope: Scope.Singleton,
         },
       ] as any] : []),

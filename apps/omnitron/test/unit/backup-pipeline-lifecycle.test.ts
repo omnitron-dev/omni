@@ -1,3 +1,4 @@
+import { testExecution } from '../fixtures/execution.js';
 import fs from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
 import os from 'node:os';
@@ -73,7 +74,7 @@ async function alterSync(alter: (handle: FileHandle, sync: () => Promise<void>) 
 describe('backup transfer lifecycle', () => {
   it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY, 86_400_001])('rejects invalid budget %s before file/process effects', async timeoutMs => {
     const marker = file('spawned');
-    await expect(dumpToFile(process.execPath, ['-e', 'require("node:fs").writeFileSync(process.argv[1], "spawned")', marker],
+    await expect(dumpToFile(testExecution, process.execPath, ['-e', 'require("node:fs").writeFileSync(process.argv[1], "spawned")', marker],
       file('out'), false, { timeoutMs })).rejects.toThrow(/timeout must be an integer/);
     expect(fs.readdirSync(directory)).toEqual([]);
   });
@@ -81,17 +82,17 @@ describe('backup transfer lifecycle', () => {
   it('preserves an existing destination on spawn failure and refuses before child effects', async () => {
     const output = file('existing');
     fs.writeFileSync(output, 'a previous valid backup');
-    await expect(dumpToFile('/no-such-backup-producer', [], output, false)).rejects.toThrow();
+    await expect(dumpToFile(testExecution, '/no-such-backup-producer', [], output, false)).rejects.toThrow();
     expect(fs.readFileSync(output, 'utf8')).toBe('a previous valid backup');
     const marker = file('spawned');
-    await expect(dumpToFile(process.execPath, ['-e', 'require("node:fs").writeFileSync(process.argv[1], "spawned")', marker],
+    await expect(dumpToFile(testExecution, process.execPath, ['-e', 'require("node:fs").writeFileSync(process.argv[1], "spawned")', marker],
       output, false)).rejects.toThrow(/already exists/);
     expect(fs.existsSync(marker)).toBe(false);
   });
 
   it('does not replace a destination claimed by another writer during the transfer', async () => {
     const ready = pidFile('writer.pid'), release = file('release'), output = file('result');
-    const run = dumpToFile(process.execPath, ['-e', `
+    const run = dumpToFile(testExecution, process.execPath, ['-e', `
       const fs = require('node:fs');
       fs.writeFileSync(process.argv[1], String(process.pid));
       const timer = setInterval(() => { if (fs.existsSync(process.argv[2])) {
@@ -116,7 +117,7 @@ describe('backup transfer lifecycle', () => {
         write.call(this, chunk, encoding, error => callback(error ?? new Error('injected ENOSPC after a real write')));
       };
     });
-    await expect(dumpToFile(process.execPath, ['-e', `
+    await expect(dumpToFile(testExecution, process.execPath, ['-e', `
       require('node:fs').writeFileSync(process.argv[1], String(process.pid));
       process.stdout.on('error', () => {});
       process.stdout.write('partial bytes');
@@ -132,7 +133,7 @@ describe('backup transfer lifecycle', () => {
     await alterWriteStream(stream => {
       stream._final = callback => { timers.add(setTimeout(callback, 1_500)); };
     });
-    await expect(dumpToFile(process.execPath, ['-e', `
+    await expect(dumpToFile(testExecution, process.execPath, ['-e', `
       require('node:fs').writeFileSync(process.argv[1], String(process.pid));
       process.stdout.end('complete producer output');
     `, marker], file('late'), true, { timeoutMs: 500 })).rejects.toThrow(/deadline/);
@@ -140,24 +141,28 @@ describe('backup transfer lifecycle', () => {
     expect(fs.existsSync(file('late'))).toBe(false);
   });
 
-  it('terminates the owned local process group instead of waiting for an inherited pipe to close', async () => {
+  it('retains an unknown local attempt when a reaped leader leaves an inherited pipe open', async () => {
     const childPid = pidFile('descendant.pid');
     const descendant = `require('node:fs').writeFileSync(process.argv[1], String(process.pid)); setTimeout(() => {}, 4000);`;
     const started = performance.now();
-    await expect(dumpToFile(process.execPath, ['-e', `
+    const failure = await dumpToFile(testExecution, process.execPath, ['-e', `
       require('node:child_process').spawn(process.execPath, ['-e', process.argv[1], process.argv[2]], { stdio: 'inherit' });
       process.exit(0);
-    `, descendant, childPid], file('inherited'), false, { timeoutMs: 500 })).rejects.toThrow(/deadline/);
+    `, descendant, childPid], file('inherited'), false, { timeoutMs: 500 }).catch(error => error);
+    expect(failure).toMatchObject({ cause: { kind: 'outcome-unknown', adapter: 'local' } });
     expect(performance.now() - started).toBeLessThan(3_000);
-    expect(alive(pidAt(childPid))).toBe(false);
+    // A closed parent PID no longer owns its old group. Never guess at a
+    // reusable PGID; the fixture reaps its own child in afterEach.
+    expect(alive(pidAt(childPid))).toBe(true);
     expect(fs.existsSync(file('inherited'))).toBe(false);
+    expect(fs.readdirSync(directory).filter(name => name.endsWith('.partial'))).toHaveLength(1);
   });
 
   it('reaps a restore consumer when decompression fails after it received data', async () => {
     const marker = pidFile('consumer.pid'), input = file('broken.gz');
     const bytes = Buffer.concat([gzipSync(Buffer.alloc(2 * 1024 * 1024, 'x')), Buffer.from('invalid gzip trailer')]);
     fs.writeFileSync(input, bytes);
-    await expect(restoreFromFile(process.execPath, ['-e', `
+    await expect(restoreFromFile(testExecution, process.execPath, ['-e', `
       require('node:fs').writeFileSync(process.argv[1], String(process.pid));
       process.stdin.resume(); process.stdin.on('error', () => {});
       setInterval(() => {}, 1000);
@@ -171,7 +176,7 @@ describe('backup transfer lifecycle', () => {
       expect((await handle.stat()).isFile()).toBe(true);
       throw new Error('injected file fsync failure');
     });
-    await expect(dumpToFile(process.execPath, ['-e', 'process.stdout.end("complete")'], file('unsynced'), false))
+    await expect(dumpToFile(testExecution, process.execPath, ['-e', 'process.stdout.end("complete")'], file('unsynced'), false))
       .rejects.toThrow(/file fsync failure/);
     expect(fs.existsSync(file('unsynced'))).toBe(false);
     expect(fs.readdirSync(directory).filter(name => name.endsWith('.partial'))).toEqual([]);
@@ -182,7 +187,7 @@ describe('backup transfer lifecycle', () => {
       await sync();
       await new Promise<void>(resolve => { timers.add(setTimeout(resolve, 800)); });
     });
-    await expect(dumpToFile(process.execPath, ['-e', 'process.stdout.end("complete")'], file('late-sync'), false,
+    await expect(dumpToFile(testExecution, process.execPath, ['-e', 'process.stdout.end("complete")'], file('late-sync'), false,
       { timeoutMs: 300 })).rejects.toThrow(/deadline/);
     expect(fs.existsSync(file('late-sync'))).toBe(false);
     expect(fs.readdirSync(directory).filter(name => name.endsWith('.partial'))).toEqual([]);
@@ -198,7 +203,7 @@ describe('backup transfer lifecycle', () => {
       fs.writeFileSync(output, 'replacement belongs to another writer', { flag: 'wx' });
       throw new Error('injected directory fsync failure');
     });
-    await expect(dumpToFile(process.execPath, ['-e', 'process.stdout.end("complete")'], output, false))
+    await expect(dumpToFile(testExecution, process.execPath, ['-e', 'process.stdout.end("complete")'], output, false))
       .rejects.toThrow(/publication was not confirmed.*directory fsync failure/);
     expect(fs.readFileSync(output, 'utf8')).toBe('replacement belongs to another writer');
   });
@@ -209,7 +214,7 @@ describe('backup transfer lifecycle', () => {
       if (String(name).endsWith('.partial')) throw new Error('injected staging cleanup refusal');
       await unlink(name);
     });
-    const result = await dumpToFile(process.execPath, ['-e', 'process.stdout.write("partial"); process.exitCode = 7'],
+    const result = await dumpToFile(testExecution, process.execPath, ['-e', 'process.stdout.write("partial"); process.exitCode = 7'],
       file('failed-cleanup'), false).then(() => undefined, error => error as AggregateError);
     expect(result).toBeInstanceOf(AggregateError);
     expect(result?.message).toMatch(/exited with code 7.*cleanup failed.*staging cleanup refusal/);

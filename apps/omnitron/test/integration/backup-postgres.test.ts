@@ -1,3 +1,4 @@
+import { testExecution } from '../fixtures/execution.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -59,7 +60,7 @@ describe.skipIf(!image)('PostgreSQL backup and restore through the public servic
       getResolvedContainerName: () => container, getPostgresDatabases: () => [database] };
     const projects = { listProjectRegistrations: () => [{ name: 'fixture' }], getRunningStacks: () => ['private'],
       getInfraManager: () => ({ listInstances: () => [], getInstance: () => infra }) };
-    backups = new BackupService({ logger } as never, store, projects as never);
+    backups = new BackupService({ logger } as never, store, testExecution, projects as never);
     backups.configure({ databaseTimeoutMs: 30_000 });
 
     await sql('CREATE TABLE startup_side_effect (value text)');
@@ -92,12 +93,12 @@ describe.skipIf(!image)('PostgreSQL backup and restore through the public servic
     return id;
   }
 
-  it.each([false, true])('stops on SQL failure without reporting success or executing the remaining SQL (compressed=%s)', async compressed => {
+  it.each([false, true])('rolls back SQL failure without reporting success or retaining earlier statements (compressed=%s)', async compressed => {
     const prefix = compressed ? 'compressed' : 'plain';
     const id = archive(`CREATE TABLE ${prefix}_before (value int);\nSELECT 1/0;\nCREATE TABLE ${prefix}_after (value int);\n`, compressed);
     logger.info.mockClear();
     await expect(backups.restoreBackup(id)).rejects.toThrow(/division by zero/);
-    expect((await sql(`SELECT to_regclass('${prefix}_before') IS NOT NULL, to_regclass('${prefix}_after') IS NULL`)).trim()).toBe('t|t');
+    expect((await sql(`SELECT to_regclass('${prefix}_before') IS NULL, to_regclass('${prefix}_after') IS NULL`)).trim()).toBe('t|t');
     expect((await sql('SELECT count(*) FROM startup_side_effect')).trim()).toBe('0');
     expect(logger.info.mock.calls.some(([, message]) => message === 'Backup restored')).toBe(false);
     expect(backups.activeOperationCount()).toBe(0);

@@ -7,7 +7,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { tsImport } from 'tsx/esm/api';
 const { runRuntimeUpdate, readRuntimeUpdateReceipt } = await tsImport('../../src/daemon/runtime-update.ts', import.meta.url);
-const { assertLocalIdle, assertReviewedBoot, assertSameSavedSelection, assertLocalServiceTargets } = await tsImport('../../src/daemon/runtime-update-host.ts', import.meta.url);
+const { assertLocalIdle, assertLocalReview, retainReviewedBackups, assertReviewedBoot, assertSameSavedSelection, assertLocalServiceTargets } = await tsImport('../../src/daemon/runtime-update-host.ts', import.meta.url);
 import { BACKEND_ACTIVITY_COUNTERS } from '../../src/shared/dto/backend.ts';
 
 test('only boots with the exact native admission and unchanged desired state', () => {
@@ -45,6 +45,40 @@ test('acceptance checks the same complete saved release even if the effective re
   const inferred = { ...pinned, savedSelection: unreported };
   assert.doesNotThrow(() => assertSameSavedSelection(inferred, { selection: unreported }));
   assert.throws(() => assertSameSavedSelection(inferred, { selection: release }), /Saved launch selection changed/);
+});
+
+const backup = {
+  protocol: 1, id: '01234567-0000-4000-8000-000000000001', kind: 'backup', revision: 2, state: 'running',
+  resources: [{ kind: 'database', name: 'fixture', project: 'sample', stack: 'dev' }], inputDigest: 'd'.repeat(64),
+  createdAt: '2026-11-15T00:00:00Z', updatedAt: '2026-11-15T00:00:01Z',
+  execution: { type: 'docker', operationId: '01234567-0000-4000-8000-000000000001', daemonId: 'fixture-daemon', id: 'owned-container' },
+};
+
+test('the reviewed backup may finish before apply without replacing its exact approved identity', async () => {
+  const review = [structuredClone(backup)];
+  assert.deepEqual(await retainReviewedBackups([backup], review, async () => assert.fail('active identity was already read')), review);
+  for (const state of ['succeeded', 'failed', 'cancelled']) {
+    const completed = { ...backup, state, revision: 4, updatedAt: '2026-11-15T00:00:02Z' };
+    assert.deepEqual(await retainReviewedBackups([], review, async id => {
+      assert.equal(id, backup.id);
+      return completed;
+    }), review, 'the stable review digest retains the original approval, not a substituted receipt');
+  }
+});
+
+test('new attempts, unknown outcomes, changed intent and a different execution never inherit backup cancellation authority', async () => {
+  const review = [backup];
+  for (const current of [[{ ...backup, id: '01234567-0000-4000-8000-000000000002' }],
+    [{ ...backup, revision: 3 }], [{ ...backup, state: 'unknown' }], [{ ...backup, kind: 'restore' }], [backup, backup]]) {
+    await assert.rejects(retainReviewedBackups(current, review, async () => assert.fail('active state must be refused directly')));
+  }
+  const completed = { ...backup, state: 'succeeded', revision: 4 };
+  for (const actual of [null, { ...completed, state: 'unknown' }, { ...completed, revision: 2 },
+    { ...completed, inputDigest: 'e'.repeat(64) }, { ...completed, createdAt: '2026-11-15T00:00:02Z' },
+    { ...completed, resources: [{ kind: 'database', name: 'another' }] },
+    { ...completed, execution: { ...backup.execution, id: 'foreign-container' } }]) {
+    await assert.rejects(retainReviewedBackups([], review, async () => actual), /completion is unconfirmed/);
+  }
 });
 
 const native = ['darwin', 'linux'].includes(process.platform);
@@ -96,7 +130,7 @@ function planFor(directory, identity) {
     before: { backend: previous, owner: previous, guardian: previous, console: null, scope: 'user',
       ownerPid: identity.pid, backendPid: identity.pid, guardianPid: identity.pid, ownerId: identity.generation,
       ownerLifetime: identity.generation, retiredPids: [], revision: 1 },
-    stacks: [], infrastructure: [],
+    stacks: [], infrastructure: [], backupOperations: [],
   };
 }
 
@@ -119,6 +153,7 @@ test('an in-flight operation must be clear before a review can stop the private 
   const { digest } = await runRuntimeUpdate({ ...config, operation: 'prepare' });
   assert.match(digest, /^[a-f0-9]{64}$/);
   blockers.backupOperations = 1;
+  assert.doesNotThrow(() => assertLocalReview(status), 'read-only review is not shutdown admission');
   await assert.rejects(runRuntimeUpdate({ ...config, operation: 'apply', digest }), /backupOperations=1/);
   delete blockers.backupOperations;
   await assert.rejects(runRuntimeUpdate({ ...config, operation: 'apply', digest }), /activity counters/);
@@ -173,6 +208,8 @@ test('a shutdown admission refusal preserves the original owner without starting
     progress: phase => phases.push(phase),
     actions: {
       async prepare() { return structuredClone(plan); },
+      async admit() {},
+      async releaseAdmission(reviewed) { assert.deepEqual(reviewed, plan); },
       async validateStop(before, reviewed) {
         assert.deepEqual(before, plan.before);
         assert.deepEqual(reviewed, plan);
@@ -186,11 +223,58 @@ test('a shutdown admission refusal preserves the original owner without starting
   for (const reason of ['source changed', 'worker rotation', 'infrastructure changed']) {
     refusal = new Error(reason);
     await assert.rejects(runRuntimeUpdate({ ...config, operation: 'apply', digest: review.digest }), error => error === refusal);
-    assert.equal(await readRuntimeUpdateReceipt(directory), null);
+    assert.equal((await readRuntimeUpdateReceipt(directory)).phase, 'aborted');
     assert.deepEqual(await owner.observe(), owner.identity);
     assert.equal((await runRuntimeUpdate({ ...config, operation: 'prepare' })).digest, review.digest);
   }
-  assert.deepEqual(phases, []);
+  assert.deepEqual(phases, ['draining', 'aborted', 'draining', 'aborted', 'draining', 'aborted']);
+});
+
+test('a lost drain acknowledgement retains durable admission intent and recovery only releases that intent', { skip: !native }, async t => {
+  const directory = await privateInstance(t);
+  const plan = planFor(directory, { pid: process.pid, generation: 'original' });
+  plan.backupOperations = [backup];
+  let prepared;
+  let releaseConfirmed = false;
+  let admitted = 0, released = 0;
+  const actions = {
+    async prepare(reviewed) {
+      if (prepared) assert.deepEqual(reviewed, prepared.plan);
+      return plan;
+    },
+    async admit(reviewed, digest) {
+      admitted++;
+      const durable = await readRuntimeUpdateReceipt(directory);
+      assert.equal(durable.phase, 'draining');
+      assert.equal(durable.digest, digest);
+      assert.deepEqual(durable.plan, reviewed);
+      throw Error('drain reply lost');
+    },
+    async releaseAdmission(reviewed, digest) {
+      released++;
+      assert.equal(digest, prepared.digest);
+      assert.deepEqual(reviewed, plan);
+      if (!releaseConfirmed) throw Error('release reply lost');
+    },
+    async validateStop() { assert.fail('unknown admission cannot authorize shutdown'); },
+    async stop() { assert.fail('recovery of admission cannot stop a process'); },
+    async canRestore() { assert.fail('recovery of admission cannot enter owner restoration'); },
+  };
+  prepared = await runRuntimeUpdate({ actions, directory, operation: 'prepare' });
+  await assert.rejects(runRuntimeUpdate({ actions, directory, operation: 'apply', digest: prepared.digest }), /release is unconfirmed/);
+  const interrupted = await readRuntimeUpdateReceipt(directory);
+  assert.equal(interrupted.phase, 'draining');
+  assert.equal(interrupted.error, 'drain reply lost');
+  assert.equal(interrupted.recoveryError, 'release reply lost');
+  await assert.rejects(runRuntimeUpdate({ actions, directory, operation: 'apply', digest: prepared.digest }), /unfinished/);
+  releaseConfirmed = true;
+  const recovered = await runRuntimeUpdate({ actions, directory, operation: 'recover', digest: prepared.digest });
+  assert.equal(recovered.phase, 'aborted');
+  assert.equal(recovered.recoveryError, undefined);
+  assert.equal(admitted, 1);
+  assert.equal(released, 2);
+  assert.deepEqual(await runRuntimeUpdate({ actions, directory, operation: 'recover', digest: prepared.digest }), recovered);
+  assert.equal(released, 2, 'a confirmed release is not replayed');
 });
 
 test('applying the same review twice verifies a new live process generation and starts it once', { skip: !native }, async t => {
@@ -201,6 +285,8 @@ test('applying the same review twice verifies a new live process generation and 
   const events = [];
   const actions = {
     async prepare() { return structuredClone(plan); },
+    async admit() {},
+    async releaseAdmission() {},
     async validateStop(before) {
       assert.equal(before.ownerId, owner.identity.generation);
     },
@@ -267,6 +353,8 @@ test('a lost rollback acknowledgement is inspected without a second cold start',
   let inspectOnly;
   const actions = {
     async prepare() { return plan; },
+    async admit() {},
+    async releaseAdmission() {},
     async validateStop() {},
     async stop() {},
     async assertStopped() {},

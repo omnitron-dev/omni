@@ -127,7 +127,8 @@ export class PipelineService {
   private observe: ((status: PipelineRun['status'], duration: number) => void) | undefined;
   constructor(
     private readonly db: Kysely<OmnitronDatabase>,
-    private readonly logger: ILogger
+    private readonly logger: ILogger,
+    private readonly execution: import('../execution/execution.service.js').ExecutionService,
   ) {}
 
   configure(nodes: Nodes, observe?: (status: PipelineRun['status'], duration: number) => void,
@@ -434,14 +435,12 @@ export class PipelineService {
     };
     // Xec retains ownership of streams, output limits, retry and cancellation.
     // Its execute hook fences the exact Command before each ordinary attempt.
-    const { ExecutionEngine } = await import('@xec-sh/core');
-    const engine = new ExecutionEngine();
     const execute = async (command: Command) => {
       await this.assertLifecycle?.();
       command.signal?.throwIfAborted();
       if (!command.onSpawn || !commands.has(command.onSpawn)) throw Error('Xec did not retain the admitted pipeline command binding');
       const binding = commands.get(command.onSpawn);
-      if (!binding) return engine.execute(command);
+      if (!binding) return this.execution.execute(command);
       if (binding.unconfirmed) throw new Error('Prior release execution is unconfirmed; inspect its evidence before retrying');
       const { operation } = binding;
       const step = run.steps.find(item => item.name === binding.name)!;
@@ -453,7 +452,7 @@ export class PipelineService {
       await this.assertLifecycle?.();
       command.signal?.throwIfAborted();
       try {
-        const result = await engine.execute(command);
+        const result = await this.execution.execute(command);
         // A changed owner after effects is an unconfirmed attempt, never a
         // successful receipt or a reason to run those effects again automatically.
         await operation.verify();
@@ -487,7 +486,6 @@ export class PipelineService {
         }
     } finally {
       try {
-        await engine.dispose();
         await Promise.all(prepared.map((script) => script.dispose()));
       } catch (error) {
         run.status = 'failed';

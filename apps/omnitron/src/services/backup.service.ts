@@ -14,14 +14,19 @@ import { OMNITRON_HOME } from '../config/defaults.js';
  * - Automatic cleanup of old backups
  */
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { runExclusive } from '@omnitron-dev/common';
 import { Injectable, Inject, Optional } from '@omnitron-dev/titan/decorators';
 import { LOGGER_SERVICE_TOKEN, type ILoggerModule, type ILogger } from '@omnitron-dev/titan/module/logger';
-import { DAEMON_STATE_STORE_TOKEN, PROJECT_SERVICE_TOKEN } from '../shared/tokens.js';
+import { DAEMON_STATE_STORE_TOKEN, PROJECT_SERVICE_TOKEN, EXECUTION_SERVICE_TOKEN } from '../shared/tokens.js';
+import { ExecutionService } from '../execution/execution.service.js';
+import { OperationJournal, OperationJournalError } from '../execution/operation-journal.js';
+import type { OperationReceipt, OperationArtifact } from '../shared/dto/execution-operations.js';
+import type { ExecutionResourceObservation } from '@xec-sh/core';
+import type { PipelineOptions } from './backup-pipeline.js';
 import { getEnv } from '../shared/env-config.js';
 import { resolveOmnitronPgConfig } from '../database/connection.js';
 import { ensurePrivateDir, sealFile, sealDirContents } from '../shared/private-files.js';
@@ -243,7 +248,7 @@ export interface LeftoverSweep {
  * it — and only while its WAL holds no frames. A pair beside a live database
  * is counted and kept: that one is not provably idle.
  */
-export function sweepBackupLeftovers(dir: string): LeftoverSweep {
+export function sweepBackupLeftovers(dir: string, preservePending = false): LeftoverSweep {
   const report: LeftoverSweep = { removed: [], besideBackups: { files: 0, bytes: 0 }, keptOrphans: [] };
   let entries: fs.Dirent[];
   try {
@@ -269,6 +274,7 @@ export function sweepBackupLeftovers(dir: string): LeftoverSweep {
 
   // Files first: removing a `.partial` is what orphans the sidecars beside it.
   for (const e of entries) {
+    if (preservePending && (e.name.endsWith('.partial') || STORAGE_STAGING_DIR.test(e.name))) continue;
     if (e.isDirectory()) {
       if (STORAGE_STAGING_DIR.test(e.name)) remove(e.name, 'the scratch directory of an interrupted storage pass');
       continue;
@@ -317,8 +323,13 @@ export function databasesToPrune(scheduled: string[], onDisk: string[]): string[
 export class BackupService {
   private static readonly SCHEDULES_KV_KEY = 'backup:schedules';
   private activeOperations = 0;
+  private handoffBlockingOperations = 0;
   private quiescing = false;
+  private handoffOwner: string | null = null;
   private databaseTimeoutMs = 30 * 60_000;
+  private readonly operations: OperationJournal;
+  private readonly databaseOperations = new Map<string, { controller: AbortController; done: Promise<void> }>();
+  private readonly inFlight = new Set<Promise<unknown>>();
 
   /** Set the persisted host policy before admitting work or arming schedules. */
   configure(options?: IDaemonConfig['backups']): void {
@@ -330,25 +341,180 @@ export class BackupService {
 
   activeOperationCount(): number { return this.activeOperations; }
 
-  prepareHandoff(): void {
-    if (this.activeOperations) throw new Error('Backup or restore is active; finish it before replacing the backend');
+  /** Read-only cancellation authority for a plan; it grants no recovery certificate. */
+  reviewHandoffOperations(): OperationReceipt[] {
+    const pending = this.listOperations();
+    if (this.handoffBlockingOperations || (this.activeOperations && !this.databaseOperations.size) || pending.some(operation => operation.kind !== 'backup' ||
+        !['prepared', 'running'].includes(operation.state) || !this.databaseOperations.has(operation.id)))
+      throw new Error('Backup or restore is active or unconfirmed; only owned database backups can be cancelled for runtime update');
+    return pending;
+  }
+
+  async prepareHandoff(expected?: readonly OperationReceipt[], owner = 'backend-handoff'): Promise<void> {
+    if (this.handoffOwner && this.handoffOwner !== owner) throw new Error('Backup admission belongs to another transition');
+    const pending = this.reviewHandoffOperations();
+    if (expected) {
+      const reviewed = new Map(expected.map(receipt => [receipt.id, receipt]));
+      if (reviewed.size !== expected.length || pending.some(receipt => !isDeepStrictEqual(reviewed.get(receipt.id), receipt)))
+        throw new Error('Backup operations changed after review');
+      for (const receipt of expected) {
+        const current = this.getOperation(receipt.id);
+        if (!current || receipt.kind !== 'backup' || !['prepared', 'running'].includes(receipt.state))
+          throw new Error('Reviewed backup operation is invalid');
+        if (pending.some(item => item.id === receipt.id)) continue;
+        if (!['succeeded', 'failed', 'cancelled'].includes(current.state) || current.revision <= receipt.revision ||
+            !isDeepStrictEqual([current.protocol, current.id, current.kind, current.resources, current.inputDigest, current.createdAt],
+              [receipt.protocol, receipt.id, receipt.kind, receipt.resources, receipt.inputDigest, receipt.createdAt]) ||
+            receipt.execution && !isDeepStrictEqual(receipt.execution, current.execution))
+          throw new Error('Reviewed backup has no confirmed terminal outcome');
+      }
+    }
     this.quiescing = true;
+    this.handoffOwner = owner;
     this.dispose();
+    // Cancelling an incomplete dump preserves every prior archive. Its durable
+    // receipt and Xec resource ownership must settle before handoff is admitted.
+    await Promise.all(pending.map(operation => this.cancelOperation(operation.id, operation.revision)));
+    await this.boundedSettlement(Promise.allSettled([...this.inFlight]));
+    if (this.activeOperations || this.listOperations().length)
+      throw new Error('Backup completion remains unconfirmed; backend handoff is blocked');
   }
 
-  async resumeAfterHandoff(): Promise<void> {
+  async resumeAfterHandoff(owner = 'backend-handoff'): Promise<void> {
     if (!this.quiescing) return;
+    if (this.handoffOwner !== owner) throw new Error('Only the owning transition can resume backup admission');
     this.quiescing = false;
-    await this.restoreSchedules().catch(error => {
-      this.logger.error({ error: reasonOf(error) }, 'Backup schedules could not resume after backend handoff; inspect backup schedules');
-    });
+    try {
+      this.restoreScheduleTimers();
+      this.handoffOwner = null;
+    } catch (error) {
+      this.quiescing = true;
+      this.dispose();
+      throw error;
+    }
   }
 
-  private async trackOperation<T>(operation: () => Promise<T>): Promise<T> {
+  private async trackOperation<T>(operation: () => Promise<T>, cancellableBackup = false): Promise<T> {
     if (this.quiescing) throw new Error('Backup admission is paused for backend handoff');
     this.activeOperations++;
-    try { return await recoveryState.run('Backup or restore in progress', operation); }
-    finally { this.activeOperations--; }
+    if (!cancellableBackup) this.handoffBlockingOperations++;
+    let work: Promise<T> | undefined;
+    try {
+      work = recoveryState.run('Backup or restore in progress', operation);
+      this.inFlight.add(work);
+      return await work;
+    } finally {
+      this.activeOperations--;
+      if (!cancellableBackup) this.handoffBlockingOperations--;
+      if (work) this.inFlight.delete(work);
+    }
+  }
+
+  private async boundedSettlement(work: Promise<unknown>): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try { await Promise.race([work, new Promise<void>(resolve => { timer = setTimeout(resolve, 20_000); })]); }
+    finally { clearTimeout(timer); }
+  }
+
+  listOperations(): OperationReceipt[] { return this.operations.pending().filter(receipt => ['backup', 'restore'].includes(receipt.kind)); }
+  getOperation(id: string): OperationReceipt | null { return this.operations.read(id); }
+
+  private reviewedOperation(id: string, revision: number): OperationReceipt {
+    const receipt = this.operations.read(id);
+    if (!receipt || !['backup', 'restore'].includes(receipt.kind)) throw new Error('Backup operation not found');
+    if (receipt.revision !== revision)
+      throw new OperationJournalError('OPERATION_REVISION_CONFLICT', 'Backup operation changed; read its receipt before acting');
+    return receipt;
+  }
+
+  async cancelOperation(id: string, revision: number): Promise<OperationReceipt> {
+    let receipt = this.reviewedOperation(id, revision);
+    if (['succeeded', 'failed', 'cancelled'].includes(receipt.state)) return receipt;
+    const active = this.databaseOperations.get(id);
+    if (active) {
+      if (receipt.state !== 'cancelling') this.operations.transition(id, revision, 'cancelling');
+      active.controller.abort(new Error('Backup operation cancelled'));
+      await this.boundedSettlement(active.done);
+      return this.operations.read(id)!;
+    }
+    if (!receipt.execution) {
+      return receipt.state === 'unknown' ? receipt : this.operations.transition(id, revision, 'unknown', { code: 'BACKUP_EXECUTION_UNCONFIRMED' });
+    }
+    if (receipt.state !== 'unknown' && receipt.state !== 'cancelling')
+      receipt = this.operations.transition(id, revision, 'cancelling');
+    try {
+      const observation = await this.execution.terminateExecution(receipt.execution!);
+      return this.operations.transition(id, receipt.revision, 'cancelled', { observation, code: 'BACKUP_CANCELLED' });
+    } catch {
+      return receipt.state === 'unknown' ? receipt : this.operations.transition(id, receipt.revision, 'unknown', { code: 'BACKUP_EXECUTION_UNCONFIRMED' });
+    }
+  }
+
+  async reconcileOperation(id: string, revision: number): Promise<OperationReceipt> {
+    const receipt = this.reviewedOperation(id, revision);
+    if (['succeeded', 'failed', 'cancelled'].includes(receipt.state)) return receipt;
+    if (this.databaseOperations.has(id)) throw new Error('Operation is still owned by this backend; cancel it or await completion');
+    if (!receipt.execution) return receipt.state === 'unknown' ? receipt
+      : this.operations.transition(id, revision, 'unknown', { code: 'BACKUP_EXECUTION_UNCONFIRMED' });
+    try {
+      const observation = await this.execution.inspectExecution(receipt.execution);
+      if (observation.state === 'absent' || observation.state === 'stopped')
+        return this.operations.transition(id, revision, 'failed', { observation, code: 'BACKUP_INTERRUPTED' });
+    } catch { /* Unavailable observation cannot authorize replay or release a claim. */ }
+    return receipt.state === 'unknown' ? receipt : this.operations.transition(id, revision, 'unknown', { code: 'BACKUP_EXECUTION_UNCONFIRMED' });
+  }
+
+  private async databaseOperation<T>(kind: 'backup' | 'restore', target: ResolvedDb, id: string,
+    inputs: unknown, effect: (execution: Pick<ExecutionService, 'execute'>, options: PipelineOptions) => Promise<T>,
+    artifact?: (value: T) => OperationArtifact): Promise<T> {
+    const { dbConfig, origin } = target;
+    const binding = target.isDocker ? await this.execution.inspectDockerTarget(target.containerName) : undefined;
+    if (this.quiescing) throw new Error('Backup admission is paused for runtime update');
+    const prepared = this.operations.prepare({ id, kind,
+      resources: [{ kind: 'database', name: dbConfig.database,
+        ...(origin === 'control-plane' ? { project: 'omnitron', stack: 'control-plane' } : origin) },
+      { kind: 'database-endpoint', name: JSON.stringify([binding?.id ?? `${dbConfig.host}:${dbConfig.port}`, dbConfig.database]) }],
+      inputDigest: createHash('sha256').update(JSON.stringify({ target, binding, inputs })).digest('hex') });
+    if (!prepared.created) throw new Error(`Operation ${id} already exists (${prepared.receipt.state}); read or reconcile it instead of replaying`);
+    const controller = new AbortController();
+    let finish!: () => void;
+    const done = new Promise<void>(resolve => { finish = resolve; });
+    this.databaseOperations.set(id, { controller, done });
+    let executionKnown = true;
+    const execution: Pick<ExecutionService, 'execute'> = { execute: async command => {
+      try { return await this.execution.execute(command); }
+      catch (error) {
+        const { ExecutionOutcomeUnknownError } = await import('@xec-sh/core');
+        if (error instanceof ExecutionOutcomeUnknownError) executionKnown = false;
+        throw error;
+      }
+    } };
+    const completion = (): { receipt: OperationReceipt; observation?: ExecutionResourceObservation; known: boolean } => {
+      const receipt = this.operations.read(id)!;
+      return { receipt, known: executionKnown && (!receipt.execution || !!receipt.execution.id),
+        ...(receipt.execution?.id && executionKnown ? { observation: { resource: receipt.execution, state: 'absent' as const } } : {}) };
+    };
+    try {
+      this.operations.transition(id, prepared.receipt.revision, 'running');
+      const options: PipelineOptions = { timeoutMs: this.databaseTimeoutMs, signal: controller.signal,
+        execution: { operationId: id, onResource: async (resource, signal) => {
+          signal.throwIfAborted();
+          const current = this.operations.read(id)!;
+          this.operations.recordExecution(id, current.revision, resource);
+        } } };
+      const result = await effect(execution, binding
+        ? this.postgresJobOptions(binding, kind === 'backup' ? 'pg_dump' : 'psql', dbConfig, options) : options);
+      const { receipt, observation, known } = completion();
+      if (!known) throw new Error('Backup execution completion was not confirmed');
+      this.operations.transition(id, receipt.revision, 'succeeded', { ...(observation && { observation }), ...(artifact && { artifact: artifact(result) }) });
+      return result;
+    } catch (error) {
+      const { receipt, observation, known } = completion();
+      if (!['succeeded', 'failed', 'cancelled'].includes(receipt.state)) this.operations.transition(id, receipt.revision,
+        known ? controller.signal.aborted ? 'cancelled' : 'failed' : 'unknown',
+        known ? { ...(observation && { observation }), code: controller.signal.aborted ? 'BACKUP_CANCELLED' : 'BACKUP_FAILED' } : { code: 'BACKUP_EXECUTION_UNCONFIRMED' });
+      throw error;
+    } finally { this.databaseOperations.delete(id); finish(); }
   }
 
   /** Target → the last pass it ran. Beside the schedules, in the same store. */
@@ -396,6 +562,7 @@ export class BackupService {
      * files happens on the first list/restore call.
      */
     @Inject(DAEMON_STATE_STORE_TOKEN) private readonly store: DaemonStateStore,
+    @Inject(EXECUTION_SERVICE_TOKEN) private readonly execution: ExecutionService,
     /**
      * Optional so the daemon still boots (and omnitron-pg self-backup still
      * works) even if the project subsystem is unavailable. When present it is
@@ -405,6 +572,7 @@ export class BackupService {
     @Optional() @Inject(PROJECT_SERVICE_TOKEN) private readonly projects?: ProjectService,
   ) {
     this.logger = loggerModule.logger;
+    this.operations = new OperationJournal(store, recoveryState);
     this.backupDir = path.join(OMNITRON_HOME, 'backups');
     // 0700 on the directory, 0600 on every file in it — see `private-files`.
     // The sweep reaches backwards on purpose: the files written before this
@@ -426,7 +594,7 @@ export class BackupService {
    * is still on disk without an index row. See `sweepBackupLeftovers`.
    */
   private clearLeftovers(): void {
-    const swept = sweepBackupLeftovers(this.backupDir);
+    const swept = sweepBackupLeftovers(this.backupDir, this.operations.pending().length > 0);
     if (swept.removed.length > 0) {
       const bytes = swept.removed.reduce((sum, r) => sum + r.bytes, 0);
       this.logger.warn(
@@ -547,18 +715,24 @@ export class BackupService {
   // Create backup
   // ===========================================================================
 
-  async createBackup(database: string, options?: { compress?: boolean }): Promise<BackupRecord> {
-    return this.trackOperation(() => this.createDatabaseBackup(database, options));
+  async createBackup(database: string, options?: { compress?: boolean; operationId?: string }): Promise<BackupRecord> {
+    return this.trackOperation(() => {
+      const target = this.resolveDbTarget(database), id = options?.operationId ?? randomUUID();
+      return this.databaseOperation('backup', target, id, { compress: options?.compress !== false },
+        (execution, pipelineOptions) => this.createDatabaseBackup(database, target, id, execution, pipelineOptions, options),
+        record => ({ id: record.id, sizeBytes: record.size }));
+    }, true);
   }
 
-  private async createDatabaseBackup(database: string, options?: { compress?: boolean }): Promise<BackupRecord> {
+  private async createDatabaseBackup(database: string, target: ResolvedDb, id: string,
+    execution: Pick<ExecutionService, 'execute'>, pipelineOptions: PipelineOptions,
+    options?: { compress?: boolean }): Promise<BackupRecord> {
     const compress = options?.compress !== false;
     // Resolved before the file is named: the name is the database's, never
     // the `<project>/<stack>/<db>` key, whose slashes would be directories.
-    const { dbConfig, isDocker, containerName, origin } = this.resolveDbTarget(database);
+    const { dbConfig, isDocker, containerName, origin } = target;
     const name = origin === 'control-plane' ? CONTROL_PLANE_DB : dbConfig.database;
     const from = originFields(origin);
-    const id = randomUUID();
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const ext = compress ? '.sql.gz' : '.sql';
     const filename = `${name}_${timestamp}_${id.slice(0, 8)}${ext}`;
@@ -570,9 +744,9 @@ export class BackupService {
     let indexConfirmed = false;
     try {
       if (isDocker) {
-        await this.pgDumpDocker(containerName, dbConfig, filepath, compress);
+        await this.pgDumpDocker(containerName, dbConfig, filepath, compress, execution, pipelineOptions);
       } else {
-        await this.pgDumpLocal(dbConfig, filepath, compress);
+        await this.pgDumpLocal(dbConfig, filepath, compress, execution, pipelineOptions);
       }
       publicationConfirmed = true;
 
@@ -798,12 +972,12 @@ export class BackupService {
 
   private async restoreStorageBackup(filepath: string, meta: BackupMetadata): Promise<void> {
     const target = await this.resolveResource('minio', this.artifactOrigin(meta));
-    await restoreStorageObjects(this.storageTarget(target, meta.bucket ?? 'storage'), filepath);
+    await restoreStorageObjects(this.storageTarget(target, meta.bucket ?? 'storage'), filepath, this.execution);
   }
 
   private async restoreTorKeysBackup(filepath: string, meta: BackupMetadata): Promise<void> {
     const target = await this.resolveResource('tor', this.artifactOrigin(meta));
-    await restoreFromFile('docker', ['exec', '-i', target.container, 'tar', 'xf', '-', '-C', '/var/lib/tor'], filepath, true);
+    await restoreFromFile(this.execution, 'docker', ['exec', '-i', target.container, 'tar', 'xf', '-', '-C', '/var/lib/tor'], filepath, true);
     this.logger.warn({ project: target.project, stack: target.stack }, 'Tor keys restored — restart that stack’s tor container to serve the restored onion');
   }
 
@@ -818,7 +992,7 @@ export class BackupService {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filepath = path.join(this.backupDir, `storage-objects_${timestamp}_${randomUUID().slice(0, 8)}.tar.gz`);
     this.logger.info({ project: target.project, stack: target.stack, bucket, container: target.container }, 'Backing up storage bucket');
-    await backupStorageObjects(this.storageTarget(target, bucket), filepath);
+    await backupStorageObjects(this.storageTarget(target, bucket), filepath, this.execution);
     return this.indexBackupFile('storage-objects', filepath, 'storage-objects', { project: target.project, stack: target.stack }, bucket);
   }
 
@@ -850,7 +1024,7 @@ export class BackupService {
     const filepath = path.join(this.backupDir, `tor-keys_${ts}_${randomUUID().slice(0, 8)}.tar.gz`);
     this.logger.info({ container }, 'Backing up tor hidden-service keys');
     const excludes = TOR_REGENERABLE_STATE.map(g => `--exclude=${g}`);
-    await dumpToFile('docker', ['exec', container, 'tar', 'cf', '-', ...excludes, '-C', '/var/lib/tor', '.'], filepath, true);
+    await dumpToFile(this.execution, 'docker', ['exec', container, 'tar', 'cf', '-', ...excludes, '-C', '/var/lib/tor', '.'], filepath, true);
     return this.indexBackupFile('tor-keys', filepath, 'tor-keys', { project: running.project, stack: running.stack });
   }
 
@@ -879,7 +1053,7 @@ export class BackupService {
   async createFullBackup(
     trigger: BackupPassRecord['trigger'] = 'manual',
   ): Promise<Array<{ target: string; ok: boolean; id?: string; size?: number; error?: string }>> {
-    return this.trackOperation(() => this.createFullBackupOnce(trigger));
+    return this.trackOperation(() => this.createFullBackupOnce(trigger), true);
   }
 
   private async createFullBackupOnce(
@@ -1053,18 +1227,18 @@ export class BackupService {
   // Restore backup
   // ===========================================================================
 
-  async restoreBackup(backupId: string): Promise<void> {
+  async restoreBackup(backupId: string, operationId: string = randomUUID()): Promise<void> {
     return this.trackOperation(() => {
       this.migrateLegacyMetaIfPresent();
       // Resolve prefixes before taking the archive lock, then revalidate the
       // exact index identity after any earlier operation has finished.
       const row = resolveBackupId(this.store.selectBackupsSync(), backupId,
         r => `${r.id} (${r.app}, ${formatUtc(r.created_at)})`);
-      return this.withArchive(row, () => this.restoreBackupOnce(row));
+      return this.withArchive(row, () => this.restoreBackupOnce(row, operationId));
     });
   }
 
-  private async restoreBackupOnce(row: IndexedBackup): Promise<void> {
+  private async restoreBackupOnce(row: IndexedBackup, operationId: string): Promise<void> {
     if (!fs.existsSync(row.path)) throw new Error(`Backup file not found: ${row.path}`);
 
     const meta = metadataOf(row.metadata);
@@ -1088,10 +1262,13 @@ export class BackupService {
         // Postgres — into the database it was TAKEN from. By its name alone
         // that was whichever running stack came first, so a `main` of one
         // stack could be restored over another's.
-        const { dbConfig, isDocker, containerName } = this.restoreTargetOf(row.app, meta);
+        const target = this.restoreTargetOf(row.app, meta);
+        const { dbConfig, isDocker, containerName } = target;
         const compressed = meta.compressed ?? row.path.endsWith('.gz');
-        if (isDocker) await this.pgRestoreDocker(containerName, dbConfig, row.path, compressed);
-        else await this.pgRestoreLocal(dbConfig, row.path, compressed);
+        await this.databaseOperation('restore', target, operationId, { backupId: row.id, size: row.size_bytes, createdAt: row.created_at },
+          (execution, options) => isDocker
+            ? this.pgRestoreDocker(containerName, dbConfig, row.path, compressed, execution, options)
+            : this.pgRestoreLocal(dbConfig, row.path, compressed, execution, options));
       }
     }
 
@@ -1175,6 +1352,10 @@ export class BackupService {
 
   /** Re-arm every persisted schedule. Called once at daemon start. */
   async restoreSchedules(): Promise<void> {
+    this.restoreScheduleTimers();
+  }
+
+  private restoreScheduleTimers(): void {
     const map = this.store.kvGetSync<Record<string, string>>(BackupService.SCHEDULES_KV_KEY) ?? {};
     let n = 0;
     const rejected: string[] = [];
@@ -1337,7 +1518,7 @@ export class BackupService {
    */
   private async runScheduledBackup(database: string): Promise<BackupPassOutcome> {
     if (this.quiescing) return 'empty';
-    return this.trackOperation(() => this.runScheduledPass(database));
+    return this.trackOperation(() => this.runScheduledPass(database), true);
   }
 
   private async runScheduledPass(database: string): Promise<BackupPassOutcome> {
@@ -1450,58 +1631,75 @@ export class BackupService {
   // ===========================================================================
 
   private async pgDumpDocker(
-    container: string,
+    _container: string,
     config: DbConfig,
     outputPath: string,
-    compress: boolean
+    compress: boolean,
+    execution: Pick<ExecutionService, 'execute'>,
+    options: PipelineOptions,
   ): Promise<void> {
     await dumpToFile(
-      'docker',
-      ['exec', container, 'pg_dump', '-U', config.user, '-d', config.database],
+      execution, '-h',
+      ['127.0.0.1', '-U', config.user, '-d', config.database],
       outputPath,
       compress,
-      { timeoutMs: this.databaseTimeoutMs }
+      options,
     );
   }
 
   private async pgRestoreDocker(
-    container: string,
+    _container: string,
     config: DbConfig,
     inputPath: string,
-    compressed: boolean
+    compressed: boolean,
+    execution: Pick<ExecutionService, 'execute'>,
+    options: PipelineOptions,
   ): Promise<void> {
     await restoreFromFile(
-      'docker',
-      ['exec', '-i', container, 'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-U', config.user, '-d', config.database],
+      execution, '-X',
+      ['-v', 'ON_ERROR_STOP=1', '--single-transaction', '-h', '127.0.0.1', '-U', config.user, '-d', config.database],
       inputPath,
       compressed,
-      { timeoutMs: this.databaseTimeoutMs }
+      options,
     );
+  }
+
+  private postgresJobOptions(target: { id: string; image: string }, entrypoint: string, config: DbConfig,
+    options: PipelineOptions): PipelineOptions {
+    return { ...options, execution: { ...options.execution, adapter: 'docker', adapterOptions: {
+      type: 'docker', runMode: 'run', container: 'ephemeral', image: target.image, pull: 'never',
+      autoRemove: true, network: `container:${target.id}`, entrypoint, env: { PGPASSWORD: config.password },
+      resources: { cpus: 1, memoryBytes: 512 * 1024 * 1024, pidsLimit: 64 },
+    } } };
   }
 
   // ===========================================================================
   // Private — pg_dump local
   // ===========================================================================
 
-  private async pgDumpLocal(config: DbConfig, outputPath: string, compress: boolean): Promise<void> {
+  private async pgDumpLocal(config: DbConfig, outputPath: string, compress: boolean,
+    execution: Pick<ExecutionService, 'execute'>, options: PipelineOptions): Promise<void> {
     // The uncompressed path used to buffer the whole dump in memory with a
     // 100 MB ceiling, which an ordinary database exceeds. Both paths stream.
     await dumpToFile(
+      execution,
       'pg_dump',
       ['-h', config.host, '-p', String(config.port), '-U', config.user, '-d', config.database],
       outputPath,
       compress,
-      { timeoutMs: this.databaseTimeoutMs, env: { ...process.env, PGPASSWORD: config.password } }
+      { ...options, env: { PGPASSWORD: config.password } }
     );
   }
 
-  private async pgRestoreLocal(config: DbConfig, inputPath: string, compressed: boolean): Promise<void> {
+  private async pgRestoreLocal(config: DbConfig, inputPath: string, compressed: boolean,
+    execution: Pick<ExecutionService, 'execute'>, options: PipelineOptions): Promise<void> {
     await restoreFromFile(
+      execution,
       'psql',
-      ['-X', '-v', 'ON_ERROR_STOP=1', '-h', config.host, '-p', String(config.port), '-U', config.user, '-d', config.database],
+      ['-X', '-v', 'ON_ERROR_STOP=1', '--single-transaction', '-h', config.host, '-p', String(config.port), '-U', config.user, '-d', config.database],
       inputPath,
       compressed,
-      { timeoutMs: this.databaseTimeoutMs, env: { ...process.env, PGPASSWORD: config.password } }
+      { ...options, env: { PGPASSWORD: config.password } }
     );
   }
 
@@ -1668,7 +1866,7 @@ export class BackupService {
   async createAllBackups(
     trigger: BackupPassRecord['trigger'] = 'manual',
   ): Promise<Array<{ database: string; ok: boolean; id?: string; size?: number; error?: string }>> {
-    return this.trackOperation(() => this.createAllBackupsOnce(trigger));
+    return this.trackOperation(() => this.createAllBackupsOnce(trigger), true);
   }
 
   private async createAllBackupsOnce(

@@ -46,6 +46,16 @@ afterEach(async () => { await store.dispose(); await rm(home, { recursive: true,
 const registered = () => ({ path: home, registeredAt: '2026-11-13T12:00:00Z', enabledStacks: ['dev', 'remote'] });
 
 describe('one local cold admission', () => {
+  it('holds cold starts during backup admission and releases the hold when admission aborts without a process transition', async () => {
+    await save('draining');
+    const observed = vi.fn(async () => owner);
+    await expect(reviewedColdStart(home, await batch(), scope, registered(), 'local', true, publicScope, observed)).rejects.toThrow('held');
+    expect(observed).not.toHaveBeenCalled();
+    await save('aborted');
+    expect(await readColdBatch(home)).toBeNull();
+    expect(store.kvGetSync('lifecycle:cold-start:runtime-tenant/dev')).toBeNull();
+  });
+
   it('uses the existing sealed receipt, rejects changed bytes, wrong instance, malformed authority and an unsafe private record', async () => {
     expect(await readColdBatch(home)).toBeNull();
     const plan = makePlan();

@@ -1,3 +1,4 @@
+import { testExecution } from '../fixtures/execution.js';
 /**
  * A backup interrupted half-way took its final name anyway.
  *
@@ -54,7 +55,7 @@ afterEach(() => {
 describe('the final name appears only when the file is whole', () => {
   it('a successful dump lands under its name, readable', async () => {
     const out = path.join(dir, 'ok.sql.gz');
-    await dumpToFile('/bin/sh', ['-c', 'printf "CREATE TABLE t();"'], out, true);
+    await dumpToFile(testExecution, '/bin/sh', ['-c', 'printf "CREATE TABLE t();"'], out, true);
     expect(existsSync(out)).toBe(true);
     expect(gunzipSync(readFileSync(out)).toString()).toBe('CREATE TABLE t();');
     expect(readdirSync(dir)).toEqual(['ok.sql.gz']);
@@ -66,7 +67,7 @@ describe('the final name appears only when the file is whole', () => {
     // first byte, so this left a truncated archive under a backup name.
     const out = path.join(dir, 'killed.sql.gz');
     await expect(
-      dumpToFile('/bin/sh', ['-c', 'printf "PARTIAL DATA…"; sleep 5'], out, true, { timeoutMs: 300 }),
+      dumpToFile(testExecution, '/bin/sh', ['-c', 'printf "PARTIAL DATA…"; sleep 5'], out, true, { timeoutMs: 300 }),
     ).rejects.toThrow();
     expect(existsSync(out), 'a truncated dump took the backup name').toBe(false);
     expect(readdirSync(dir).filter(name => name.endsWith('.partial')), 'left its staging file behind').toEqual([]);
@@ -84,7 +85,7 @@ describe('the final name appears only when the file is whole', () => {
     // for however long the removal takes.
     const out = path.join(dir, 'failed.sql.gz');
     await expect(
-      dumpToFile('/bin/sh', ['-c', 'printf "SOME SQL"; exit 3'], out, true),
+      dumpToFile(testExecution, '/bin/sh', ['-c', 'printf "SOME SQL"; exit 3'], out, true),
     ).rejects.toThrow(/exited with code 3/);
     expect(existsSync(out)).toBe(false);
   });
@@ -99,7 +100,7 @@ describe('the final name appears only when the file is whole', () => {
     }, 5);
 
     await expect(
-      dumpToFile('/bin/sh', ['-c', 'printf "HEADER"; sleep 0.4; exit 3'], out, true),
+      dumpToFile(testExecution, '/bin/sh', ['-c', 'printf "HEADER"; sleep 0.4; exit 3'], out, true),
     ).rejects.toThrow(/exited with code 3/);
     clearInterval(watching);
 
@@ -112,14 +113,14 @@ describe('the final name appears only when the file is whole', () => {
     // invisible to the index, counted by nothing, and removed by no one.
     const out = path.join(dir, 'leftover.sql.gz');
     await expect(
-      dumpToFile('/bin/sh', ['-c', 'printf "X"; exit 1'], out, true),
+      dumpToFile(testExecution, '/bin/sh', ['-c', 'printf "X"; exit 1'], out, true),
     ).rejects.toThrow();
     expect(readdirSync(dir).filter(name => name.endsWith('.partial'))).toEqual([]);
   });
 
   it('a command that does not exist leaves nothing', async () => {
     const out = path.join(dir, 'enoent.sql.gz');
-    await expect(dumpToFile('/nonexistent/command', [], out, false)).rejects.toThrow();
+    await expect(dumpToFile(testExecution, '/nonexistent/command', [], out, false)).rejects.toThrow();
     expect(existsSync(out)).toBe(false);
     expect(readdirSync(dir).filter(name => name.endsWith('.partial'))).toEqual([]);
   });
@@ -128,7 +129,7 @@ describe('the final name appears only when the file is whole', () => {
     const out = path.join(dir, 'retry.sql.gz');
     writeFileSync(`${out}.partial`, 'LEFTOVER FROM A KILLED RUN');
 
-    await dumpToFile('/bin/sh', ['-c', 'printf "FRESH"'], out, true);
+    await dumpToFile(testExecution, '/bin/sh', ['-c', 'printf "FRESH"'], out, true);
     expect(gunzipSync(readFileSync(out)).toString()).toBe('FRESH');
     expect(statSync(out).size).toBeLessThan(100);
     expect(readFileSync(`${out}.partial`, 'utf8')).toBe('LEFTOVER FROM A KILLED RUN');

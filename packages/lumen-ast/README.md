@@ -6,7 +6,7 @@ The shared document compiler for Lumen. It parses Markdown and PDX into the `pri
 
 - Data-only frontmatter, document diagnostics, headings, links and mathematical environments.
 - KaTeX math, Shiki highlighting and Twoslash queries using the pinned TypeScript compiler.
-- Audience projection before rendering, indexing and export.
+- Audience projection before rendering, indexing and export; one semantic HTML tree for static output and component rendering.
 - Shared island-prop validation, bounded code execution, and separate Node-only PDF and MCP entries.
 
 ## Quick start
@@ -54,6 +54,10 @@ Twoslash uses actual default libraries from the exact TypeScript dependency. Bro
 Parser positions address the original input, including BOM and frontmatter: offsets are zero-based UTF-16 indices, lines and columns are one-based, and the end is exclusive. Nested JSX, directive attributes and smart references use the same coordinates. `rawContent` contains the body only; slice the original input when applying a node range. Raw HTML normalization may omit positions; consumers must handle their absence. Escaped smart-reference syntax, code, math and link destinations remain literal.
 
 ## Document presentation
+
+`toHtmlTree` returns standard HAST after applying the same URL, HTML and plain-JSON props policies used by `toHtmlSsr`. The latter serializes that tree; it does not implement a second document walker. Typed `element.data.lumen` metadata identifies widgets and registered examples for a trusted host renderer. Authored HTML attributes and AST `data` cannot supply this metadata. Code, math and diagram generators produce their own escaped fragments; authored raw HTML always passes through the HTML policy.
+
+Block widgets use `div` hosts; widgets in paragraphs, emphasis, authored inline elements and file-tree annotations use `span`. An inline component must return phrasing content. Registered examples include source disclosures and require a separate block. Static HTML retains the widget fallback and readable source when no component renderer is present.
 
 The `filetree` container directive accepts an optional `title` and one nested unordered Markdown list. Start each item with an inline-code filename, then an optional annotation; a trailing `/` or child list identifies a directory. HTML uses native, initially open disclosures, while Markdown and Typst retain the nested list and annotations. Lumen supplies the shared stylesheet. Prism ResearchEditor preserves the directive as opaque source; the standalone ResearchDocument reader does not interpret it.
 

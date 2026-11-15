@@ -13,6 +13,7 @@ import {
   renderCodeBlockHtml,
   renderDiagramHtml,
   type LumenDocumentAst,
+  type LumenNode,
 } from '../src/index.js';
 
 describe('Challenger 2 Adversarial Stress Suite', () => {
@@ -257,13 +258,14 @@ if (a < b && c > d) {
 
     it('handles deeply nested structures (30-level blockquotes and lists) without stack overflow', () => {
       const depth = 30;
-      let deepestNode: any = { type: 'text', value: 'Deeply nested leaf content' };
+      let deepestNode: LumenNode = {
+        type: 'paragraph', children: [{ type: 'text', value: 'Deeply nested leaf content' }],
+      };
 
       for (let d = 0; d < depth; d++) {
-        deepestNode = {
-          type: d % 2 === 0 ? 'blockquote' : 'paragraph',
-          children: [deepestNode],
-        };
+        deepestNode = d % 2 === 0
+          ? { type: 'blockquote', children: [deepestNode] }
+          : { type: 'list', children: [{ type: 'listItem', children: [deepestNode] }] };
       }
 
       const nestedAst: LumenDocumentAst = {

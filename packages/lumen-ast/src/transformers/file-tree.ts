@@ -1,5 +1,6 @@
+import type { Element, ElementContent } from 'hast';
 import type { LumenNode } from '../ast/types.js';
-import { escapeHtml } from '../katex/render-math.js';
+import { element, text } from './html-tree.js';
 
 interface FileTreeEntry {
   name: LumenNode;
@@ -28,20 +29,30 @@ export function readFileTree(node: LumenNode): { title: string; entries: FileTre
   return { title: title ?? 'File tree', entries: readList(node.children[0]!) };
 }
 
-function marker(directory: boolean): string {
-  const path = directory
-    ? '<path d="M2 6h5l2 2h13v12H2z"/><path d="M2 6V4h7l2 2h9v2"/>'
-    : '<path d="M5 2h9l5 5v15H5z"/><path d="M14 2v6h5"/>';
-  return `<svg class="lumen-file-tree-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true" focusable="false">${path}</svg>`;
+function marker(directory: boolean): Element {
+  const paths = directory
+    ? ['M2 6h5l2 2h13v12H2z', 'M2 6V4h7l2 2h9v2']
+    : ['M5 2h9l5 5v15H5z', 'M14 2v6h5'];
+  return element('svg', {
+    className: ['lumen-file-tree-icon'], viewBox: '0 0 24 24', width: 16, height: 16,
+    fill: 'none', stroke: 'currentColor', strokeWidth: '1.5', strokeLineJoin: 'round',
+    ariaHidden: 'true', focusable: 'false',
+  }, paths.map(d => element('path', { d })));
 }
 
-export function renderFileTreeHtml(node: LumenNode, renderInline: (nodes: LumenNode[]) => string): string {
+export function renderFileTree(node: LumenNode, renderInline: (nodes: LumenNode[]) => ElementContent[]): Element {
   const { title, entries } = readFileTree(node);
-  const list = (items: FileTreeEntry[]): string => `<ul>${items.map(entry => {
-    const row = `<span class="lumen-file-tree-row">${marker(entry.directory)}<span class="lumen-file-tree-name">${renderInline([entry.name])}</span>${entry.annotation.length ? `<span class="lumen-file-tree-description">${renderInline(entry.annotation)}</span>` : ''}</span>`;
-    return `<li>${entry.children.length ? `<details open><summary>${row}</summary>${list(entry.children)}</details>` : row}</li>`;
-  }).join('')}</ul>`;
-  return `<figure class="lumen-file-tree"><figcaption>${escapeHtml(title)}</figcaption>${list(entries)}</figure>`;
+  const list = (items: FileTreeEntry[]): Element => element('ul', {}, items.map(entry => {
+    const row = element('span', { className: ['lumen-file-tree-row'] }, [
+      marker(entry.directory),
+      element('span', { className: ['lumen-file-tree-name'] }, renderInline([entry.name])),
+      ...(entry.annotation.length
+        ? [element('span', { className: ['lumen-file-tree-description'] }, renderInline(entry.annotation))] : []),
+    ]);
+    return element('li', {}, entry.children.length
+      ? [element('details', { open: true }, [element('summary', {}, [row]), list(entry.children)])] : [row]);
+  }));
+  return element('figure', { className: ['lumen-file-tree'] }, [element('figcaption', {}, [text(title)]), list(entries)]);
 }
 
 export function fileTreeTypstLines(node: LumenNode, renderInline: (nodes: LumenNode[]) => string): string {

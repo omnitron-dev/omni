@@ -1,30 +1,43 @@
-/**
- * Server-Side Rendering (SSR) HTML Transformer (XSS-Hardened)
- */
+/** One semantic HTML tree for static serialization and host component rendering. */
 
+import type { ElementContent, Root } from 'hast';
+import { raw } from 'hast-util-raw';
+import { toHtml } from 'hast-util-to-html';
 import { normalizeLumenHtml } from '../compiler/html.js';
 import { serializeIslandProps, parseHydrationTrigger } from '../islands/index.js';
-import { renderSafeHtmlElement } from './safe-html.js';
-import type { LumenDocumentAst, LumenExampleSource, LumenNode } from '../ast/types.js';
+import { safeHtmlElement } from './safe-html.js';
+import type { LumenDocumentAst, LumenNode } from '../ast/types.js';
 import { renderDiagramHtml } from '../diagrams/renderer.js';
 import { renderCodeBlockHtml } from '../highlight/emitter.js';
 import { LumenMacroRegistry } from '../katex/macro-registry.js';
-import { escapeHtml, renderKaTeX } from '../katex/render-math.js';
-import { renderFileTreeHtml } from './file-tree.js';
+import { renderKaTeX } from '../katex/render-math.js';
+import { renderFileTree } from './file-tree.js';
+import { element, text } from './html-tree.js';
 
 export interface SsrOptions {
   macros?: Record<string, string> | LumenMacroRegistry;
-  renderExample?: (source: LumenExampleSource & { code: string; language: string }, islandHtml: string, ordinal: number) => string;
 }
 
 interface SsrContext {
   macros: LumenMacroRegistry;
   diagramCounter: number;
   widgetCounter: number;
-  renderExample?: SsrOptions['renderExample'];
 }
 
 const ALLOWED_URL_SCHEMES = new Set(['http', 'https', 'mailto', 'tel']);
+const PHRASING_CONTAINERS = new Set([
+  'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'a', 'em', 'strong', 'b', 'i', 'u', 's', 'del',
+  'mark', 'small', 'sub', 'sup', 'code', 'kbd', 'samp', 'var', 'cite', 'q', 'abbr', 'time',
+]);
+const BLOCK_NODES = new Set([
+  'paragraph', 'heading', 'codeBlock', 'mathBlock', 'mathEnvironment', 'admonition', 'containerDirective',
+  'tabs', 'tabItem', 'diagram', 'blockquote', 'list', 'listItem', 'table', 'tableRow', 'tableCell', 'thematicBreak',
+]);
+const BLOCK_HTML_ELEMENTS = new Set([
+  'article', 'aside', 'blockquote', 'details', 'div', 'dl', 'dt', 'dd', 'figure', 'figcaption', 'header', 'footer',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'li', 'main', 'nav', 'ol', 'p', 'pre', 'section', 'summary',
+  'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th', 'ul',
+]);
 
 function decodeNumericHtmlEntities(input: string): string {
   return input
@@ -121,270 +134,259 @@ export function sanitizeUrl(url: string): string {
   return cleaned;
 }
 
-export function toHtmlSsr(ast: LumenDocumentAst, options?: SsrOptions): string {
+/** Compile only the projected AST; rawContent and authored data are never render authority. */
+export function toHtmlTree(ast: LumenDocumentAst, options?: SsrOptions): Root {
   const macros =
     options?.macros instanceof LumenMacroRegistry ? options.macros : new LumenMacroRegistry(options?.macros);
 
-  const status = escapeHtml(String(ast.frontmatter.status ?? 'draft'));
-  const hasTitleHeading = ast.children?.some((node) => node.type === 'heading' && node.depth === 1);
-  const title =
-    ast.frontmatter.title && !hasTitleHeading ? `<h1>${escapeHtml(String(ast.frontmatter.title))}</h1>` : '';
-
-  const context: SsrContext = {
-    macros,
-    diagramCounter: 0,
-    widgetCounter: 0,
-    renderExample: options?.renderExample,
+  if (!Array.isArray(ast.children)) throw new TypeError('HTML rendering requires parsed children');
+  const hasTitleHeading = ast.children.some(node => node.type === 'heading' && node.depth === 1);
+  const title = ast.frontmatter.title && !hasTitleHeading
+    ? [element('h1', {}, [text(String(ast.frontmatter.title))])] : [];
+  return {
+    type: 'root',
+    children: [element('article', { className: ['lumen-doc'], dataStatus: String(ast.frontmatter.status ?? 'draft') }, [
+      ...title,
+      ...renderNodesToTree(ast.children, { macros, diagramCounter: 0, widgetCounter: 0 }),
+    ])],
   };
-
-  const bodyHtml = renderNodesToHtml(ast.children, context);
-
-  return `<article class="lumen-doc" data-status="${status}">${title}${bodyHtml}</article>`;
 }
 
+/** Static HTML is a serialization of the same semantic tree consumed by React hosts. */
+export function toHtmlSsr(ast: LumenDocumentAst, options?: SsrOptions): string {
+  return serializeTree(toHtmlTree(ast, options));
+}
+
+/** Fragment serializer used by the Markdown exporter; it shares the document walker. */
 export function renderNodesToHtml(nodes: LumenNode[], context: SsrContext): string {
-  return nodes.map((node) => renderSingleNodeToHtml(node, context)).join('');
+  return serializeTree({ type: 'root', children: renderNodesToTree(nodes, context) });
 }
 
-function renderSingleNodeToHtml(node: LumenNode, context: SsrContext): string {
-  const type = node.type;
+function serializeTree(tree: Root): string {
+  return toHtml(tree, { characterReferences: { useNamedReferences: true }, closeSelfClosing: true });
+}
 
-  switch (type) {
-    case 'root': {
-      const children = (node.children ?? []) as LumenNode[];
-      return renderNodesToHtml(children, context);
-    }
+/** Only output of our code/math/diagram generators enters this parser, never authored HTML. */
+function generatedFragment(html: string): ElementContent[] {
+  const tree = raw({ type: 'root', children: [{ type: 'raw', value: html }] });
+  if (tree.type !== 'root') throw new TypeError('Generated HTML must form a fragment');
+  return tree.children.map(node => {
+    if (node.type === 'element' || node.type === 'text' || node.type === 'comment') return node;
+    throw new TypeError('Generated HTML must contain only fragment content');
+  });
+}
 
-    case 'paragraph': {
-      const children = (node.children ?? []) as LumenNode[];
-      const inner = renderNodesToHtml(children, context);
-      return `<p>${inner}</p>`;
-    }
+function renderNodesToTree(nodes: LumenNode[], context: SsrContext, phrasing = false): ElementContent[] {
+  return nodes.flatMap(node => renderNode(node, context, phrasing));
+}
+
+function renderNode(node: LumenNode, context: SsrContext, phrasing: boolean): ElementContent[] {
+  if (phrasing && BLOCK_NODES.has(node.type))
+    throw new TypeError(`Inline content cannot contain ${node.type}; use a separate block`);
+  const children = (inline = phrasing) => renderNodesToTree(node.children ?? [], context, inline);
+
+  switch (node.type) {
+    case 'root':
+      return children();
+
+    case 'paragraph':
+      return [element('p', {}, children(true))];
 
     case 'heading': {
       const rawDepth = Math.floor(Number(node.depth ?? 1)) || 1;
       const depth = Math.max(1, Math.min(6, rawDepth));
-      const id = escapeHtml(String(node.id ?? ''));
-      const children = (node.children ?? []) as LumenNode[];
-      const inner = renderNodesToHtml(children, context);
-      return `<h${depth} id="${id}">${inner}</h${depth}>`;
+      return [element(`h${depth}`, { id: String(node.id ?? '') }, children(true))];
     }
 
-    case 'text': {
-      return escapeHtml(String(node.value ?? ''));
-    }
+    case 'text':
+      return [text(String(node.value ?? ''))];
 
-    case 'inlineCode': {
-      return `<code>${escapeHtml(String(node.value ?? ''))}</code>`;
-    }
+    case 'inlineCode':
+      return [element('code', {}, [text(String(node.value ?? ''))])];
 
     case 'codeBlock': {
       const code = String(node.value ?? '');
       const lang = typeof node.lang === 'string' ? node.lang : undefined;
       const meta = typeof node.meta === 'string' ? node.meta : undefined;
-      return renderCodeBlockHtml(code, lang, meta);
+      return generatedFragment(renderCodeBlockHtml(code, lang, meta));
     }
 
     case 'mathInline': {
       const tex = String(node.tex ?? node.value ?? '');
       const { html } = renderKaTeX(tex, { displayMode: false, macros: context.macros });
-      return `<span class="lumen-inline-math">${html}</span>`;
+      return [element('span', { className: ['lumen-inline-math'] }, generatedFragment(html))];
     }
 
     case 'mathBlock': {
       const tex = String(node.tex ?? node.value ?? '');
       const { html } = renderKaTeX(tex, { displayMode: true, macros: context.macros });
-      return `<div class="lumen-block-math">${html}</div>`;
+      return [element('div', { className: ['lumen-block-math'] }, generatedFragment(html))];
     }
 
     case 'mathEnvironment': {
-      const envKind = escapeHtml(String(node.envKind ?? 'theorem').replace(/[^a-zA-Z0-9_-]/g, ''));
-      const id = escapeHtml(String(node.id ?? `${envKind}-1`));
-      const title = node.title ? escapeHtml(String(node.title)) : '';
-      const status = node.status ? escapeHtml(String(node.status)) : '';
-      const number = node.number ? escapeHtml(String(node.number)) : '';
-      const of = node.of ? escapeHtml(String(node.of)) : '';
-
-      const children = (node.children ?? []) as LumenNode[];
-      const renderedChildren = renderNodesToHtml(children, context);
-
-      const titleSpan = title ? `<span class="lumen-math-title">${title}</span>` : '';
-      const numberSpan = number ? `<span class="lumen-math-number">${number}</span>` : '';
-      const statusSpan = status ? `<span class="lumen-status-badge status-${status}">${status}</span>` : '';
-      const targetSpan = of ? `<span class="lumen-proof-target">of <a href="#${of}">#${of}</a></span>` : '';
-      const qedDiv = envKind === 'proof' ? `<div class="lumen-qed" aria-label="End of proof">∎</div>` : '';
-
-      return `<section id="${id}" class="lumen-math-block lumen-math-env lumen-math-${envKind} lumen-env-${envKind}" data-status="${status || 'verified'}">
-  <header class="lumen-math-header">
-    <span class="lumen-math-type">${envKind.toUpperCase()}</span>
-    ${numberSpan}
-    ${titleSpan}
-    ${statusSpan}
-    <a href="#${id}" class="lumen-math-anchor" aria-label="Link to this ${envKind}">#${id}</a>
-    ${targetSpan}
-  </header>
-  <div class="lumen-math-body">${renderedChildren}</div>
-  ${qedDiv}
-</section>`;
+      const envKind = String(node.envKind ?? 'theorem').replace(/[^a-zA-Z0-9_-]/g, '');
+      const id = String(node.id ?? `${envKind}-1`);
+      const status = node.status ? String(node.status) : '';
+      return [element('section', {
+        id,
+        className: ['lumen-math-block', 'lumen-math-env', `lumen-math-${envKind}`, `lumen-env-${envKind}`],
+        dataStatus: status || 'verified',
+      }, [
+        element('header', { className: ['lumen-math-header'] }, [
+          element('span', { className: ['lumen-math-type'] }, [text(envKind.toUpperCase())]),
+          ...(node.number ? [element('span', { className: ['lumen-math-number'] }, [text(String(node.number))])] : []),
+          ...(node.title ? [element('span', { className: ['lumen-math-title'] }, [text(String(node.title))])] : []),
+          ...(status ? [element('span', { className: ['lumen-status-badge', `status-${status}`] }, [text(status)])] : []),
+          element('a', { href: `#${id}`, className: ['lumen-math-anchor'], ariaLabel: `Link to this ${envKind}` }, [text(`#${id}`)]),
+          ...(node.of ? [element('span', { className: ['lumen-proof-target'] }, [
+            text('of '), element('a', { href: `#${node.of}` }, [text(`#${node.of}`)]),
+          ])] : []),
+        ]),
+        element('div', { className: ['lumen-math-body'] }, children()),
+        ...(envKind === 'proof' ? [element('div', { className: ['lumen-qed'], ariaLabel: 'End of proof' }, [text('∎')])] : []),
+      ])];
     }
 
     case 'smartRef': {
-      const domain = escapeHtml(String(node.domain ?? 'ref'));
-      const target = escapeHtml(String(node.target ?? ''));
-      const raw = escapeHtml(String(node.raw ?? `@${domain}:${target}`));
-      return `<a href="#${target}" class="lumen-smart-ref lumen-smart-ref-${domain}" data-reference-id="${target}">${raw}</a>`;
+      const domain = String(node.domain ?? 'ref');
+      const target = String(node.target ?? '');
+      return [element('a', {
+        href: `#${target}`, className: ['lumen-smart-ref', `lumen-smart-ref-${domain}`], dataReferenceId: target,
+      }, [text(String(node.raw ?? `@${domain}:${target}`))])];
     }
 
     case 'admonition': {
-      const kind = escapeHtml(String(node.kind ?? 'note').replace(/[^a-zA-Z0-9_-]/g, ''));
-      const title = escapeHtml(String(node.title ?? capitalize(kind)));
-      const children = (node.children ?? []) as LumenNode[];
-      const inner = renderNodesToHtml(children, context);
-      return `<aside class="lumen-admonition lumen-admonition-${kind}" role="note">
-  <div class="lumen-admonition-title">${title}</div>
-  <div class="lumen-admonition-content">${inner}</div>
-</aside>`;
+      const kind = String(node.kind ?? 'note').replace(/[^a-zA-Z0-9_-]/g, '');
+      return [element('aside', { className: ['lumen-admonition', `lumen-admonition-${kind}`], role: 'note' }, [
+        element('div', { className: ['lumen-admonition-title'] }, [text(String(node.title ?? capitalize(kind)))]),
+        element('div', { className: ['lumen-admonition-content'] }, children()),
+      ])];
     }
 
     case 'containerDirective': {
-      if (node.name === 'filetree') return renderFileTreeHtml(node, nodes => renderNodesToHtml(nodes, context));
-      return renderNodesToHtml(node.children ?? [], context);
+      if (node.name === 'filetree') return [renderFileTree(node, nodes => renderNodesToTree(nodes, context, true))];
+      return children();
     }
 
     case 'tabs': {
-      const children = (node.children ?? []) as LumenNode[];
-      const inner = renderNodesToHtml(children, context);
-      const syncKey = node.syncKey ? escapeHtml(String(node.syncKey)) : '';
-      const syncAttr = syncKey ? ` data-sync-key="${syncKey}"` : '';
       const label = node.attributes?.['label'];
-      const labelAttr = typeof label === 'string' && label.trim() ? ` data-label="${escapeHtml(label.trim())}"` : '';
       // Only the tab strip hydrates. Document panels and their nested islands keep their original DOM.
-      return `<div class="lumen-tabs"${syncAttr}${labelAttr}><div data-widget="LumenDocumentTabs" data-hydrate="load"></div>${inner}</div>`;
+      return [element('div', {
+        className: ['lumen-tabs'],
+        ...(node.syncKey ? { dataSyncKey: String(node.syncKey) } : {}),
+        ...(typeof label === 'string' && label.trim() ? { dataLabel: label.trim() } : {}),
+      }, [element('div', { dataWidget: 'LumenDocumentTabs', dataHydrate: 'load' }), ...children()])];
     }
 
     case 'tabItem': {
-      const label = escapeHtml(String(node.label ?? 'Tab'));
-      const value = node.value ? escapeHtml(String(node.value)) : label;
-      const children = (node.children ?? []) as LumenNode[];
-      const inner = renderNodesToHtml(children, context);
-      return `<section class="lumen-tab-item" data-value="${value}" aria-label="${label}"><h3 class="lumen-tab-label">${label}</h3>${inner}</section>`;
+      const label = String(node.label ?? 'Tab');
+      return [element('section', { className: ['lumen-tab-item'], dataValue: String(node.value || label), ariaLabel: label }, [
+        element('h3', { className: ['lumen-tab-label'] }, [text(label)]), ...children(),
+      ])];
     }
 
-    case 'diagram': {
-      context.diagramCounter++;
-      const code = String(node.code ?? '');
-      return renderDiagramHtml(code, context.diagramCounter);
-    }
+    case 'diagram':
+      return generatedFragment(renderDiagramHtml(String(node.code ?? ''), ++context.diagramCounter));
 
     case 'jsxWidget': {
       const ordinal = ++context.widgetCounter;
-      const rawName = String(node.name ?? 'Widget');
-      const name = escapeHtml(rawName);
-      const safeIslandName = escapeHtml(rawName.replace(/[^a-zA-Z0-9_.-]/g, '') || 'Widget');
-      const propsObj = (node.props === undefined ? {} : node.props) as Record<string, unknown>;
-      const propsJson = escapeHtml(serializeIslandProps(propsObj));
+      const name = String(node.name ?? 'Widget');
+      const safeIslandName = name.replace(/[^a-zA-Z0-9_.-]/g, '') || 'Widget';
+      const propsJson = serializeIslandProps(node.props === undefined ? {} : node.props);
+      // Use the validated data snapshot for both adapters, never the caller's object/getters.
+      const propsObj: Record<string, unknown> = JSON.parse(propsJson);
       const rawHydrate = propsObj['client:hydrate'] !== undefined ? propsObj['client:hydrate'] : propsObj['hydrate'];
       const hydrate = parseHydrationTrigger(rawHydrate === undefined ? 'interaction' : rawHydrate);
-      const children = (node.children ?? []) as LumenNode[];
+      let widgetChildren = node.children ?? [];
       const source = node.exampleSource;
-      const block = source ? children.at(-1) : undefined;
+      if (source && phrasing) throw new TypeError('A registered example requires a separate block, not inline content');
+      // Inline JSX bodies are parsed as Markdown fragments. One paragraph is
+      // its phrasing body; multiple paragraphs require an explicit block widget.
+      if (phrasing && widgetChildren.length === 1 && widgetChildren[0]?.type === 'paragraph')
+        widgetChildren = widgetChildren[0].children ?? [];
+      if (phrasing && widgetChildren.some(child => child.type === 'paragraph'))
+        throw new TypeError('Inline widget content requires one paragraph; place the widget in a separate block');
+      const block = source ? widgetChildren.at(-1) : undefined;
       if (source && (block?.type !== 'codeBlock' || typeof block.value !== 'string'))
         throw new TypeError('A registered example requires a literal source block');
-      const inner = renderNodesToHtml(source ? children.slice(0, -1) : children, context);
-      const island = `<div class="lumen-widget lumen-portal-island" data-widget="${name}" data-lumen-island="lumen-widget-${ordinal}-${safeIslandName}" data-component="${name}" data-hydrate="${escapeHtml(hydrate)}" data-props="${propsJson}">${inner}</div>`;
-      if (!source || !block) return island;
-      const code = block.value!;
-      if (context.renderExample) return context.renderExample({ ...source, code, language: block.lang ?? 'text' }, island, ordinal);
-      return `${island}<details><summary>${escapeHtml(source.labels?.source ?? 'Source code')}</summary><pre tabindex="0"><code>${escapeHtml(code)}</code></pre></details>`;
+      const island = element(phrasing ? 'span' : 'div', {
+        className: ['lumen-widget', 'lumen-portal-island'], dataWidget: name,
+        dataLumenIsland: `lumen-widget-${ordinal}-${safeIslandName}`, dataComponent: name,
+        dataHydrate: hydrate, dataProps: propsJson,
+      }, renderNodesToTree(source ? widgetChildren.slice(0, -1) : widgetChildren, context, phrasing));
+      island.data = { lumen: { kind: 'widget', name, props: propsObj, ordinal } };
+      if (!source || !block) return [island];
+      const resolvedSource = {
+        id: source.id, title: source.title,
+        ...(source.labels ? { labels: { source: source.labels.source } } : {}),
+        code: block.value!, language: block.lang ?? 'text',
+      };
+      const example = element('section', { dataExample: source.id, ariaLabel: `${source.id} example` }, [
+        island,
+        element('details', {}, [
+          element('summary', {}, [text(source.labels?.source ?? 'Source code')]),
+          element('pre', { tabIndex: 0 }, [element('code', {}, [text(resolvedSource.code)])]),
+        ]),
+      ]);
+      example.data = { lumen: { kind: 'example', source: resolvedSource, ordinal } };
+      return [example];
     }
 
     case 'htmlElement': {
-      return renderSafeHtmlElement(
-        String(node.tagName),
-        node.attributes ?? {},
-        renderNodesToHtml(node.children ?? [], context)
-      );
+      const tagName = String(node.tagName);
+      const safe = safeHtmlElement(tagName, node.attributes ?? {}, children(phrasing || PHRASING_CONTAINERS.has(tagName)));
+      if (safe && phrasing && BLOCK_HTML_ELEMENTS.has(safe.tagName))
+        throw new TypeError(`Inline content cannot contain <${safe.tagName}>; use a separate block`);
+      return safe ? [safe] : [];
     }
 
     case 'rawHtmlPlaceholder': {
-      const raw = String(node.raw ?? '');
-      return renderNodesToHtml(normalizeLumenHtml([{ type: 'rawHtmlPlaceholder', raw }]), context);
+      return renderNodesToTree(normalizeLumenHtml([{ type: 'rawHtmlPlaceholder', raw: String(node.raw ?? '') }]), context, phrasing);
     }
 
-    case 'blockquote': {
-      const children = (node.children ?? []) as LumenNode[];
-      return `<blockquote>${renderNodesToHtml(children, context)}</blockquote>`;
-    }
+    case 'blockquote':
+      return [element('blockquote', {}, children())];
 
-    case 'list': {
-      const tag = node['ordered'] ? 'ol' : 'ul';
-      const children = (node.children ?? []) as LumenNode[];
-      return `<${tag}>${renderNodesToHtml(children, context)}</${tag}>`;
-    }
+    case 'list':
+      return [element(node.ordered ? 'ol' : 'ul', {}, children())];
 
-    case 'listItem': {
-      const children = (node.children ?? []) as LumenNode[];
-      return `<li>${renderNodesToHtml(children, context)}</li>`;
-    }
+    case 'listItem':
+      return [element('li', {}, children())];
 
-    case 'table': {
-      const children = (node.children ?? []) as LumenNode[];
-      return `<table tabindex="0">${renderNodesToHtml(children, context)}</table>`;
-    }
+    case 'table':
+      return [element('table', { tabIndex: 0 }, [element('tbody', {}, children())])];
 
-    case 'tableRow': {
-      const children = (node.children ?? []) as LumenNode[];
-      return `<tr>${renderNodesToHtml(children, context)}</tr>`;
-    }
+    case 'tableRow':
+      return [element('tr', {}, children())];
 
-    case 'tableCell': {
-      const children = (node.children ?? []) as LumenNode[];
-      return `<td>${renderNodesToHtml(children, context)}</td>`;
-    }
+    case 'tableCell':
+      return [element('td', {}, children(true))];
 
-    case 'strong': {
-      const children = (node.children ?? []) as LumenNode[];
-      return `<strong>${renderNodesToHtml(children, context)}</strong>`;
-    }
+    case 'strong':
+      return [element('strong', {}, children(true))];
 
-    case 'emphasis': {
-      const children = (node.children ?? []) as LumenNode[];
-      return `<em>${renderNodesToHtml(children, context)}</em>`;
-    }
+    case 'emphasis':
+      return [element('em', {}, children(true))];
 
-    case 'delete': {
-      const children = (node.children ?? []) as LumenNode[];
-      return `<del>${renderNodesToHtml(children, context)}</del>`;
-    }
+    case 'delete':
+      return [element('del', {}, children(true))];
 
     case 'link': {
-      const rawUrl = node['url'];
-      const rawTitle = node['title'];
-      const url = escapeHtml(sanitizeUrl(String(rawUrl ?? '#')));
-      const title = rawTitle ? ` title="${escapeHtml(String(rawTitle))}"` : '';
-      const children = (node.children ?? []) as LumenNode[];
-      return `<a href="${url}"${title}>${renderNodesToHtml(children, context)}</a>`;
+      return [element('a', {
+        href: sanitizeUrl(String(node.url ?? '#')),
+        ...(node.title ? { title: String(node.title) } : {}),
+      }, children(true))];
     }
 
     case 'image': {
-      const rawSrc = node['url'];
-      const rawAlt = node['alt'];
-      const rawTitle = node['title'];
-      const src = escapeHtml(sanitizeUrl(String(rawSrc ?? '')));
-      const alt = escapeHtml(String(rawAlt ?? ''));
-      const title = rawTitle ? ` title="${escapeHtml(String(rawTitle))}"` : '';
-      return `<img src="${src}" alt="${alt}"${title} />`;
+      return [element('img', {
+        src: sanitizeUrl(String(node.url ?? '')), alt: String(node['alt'] ?? ''),
+        ...(node.title ? { title: String(node.title) } : {}),
+      })];
     }
 
-    default: {
-      if (node.children && Array.isArray(node.children)) {
-        return renderNodesToHtml(node.children as LumenNode[], context);
-      }
-      if (node.value) {
-        return escapeHtml(String(node.value));
-      }
-      return '';
-    }
+    default:
+      return Array.isArray(node.children) ? children() : node.value ? [text(String(node.value))] : [];
   }
 }
 

@@ -1,6 +1,5 @@
 import { defaultSchema, sanitize, type Schema } from 'hast-util-sanitize';
-import { toHtml } from 'hast-util-to-html';
-import type { Element, Properties, Root } from 'hast';
+import type { Element, ElementContent, Properties, Root } from 'hast';
 
 const ISLAND_TAGS = new Set(['div', 'section', 'aside', 'span']);
 
@@ -46,17 +45,17 @@ const schema: Schema = {
   },
 };
 
-/** Sanitize authored tag/attributes before attaching already-rendered safe children. */
-export function renderSafeHtmlElement(
+/** Sanitize authored tag/attributes without flattening the safe semantic children. */
+export function safeHtmlElement(
   tagName: string,
   attributes: Record<string, unknown>,
-  renderedChildren: string
-): string {
+  children: ElementContent[]
+): Element | undefined {
   const candidate: Element = { type: 'element', tagName, properties: attributes as Properties, children: [] };
   const tree = sanitize({ type: 'root', children: [candidate] } as Root, schema);
-  if (tree.type !== 'root') return '';
+  if (tree.type !== 'root') return undefined;
   const safe = tree.children[0];
-  if (safe?.type !== 'element') return '';
-  safe.children = [{ type: 'raw', value: renderedChildren }];
-  return toHtml(safe, { allowDangerousHtml: true });
+  if (safe?.type !== 'element') return undefined;
+  safe.children = children;
+  return safe;
 }

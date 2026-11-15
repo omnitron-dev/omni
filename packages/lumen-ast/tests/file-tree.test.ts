@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseDocument, toHtmlSsr, toCleanMarkdown, toTypst } from '../src/index.js';
+import { htmlText } from './html-oracle.js';
 
 const source = `:::filetree{title="my-service/"}
 - \`src/\` — application source
@@ -41,8 +42,8 @@ describe('filetree document block', () => {
   it('escapes names and captions without turning document text into HTML', async () => {
     const ast = await parseDocument(':::filetree{title="<img src=x>"}\n- `<script>alert(1)</script>` — literal name\n:::');
     const html = toHtmlSsr(ast);
-    expect(html).toContain('&lt;img src=x&gt;');
-    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+    expect(htmlText(html)).toContain('<img src=x>');
+    expect(htmlText(html)).toContain('<script>alert(1)</script>');
     expect(html).not.toContain('<script>');
     expect(html).not.toContain('<img ');
   });

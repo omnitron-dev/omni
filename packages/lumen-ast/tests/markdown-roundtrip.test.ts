@@ -4,6 +4,7 @@ import type { LumenDocumentAst, LumenNode } from '../src/ast/types.js';
 import { parseDocumentSync } from '../src/compiler/parser.js';
 import { toCleanMarkdown } from '../src/transformers/to-clean-markdown.js';
 import { toHtmlSsr } from '../src/transformers/to-html-ssr.js';
+import { htmlText } from './html-oracle.js';
 
 function walk(nodes: LumenNode[]): LumenNode[] {
   return nodes.flatMap((node) => [node, ...walk(node.children ?? [])]);
@@ -78,7 +79,7 @@ describe('clean Markdown through the ordinary parser', () => {
     expect(
       walk(reparsed.children)
         .filter((node) => node.type === 'listItem')
-        .map((node) => node.checked)
+        .map((node) => node['checked'])
     ).toContain(true);
   });
 
@@ -129,7 +130,7 @@ describe('clean Markdown through the ordinary parser', () => {
       '<section><div data-props="SECRET_PROPS"><span data-lumen-island="id" data-component="Thing">Fallback &lt;script&gt;</span></div><script data-widget="fake">HIDDEN_SCRIPT</script></section>';
     const { markdown, reparsed } = roundTrip(source);
     expect(markdown).not.toMatch(/SECRET_PROPS|HIDDEN_SCRIPT|data-props|data-component|data-lumen-island/);
-    expect(toHtmlSsr(reparsed)).toContain('Fallback &lt;script&gt;');
+    expect(htmlText(toHtmlSsr(reparsed))).toContain('Fallback <script>');
     expect(toHtmlSsr(reparsed)).not.toContain('<script>');
   });
 
@@ -140,7 +141,7 @@ describe('clean Markdown through the ordinary parser', () => {
     const projected = projectDocumentAccess(ast, createDocumentAccessPredicate()).ast;
     const markdown = toCleanMarkdown(projected);
     const reparsed = parseDocumentSync(markdown);
-    expect(toHtmlSsr(reparsed)).toContain('Visible &lt;script&gt;');
+    expect(htmlText(toHtmlSsr(reparsed))).toContain('Visible <script>');
     expect(markdown).not.toMatch(/PRIVATE|data-lumen-island/);
     expect(toHtmlSsr(reparsed)).not.toContain('<script>');
   });
@@ -197,7 +198,7 @@ describe('clean Markdown through the ordinary parser', () => {
       ],
     };
     const reparsed = parseDocumentSync(toCleanMarkdown(ast));
-    expect(toHtmlSsr(reparsed)).toContain('&lt;script&gt;literal&lt;/script&gt;');
+    expect(htmlText(toHtmlSsr(reparsed))).toContain('<script>literal</script>');
     expect(toHtmlSsr(reparsed)).not.toContain('<script>');
   });
 
@@ -224,7 +225,7 @@ describe('clean Markdown through the ordinary parser', () => {
     const reparsed = parseDocumentSync(toCleanMarkdown(ast));
     expect(reparsed.children[0]?.type).toBe('blockquote');
     expect(walk(reparsed.children).some((node) => node.type === 'list')).toBe(true);
-    expect(toHtmlSsr(reparsed)).toContain('&lt;script&gt; *plain*');
+    expect(htmlText(toHtmlSsr(reparsed))).toContain('<script> *plain*');
     expect(toHtmlSsr(reparsed)).not.toContain('<script>');
   });
 });

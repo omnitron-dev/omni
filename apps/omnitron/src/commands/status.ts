@@ -13,37 +13,38 @@ import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
 import { formatUptime, formatMemoryColored } from '../shared/format.js';
 import { expandPath } from '../shared/paths.js';
 import { reportAbsence } from './daemon-required.js';
+import { emitError, emitJson } from './output.js';
 
 export async function statusCommand(): Promise<void> {
   const client = createDaemonClient();
 
-  const absence = await client.whyUnreachable();
-  if (absence) {
-    // This command's own copy of the pid-file check was, for a long time, the
-    // only place in the CLI that told a stopped daemon from a silent one.
-    // That copy is now `DaemonClient.whyUnreachable()`, so every command gets
-    // the distinction; what stays here is the part only `status` does —
-    // clearing up after a daemon that crashed.
-    reportAbsence(absence);
-    if (absence.kind === 'stale') {
-      try {
-        const dc = DEFAULT_DAEMON_CONFIG;
-        const pidManager = new PidManager(expandPath(dc.pidFile));
-        if (pidManager.cleanupStale(expandPath(dc.socketPath))) {
-          log.info('Cleaned up the PID file and socket it left behind');
-        }
-      } catch { /* diagnostics only — the report above is what matters */ }
-    }
-    if (absence.kind === 'silent') {
-      log.info('  omnitron down          # graceful: SIGTERM, then SIGKILL after 3s');
-      log.info('  omnitron kill          # force immediately');
-    }
-
-    await client.disconnect();
-    return;
-  }
-
   try {
+    const absence = await client.whyUnreachable();
+    if (absence) {
+      // This command's own copy of the pid-file check was, for a long time, the
+      // only place in the CLI that told a stopped daemon from a silent one.
+      // That copy is now `DaemonClient.whyUnreachable()`, so every command gets
+      // the distinction; what stays here is the part only `status` does —
+      // clearing up after a daemon that crashed.
+      reportAbsence(absence);
+      process.exitCode = 1;
+      if (absence.kind === 'stale') {
+        try {
+          const dc = DEFAULT_DAEMON_CONFIG;
+          const pidManager = new PidManager(expandPath(dc.pidFile));
+          if (pidManager.cleanupStale(expandPath(dc.socketPath))) {
+            log.info('Cleaned up the PID file and socket it left behind');
+          }
+        } catch { /* diagnostics only — the report above is what matters */ }
+      }
+      if (absence.kind === 'silent') {
+        log.info('  omnitron down          # graceful: SIGTERM, then SIGKILL after 3s');
+        log.info('  omnitron kill          # force immediately');
+      }
+
+      return;
+    }
+
     const status = await client.status();
 
     const onlineApps = status.apps.filter((a: any) => a.status === 'online');
@@ -51,7 +52,6 @@ export async function statusCommand(): Promise<void> {
 
     // JSON mode — emit structured snapshot and skip TUI rendering.
     {
-      const { emitJson } = await import('./output.js');
       if (emitJson({
         version: status.version,
         ...(status.build !== undefined ? { build: status.build } : {}),
@@ -66,7 +66,6 @@ export async function statusCommand(): Promise<void> {
         errors: erroredApps.map((a: any) => a.name),
         apps: status.apps,
       })) {
-        await client.disconnect();
         return;
       }
     }
@@ -96,10 +95,11 @@ export async function statusCommand(): Promise<void> {
 
     box(headerLines.join('\n'), 'Omnitron Daemon');
   } catch (err) {
-    log.error((err as Error).message);
+    emitError(err);
+    process.exitCode = 1;
+  } finally {
+    await client.disconnect();
   }
-
-  await client.disconnect();
 }
 
 /**

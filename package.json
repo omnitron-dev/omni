@@ -27,8 +27,8 @@
     "unlink:global": "pnpm uninstall --global @omnitron-dev/omnitron",
     "kb:extract": "turbo kb:extract",
     "kb:index": "cd apps/omnitron && tsx src/commands/kb.ts index",
-    "check:reproducibility": "xec run scripts/check-reproducible-backend.mjs",
-    "check:packages": "node scripts/check-package-exports.mjs",
+    "check:reproducibility": "xec reproduce",
+    "check:packages": "xec check-packages",
     "release": "xec release",
     "test:e2e": "vitest run --config tests/e2e/vitest.e2e.config.ts"
   },

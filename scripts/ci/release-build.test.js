@@ -4,7 +4,8 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { releaseBuildContext, preparationBuildDirectory, verifyPreparationBuild, publishPreparationBuild } from '../lib/release-build.js';
+import { releaseCommand } from '@xec-sh/ops/release';
+import { releaseBuildContext, releaseEnvironment, releaseProducerInputs, assertReleaseProducerApi, preparationBuildDirectory, verifyPreparationBuild, publishPreparationRuntime, finalizePreparationBuild } from '../../.xec/release/build.js';
 import { runtimeArtifactDigest } from '../../apps/omnitron/src/shared/runtime-artifact.ts';
 
 const revision = 'a'.repeat(40);
@@ -19,10 +20,46 @@ const run = async (_cwd, executable, args) => {
   return '1730000000';
 };
 
+test('release producer refuses the published pre-protocol API instead of silently dropping retention', () => {
+  assert.throws(() => assertReleaseProducerApi({}), /published @xec-sh\/ops 0.13/);
+  assert.throws(() => assertReleaseProducerApi({ RELEASE_PRODUCER_PROTOCOL: 1 }), /producer API/);
+  assertReleaseProducerApi({ RELEASE_PRODUCER_PROTOCOL: 1, packReleaseArtifacts() {} });
+});
+
+test('release environment selects explicit build inputs without inheriting daemon authority or arbitrary variables', () => {
+  assert.deepEqual(releaseEnvironment({ PATH: '/safe/bin', HOME: '/safe/home', VITE_PUBLIC_URL: 'https://example.invalid',
+    OMNITRON_HOME: '/live/daemon', TURBO_TOKEN: 'private', ARBITRARY_SECRET: 'private', npm_lifecycle_event: 'test' }),
+  { HOME: '/safe/home', PATH: '/safe/bin', VITE_PUBLIC_URL: 'https://example.invalid' });
+  assert.equal(releaseEnvironment({ NODE_OPTIONS: '--max-old-space-size=8192 --enable-source-maps' }).NODE_OPTIONS,
+    '--max-old-space-size=8192 --enable-source-maps');
+  for (const value of ['--require /external/unbound.js', '--import=/external/unbound.js', '--eval=code'])
+    assert.throws(() => releaseEnvironment({ NODE_OPTIONS: value }), /not external code/);
+});
+
+test('producer identity follows the actual Xec dependency closure without requiring manifest exports', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'release-driver-inputs-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await writeJson(path.join(root, 'package.json'), { private: true, type: 'module' });
+  for (const name of ['cli', 'ops', 'loader']) {
+    const directory = path.join(root, 'node_modules/@xec-sh', name);
+    await fs.mkdir(path.join(directory, 'dist'), { recursive: true });
+    await writeJson(path.join(directory, 'package.json'), { name: '@xec-sh/' + name, version: '0.13.0',
+      exports: { '.': { import: './dist/index.js' } },
+      ...(name === 'cli' ? { dependencies: { '@xec-sh/loader': '0.13.0' } } : {}) });
+    await fs.writeFile(path.join(directory, 'dist/index.js'), `export const name = ${JSON.stringify(name)};\n`);
+  }
+  const context = { identity: { revision } };
+  const before = await releaseProducerInputs(root, context);
+  assert.equal(Object.keys(before).length, 4);
+  await fs.appendFile(path.join(root, 'node_modules/@xec-sh/loader/dist/index.js'), 'export const changed = true;\n');
+  assert.notDeepEqual(await releaseProducerInputs(root, context), before);
+});
+
 async function fixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'release-build-proof-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   await writeJson(path.join(root, 'package.json'), { packageManager: 'pnpm@12.16.1' });
+  await fs.writeFile(path.join(root, 'pnpm-lock.yaml'), 'lockfileVersion: 9.0\n');
   const context = await releaseBuildContext(root, revision, run);
   const directory = preparationBuildDirectory(root, revision), runtime = path.join(directory, 'runtime');
   await fs.mkdir(path.join(runtime, 'packages/0/dist'), { recursive: true });
@@ -45,10 +82,29 @@ async function fixture(t) {
   const proof = { kind: 'clean-package-preparation', identity: structuredClone(context.identity), consumerVerified: true,
     result: { sha256: digest, packages: 1, console: 'console-identity', sdk: { packages: 1, files: 0, manifestSha256: hash(manifest) } },
     inventorySha256: hash(inventory) };
+  const { sdk: _sdk, ...runtimeResult } = proof.result;
+  await writeJson(path.join(directory, 'BUILD.json'), { identity: context.identity, result: runtimeResult });
   const receipt = path.join(directory, 'PREPARATION.json');
   await writeJson(receipt, proof);
   return { root, directory, runtime, sdk, receipt, proof, context };
 }
+
+test('an unaccepted producer cannot finalize preparation without the canonical accepted release record', async t => {
+  const f = await fixture(t);
+  await fs.unlink(f.receipt);
+  const git = args => releaseCommand(f.root, 'git', args);
+  await git(['init', '--quiet']);
+  await git(['add', 'package.json', 'pnpm-lock.yaml']);
+  await git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@localhost', 'commit', '--quiet', '-m', 'Fixture']);
+  const commit = await git(['rev-parse', 'HEAD']);
+  const directory = path.join(f.root, '.release-artifacts/0.4.11', commit);
+  await fs.mkdir(directory, { recursive: true });
+  await writeJson(path.join(directory, 'producer.json'), { commit, accepted: false });
+  await assert.rejects(finalizePreparationBuild(f.root, '0.4.11', { identity: { ...f.context.identity, revision: commit } }),
+    error => error.code === 'ENOENT' && error.path === path.join(directory, 'release.json'));
+  await assert.rejects(fs.stat(f.receipt), { code: 'ENOENT' });
+  await assert.rejects(fs.stat(preparationBuildDirectory(f.root, commit)), { code: 'ENOENT' });
+});
 
 test('retained preparation verifies exact producer, native bytes, Console and SDK without running a build', async t => {
   const f = await fixture(t);
@@ -67,7 +123,7 @@ test('retained preparation verifies exact producer, native bytes, Console and SD
 });
 
 test('producer and uncached build contract mismatches cannot become the first reproduction', async t => {
-  for (const field of ['revision', 'node', 'platform', 'arch', 'packageManager', 'epoch', 'policy', 'recipe'])
+  for (const field of ['revision', 'node', 'platform', 'arch', 'packageManager', 'epoch', 'policy', 'recipe', 'lockfile', 'environment', 'configuration'])
     await t.test(field, async sub => {
       const f = await fixture(sub);
       f.proof.identity[field] = field === 'recipe' ? { ...f.proof.identity.recipe, turboForce: false } : 'different';
@@ -123,39 +179,36 @@ test('preparation publishes a complete directory atomically and reuses an identi
   const f = await fixture(t);
   const temporary = path.join(path.dirname(f.directory), '.preparation-test');
   await fs.rename(f.directory, temporary);
-  await publishPreparationBuild(temporary, f.directory, f.context.identity);
+  await publishPreparationRuntime(temporary, f.directory, f.context.identity);
   await assert.rejects(fs.stat(temporary), { code: 'ENOENT' });
   await verifyPreparationBuild(f.directory, f.context.identity);
-  const before = await fs.stat(f.receipt);
+  const before = await fs.stat(path.join(f.directory, 'BUILD.json'));
   await fs.cp(f.directory, temporary, { recursive: true });
-  await publishPreparationBuild(temporary, f.directory, f.context.identity);
-  assert.equal((await fs.stat(f.receipt)).ino, before.ino, 'retry must preserve original evidence');
+  await publishPreparationRuntime(temporary, f.directory, f.context.identity);
+  assert.equal((await fs.stat(path.join(f.directory, 'BUILD.json'))).ino, before.ino, 'retry must preserve original evidence');
 });
 
 test('preparation retry rejects incomplete evidence and divergent fresh outputs without replacing either', async t => {
-  for (const change of ['incomplete', 'producer', 'output', 'inventory']) await t.test(change, async sub => {
+  for (const change of ['incomplete', 'producer', 'output']) await t.test(change, async sub => {
     const f = await fixture(sub);
     const temporary = path.join(path.dirname(f.directory), '.preparation-test');
     await fs.cp(f.directory, temporary, { recursive: true });
-    if (change === 'incomplete') await fs.unlink(f.receipt);
+    if (change === 'incomplete') await fs.unlink(path.join(f.directory, 'BUILD.json'));
     else if (change === 'producer') {
       f.proof.identity.node = 'v0.0.1';
-      await writeJson(f.receipt, f.proof);
+      const record = await readJson(path.join(f.directory, 'BUILD.json'));
+      await writeJson(path.join(f.directory, 'BUILD.json'), { ...record, identity: f.proof.identity });
     } else if (change === 'output') {
       const runtime = path.join(temporary, 'runtime');
       await fs.appendFile(path.join(runtime, 'node'), 'new output');
       f.proof.result.sha256 = await runtimeArtifactDigest(runtime);
       const manifest = await readJson(path.join(runtime, 'RUNTIME.json'));
       await writeJson(path.join(runtime, 'RUNTIME.json'), { ...manifest, sha256: f.proof.result.sha256 });
-      await writeJson(path.join(temporary, 'PREPARATION.json'), f.proof);
-    } else {
-      const inventory = path.join(temporary, 'sdk-inventory.json');
-      await fs.appendFile(inventory, ' ');
-      f.proof.inventorySha256 = hash(await fs.readFile(inventory));
-      await writeJson(path.join(temporary, 'PREPARATION.json'), f.proof);
+      const record = await readJson(path.join(temporary, 'BUILD.json'));
+      await writeJson(path.join(temporary, 'BUILD.json'), { ...record, result: { ...record.result, sha256: f.proof.result.sha256 } });
     }
     const before = await fs.stat(f.directory);
-    await assert.rejects(publishPreparationBuild(temporary, f.directory, f.context.identity));
+    await assert.rejects(publishPreparationRuntime(temporary, f.directory, f.context.identity));
     assert.equal((await fs.stat(f.directory)).ino, before.ino);
     await fs.access(path.join(temporary, 'PREPARATION.json'));
   });

@@ -11,24 +11,12 @@ import { retainNativeRuntime } from './native-delivery.mjs';
 import { verifyRuntimeArtifact } from '../apps/omnitron/src/shared/runtime-artifact.ts';
 import os from 'node:os';
 import { verifyVersionQualification } from './version-qualification.js';
-import { preparationBuildDirectory } from '../scripts/lib/release-build.js';
+import { preparationBuildDirectory } from './release/build.js';
+import { saveEvidence as save } from './evidence.js';
 
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const read = async filename => JSON.parse(await fs.readFile(filename, 'utf8'));
 const optional = async filename => read(filename).catch(error => { if (error.code !== 'ENOENT') throw error; return null; });
-
-/** Only release evidence is persisted; scheduling and process ownership remain in Xec. */
-async function save(filename, value) {
-  await fs.mkdir(path.dirname(filename), { recursive: true, mode: 0o700 });
-  const temporary = filename + '.' + randomUUID();
-  const handle = await fs.open(temporary, 'wx', 0o600);
-  try { await handle.writeFile(JSON.stringify(value, null, 2) + '\n'); await handle.sync(); }
-  finally { await handle.close(); }
-  try { await fs.rename(temporary, filename); }
-  finally { await fs.rm(temporary, { force: true }); }
-  const directory = await fs.open(path.dirname(filename), 'r');
-  try { await directory.sync(); } finally { await directory.close(); }
-}
 
 async function verifyBuild(directory, commit, producerNode) {
   const proof = await read(path.join(directory, 'QUALIFICATION.json'));
@@ -116,7 +104,7 @@ async function runQualification(root, version, options, recordedIdentity) {
       }
       await persist();
       await run(root, process.execPath, [fileURLToPath(new URL('../bin/xec', import.meta.resolve('@xec-sh/cli'))),
-        'run', 'scripts/check-reproducible-backend.mjs', '--revision', commit,
+        'reproduce', '--revision', commit,
         '--first', preparationBuildDirectory(root, commit), '--out', build],
         { timeoutMs: 90 * 60_000 });
     }

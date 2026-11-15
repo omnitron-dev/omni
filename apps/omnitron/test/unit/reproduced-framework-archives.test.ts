@@ -66,6 +66,23 @@ it('requires exactly the complete package inventory and version on both sides', 
   }
 });
 
+it('normalizes one packed producer with exact source provenance without changing workspace manifests', async () => {
+  const produced = await archive({ metadata: manifest() });
+  const metadataFile = path.join(path.dirname(produced.file), 'package/package.json');
+  const workspaceBytes = await fs.readFile(metadataFile);
+  await normalizePackedWorkspace(produced.file, commit);
+  const first = await fs.readFile(produced.file);
+  await normalizePackedWorkspace(produced.file, commit);
+  expect(await fs.readFile(produced.file)).toEqual(first);
+  expect(await fs.readFile(metadataFile)).toEqual(workspaceBytes);
+  const integrity = 'sha512-' + createHash('sha512').update(first).digest('base64');
+  const accepted = { ...produced, integrity };
+  await expect(assertReproducedFrameworkArchives([accepted], [accepted], commit)).resolves.toEqual({ packages: 1, files: 3 });
+  await expect(normalizePackedWorkspace(produced.file, 'cd'.repeat(20))).rejects.toThrow('source revision differs');
+  await expect(normalizePackedWorkspace(produced.file, 'HEAD')).rejects.toThrow('exact commit');
+  expect(await fs.readFile(produced.file)).toEqual(first);
+});
+
 it('requires the published gitHead and rejects a different commit on either side', async () => {
   const prepared = await archive(), reproduced = await archive({ metadata: manifest() });
   await expect(assertReproducedFrameworkArchives([reproduced], [reproduced], commit)).rejects.toThrow(/packed gitHead/);

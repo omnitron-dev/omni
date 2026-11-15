@@ -79,12 +79,19 @@ export function normalizePackedManifest(metadata: Record<string, unknown>): Reco
 
 /** pnpm resolves workspace ranges before packing. Canonicalize only unordered
  * dependency maps; export conditions and all executable bytes keep their order. */
-export async function normalizePackedWorkspace(archive: string): Promise<void> {
+export async function normalizePackedWorkspace(archive: string, sourceRevision?: string): Promise<void> {
+  if (sourceRevision !== undefined && !/^[a-f0-9]{40}$/.test(sourceRevision))
+    throw new Error('Packed source revision must be an exact commit');
   const temp = await fs.mkdtemp(path.join(path.dirname(archive), '.pack-'));
   try {
     await extract({ cwd: temp, file: archive, strict: true });
     const manifest = path.join(temp, 'package/package.json');
     const meta = normalizePackedManifest(JSON.parse(await fs.readFile(manifest, 'utf8')) as Record<string, unknown>);
+    if (sourceRevision !== undefined) {
+      if (meta['gitHead'] !== undefined && meta['gitHead'] !== sourceRevision)
+        throw new Error('Packed source revision differs');
+      meta['gitHead'] = sourceRevision;
+    }
     await fs.writeFile(manifest, JSON.stringify(meta, null, 2) + '\n');
     await writePortableArchive(temp, archive);
   } finally { await fs.rm(temp, { recursive: true, force: true }); }

@@ -1,9 +1,7 @@
-import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isCancel, password, text } from '@xec-sh/kit';
-import { Pipeline } from '@xec-sh/ops/pipeline';
 import {
   acquireReleaseLock, assertCleanReleaseTree, assertReleaseHead, commitReleaseVersion,
   createGithubRelease, discoverReleasePackages, ensureReleaseTag, loadPreparedRelease,
@@ -16,8 +14,8 @@ import { supersedeDraft } from '../supersede-draft.mjs';
 import { qualifyRelease, verifyReleaseQualification, verifyQualifiedRevision } from '../qualification.mjs';
 import { assertReleaseVersionAvailable } from '../release-registry.js';
 import { prepareVersionQualification } from '../version-qualification.js';
-import { assertPipelineSucceeded } from '../../scripts/lib/pipeline-result.mjs';
-import { releaseBuildContext, releaseInstallArgs } from '../../scripts/lib/release-build.js';
+import { releaseBuildContext, finalizePreparationBuild, assertReleaseProducerApi } from '../release/build.js';
+import { releasePreparation } from '../release/recipe.js';
 
 const defaultRoot = fileURLToPath(new URL('../../', import.meta.url));
 const repository = policy.repository;
@@ -61,7 +59,7 @@ async function runRelease(version, operation, values, root = defaultRoot) {
   }
   // Refuse unsupported installed build dependencies before changing versions or
   // starting costly qualification. Sealed resume/publication does not rebuild.
-  if (operation === 'prepare') await assertBuildDependencies(root);
+  if (operation === 'prepare') { await assertBuildDependencies(root); assertReleaseProducerApi(); }
   const plan = await planRelease(root, version);
   console.log(`${plan.tag} · ${plan.npmTag} · ${plan.packages.length} packages · ${plan.commit}`);
   if (plan.blockers.length) throw new Error(plan.blockers.join('\n'));
@@ -98,31 +96,8 @@ async function runRelease(version, operation, values, root = defaultRoot) {
       await commitReleaseVersion(root, version);
       const commit = await releaseCommand(root, 'git', ['rev-parse', 'HEAD']);
       const buildContext = await releaseBuildContext(root, commit);
-      const prepared = await prepareReleaseArtifacts(root, version, {
-        build: { executable: process.execPath, args: [fileURLToPath(new URL('../bin/xec', import.meta.resolve('@xec-sh/cli'))), 'run', 'scripts/build-release.mjs', root, commit] },
-        async run(cwd, executable, args, options) {
-          if (executable === 'pnpm' && args[0] === 'install') {
-            assert.deepEqual(args, releaseInstallArgs, 'Preparation install differs from the independent build contract');
-            return releaseCommand(cwd, executable, args, { ...options, env: buildContext.env });
-          }
-          if (!args.includes('scripts/build-release.mjs')) return releaseCommand(cwd, executable, args, options);
-          const build = Pipeline.create('release-preparation').step('isolated-build', {
-            run: { command: executable, args, cwd, shell: false, env: buildContext.env }, timeout: policy.preparation.recipeTimeoutMs,
-          });
-          const result = await build.run({}, { onEvent(event) {
-            if (event.type === 'step-output') process[event.stream].write(event.text);
-          } });
-          assertPipelineSucceeded(result);
-          return result.steps[0].stdout;
-        },
-        // Xec calls this after the clean build and immediately before sealing each archive.
-        async preparePackage({ workspace, pkg }) {
-          const file = path.join(workspace, pkg.path, 'package.json');
-          const metadata = JSON.parse(await readFile(file, 'utf8'));
-          await writeFile(file, JSON.stringify({ ...metadata, gitHead: commit }, null, 2) + '\n');
-        },
-        progress: console.log,
-      });
+      const prepared = await prepareReleaseArtifacts(root, version, await releasePreparation(root, commit, buildContext));
+      await finalizePreparationBuild(root, version, buildContext);
       const notes = await releaseNotes(root, version, repository);
       await writeFile(path.join(root, '.release-artifacts', version, prepared.commit, 'NOTES.md'), notes);
       await ensureReleaseTag(root, version);

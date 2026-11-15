@@ -172,7 +172,8 @@ else if (cmd === 'release' && op === 'view' && fs.readFileSync(state, 'utf8') ==
 } else process.exit(1);
 `, { mode: 0o700 });
   const buildRecord = path.join(temp, 'build-record');
-  const env = { ...process.env, PATH: bin + path.delimiter + process.env.PATH, FIXTURE_GITHUB_STATE: githubState, FIXTURE_BUILD_RECORD: buildRecord, CI: 'true', NPM_CONFIG_USERCONFIG: npmrc, NPM_CONFIG_CACHE: path.join(temp, 'npm-cache'),
+  const acceptanceRecord = path.join(temp, 'acceptance-record');
+  const env = { ...process.env, PATH: bin + path.delimiter + process.env.PATH, FIXTURE_GITHUB_STATE: githubState, CI: 'true', NPM_CONFIG_USERCONFIG: npmrc, NPM_CONFIG_CACHE: path.join(temp, 'npm-cache'),
     GIT_CONFIG_GLOBAL: path.join(temp, 'gitconfig'), GIT_CONFIG_NOSYSTEM: '1', GIT_AUTHOR_NAME: 'Fixture',
     GIT_COMMITTER_NAME: 'Fixture', GIT_AUTHOR_EMAIL: 'fixture@localhost', GIT_COMMITTER_EMAIL: 'fixture@localhost' };
   const exec = (bin, args, cwd = workspace) => run(bin, args, { cwd, env, signal: t.signal });
@@ -191,19 +192,34 @@ else if (cmd === 'release' && op === 'view' && fs.readFileSync(state, 'utf8') ==
   await fs.writeFile(path.join(workspace, '.xec/qualification.mjs'), 'export async function qualifyRelease() {}\nexport async function verifyReleaseQualification() { return {fixture:true}; }\nexport async function verifyQualifiedRevision() { throw Error("This fixture does not qualify a previous runtime"); }\n');
   // These two registry fixtures have no backend/Console graph or pnpm registry
   // metadata. The real producer and retained-output verifier have separate tests.
-  const buildHelper = path.join(workspace, 'scripts/lib/release-build.js');
+  const buildHelper = path.join(workspace, '.xec/release/build.js');
   await fs.writeFile(buildHelper, (await fs.readFile(buildHelper, 'utf8'))
     .replace("const packageManager = (await json(path.join(root, 'package.json'))).packageManager;",
       "const packageManager = 'pnpm@' + await run(root, 'pnpm', ['--version']);")
-    .replace('export async function retainPreparationBuild(root, workspace, context) {',
-      'export async function retainPreparationBuild(root, workspace, context) { return;\n'));
+    .replace('export async function retainPreparationRuntime(root, workspace, context) {',
+      'export async function retainPreparationRuntime(root, workspace, context) { return;\n')
+    .replace('export async function verifyPreparationRuntime(directory, identity) {',
+      'export async function verifyPreparationRuntime(directory, identity) { return {};\n')
+    .replace('export async function finalizePreparationBuild(root, version, context) {',
+      'export async function finalizePreparationBuild(root, version, context) { return {};\n')
+    .replace('export async function prepareReleaseArchive({ workspace, file }, revision) {',
+      `export async function prepareReleaseArchive({ workspace, file }, revision) {
+        const target = await fs.mkdtemp(path.join(path.dirname(file), 'fixture-'));
+        await releaseCommand(target, 'tar', ['-xzf', file]);
+        const manifest = path.join(target, 'package/package.json');
+        await fs.writeFile(manifest, JSON.stringify({ ...await json(manifest), gitHead: revision }));
+        await releaseCommand(target, 'tar', ['-czf', file, 'package']);
+        return;`));
   // The fixture publishes two tiny packages, not the complete Omnitron SDK.
-  // Keep both package-consumer validation stages observable in its archive.
+  // Observe acceptance after packing without changing the accepted archive bytes.
   await fs.mkdir(path.join(workspace, 'scripts/ci'), { recursive: true });
-  await fs.writeFile(path.join(workspace, 'scripts/check-package-exports.mjs'),
-    "import assert from 'node:assert/strict'; import fs from 'node:fs'; assert.equal(process.argv[2], '--install-consumer'); fs.mkdirSync(process.argv[3]); fs.writeFileSync(process.argv[3]+'/audit-checked', 'checked');");
+  await fs.writeFile(path.join(workspace, '.xec/release/packages.js'),
+    "import assert from 'node:assert/strict'; import fs from 'node:fs'; import { verifyReleaseArtifact } from '@xec-sh/ops/release'; export async function checkPackageArchives(root, artifacts, {consumer}) { assert.equal(artifacts.length, 2); for (const a of artifacts) await verifyReleaseArtifact(a); fs.mkdirSync(consumer); fs.writeFileSync(consumer+'/audit-checked', 'checked'); }");
   await fs.writeFile(path.join(workspace, 'scripts/ci/check-runtime-consumer.mjs'),
-    "import assert from 'node:assert/strict'; import fs from 'node:fs'; assert.equal(fs.readFileSync(process.argv[2]+'/audit-checked', 'utf8'), 'checked'); fs.writeFileSync('packages/base/consumer-checked', 'archives, audit, runtime');");
+    `import assert from 'node:assert/strict'; import fs from 'node:fs'; assert.equal(fs.readFileSync(process.argv[2]+'/audit-checked', 'utf8'), 'checked');
+const record = ${JSON.stringify(acceptanceRecord)};
+if (!fs.existsSync(record)) { fs.writeFileSync(record, 'rejected'); throw Error('synthetic consumer rejection'); }
+fs.writeFileSync(record, 'archives, audit, runtime');`);
   // The real preflight resolves its parser from tools/lint. Declare the actual
   // installed compiler in the fixture so Xec's clean export installs it too.
   // Lumen AST owns the direct Compiler API package; tools/lint may resolve an
@@ -240,13 +256,13 @@ assert.equal(readFileSync(require.resolve('@fixture/native/native-built'), 'utf8
 assert.equal(typeof require('typescript').createSourceFile, 'function');
 assert.ok(realpathSync(require.resolve('typescript')).startsWith(realpathSync(process.cwd()) + sep),
   'the clean export must own its installed compiler');
-writeFileSync(process.env.FIXTURE_BUILD_RECORD, process.cwd());
+writeFileSync(${JSON.stringify(buildRecord)}, process.cwd());
 for (const name of ['base', 'client']) writeFileSync('packages/' + name + '/index.js', 'export default 1;');
 `);
   await fs.writeFile(path.join(workspace, 'pnpm-workspace.yaml'), "allowBuilds:\n  '@fixture/native@file:vendor/native-dependency': true\npackages:\n  - 'packages/*'\n  - 'tools/*'\n");
   for (const [folder, name] of [['base', first], ['client', second]]) {
     await fs.mkdir(path.join(workspace, 'packages', folder), { recursive: true });
-    await json(`packages/${folder}/package.json`, { name, version: '0.1.0', main: './index.js', files: ['index.js', 'consumer-checked'],
+    await json(`packages/${folder}/package.json`, { name, version: '0.1.0', main: './index.js', files: ['index.js'],
       ...(name === second ? { dependencies: { [first]: 'workspace:*' }, peerDependencies: { [first]: '^0.1.0' } } : {}) });
   }
   await fs.writeFile(path.join(workspace, '.gitignore'), 'node_modules\n.release-artifacts\n.xec/.tmp/\n');
@@ -277,11 +293,22 @@ for (const name of ['base', 'client']) writeFileSync('packages/' + name + '/inde
   await exec('pnpm', ['install', '--lockfile-only', '--offline']);
   await git('add', '--', 'packages/client/package.json', 'pnpm-lock.yaml');
   await git('commit', '-qm', 'Fix internal workspace peer');
-  await release('--prepare', '--registry', registry);
+  await assert.rejects(release('--prepare', '--registry', registry), /synthetic consumer rejection/);
   const preparedBuild = await fs.readFile(buildRecord, 'utf8');
   assert.notEqual(preparedBuild, workspace, 'the build must run in the clean export');
-  await release('--prepare', '--registry', registry);
+  const producerDirectory = path.join(workspace, '.release-artifacts', version, await git('rev-parse', 'HEAD'));
+  const producer = JSON.parse(await fs.readFile(path.join(producerDirectory, 'producer.json')));
+  assert.equal(producer.stage, 'producer');
+  await assert.rejects(fs.access(path.join(producerDirectory, 'release.json')), { code: 'ENOENT' });
+  const producerBytes = await Promise.all(producer.artifacts.map(artifact => fs.readFile(path.join(producerDirectory, artifact.file))));
+  const retry = await release('--prepare', '--registry', registry);
+  assert.doesNotMatch(retry.stdout, /Building isolated packages|Packing @fixture\//,
+    'consumer retry must reuse producer bytes without rebuilding or repacking');
+  for (let index = 0; index < producer.artifacts.length; index++)
+    assert.deepEqual(await fs.readFile(path.join(producerDirectory, producer.artifacts[index].file)), producerBytes[index]);
   assert.equal(await fs.readFile(buildRecord, 'utf8'), preparedBuild, 'sealed preparation must not build again');
+  await release('--prepare', '--registry', registry);
+  assert.equal(await fs.readFile(buildRecord, 'utf8'), preparedBuild, 'accepted preparation must not build again');
   const commit = await git('rev-parse', 'HEAD');
   assert.notEqual(commit, before);
   const next = path.join(temp, 'next');
@@ -298,7 +325,7 @@ for (const name of ['base', 'client']) writeFileSync('packages/' + name + '/inde
     const tarball = path.join(workspace, '.release-artifacts', version, commit, artifact.file);
     const packed = JSON.parse((await exec('tar', ['-xOf', tarball, 'package/package.json'])).stdout);
     assert.equal(packed.gitHead, commit);
-    if (artifact.name === first) assert.equal((await exec('tar', ['-xOf', tarball, 'package/consumer-checked'])).stdout, 'archives, audit, runtime');
+    if (artifact.name === first) assert.equal(await fs.readFile(acceptanceRecord, 'utf8'), 'archives, audit, runtime');
   }
   await assert.rejects(release('--finish', '--registry', registry), /Publication interrupted for @fixture\/client[^\n]*\nnpm E403/);
   assert.equal(await fs.stat(githubState).catch(() => null), null);

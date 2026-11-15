@@ -44,7 +44,7 @@ To use a source checkout from another application, follow the [Omnitron SDK work
 
 The repository driver is the pinned published Xec CLI. Its native project commands own release/update arguments, generated help and validation; `pnpm exec xec release --help` and `pnpm exec xec update --help` describe the supported operations. Turbo supplies the build graph and cache.
 
-The current unreleased runtime requires the Xec Core 0.13 execution-ownership contract. Preparation refuses incompatible declared or installed dependencies before changing versions or building. This does not prevent inspection or publication of already sealed archives; see the [build policy](.xec/release-policy.mjs).
+The current unreleased runtime requires Xec 0.13: Core supplies execution ownership and Ops supplies retained release producers. Preparation refuses incompatible declared or installed dependencies before changing versions or building. This does not prevent inspection or publication of already sealed archives; see the [build policy](.xec/release-policy.mjs).
 
 ```sh
 pnpm exec xec release <version> --dry-run
@@ -52,7 +52,9 @@ pnpm exec xec release <version> --prepare --previous <full-commit> --push-source
 pnpm exec xec release <version> --finish
 ```
 
-Preparation checks registry availability and seals the archives against the exact source commit. Xec reports progress for three npm consumers: the minimal runtime, all public packages together and Lumen on its own. Each replays a fresh lockfile, checks the installed archive identities and runs an audit. The minimal runtime also exercises an ordinary install.
+Preparation builds and packs once against the exact source commit. Xec retains those archives before checking three independent npm consumers: the minimal runtime, all public packages together and Lumen on its own. Rejected acceptance can retry the same producer without rebuilding or repacking. Changed source, build environment, driver or archive bytes cause refusal. The final release record appears only after acceptance and cleanup succeed.
+
+`xec release-build`, `xec check-packages` and `xec reproduce` are the native project commands behind this workflow. The independent second build remains mandatory. Each consumer checks the installed archive identities and runs an audit; the runtime uses ordinary `npm install`, while the other profiles verify fresh lockfiles through `npm ci`.
 
 Finish verifies the recorded Node producer, independent builds and native transition evidence, then publishes the sealed archives.
 

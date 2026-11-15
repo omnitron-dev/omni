@@ -11,6 +11,7 @@ const policy = {
     // Durable backup ownership uses the inspection/termination contract added
     // after Xec 0.12. Do not qualify a candidate against an older installed SDK.
     { workspace: 'apps/omnitron', name: '@xec-sh/core', range: '^0.13.0' },
+    { workspace: '.', section: 'devDependencies', name: '@xec-sh/ops', range: '^0.13.0' },
   ],
   preparation: {
     consumerTimeoutMs: 60 * 60_000,
@@ -32,10 +33,10 @@ export default policy;
 /** Refuse incompatible build inputs before version changes or expensive work. */
 export async function assertBuildDependencies(root) {
   const inputs = [];
-  for (const { workspace, name, range } of policy.buildDependencies) {
+  for (const { workspace, name, range, section = 'dependencies' } of policy.buildDependencies) {
     const manifestPath = path.join(root, workspace, 'package.json');
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
-    const declared = manifest.dependencies?.[name];
+    const declared = manifest[section]?.[name];
     if (!semver.validRange(declared) || !semver.subset(declared, range)) {
       throw new Error(`${workspace} requires ${name} ${range} for this source; declared ${declared ?? '(missing)'}. ` +
         'Publish the required Xec contract, then update the dependency and frozen lockfile before preparing Omnitron.');

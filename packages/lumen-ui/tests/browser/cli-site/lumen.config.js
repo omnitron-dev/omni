@@ -6,6 +6,7 @@ import { PortalIslandHost } from '@omnitron-dev/lumen-ui/runtime';
 import { PrismProvider } from '@omnitron-dev/prism/core';
 import CounterExample from './counter-example.js';
 import StyleBoundary from './style-boundary.js';
+import { ssrIslands } from './ssr-islands.js';
 
 const counterSource = readFileSync(new URL('./counter-example.js', import.meta.url), 'utf8');
 
@@ -41,6 +42,10 @@ function Layout({ children, document }) {
 export default {
   title: 'CLI browser boundary',
   clientEntry: 'client.jsx',
-  examples: { SourceExample: { sources: { source: 'source-example.jsx' }, language: 'jsx' } },
+  islands: ssrIslands,
+  examples: {
+    SourceExample: { sources: { source: 'source-example.jsx' }, language: 'jsx' },
+    SharedPreview: { sources: { context: 'ssr-preview.jsx' }, language: 'jsx' },
+  },
   theme: { layout: Layout },
 };

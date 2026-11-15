@@ -3,6 +3,44 @@ import { createBrowserTest } from './browser-fixture.js';
 
 const test = createBrowserTest('diagrams.html');
 
+test('the native CLI preserves a shared lazy/memo registry, raw imports and Prism styles through SSR and hydration', async ({ browser, page, request, cliSiteUrl }) => {
+  const url = new URL('docs/ssr-preview.html', cliSiteUrl).href;
+  const response = await request.get(url);
+  expect(response.ok()).toBe(true);
+  const html = await response.text();
+  expect(html).toContain('Shared preview');
+  expect(html).toContain('data-emotion=');
+  expect(html).toContain('data-mode="light"');
+  expect(html).toContain('data-source-loaded="yes"');
+
+  const noScript = await browser.newContext({ javaScriptEnabled: false });
+  try {
+    const staticPage = await noScript.newPage();
+    await staticPage.goto(url);
+    const preview = staticPage.locator('[data-cli-preview]');
+    await expect(preview).toHaveText('Shared preview 0');
+    await expect(preview).toBeVisible();
+    await expect(preview).toBeDisabled();
+    await expect(preview).toHaveCSS('min-height', '52px');
+    await expect(preview).toHaveCSS('border-radius', '13px');
+    await expect(preview).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  } finally { await noScript.close(); }
+
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto(url);
+  const preview = page.locator('[data-cli-preview]');
+  await expect(preview).toHaveCount(1);
+  await expect(preview).toHaveAttribute('data-mode', 'light');
+  await expect(preview).toHaveAttribute('data-source-loaded', 'yes');
+  await expect(preview).toHaveCSS('min-height', '52px');
+  await expect(preview).toBeEnabled();
+  await preview.click();
+  await expect(preview).toHaveText('Shared preview 1');
+  await expect(page.locator('[data-example="context"]')).toContainText('Shared preview 1');
+  expect(errors).toEqual([]);
+});
+
 test('diagram labels cannot become islands or override accessibility metadata', async ({ page, cliSiteUrl }) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));

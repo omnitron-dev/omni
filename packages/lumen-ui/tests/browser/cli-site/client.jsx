@@ -5,6 +5,7 @@ import { ComponentExample } from '@omnitron-dev/lumen-ui/blocks';
 import CounterExample from './counter-example.js';
 import counterSource from './counter-example.js?raw';
 import StyleBoundary from './style-boundary.js';
+import { ssrIslands } from './ssr-islands.js';
 
 const LazyApi = lazy(() => import('./lazy-api.jsx'));
 const SourceModule = lazy(() => import('./source-example.jsx'));
@@ -35,7 +36,7 @@ function HydrationCanary({ origin = 'diagram-label' }) {
 
 function Client() {
   const [open, setOpen] = useState(false);
-  return <LumenShell theme="light" islands={{ MermaidDiagram, HydrationCanary, CounterDemo, FailurePreview, SourceExample, StyleBoundary }}>
+  return <LumenShell theme="light" islands={{ MermaidDiagram, HydrationCanary, CounterDemo, FailurePreview, SourceExample, StyleBoundary, ...ssrIslands }}>
     <button onClick={() => setOpen(true)}>Open API explorer</button>
     <CodeBlock className="client-code" code="const value = 'A deliberately long client code line with native keyboard scrolling';" />
     {open && <Suspense fallback={<p>Loading API explorer</p>}><LazyApi /></Suspense>}

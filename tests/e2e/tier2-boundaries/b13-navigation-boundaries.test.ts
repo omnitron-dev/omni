@@ -68,14 +68,14 @@ describe('Feature 13: Documentation Navigation System Boundaries', () => {
     expect(emptyHtml).toBe('<nav class="lumen-pagination" aria-label="Docs pagination"></nav>');
   });
 
-  it('TC-B13-04: renders DocSectionNav with empty headings array without layout shift', () => {
+  it('TC-B13-04: omits the section navigation landmark when headings are empty', () => {
     const html = renderToStaticMarkup(
       React.createElement(DocSectionNav, {
         headings: [],
       })
     );
 
-    expect(html).toBe('<aside class="lumen-section-nav" aria-label="Table of contents"><ul></ul></aside>');
+    expect(html).not.toMatch(/<(?:nav|aside|ul)\b/);
   });
 
   it('TC-B13-05: handles currentPath with query strings, matrix parameters, and hash anchors', () => {

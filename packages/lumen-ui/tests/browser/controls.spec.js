@@ -1,55 +1,15 @@
-import { fileURLToPath } from 'node:url';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { createServer } from 'vite';
 import { expect } from '@playwright/test';
-import { createBrowserTest, importConsumer } from './browser-fixture.js';
+import { createBrowserTest, withBrowserModules } from './browser-fixture.js';
 
-// Local UI regressions compile pending source without rewriting the shared SDK
-// dist. Archive qualification retains ordinary consumer package resolution.
-if (process.env.LUMEN_CONSUMER_ROOT && process.env.LUMEN_AST_ROOT)
-  throw new Error('Archive qualification cannot replace its installed Lumen AST');
-const astRoot = process.env.LUMEN_AST_ROOT;
-// A source-only run may reuse an already verified AST archive when the live SDK
-// checkout must remain untouched. Every alias follows that archive's exports.
-const astAliases = astRoot ? Object.entries(JSON.parse(readFileSync(path.join(astRoot, 'package.json'), 'utf8')).exports)
-  .filter(([, value]) => value.import)
-  .map(([name, value]) => ({
-    find: new RegExp(`^${('@omnitron-dev/lumen-ast' + (name === '.' ? '' : name.slice(1))).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`),
-    replacement: path.join(astRoot, value.import),
-  })) : [];
-const sourcePlugins = process.env.LUMEN_CONSUMER_ROOT ? [] : [{
-  name: 'lumen-controls-source',
-  config: () => ({ resolve: { alias: [
-    { find: /^@omnitron-dev\/lumen-ui$/, replacement: fileURLToPath(new URL('../../src/index.ts', import.meta.url)) },
-    ...astAliases,
-  ] } }),
-}];
-const test = createBrowserTest('controls.html', { plugins: [...sourcePlugins, {
+const test = createBrowserTest('controls.html', { source: true, plugins: [{
   name: 'prism-native-focus-ssr',
   async transformIndexHtml(html) {
-    const { default: React } = await importConsumer('react');
-    const { renderToStaticMarkup } = await importConsumer('react-dom/server');
-    const { Box, Button, IconButton, PrismThemeProvider } = await importConsumer('@omnitron-dev/prism/ui');
-    const { SearchIcon } = await importConsumer('@omnitron-dev/prism/icons');
-    let server;
-    let cache;
-    try {
-      let themeModule;
-      if (process.env.LUMEN_CONSUMER_ROOT) themeModule = await importConsumer('@omnitron-dev/prism/theme');
-      else {
-        cache = await mkdtemp(path.join(os.tmpdir(), 'prism-focus-ssr-'));
-        server = await createServer({
-          configFile: false, root: fileURLToPath(new URL('../../../prism', import.meta.url)),
-          cacheDir: cache, publicDir: false, appType: 'custom', logLevel: 'error',
-          server: { middlewareMode: true, hmr: false, ws: false, watch: null },
-          optimizeDeps: { noDiscovery: true, include: [] },
-          ssr: { external: true, optimizeDeps: { noDiscovery: true, include: [] } },
-        });
-        themeModule = await server.ssrLoadModule(fileURLToPath(new URL('../../../prism/src/theme/create-theme.ts', import.meta.url)));
-      }
+    return withBrowserModules(async load => {
+      const { default: React } = await load('react');
+      const { renderToStaticMarkup } = await load('react-dom/server');
+      const { Box, Button, IconButton, PrismThemeProvider } = await load('@omnitron-dev/prism/ui');
+      const { SearchIcon } = await load('@omnitron-dev/prism/icons');
+      const themeModule = await load('@omnitron-dev/prism/theme');
       const markup = ['light', 'dark'].map(mode => renderToStaticMarkup(React.createElement(PrismThemeProvider, {
         theme: themeModule.createPrismTheme({ mode, cssVariables: { enabled: false } }),
       }, React.createElement(Box, { component: 'section', 'aria-label': `${mode} native controls`, sx: { p: 2, bgcolor: 'background.default', color: 'text.primary' } },
@@ -58,10 +18,7 @@ const test = createBrowserTest('controls.html', { plugins: [...sourcePlugins, {
         React.createElement(Button, { disabled: true, disableRipple: true }, 'Unavailable'),
       )))).join('');
       return html.replace('<!--ssr-focus-->', markup);
-    } finally {
-      await server?.close();
-      if (cache) await rm(cache, { recursive: true, force: true });
-    }
+    });
   },
 }] });
 

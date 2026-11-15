@@ -98,7 +98,7 @@ describe('Navigation Layout Components', () => {
 
   it('renders native SSR section links and an explicitly controlled current section', () => {
     const emptyHtml = renderToStaticMarkup(React.createElement(DocSectionNav, { headings: [] }));
-    expect(emptyHtml).toBe('<div><aside class="lumen-section-nav" aria-label="Table of contents"><ul></ul></aside></div>');
+    expect(emptyHtml).not.toMatch(/<(?:nav|aside|ul)\b/);
 
     const withHeadings = renderToStaticMarkup(
       React.createElement(DocSectionNav, {
@@ -111,14 +111,29 @@ describe('Navigation Layout Components', () => {
     );
     expect(withHeadings).toContain('href="#h1"');
     expect(withHeadings).toContain('href="#h2"');
-    expect(withHeadings).toContain('is-active');
-    expect(withHeadings).toContain('href="#h2" aria-current="location"');
+    const container = document.createElement('div');
+    container.innerHTML = withHeadings;
+    expect(container.querySelector('nav')?.getAttribute('aria-label')).toBe('Table of contents');
+    expect(container.querySelector('a[aria-current="location"]')?.getAttribute('href')).toBe('#h2');
     expect(withHeadings.match(/aria-current=/g)).toHaveLength(1);
     const uncontrolled = renderToStaticMarkup(React.createElement(DocSectionNav, {
       headings: [{ id: 'Раздел #1', title: 'Section', level: 2 }],
     }));
     expect(uncontrolled).toContain('href="#%D0%A0%D0%B0%D0%B7%D0%B4%D0%B5%D0%BB%20%231"');
     expect(uncontrolled).not.toContain('aria-current');
+  });
+
+  it('supports a localized landmark and an explicitly cleared selection', () => {
+    const html = renderToStaticMarkup(<DocSectionNav
+      headings={[{ id: 'overview', title: 'Обзор', level: 2 }]}
+      ariaLabel="На этой странице" activeId={null} className="reader-sections" />);
+    const container = document.createElement('div');
+    container.innerHTML = html;
+    const nav = container.querySelector('nav');
+    expect(nav?.getAttribute('aria-label')).toBe('На этой странице');
+    expect(nav?.classList.contains('reader-sections')).toBe(true);
+    expect(nav?.querySelectorAll('ul > li > a')).toHaveLength(1);
+    expect(nav?.querySelector('[aria-current]')).toBeNull();
   });
 
   it('renders DocLayout with sidebar, content, and sectionNav', () => {

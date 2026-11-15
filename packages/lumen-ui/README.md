@@ -20,11 +20,12 @@ pnpm add @omnitron-dev/lumen-ui react react-dom
 
 ```tsx
 import { useState } from 'react';
+import { Button } from '@omnitron-dev/prism/ui';
 import { LumenShell, PortalIslandHost } from '@omnitron-dev/lumen-ui/runtime';
 
 function Counter({ initial = 0 }: { initial?: number }) {
   const [count, setCount] = useState(initial);
-  return <button onClick={() => setCount(value => value + 1)}>{count}</button>;
+  return <Button onClick={() => setCount(value => value + 1)}>{count}</Button>;
 }
 
 export function Documentation() {
@@ -55,11 +56,11 @@ React and React DOM 19 are required. The Lumen builder supplies default layout s
 </PortalIslandHost>
 ```
 
-Each heading has `{ id, title, level }` and must refer to a real document anchor. The default Lumen client registers this component; custom clients add `DocSectionNav` to their existing `LumenShell` island registry. Style `[aria-current="location"]` or `.is-active` in the host stylesheet.
+Each heading has `{ id, title, level }` and must refer to a real document anchor. The default Lumen client registers this component; custom clients add `DocSectionNav` to their existing `LumenShell` island registry. Lumen delegates rendering and section tracking to Prism: the theme supplies readable text, a hierarchy rail, an aligned current-section marker and keyboard focus. No host CSS is required for these states. Set `ariaLabel` to translate the navigation landmark; `className` is available for host layout.
 
 `DocPagination` from `/layout` renders native previous and next links with the document titles and directional Prism icons. Pass each available neighbour as `{ href, label }`. Set `labels={{ navigation, previous, next }}` to translate the landmark and directions. The links work before hydration and follow the document's reading direction.
 
-The shared Prism scrollspy tracks the last section start above the reading line, including long sections and the final short section at the bottom. CSS `scroll-padding-top` on the scrolling element and `scroll-margin-top` on headings account for fixed headers; an explicit `offset` overrides the reading-line padding. Native links retain keyboard behavior and browser history, with no forced smooth scrolling. An explicit anchor destination near the bottom remains selected until the reader scrolls. Supplying `activeId` instead makes the indicator controlled by the host.
+The shared Prism scrollspy tracks the last section start above the reading line, including long sections and the final short section at the bottom. CSS `scroll-padding-top` on the scrolling element and `scroll-margin-top` on headings account for fixed headers; an explicit `offset` overrides the reading-line padding. Native links retain keyboard behavior and browser history, with no forced smooth scrolling. An explicit anchor destination near the bottom remains selected until the reader scrolls. Supplying `activeId` instead makes the indicator controlled by the host; `null` clears it. An empty heading list omits the navigation landmark. Prism also exposes `title` (`null` omits the visible heading) and uses `{ id, text, level }` for its heading input.
 
 ## Live component examples
 

@@ -58,7 +58,7 @@ describe('Feature 13: Documentation Navigation System', () => {
       })
     );
 
-    expect(html).toContain('class="lumen-section-nav"');
+    expect(html).toMatch(/<nav[^>]*aria-label="Table of contents"/);
     expect(html).toContain('href="#sec-overview"');
     expect(html).toContain('href="#sec-install"');
     expect(html).toContain('System Overview');

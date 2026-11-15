@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test';
-import { createBrowserTest, importConsumer } from './browser-fixture.js';
+import { createBrowserTest, withBrowserModules } from './browser-fixture.js';
 
 const headings = [
   { id: 'first', title: 'First long section', level: 2 },
@@ -9,14 +9,20 @@ const headings = [
   { id: 'last', title: 'Last short section', level: 2 },
 ];
 const test = createBrowserTest('section-nav.html', {
+  source: true,
   plugins: [{ name: 'section-nav-ssr', async transformIndexHtml(html) {
-    const { default: React } = await importConsumer('react');
-    const { renderToStaticMarkup } = await importConsumer('react-dom/server');
-    const { PortalIslandHost } = await importConsumer('@omnitron-dev/lumen-ui/runtime');
-    const { DocSectionNav } = await importConsumer('@omnitron-dev/lumen-ui/layout');
-    return html.replace('<!--ssr-toc-->', renderToStaticMarkup(React.createElement(PortalIslandHost, {
-      islandId: 'document-sections', component: 'DocSectionNav', hydrate: 'load', props: { headings },
-    }, React.createElement(DocSectionNav, { headings }))));
+    return withBrowserModules(async load => {
+      const { default: React } = await load('react');
+      const { renderToStaticMarkup } = await load('react-dom/server');
+      const { PortalIslandHost } = await load('@omnitron-dev/lumen-ui/runtime');
+      const { DocSectionNav } = await load('@omnitron-dev/lumen-ui/layout');
+      const { PrismProvider } = await load('@omnitron-dev/prism/core');
+      return html.replace('<!--ssr-toc-->', renderToStaticMarkup(React.createElement(PrismProvider, {
+        disableCssBaseline: true, mode: 'light',
+      }, React.createElement(PortalIslandHost, {
+        islandId: 'document-sections', component: 'DocSectionNav', hydrate: 'load', props: { headings },
+      }, React.createElement(DocSectionNav, { headings })))));
+    });
   } }],
 });
 
@@ -119,6 +125,37 @@ test('Prism uses the same current-section contract in a nested scroll container'
   expect(await page.evaluate(() => scrollY)).toBe(documentTop);
   await page.locator('#nested-root').evaluate(element => { element.scrollTop = 0; });
   await expect(active).toHaveText('Nested first');
+});
+
+test('section markers align with the hierarchy rail in both writing directions', async ({ page, url }, testInfo) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto(url);
+  await expectCurrent(page, 'First long section');
+  const nav = page.locator('#toc').getByRole('navigation', { name: 'Table of contents' });
+  const link = nav.getByRole('link', { name: 'First long section' });
+  await link.focus();
+  await expect(link).toHaveCSS('outline-style', 'solid');
+  await expect(link).toHaveCSS('outline-width', '2px');
+  await expect(link).toHaveCSS('transition-duration', '0s');
+  await expect(link).toHaveCSS('font-size', '13px');
+  const contrast = await link.evaluate(element => {
+    const channels = getComputedStyle(element).color.match(/[\d.]+/g).slice(0, 3).map(Number);
+    const luminance = channels.map(channel => channel / 255)
+      .map(channel => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)
+      .reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0);
+    return 1.05 / (luminance + 0.05); // The fixture's document surface is white.
+  });
+  expect(contrast).toBeGreaterThanOrEqual(4.5);
+  for (const direction of ['ltr', 'rtl']) {
+    await nav.evaluate((element, dir) => { element.dir = dir; }, direction);
+    const rail = await nav.locator('ul').boundingBox();
+    const marker = await link.boundingBox();
+    expect(direction === 'ltr' ? marker.x : marker.x + marker.width)
+      .toBeCloseTo(direction === 'ltr' ? rail.x : rail.x + rail.width, 1);
+    await expect(link).toHaveCSS('border-inline-start-width', '2px');
+  }
+  await nav.evaluate(element => { element.dir = 'ltr'; });
+  await page.screenshot({ path: testInfo.outputPath('section-navigation.png') });
 });
 
 test('server-rendered native anchors remain usable when JavaScript is disabled', async ({ browser, url }) => {

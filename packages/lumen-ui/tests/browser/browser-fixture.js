@@ -1,17 +1,71 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { realpathSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
-import { build, preview } from 'vite';
+import { build, createServer, preview } from 'vite';
 import { test as base } from '@playwright/test';
 
 const consumer = process.env.LUMEN_CONSUMER_ROOT && realpathSync(process.env.LUMEN_CONSUMER_ROOT);
 const execute = promisify(execFile);
 const resolvedEntries = new Map();
+
+if (consumer && process.env.LUMEN_AST_ROOT)
+  throw new Error('Archive qualification cannot replace its installed Lumen AST');
+
+// Source checks and archive acceptance use the same fixtures. Pending UI is
+// compiled by Vite without rebuilding the SDK used by running applications;
+// archive acceptance always uses the consumer's ordinary package resolution.
+const sourceEntries = consumer ? {} : {
+  '@omnitron-dev/lumen-ui': '../../src/index.ts',
+  '@omnitron-dev/lumen-ui/layout': '../../src/navigation/index.ts',
+  '@omnitron-dev/lumen-ui/runtime': '../../src/hydration/index.ts',
+  '@omnitron-dev/prism/core': '../../../prism/src/core/index.ts',
+  '@omnitron-dev/prism/theme': '../../../prism/src/theme/index.ts',
+  '@omnitron-dev/prism/components/doc-layout': '../../../prism/src/components/doc-layout/index.ts',
+};
+const sourceAliases = Object.entries(sourceEntries).map(([find, relative]) => ({
+  find: new RegExp(`^${find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`),
+  replacement: fileURLToPath(new URL(relative, import.meta.url)),
+}));
+const astRoot = process.env.LUMEN_AST_ROOT;
+if (astRoot) {
+  for (const [name, value] of Object.entries(JSON.parse(readFileSync(path.join(astRoot, 'package.json'), 'utf8')).exports)) {
+    if (!value.import) continue;
+    const specifier = '@omnitron-dev/lumen-ast' + (name === '.' ? '' : name.slice(1));
+    sourceAliases.push({
+      find: new RegExp(`^${specifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`),
+      replacement: path.join(astRoot, value.import),
+    });
+  }
+}
+
+/** SSR uses the same source or installed archive as the browser bundle. */
+export async function withBrowserModules(render) {
+  if (consumer) return render(importConsumer);
+  const cache = await mkdtemp(path.join(os.tmpdir(), 'lumen-source-ssr-'));
+  let server;
+  try {
+    server = await createServer({
+      configFile: false, root: fileURLToPath(new URL('../../', import.meta.url)),
+      cacheDir: cache, publicDir: false, appType: 'custom', logLevel: 'error',
+      resolve: { alias: sourceAliases },
+      server: { middlewareMode: true, hmr: false, ws: false, watch: null },
+      optimizeDeps: { noDiscovery: true, include: [] },
+      ssr: { external: true, optimizeDeps: { noDiscovery: true, include: [] } },
+    });
+    return await render(specifier => {
+      const entry = sourceAliases.find(alias => alias.find.test(specifier));
+      return entry ? server.ssrLoadModule(entry.replacement) : importConsumer(specifier);
+    });
+  } finally {
+    await server?.close();
+    await rm(cache, { recursive: true, force: true });
+  }
+}
 
 async function resolveConsumer(specifier, workspaceManifest) {
   const directory = consumer ?? path.dirname(workspaceManifest instanceof URL ? fileURLToPath(workspaceManifest) : workspaceManifest);
@@ -35,6 +89,7 @@ export async function importConsumer(specifier, workspaceManifest = new URL('../
 }
 
 export const createBrowserTest = (entry, {
+  source = false,
   plugins = [],
   contentSecurityPolicy = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'",
 } = {}) => base.extend({
@@ -54,7 +109,7 @@ export const createBrowserTest = (entry, {
       }
       const config = {
         root, configFile: false, publicDir: false, logLevel: 'error', plugins, worker: { format: 'es' },
-        resolve: { dedupe: ['react', 'react-dom', '@emotion/react', '@emotion/styled', '@emotion/cache'] },
+        resolve: { alias: source ? sourceAliases : [], dedupe: ['react', 'react-dom', '@emotion/react', '@emotion/styled', '@emotion/cache'] },
         build: { outDir: output, rolldownOptions: { input: path.join(root, entry) } },
         preview: { host: '127.0.0.1', port: 0, headers: {
           'Content-Security-Policy': contentSecurityPolicy,

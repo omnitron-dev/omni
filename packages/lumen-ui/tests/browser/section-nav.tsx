@@ -23,5 +23,5 @@ if (new URL(location.href).searchParams.has('nested')) {
   for (const selector of ['#toc', '#article', 'footer']) document.querySelector(selector)?.remove();
   createRoot(document.getElementById('root')!).render(<Nested />);
 } else {
-  createRoot(document.getElementById('root')!).render(<LumenShell islands={{ DocSectionNav }} />);
+  createRoot(document.getElementById('root')!).render(<LumenShell theme="light" islands={{ DocSectionNav }} />);
 }

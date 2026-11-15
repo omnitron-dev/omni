@@ -63,7 +63,7 @@ For every bounded linear operator $A$, the spectral radius is bounded by the nor
       })
     );
 
-    expect(navHtml).toContain('class="lumen-section-nav"');
+    expect(navHtml).toMatch(/<nav[^>]*aria-label="Table of contents"/);
     expect(navHtml).toContain('href="#thm-spectral-radius"');
     expect(navHtml).toContain('Spectral Radius Bound');
   });

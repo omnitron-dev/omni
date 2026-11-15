@@ -89,6 +89,26 @@ function discoverIsland(element: HTMLElement, previous?: DiscoveredIsland): Disc
   }
 }
 
+/** Disclosure keys belong to one island; ambiguous keys and nested scopes never match. */
+function disclosuresByKey(host: HTMLElement, roots: readonly Node[]): Map<string, HTMLDetailsElement | null> {
+  const result = new Map<string, HTMLDetailsElement | null>();
+  const selector = 'details[data-lumen-disclosure]';
+  for (const root of roots) {
+    if (root.nodeType !== 1) continue;
+    const element = root as Element;
+    const candidates = [
+      ...(element.matches(selector) ? [element as HTMLDetailsElement] : []),
+      ...element.querySelectorAll<HTMLDetailsElement>(selector),
+    ];
+    for (const disclosure of candidates) {
+      const key = disclosure.getAttribute('data-lumen-disclosure');
+      if (!key || disclosure.closest(ISLAND_SELECTOR) !== host) continue;
+      result.set(key, result.has(key) ? null : disclosure);
+    }
+  }
+  return result;
+}
+
 /** Replace server content only in the commit that inserts its live counterpart. */
 function IslandPortal({ host, children }: { host: HTMLElement; children: ReactNode }) {
   const fallback = useRef<Node[] | null>(null);
@@ -97,7 +117,27 @@ function IslandPortal({ host, children }: { host: HTMLElement; children: ReactNo
     // A suspended or abandoned render must leave the server document intact.
     // React has committed the portal children before this layout effect runs,
     // so removal cannot expose a blank frame or touch React-owned live nodes.
-    for (const node of fallback.current ?? []) if (node.parentNode === host) host.removeChild(node);
+    const previous = (fallback.current ?? []).filter(node => node.parentNode === host);
+    const previousSet = new Set(previous);
+    const live = Array.from(host.childNodes).filter(node => !previousSet.has(node));
+    const current = disclosuresByKey(host, live);
+    const focused = host.ownerDocument.activeElement;
+    let nextFocus: HTMLElement | undefined;
+    for (const [key, disclosure] of disclosuresByKey(host, previous)) {
+      const replacement = current.get(key);
+      if (!disclosure || !replacement) continue;
+      replacement.open = disclosure.open;
+      const summary = [...disclosure.children].find(child => child.tagName === 'SUMMARY');
+      if (focused === summary) {
+        nextFocus = [...replacement.children].find(child => child.tagName === 'SUMMARY') as HTMLElement | undefined;
+      }
+    }
+    for (const node of previous) host.removeChild(node);
+    // Read focus at commit, not at discovery: the reader may have left while
+    // code loaded. Also respect another control focused during DOM removal.
+    if (nextFocus && host.ownerDocument.activeElement === host.ownerDocument.body) {
+      nextFocus.focus({ preventScroll: true });
+    }
     fallback.current = []; // Release detached server trees after the atomic swap.
   }, [host]);
   return createPortal(children, host);

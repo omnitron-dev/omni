@@ -77,3 +77,44 @@ test('the registered preview is complete without JavaScript', async ({ browser, 
     await expect(page.getByRole('heading', { name: 'Static component' })).toBeVisible();
   } finally { await context.close(); }
 });
+
+test('native disclosure state and summary focus survive deferred portal activation', async ({ page, url }) => {
+  await page.goto(url);
+  await page.waitForFunction(() => typeof window.startIsland === 'function');
+  const source = page.locator('details[data-lumen-disclosure="source"]');
+  const metadata = page.locator('details[data-lumen-disclosure="metadata"]');
+  await metadata.locator('summary').click();
+  await source.locator('summary').focus();
+  await source.locator('summary').press('Enter');
+  await expect(source).toHaveAttribute('open');
+  await expect(metadata).not.toHaveAttribute('open');
+  await page.evaluate(() => window.startIsland());
+  await expect(source.locator('summary')).toBeFocused();
+  await page.evaluate(() => window.finishIsland());
+  await page.waitForFunction(() => document.body.dataset.counterInteractive === 'true');
+  await expect(source).toHaveAttribute('open');
+  await expect(metadata).not.toHaveAttribute('open');
+  await expect(source.locator('summary')).toBeFocused();
+  await source.locator('summary').press('Enter');
+  await expect(source).not.toHaveAttribute('open');
+});
+
+test('activating a deferred disclosure does not reclaim focus from the rest of the page', async ({ page, url }) => {
+  await page.goto(url);
+  await page.waitForFunction(() => typeof window.startIsland === 'function');
+  const source = page.locator('details[data-lumen-disclosure="source"]');
+  await source.locator('summary').click();
+  await page.evaluate(() => {
+    const outside = document.createElement('button');
+    outside.id = 'outside-control';
+    outside.textContent = 'Outside';
+    document.body.appendChild(outside);
+    window.startIsland();
+  });
+  const outside = page.locator('#outside-control');
+  await outside.focus();
+  await page.evaluate(() => window.finishIsland());
+  await page.waitForFunction(() => document.body.dataset.counterInteractive === 'true');
+  await expect(source).toHaveAttribute('open');
+  await expect(outside).toBeFocused();
+});

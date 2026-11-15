@@ -20,6 +20,8 @@ export function Counter() {
     <pre data-static-preview style={{ maxHeight: 80, overflow: 'auto', maxWidth: '100%' }}>
       {'Complete static preview. '.repeat(2000)}
     </pre>
+    <details data-lumen-disclosure="source"><summary>Counter source</summary><pre>Shared counter source</pre></details>
+    <details data-lumen-disclosure="metadata" open><summary>Counter metadata</summary><p>Shared context</p></details>
   </>;
 }
 

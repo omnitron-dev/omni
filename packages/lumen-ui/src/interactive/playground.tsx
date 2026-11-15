@@ -106,7 +106,13 @@ export function NetronPlayground({ code = '', mode, execute, timeoutMs = PLAYGRO
         <TextField id={editorId} multiline fullWidth value={currentCode} onChange={event => setCurrentCode(event.target.value)}
           slotProps={{ input: { readOnly: readOnly || run.status === 'running' }, htmlInput: { spellCheck: false } }}
           rows={Math.min(16, Math.max(4, currentCode.split('\n').length + 1))} placeholder="Enter JavaScript to execute"
-          sx={{ '& .MuiInputBase-input': { fontFamily: 'monospace' } }} />
+          sx={theme => ({ '& .MuiInputBase-input': {
+            fontFamily: 'var(--lumen-font-mono, ui-monospace, monospace)',
+            fontSize: 'var(--lumen-code-font-size, 0.875rem)',
+            lineHeight: 1.65,
+            // Preserve the shared code scale without triggering mobile input zoom.
+            [theme.breakpoints.down('sm')]: { fontSize: 'max(16px, var(--lumen-code-font-size, 0.875rem))' },
+          } })} />
       </div>
       {run.status === 'running' && <p role="status">Running code…</p>}
       {execution && (

@@ -12,12 +12,14 @@ export interface ComponentExampleProps {
   children: ReactNode;
   language?: string;
   resettable?: boolean;
+  /** Stable within its island; use distinct keys when rendering several example frames. */
+  disclosureKey?: string;
   labels?: { source?: string; reset?: string } & CodeBlockProps['labels'];
 }
 
 /** One preview frame with a native source disclosure; readable before hydration. */
 export function ComponentExample({
-  title, code, children, language = 'tsx', resettable = false, labels,
+  title, code, children, language = 'tsx', resettable = false, disclosureKey = 'source', labels,
 }: ComponentExampleProps): React.JSX.Element {
   const captionId = useId();
   const interactive = useIsClient();
@@ -47,7 +49,7 @@ export function ComponentExample({
         {children}
       </ErrorBoundary>
     </Box>
-    <Box component="details" sx={{
+    <Box component="details" data-lumen-disclosure={disclosureKey} sx={{
       minWidth: 0, borderTop: 1, borderColor: 'divider',
       '& > summary': { display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1.25, cursor: 'pointer', typography: 'body2', listStyle: 'none' },
       '& > summary::-webkit-details-marker': { display: 'none' },

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { runLumenCli } from '../src/cli/index.js';
+import { verifyGeneration } from '../src/ssg/publish-generation.js';
 
 const roots: string[] = [];
 afterEach(() => {
@@ -44,6 +45,15 @@ it('generates types through the same executable project configuration', async ()
   expect(readFileSync(join(root, 'generated/lumen-corpus.d.ts'), 'utf8')).toContain('export type LumenDocumentId = "guide"');
 });
 
+it('exports a real Typst PDF through the project CLI and verified publisher', async () => {
+  const root = fixture();
+  await runLumenCli(['pdf', '--root', root, '--outDir', 'papers']);
+  const pdf = readFileSync(join(root, 'papers/guide.pdf'));
+  expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+  expect(pdf.byteLength).toBeGreaterThan(1000);
+  expect(Object.keys(verifyGeneration(join(root, 'papers')).files)).toEqual(['guide.pdf']);
+});
+
 it.each(['typo', ''])('rejects an unknown or empty gate selection instead of skipping verification: %s', async name => {
   const root = fixture();
   await expect(runLumenCli(['check', '--root', root, '--gates', name])).rejects.toThrow('Unknown built-in gates');
@@ -60,6 +70,7 @@ it('parses help and invalid options without executing a project', async () => {
     ['build', '--root', root, '--typo'], ['build', '--root'],
     ['serve', '--root', root, '--port', 'NaN'], ['build', '--root', root, 'unexpected'],
     ['check', '--root', root, '--format', 'yaml'],
+    ['build', '--root', root, '--write'],
   ]) {
     process.exitCode = 0;
     await runLumenCli(args);

@@ -71,7 +71,9 @@ The static compiler preserves lazy module boundaries. Imported server styles and
 
 Critical Emotion CSS retains each cache key, independently owned `Global` block and CSP nonce so the browser can reuse the server styles. Extraction runs once per page and fails on an invalid cache; markup class names alone never mark a style as inserted. Lumen's static baseline has its own style block outside Emotion's ownership.
 
-Use `lumen pdf --outDir pdf` for PDF files, `lumen types --outDir generated` for corpus types, and `lumen mcp --stdio` for a local read-only corpus server. Keep export directories separate from the static generation. The source directory must exist; a missing corpus is an error.
+Use `lumen pdf --outDir pdf` for PDF files, `lumen types --outDir generated` for corpus types, and `lumen mcp --stdio` for a local read-only corpus server. PDF and type exports require `--outDir`. Each export replaces its complete prior generation through the same verified publisher as the site; compilation failure preserves the last valid output. Choose a dedicated directory for each export, outside the static site's directory and its ancestors. Existing directories without Lumen ownership evidence are never replaced.
+
+`srcDir` (default `docs`) must exist and be a directory. An empty source directory is valid, including a site whose content comes only from `pagesDir`; explicitly configured `pagesDir` must also exist. `lumen build` always publishes its output. `lumen types` writes `never` unions for an empty public corpus. `lumen pdf` rejects an empty public selection and unknown `pdf.paperSections` entries, which select document IDs or source paths. Exported PDF names follow document IDs within the output directory; absolute paths and traversal are rejected. Parsing errors fail all exports.
 
 ## Server-rendered islands
 

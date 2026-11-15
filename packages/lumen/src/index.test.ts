@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   CorpusGraph,
   defineCorpusGate,
@@ -162,8 +165,7 @@ describe('@omnitron-dev/lumen', () => {
 
       const outdated = graph.getOutdatedTranslations();
       expect(outdated).toHaveLength(1);
-      expect(outdated[0].canonicalId).toBe('overview');
-      expect(outdated[0].locale).toBe('ru');
+      expect(outdated[0]).toMatchObject({ canonicalId: 'overview', locale: 'ru' });
 
       const affected = graph.invalidate('overview');
       expect(affected.has('overview')).toBe(true);
@@ -321,17 +323,38 @@ describe('@omnitron-dev/lumen', () => {
 
       const result = await generateSearchIndex(graph, config);
       expect(result.manifestEntries['pagefind/pagefind.js']).toBeDefined();
-      expect(result.entries[0].tokens).toContain('спектральная');
+      expect(result.entries[0]?.tokens).toContain('спектральная');
     });
   });
 
   describe('CLI Suite', () => {
-    it('runs lumen cli without throwing', async () => {
-      await expect(runLumenCli(['--version'])).resolves.not.toThrow();
-      await expect(runLumenCli(['help'])).resolves.not.toThrow();
-      await expect(runLumenCli(['check'])).resolves.not.toThrow();
-      await expect(runLumenCli(['check', '--json'])).resolves.not.toThrow();
-      await expect(runLumenCli(['unrecognized-subcommand-404'])).resolves.not.toThrow();
+    it('checks a real corpus and distinguishes invalid commands', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'lumen-public-cli-'));
+      const previousExitCode = process.exitCode;
+      const output = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        mkdirSync(join(root, 'docs'));
+        writeFileSync(join(root, 'docs/index.md'), '# Introduction');
+        process.exitCode = 0;
+        await runLumenCli(['--version']);
+        expect(output.mock.calls.flat().join('\n')).toMatch(/\d+\.\d+\.\d+/);
+        await runLumenCli(['help']);
+        expect(output.mock.calls.flat().join('\n')).toContain('Build, verify and serve');
+        output.mockClear();
+        await runLumenCli(['check', '--root', root, '--json']);
+        expect(output).toHaveBeenCalledTimes(1);
+        expect(JSON.parse(output.mock.calls[0]![0] as string)).toEqual([]);
+        expect(process.exitCode).toBe(0);
+        await runLumenCli(['unrecognized-subcommand-404']);
+        expect(process.exitCode).toBe(1);
+        expect(errors.mock.calls.flat().join('\n')).toContain('unknown command');
+      } finally {
+        output.mockRestore();
+        errors.mockRestore();
+        process.exitCode = previousExitCode;
+        rmSync(root, { recursive: true, force: true });
+      }
     });
   });
 });

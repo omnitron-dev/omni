@@ -6,9 +6,9 @@ import { Command, CommanderError, InvalidArgumentError, Option } from 'commander
  * Platforms: Vite 8, Rolldown, Pagefind WASM, Typst, MCP.
  */
 
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, watch, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, watch } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { parseDocument, type LumenNode } from '@omnitron-dev/lumen-ast';
 import { withLumenProject, type LumenProject } from '../config/project.js';
 import type { LumenConfig } from '../config/schema.js';
@@ -26,7 +26,7 @@ import {
   mathKernelGate,
 } from '../gates/builtins/index.js';
 import { computeContentHash } from '../manifest/hashing.js';
-import { captureGeneration, recoverGeneration } from '../ssg/publish-generation.js';
+import { captureGeneration, publishGeneration, recoverGeneration, type StaticFile } from '../ssg/publish-generation.js';
 import { directoryRouteRedirects } from '../ssg/serve-routes.js';
 import { runLumenMcpServer } from '../ai/mcp-server.js';
 import { documentRoute } from '../corpus/routes.js';
@@ -37,7 +37,6 @@ const { version: VERSION } = createRequire(import.meta.url)('../../package.json'
 interface ParsedCliOptions {
   rootDir: string;
   outDir?: string;
-  write: boolean;
   strict: boolean;
   json: boolean;
   host: string;
@@ -48,7 +47,6 @@ interface ParsedCliOptions {
 interface CliValues {
   root: string;
   outDir?: string;
-  write?: boolean;
   strict?: boolean;
   json?: boolean;
   format?: 'json';
@@ -100,22 +98,21 @@ export async function loadCorpusFromDirectory(
   config: LumenConfig;
   graph: CorpusGraph;
   docsDir: string;
-  docsDirExists: boolean;
   astDiagnostics: LumenGateDiagnostic[];
 }> {
   const docsDir = resolve(rootDir, config.srcDir);
-  const docsDirExists = existsSync(docsDir) && statSync(docsDir).isDirectory();
+  if (!statSync(docsDir, { throwIfNoEntry: false })?.isDirectory()) {
+    throw new Error(`Configured source directory does not exist or is not a directory: ${docsDir}`);
+  }
+  const pagesDir = config.pagesDir === undefined ? undefined : resolve(rootDir, config.pagesDir);
+  if (pagesDir !== undefined && !statSync(pagesDir, { throwIfNoEntry: false })?.isDirectory()) {
+    throw new Error(`Configured pages directory does not exist or is not a directory: ${pagesDir}`);
+  }
   const graph = new CorpusGraph();
   const astDiagnostics: LumenGateDiagnostic[] = [];
-
-  if (!docsDirExists) {
-    return { config, graph, docsDir, docsDirExists, astDiagnostics };
-  }
-
-  const pagesDir = config.pagesDir ? resolve(rootDir, config.pagesDir) : undefined;
   const docFiles = [
     ...scanDocFilesRecursively(docsDir),
-    ...(pagesDir && existsSync(pagesDir) ? scanDocFilesRecursively(pagesDir) : []),
+    ...(pagesDir === undefined ? [] : scanDocFilesRecursively(pagesDir)),
   ];
   const routes = new Set<string>();
   for (const fullPath of docFiles) {
@@ -258,7 +255,35 @@ export async function loadCorpusFromDirectory(
     }
   }
 
-  return { config, graph, docsDir, docsDirExists, astDiagnostics };
+  return { config, graph, docsDir, astDiagnostics };
+}
+
+function assertParsedCorpus(diagnostics: LumenGateDiagnostic[]): void {
+  const errors = diagnostics.filter(diagnostic => diagnostic.severity === 'error');
+  if (errors.length) {
+    throw new Error(`Corpus parsing failed:\n${errors.map(error => `${error.file}: ${error.code}: ${error.message}`).join('\n')}`);
+  }
+}
+
+/** Resolve existing ancestors without creating output or following a missing link. */
+function canonicalDirectory(path: string): string {
+  if (lstatSync(path, { throwIfNoEntry: false })) return realpathSync(path);
+  return join(canonicalDirectory(dirname(path)), basename(path));
+}
+
+function exportDirectory(rootDir: string, outDir: string | undefined, config: LumenConfig): string {
+  if (!outDir) throw new Error('Export requires --outDir');
+  const target = resolve(rootDir, outDir);
+  const output = canonicalDirectory(target);
+  const site = canonicalDirectory(resolve(rootDir, config.outDir));
+  const contains = (parent: string, child: string) => {
+    const path = relative(parent, child);
+    return path === '' || (!isAbsolute(path) && path !== '..' && !path.startsWith(`..${sep}`));
+  };
+  if (contains(output, site) || contains(site, output)) {
+    throw new Error('Export output must be separate from the static site directory, including its ancestors and descendants');
+  }
+  return target;
 }
 
 function generateCorpusTypesDeclaration(graph: CorpusGraph): string {
@@ -332,10 +357,11 @@ export async function runLumenCli(argv: string[] = process.argv.slice(2)): Promi
     const command = program.command(name).description(description)
       .allowExcessArguments(false)
       .option('--root <directory>', 'Project directory', process.cwd());
-    if (['dev', 'build', 'serve', 'pdf', 'types'].includes(name)) {
+    if (['pdf', 'types'].includes(name)) {
+      command.requiredOption('--outDir <directory>', 'Separate export directory relative to the project');
+    } else if (['dev', 'build', 'serve'].includes(name)) {
       command.option('--outDir <directory>', 'Output directory relative to the project');
     }
-    if (['build', 'pdf', 'types'].includes(name)) command.option('--write', 'Write output even for an empty corpus');
     if (['dev', 'serve'].includes(name)) {
       command.option('--host <host>', 'Listening interface', '127.0.0.1')
         .option('--port <port>', 'Listening port', value => {
@@ -356,7 +382,7 @@ export async function runLumenCli(argv: string[] = process.argv.slice(2)): Promi
     command.action(async (values: CliValues) => {
       const options: ParsedCliOptions = {
         rootDir: resolve(values.root), outDir: values.outDir,
-        write: values.write ?? false, strict: values.strict ?? false,
+        strict: values.strict ?? false,
         json: Boolean(values.json || values.format === 'json'),
         host: values.host ?? '127.0.0.1', port: values.port ?? 4173,
         gatesFilter: values.gates?.split(',').map((value: string) => value.trim()).filter(Boolean),
@@ -462,8 +488,9 @@ async function executeLumenCommand(command: string, cliOpts: ParsedCliOptions, p
     case 'build': {
       console.log(`Lumen CLI v${VERSION} (command: build)`);
 
-      recoverGeneration(resolve(cliOpts.rootDir, cliOpts.outDir ?? initialConfig.outDir));
-      const { config, graph, docsDirExists, astDiagnostics } = await loadCorpusFromDirectory(cliOpts.rootDir, initialConfig);
+      const { config, graph, astDiagnostics } = await loadCorpusFromDirectory(cliOpts.rootDir, initialConfig);
+      const targetOutDir = resolve(cliOpts.rootDir, cliOpts.outDir ?? config.outDir);
+      recoverGeneration(targetOutDir);
       const gateResult = await runCorpusGates(
         { documents: graph.getAllDocuments(), graph, config, reportDiagnostic: () => {} },
         [...buildReferenceGates(config), ...(config.gates ?? [])]
@@ -473,15 +500,10 @@ async function executeLumenCommand(command: string, cliOpts: ParsedCliOptions, p
         throw new Error(errors.length
           ? errors.map((item) => `${item.file}: ${item.code}: ${item.message}`).join('\n')
           : `Corpus gates failed: ${gateResult.results.filter(result => !result.passed).map(result => result.name).join(', ')}`);
-      const targetOutDir = cliOpts.outDir
-        ? resolve(cliOpts.rootDir, cliOpts.outDir)
-        : resolve(cliOpts.rootDir, config.outDir || 'dist');
-
-      const shouldWriteToDisk = cliOpts.write || docsDirExists;
       await project.build(graph, config, {
         rootDir: cliOpts.rootDir,
         outDir: targetOutDir,
-        writeToDisk: shouldWriteToDisk,
+        writeToDisk: true,
       });
       break;
     }
@@ -576,37 +598,34 @@ async function executeLumenCommand(command: string, cliOpts: ParsedCliOptions, p
     case 'pdf': {
       console.log(`Lumen CLI v${VERSION} (command: pdf)`);
 
-      const { config, graph, docsDirExists } = await loadCorpusFromDirectory(cliOpts.rootDir, initialConfig);
+      const pdfOutDir = exportDirectory(cliOpts.rootDir, cliOpts.outDir, initialConfig);
+      const { config, graph, astDiagnostics } = await loadCorpusFromDirectory(cliOpts.rootDir, initialConfig);
+      assertParsedCorpus(astDiagnostics);
       const projectedGraph = projectCorpus(graph, { roles: ['anonymous'] });
       const allDocs = projectedGraph.getAllDocuments();
       const paperSections = config.pdf?.paperSections ?? [];
+      const unknownSections = paperSections.filter(section => !allDocs.some(doc => doc.id === section || doc.path === section));
+      if (unknownSections.length) throw new Error(`Unknown PDF paper sections in the public corpus: ${unknownSections.join(', ')}`);
       const selectedDocs =
         paperSections.length > 0
           ? allDocs.filter((d) => paperSections.includes(d.id) || paperSections.includes(d.path))
           : allDocs;
 
-      const shouldWritePdf = (cliOpts.write || (docsDirExists && selectedDocs.length > 0)) && Boolean(cliOpts.outDir);
-      const pdfOutDir = cliOpts.outDir ? resolve(cliOpts.rootDir, cliOpts.outDir) : undefined;
-
+      if (!selectedDocs.length) throw new Error('No public documents selected for PDF export');
+      const files = new Map<string, StaticFile>();
       for (const doc of selectedDocs) {
-        if (doc.ast) {
-          const pdfBytes = await compileTypst(doc.ast);
-          if (shouldWritePdf && pdfOutDir) {
-            const pdfTarget = resolve(pdfOutDir, `${doc.id}.pdf`);
-            mkdirSync(dirname(pdfTarget), { recursive: true });
-            writeFileSync(pdfTarget, pdfBytes);
-          }
-        }
+        if (!doc.ast) throw new Error(`PDF document has no parsed content: ${doc.id}`);
+        files.set(`${doc.id}.pdf`, await compileTypst(doc.ast));
       }
+      publishGeneration(pdfOutDir, files);
       break;
     }
 
     case 'mcp': {
       console.error(`Lumen CLI v${VERSION} (command: mcp)`);
 
-      const { graph, docsDirExists, astDiagnostics } = await loadCorpusFromDirectory(cliOpts.rootDir, initialConfig);
-      if (!docsDirExists) throw new Error('Configured corpus directory does not exist');
-      if (astDiagnostics.some(diagnostic => diagnostic.severity === 'error')) throw new Error('Corpus parsing failed; run lumen check for diagnostics');
+      const { graph, astDiagnostics } = await loadCorpusFromDirectory(cliOpts.rootDir, initialConfig);
+      assertParsedCorpus(astDiagnostics);
       await runLumenMcpServer(graph);
       break;
     }
@@ -614,17 +633,12 @@ async function executeLumenCommand(command: string, cliOpts: ParsedCliOptions, p
     case 'types': {
       console.log(`Lumen CLI v${VERSION} (command: types)`);
 
-      const { graph, docsDirExists } = await loadCorpusFromDirectory(cliOpts.rootDir, initialConfig);
+      const typesOutDir = exportDirectory(cliOpts.rootDir, cliOpts.outDir, initialConfig);
+      const { graph, astDiagnostics } = await loadCorpusFromDirectory(cliOpts.rootDir, initialConfig);
+      assertParsedCorpus(astDiagnostics);
       const projectedGraph = projectCorpus(graph, { roles: ['anonymous'] });
       const dtsContent = generateCorpusTypesDeclaration(projectedGraph);
-      const shouldWriteTypes =
-        (cliOpts.write || (docsDirExists && projectedGraph.size() > 0)) && Boolean(cliOpts.outDir);
-
-      if (shouldWriteTypes && cliOpts.outDir) {
-        const targetFile = resolve(cliOpts.rootDir, cliOpts.outDir, 'lumen-corpus.d.ts');
-        mkdirSync(dirname(targetFile), { recursive: true });
-        writeFileSync(targetFile, dtsContent, 'utf8');
-      }
+      publishGeneration(typesOutDir, new Map([['lumen-corpus.d.ts', dtsContent]]));
       break;
     }
 

@@ -118,9 +118,11 @@ export interface LumenConfig {
   trailingSlash?: boolean;
   onBrokenLinks?: 'throw' | 'warn' | 'ignore' | 'log';
   onBrokenAnchors?: 'throw' | 'warn' | 'ignore' | 'log';
+  /** Existing corpus directory, relative to the project root. Empty directories are valid. */
   srcDir: string;
   outDir: string;
   publicDir?: string;
+  /** Additional pages directory. When configured, it must exist. */
   pagesDir?: string;
   clientEntry?: string;
   /** Explicit server components; share the same registry with the client LumenShell. */

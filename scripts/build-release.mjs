@@ -5,7 +5,7 @@ import { existsSync, realpathSync, mkdtempSync, rmSync } from 'node:fs';
 import { Pipeline } from '@xec-sh/ops/pipeline';
 import { releaseCommand } from '@xec-sh/ops/release';
 import { assertPipelineSucceeded } from './lib/pipeline-result.mjs';
-import policy from '../.xec/release-policy.mjs';
+import policy, { assertBuildDependencies } from '../.xec/release-policy.mjs';
 import { releaseBuildContext, releaseDependencyBuildArgs, retainPreparationBuild } from './lib/release-build.js';
 
 const [source, commit] = globalThis.args ?? process.argv.slice(2);
@@ -22,6 +22,7 @@ await git('read-tree', commit);
 if (await git('status', '--porcelain')) throw Error('Exported source differs from the release commit');
 const verification = mkdtempSync(path.join(os.tmpdir(), 'omnitron-release-consumer-'));
 try {
+  await assertBuildDependencies(destination);
   const context = await releaseBuildContext(destination, commit);
   context.env.OMNITRON_HOME = path.join(verification, 'home');
   const consumer = path.join(verification, 'consumer');

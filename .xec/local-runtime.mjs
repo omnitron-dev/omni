@@ -64,6 +64,8 @@ export async function localRuntime(root, cache, run, progress) {
       await command('git', ['checkout', '--quiet', '--detach', revision]);
       progress('Installing locked dependencies');
       await command('pnpm', ['install', '--frozen-lockfile']);
+      await command(process.execPath, ['--input-type=module', '--eval',
+        "import { assertBuildDependencies } from './.xec/release-policy.mjs'; await assertBuildDependencies(process.cwd());"]);
       progress('Building backend, SDK dependencies and Console');
       await command('pnpm', ['run', 'build']);
       // Turbo can correctly reuse identical output across source commits. Bind both public entry points to this checkout.

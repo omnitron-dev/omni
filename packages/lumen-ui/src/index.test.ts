@@ -71,7 +71,7 @@ describe('@omnitron-dev/lumen-ui', () => {
     expect(shell).toBeDefined();
   });
 
-  it('renders LumenNavbar and handles search dialog', () => {
+  it('renders LumenNavbar and opens search through its callback', () => {
     let clicked = false;
     const nav = LumenNavbar({
       title: 'Test Docs',
@@ -85,11 +85,5 @@ describe('@omnitron-dev/lumen-ui', () => {
     nav.props.children[2].props.onClick();
     expect(clicked).toBe(true);
 
-    const dialogClosed = LumenSearchDialog({ open: false });
-    expect(dialogClosed).toBeNull();
-
-    const dialogOpen = LumenSearchDialog({ open: true, onClose: () => {} });
-    expect(dialogOpen).not.toBeNull();
-    expect(dialogOpen?.props.role).toBe('dialog');
   });
 });

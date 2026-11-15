@@ -31,7 +31,6 @@ const WORKLISTS = new Map([
 /** Entrypoints executed separately by CI, and the scanner dispatcher itself. */
 const EXCLUDED = new Map([
   ['run-checks', 'this runner'],
-  ['release', 'maintainer release entry point with its own qualification suite'],
   ['react-client-entries', 'tsup plugin used by the Prism and Netron React builds; verified in the packed exports'],
 ]);
 

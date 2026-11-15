@@ -100,7 +100,7 @@ test('qualification uses one Xec pipeline, resumes a completed build and keeps b
   };
   const options = { policy, run, inspectArchives, provider, progress() {}, previous };
   await assert.rejects(qualifyRelease(root, '0.3.5', options), /CI pending/);
-  await assert.rejects(verifyReleaseQualification(root, '0.3.5', options), /before publication/);
+  await assert.rejects(verifyReleaseQualification(root, '0.3.5', options), /before runtime activation/);
   ciPasses = true;
   const result = await qualifyRelease(root, '0.3.5', options);
   assert.equal(builds, 1);
@@ -112,7 +112,7 @@ test('qualification uses one Xec pipeline, resumes a completed build and keeps b
   assert.equal(builds, 1);
   ciPasses = false;
   await assert.rejects(verifyReleaseQualification(root, '0.3.5', options), /CI pending/);
-  await assert.rejects(verifyReleaseQualification(root, '0.3.6', options), /before publication/);
+  await assert.rejects(verifyReleaseQualification(root, '0.3.6', options), /before runtime activation/);
 });
 
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -255,7 +255,7 @@ test('read-only inspection rejects changed selection, receipt identity and curre
     if (kind === 'missing') await fs.unlink(f.receipt);
     await writeJson(f.selection, selected);
     const before = await treeSnapshot(f.root);
-    await assert.rejects(verifyReleaseQualification(f.root, '0.3.5', f.options), /before publication|identity.*differs|receipt is missing/);
+    await assert.rejects(verifyReleaseQualification(f.root, '0.3.5', f.options), /before runtime activation|identity.*differs|receipt is missing/);
     assert.equal(f.observations(), 0);
     assert.deepEqual(await treeSnapshot(f.root), before);
   });

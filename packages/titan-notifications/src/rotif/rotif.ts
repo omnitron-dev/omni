@@ -117,6 +117,7 @@ export class NotificationManager {
       loopPromise: Promise<void>;
       subscriptions: Set<Subscription>;
       readyPromise: Promise<void>;
+      readClient: Redis;
       needsPendingRecovery?: boolean;
     }
   >();
@@ -682,15 +683,15 @@ export class NotificationManager {
         const retryLoopKey = getLoopKey(retryStream, group);
 
         const loop = this.consumerLoops.get(loopKey);
-        loop?.subscriptions.delete(sub);
-        if (loop && loop.subscriptions.size === 0) {
+        if (loop?.subscriptions.delete(sub) && loop.subscriptions.size === 0) {
           this.consumerLoops.delete(loopKey);
+          loop.readClient.disconnect();
         }
 
         const retryLoop = this.consumerLoops.get(retryLoopKey);
-        retryLoop?.subscriptions.delete(sub);
-        if (retryLoop && retryLoop.subscriptions.size === 0) {
+        if (retryLoop?.subscriptions.delete(sub) && retryLoop.subscriptions.size === 0) {
           this.consumerLoops.delete(retryLoopKey);
+          retryLoop.readClient.disconnect();
         }
 
         if (removePattern) {
@@ -1059,6 +1060,9 @@ export class NotificationManager {
     const messageConcurrency = this.config.messageConcurrency ?? ROTIF_CONSTANTS.DEFAULT_MESSAGE_CONCURRENCY;
 
     const handleMessage = async (id: string, rawFields: string[]) => {
+      // A read may already have returned when the last subscription leaves.
+      // Keep that delivery pending; a retired reader must never acknowledge it.
+      if (this.consumerLoops.get(loopKey) !== loopEntry || subscriptions.size === 0) return;
       // Use optimized field parsing with object pooling if enabled
       const fields = this.enableFieldPooling ? parseFieldsFast(rawFields) : parseFields(rawFields);
       const channel = fields['channel'] ?? '';
@@ -1326,6 +1330,7 @@ export class NotificationManager {
       loopPromise: null as any, // Will be set below
       subscriptions,
       readyPromise: readyDefer.promise!,
+      readClient,
     };
     this.consumerLoops.set(loopKey, loopEntry);
 
@@ -1341,12 +1346,8 @@ export class NotificationManager {
       // Mark the loop as ready before starting to process messages
       readyDefer.resolve?.(undefined);
 
-      while (this.active) {
+      while (this.active && this.consumerLoops.get(loopKey) === loopEntry) {
         if (subscriptions.size === 0) {
-          // Exit loop if no subscriptions and this loop is marked for deletion
-          if (!this.consumerLoops.has(loopKey)) {
-            break;
-          }
           await delayMs(100);
           continue;
         }
@@ -1478,7 +1479,7 @@ export class NotificationManager {
             }
           }
         } catch (err: any) {
-          if (!this.active) break;
+          if (!this.active || this.consumerLoops.get(loopKey) !== loopEntry) break;
 
           // Defensive handling: if NOGROUP, try to create the group and continue
           if (err?.message?.includes('NOGROUP')) {

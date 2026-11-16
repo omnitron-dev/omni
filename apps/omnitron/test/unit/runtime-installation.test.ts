@@ -83,7 +83,7 @@ it('resolves an installed control client in a fresh process without loading writ
   expect(JSON.parse(stdout)).toMatchObject({ runtimeHash: first.hash, cliEntry: path.join(store.releasePath(first.hash), 'packages/0/dist/cli/omnitron.js') });
 });
 
-it('persists startup selection and rollback while keeping a stable bootstrap launcher', async () => {
+it('refreshes the launcher on cold selection while retaining the separate recovery bootstrap', async () => {
   const { store, home, make } = await fixture(); const first = await make('first'), next = await make('next');
   await store.exclusive(async () => {
     await store.install(first.source); await store.install(next.source);
@@ -92,11 +92,25 @@ it('persists startup selection and rollback while keeping a stable bootstrap lau
     expect((await fs.stat(launcher)).mode & 0o777).toBe(0o700);
     expect(await fs.readFile(launcher, 'utf8')).toContain("'\\''");
     await store.select(next.hash, 1);
+    const selection = store.selection();
     await store.writeLauncher();
-    expect(await fs.readFile(launcher, 'utf8')).toContain(first.hash);
+    expect(store.selection()).toEqual(selection);
+    expect(await fs.readFile(launcher, 'utf8')).toContain(next.hash);
   });
   expect(store.selection()).toMatchObject({ current: next.hash, previous: first.hash, bootstrap: first.hash, revision: 2 });
   expect((await selectedBackend(home))?.runtimeHash).toBe(next.hash);
+});
+
+it('keeps the recovery launcher while an activation is unfinished', async () => {
+  const { store, root, make } = await fixture(), first = await make('first'), next = await make('next');
+  await store.exclusive(async () => {
+    await store.install(first.source); await store.install(next.source);
+    await store.select(first.hash, 0); await store.select(next.hash, 1);
+    store.beginActivation(next.hash, first.hash, path.join(root, 'transition.json'));
+    const before = store.selection(), activation = store.activation();
+    expect(await fs.readFile(await store.writeLauncher(), 'utf8')).toContain(first.hash);
+    expect(store.selection()).toEqual(before); expect(store.activation()).toEqual(activation);
+  });
 });
 
 it('resolves the admitted private CLI read-only without running backend capability preflight', async () => {

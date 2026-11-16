@@ -158,6 +158,11 @@ backend.command('select <sha256>').description('Select an installed runtime whil
     const { backendSelectCommand } = await import('../commands/backend.js');
     await backendSelectCommand(sha256, options.check);
   });
+backend.command('launcher').description('Refresh the CLI launcher from the selected runtime without restarting services')
+  .structuredAction(async () => {
+    const { backendLauncherCommand } = await import('../commands/backend.js');
+    await backendLauncherCommand();
+  });
 backend.command('abort <checkpoint>').description('Cancel preparation before backend retirement')
   .structuredAction(async (checkpoint: string) => {
     const { backendAbortCommand } = await import('../commands/backend.js');

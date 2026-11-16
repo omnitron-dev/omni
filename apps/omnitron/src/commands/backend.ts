@@ -189,6 +189,23 @@ export async function backendSelectCommand(id: string, checkOnly = false): Promi
   finally { await installation?.close(); }
 }
 
+export async function backendLauncherCommand(): Promise<void> {
+  let installation: RuntimeInstallation | null = null;
+  try {
+    installation = await RuntimeInstallation.open(undefined, { existing: true });
+    if (!installation) throw new Error('Cannot open runtime installation');
+    const registry = installation;
+    const result = await registry.exclusive(async () => {
+      if (registry.activation()) throw new Error('Runtime activation is unfinished; launcher refresh is refused');
+      const selection = registry.selection();
+      if (!selection) throw new Error('No runtime is selected');
+      return { selection, launcher: await registry.writeLauncher() };
+    });
+    if (!emitJson(result)) emitInfo(`CLI launcher refreshed: ${result.launcher}`);
+  } catch (error) { emitError(error); process.exitCode = 1; }
+  finally { await installation?.close(); }
+}
+
 export async function backendStatusCommand(): Promise<void> {
   const client = createDaemonClient();
   try {

@@ -475,15 +475,25 @@ export class RuntimeInstallation {
     }).immediate();
   }
 
-  /** A stable entry point whose bootstrap release is retained independently of backend selection. */
+  /** Publish the selected CLI; retain the independent management fallback for recovery. */
   async writeLauncher(initialBootstrap?: string): Promise<string> {
     if (!this.lease) throw new Error('Launcher installation requires an exclusive operation');
     const selection = this.selection();
     if (!selection) throw new Error('Select a runtime before installing its launcher');
     const bootstrap = selection.bootstrap ?? initialBootstrap ?? selection.current;
-    const artifact = await this.artifact(bootstrap);
-    const entry = path.join(artifact.directory, 'cli/installed.js');
-    await fs.access(entry);
+    const launcherEntry = async (candidate: BackendArtifact): Promise<string> => {
+      const entry = path.join(candidate.directory, 'cli/installed.js'), stat = await fs.lstat(entry);
+      if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('Installed launcher must be a regular file');
+      return entry;
+    };
+    let artifact = await this.artifact(this.activation() ? bootstrap : selection.current);
+    let entry: string;
+    try { entry = await launcherEntry(artifact); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT' || artifact.runtimeHash === bootstrap) throw error;
+      artifact = await this.artifact(bootstrap);
+      entry = await launcherEntry(artifact);
+    }
     if (!selection.bootstrap) this.store.kvSetSync('runtime.selection', { ...selection, bootstrap });
     const quote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
     const launcher = path.join(this.directory, 'bin/omnitron');

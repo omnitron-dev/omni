@@ -254,7 +254,7 @@ describe('durable backup execution', () => {
       execution: { state: () => ({ phase: 'active' }), controlledOwnerSnapshot: async () => ({
         status: { owner: { id: 'fixture-owner' }, controller: { epoch: 1 } }, inventoryDigest: 'e'.repeat(64),
       }) }, app: { container: { resolveAsync: async () => project } },
-      recoveryMonitor: { status: () => ({ status: ready ? 'ready' : 'pending' }), capture: certificate },
+      recoveryMonitor: { status: () => ({ status: ready ? 'ready' : 'pending' }), certify: certificate },
     });
     const review = await daemon.reviewRuntimeRestart([]);
     expect(review.backups).toHaveLength(1);

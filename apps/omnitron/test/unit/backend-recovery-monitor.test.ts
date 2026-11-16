@@ -146,3 +146,46 @@ it('joins the current certification instead of returning before its ownership ob
   barrier.resolve(); await Promise.all([first, second]);
   expect(monitor.status().status).toBe('ready');
 });
+
+it('waits for a certificate when a completed observation still reports a busy owner', async () => {
+  const { monitor, journal } = fixture(() => Date.now() < 500 ? 1 : 0);
+  let settled = false;
+  const admission = monitor.certify(1000).then(() => { settled = true; });
+  await vi.advanceTimersByTimeAsync(250);
+  expect(settled).toBe(false);
+  expect(journal.read()?.status).toBe('invalid');
+  await vi.advanceTimersByTimeAsync(250);
+  await admission;
+  expect(monitor.status().status).toBe('ready');
+  expect(journal.read()?.status).toBe('ready');
+});
+
+it('bounds certification of a busy owner and does not leave an admission retry running', async () => {
+  const { monitor, journal, snapshot } = fixture(() => 1);
+  const admission = expect(monitor.certify(500)).rejects.toThrow('Recovery certification did not settle');
+  await vi.advanceTimersByTimeAsync(500);
+  await admission;
+  expect(journal.read()?.status).toBe('invalid');
+  const queries = snapshot.mock.calls.length;
+  await vi.advanceTimersByTimeAsync(5000);
+  expect(snapshot).toHaveBeenCalledTimes(queries);
+});
+
+it('fails certification immediately on an invalid observation instead of retrying it as busy', async () => {
+  const { monitor, snapshot, journal } = fixture(() => 0);
+  snapshot.mockRejectedValue(new Error('Invalid owner identity'));
+  await expect(monitor.certify()).rejects.toThrow('Invalid owner identity');
+  expect(journal.read()?.status).toBe('invalid');
+  expect(snapshot).toHaveBeenCalledTimes(1);
+});
+
+it('does not grant admission from an observation that finishes after the monitor closes', async () => {
+  const { monitor, snapshot } = fixture(() => 0);
+  const observe = snapshot.getMockImplementation()!;
+  const barrier = Promise.withResolvers<void>();
+  snapshot.mockImplementation(async () => { await barrier.promise; return observe(); });
+  const admission = expect(monitor.certify()).rejects.toThrow('Recovery monitor is closed');
+  await monitor.close(false);
+  barrier.resolve();
+  await admission;
+});

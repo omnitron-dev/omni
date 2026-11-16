@@ -488,7 +488,7 @@ export class OmnitronDaemon {
           throw Error('Runtime restart configuration changed before cancellation');
         await this.backupService?.prepareHandoff(request.backups, owner);
         if (!this.recoveryMonitor) throw Error('Recovery certification is unavailable');
-        await withControlDeadline(this.recoveryMonitor.capture(), 30_000, 'Recovery certification did not settle after backup cancellation');
+        await this.recoveryMonitor.certify();
         const configuration = await this.captureRuntimeRestart(request.stacks);
         if (restartConfigurationDigest(configuration) !== request.configurationSha256)
           throw Error('Runtime restart configuration changed during cancellation');

@@ -8,6 +8,7 @@ import type { InfrastructureService } from '../infrastructure/infrastructure.ser
 import { runtimeDiagnostics } from '../monitoring/runtime-diagnostics.js';
 import { backendSnapshot } from './backend-handoff-types.js';
 import type { ExecutionSnapshot } from './execution-host.js';
+import { withControlDeadline } from './private-control-client.js';
 
 interface RecoverySource { watchConfig: IEcosystemConfig; projects: ProjectService; infrastructure: InfrastructureService | null }
 
@@ -60,6 +61,24 @@ export class BackendRecoveryMonitor {
     const capture = this.captureOnce(retryBusy).finally(() => { if (this.capturePromise === capture) this.capturePromise = null; });
     this.capturePromise = capture;
     return capture;
+  }
+
+  /** Completing a sampling attempt does not certify a busy owner. Admission
+   * waits for a current certificate, within one bounded observation budget. */
+  async certify(timeoutMs = 30_000): Promise<void> {
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw Error('Invalid recovery certification deadline');
+    const deadline = performance.now() + timeoutMs;
+    const expired = () => 'Recovery certification did not settle: ' + (this.status().reason ?? 'ownership remained busy');
+    while (!this.closed) {
+      const remaining = deadline - performance.now();
+      if (remaining <= 0) throw Error(expired());
+      await withControlDeadline(this.capture(false), remaining, expired());
+      if (this.closed) break;
+      if (this.state.status === 'unavailable') throw Error(this.state.reason ?? 'Recovery certification is unavailable');
+      if (this.state.status === 'ready' && recoveryState.token() !== null) return;
+      await new Promise(resolve => setTimeout(resolve, Math.min(250, Math.max(0, deadline - performance.now()))));
+    }
+    throw Error('Recovery monitor is closed');
   }
 
   /** Caller must bracket this read with the canonical ownership token and

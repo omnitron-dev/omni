@@ -77,6 +77,10 @@ export function PipelineRunDetail({
           The executor stopped before recording completion. Inspect effects before starting another run.
         </Alert>
       )}
+      {run.recovery && <Alert severity={run.recovery.blocked.length ? 'warning' : 'info'} variant="outlined">
+        {run.recovery.completed.length} confirmed steps will be retained; {run.recovery.pending.length} steps have not been dispatched.
+        {run.recovery.blocked.length > 0 && ` Unresolved steps: ${run.recovery.blocked.join(', ')}. Inspect remote receipts before continuing.`}
+      </Alert>}
       {run.steps.map((step) => (
         <Box key={step.name} sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 1.5, minWidth: 0 }}>
           <Stack direction="row" sx={{ flexWrap: 'wrap', alignItems: 'center', gap: 1, mb: 1 }}>
@@ -138,6 +142,9 @@ export function PipelineRunDetail({
               </Box>
             </Box>
           ))}
+          {step.deployment && <Box component="pre" aria-label={`${step.name} deployment evidence`} sx={codeSx}>
+            {JSON.stringify(step.deployment, null, 2)}
+          </Box>}
         </Box>
       ))}
     </Stack>
@@ -465,6 +472,20 @@ export default function PipelinesPage() {
         {run ? (
           <>
             <PipelineRunDetail run={run} targetLabel={targetLabel} />
+            {run.recovery && <Stack spacing={1} sx={{ mt: 2 }}>
+              <Can permission="OmnitronPipelines.reconcileRun">
+                <Button variant="outlined" disabled={pending} onClick={() => act(async () => {
+                  await pipelines.reconcileRun({ runId: run.id }); await detail.refresh();
+                })}>Inspect remote receipts</Button>
+              </Can>
+              <Can permission="OmnitronPipelines.resumeRun">
+                <TextField label="Original parameters (JSON)" multiline value={params} onChange={event => setParams(event.target.value)} />
+                <Button variant="contained" disabled={pending || run.recovery.blocked.length > 0 || Boolean(detail.error)} onClick={() => act(async () => {
+                  await pipelines.resumeRun({ runId: run.id, expectedDigest: run.recovery!.digest, params: JSON.parse(params) });
+                  await detail.refresh();
+                })}>Continue remaining steps</Button>
+              </Can>
+            </Stack>}
             {run.status === 'awaiting-review' && (
               <Can permission="OmnitronPipelines.startRun">
                 <Button sx={{ mt: 2 }} variant="contained" disabled={pending} onClick={() => act(async () => {

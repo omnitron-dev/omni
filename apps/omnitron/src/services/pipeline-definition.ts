@@ -38,7 +38,15 @@ export function validatePipeline(def: PipelineDef): void {
   for (const step of def.steps) {
     if (!step || typeof step.name !== 'string' || !/^[\w.-]{1,80}$/.test(step.name))
       throw new Error('Invalid step name');
-    if (step.kind === 'release') {
+    if (step.kind === 'deploy') {
+      const target = step.target;
+      if (!target || Object.keys(target).sort().join(',') !== 'manifestSha256,project,releaseId,review,stack' ||
+          [target.project, target.stack, target.releaseId].some(value => typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$/.test(value) || value.includes('..')) ||
+          !/^[a-f0-9]{64}$/.test(target.manifestSha256) || !/^[a-f0-9]{64}$/.test(target.review))
+        throw new Error('Deployment requires an exact release and preservation review');
+      if ([step.run, step.args, step.env, step.cwd, step.nodeId, step.timeout, step.retries].some(value => value !== undefined))
+        throw new Error('Deployment lifecycle, deadlines and cancellation belong to ProjectService; command overrides and automatic retries are forbidden');
+    } else if (step.kind === 'release') {
       if (step.run !== undefined) throw new Error('A release step cannot contain shell source');
       if (step.nodeId !== undefined && step.nodeId !== 'local')
         throw new Error('Release pipeline steps require the local resident execution owner; remote execution is unsupported');

@@ -32,7 +32,7 @@ export const DAEMON_TOOL_NAMES: readonly string[] = [
   'stack.start', 'stack.stop', 'secret.list', 'secret.get',
   'secret.set', 'backup.create', 'backup.list', 'backup.restore',
   'backup.schedules', 'deploy.history',
-  'fleet.status', 'fleet.summary', 'pipeline.list', 'pipeline.run', 'pipeline.prepare', 'pipeline.start',
+  'fleet.status', 'fleet.summary', 'pipeline.list', 'pipeline.run', 'pipeline.prepare', 'pipeline.start', 'pipeline.resume', 'pipeline.reconcile',
   'pipeline.status', 'monitoring.snapshot', 'metrics.series', 'alerts.active', 'health.check', 'metrics.get', 'metrics.app',
   'logs.query', 'logs.tail', 'logs.stats',
 ];

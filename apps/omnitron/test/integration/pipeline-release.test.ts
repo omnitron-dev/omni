@@ -623,3 +623,77 @@ it('finishes cancellation during admission instead of leaving the request cancel
   expect(f.pipelines.activeRunCount()).toBe(0);
   await f.noEffects();
 });
+
+it('continues a pinned graph after a checkpoint acknowledgement fails without rerunning the completed effect', async () => {
+  const f = await fixture();
+  const definition = await f.pipelines.createPipeline({ name: 'recoverable', steps: [f.step,
+    { name: 'after', kind: 'xec', dependsOn: [f.step.name], cwd: f.root,
+      run: "import fs from 'node:fs'; fs.appendFileSync('after', 'once\\n');" }] });
+  const originalUpdate = f.db.updateTable.bind(f.db);
+  let interrupted = false;
+  const hook = vi.spyOn(f.db, 'updateTable').mockImplementation(((table: never) => {
+    const wrap = (builder: any): any => new Proxy(builder, { get(target, key) {
+      const value = Reflect.get(target, key);
+      if (typeof value !== 'function') return value;
+      if (key === 'execute') return async () => {
+        const compiled = target.compile();
+        const checkpoint = compiled.parameters.find((item: unknown) => typeof item === 'string' && item.startsWith('[{') && item.includes('"status":"success"'));
+        const result = await value.call(target);
+        if (!interrupted && table === 'pipeline_runs' && checkpoint) {
+          interrupted = true;
+          throw Error('Lost acknowledgement after durable step completion');
+        }
+        return result;
+      };
+      return (...args: unknown[]) => { const next = value.apply(target, args); return next && typeof next.compile === 'function' ? wrap(next) : next; };
+    } });
+    return wrap(originalUpdate(table));
+  }) as never);
+  const started = await f.pipelines.executePipeline(definition.id, {}, 'operator', definition.revision);
+  const failed = await f.terminal(started.id);
+  hook.mockRestore();
+  expect(interrupted).toBe(true);
+  expect(failed.status).toBe('failed');
+  expect(failed.recovery).toMatchObject({ completed: [f.step.name], pending: ['after'], blocked: [] });
+  expect(await f.witness()).toHaveLength(1);
+  // Changing the editable definition cannot change the already reviewed remaining graph.
+  await f.db.updateTable('pipelines').set({ steps: JSON.stringify([{ name: 'replacement', run: 'exit 99' }]) }).where('id', '=', definition.id).execute();
+  const recovered = new PipelineService(f.db, logger as never, testExecution);
+  cleanup.push(() => recovered.dispose());
+  recovered.configure({} as never, undefined, { projects: f.projects, assertLifecycle: f.gate });
+  const request = { runId: started.id, expectedDigest: failed.recovery!.digest };
+  await expect(recovered.resumeRun({ ...request, expectedDigest: 'f'.repeat(64) }, 'operator')).rejects.toThrow('checkpoint');
+  await Promise.all(Array.from({ length: 8 }, () => recovered.resumeRun(request, 'operator')));
+  for (let i = 0; i < 200 && (await recovered.getRunStatus(started.id))?.status === 'running'; i++) await delay(25);
+  expect((await recovered.getRunStatus(started.id))?.status).toBe('success');
+  expect(await f.witness()).toHaveLength(1);
+  expect(await fs.readFile(path.join(f.root, 'after'), 'utf8')).toBe('once\n');
+  expect((await recovered.resumeRun(request, 'operator')).status).toBe('success');
+});
+
+it('reconciles a lost remote deployment response through native project inspection before continuing', async () => {
+  const f = await fixture();
+  const target = { project: 'remote', stack: 'test', releaseId: 'sealed', manifestSha256: 'a'.repeat(64), review: 'b'.repeat(64) };
+  const evidence = { target, scope: { project: 'remote', stack: 'test', registeredAt: '2026-01-01T00:00:00Z' }, expected: [{ node: 'test-node', app: 'api', releaseId: 'sealed', manifestSha256: 'a'.repeat(64), artifactSha256: 'c'.repeat(64) }], state: 'prepared' as const };
+  let deployed = false, reachable = false;
+  const dispatch = vi.fn(async () => { deployed = true; throw Error('Connection closed after deployment'); });
+  const inspect = vi.fn(async () => ({ basis: 'observed-target' as const, observedAt: new Date().toISOString(), confirmed: deployed && reachable,
+    apps: [{ node: 'test-node', app: 'api', launchId: deployed && reachable ? 'launch' : null, matches: deployed && reachable }] }));
+  f.pipelines.configure({} as never, undefined, { projects: { resolvePipelineRelease: f.projects.resolvePipelineRelease.bind(f.projects),
+    resolvePipelineDeployment: async () => ({ evidence, execute: dispatch }), inspectPipelineDeployment: inspect }, assertLifecycle: f.gate });
+  const pipeline = await f.pipelines.createPipeline({ name: 'delivery', steps: [
+    { name: 'deploy', kind: 'deploy', target }, { name: 'verify', kind: 'xec', dependsOn: ['deploy'], cwd: f.root,
+      run: "import fs from 'node:fs'; fs.appendFileSync('verified', 'once\\n');" }] });
+  const failed = await f.terminal((await f.pipelines.executePipeline(pipeline.id, {}, 'operator', pipeline.revision)).id);
+  expect(failed.steps[0]!.deployment?.state).toBe('unconfirmed');
+  await expect(f.pipelines.resumeRun({ runId: failed.id, expectedDigest: failed.recovery!.digest }, 'operator')).rejects.toThrow('block');
+  const missing = await f.pipelines.reconcileRun(failed.id);
+  expect(missing.recovery!.blocked).toEqual(['deploy']);
+  reachable = true;
+  const read = await f.pipelines.reconcileRun(failed.id);
+  expect(read.recovery).toMatchObject({ completed: ['deploy'], pending: ['verify'], blocked: [] });
+  await f.pipelines.resumeRun({ runId: read.id, expectedDigest: read.recovery!.digest }, 'operator');
+  expect((await f.terminal(read.id)).status).toBe('success');
+  expect(dispatch).toHaveBeenCalledTimes(1);
+  expect(await fs.readFile(path.join(f.root, 'verified'), 'utf8')).toBe('once\n');
+});

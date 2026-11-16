@@ -14,6 +14,8 @@ function fixture() {
     executePipeline: vi.fn(async () => ({ id: 'run' })),
     prepareRun: vi.fn(async () => ({ id: 'run' })),
     startRun: vi.fn(async () => ({ id: 'run' })),
+    resumeRun: vi.fn(async () => ({ id: 'run' })),
+    reconcileRun: vi.fn(async () => ({ id: 'run' })),
     cancelRun: vi.fn(async () => {}),
     listRuns: vi.fn(async () => []),
   };
@@ -37,11 +39,11 @@ describe('automation authority at the execution boundary', () => {
       expect(f.pipelines.executePipeline).not.toHaveBeenCalled();
     }
   );
-  it.each(['prepareRun', 'startRun'] as const)('revalidates identity and records intent for %s', async method => {
+  it.each(['prepareRun', 'startRun', 'resumeRun'] as const)('revalidates identity and records intent for %s', async method => {
     const f = fixture();
     const invoke = () => method === 'prepareRun'
       ? f.service.prepareRun(request)
-      : f.service.startRun({ runId: request.runId, expectedDigest: 'b'.repeat(64) });
+      : f.service[method]({ runId: request.runId, expectedDigest: 'b'.repeat(64) });
     await expect(runWithAuth(actor('viewer'), invoke)).rejects.toThrow();
     expect(f.pipelines[method]).not.toHaveBeenCalled();
     f.audit.record.mockRejectedValueOnce(Error('audit unavailable'));
@@ -49,6 +51,13 @@ describe('automation authority at the execution boundary', () => {
     expect(f.pipelines[method]).not.toHaveBeenCalled();
     await runWithAuth(actor(), invoke);
     expect(f.pipelines[method]).toHaveBeenCalledWith(expect.objectContaining({ runId: request.runId }), 'alice');
+  });
+  it('revalidates the principal before remote reconciliation', async () => {
+    const f = fixture();
+    await expect(runWithAuth(actor('viewer'), () => f.service.reconcileRun({ runId: request.runId }))).rejects.toThrow();
+    expect(f.pipelines.reconcileRun).not.toHaveBeenCalled();
+    await runWithAuth(actor(), () => f.service.reconcileRun({ runId: request.runId }));
+    expect(f.pipelines.reconcileRun).toHaveBeenCalledWith(request.runId);
   });
   it('requires an audit write before execution and uses server identity', async () => {
     const f = fixture();

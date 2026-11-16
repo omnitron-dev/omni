@@ -52,6 +52,29 @@ describe.skipIf(!postgres.ok)('durable Xec automation lifecycle', () => {
     expect(await readFile(witness, 'utf8')).toBe('once\n');
     await other.dispose();
   });
+  it('atomically reconciles and resumes a JSONB checkpoint without redispatching a deployment', async () => {
+    const target = { project: 'remote', stack: 'test', releaseId: 'sealed', manifestSha256: 'a'.repeat(64), review: 'b'.repeat(64) };
+    let dispatches = 0;
+    service.configure({} as never, undefined, { assertLifecycle() {}, projects: {
+      resolvePipelineRelease: async () => { throw Error('Unused compiled entry'); },
+      resolvePipelineDeployment: async () => ({ evidence: { target, scope: { project: 'remote', stack: 'test', registeredAt: 'fixture' },
+        expected: [{ node: 'node', app: 'api', releaseId: 'sealed', manifestSha256: 'a'.repeat(64), artifactSha256: 'c'.repeat(64) }], state: 'prepared' },
+        execute: async () => { dispatches++; throw Error('Lost acknowledgement'); } }),
+      inspectPipelineDeployment: async () => ({ basis: 'observed-target', confirmed: true, observedAt: new Date().toISOString(),
+        apps: [{ node: 'node', app: 'api', launchId: 'native', matches: true }] }),
+    } });
+    const def = await service.createPipeline({ name: 'jsonb-recovery', steps: [{ name: 'deploy', kind: 'deploy', target },
+      { name: 'after', run: 'echo continued', dependsOn: ['deploy'] }] });
+    const failed = await terminal((await service.executePipeline(def.id, {}, 'operator', def.revision)).id);
+    expect(failed.status).toBe('failed');
+    const observed = await service.reconcileRun(failed.id);
+    expect(observed.recovery!.blocked).toEqual([]);
+    const request = { runId: failed.id, expectedDigest: observed.recovery!.digest };
+    await service.resumeRun(request, 'operator');
+    expect((await terminal(failed.id)).status).toBe('success');
+    expect((await service.resumeRun(request, 'operator')).status).toBe('success');
+    expect(dispatches).toBe(1);
+  });
   it('journals a real TypeScript script and redacts parameters from persisted output', async () => {
     const def = await service.createPipeline({
       name: 'inspect',
@@ -169,5 +192,26 @@ describe.skipIf(!postgres.ok)('durable Xec automation lifecycle', () => {
       steps: [{ status: 'interrupted' }],
     });
     await restarted.dispose();
+  });
+});
+
+// Uses its own database; the running control-plane database is never opened.
+describe.skipIf(!postgres.ok)('pipeline admission expansion compatibility', () => {
+  it('keeps the old writer valid and retains recovery data while the old runtime is selected', async () => {
+    const own = await databaseOfItsOwn(postgres.url, `pipeline_expand_${process.pid}`);
+    try {
+      const { sql } = await import('kysely');
+      const { MASTER_SCHEMA_EXPANSIONS } = await import('../../src/database/schema-expansion-policy.js');
+      const { migration } = await import('../../src/database/migrations/017_pipeline_admission.js');
+      expect(MASTER_SCHEMA_EXPANSIONS.find(policy => policy.name === migration.name)?.checksum).toBe(migration.checksum);
+      const id = randomUUID(), runId = randomUUID();
+      await own.db.insertInto('pipelines').values({ id, name: 'old-writer', description: null, steps: '[]', triggers: '[]', createdAt: new Date(), updatedAt: new Date() }).execute();
+      await own.db.insertInto('pipeline_runs').values({ id: runId, pipelineId: id, status: 'interrupted', steps: '[]', startedAt: new Date(), completedAt: null, triggeredBy: 'old-runtime', params: '{}' }).execute();
+      expect((await own.db.selectFrom('pipeline_runs').select('admission').where('id', '=', runId).executeTakeFirstOrThrow()).admission).toBeNull();
+      await own.db.updateTable('pipeline_runs').set({ admission: JSON.stringify({ privateReceipt: 'retained' }) }).where('id', '=', runId).execute();
+      // Old UPDATE statements do not name the new nullable column.
+      await sql`UPDATE pipeline_runs SET status = 'interrupted' WHERE id = ${runId}`.execute(own.db);
+      expect((await own.db.selectFrom('pipeline_runs').select('admission').where('id', '=', runId).executeTakeFirstOrThrow()).admission).toEqual({ privateReceipt: 'retained' });
+    } finally { await own.drop(); }
   });
 });

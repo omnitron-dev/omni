@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetEnvCache, setEnvOverride } from '../../src/shared/env-config.js';
 
-const { service } = vi.hoisted(() => ({ service: { prepareRun: vi.fn(), startRun: vi.fn(), executePipeline: vi.fn(), getRunStatus: vi.fn(), listPipelines: vi.fn(), getPipeline: vi.fn(), updatePipeline: vi.fn(), createPipeline: vi.fn() } }));
+const { service } = vi.hoisted(() => ({ service: { prepareRun: vi.fn(), resumeRun: vi.fn(), reconcileRun: vi.fn(), startRun: vi.fn(), executePipeline: vi.fn(), getRunStatus: vi.fn(), listPipelines: vi.fn(), getPipeline: vi.fn(), updatePipeline: vi.fn(), createPipeline: vi.fn() } }));
 vi.mock('node:fs/promises', () => ({ readFile: async () => JSON.stringify({ name: 'inspect', steps: [{ name: 'one', run: 'echo ready' }] }) }));
 vi.mock('../../src/daemon/daemon-client.js', () => ({
   createDaemonClient: () => ({ service: async () => service, disconnect: async () => {} }),
 }));
-import { pipelineListCommand, pipelineStatusCommand, pipelineSaveCommand, pipelineRunCommand, pipelineStartCommand } from '../../src/commands/pipeline.js';
+import { pipelineListCommand, pipelineStatusCommand, pipelineSaveCommand, pipelineRunCommand, pipelineStartCommand, pipelineReconcileCommand } from '../../src/commands/pipeline.js';
 import { hasEmittedJson } from '../../src/commands/output.js';
 
 beforeEach(() => {
@@ -51,6 +51,15 @@ describe('pipeline CLI uses the shared machine output protocol', () => {
     const old = await capture(() => pipelineRunCommand('pipeline', { runId }));
     expect(JSON.parse(old.err).error).toContain('Method not available');
     expect(service.executePipeline).not.toHaveBeenCalled();
+  });
+  it('passes the recovery digest and reads reconciliation without a second start', async () => {
+    service.reconcileRun.mockResolvedValue({ id: 'run', status: 'failed', recovery: { digest: 'c'.repeat(64), blocked: [] } });
+    service.resumeRun.mockResolvedValue({ id: 'run', status: 'running' });
+    await capture(() => pipelineReconcileCommand('run'));
+    await capture(() => pipelineStartCommand('run', { expectedDigest: 'c'.repeat(64) }, true));
+    expect(service.reconcileRun).toHaveBeenCalledWith({ runId: 'run' });
+    expect(service.resumeRun).toHaveBeenCalledWith({ runId: 'run', expectedDigest: 'c'.repeat(64), params: undefined });
+    expect(service.startRun).not.toHaveBeenCalled();
   });
   it.each(['success', 'running', 'failed', 'cancelled', 'interrupted'])(
     'returns one record for a %s run',

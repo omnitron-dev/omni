@@ -297,3 +297,32 @@ entries; it does not claim the fixture deployed a stack to an external server.
 Source bodies are not archived by these receipts. Removing terminal history
 ends command deduplication. These boundaries must be preserved when the next
 increment adds receiver-specific reconciliation and distributed scheduling.
+
+## Graph recovery increment — 17 November 2026
+
+The admission now retains the exact serialized definition as private source,
+alongside its public revision. Recovery projects only the remaining nodes and
+edges into the existing Xec Pipeline; it adds no scheduler or script replay.
+Step-start is persisted before dispatch, and completion before releasing graph
+dependencies. Confirmed nodes are retained. Nodes with no dispatch evidence may
+continue. Started commands with unknown outcomes block continuation. A recovery
+digest binds the inspected state; a conditional database claim and retained
+resume identity reject stale approvals and deduplicate delivery.
+
+A `deploy` step uses ProjectService's normal release/start path with an exact
+manifest and preservation review. Its reconciliation reads the same remote
+Netron inventory as Console, checking every expected placement's verified-launch
+receipt, artifact and consumer identity. The observation is explicitly target
+convergence, not causal attribution to an operation ID. It cannot prove a script's
+business effects, provider migrations or exactly-once deployment. Failed or absent
+receipts never trigger an implicit second deployment. Cancellation cannot undo
+dispatched native operations; the executor awaits settlement before releasing its
+slot. Lease-based cross-controller dispatch and restricted agent execution remain
+separate gates.
+
+The additive schema policy covers `017_pipeline_admission`: nullable JSONB,
+without default or backfill. Runtime rollback preserves this column, migration
+history and private command receipts; it must never execute the destructive down
+migration. The exact runtime/database binding is prepared through `backend schema
+prepare`, approved/applied through `backend schema apply`, and passed to backend
+upgrade as `--schema-plan`. Local-sync cannot silently substitute for this review.

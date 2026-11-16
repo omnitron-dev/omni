@@ -6,6 +6,8 @@ it('routes administrative agent requests through the same reviewed admission and
     prepareRun: vi.fn(async (request: { runId: string }) => ({ id: request.runId, review: { digest: 'b'.repeat(64) } })),
     startRun: vi.fn(async (request: { runId: string }) => ({ id: request.runId, status: 'success' })),
     executePipeline: vi.fn(),
+    resumeRun: vi.fn(async () => ({ id: 'run', status: 'running' })),
+    reconcileRun: vi.fn(async () => ({ id: 'run', status: 'failed' })),
   };
   const client = { service: vi.fn(async () => service) };
   const tools = createManagementTools(client as never);
@@ -21,5 +23,9 @@ it('routes administrative agent requests through the same reviewed admission and
   expect(service.startRun).toHaveBeenCalledTimes(1);
   await tools.find(tool => tool.name === 'pipeline.start')!.handler({ runId: request.runId, expectedDigest: 'b'.repeat(64), params: request.params });
   expect(service.startRun).toHaveBeenCalledTimes(2);
+  await tools.find(tool => tool.name === 'pipeline.reconcile')!.handler({ runId: request.runId });
+  await tools.find(tool => tool.name === 'pipeline.resume')!.handler({ runId: request.runId, expectedDigest: 'c'.repeat(64), params: request.params });
+  expect(service.reconcileRun).toHaveBeenCalledWith({ runId: request.runId });
+  expect(service.resumeRun).toHaveBeenCalledWith({ runId: request.runId, expectedDigest: 'c'.repeat(64), params: request.params });
   expect(service.executePipeline).not.toHaveBeenCalled();
 });

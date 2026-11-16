@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import type { Pipeline, PipelineRunReview, PreparePipelineRun, StartPipelineRun } from '../shared/dto/pipelines.js';
-import { validatePipelineParams } from './pipeline-definition.js';
+import { validatePipeline, validatePipelineParams } from './pipeline-definition.js';
 
 /** Only stored on the control plane; the wire receipt contains review alone. */
 export interface PipelineAdmission {
@@ -9,6 +9,8 @@ export interface PipelineAdmission {
   parameterKey: string;
   parameterCommitment: string;
   approvedBy?: string;
+  definition?: string;
+  resumedFrom?: string;
 }
 
 export function validateRunId(id: string): void {
@@ -32,10 +34,10 @@ export function admitPipeline(runId: string, definition: Pipeline, params: Recor
     protocol: 1,
     digest: createHash('sha256').update(JSON.stringify({ runId, definition: definition.revision, actor, parameterCommitment })).digest('hex'),
     definitionRevision: definition.revision,
-    projects: [...new Set(definition.steps.flatMap(step => step.kind === 'release' ? [step.target.project] : []))].sort(),
+    projects: [...new Set(definition.steps.flatMap(step => step.kind === 'release' || step.kind === 'deploy' ? [step.target.project] : []))].sort(),
     parameterNames: Object.keys(params).sort(),
   };
-  return { protocol: 1, review, parameterKey, parameterCommitment };
+  return { protocol: 1, review, parameterKey, parameterCommitment, definition: JSON.stringify(definition) };
 }
 
 export function readAdmission(stored: unknown): PipelineAdmission | undefined {
@@ -50,7 +52,18 @@ export function readAdmission(stored: unknown): PipelineAdmission | undefined {
     throw new Error('Invalid stored pipeline admission');
   if (data['approvedBy'] !== undefined && (typeof data['approvedBy'] !== 'string' || !data['approvedBy']))
     throw new Error('Invalid stored pipeline approver');
-  return { protocol: 1, ...(typeof data['approvedBy'] === 'string' ? { approvedBy: data['approvedBy'] } : {}), parameterKey: data['parameterKey'], parameterCommitment: data['parameterCommitment'],
+  if (data['resumedFrom'] !== undefined && !hex(data['resumedFrom'])) throw new Error('Invalid recovery identity');
+  if (data['definition'] !== undefined) {
+    if (typeof data['definition'] !== 'string') throw Error('Invalid pinned definition');
+    const { revision, conditionalUpdates: _conditionalUpdates, ...body } = JSON.parse(data['definition']) as Pipeline;
+    validatePipeline({ ...body, description: body.description ?? '' });
+    if (revision !== data['review']['definitionRevision'] || createHash('sha256').update(JSON.stringify(body)).digest('hex') !== revision)
+      throw Error('Pinned definition digest differs');
+  }
+  return { protocol: 1, ...(typeof data['approvedBy'] === 'string' ? { approvedBy: data['approvedBy'] } : {}),
+    ...(typeof data['definition'] === 'string' ? { definition: data['definition'] } : {}),
+    ...(typeof data['resumedFrom'] === 'string' ? { resumedFrom: data['resumedFrom'] } : {}),
+    parameterKey: data['parameterKey'], parameterCommitment: data['parameterCommitment'],
     review: { protocol: 1, digest: data['review']['digest'], definitionRevision: data['review']['definitionRevision'],
       projects: data['review']['projects'], parameterNames: data['review']['parameterNames'] } };
 }

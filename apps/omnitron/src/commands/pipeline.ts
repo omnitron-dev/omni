@@ -166,14 +166,22 @@ export async function pipelineCancelCommand(runId: string): Promise<void> {
 }
 
 /** Start only the exact prepared request. Duplicate delivery returns its receipt. */
-export async function pipelineStartCommand(runId: string, options: { expectedDigest: string; paramsFile?: string }): Promise<void> {
+export async function pipelineStartCommand(runId: string, options: { expectedDigest: string; paramsFile?: string }, resume = false): Promise<void> {
   try {
     const params = options.paramsFile ? JSON.parse(await readFile(options.paramsFile, 'utf8')) : undefined;
-    const run = await withPipelines(svc => svc.startRun({ runId, expectedDigest: options.expectedDigest, params }));
+    const run = await withPipelines(svc => svc[resume ? 'resumeRun' : 'startRun']({ runId, expectedDigest: options.expectedDigest, params }));
     if (!emitJson(run)) log.info(`Run ${run.id}: ${run.status}`);
     if (['failed', 'interrupted', 'cancelled'].includes(run.status)) process.exitCode = 1;
   } catch (error) {
     emitError(`Run ${runId}: ${(error as Error).message}. Inspect its receipt before retrying.`);
     process.exitCode = 1;
   }
+}
+
+export async function pipelineReconcileCommand(runId: string): Promise<void> {
+  try {
+    const run = await withPipelines(svc => svc.reconcileRun({ runId }));
+    if (!emitJson(run)) log.info(`Run ${run.id}: ${run.status} · recovery ${run.recovery?.digest ?? 'unavailable'}`);
+    if (run.recovery?.blocked.length) process.exitCode = 1;
+  } catch (error) { emitError(`Reconciliation failed: ${(error as Error).message}`); process.exitCode = 1; }
 }

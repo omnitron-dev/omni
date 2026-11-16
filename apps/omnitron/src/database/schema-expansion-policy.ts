@@ -1,6 +1,7 @@
 import { migration as metricsMigration } from './migrations/015_persistent_metrics.js';
 import { migration as clusterMigration } from './migrations/016_cluster_lease.js';
 import { migration } from './migrations/014_replication_receipts.js';
+import { migration as pipelineAdmission } from './migrations/017_pipeline_admission.js';
 
 /**
  * Reviewed backward-compatible expansions, not an inference from a filename.
@@ -18,4 +19,8 @@ export const MASTER_SCHEMA_EXPANSIONS = [{
   name: clusterMigration.name,
   checksum: clusterMigration.checksum!,
   summary: 'Add PostgreSQL-authoritative coordination leases; existing application tables and owners are unchanged.',
+}, {
+  name: pipelineAdmission.name,
+  checksum: pipelineAdmission.checksum!,
+  summary: 'Add nullable pipeline admission JSONB. Existing writers omit it; rollback retains the column and all command, review and recovery receipts.',
 }];

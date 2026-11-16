@@ -5614,6 +5614,46 @@ export class ProjectService extends EventEmitter {
     return { entries: installed, infrastructure: resolved, preparedArtifactVolumes };
   }
 
+  /** Native remote deployment, preserving the exact reviewed infrastructure and release. */
+  async resolvePipelineDeployment(target: import('../shared/dto/pipelines.js').PipelineDeploymentTarget) {
+    const scope = await this.resolveProjectStack(target, { readOnly: true });
+    const registeredAt = this.registry.get(scope.project)?.registeredAt;
+    if (!registeredAt) throw Error('Deployment requires a registered project');
+    const info = await this.withRemoteAppStatuses(scope.project, this.getStack(scope.project, scope.stack));
+    if (info.type === 'local') throw Error('Deployment steps require a remote or cluster stack');
+    const { loadRelease } = await import('../release/load.js');
+    const release = await loadRelease(target.releaseId, await this.releaseStore());
+    if (release.manifestSha256 !== target.manifestSha256) throw Error('Deployment manifest differs from the reviewed target');
+    const origins = releaseArtifactOrigins(release.manifest, release.manifestSha256);
+    const expected = (info.placements ?? []).flatMap(node => node.apps.filter(app => app.expected).map(app => {
+      const origin = origins.find(item => item.app === app.name)?.origin;
+      if (!origin) throw Error('Deployment manifest does not identify every expected application');
+      return { node: node.nodeKey, app: app.name, releaseId: origin.releaseId, manifestSha256: origin.manifestSha256, artifactSha256: origin.artifactSha256 };
+    }));
+    if (!expected.length) throw Error('Deployment has no observable application placements');
+    const evidence: import('../shared/dto/pipelines.js').PipelineDeploymentEvidence = { target: structuredClone(target),
+      scope: { project: scope.project, stack: scope.stack, registeredAt }, expected, state: 'prepared' };
+    return { evidence, execute: async () => {
+      const currentScope = await this.resolveProjectStack(target, { readOnly: true });
+      if (currentScope.project !== scope.project || currentScope.stack !== scope.stack || this.registry.get(scope.project)?.registeredAt !== registeredAt)
+        throw Error('Deployment registration changed before dispatch');
+      const current = await loadRelease(target.releaseId, await this.releaseStore());
+      if (current.manifestSha256 !== target.manifestSha256) throw Error('Deployment manifest changed before dispatch');
+      await this.startStack(scope.project, scope.stack, { source: 'operator', release: target.releaseId,
+        infrastructure: 'preserve', review: target.review });
+    } };
+  }
+
+  /** Read-only reconciliation; never restarts, installs or selects a release. */
+  async inspectPipelineDeployment(evidence: import('../shared/dto/pipelines.js').PipelineDeploymentEvidence) {
+    const scope = await this.resolveProjectStack(evidence.target, { readOnly: true });
+    if (scope.project !== evidence.scope.project || scope.stack !== evidence.scope.stack || this.registry.get(scope.project)?.registeredAt !== evidence.scope.registeredAt)
+      throw Error('Deployment registration changed; the original receiver remains unconfirmed');
+    const info = await this.withRemoteAppStatuses(scope.project, this.getStack(scope.project, scope.stack));
+    const { observePipelineDeployment } = await import('./pipeline-deployment.js');
+    return observePipelineDeployment(evidence, info);
+  }
+
   /** Read-only admission for an operation in an already selected, prepared release.
    * The returned fence repeats admission before each Xec attempt; it cannot install,
    * select a release, run setup, or silently adopt a different owner/registration. */

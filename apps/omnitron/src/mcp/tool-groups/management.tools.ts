@@ -294,15 +294,24 @@ export function createManagementTools(client: DaemonClient): IMcpToolDef[] {
       inputSchema: pipelineRequestInput,
       handler: async params => (await pipelines()).prepareRun(readPrepareRun(params)),
     },
-    {
-      name: 'pipeline.start',
+    ...(['start', 'resume'] as const).map(operation => ({
+      name: `pipeline.${operation}`,
       description: 'Start the exact reviewed request, or return its original receipt after a lost reply. Never replays an uncertain run.',
       inputSchema: { type: 'object', properties: {
         runId: { type: 'string', description: 'ID retained from pipeline.prepare' },
-        expectedDigest: { type: 'string', description: 'Exact review.digest from the prepared request' },
+        expectedDigest: { type: 'string', description: 'Exact review.digest for start, recovery.digest for resume' },
         params: { type: 'object', description: 'The same parameters supplied during preparation' },
       }, required: ['runId', 'expectedDigest'] },
-      handler: async params => (await pipelines()).startRun(readStartRun(params)),
+      handler: async (params: unknown) => (await pipelines())[operation === 'start' ? 'startRun' : 'resumeRun'](readStartRun(params)),
+    })),
+    {
+      name: 'pipeline.reconcile',
+      description: 'Read remote deployment launch receipts without dispatching any operation. Unknown results remain blocked.',
+      inputSchema: { type: 'object', properties: { runId: { type: 'string' } }, required: ['runId'] },
+      handler: async (params: Record<string, unknown>) => {
+        if (typeof params['runId'] !== 'string') throw Error('Expected runId');
+        return (await pipelines()).reconcileRun({ runId: params['runId'] });
+      },
     },
     {
       name: 'pipeline.status',

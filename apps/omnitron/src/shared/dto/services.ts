@@ -158,7 +158,7 @@ export type { K8sPod, K8sDeployment, K8sService } from './kubernetes.js';
 export type { HealthCheckResult, HealthReport, PlatformHealthReport } from './health.js';
 export type { OmnitronDiscoveredTarget, DiscoveryScanResult } from './discovery.js';
 
-export type { PreparePipelineRun, StartPipelineRun, PipelineRunReview, Pipeline, PipelineDef, PipelineStep, PipelineReleaseTarget, PipelineReleaseExecution, PipelineRun, PipelineRunStepResult, PipelineRunSummary } from './pipelines.js';
+export type { PipelineRecoveryReview, PipelineDeploymentTarget, PipelineDeploymentEvidence, PreparePipelineRun, StartPipelineRun, PipelineRunReview, Pipeline, PipelineDef, PipelineStep, PipelineReleaseTarget, PipelineReleaseExecution, PipelineRun, PipelineRunStepResult, PipelineRunSummary } from './pipelines.js';
 export type { Trace, TraceSpan, TraceFilter, ServiceMapEntry } from './traces.js';
 export { readSystemSnapshot, type SystemSnapshot } from './system-info.js';
 
@@ -565,6 +565,8 @@ export interface IOmnitronFleetService {
 
 /** CI/CD pipeline definitions and runs. */
 export interface IOmnitronPipelinesService {
+  resumeRun(data: import('./pipelines.js').StartPipelineRun): Promise<PipelineRun>;
+  reconcileRun(data: { runId: string }): Promise<PipelineRun>;
   createPipeline(data: PipelineDef): Promise<Pipeline>;
   updatePipeline(data: { id: string; definition: PipelineDef; expectedRevision: string }): Promise<Pipeline>;
   getPipeline(data: { id: string }): Promise<Pipeline | null>;

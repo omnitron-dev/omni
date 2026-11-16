@@ -1299,6 +1299,18 @@ pipeline
     await pipelineRunCommand(id, options);
   });
 
+pipeline.command('resume <runId>').description('Continue the reviewed checkpoint without repeating completed or uncertain effects')
+  .requiredOption('--expected-digest <sha256>', 'Exact recovery digest returned by status or reconcile')
+  .option('--params-file <file>', 'Original parameters as JSON')
+  .structuredAction(async (runId: string, options: { expectedDigest: string; paramsFile?: string }) => {
+    const { pipelineStartCommand } = await import('../commands/pipeline.js');
+    await pipelineStartCommand(runId, options, true);
+  });
+pipeline.command('reconcile <runId>').description('Read remote launch receipts and retain unknown deployment outcomes; never redeploy')
+  .structuredAction(async (runId: string) => {
+    const { pipelineReconcileCommand } = await import('../commands/pipeline.js');
+    await pipelineReconcileCommand(runId);
+  });
 pipeline.command('start <runId>').description('Start the exact reviewed request, or recover its existing receipt')
   .requiredOption('--expected-digest <sha256>', 'Digest from the prepared run')
   .option('--params-file <file>', 'The same parameters supplied when preparing the run')

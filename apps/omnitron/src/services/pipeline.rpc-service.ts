@@ -75,6 +75,19 @@ export class PipelineRpcService implements IOmnitronPipelinesService {
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
+  async resumeRun(data: StartPipelineRun): Promise<PipelineRun> {
+    const actor = await this.authorize('resume.requested', data.runId);
+    return this.pipelines.resumeRun(data, actor);
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async reconcileRun(data: { runId: string }): Promise<PipelineRun> {
+    await this.authorize('reconcile.requested', data.runId);
+    validateRunId(data.runId);
+    return this.pipelines.reconcileRun(data.runId);
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
   async executePipeline(data: PreparePipelineRun): Promise<PipelineRun> {
     const actor = await this.authorize('run.requested', data.runId);
     if (!/^[a-f0-9]{64}$/.test(data.expectedRevision ?? ''))

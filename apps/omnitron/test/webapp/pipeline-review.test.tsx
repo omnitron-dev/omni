@@ -62,6 +62,13 @@ describe('automation review', () => {
     expect(evidence).toHaveTextContent('/runtime/node');
     expect(evidence).toHaveTextContent('"pid": 42');
   });
+  it('distinguishes retained, pending and unresolved work in recovery review', () => {
+    render(<PipelineRunDetail run={{ id: 'checkpoint', pipelineId: 'definition', status: 'interrupted',
+      startedAt: '2026-11-17T00:00:00Z', completedAt: null, triggeredBy: 'operator', params: {}, steps: [],
+      recovery: { digest: 'd'.repeat(64), completed: ['build'], pending: ['verify'], blocked: ['deploy'] },
+    }} />);
+    expect(screen.getByText(/1 confirmed steps will be retained/)).toHaveTextContent('Unresolved steps: deploy');
+  });
   it('shows the target and execution settings and submits the reviewed revision', async () => {
     render(
       <MemoryRouter>

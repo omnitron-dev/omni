@@ -40,6 +40,32 @@ export interface StartPipelineRun {
   params?: Record<string, unknown>;
 }
 
+export interface PipelineRecoveryReview {
+  digest: string;
+  completed: string[];
+  pending: string[];
+  blocked: string[];
+}
+
+/** An immutable release and a separately reviewed infrastructure-preserving start. */
+export interface PipelineDeploymentTarget {
+  project: string;
+  stack: string;
+  releaseId: string;
+  manifestSha256: string;
+  review: string;
+}
+
+export interface PipelineDeploymentEvidence {
+  target: PipelineDeploymentTarget;
+  scope: { project: string; stack: string; registeredAt: string };
+  expected: Array<{ node: string; app: string; releaseId: string; manifestSha256: string; artifactSha256: string }>;
+  state: 'prepared' | 'unconfirmed' | 'confirmed';
+  /** Convergence evidence, not proof that this request caused a launch. */
+  observation?: { basis: 'observed-target'; observedAt: string; confirmed: boolean;
+    apps: Array<{ node: string; app: string; launchId: string | null; matches: boolean }> };
+}
+
 interface PipelineStepOptions {
   name: string;
   cwd?: string;
@@ -73,6 +99,11 @@ export type PipelineStep = PipelineStepOptions & ({
   target: PipelineReleaseTarget;
   args?: string[];
   run?: never;
+} | {
+  kind: 'deploy';
+  target: PipelineDeploymentTarget;
+  run?: never;
+  args?: never;
 });
 
 /** Per-attempt observations, never part of the registered semantic definition. */
@@ -127,8 +158,9 @@ export interface PipelineRunStepResult {
   stderr?: string;
   outputTruncated?: boolean;
   nodeId?: string;
-  kind?: 'shell' | 'xec' | 'release';
+  kind?: 'shell' | 'xec' | 'release' | 'deploy';
   executions?: PipelineReleaseExecution[];
+  deployment?: PipelineDeploymentEvidence;
 }
 
 export interface PipelineRun {
@@ -143,6 +175,7 @@ export interface PipelineRun {
   review?: PipelineRunReview;
   /** Human/server principal that atomically claimed the reviewed request. */
   startedBy?: string;
+  recovery?: PipelineRecoveryReview;
 }
 
 /** History rows exclude potentially large step output; retrieve details only for the selected run. */

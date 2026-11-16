@@ -1,8 +1,9 @@
 import { admitPipeline, assertParameters, readAdmission, readPrepareRun, readStartRun, type PipelineAdmission } from './pipeline-admission.js';
+import { completedStep, recoverableStep, recoveryReview } from './pipeline-recovery.js';
 import { RecoveryMutation } from '../daemon/recovery-state.js';
 /** Durable control-plane state over Xec's execution, graph and cancellation contracts. */
 import { randomUUID, createHash } from 'node:crypto';
-import type { Kysely, Selectable } from 'kysely';
+import { sql, type Kysely, type Selectable } from 'kysely';
 import type { Command, SSHAdapterOptions } from '@xec-sh/core';
 import type { PipelineEvent, PreparedScript } from '@xec-sh/ops';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
@@ -44,7 +45,9 @@ interface ActiveRun {
   done: Promise<void>;
 }
 type Nodes = Pick<NodeManagerService, 'getNode' | 'nodeToSshTarget'>;
+interface DeploymentBinding { operation: Awaited<ReturnType<ProjectService['resolvePipelineDeployment']>>; run(): Promise<void> }
 type ReleaseOperation = Awaited<ReturnType<ProjectService['resolvePipelineRelease']>>;
+type PipelineProjects = Pick<ProjectService, 'resolvePipelineRelease'> & Partial<Pick<ProjectService, 'resolvePipelineDeployment' | 'inspectPipelineDeployment'>>;
 interface ReleaseCommand {
   name: string;
   operation: ReleaseOperation;
@@ -126,7 +129,7 @@ export class PipelineService {
   private initialization?: Promise<void>;
   private stopped = false;
   private nodes?: Nodes;
-  private projects: Pick<ProjectService, 'resolvePipelineRelease'> | undefined;
+  private projects: PipelineProjects | undefined;
   private assertLifecycle: (() => void | Promise<void>) | undefined;
   private observe: ((status: PipelineRun['status'], duration: number) => void) | undefined;
   constructor(
@@ -136,7 +139,7 @@ export class PipelineService {
   ) {}
 
   configure(nodes: Nodes, observe?: (status: PipelineRun['status'], duration: number) => void,
-    releases?: { projects: Pick<ProjectService, 'resolvePipelineRelease'>; assertLifecycle(): void | Promise<void> }): void {
+    releases?: { projects: PipelineProjects; assertLifecycle(): void | Promise<void> }): void {
     this.nodes = nodes;
     this.observe = observe;
     this.projects = releases?.projects;
@@ -170,7 +173,7 @@ export class PipelineService {
     const { Pipeline: XecPipeline } = await import('@xec-sh/ops');
     const graph = XecPipeline.create(def.name);
     for (const step of def.steps)
-      graph.step(step.name, { run: step.kind === 'release' ? async () => {} : step.run,
+      graph.step(step.name, { run: step.kind === 'release' || step.kind === 'deploy' ? async () => {} : step.run,
         ...(step.dependsOn ? { dependsOn: step.dependsOn } : {}) });
     graph.validate();
   }
@@ -282,17 +285,62 @@ export class PipelineService {
 
   @RecoveryMutation()
   async startRun(request: StartPipelineRun, actor: string): Promise<PipelineRun> {
+    return this.claimRun(request, actor, false);
+  }
+
+  /** Resume the exact observed checkpoint, never repeat an uncertain command. */
+  @RecoveryMutation()
+  async resumeRun(request: StartPipelineRun, actor: string): Promise<PipelineRun> {
+    return this.claimRun(request, actor, true);
+  }
+
+  @RecoveryMutation()
+  async reconcileRun(runId: string): Promise<PipelineRun> {
+    await this.initialize();
+    if (this.activeRuns.has(runId)) throw Error('Wait for the current executor before reconciling');
+    const row = await this.db.selectFrom('pipeline_runs').selectAll().where('id', '=', runId).executeTakeFirstOrThrow();
+    if (!['interrupted', 'failed'].includes(row.status)) return this.mapRun(row);
+    const run = this.mapRun(row);
+    for (const step of run.steps) {
+      if (completedStep(step) || !step.deployment) continue;
+      if (!this.projects?.inspectPipelineDeployment) throw Error('Deployment inspection is unavailable');
+      // Errors leave the original unknown outcome intact. Inspection grants no dispatch authority.
+      const observation = await this.projects.inspectPipelineDeployment(step.deployment);
+      step.deployment.observation = observation;
+      step.deployment.state = observation?.confirmed ? 'confirmed' : 'unconfirmed';
+      if (observation?.confirmed) {
+        step.status = 'success'; step.exitCode = 0; step.completedAt = observation.observedAt;
+        delete step.error;
+      }
+    }
+    const updated = await this.db.updateTable('pipeline_runs').set({ steps: JSON.stringify(run.steps) })
+      .where('id', '=', runId).where('status', '=', row.status).where(sql<boolean>`steps = ${typeof row.steps === 'string' ? row.steps : JSON.stringify(row.steps)}`).executeTakeFirst();
+    if (updated.numUpdatedRows !== 1n) throw Error('Run changed during reconciliation; inspect its current receipt');
+    return (await this.getRunStatus(runId))!;
+  }
+
+  private async claimRun(request: StartPipelineRun, actor: string, recovering: boolean): Promise<PipelineRun> {
     await this.initialize();
     request = readStartRun(request);
     const { runId } = request, params = request.params ?? {};
     const row = await this.db.selectFrom('pipeline_runs').selectAll().where('id', '=', runId).executeTakeFirstOrThrow();
     const admission = readAdmission(row.admission);
-    if (!admission || admission.review.digest !== request.expectedDigest)
-      throw new Error('Review the exact pipeline admission before starting it');
+    if (!admission) throw new Error('Run has no durable admission');
     assertParameters(admission, params);
+    const checkpoint = this.mapRun(row, admission);
+    const pinned: Pipeline | undefined = admission.definition ? JSON.parse(admission.definition) : undefined;
+    if (recovering) {
+      if (admission.resumedFrom === request.expectedDigest) return checkpoint;
+      if (!admission.definition || !['interrupted', 'failed'].includes(row.status) || recoveryReview(checkpoint).digest !== request.expectedDigest)
+        throw Error('Review the current recoverable checkpoint before resuming');
+      if (checkpoint.steps.length !== pinned!.steps.length || pinned!.steps.some(step =>
+        checkpoint.steps.find(saved => saved.name === step.name)?.sourceHash !== createHash('sha256').update(JSON.stringify(step)).digest('hex')))
+        throw Error('Checkpoint differs from its pinned graph');
+      if (recoveryReview(checkpoint).blocked.length) throw Error('Unconfirmed or failed steps block continuation; reconcile receiver evidence first');
+    } else if (admission.review.digest !== request.expectedDigest) throw Error('Review the exact pipeline admission before starting it');
     // Terminal and in-flight receipts are authoritative. Redelivery never creates
     // another execution, even after a lost reply or a daemon restart.
-    if (row.status !== 'awaiting-review') return this.mapRun(row);
+    if (!recovering && row.status !== 'awaiting-review') return checkpoint;
     if (this.activeRuns.has(runId)) return this.mapRun(row);
     if (this.stopped) throw new Error('Pipeline executor is stopping');
     if (this.activeRuns.size >= PIPELINE_LIMITS.activeRuns) throw new Error('Pipeline execution capacity reached');
@@ -314,15 +362,16 @@ export class PipelineService {
     let claimed = false;
     try {
       await this.assertLifecycle?.();
-      const definition = await this.getPipeline(row.pipelineId);
+      const definition = recovering ? pinned : await this.getPipeline(row.pipelineId);
       if (!definition) throw new Error(`Pipeline '${row.pipelineId}' not found`);
       if (admission.review.definitionRevision !== definition.revision)
         throw new Error('Pipeline changed after review. Reload and review the current definition');
       await this.validate({ ...definition, description: definition.description ?? '' });
       const startedAt = new Date();
       const claim = await this.db.updateTable('pipeline_runs').set({ status: 'running', startedAt,
-        admission: JSON.stringify({ ...admission, approvedBy: actor }) })
-        .where('id', '=', runId).where('status', '=', 'awaiting-review').executeTakeFirst();
+        completedAt: null,
+        admission: JSON.stringify({ ...admission, approvedBy: actor, ...(recovering ? { resumedFrom: request.expectedDigest } : {}) }) })
+        .where('id', '=', runId).where('status', '=', row.status).where(sql<boolean>`steps = ${typeof row.steps === 'string' ? row.steps : JSON.stringify(row.steps)}`).executeTakeFirst();
       if (claim.numUpdatedRows !== 1n) {
         this.activeRuns.delete(runId);
         finishAdmission();
@@ -334,8 +383,29 @@ export class PipelineService {
       this.logger.info({ runId, actor, projects }, 'Reviewed pipeline admitted');
       const { Pipeline: XecPipeline, prepareScript } = await import('@xec-sh/ops');
       const graph = XecPipeline.create(definition.name);
+      const run = checkpoint;
+      run.status = 'running'; run.startedBy = actor; run.startedAt = startedAt.toISOString(); run.completedAt = null;
+      delete run.recovery;
+      const completed = new Set(recovering ? run.steps.filter(completedStep).map(step => step.name) : []);
+      if (recovering) for (const step of run.steps) if (recoverableStep(step)) {
+        step.status = 'pending'; delete step.error; delete step.completedAt;
+      }
+      const deployments = new Map<string, DeploymentBinding>();
       for (const step of definition.steps) {
+        if (completed.has(step.name)) continue;
         abort.signal.throwIfAborted();
+        const dependencies = step.dependsOn?.filter(name => !completed.has(name));
+        if (step.kind === 'deploy') {
+          if (!this.projects?.resolvePipelineDeployment) throw Error('Native deployment admission is unavailable');
+          const operation = await this.projects.resolvePipelineDeployment(step.target);
+          const binding: DeploymentBinding = { operation, run: async () => { throw Error('Deployment journal is not bound'); } };
+          deployments.set(step.name, binding);
+          // Xec function steps await the ordinary ProjectService operation. Cancellation
+          // stops subsequent steps; it does not pretend to undo a dispatched deployment.
+          graph.step(step.name, { run: () => binding.run(), ...(dependencies ? { dependsOn: dependencies } : {}),
+            ...(step.condition ? { condition: () => pipelineCondition(step.condition!, params) } : {}) });
+          continue;
+        }
         const env = stepEnvironment(step, params);
         let target: SSHAdapterOptions | undefined;
         if (step.nodeId && step.nodeId !== 'local') {
@@ -385,7 +455,7 @@ export class PipelineService {
         }
         graph.step(step.name, {
           run: command,
-          ...(step.dependsOn ? { dependsOn: step.dependsOn } : {}),
+          ...(dependencies ? { dependsOn: dependencies } : {}),
           timeout: step.timeout ?? 300_000,
           retry: { maxAttempts: (step.retries ?? 0) + 1 },
           ...(step.condition ? { condition: () => pipelineCondition(step.condition!, params) } : {}),
@@ -393,10 +463,6 @@ export class PipelineService {
       }
       abort.signal.throwIfAborted();
       await this.assertLifecycle?.();
-      const run = this.mapRun(row);
-      run.status = 'running';
-      run.startedBy = actor;
-      run.startedAt = startedAt.toISOString();
       const secrets = [
         ...new Set([
           ...Object.values(params).filter((value): value is string => typeof value === 'string' && value.length > 0),
@@ -406,7 +472,7 @@ export class PipelineService {
             .map(([, value]) => value as string),
         ]),
       ].sort((a, b) => b.length - a.length);
-      handle.done = this.executeRun(run, graph, abort.signal, secrets, prepared, commands).finally(() =>
+      handle.done = this.executeRun(run, graph, abort.signal, secrets, prepared, commands, deployments).finally(() =>
         this.activeRuns.delete(runId)
       );
       finishAdmission();
@@ -421,7 +487,7 @@ export class PipelineService {
           const failure = new PipelineOutput(Object.values(params).filter((value): value is string => typeof value === 'string' && value.length > 0));
           failure.append(String(error));
           const status = abort.signal.aborted ? 'cancelled' : 'failed';
-          const steps = this.mapRun(row).steps.map(step => ({ ...step, status, error: failure.snapshot(true) }));
+          const steps = this.mapRun(row).steps.map(step => completedStep(step) ? step : ({ ...step, status, error: failure.snapshot(true) }));
           await this.db.updateTable('pipeline_runs').set({ status, steps: JSON.stringify(steps), completedAt: new Date() })
             .where('id', '=', runId).where('status', 'in', ['running', 'cancelling']).execute();
         }
@@ -440,6 +506,7 @@ export class PipelineService {
     secrets: string[],
     prepared: PreparedScript[],
     commands: Map<NonNullable<Command['onSpawn']>, ReleaseCommand | null>,
+    deployments: Map<string, DeploymentBinding>,
   ): Promise<void> {
     const safeError = (error: unknown) => {
       const text = new PipelineOutput(secrets);
@@ -457,6 +524,25 @@ export class PipelineService {
         .then(() => this.db.updateTable('pipeline_runs').set({ steps: snapshot }).where('id', '=', run.id).execute())
         .then(() => undefined);
       return writes;
+    };
+    for (const [name, binding] of deployments) binding.run = async () => {
+      const step = run.steps.find(item => item.name === name)!;
+      step.deployment = structuredClone(binding.operation.evidence);
+      await save();
+      await this.assertLifecycle?.();
+      signal.throwIfAborted();
+      try {
+        await binding.operation.execute();
+        const observation = await this.projects!.inspectPipelineDeployment!(step.deployment);
+        step.deployment.observation = observation;
+        if (!observation?.confirmed) throw Error('Deployment returned without matching launch receipts on every expected placement');
+        step.deployment.state = 'confirmed';
+        await save();
+      } catch (error) {
+        step.deployment.state = 'unconfirmed';
+        await save();
+        throw error;
+      }
     };
     const onEvent = async (event: PipelineEvent) => {
       const step = run.steps.find((item) => item.name === event.step)!;
@@ -625,7 +711,7 @@ export class PipelineService {
     return { ...definition, revision: createHash('sha256').update(JSON.stringify(definition)).digest('hex'), conditionalUpdates: true };
   }
   private mapRun(row: Selectable<PipelineRunsTable>, admission: PipelineAdmission | undefined = readAdmission(row.admission)): PipelineRun {
-    const steps = (typeof row.steps === 'string'
+    const steps = structuredClone(typeof row.steps === 'string'
       ? JSON.parse(row.steps)
       : row.steps) as unknown as PipelineRunStepResult[];
     if (row.status === 'interrupted')
@@ -634,6 +720,7 @@ export class PipelineService {
       id: row.id, pipelineId: row.pipelineId, triggeredBy: row.triggeredBy,
       ...(admission ? { review: admission.review } : {}),
       ...(admission?.approvedBy ? { startedBy: admission.approvedBy } : {}),
+      ...(admission?.definition && ['failed', 'interrupted'].includes(row.status) ? { recovery: recoveryReview({ id: row.id, status: row.status as PipelineRun['status'], steps }) } : {}),
       status: row.status as PipelineRun['status'],
       steps,
       params: typeof row.params === 'string' ? JSON.parse(row.params) : row.params,

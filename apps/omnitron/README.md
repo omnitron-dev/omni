@@ -147,6 +147,8 @@ omnitron pipeline run <pipeline-id>
 omnitron pipeline run <pipeline-id> --prepare --run-id <uuid-v4> --json
 omnitron pipeline start <run-id> --expected-digest <review-digest>
 omnitron pipeline status <run-id> --output
+omnitron pipeline reconcile <run-id> --json
+omnitron pipeline resume <run-id> --expected-digest <recovery-digest> --params-file parameters.json
 omnitron pipeline save publication.json --id <pipeline-id> --expected-revision <sha256>
 ```
 
@@ -167,12 +169,25 @@ available for later admission. Cancel waiting requests without starting them.
 
 If a reply is lost, inspect the same run ID or repeat `start` with the same
 digest and parameters. A durable completed receipt is recoverable across daemon
-restart. An unconfirmed effect stays unconfirmed; this does not resume arbitrary
-shell scripts or guarantee exactly-once business effects. Deduplication lasts
+restart. `resume` continues the saved definition's remaining graph: confirmed
+steps are retained, never-dispatched steps run through Xec, and uncertain commands
+block continuation. It requires the current recovery digest and original parameters;
+editing the definition does not alter this pinned graph. This does not resume an
+arbitrary script midway or guarantee exactly-once business effects. Deduplication lasts
 while the run history is retained. Deleting a definition and its terminal history
 also removes these receipts.
 
 Admission rechecks the installed payload, release selection, registration, runtime, owner authority and environment before each Xec attempt. It does not install dependencies, prepare missing releases, provision infrastructure or select another owner. Remote release targets are not supported. Runtime loader overrides are refused; native library paths are bounded by the verified closure.
+
+For a remote deployment, `kind: 'deploy'` instead calls the existing ProjectService
+stack lifecycle with an exact release ID, manifest digest and infrastructure
+preservation review. It has no shell override or automatic retry. `reconcile`
+reads fresh node-qualified launch receipts for every expected application and
+replica, including consumer identity for imported artifacts. Its `observed-target`
+evidence proves the desired launch state is present, not that this request caused
+it. Missing, modified and unreachable receipts remain unconfirmed. Cancellation
+stops later graph steps and waits for an already dispatched native operation to
+settle; it does not claim to reverse or abort that remote deployment.
 
 Xec owns output, retries, timeouts and cancellation. If effects may have started but execution or durable completion cannot be confirmed, the attempt becomes `unconfirmed` and automatic replay is refused. Restart recovery marks unfinished attempts conservatively and does not promise exactly-once execution. Existing callers that compare physical executable paths need an explicitly reviewed definition update to use this contract.
 

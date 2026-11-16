@@ -128,6 +128,19 @@ async function fixture(bootstrap = false, ownInfrastructure = false) {
   return { service, scope, config, registration, capture, boot, repo, home, release, entry, handles, owner, selector, provision, migrations, archive };
 }
 
+it('verifies installed payloads once per restart capture and refuses changes on the next capture', async () => {
+  const f = await fixture();
+  const inspected = vi.spyOn(f.service, 'installedRelease');
+  const first = await f.capture();
+  expect(inspected).toHaveBeenCalledTimes(1);
+  const second = await f.capture();
+  expect(inspected).toHaveBeenCalledTimes(2);
+  expect(second.stacks[0]!.review.digest).toBe(first.stacks[0]!.review.digest);
+  await fs.writeFile(f.entry.script!, 'throw Error("modified executable");');
+  await expect(f.capture()).rejects.toThrow();
+  expect(f.owner.startApp).not.toHaveBeenCalled();
+});
+
 it('reviews a retained release through the daemon and real infrastructure resolver without invalidating its own admission', async () => {
   const native = vi.spyOn(nativeInfrastructure, 'reviewExistingContainers').mockImplementation(async (_containers, _node, scope) => ({
     protocol: 1, mode: 'preserve', ...(scope && { scope }), digest: 'c'.repeat(64), checks: [], containers: [],

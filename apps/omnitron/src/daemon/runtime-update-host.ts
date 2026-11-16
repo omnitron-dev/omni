@@ -27,7 +27,7 @@ export type RuntimeUpdateCall = <T>(argv: readonly string[], runtimeRoot?: strin
 interface ColdStartObservation {
   checked: boolean; candidate: string; schemaScope: 'node' | 'all'; coldStackAdmissionProtocol?: number | null;
   runtimeRestartProtocol?: number | null;
-  infrastructure: { coverage: string; digest: string; containers: Array<{ name: string; id: string; action: string }>; controlPlaneDatabase?: { id: string; action: string } };
+  infrastructure: { coverage: string; intentDigest: string; containers: Array<{ name: string; id: string; action: string }>; controlPlaneDatabase?: { id: string; action: string } };
 }
 
 const hash = /^[a-f0-9]{64}$/;
@@ -309,10 +309,10 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
     const response = await call<ColdStartObservation>(['backend', 'select', artifact, '--check']);
     const infra = response.infrastructure;
     if (!response.checked || response.candidate !== artifact || !['certified-declarations', 'reviewed-declarations'].includes(infra?.coverage ?? '') || !Array.isArray(infra?.containers) ||
-        !hash.test(infra.digest) || infra.containers.some(v => v.action !== 'retain' || !hash.test(v.id)) ||
+        !hash.test(infra.intentDigest) || infra.containers.some(v => v.action !== 'retain' || !hash.test(v.id)) ||
         (infra.controlPlaneDatabase && infra.controlPlaneDatabase.action !== 'retain')) throw Error('Automatic local restart requires verified retained infrastructure; inspect backend select ' + artifact + ' --check for the proposed changes');
     return { schemaScope: response.schemaScope, ...(response.coldStackAdmissionProtocol === 1 && { coldStackAdmissionProtocol: 1 as const }),
-      ...(response.runtimeRestartProtocol === 1 && { runtimeRestartProtocol: 1 as const }), digest: infra.digest, containers: infra.containers.map(({ name, id }) => ({ name, id })).sort((a, b) => a.name.localeCompare(b.name)),
+      ...(response.runtimeRestartProtocol === 1 && { runtimeRestartProtocol: 1 as const }), digest: infra.intentDigest, containers: infra.containers.map(({ name, id }) => ({ name, id })).sort((a, b) => a.name.localeCompare(b.name)),
       database: infra.controlPlaneDatabase?.id ?? null };
   };
   const stopped = async (previous: RuntimeUpdateIdentity) => {

@@ -50,6 +50,15 @@ export function backendSnapshot<State extends Omit<BackendHandoffState, 'ticket'
     environment: { ...Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined)), OMNITRON_HOME } };
 }
 
+/** Stable resource ownership and desired state; health sweeps are observations, not edits. */
+export function infrastructureIntent(snapshot: InfrastructureHandoffState | null) {
+  if (!snapshot) return null;
+  const { nativeState, state, unhealthyTicks: _ticks, unhealthyEvidence: _health, restartBackoff: _retry, ...definition } = snapshot;
+  return { ...definition, nativeProtocol: nativeState?.protocol,
+    containersObserved: Object.entries(state.services).map(([name, container]) => ({ name, containerId: container.containerId ?? null,
+        ...(container.containerId ? {} : { failedCreation: container.status === 'exited' && Boolean(container.error) }) })) };
+}
+
 /** Native health observations may advance during drain. Configuration, grants,
  * application inventory and execution context may not. Infrastructure adoption
  * separately validates every native resource in the exact frozen checkpoint. */
@@ -60,13 +69,6 @@ export function backendConfigurationDigest(record: Omit<BackendBootRecord, 'stat
   if (!controller?.ownerId || !controller.controllerId || !Number.isSafeInteger(controller.epoch) || controller.epoch < 1 ||
       !/^[a-f0-9]{64}$/.test(registryDigest) || !/^[a-f0-9]{64}$/.test(record.state.executionInventory))
     throw Error('Backend configuration has no exact registry and controller identity');
-  const infrastructureIntent = (snapshot: InfrastructureHandoffState | null) => {
-    if (!snapshot) return null;
-    const { nativeState, state, unhealthyTicks: _ticks, unhealthyEvidence: _health, restartBackoff: _retry, ...definition } = snapshot;
-    return { ...definition, nativeProtocol: nativeState?.protocol,
-      containersObserved: Object.entries(state.services).map(([name, container]) => ({ name, containerId: container.containerId ?? null,
-        ...(container.containerId ? {} : { failedCreation: container.status === 'exited' && Boolean(container.error) }) })) };
-  };
   const { infrastructure, resumeBackoff: _retry, ...projectIntent } = record.state.projects;
   return createHash('sha256').update(JSON.stringify({ protocol: 1, registryDigest, ownerId: controller.ownerId, daemonConfig: record.daemonConfig,
     cwd: record.cwd, environment: record.environment, watchConfig: record.state.watchConfig,

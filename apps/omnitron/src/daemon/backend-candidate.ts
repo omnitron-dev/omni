@@ -11,7 +11,7 @@ import type { IDaemonConfig } from '../config/types.js';
 import { compareMigrationChecksumMetadata, type MigrationChecksumChange } from '../database/migration-registry-compatibility.js';
 import type { BackendBootRecord } from './backend-handoff-types.js';
 import type { BackendRecoveryRecord } from './backend-recovery-journal.js';
-import { backendInfrastructureDigest, backendInfrastructureInput, type ColdInfrastructurePreview } from './backend-infrastructure-preflight.js';
+import { backendInfrastructureDigest, backendInfrastructureInput, backendInfrastructureIntentDigest, type ColdInfrastructurePreview } from './backend-infrastructure-preflight.js';
 
 const execute = promisify(execFile);
 const PREFLIGHT_TIMEOUT_MS = 30_000;
@@ -220,12 +220,12 @@ export async function checkBackendAdoption(artifact: BackendArtifact, record: Ba
   await runBackendPreflight(artifact, { input, cwd: record.cwd, environment: record.environment });
 }
 
-export async function previewBackendColdStart(artifact: BackendArtifact, record: BackendBootRecord | BackendRecoveryRecord): Promise<ColdInfrastructurePreview> {
+export async function previewBackendColdStart(artifact: BackendArtifact, record: BackendBootRecord | BackendRecoveryRecord): Promise<ColdInfrastructurePreview & { intentDigest: string }> {
   const managedDatabase = record.daemonConfig.role === 'master' && record.environment['OMNITRON_NO_INFRA'] !== '1' &&
     !record.environment['OMNITRON_DATABASE_URL'];
   const input = backendInfrastructureInput(record.state, managedDatabase);
   const checked = await runBackendPreflight(artifact, { input, cwd: record.cwd, environment: record.environment, cold: true });
-  return checked.coldInfrastructure!;
+  return { ...checked.coldInfrastructure!, intentDigest: backendInfrastructureIntentDigest(input) };
 }
 
 interface BackendPreflightResponse {

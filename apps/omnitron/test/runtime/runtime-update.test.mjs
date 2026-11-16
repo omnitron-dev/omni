@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { tsImport } from 'tsx/esm/api';
-const { runRuntimeUpdate, readRuntimeUpdateReceipt } = await tsImport('../../src/daemon/runtime-update.ts', import.meta.url);
+const { runRuntimeUpdate, readRuntimeUpdateReceipt, readPreparedRuntimeUpdate } = await tsImport('../../src/daemon/runtime-update.ts', import.meta.url);
 const { assertLocalIdle, assertLocalReview, assertReviewedBoot, assertSameSavedSelection, assertLocalServiceTargets } = await tsImport('../../src/daemon/runtime-update-host.ts', import.meta.url);
 const { retainReviewedBackups } = await tsImport('../../src/shared/backup-admission.ts', import.meta.url);
 import { BACKEND_ACTIVITY_COUNTERS } from '../../src/shared/dto/backend.ts';
@@ -196,6 +196,21 @@ test('changing a reviewed owner generation invalidates the review before any pro
   const replacement = await runRuntimeUpdate({ ...config, operation: 'prepare' });
   assert.notEqual(replacement.digest, reviewed.digest);
   await assert.rejects(runRuntimeUpdate({ ...config, operation: 'apply', digest: reviewed.digest }), error => error.message.includes(replacement.digest));
+});
+
+test('an apply mismatch saves the exact fresh review and reports the changed fields without stopping processes', { skip: !native }, async t => {
+  const directory = await privateInstance(t);
+  const plan = planFor(directory, { pid: process.pid, generation: 'first-generation' });
+  const actions = { async prepare() { return structuredClone(plan); },
+    async admit() { assert.fail('changed plans cannot acquire shutdown authority'); },
+    async stop() { assert.fail('changed plans cannot stop processes'); } };
+  const reviewed = await runRuntimeUpdate({ actions, directory, operation: 'prepare' });
+  plan.infrastructure = { digest: '9'.repeat(64) };
+  await assert.rejects(runRuntimeUpdate({ actions, directory, operation: 'apply', digest: reviewed.digest }), /changed \(infrastructure\).*No processes were stopped/);
+  const current = await readPreparedRuntimeUpdate(directory);
+  assert.deepEqual(current.plan, plan);
+  assert.notEqual(current.digest, reviewed.digest);
+  assert.equal(await readRuntimeUpdateReceipt(directory), null);
 });
 
 test('a shutdown admission refusal preserves the original owner without starting recovery', { skip: !native }, async t => {

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { BackendHandoffState } from './backend-handoff-types.js';
+import { infrastructureIntent, type BackendHandoffState } from './backend-handoff-types.js';
 import type { InfrastructureHandoffState } from '../infrastructure/infrastructure.service.js';
 import type { ResolvedContainer } from '../infrastructure/types.js';
 import { isDeepStrictEqual } from 'node:util';
@@ -27,6 +27,12 @@ export function backendInfrastructureInput(state: Pick<BackendHandoffState, 'inf
 
 export function backendInfrastructureDigest(input: string | Buffer): string {
   return createHash('sha256').update(input).digest('hex');
+}
+
+/** Review authority survives health sweeps. The child still proves every exact input byte separately. */
+export function backendInfrastructureIntentDigest(input: string | Buffer): string {
+  const parsed = parseInfrastructure(Buffer.isBuffer(input) ? input : Buffer.from(input));
+  return backendInfrastructureDigest(JSON.stringify({ ...parsed, infrastructure: parsed.infrastructure.map(infrastructureIntent) }));
 }
 
 function parseInfrastructure(input: Buffer): InfrastructurePreflightInput {

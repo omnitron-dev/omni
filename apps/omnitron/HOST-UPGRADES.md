@@ -167,6 +167,16 @@ preview keeps `certified-declarations` and `historical-declarations` distinct,
 and historical evidence cannot admit an automatic local update. A refused live
 review never falls back to an older journal entry.
 
+Cold infrastructure review binds configuration, resource ownership and native
+container identities. Health-probe timestamps and reconciliation clocks are
+observations, so advancing them does not invalidate the review. The candidate
+separately proves the exact snapshot bytes it inspected; changed declarations,
+container identities or non-retain actions still refuse the transition.
+
+Each restart capture verifies an installed release once and shares that result
+with its infrastructure review. Verification is repeated in the next capture
+and at startup; no inspection cache survives an operation.
+
 Runtime-only preparation captures the serving controller's effective project
 definitions and resolved next-start environments in a private file; the public
 plan records its digest and `basis: retained-next-start`. It compares those

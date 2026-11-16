@@ -172,7 +172,7 @@ export async function managedLocalSyncRoundtrip(context) {
   const plan = { protocol: 1, stackAdmissionProtocol: protocol, instance, target: { artifact: candidate.id, commit: candidate.build.commit },
     configuration: { sha256: configurationSha256, basis: 'retained-next-start' },
     before: { ...baseline, retiredPids: [warmed.pid, baseline.guardianPid, worker.pid] },
-    infrastructure: { database: null, containers: [], digest: checks[0].infrastructure.digest,
+    infrastructure: { database: null, containers: [], digest: checks[0].infrastructure.intentDigest,
       schemaScope: checks[0].schemaScope, coldStackAdmissionProtocol: 1, runtimeRestartProtocol: 1 },
     stacks: [{ ...scope, runtimeScope: scope, path: projectDirectory, enabled: true, infrastructureMode: 'reconcile',
       infrastructureReview: null, selection: { kind: 'working-tree' }, savedSelection: { kind: 'unreported' }, startReview: review.digest }],

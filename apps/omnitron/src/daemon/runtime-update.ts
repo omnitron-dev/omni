@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { withKernelFileLock } from '@xec-sh/ops/utils/file-lock';
 import { readPrivateRecord, writePrivateRecord } from './execution-journal.js';
 import { RUNTIME_UPDATE_TERMINAL_PHASES } from '../shared/dto/runtime-update.js';
@@ -179,7 +180,12 @@ export async function runRuntimeUpdate({ actions, directory, operation, digest: 
       await writePrivateRecord(path.join(directory, 'prepared.json'), preview);
       return preview;
     }
-    if (review !== digest) throw Error('Local placement, roles, launch selection, infrastructure or process identities changed. Inspect the current plan ' + digest);
+    if (review !== digest) {
+      const changed = (Object.keys(plan) as Array<keyof RuntimeUpdatePlan>)
+        .filter(key => !isDeepStrictEqual(prepared?.plan[key], plan[key]));
+      await writePrivateRecord(path.join(directory, 'prepared.json'), { protocol: 1, digest, plan });
+      throw Error('Local update plan changed (' + changed.join(', ') + '). No processes were stopped. Inspect the current plan ' + digest);
+    }
     if (record) await writePrivateRecord(path.join(directory, record.digest + '.json'), record);
     record = { protocol: 1, digest, plan, phase: 'draining', updatedAt: new Date().toISOString() };
     await save('draining');

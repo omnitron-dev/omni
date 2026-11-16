@@ -7,7 +7,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { transform } from 'esbuild';
 import { afterEach, expect, it, vi } from 'vitest';
-import { BackendPreflightError, checkBackendAdoption, checkBackendCandidate } from '../../src/daemon/backend-candidate.js';
+import { BackendPreflightError, checkBackendAdoption, checkBackendCandidate, previewBackendColdStart } from '../../src/daemon/backend-candidate.js';
+import { backendInfrastructureInput, backendInfrastructureDigest, backendInfrastructureIntentDigest } from '../../src/daemon/backend-infrastructure-preflight.js';
 import type { BackendRecoveryRecord } from '../../src/daemon/backend-recovery-journal.js';
 import { runtimeArtifactDigest } from '../../src/shared/runtime-artifact.js';
 import { resetEnvCache, setEnvOverride } from '../../src/shared/env-config.js';
@@ -129,6 +130,28 @@ it.each(['matching', 'wrong-digest', 'missing'])('requires a real child response
   else await expect(checked).rejects.toMatchObject({ domainCode: 'BACKEND_PREFLIGHT_RESPONSE_INVALID',
     cause: { message: 'Candidate did not confirm the exact infrastructure adoption snapshot' } });
   expect(await fs.readdir(candidate.home)).toEqual([]);
+});
+
+it.each(['matching', 'wrong-digest'])('binds cold intent to an exactly verified native input (%s)', async result => {
+  const candidate = await fixture(`
+    import { createHash } from 'node:crypto';
+    const answer = ${JSON.stringify({ ...response, coldInfrastructureProtocol: 1 })};
+    if (process.argv[3] === '--preview-cold-start') {
+      let input = ''; for await (const chunk of process.stdin) input += chunk;
+      answer.coldInfrastructure = { protocol: 1, containers: [], intentDigest: 'untrusted-child-field',
+        digest: ${result === 'matching' ? "createHash('sha256').update(input).digest('hex')" : "'0'.repeat(64)"} };
+    }
+    process.stdout.write(JSON.stringify(answer) + '\\n');
+  `);
+  const artifact = await checkBackendCandidate(candidate.dist);
+  const record = { state: { infrastructure: null, projects: { infrastructure: [] } }, daemonConfig: { role: 'worker' },
+    cwd: candidate.home, environment: { OMNITRON_HOME: candidate.home } } as unknown as BackendRecoveryRecord;
+  const checked = previewBackendColdStart(artifact, record);
+  if (result === 'matching') {
+    const input = backendInfrastructureInput(record.state, false);
+    await expect(checked).resolves.toMatchObject({ digest: backendInfrastructureDigest(input),
+      intentDigest: backendInfrastructureIntentDigest(input) });
+  } else await expect(checked).rejects.toMatchObject({ domainCode: 'BACKEND_PREFLIGHT_RESPONSE_INVALID' });
 });
 
 it('retains import failure, verified identity and the phase in a machine-readable error', async () => {

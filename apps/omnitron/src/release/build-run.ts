@@ -465,6 +465,8 @@ async function buildRelease(
 ): Promise<BuildOutcome> {
   const started = Date.now();
   const releasesDirectory = releasesRoot();
+  if (process.env['OMNITRON_RELEASES_DIR'] === undefined)
+    fs.mkdirSync(releasesDirectory, { recursive: true });
   const extra = checkedEnv(options.env);
   const env = buildEnv({ ...process.env, ...extra });
   // Native install scripts and compilation must use the same Node that fingerprints the closure.
@@ -556,7 +558,6 @@ async function buildRelease(
   if (layout.kind !== 'registry') announceFramework({ repository: omniSource.repo, ...(selectedSource?.ref && { ref: selectedSource.ref }) }, omniSource.commit);
   id = releaseId(projectName, new Date(), projectSha, omniSource.commit);
   assertReleaseId(id);
-  fs.mkdirSync(releasesDirectory, { recursive: true });
   let releaseRoot = path.join(releasesDirectory, id);
   // A second build in the same minute must never overwrite another run's
   // logs/manifest, or remove its source directory when cleanup runs.

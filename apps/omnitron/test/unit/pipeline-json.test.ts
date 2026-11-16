@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetEnvCache, setEnvOverride } from '../../src/shared/env-config.js';
 
-const { service } = vi.hoisted(() => ({ service: { getRunStatus: vi.fn(), listPipelines: vi.fn(), getPipeline: vi.fn(), updatePipeline: vi.fn(), createPipeline: vi.fn() } }));
+const { service } = vi.hoisted(() => ({ service: { prepareRun: vi.fn(), startRun: vi.fn(), executePipeline: vi.fn(), getRunStatus: vi.fn(), listPipelines: vi.fn(), getPipeline: vi.fn(), updatePipeline: vi.fn(), createPipeline: vi.fn() } }));
 vi.mock('node:fs/promises', () => ({ readFile: async () => JSON.stringify({ name: 'inspect', steps: [{ name: 'one', run: 'echo ready' }] }) }));
 vi.mock('../../src/daemon/daemon-client.js', () => ({
   createDaemonClient: () => ({ service: async () => service, disconnect: async () => {} }),
 }));
-import { pipelineListCommand, pipelineStatusCommand, pipelineSaveCommand } from '../../src/commands/pipeline.js';
+import { pipelineListCommand, pipelineStatusCommand, pipelineSaveCommand, pipelineRunCommand, pipelineStartCommand } from '../../src/commands/pipeline.js';
 import { hasEmittedJson } from '../../src/commands/output.js';
 
 beforeEach(() => {
@@ -36,6 +36,22 @@ async function capture(run: () => Promise<void>) {
 }
 
 describe('pipeline CLI uses the shared machine output protocol', () => {
+  it('retains the exact request identity across CLI retries and never falls back to an older executor', async () => {
+    const runId = 'ce9658f5-6225-48b5-a916-b7bb2a01ad70';
+    service.listPipelines.mockResolvedValue([{ id: 'pipeline', name: 'inspect', revision: 'a'.repeat(64) }]);
+    service.prepareRun.mockResolvedValue({ id: runId, review: { digest: 'b'.repeat(64) } });
+    service.startRun.mockRejectedValueOnce(Error('Lost connection'));
+    const lost = await capture(() => pipelineRunCommand('pipeline', { runId }));
+    expect(JSON.parse(lost.err).error).toContain(runId);
+    expect(service.startRun).toHaveBeenCalledWith({ runId, expectedDigest: 'b'.repeat(64), params: undefined });
+    service.startRun.mockResolvedValue({ id: runId, status: 'success' });
+    const recovered = await capture(() => pipelineStartCommand(runId, { expectedDigest: 'b'.repeat(64) }));
+    expect(JSON.parse(recovered.out).data).toMatchObject({ id: runId, status: 'success' });
+    service.prepareRun.mockRejectedValueOnce(Error('Method not available'));
+    const old = await capture(() => pipelineRunCommand('pipeline', { runId }));
+    expect(JSON.parse(old.err).error).toContain('Method not available');
+    expect(service.executePipeline).not.toHaveBeenCalled();
+  });
   it.each(['success', 'running', 'failed', 'cancelled', 'interrupted'])(
     'returns one record for a %s run',
     async (status) => {

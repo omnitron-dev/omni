@@ -1,3 +1,4 @@
+import { readPrepareRun, readStartRun } from '../../services/pipeline-admission.js';
 import type { IMcpToolDef } from '../types.js';
 import type { DaemonClient } from '../../daemon/daemon-client.js';
 import type {
@@ -40,6 +41,20 @@ export function createManagementTools(client: DaemonClient): IMcpToolDef[] {
   const fleet = () => client.service<IOmnitronFleetService>('OmnitronFleet');
   const pipelines = () => client.service<IOmnitronPipelinesService>('OmnitronPipelines');
   const k8s = () => client.service<IOmnitronKubernetesService>('OmnitronKubernetes');
+
+  const pipelineRequestInput = {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Pipeline id' },
+          runId: { type: 'string', description: 'Persist a UUID v4 before calling; reuse it after a lost reply' },
+          expectedRevision: {
+            type: 'string',
+            description: 'Revision returned by pipeline.list; review its source and targets before running',
+          },
+          params: { type: 'object', description: 'Parameters passed to the run' },
+        },
+        required: ['id', 'expectedRevision', 'runId'],
+      };
 
   return [
     // ---- Projects & stacks --------------------------------------------------
@@ -266,24 +281,28 @@ export function createManagementTools(client: DaemonClient): IMcpToolDef[] {
       name: 'pipeline.run',
       description:
         'Execute the exact reviewed pipeline revision. Requires administrator authority; not an agent sandbox.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          id: { type: 'string', description: 'Pipeline id' },
-          expectedRevision: {
-            type: 'string',
-            description: 'Revision returned by pipeline.list; review its source and targets before running',
-          },
-          params: { type: 'object', description: 'Parameters passed to the run' },
-        },
-        required: ['id', 'expectedRevision'],
+      inputSchema: pipelineRequestInput,
+      handler: async params => {
+        const request = readPrepareRun(params), service = await pipelines();
+        const prepared = await service.prepareRun(request);
+        return service.startRun({ runId: request.runId, expectedDigest: prepared.review!.digest, params: request.params ?? {} });
       },
-      handler: async (params: any) =>
-        (await pipelines()).executePipeline({
-          id: params.id,
-          expectedRevision: params.expectedRevision,
-          params: params.params,
-        }),
+    },
+    {
+      name: 'pipeline.prepare',
+      description: 'Save an exact pipeline request for review without starting commands. Requires administrator authority.',
+      inputSchema: pipelineRequestInput,
+      handler: async params => (await pipelines()).prepareRun(readPrepareRun(params)),
+    },
+    {
+      name: 'pipeline.start',
+      description: 'Start the exact reviewed request, or return its original receipt after a lost reply. Never replays an uncertain run.',
+      inputSchema: { type: 'object', properties: {
+        runId: { type: 'string', description: 'ID retained from pipeline.prepare' },
+        expectedDigest: { type: 'string', description: 'Exact review.digest from the prepared request' },
+        params: { type: 'object', description: 'The same parameters supplied during preparation' },
+      }, required: ['runId', 'expectedDigest'] },
+      handler: async params => (await pipelines()).startRun(readStartRun(params)),
     },
     {
       name: 'pipeline.status',

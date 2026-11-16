@@ -15,6 +15,31 @@ export interface PipelineDef {
   triggers?: PipelineTrigger[];
 }
 
+/** A review binds a durable command to one definition and parameter set. */
+export interface PipelineRunReview {
+  protocol: 1;
+  digest: string;
+  definitionRevision: string;
+  /** Derived from sealed release targets, never supplied as an authority claim. */
+  projects: string[];
+  parameterNames: string[];
+}
+
+export interface PreparePipelineRun {
+  /** Caller-generated UUID. Retain it before sending; reuse it after a lost reply. */
+  runId: string;
+  id: string;
+  expectedRevision: string;
+  params?: Record<string, unknown>;
+}
+
+export interface StartPipelineRun {
+  runId: string;
+  expectedDigest: string;
+  /** Re-supply parameters; their plaintext is never persisted in the admission. */
+  params?: Record<string, unknown>;
+}
+
 interface PipelineStepOptions {
   name: string;
   cwd?: string;
@@ -109,12 +134,15 @@ export interface PipelineRunStepResult {
 export interface PipelineRun {
   id: string;
   pipelineId: string;
-  status: 'pending' | 'running' | 'cancelling' | 'success' | 'failed' | 'cancelled' | 'interrupted';
+  status: 'awaiting-review' | 'pending' | 'running' | 'cancelling' | 'success' | 'failed' | 'cancelled' | 'interrupted';
   steps: PipelineRunStepResult[];
   startedAt: string;
   completedAt: string | null;
   triggeredBy: string;
   params: Record<string, unknown> | null;
+  review?: PipelineRunReview;
+  /** Human/server principal that atomically claimed the reviewed request. */
+  startedBy?: string;
 }
 
 /** History rows exclude potentially large step output; retrieve details only for the selected run. */

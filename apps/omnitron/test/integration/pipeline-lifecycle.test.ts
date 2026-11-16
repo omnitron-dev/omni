@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { testExecution } from '../fixtures/execution.js';
 import { TEST_POSTGRES_URL } from '@omnitron-dev/testing/env';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -34,6 +35,23 @@ describe.skipIf(!postgres.ok)('durable Xec automation lifecycle', () => {
     }
     throw Error('Run did not reach a terminal state');
   };
+  it('claims one stable command through concurrent PostgreSQL transactions', async () => {
+    const witness = join(dir, 'deduplicated.txt');
+    const def = await service.createPipeline({ name: 'stable-command', steps: [{ name: 'effect', kind: 'xec', cwd: dir,
+      run: "import fs from 'node:fs'; fs.appendFileSync(String(params.witness), 'once\\n');" }] });
+    const runId = randomUUID();
+    const results = await Promise.all(Array.from({ length: 12 }, () =>
+      service.executePipeline(def.id, { witness }, 'reviewer', def.revision, runId)));
+    expect(results.every(run => run.id === runId)).toBe(true);
+    expect((await terminal(runId)).status).toBe('success');
+    expect(await readFile(witness, 'utf8')).toBe('once\n');
+    expect(await service.listRuns(def.id)).toHaveLength(1);
+    const other = new PipelineService(own.db, logger, testExecution);
+    await other.initialize();
+    expect((await other.executePipeline(def.id, { witness }, 'reviewer', def.revision, runId)).status).toBe('success');
+    expect(await readFile(witness, 'utf8')).toBe('once\n');
+    await other.dispose();
+  });
   it('journals a real TypeScript script and redacts parameters from persisted output', async () => {
     const def = await service.createPipeline({
       name: 'inspect',

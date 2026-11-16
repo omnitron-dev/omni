@@ -5,6 +5,7 @@ import { assertReleaseLoaderEnvironment } from '../release/target-runtime.js';
 export const PIPELINE_LIMITS = {
   steps: 32,
   activeRuns: 8,
+  projectRuns: 2,
   concurrency: 4,
   sourceBytes: 128 * 1024,
   outputBytes: 32 * 1024,

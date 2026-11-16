@@ -5,6 +5,8 @@
  */
 
 import { Service, Public } from '@omnitron-dev/titan/decorators';
+import { validateRunId } from './pipeline-admission.js';
+import type { PreparePipelineRun, StartPipelineRun } from '../shared/dto/pipelines.js';
 import { ADMIN_ROLES } from '../shared/roles.js';
 import { daemonPrincipal } from './daemon-principal.js';
 import type { AuthService } from './auth.service.js';
@@ -61,15 +63,24 @@ export class PipelineRpcService implements IOmnitronPipelinesService {
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
-  async executePipeline(data: {
-    id: string;
-    expectedRevision: string;
-    params?: Record<string, unknown>;
-  }): Promise<PipelineRun> {
-    const actor = await this.authorize('run.requested', data.id);
+  async prepareRun(data: PreparePipelineRun): Promise<PipelineRun> {
+    const actor = await this.authorize('prepare.requested', data.runId);
+    return this.pipelines.prepareRun(data, actor);
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async startRun(data: StartPipelineRun): Promise<PipelineRun> {
+    const actor = await this.authorize('start.requested', data.runId);
+    return this.pipelines.startRun(data, actor);
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async executePipeline(data: PreparePipelineRun): Promise<PipelineRun> {
+    const actor = await this.authorize('run.requested', data.runId);
     if (!/^[a-f0-9]{64}$/.test(data.expectedRevision ?? ''))
       throw new Error('Review the current definition before running it');
-    return this.pipelines.executePipeline(data.id, data.params, actor, data.expectedRevision);
+    validateRunId(data.runId);
+    return this.pipelines.executePipeline(data.id, data.params, actor, data.expectedRevision, data.runId);
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })

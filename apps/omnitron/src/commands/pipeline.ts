@@ -4,6 +4,7 @@
  * omnitron pipeline status <runId> — Check run status
  */
 
+import { randomUUID } from 'node:crypto';
 import { log } from '@xec-sh/kit';
 import { readFile } from 'node:fs/promises';
 import { createDaemonClient } from '../daemon/daemon-client.js';
@@ -72,7 +73,8 @@ export async function pipelineListCommand(): Promise<void> {
   }
 }
 
-export async function pipelineRunCommand(id: string, options: { paramsFile?: string } = {}): Promise<void> {
+export async function pipelineRunCommand(id: string, options: { paramsFile?: string; runId?: string; prepare?: boolean } = {}): Promise<void> {
+  const runId = options.runId ?? randomUUID();
   try {
     const params = options.paramsFile ? JSON.parse(await readFile(options.paramsFile, 'utf8')) : undefined;
     const run = await withPipelines(async (svc) => {
@@ -81,15 +83,19 @@ export async function pipelineRunCommand(id: string, options: { paramsFile?: str
       const matches = byId ? [byId] : pipelines.filter((pipeline) => pipeline.name === id);
       if (matches.length !== 1)
         throw new Error(matches.length ? `Pipeline name '${id}' is ambiguous; use its id` : `No pipeline '${id}'`);
-      return svc.executePipeline({
+      const request = {
+        runId,
         id: matches[0]!.id,
         expectedRevision: matches[0]!.revision,
         ...(params !== undefined ? { params } : {}),
-      });
+      };
+      const prepared = await svc.prepareRun(request);
+      return options.prepare ? prepared : svc.startRun({ runId, expectedDigest: prepared.review!.digest, params });
     });
-    if (!emitJson(run)) log.success(`Pipeline run started: ${run.id} (status: ${run.status})`);
+    if (['failed', 'interrupted', 'cancelled'].includes(run.status)) process.exitCode = 1;
+    if (!emitJson(run)) log.success(`Pipeline run ${run.id}: ${run.status}${run.review ? ` · review ${run.review.digest}` : ''}`);
   } catch (err) {
-    emitError(`Failed: ${(err as Error).message}`);
+    emitError(`Run ${runId}: ${(err as Error).message}. Inspect pipeline status ${runId}; retain this ID when retrying.`);
     process.exitCode = 1;
   }
 }
@@ -155,6 +161,19 @@ export async function pipelineCancelCommand(runId: string): Promise<void> {
     if (!emitJson({ runId, ...result })) log.success(`Run ${runId} is no longer executing`);
   } catch (error) {
     emitError(`Failed: ${(error as Error).message}`);
+    process.exitCode = 1;
+  }
+}
+
+/** Start only the exact prepared request. Duplicate delivery returns its receipt. */
+export async function pipelineStartCommand(runId: string, options: { expectedDigest: string; paramsFile?: string }): Promise<void> {
+  try {
+    const params = options.paramsFile ? JSON.parse(await readFile(options.paramsFile, 'utf8')) : undefined;
+    const run = await withPipelines(svc => svc.startRun({ runId, expectedDigest: options.expectedDigest, params }));
+    if (!emitJson(run)) log.info(`Run ${run.id}: ${run.status}`);
+    if (['failed', 'interrupted', 'cancelled'].includes(run.status)) process.exitCode = 1;
+  } catch (error) {
+    emitError(`Run ${runId}: ${(error as Error).message}. Inspect its receipt before retrying.`);
     process.exitCode = 1;
   }
 }

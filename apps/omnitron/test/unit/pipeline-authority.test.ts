@@ -12,6 +12,8 @@ function fixture() {
   const pipelines = {
     updatePipeline: vi.fn(async () => ({ id: 'pipeline' })),
     executePipeline: vi.fn(async () => ({ id: 'run' })),
+    prepareRun: vi.fn(async () => ({ id: 'run' })),
+    startRun: vi.fn(async () => ({ id: 'run' })),
     cancelRun: vi.fn(async () => {}),
     listRuns: vi.fn(async () => []),
   };
@@ -19,7 +21,7 @@ function fixture() {
   const audit = { record: vi.fn(async () => {}) };
   return { pipelines, auth, audit, service: new PipelineRpcService(pipelines as never, auth as never, audit) };
 }
-const request = { id: 'pipeline', expectedRevision: 'a'.repeat(64) };
+const request = { runId: 'ce9658f5-6225-48b5-a916-b7bb2a01ad70', id: 'pipeline', expectedRevision: 'a'.repeat(64) };
 describe('automation authority at the execution boundary', () => {
   it.each(['viewer', 'operator'])('rejects %s even when called without transport middleware', async (role) => {
     const f = fixture();
@@ -35,15 +37,28 @@ describe('automation authority at the execution boundary', () => {
       expect(f.pipelines.executePipeline).not.toHaveBeenCalled();
     }
   );
+  it.each(['prepareRun', 'startRun'] as const)('revalidates identity and records intent for %s', async method => {
+    const f = fixture();
+    const invoke = () => method === 'prepareRun'
+      ? f.service.prepareRun(request)
+      : f.service.startRun({ runId: request.runId, expectedDigest: 'b'.repeat(64) });
+    await expect(runWithAuth(actor('viewer'), invoke)).rejects.toThrow();
+    expect(f.pipelines[method]).not.toHaveBeenCalled();
+    f.audit.record.mockRejectedValueOnce(Error('audit unavailable'));
+    await expect(runWithAuth(actor(), invoke)).rejects.toThrow('audit unavailable');
+    expect(f.pipelines[method]).not.toHaveBeenCalled();
+    await runWithAuth(actor(), invoke);
+    expect(f.pipelines[method]).toHaveBeenCalledWith(expect.objectContaining({ runId: request.runId }), 'alice');
+  });
   it('requires an audit write before execution and uses server identity', async () => {
     const f = fixture();
     f.audit.record.mockRejectedValueOnce(Error('audit unavailable'));
     await expect(runWithAuth(actor(), () => f.service.executePipeline(request))).rejects.toThrow('audit unavailable');
     expect(f.pipelines.executePipeline).not.toHaveBeenCalled();
     await runWithAuth(actor(), () => f.service.executePipeline(request));
-    expect(f.pipelines.executePipeline).toHaveBeenCalledWith('pipeline', undefined, 'alice', request.expectedRevision);
+    expect(f.pipelines.executePipeline).toHaveBeenCalledWith('pipeline', undefined, 'alice', request.expectedRevision, request.runId);
     expect(f.audit.record).toHaveBeenLastCalledWith(
-      { action: 'pipeline.run.requested', resourceType: 'pipeline', resourceId: 'pipeline' },
+      { action: 'pipeline.run.requested', resourceType: 'pipeline', resourceId: request.runId },
       true
     );
   });

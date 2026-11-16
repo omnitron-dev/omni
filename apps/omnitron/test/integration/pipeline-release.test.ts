@@ -4,7 +4,13 @@ import { afterEach, expect, it, vi } from 'vitest';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { Netron, type RemotePeer } from '@omnitron-dev/titan/netron';
+import { AuthenticationManager } from '@omnitron-dev/titan/netron/auth';
+import { createNullLogger } from '@omnitron-dev/titan/module/logger';
+import { PipelineRpcService } from '../../src/services/pipeline.rpc-service.js';
+import { createAuthContextWrapper } from '../../src/services/auth-context.js';
+import type { IOmnitronPipelinesService } from '../../src/shared/dto/services.js';
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { isDeepStrictEqual } from 'node:util';
@@ -43,7 +49,7 @@ import fs from 'node:fs';
 fs.appendFileSync(process.env.WITNESS, JSON.stringify({ pid: process.pid, executable: process.execPath, entry: import.meta.url,
   args: process.argv.slice(2), options: process.env.NODE_OPTIONS, search: process.env.NODE_PATH }) + '\\n');
 console.log('release completed');
-`) {
+`, projectName = 'research') {
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'pipeline-release-')));
   const children: ChildProcess[] = [];
   let pipelines: PipelineService | undefined, db: Kysely<OmnitronDatabase> | undefined, state: DaemonStateStore | undefined;
@@ -111,7 +117,7 @@ console.log('release completed');
     requiredFiles: { publication: ['dist/publish.mjs'] },
   }))[0]!);
   state = new DaemonStateStore(logger as never, path.join(root, 'state.sqlite'));
-  const scope = { project: 'research', stack: 'publication' }, registered = { name: scope.project, path: repo, registeredAt: '2026-01-01T00:00:00Z' };
+  const scope = { project: projectName, stack: 'publication' }, registered = { name: scope.project, path: repo, registeredAt: '2026-01-01T00:00:00Z' };
   const selection = new LocalReleaseSelection(state, scope, registered.registeredAt);
   selection.select(0, { id: release.id, manifestSha256: release.manifestSha256 });
   const getRuntime = vi.fn(async () => structuredClone(owner));
@@ -121,7 +127,7 @@ console.log('release completed');
     nodeStackStop: { assertMutable() {} }, orchestrator: { getExecutionOwnerRuntime: getRuntime }, releaseStore: async () => store });
   const raw = new Database(path.join(root, 'pipelines.sqlite'));
   raw.exec(`CREATE TABLE pipelines(id TEXT PRIMARY KEY,name TEXT UNIQUE NOT NULL,description TEXT,steps TEXT NOT NULL,triggers TEXT NOT NULL,createdAt TEXT NOT NULL,updatedAt TEXT NOT NULL);
-    CREATE TABLE pipeline_runs(id TEXT PRIMARY KEY,pipelineId TEXT NOT NULL,status TEXT NOT NULL,steps TEXT NOT NULL,startedAt TEXT NOT NULL,completedAt TEXT,triggeredBy TEXT NOT NULL,params TEXT);`);
+    CREATE TABLE pipeline_runs(id TEXT PRIMARY KEY,pipelineId TEXT NOT NULL,status TEXT NOT NULL,steps TEXT NOT NULL,startedAt TEXT NOT NULL,completedAt TEXT,triggeredBy TEXT NOT NULL,params TEXT,admission TEXT);`);
   db = new Kysely<OmnitronDatabase>({ dialect: new SqliteDialect({ database: withDateBinding(raw) }) });
   pipelines = new PipelineService(db, logger as never, testExecution);
   const gate = vi.fn();
@@ -179,7 +185,7 @@ it('executes one registered definition through Xec under two owner roots without
 });
 
 it.each(['artifact', 'entry', 'payload', 'node', 'options', 'symlink', 'unprepared', 'selection'])(
-  'refuses %s drift before creating a run or spawning the release child', async kind => {
+  'records rejection of %s drift without spawning the release child', async kind => {
     const f = await fixture();
     if (f.step.kind !== 'release') throw Error('fixture');
     if (kind === 'artifact') f.step.target.artifact = { ...f.step.target.artifact, artifactSha256: 'f'.repeat(64) };
@@ -192,7 +198,7 @@ it.each(['artifact', 'entry', 'payload', 'node', 'options', 'symlink', 'unprepar
     if (kind === 'selection') f.selection.select(1, null);
     const pipeline = await f.pipelines.createPipeline(f.definition);
     await expect(f.pipelines.executePipeline(pipeline.id, {}, 'reviewed', pipeline.revision)).rejects.toThrow();
-    expect(await f.pipelines.listRuns(pipeline.id)).toEqual([]);
+    expect(await f.pipelines.listRuns(pipeline.id)).toMatchObject([{ status: 'failed' }]);
     await f.noEffects();
   });
 
@@ -386,7 +392,7 @@ it.each(['shell', 'xec'] as const)('awaits fresh lifecycle admission before ordi
     : "import fs from 'node:fs'; fs.writeFileSync(process.env.WITNESS, 'effect');" }];
   let observations = 0;
   f.gate.mockImplementation(async () => {
-    if (++observations < 3) return;
+    if (++observations < 4) return;
     await new Promise(resolve => setImmediate(resolve));
     throw Error('Owner grant was replaced after admission');
   });
@@ -394,7 +400,7 @@ it.each(['shell', 'xec'] as const)('awaits fresh lifecycle admission before ordi
   const run = await f.terminal((await f.pipelines.executePipeline(pipeline.id, {}, 'reviewed', pipeline.revision)).id);
   expect(run.status).toBe('failed');
   expect(run.steps[0]!.error).toContain('Owner grant was replaced');
-  expect(observations).toBe(3);
+  expect(observations).toBe(4);
   await f.noEffects();
 });
 
@@ -416,5 +422,204 @@ it('does not route a release step over SSH, accept shell source, or relax review
   await expect(f.pipelines.createPipeline({ ...f.definition, steps: [{ ...f.step, env: { LD_PRELOAD: 'injected' } }] })).rejects.toThrow('LD_PRELOAD');
   const pipeline = await f.pipelines.createPipeline(f.definition);
   await expect(f.pipelines.executePipeline(pipeline.id, {}, 'reviewed', 'e'.repeat(64))).rejects.toThrow('changed after review');
+  await f.noEffects();
+});
+
+
+it('recovers two independent projects through the same Titan/Netron/Xec path without repeating a lost acknowledgement', async () => {
+  const a = await fixture(undefined, 'project-a'), b = await fixture(undefined, 'project-b');
+  const resolver = { resolvePipelineRelease: (target: Parameters<ProjectService['resolvePipelineRelease']>[0],
+    options: Parameters<ProjectService['resolvePipelineRelease']>[1]) =>
+    (target.project === 'project-a' ? a.projects : b.projects).resolvePipelineRelease(target, options) };
+  const configure = (service: PipelineService) => service.configure({ getNode: () => null,
+    nodeToSshTarget: async () => { throw Error('No remote host'); } }, undefined, { projects: resolver, assertLifecycle() {} });
+  configure(a.pipelines);
+  let service = a.pipelines;
+  const auth = { validateSession: async () => ({ id: 'reviewer', role: 'admin' }) };
+  const audit = { record: async () => {} };
+  const log = createNullLogger();
+  let loseReplyFor = '', discarded = false;
+  let caller: Netron;
+  const server = new Netron(log);
+  cleanup.push(() => server.stop());
+  server.configureAuth(new AuthenticationManager(log, {
+    authenticate: credentials => {
+      if (credentials.username !== 'reviewer' || credentials.password !== 'fixture') throw Error('Invalid fixture identity');
+      return { userId: 'reviewer', roles: ['admin'], permissions: [], metadata: { sessionId: 'fixture-session' } };
+    },
+  }));
+  const authContext = createAuthContextWrapper();
+  server.registerTransportServer('tcp', { name: 'tcp', options: { host: '127.0.0.1', port: 0,
+    invocationWrapper: async (metadata: Map<string, unknown>, fn: () => Promise<unknown>) => {
+      const result = await authContext(metadata, fn);
+      if (loseReplyFor && result && typeof result === 'object' && 'id' in result && result.id === loseReplyFor &&
+        'status' in result && result.status === 'running') {
+        // Actual receiver, sealed artifact and Xec child complete first. Drop the
+        // real TCP connection before its acknowledgement reaches the caller.
+        expect((await a.terminal(loseReplyFor)).status).toBe('success');
+        discarded = true; loseReplyFor = ''; await caller.stop();
+      }
+      return result;
+    },
+  } });
+  await server.start();
+  await server.peer.exposeService(new PipelineRpcService(service, auth as never, audit));
+  const connect = async () => {
+    caller = new Netron(log);
+    // Capture this instance, not the later restarted client, for cleanup.
+    const client = caller; cleanup.push(() => client.stop());
+    await client.start();
+    const peer = await client.connect(`tcp://127.0.0.1:${server.transportServers.get('tcp')!.port}`) as RemotePeer;
+    await peer.runTask('authenticate', { username: 'reviewer', password: 'fixture' });
+    return peer.queryInterface<IOmnitronPipelinesService>('OmnitronPipelines');
+  };
+  let rpc = await connect();
+  const pa = await rpc.createPipeline({ ...a.definition, name: 'delivery-a' });
+  const pb = await rpc.createPipeline({ ...b.definition, name: 'delivery-b' });
+  const requestA = { id: pa.id, runId: randomUUID(), expectedRevision: pa.revision, params: { token: 'private-fixture-input' } };
+  const prepared = await rpc.prepareRun(requestA);
+  expect(prepared.status).toBe('awaiting-review');
+  expect(prepared.review?.projects).toEqual(['project-a']);
+  expect(service.activeRunCount()).toBe(0);
+  expect(JSON.stringify(prepared)).not.toContain('private-fixture-input');
+  expect(JSON.stringify(prepared)).not.toContain('parameterKey');
+  const runningB = await rpc.executePipeline({ id: pb.id, runId: randomUUID(), expectedRevision: pb.revision });
+  expect((await a.terminal(runningB.id)).status).toBe('success');
+  expect(await b.witness()).toHaveLength(1);
+  await a.noEffects();
+  loseReplyFor = prepared.id;
+  const start = { runId: prepared.id, expectedDigest: prepared.review!.digest, params: requestA.params };
+  await expect(rpc.startRun(start)).rejects.toThrow();
+  expect(discarded).toBe(true);
+  expect(await a.witness()).toHaveLength(1);
+
+  // Recreate the receiver with a new connection to its durable database and a
+  // new caller. No in-memory run, identity map or successful RPC reply survives.
+  await service.dispose();
+  await server.peer.unexposeService('OmnitronPipelines');
+  const restoredDb = new Kysely<OmnitronDatabase>({ dialect: new SqliteDialect({
+    database: withDateBinding(new Database(path.join(a.root, 'pipelines.sqlite'))),
+  }) });
+  cleanup.push(() => restoredDb.destroy());
+  service = new PipelineService(restoredDb, log, testExecution); cleanup.push(() => service.dispose());
+  configure(service); await service.initialize();
+  await server.peer.exposeService(new PipelineRpcService(service, auth as never, audit));
+  rpc = await connect();
+  const recovered = await rpc.startRun(start);
+  expect(recovered.status).toBe('success');
+  expect(recovered.startedBy).toBe('reviewer');
+  expect(recovered.steps[0]!.executions).toHaveLength(1);
+  expect(await a.witness()).toHaveLength(1);
+  expect((await rpc.prepareRun(requestA)).id).toBe(prepared.id);
+  await expect(rpc.prepareRun({ ...requestA, id: pb.id })).rejects.toThrow(/another pipeline command/);
+  await expect(rpc.startRun({ ...start, params: { token: 'changed' } })).rejects.toThrow(/Parameters differ/);
+});
+
+it('retains an uncertain real effect across restart and refuses redelivery', async () => {
+  const f = await fixture();
+  const pipeline = await f.pipelines.createPipeline(f.definition);
+  const request = { id: pipeline.id, runId: randomUUID(), expectedRevision: pipeline.revision };
+  const prepared = await f.pipelines.prepareRun(request, 'reviewer');
+  const execute = testExecution.execute.bind(testExecution);
+  vi.spyOn(testExecution, 'execute').mockImplementationOnce(async command => {
+    await execute(command);
+    throw Error('Injected loss after child effect, before completion receipt');
+  });
+  const start = { runId: prepared.id, expectedDigest: prepared.review!.digest };
+  const result = await f.terminal((await f.pipelines.startRun(start, 'reviewer')).id);
+  expect(result.steps[0]!.executions?.[0]?.state).toBe('unconfirmed');
+  expect(await f.witness()).toHaveLength(1);
+  await f.pipelines.dispose();
+  const recovered = new PipelineService(f.db, createNullLogger(), testExecution);
+  cleanup.push(() => recovered.dispose()); await recovered.initialize();
+  const receipt = await recovered.startRun(start, 'reviewer');
+  expect(receipt.steps[0]!.executions?.[0]?.state).toBe('unconfirmed');
+  expect(await f.witness()).toHaveLength(1);
+});
+
+it('keeps review durable, parameter-bound and cancellable without occupying an executor', async () => {
+  const f = await fixture();
+  const pipeline = await f.pipelines.createPipeline(f.definition);
+  const request = { runId: randomUUID(), id: pipeline.id, expectedRevision: pipeline.revision,
+    params: { beta: 2, alpha: 'secret-fixture-value' } };
+  const prepared = await f.pipelines.prepareRun(request, 'reviewer');
+  const reordered = await f.pipelines.prepareRun({ ...request, params: { alpha: 'secret-fixture-value', beta: 2 } }, 'reviewer');
+  expect(reordered.review).toEqual(prepared.review);
+  const stored = await f.db.selectFrom('pipeline_runs').select('admission').where('id', '=', prepared.id).executeTakeFirstOrThrow();
+  expect(JSON.stringify(stored)).not.toContain('secret-fixture-value');
+  await expect(f.pipelines.deletePipeline(pipeline.id)).rejects.toThrow('outstanding requests');
+  await f.pipelines.dispose();
+  const recovered = new PipelineService(f.db, createNullLogger(), testExecution); cleanup.push(() => recovered.dispose());
+  await recovered.initialize();
+  expect((await recovered.getRunStatus(prepared.id))?.status).toBe('awaiting-review');
+  expect(recovered.activeRunCount()).toBe(0);
+  await recovered.cancelRun(prepared.id);
+  expect((await recovered.startRun({ runId: prepared.id, expectedDigest: prepared.review!.digest, params: request.params }, 'reviewer')).status).toBe('cancelled');
+  await f.noEffects();
+});
+
+it('admits one execution under concurrent delivery and rejects changed approval bytes', async () => {
+  const f = await fixture();
+  const pipeline = await f.pipelines.createPipeline(f.definition);
+  const prepared = await f.pipelines.prepareRun({ runId: randomUUID(), id: pipeline.id, expectedRevision: pipeline.revision }, 'reviewer');
+  const start = { runId: prepared.id, expectedDigest: prepared.review!.digest };
+  await expect(f.pipelines.startRun({ ...start, expectedDigest: '0'.repeat(64) }, 'reviewer')).rejects.toThrow('exact pipeline admission');
+  const results = await Promise.all(Array.from({ length: 16 }, () => f.pipelines.startRun(start, 'reviewer')));
+  expect(results.every(result => result.id === prepared.id)).toBe(true);
+  expect((await f.terminal(prepared.id)).status).toBe('success');
+  expect(await f.witness()).toHaveLength(1);
+});
+
+it('reserves capacity per registered project and leaves another project free to finish', async () => {
+  const a = await fixture(`import fs from 'node:fs';
+import { setTimeout as delay } from 'node:timers/promises';
+fs.appendFileSync(process.env.WITNESS, '{}\\n');
+while (!fs.existsSync(process.env.GATE)) await delay(25);
+`, 'capacity-a');
+  const b = await fixture(undefined, 'capacity-b');
+  const gate = path.join(a.root, 'continue'); Object.assign(a.app.env, { GATE: gate });
+  a.pipelines.configure({ getNode: () => null, nodeToSshTarget: async () => { throw Error('fixture'); } }, undefined, {
+    projects: { resolvePipelineRelease: (target, options) =>
+      (target.project === 'capacity-a' ? a.projects : b.projects).resolvePipelineRelease(target, options) }, assertLifecycle() {},
+  });
+  const pa = await a.pipelines.createPipeline({ ...a.definition, name: 'capacity-a' });
+  const pb = await a.pipelines.createPipeline({ ...b.definition, name: 'capacity-b' });
+  try {
+    const first = await a.pipelines.executePipeline(pa.id, {}, 'reviewer', pa.revision);
+    const second = await a.pipelines.executePipeline(pa.id, {}, 'reviewer', pa.revision);
+    const pending = await a.pipelines.prepareRun({ runId: randomUUID(), id: pa.id, expectedRevision: pa.revision }, 'reviewer');
+    await expect(a.pipelines.startRun({ runId: pending.id, expectedDigest: pending.review!.digest }, 'reviewer')).rejects.toThrow('capacity');
+    expect((await a.pipelines.getRunStatus(pending.id))?.status).toBe('awaiting-review');
+    const independent = await a.pipelines.executePipeline(pb.id, {}, 'reviewer', pb.revision);
+    expect((await a.terminal(independent.id)).status).toBe('success');
+    expect((await a.pipelines.getRunStatus(first.id))?.status).toBe('running');
+    expect((await a.pipelines.getRunStatus(second.id))?.status).toBe('running');
+    await a.pipelines.cancelRun(pending.id);
+    await fs.writeFile(gate, 'continue');
+    expect((await a.terminal(first.id)).status).toBe('success');
+    expect((await a.terminal(second.id)).status).toBe('success');
+    expect(await a.witness()).toHaveLength(2);
+    expect(await b.witness()).toHaveLength(1);
+  } finally { await fs.writeFile(gate, 'continue'); }
+});
+
+
+it('finishes cancellation during admission instead of leaving the request cancelling', async () => {
+  const f = await fixture();
+  const pipeline = await f.pipelines.createPipeline(f.definition);
+  const prepared = await f.pipelines.prepareRun({ runId: randomUUID(), id: pipeline.id, expectedRevision: pipeline.revision }, 'reviewer');
+  let enter!: () => void, release!: () => void;
+  const entered = new Promise<void>(resolve => { enter = resolve; });
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  f.gate.mockImplementationOnce(async () => { enter(); await gate; });
+  const starting = f.pipelines.startRun({ runId: prepared.id, expectedDigest: prepared.review!.digest }, 'reviewer');
+  const rejected = expect(starting).rejects.toThrow('Cancelled');
+  await entered;
+  const cancelling = f.pipelines.cancelRun(prepared.id);
+  await new Promise(resolve => setImmediate(resolve));
+  release();
+  await rejected; await cancelling;
+  expect((await f.pipelines.getRunStatus(prepared.id))?.status).toBe('cancelled');
+  expect(f.pipelines.activeRunCount()).toBe(0);
   await f.noEffects();
 });

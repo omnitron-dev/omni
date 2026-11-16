@@ -1292,9 +1292,19 @@ pipeline
   .command('run <id>')
   .description('Execute a pipeline')
   .option('--params-file <file>', 'JSON parameters, supplied as data to the executor')
+  .option('--run-id <uuid>', 'Stable command identity; reuse after a lost reply')
+  .option('--prepare', 'Persist the request for review without executing it')
   .structuredAction(async (id, options) => {
     const { pipelineRunCommand } = await import('../commands/pipeline.js');
     await pipelineRunCommand(id, options);
+  });
+
+pipeline.command('start <runId>').description('Start the exact reviewed request, or recover its existing receipt')
+  .requiredOption('--expected-digest <sha256>', 'Digest from the prepared run')
+  .option('--params-file <file>', 'The same parameters supplied when preparing the run')
+  .structuredAction(async (runId, options) => {
+    const { pipelineStartCommand } = await import('../commands/pipeline.js');
+    await pipelineStartCommand(runId, options);
   });
 
 pipeline

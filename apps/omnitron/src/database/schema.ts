@@ -227,6 +227,8 @@ export interface PipelineRunsTable {
   completedAt: Timestamp | null;
   triggeredBy: string;
   params: JsonB | null;
+  /** Private immutable admission, including a keyed parameter commitment. Never returned over RPC. */
+  admission: ColumnType<Record<string, unknown> | null, string | undefined, string>;
 }
 
 // =============================================================================

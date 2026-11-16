@@ -131,7 +131,7 @@ import type { AlertRule, AlertEvent, AlertSummary, ActiveAlert, CreateAlertRuleI
 import type { DeployResult, DeploymentRecord } from './deploy.js';
 import type { ContainerState, InfrastructureState } from '../../infrastructure/types.js';
 import type { FleetNode, FleetSummary, NodeRegistration, NodeRole } from './fleet.js';
-import type { Pipeline, PipelineDef, PipelineRun, PipelineRunSummary } from './pipelines.js';
+import type { Pipeline, PipelineDef, PipelineRun, PipelineRunSummary, PreparePipelineRun, StartPipelineRun } from './pipelines.js';
 import type { Trace, TraceSpan, TraceFilter, ServiceMapEntry } from './traces.js';
 import type { SystemSnapshot } from './system-info.js';
 import type { BackupInfo } from './backups.js';
@@ -158,7 +158,7 @@ export type { K8sPod, K8sDeployment, K8sService } from './kubernetes.js';
 export type { HealthCheckResult, HealthReport, PlatformHealthReport } from './health.js';
 export type { OmnitronDiscoveredTarget, DiscoveryScanResult } from './discovery.js';
 
-export type { Pipeline, PipelineDef, PipelineStep, PipelineReleaseTarget, PipelineReleaseExecution, PipelineRun, PipelineRunStepResult, PipelineRunSummary } from './pipelines.js';
+export type { PreparePipelineRun, StartPipelineRun, PipelineRunReview, Pipeline, PipelineDef, PipelineStep, PipelineReleaseTarget, PipelineReleaseExecution, PipelineRun, PipelineRunStepResult, PipelineRunSummary } from './pipelines.js';
 export type { Trace, TraceSpan, TraceFilter, ServiceMapEntry } from './traces.js';
 export { readSystemSnapshot, type SystemSnapshot } from './system-info.js';
 
@@ -570,7 +570,9 @@ export interface IOmnitronPipelinesService {
   getPipeline(data: { id: string }): Promise<Pipeline | null>;
   listPipelines(): Promise<Pipeline[]>;
   deletePipeline(data: { id: string }): Promise<{ success: boolean }>;
-  executePipeline(data: { id: string; expectedRevision: string; params?: Record<string, unknown> }): Promise<PipelineRun>;
+  prepareRun(data: PreparePipelineRun): Promise<PipelineRun>;
+  startRun(data: StartPipelineRun): Promise<PipelineRun>;
+  executePipeline(data: PreparePipelineRun): Promise<PipelineRun>;
   cancelRun(data: { runId: string }): Promise<{ success: boolean }>;
   getRunStatus(data: { runId: string }): Promise<PipelineRun | null>;
   listRuns(data?: { pipelineId?: string; limit?: number }): Promise<PipelineRunSummary[]>;

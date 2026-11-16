@@ -263,7 +263,37 @@ source aliases or permanent duplicate engines.
 - Connector coverage and maintenance cost. A correct handful of adapters is
   not equivalent to a mature integration catalog.
 
-This review completes the source-to-design mapping and first implementation
-gates. The runtime, fault-injection results and comparative benchmarks are
-still outstanding. Completion is established by those results, not document
-length or a claim that no further improvement can exist.
+## First execution increment — 16 November 2026
+
+The existing pipeline receiver now admits one stable command through
+`prepareRun` → `startRun` → `getRunStatus`. CLI, Console and administrative MCP
+use the same authenticated Titan service over Netron. The execution graph and
+command lifetime remain in Xec; there is no additional scheduler.
+
+The prepared row contains the definition revision, a private keyed parameter
+commitment and the public review digest. The row itself is the pending dispatch
+record: storing intent and making it eligible for explicit admission is one SQL
+insertion. A conditional SQL update claims it before command preparation or
+effects. Re-delivery reads that row; it cannot claim an already started run.
+Waiting for review consumes no executor capacity. Capacity is bounded per
+registered release project as well as per daemon; unscoped scripts have a shared
+budget. A rejected capacity request stays reviewable.
+
+The native reference test uses two independent sealed project artifacts,
+ordinary `ProjectService.resolvePipelineRelease`, Xec child execution, real
+SQLite persistence and the actual Titan service over Netron TCP. Project B
+finishes while A awaits review. After A's effect completes, the test drops its
+TCP acknowledgement, recreates the caller and service with another database
+connection, and recovers one completed receipt with one observed execution.
+An injected failure after a real child effect but before recording completion
+remains `unconfirmed` across service reconstruction. Concurrent delivery and
+per-project capacity have separate acceptance checks.
+
+This is the first bounded execution increment, not completion of all F0/F1
+gates. It does not yet provide a portable serializable graph reducer, mid-graph
+continuations, a leased distributed outbox dispatcher, remote deployment
+reconciliation or a restricted agent sandbox. It executes installed compiled
+entries; it does not claim the fixture deployed a stack to an external server.
+Source bodies are not archived by these receipts. Removing terminal history
+ends command deduplication. These boundaries must be preserved when the next
+increment adds receiver-specific reconciliation and distributed scheduling.

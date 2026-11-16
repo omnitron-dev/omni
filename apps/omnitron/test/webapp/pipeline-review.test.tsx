@@ -4,7 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import '@testing-library/jest-dom/vitest';
 
-const { definition, execute } = vi.hoisted(() => ({
+const { definition, prepare, execute } = vi.hoisted(() => ({
   definition: {
     id: 'definition',
     name: 'inspect',
@@ -25,13 +25,16 @@ const { definition, execute } = vi.hoisted(() => ({
       },
     ],
   },
-  execute: vi.fn(async () => ({ id: 'run-id' })),
+  prepare: vi.fn(async ({ runId }: { runId: string }) => ({ id: runId, status: 'awaiting-review',
+    review: { protocol: 1, digest: 'b'.repeat(64), projects: [], parameterNames: [] } })),
+  execute: vi.fn(async ({ runId }: { runId: string }) => ({ id: runId, status: 'running' })),
 }));
 vi.mock('src/netron/client', () => ({
   pipelines: {
     listPipelines: async () => [definition],
     listRuns: async () => [],
-    executePipeline: execute,
+    prepareRun: prepare,
+    startRun: execute,
     getRunStatus: async () => null,
   },
   nodes: { listNodes: async () => [{ id: 'node-id', name: 'edge-a' }] },
@@ -73,9 +76,12 @@ describe('automation review', () => {
     expect(settings).toHaveTextContent('"retries": 2');
     expect(settings).toHaveTextContent('params.enabled');
     expect(settings).toHaveTextContent('"MODE": "inspect"');
-    fireEvent.click(screen.getByRole('button', { name: 'Run automation' }));
-    await waitFor(() =>
-      expect(execute).toHaveBeenCalledWith({ id: definition.id, expectedRevision: definition.revision, params: {} })
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Prepare request' }));
+    await waitFor(() => expect(prepare).toHaveBeenCalledWith({ runId: expect.any(String),
+      id: definition.id, expectedRevision: definition.revision, params: {} }));
+    expect(execute).not.toHaveBeenCalled();
+    const runId = prepare.mock.calls.at(-1)![0].runId;
+    fireEvent.click(await screen.findByRole('button', { name: 'Run automation' }));
+    await waitFor(() => expect(execute).toHaveBeenCalledWith({ runId, expectedDigest: 'b'.repeat(64), params: {} }));
   });
 });

@@ -144,11 +144,33 @@ A pipeline step with `kind: 'release'` binds a registered project, stack, applic
 ```sh
 omnitron pipeline save publication.json
 omnitron pipeline run <pipeline-id>
+omnitron pipeline run <pipeline-id> --prepare --run-id <uuid-v4> --json
+omnitron pipeline start <run-id> --expected-digest <review-digest>
 omnitron pipeline status <run-id> --output
 omnitron pipeline save publication.json --id <pipeline-id> --expected-revision <sha256>
 ```
 
 The public `PipelineDef` contract is exported from `@omnitron-dev/omnitron/dto/services`; `verifyInstalledRuntime` from `/runtime` supplies a verified caller's producer identity. Console's JSON editor preserves release targets and arguments. Entries must belong to the admitted closure, arguments are literal arrays, and output belongs outside the immutable installation.
+
+`prepareRun` persists the request before execution; `startRun` admits its exact
+review digest and parameters. CLI, Console and MCP use these same Titan/Netron
+methods. Retain the caller-generated run UUID before dispatch. Repeating the
+request returns its recorded outcome instead of launching another process.
+Parameters must be supplied again at start; only a private keyed commitment and
+their names are stored. An edited definition requires a new review.
+
+Waiting requests survive restart without occupying workers. Each registered
+release project can occupy two of the daemon's eight run slots; unscoped scripts
+share a separate two-slot budget. These are admission limits, not tenant isolation
+or a distributed fair scheduler. A capacity rejection leaves the same request
+available for later admission. Cancel waiting requests without starting them.
+
+If a reply is lost, inspect the same run ID or repeat `start` with the same
+digest and parameters. A durable completed receipt is recoverable across daemon
+restart. An unconfirmed effect stays unconfirmed; this does not resume arbitrary
+shell scripts or guarantee exactly-once business effects. Deduplication lasts
+while the run history is retained. Deleting a definition and its terminal history
+also removes these receipts.
 
 Admission rechecks the installed payload, release selection, registration, runtime, owner authority and environment before each Xec attempt. It does not install dependencies, prepare missing releases, provision infrastructure or select another owner. Remote release targets are not supported. Runtime loader overrides are refused; native library paths are bounded by the verified closure.
 

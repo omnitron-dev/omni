@@ -27,6 +27,7 @@ import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { settledPair } from 'src/utils/settled-pair';
 
 const colors: Record<string, 'success' | 'error' | 'info' | 'warning' | 'default'> = {
+  'awaiting-review': 'warning',
   success: 'success',
   failed: 'error',
   running: 'info',
@@ -63,7 +64,8 @@ export function PipelineRunDetail({
       <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
         <Chip size="small" label={run.status} color={colors[run.status] ?? 'default'} />
         <Typography variant="caption">
-          {formatDate(run.startedAt)} · {run.triggeredBy}
+          {formatDate(run.startedAt)} · requested by {run.triggeredBy}
+          {run.startedBy && ` · started by ${run.startedBy}`}
         </Typography>
       </Stack>
       <Typography variant="caption" sx={{ fontFamily: 'monospace', overflowWrap: 'anywhere' }}>
@@ -148,6 +150,8 @@ export default function PipelinesPage() {
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
   const [runDefinition, setRunDefinition] = useState<Pipeline | null>(null);
   const [params, setParams] = useState('{}');
+  const [requestId, setRequestId] = useState('');
+  const [preparedRun, setPreparedRun] = useState<PipelineRun | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [remove, setRemove] = useState<Pipeline | null>(null);
@@ -212,6 +216,8 @@ export default function PipelinesPage() {
               onClick={() => {
                 setRunDefinition(item);
                 setParams('{}');
+                setRequestId(crypto.randomUUID());
+                setPreparedRun(null);
                 setActionError(null);
               }}
             >
@@ -242,12 +248,12 @@ export default function PipelinesPage() {
       header: 'Status',
       render: (item) => <Chip size="small" label={item.status} color={colors[item.status] ?? 'default'} />,
     },
-    { key: 'startedAt', header: 'Started', render: (item) => formatDate(item.startedAt) },
+    { key: 'startedAt', header: 'Recorded', render: (item) => formatDate(item.startedAt) },
     {
       key: 'duration',
       header: 'Duration',
       render: (item) =>
-        formatDuration(Date.parse(item.completedAt ?? new Date().toISOString()) - Date.parse(item.startedAt)),
+        item.status === 'awaiting-review' ? '—' : formatDuration(Date.parse(item.completedAt ?? new Date().toISOString()) - Date.parse(item.startedAt)),
     },
     { key: 'triggeredBy', header: 'Actor', render: (item) => item.triggeredBy },
   ];
@@ -383,6 +389,7 @@ export default function PipelinesPage() {
             <TextField
               label="Parameters (JSON)"
               value={params}
+              disabled={pending || (Boolean(preparedRun) && preparedRun?.review?.parameterNames.length === 0)}
               onChange={(e) => setParams(e.target.value)}
               multiline
               minRows={3}
@@ -390,6 +397,13 @@ export default function PipelinesPage() {
               helperText="Values are passed as data and are not stored in run history."
               slotProps={{ input: { sx: { fontFamily: 'monospace', fontSize: 13 } } }}
             />
+            {preparedRun?.review && (
+              <Alert severity="info" variant="outlined" sx={{ overflowWrap: 'anywhere' }}>
+                Request {preparedRun.id} is saved. Review {preparedRun.review.digest}.
+                {preparedRun.review.projects.length > 0 && ` Projects: ${preparedRun.review.projects.join(', ')}.`}
+                {' '}After a lost response, inspect this request in run history. Retrying uses the same identity.
+              </Alert>
+            )}
           </Stack>
         </DialogContent>
         <DialogActions>
@@ -401,10 +415,17 @@ export default function PipelinesPage() {
             variant="contained"
             onClick={() =>
               act(async () => {
-                const result = await pipelines.executePipeline({
-                  id: runDefinition!.id,
-                  expectedRevision: runDefinition!.revision,
-                  params: JSON.parse(params),
+                if (!preparedRun) {
+                  const admitted = await pipelines.prepareRun({
+                    runId: requestId, id: runDefinition!.id,
+                    expectedRevision: runDefinition!.revision, params: JSON.parse(params),
+                  });
+                  setPreparedRun(admitted);
+                  return;
+                }
+                setSelectedRun(preparedRun.id);
+                const result = await pipelines.startRun({
+                  runId: preparedRun.id, expectedDigest: preparedRun.review!.digest, params: JSON.parse(params),
                 });
                 setSelectedRun(result.id);
                 setSection('runs');
@@ -413,7 +434,7 @@ export default function PipelinesPage() {
               })
             }
           >
-            {pending ? 'Starting…' : 'Run automation'}
+            {pending ? 'Saving…' : preparedRun ? 'Run automation' : 'Prepare request'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -444,8 +465,19 @@ export default function PipelinesPage() {
         {run ? (
           <>
             <PipelineRunDetail run={run} targetLabel={targetLabel} />
+            {run.status === 'awaiting-review' && (
+              <Can permission="OmnitronPipelines.startRun">
+                <Button sx={{ mt: 2 }} variant="contained" disabled={pending} onClick={() => act(async () => {
+                  const definition = await pipelines.getPipeline({ id: run.pipelineId });
+                  if (!definition || definition.revision !== run.review?.definitionRevision)
+                    throw new Error('Definition changed after review. Cancel this request and prepare the current definition.');
+                  setPreparedRun(run); setRequestId(run.id); setParams('{}');
+                  setRunDefinition(definition); setSelectedRun(null);
+                })}>Review request</Button>
+              </Can>
+            )}
             <Can permission="OmnitronPipelines.cancelRun">
-              {active(run) && (
+              {(active(run) || run.status === 'awaiting-review') && (
                 <Button
                   sx={{ mt: 2 }}
                   color="warning"

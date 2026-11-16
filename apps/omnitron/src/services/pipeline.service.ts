@@ -1,3 +1,4 @@
+import { admitPipeline, assertParameters, readAdmission, readPrepareRun, readStartRun, type PipelineAdmission } from './pipeline-admission.js';
 import { RecoveryMutation } from '../daemon/recovery-state.js';
 /** Durable control-plane state over Xec's execution, graph and cancellation contracts. */
 import { randomUUID, createHash } from 'node:crypto';
@@ -24,6 +25,8 @@ import type {
   PipelineRun,
   PipelineRunSummary,
   PipelineReleaseExecution,
+  PreparePipelineRun,
+  StartPipelineRun,
 } from '../shared/dto/pipelines.js';
 export type {
   PipelineDef,
@@ -35,6 +38,7 @@ export type {
 } from '../shared/dto/pipelines.js';
 
 interface ActiveRun {
+  projects: string[];
   pipelineId: string;
   abort: AbortController;
   done: Promise<void>;
@@ -220,39 +224,114 @@ export class PipelineService {
     if ([...this.activeRuns.values()].some((run) => run.pipelineId === id))
       throw new Error('Stop active runs before deleting a pipeline');
     await this.db.transaction().execute(async (trx) => {
+      const pending = await trx.selectFrom('pipeline_runs').select('id').where('pipelineId', '=', id)
+        .where('status', 'in', ['awaiting-review', ...live]).executeTakeFirst();
+      if (pending) throw new Error('Cancel outstanding requests before deleting a pipeline');
       await trx.deleteFrom('pipeline_runs').where('pipelineId', '=', id).execute();
       await trx.deleteFrom('pipelines').where('id', '=', id).execute();
     });
   }
 
+  /** Durable intent and the ready-to-start record are one database insertion.
+   * An awaiting review consumes no worker slot and survives daemon recovery. */
   @RecoveryMutation()
-  async executePipeline(
-    id: string,
-    params: Record<string, unknown> = {},
-    triggeredBy = 'system',
-    expectedRevision?: string
-  ): Promise<PipelineRun> {
+  async prepareRun(request: PreparePipelineRun, actor: string): Promise<PipelineRun> {
     await this.initialize();
     if (this.stopped) throw new Error('Pipeline executor is stopping');
-    if (this.activeRuns.size >= PIPELINE_LIMITS.activeRuns) throw new Error('Pipeline execution capacity reached');
+    request = readPrepareRun(request);
+    const params = request.params ?? {};
     validatePipelineParams(params);
-    const runId = randomUUID();
+    const existing = await this.db.selectFrom('pipeline_runs').selectAll().where('id', '=', request.runId).executeTakeFirst();
+    if (existing) return this.matchRequest(existing, request, actor);
+    await this.assertLifecycle?.();
+    const definition = await this.getPipeline(request.id);
+    if (!definition) throw new Error(`Pipeline '${request.id}' not found`);
+    if (definition.revision !== request.expectedRevision)
+      throw new Error('Pipeline changed after review. Reload and review the current definition');
+    await this.validate({ ...definition, description: definition.description ?? '' });
+    const admission = admitPipeline(request.runId, definition, params, actor);
+    const inserted = await this.db.insertInto('pipeline_runs').values({
+      id: request.runId, pipelineId: request.id, status: 'awaiting-review',
+      steps: JSON.stringify(definition.steps.map(step => ({ name: step.name, status: 'pending', duration: 0,
+        kind: step.kind ?? 'shell', nodeId: step.nodeId ?? 'local',
+        sourceHash: createHash('sha256').update(JSON.stringify(step)).digest('hex') }))),
+      startedAt: new Date(), completedAt: null, triggeredBy: actor,
+      params: JSON.stringify(Object.fromEntries(Object.keys(params).map(key => [key, '[provided]']))),
+      admission: JSON.stringify(admission),
+    }).onConflict(conflict => conflict.column('id').doNothing()).returningAll().executeTakeFirst();
+    const recorded = inserted ?? await this.db.selectFrom('pipeline_runs').selectAll().where('id', '=', request.runId).executeTakeFirstOrThrow();
+    return this.matchRequest(recorded, request, actor);
+  }
+
+  private matchRequest(row: Selectable<PipelineRunsTable>, request: PreparePipelineRun, actor: string): PipelineRun {
+    const admission = readAdmission(row.admission);
+    if (row.pipelineId !== request.id || row.triggeredBy !== actor ||
+      admission?.review.definitionRevision !== request.expectedRevision)
+      throw new Error('Run ID already belongs to another pipeline command');
+    assertParameters(admission, request.params ?? {});
+    return this.mapRun(row, admission);
+  }
+
+  /** Immediate execution uses exactly the same admission/start path as reviewed runs. */
+  async executePipeline(id: string, params: Record<string, unknown> = {}, triggeredBy = 'system',
+    expectedRevision?: string, runId: string = randomUUID()): Promise<PipelineRun> {
+    const revision = expectedRevision ?? (await this.getPipeline(id))?.revision;
+    const prepared = await this.prepareRun({ runId, id, expectedRevision: revision ?? '', params }, triggeredBy);
+    return this.startRun({ runId, expectedDigest: prepared.review!.digest, params }, triggeredBy);
+  }
+
+  @RecoveryMutation()
+  async startRun(request: StartPipelineRun, actor: string): Promise<PipelineRun> {
+    await this.initialize();
+    request = readStartRun(request);
+    const { runId } = request, params = request.params ?? {};
+    const row = await this.db.selectFrom('pipeline_runs').selectAll().where('id', '=', runId).executeTakeFirstOrThrow();
+    const admission = readAdmission(row.admission);
+    if (!admission || admission.review.digest !== request.expectedDigest)
+      throw new Error('Review the exact pipeline admission before starting it');
+    assertParameters(admission, params);
+    // Terminal and in-flight receipts are authoritative. Redelivery never creates
+    // another execution, even after a lost reply or a daemon restart.
+    if (row.status !== 'awaiting-review') return this.mapRun(row);
+    if (this.activeRuns.has(runId)) return this.mapRun(row);
+    if (this.stopped) throw new Error('Pipeline executor is stopping');
+    if (this.activeRuns.size >= PIPELINE_LIMITS.activeRuns) throw new Error('Pipeline execution capacity reached');
+    const projects = admission.review.projects.length ? admission.review.projects.map(project => `project:${project}`) : ['unscoped'];
+    for (const project of projects)
+      if ([...this.activeRuns.values()].filter(run => run.projects.includes(project)).length >= PIPELINE_LIMITS.projectRuns)
+        throw new Error(`Pipeline execution capacity reached for ${project}`);
+    // Reserve synchronously before any await. Waiting for human review never
+    // occupies capacity, and one project cannot consume all daemon slots.
     const abort = new AbortController();
     let finishAdmission!: () => void;
-    const admission = new Promise<void>((resolve) => {
+    const admitted = new Promise<void>((resolve) => {
       finishAdmission = resolve;
     });
-    const handle: ActiveRun = { pipelineId: id, abort, done: admission };
+    const handle: ActiveRun = { pipelineId: row.pipelineId, projects, abort, done: admitted };
     this.activeRuns.set(runId, handle);
     const prepared: PreparedScript[] = [];
     const commands = new Map<NonNullable<Command['onSpawn']>, ReleaseCommand | null>();
+    let claimed = false;
     try {
       await this.assertLifecycle?.();
-      const definition = await this.getPipeline(id);
-      if (!definition) throw new Error(`Pipeline '${id}' not found`);
-      if (expectedRevision !== undefined && expectedRevision !== definition.revision)
+      const definition = await this.getPipeline(row.pipelineId);
+      if (!definition) throw new Error(`Pipeline '${row.pipelineId}' not found`);
+      if (admission.review.definitionRevision !== definition.revision)
         throw new Error('Pipeline changed after review. Reload and review the current definition');
       await this.validate({ ...definition, description: definition.description ?? '' });
+      const startedAt = new Date();
+      const claim = await this.db.updateTable('pipeline_runs').set({ status: 'running', startedAt,
+        admission: JSON.stringify({ ...admission, approvedBy: actor }) })
+        .where('id', '=', runId).where('status', '=', 'awaiting-review').executeTakeFirst();
+      if (claim.numUpdatedRows !== 1n) {
+        this.activeRuns.delete(runId);
+        finishAdmission();
+        const current = await this.getRunStatus(runId);
+        if (!current) throw new Error('Pipeline request was removed before admission');
+        return current;
+      }
+      claimed = true;
+      this.logger.info({ runId, actor, projects }, 'Reviewed pipeline admitted');
       const { Pipeline: XecPipeline, prepareScript } = await import('@xec-sh/ops');
       const graph = XecPipeline.create(definition.name);
       for (const step of definition.steps) {
@@ -314,34 +393,10 @@ export class PipelineService {
       }
       abort.signal.throwIfAborted();
       await this.assertLifecycle?.();
-      const startedAt = new Date().toISOString();
-      const steps: PipelineRunStepResult[] = definition.steps.map((step) => ({
-        name: step.name,
-        status: 'pending',
-        duration: 0,
-        kind: step.kind ?? 'shell',
-        nodeId: step.nodeId ?? 'local',
-        sourceHash: createHash('sha256').update(JSON.stringify(step)).digest('hex'),
-      }));
-      const run: PipelineRun = {
-        id: runId,
-        pipelineId: id,
-        status: 'running',
-        steps,
-        startedAt,
-        completedAt: null,
-        triggeredBy,
-        params: Object.fromEntries(Object.keys(params).map((key) => [key, '[provided]'])),
-      };
-      await this.db
-        .insertInto('pipeline_runs')
-        .values({
-          ...run,
-          startedAt: new Date(startedAt),
-          steps: JSON.stringify(steps),
-          params: JSON.stringify(run.params),
-        })
-        .execute();
+      const run = this.mapRun(row);
+      run.status = 'running';
+      run.startedBy = actor;
+      run.startedAt = startedAt.toISOString();
       const secrets = [
         ...new Set([
           ...Object.values(params).filter((value): value is string => typeof value === 'string' && value.length > 0),
@@ -362,6 +417,14 @@ export class PipelineService {
     } catch (error) {
       this.activeRuns.delete(runId);
       try {
+        if (claimed) {
+          const failure = new PipelineOutput(Object.values(params).filter((value): value is string => typeof value === 'string' && value.length > 0));
+          failure.append(String(error));
+          const status = abort.signal.aborted ? 'cancelled' : 'failed';
+          const steps = this.mapRun(row).steps.map(step => ({ ...step, status, error: failure.snapshot(true) }));
+          await this.db.updateTable('pipeline_runs').set({ status, steps: JSON.stringify(steps), completedAt: new Date() })
+            .where('id', '=', runId).where('status', 'in', ['running', 'cancelling']).execute();
+        }
         await Promise.all(prepared.map((script) => script.dispose()));
       } finally {
         finishAdmission();
@@ -511,6 +574,13 @@ export class PipelineService {
     if (!handle) {
       const run = await this.getRunStatus(runId);
       if (!run) throw new Error(`Run '${runId}' not found`);
+      if (run.status === 'awaiting-review') {
+        const cancelled = await this.db.updateTable('pipeline_runs').set({ status: 'cancelled', completedAt: new Date() })
+          .where('id', '=', runId).where('status', '=', 'awaiting-review').executeTakeFirst();
+        if (cancelled.numUpdatedRows === 1n) return;
+        await this.cancelRun(runId);
+        return;
+      }
       if (live.includes(run.status)) throw new Error('Executor is unavailable; reconcile the daemon before retrying');
       return;
     }
@@ -554,14 +624,16 @@ export class PipelineService {
     };
     return { ...definition, revision: createHash('sha256').update(JSON.stringify(definition)).digest('hex'), conditionalUpdates: true };
   }
-  private mapRun(row: Selectable<PipelineRunsTable>): PipelineRun {
+  private mapRun(row: Selectable<PipelineRunsTable>, admission: PipelineAdmission | undefined = readAdmission(row.admission)): PipelineRun {
     const steps = (typeof row.steps === 'string'
       ? JSON.parse(row.steps)
       : row.steps) as unknown as PipelineRunStepResult[];
     if (row.status === 'interrupted')
       for (const step of steps) if (live.includes(step.status)) step.status = 'interrupted';
     return {
-      ...row,
+      id: row.id, pipelineId: row.pipelineId, triggeredBy: row.triggeredBy,
+      ...(admission ? { review: admission.review } : {}),
+      ...(admission?.approvedBy ? { startedBy: admission.approvedBy } : {}),
       status: row.status as PipelineRun['status'],
       steps,
       params: typeof row.params === 'string' ? JSON.parse(row.params) : row.params,

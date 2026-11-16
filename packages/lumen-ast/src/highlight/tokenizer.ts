@@ -27,6 +27,8 @@ const aliases: Record<string, keyof typeof languages> = {
 const DEFAULT_ROOT_STYLE = '--shiki-light:#24292e;--shiki-dark:#e1e4e8;--shiki-light-bg:#fff;--shiki-dark-bg:#24292e';
 const MAX_FULL_TOKENIZE_LINES = 2500;
 const PARTIAL_TOKENIZE_HEAD = 400;
+const MAX_TOKENIZE_LINE_LENGTH = 2048;
+const MAX_TOKENIZE_CHARACTERS = 131_072;
 let highlighter: HighlighterCore | undefined;
 const loading = new Map<string, Promise<void>>();
 
@@ -84,12 +86,25 @@ export function tokenizeCode(code: string, language: string): HighlightedSource 
   let tokens: ThemedToken[][] | undefined;
   let rootStyle = DEFAULT_ROOT_STYLE;
   if (code && engine.getLoadedLanguages().includes(lang)) {
-    const count = lines.length <= MAX_FULL_TOKENIZE_LINES ? lines.length : PARTIAL_TOKENIZE_HEAD;
-    const result = engine.codeToTokens(lines.slice(0, count).join('\n'), {
-      lang, themes: { light: 'github-light', dark: 'github-dark' }, defaultColor: false,
-    });
-    tokens = result.tokens;
-    rootStyle = result.rootStyle || rootStyle;
+    const limit = lines.length <= MAX_FULL_TOKENIZE_LINES ? lines.length : PARTIAL_TOKENIZE_HEAD;
+    let count = 0, characters = 0;
+    while (count < limit) {
+      const length = lines[count]!.length;
+      if (length > MAX_TOKENIZE_LINE_LENGTH || characters + length + 1 > MAX_TOKENIZE_CHARACTERS) break;
+      characters += length + 1;
+      count++;
+    }
+    if (count) {
+      // TextMate's wall-clock cutoff silently emits partial, differently colored
+      // tokens under load. Bound input work instead so SSR and hydration agree.
+      // Stop at a complete line; the remaining source stays literal and visible.
+      const result = engine.codeToTokens(lines.slice(0, count).join('\n'), {
+        lang, themes: { light: 'github-light', dark: 'github-dark' }, defaultColor: false,
+        tokenizeTimeLimit: 0,
+      });
+      tokens = result.tokens;
+      rootStyle = result.rootStyle || rootStyle;
+    }
   }
   return {
     rootStyle,

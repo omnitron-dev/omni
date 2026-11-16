@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { getCodeTokenizer, highlightCode } from '../src/highlight/tokenizer.js';
 
 describe('literal source highlighting', () => {
@@ -34,6 +34,26 @@ describe('literal source highlighting', () => {
     const result = await highlightCode(source, 'ts');
     expect(result.lines[399]?.tokens.some(token => Object.keys(token.style).length)).toBe(true);
     expect(result.lines[400]?.tokens.every(token => Object.keys(token.style).length === 0)).toBe(true);
+    expect(result.lines.map(line => line.tokens.map(token => token.content).join('') + line.ending).join('')).toBe(source);
+  });
+
+  it('produces identical tokens when scheduling advances the wall clock during tokenization', async () => {
+    const source = "const greeting = '<script>literal</script>';";
+    const expected = await highlightCode(source, 'ts');
+    let clock = Date.now();
+    const now = vi.spyOn(Date, 'now').mockImplementation(() => clock += 1000);
+    try { expect(await highlightCode(source, 'ts')).toEqual(expected); }
+    finally { now.mockRestore(); }
+  });
+
+  it.each([
+    '"' + 'x'.repeat(2048) + '";\r\nconst tail = 1;',
+    Array.from({ length: 200 }, () => 'const text = "' + 'x'.repeat(1000) + '";').join('\n'),
+  ])('bounds long lines and total tokenized text without dropping source or resuming a broken grammar state', async source => {
+    const result = await highlightCode(source, 'ts');
+    const plain = result.lines.findIndex(line => line.tokens.every(token => Object.keys(token.style).length === 0));
+    expect(plain).toBeGreaterThanOrEqual(0);
+    expect(result.lines.slice(plain).every(line => line.tokens.every(token => Object.keys(token.style).length === 0))).toBe(true);
     expect(result.lines.map(line => line.tokens.map(token => token.content).join('') + line.ending).join('')).toBe(source);
   });
 });

@@ -26,6 +26,7 @@ import { backendConfigurationDigest, type BackendBootRecord } from '../../src/da
 import { PidManager } from '../../src/daemon/pid-manager.js';
 import { coldStartPreview } from '../../src/commands/backend.js';
 import type { BackendArtifact } from '../../src/daemon/backend-candidate.js';
+import { prepareSchemaTransition, applySchemaTransition } from '../../src/daemon/schema-transition.js';
 
 const roots: string[] = [];
 beforeEach(() => { vi.resetAllMocks(); mocks.ambientHome = '/ambient-instance-must-not-be-used'; mocks.supervised.mockReturnValue(false);
@@ -49,7 +50,7 @@ async function fixture(managed = false, certified = true) {
   const upgrade = vi.fn().mockResolvedValue({ checked: true, build: { commit: 'target' } });
   const recover = vi.fn().mockResolvedValue({ pid: 456 });
   const supervisorStatus = vi.fn().mockResolvedValue({ migrationChecksumMetadata: 1, infrastructureAdoptionPreflight: 1, backendHandoffReviewProtocol: 1 });
-  mocks.daemon.mockReturnValue({ service: async (name: string) => name === 'OmnitronBackups' ? { getOperation } :
+  mocks.daemon.mockReturnValue({ ping: async () => ({ pid: status.pid }), service: async (name: string) => name === 'OmnitronBackups' ? { getOperation } :
     { status: async () => ({ handoffSupported: true }), controlAddress: async () => ({ socket: control }) }, disconnect: vi.fn() });
   mocks.control.mockImplementation(async (target, service) => {
     if (target === control && service === 'OmnitronBackendControl') return { service: { status: async () => status, prepare, handoffReview }, close: vi.fn() };
@@ -83,6 +84,85 @@ async function fixture(managed = false, certified = true) {
   }
   return { root, home, execution, socket, control, config, record, upgrade, recover, status, snapshot, observe, prepare, supervisorStatus, admission, handoffReview, observedRecord, getOperation };
 }
+
+async function schemaFixture() {
+  const target = await fixture();
+  target.observedRecord.daemonConfig.role = 'master';
+  target.admission.configuration.sha256 = backendConfigurationDigest(target.observedRecord, target.observedRecord.registryDigest);
+  const source = path.join(target.root, 'source/dist'), candidate = path.join(target.root, 'candidate/dist');
+  for (const dist of [source, candidate]) {
+    await fs.mkdir(path.join(dist, 'database/migrations'), { recursive: true });
+    await fs.writeFile(path.join(dist, 'package.json'), '{"type":"module"}');
+    await fs.writeFile(path.join(dist, 'database/migrations/001_initial.js'), '// unchanged migration\n');
+  }
+  await fs.writeFile(path.join(candidate, 'database/migrations/002_expansion.js'), '// nullable column\n');
+  const initial = { name: '001_initial', checksum: null }, addition = { name: '002_expansion', checksum: 'c'.repeat(64) };
+  const base = { database: 'd'.repeat(64), registry: [initial], expansions: [],
+    inspection: { executed: [{ ...initial, executedAt: '2026-01-01T00:00:00.000Z' }], pending: [], drift: [], missingFiles: [], unknownChecksums: [initial.name] } };
+  const next = { ...base, registry: [initial, addition], expansions: [{ ...addition, summary: 'Add nullable column' }],
+    inspection: { ...base.inspection, pending: [addition.name] } };
+  const calls = path.join(target.root, 'worker-calls.jsonl');
+  await fs.writeFile(path.join(candidate, 'database/schema-worker.js'), `
+    import fs from 'node:fs';
+    if (process.argv[2] !== 'inspect') throw Error('No DDL may be dispatched in this preparation fixture');
+    fs.appendFileSync(${JSON.stringify(calls)}, JSON.stringify(process.argv.slice(2))+'\\n');
+    console.log(JSON.stringify(process.argv[3] === ${JSON.stringify(source)} ? ${JSON.stringify(base)} : ${JSON.stringify(next)}));
+  `);
+  const previous = { runtimeHash: 'a'.repeat(64), schemaExpansionProtocol: 1, directory: source, execPath: process.execPath };
+  const future = { ...previous, runtimeHash: 'f'.repeat(64), directory: candidate };
+  mocks.installation.mockResolvedValue({ exclusive: async (run: () => Promise<unknown>) => run(), close: vi.fn(),
+    activation: () => null, selection: () => ({ current: previous.runtimeHash }), artifact: async () => previous, install: async () => future });
+  const journal = new BackendRecoveryJournal(target.execution);
+  journal.invalidate('Backup or restore in progress');
+  await journal.close();
+  return { ...target, candidate, calls };
+}
+
+it('prepares a schema plan from live review during backup without certifying or applying it', async () => {
+  const target = await schemaFixture();
+  const journal = new BackendRecoveryJournal(target.execution);
+  try {
+    const before = journal.read();
+    const result = await prepareSchemaTransition(target.candidate, target.socket);
+    expect(result.plan).toMatchObject({ phase: 'prepared', from: 'a'.repeat(64), to: 'f'.repeat(64),
+      additions: [{ name: '002_expansion' }], ownerPid: 123 });
+    expect(result.file.startsWith(path.join(target.home, 'runtime'))).toBe(true);
+    expect(target.handoffReview).toHaveBeenCalledTimes(2);
+    expect(journal.read()).toEqual(before);
+    expect(target.prepare).not.toHaveBeenCalled(); expect(target.upgrade).not.toHaveBeenCalled();
+    const calls = await fs.readFile(target.calls, 'utf8');
+    await expect(applySchemaTransition(result.file)).rejects.toThrow('current recovery certificate');
+    expect(await fs.readFile(target.calls, 'utf8')).toBe(calls);
+    expect(JSON.parse(await fs.readFile(result.file, 'utf8')).phase).toBe('prepared');
+    await expect(fs.access(path.join(target.home, 'runtime/schema-expansions.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+  } finally { await journal.close(); }
+});
+
+it.each(['refused', 'pid', 'instance', 'owner', 'epoch', 'configuration'])('refuses %s live schema review before installation', async changed => {
+  const target = await schemaFixture();
+  if (changed === 'refused') target.handoffReview.mockRejectedValue(Error('Unfinished ownership mutation'));
+  if (changed === 'pid') target.observedRecord.previousPid++;
+  if (changed === 'instance') target.observedRecord.environment['OMNITRON_HOME'] = '/foreign-instance';
+  if (changed === 'owner') target.observedRecord.controller.ownerId = 'foreign-owner';
+  if (changed === 'epoch') target.observedRecord.controller.epoch++;
+  if (changed === 'configuration') target.admission.configuration.sha256 = '0'.repeat(64);
+  await expect(prepareSchemaTransition(target.candidate, target.socket)).rejects.toThrow();
+  expect(mocks.installation).not.toHaveBeenCalled();
+});
+
+it('refuses an inventory change after database inspection without saving a schema plan', async () => {
+  const target = await schemaFixture();
+  const read = target.handoffReview.getMockImplementation()!;
+  target.handoffReview.mockImplementationOnce(read).mockImplementation(async () => {
+    target.observedRecord.state.executionInventory = 'e'.repeat(64);
+    target.admission.configuration.sha256 = backendConfigurationDigest(target.observedRecord, target.observedRecord.registryDigest);
+    return read();
+  });
+  await expect(prepareSchemaTransition(target.candidate, target.socket)).rejects.toThrow('execution inventory changed');
+  const files = await fs.readdir(path.join(target.home, 'runtime')).catch(() => []);
+  expect(files.filter(file => file.startsWith('schema-transition-'))).toEqual([]);
+  expect(target.prepare).not.toHaveBeenCalled();
+});
 
 const coldArtifact = { coldInfrastructureProtocol: 1, runtimeHash: 'a'.repeat(64) } as BackendArtifact;
 

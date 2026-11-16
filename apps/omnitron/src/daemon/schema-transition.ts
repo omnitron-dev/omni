@@ -15,10 +15,11 @@ import { masterMigrationFiles, schemaReceiptFile, schemaReceiptIndex } from '../
 import { assertSchemaHistory, planSchemaAdditions, planSchemaContinuation, readSchemaPlan, schemaPlanFile,
   type SchemaSnapshot, type SchemaTransitionPlan } from '../database/schema-transition-plan.js';
 import { expandPath } from '../shared/paths.js';
+import { assertBackendHandoffReview } from './backend-handoff-types.js';
 
 const execute = promisify(execFile);
 
-async function observe(socket?: string) {
+async function observe(socket?: string, preparation = false) {
   const client = createDaemonClient(socket, 15_000);
   let address: { socket: string }, pid: number;
   try {
@@ -30,6 +31,16 @@ async function observe(socket?: string) {
     const state = await control.service.status();
     if (state.retired || state.ticketId || !state.runtime.owner || !path.isAbsolute(state.instanceHome)) {
       throw new Error('Wait for a ready resident backend before preparing its schema');
+    }
+    if (preparation) {
+      // Preparation reads the database; it neither drains work nor grants DDL
+      // authority. Reuse the live, fenced ownership review instead of waiting
+      // for a recovery certificate invalidated by an unrelated owned backup.
+      const review = await control.service.handoffReview();
+      assertBackendHandoffReview(review, { pid, entry: state.entry, instanceHome: state.instanceHome,
+        ownerId: state.runtime.owner.id, epoch: state.runtime.epoch });
+      if (review.record.daemonConfig.role !== 'master') throw new Error('Online schema expansion currently supports master PostgreSQL only; local node schemas require a separate rollout');
+      return { instanceHome: state.instanceHome, control: address.socket, pid, ownerPid: state.runtime.owner.pid, record: review.record };
     }
     const journal = new BackendRecoveryJournal(path.dirname(address.socket));
     try {
@@ -89,7 +100,7 @@ function summary(plan: SchemaTransitionPlan) {
 
 /** Read the target database; install artifacts and save the private plan without changing schema. */
 export async function prepareSchemaTransition(directory: string, socket?: string, priorPlanFile?: string) {
-  const live = await observe(socket);
+  const live = await observe(socket, true);
   const installation = await RuntimeInstallation.open(live.instanceHome, { existing: true });
   if (!installation) throw new Error('No permanent runtime installation exists');
   try { return await installation.exclusive(async () => {
@@ -124,7 +135,7 @@ export async function prepareSchemaTransition(directory: string, socket?: string
         inventory: live.record.state.executionInventory },
       descriptions: additions.map(m => m.summary),
     };
-    assertOwner(plan, await observe(plan.backend.socket));
+    assertOwner(plan, await observe(plan.backend.socket, true));
     const file = schemaPlanFile(live.instanceHome, plan.receipt.id);
     await writePrivateRecord(file, plan);
     return { file, plan: summary(plan) };

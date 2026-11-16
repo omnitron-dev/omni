@@ -213,6 +213,50 @@ test('an apply mismatch saves the exact fresh review and reports the changed fie
   assert.equal(await readRuntimeUpdateReceipt(directory), null);
 });
 
+test('health recovery preserves the reviewed acceptance floor without changing shutdown authority', { skip: !native }, async t => {
+  const directory = await privateInstance(t);
+  const plan = planFor(directory, { pid: process.pid, generation: 'original' });
+  plan.stacks = [{ project: 'sample', stack: 'dev', apps: [{ handleKey: 'sample/dev/worker', health: 'degraded', generation: 'first' }] }];
+  let observed = structuredClone(plan), admitted = 0;
+  const actions = {
+    async prepare() { return structuredClone(observed); },
+    async admit(approved) { admitted++; assert.deepEqual(approved, plan); },
+    async validateStop() { throw Error('fixture stops before any process effect'); },
+    async releaseAdmission() {},
+    async stop() { assert.fail('the fixture does not stop processes'); },
+  };
+  const { digest } = await runRuntimeUpdate({ actions, directory, operation: 'prepare' });
+  observed.stacks[0].apps[0].health = 'healthy';
+  await assert.rejects(runRuntimeUpdate({ actions, directory, operation: 'apply', digest }), /fixture stops/);
+  assert.equal(admitted, 1);
+  assert.deepEqual((await readRuntimeUpdateReceipt(directory)).plan, plan);
+  assert.equal((await readRuntimeUpdateReceipt(directory)).phase, 'aborted');
+
+  // Better health does not authorize another generation, release or scope.
+  observed.stacks[0].apps[0].generation = 'replaced';
+  await assert.rejects(runRuntimeUpdate({ actions, directory, operation: 'apply', digest }), /plan changed \(stacks\)/);
+  assert.equal(admitted, 1);
+});
+
+test('health regression refuses before admission and cannot replace the reviewed baseline', { skip: !native }, async t => {
+  const directory = await privateInstance(t);
+  const plan = planFor(directory, { pid: process.pid, generation: 'original' });
+  plan.stacks = [{ project: 'sample', stack: 'dev', apps: [{ handleKey: 'sample/dev/worker', health: 'healthy' }] }];
+  const actions = {
+    async prepare() { return structuredClone(plan); },
+    async admit() { assert.fail('regressed health cannot acquire shutdown authority'); },
+    async stop() { assert.fail('regressed health cannot stop processes'); },
+  };
+  const reviewed = await runRuntimeUpdate({ actions, directory, operation: 'prepare' });
+  for (const health of ['degraded', 'unhealthy', 'unknown', 'absent', 'invalid']) {
+    plan.stacks[0].apps[0].health = health;
+    await assert.rejects(runRuntimeUpdate({ actions, directory, operation: 'apply', digest: reviewed.digest }),
+      /Application health regressed|Invalid application health/);
+    assert.deepEqual(await readPreparedRuntimeUpdate(directory), reviewed);
+    assert.equal(await readRuntimeUpdateReceipt(directory), null);
+  }
+});
+
 test('a shutdown admission refusal preserves the original owner without starting recovery', { skip: !native }, async t => {
   const directory = await privateInstance(t);
   const owner = await ownerGeneration(t, directory, previous);

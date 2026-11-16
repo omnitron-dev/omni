@@ -6,7 +6,7 @@ import { withKernelFileLock } from '@xec-sh/ops/utils/file-lock';
 import { readPrivateRecord, writePrivateRecord } from './execution-journal.js';
 import { RUNTIME_UPDATE_TERMINAL_PHASES } from '../shared/dto/runtime-update.js';
 import type {
-  PreparedRuntimeUpdate, RuntimeUpdateAcceptance, RuntimeUpdateIdentity, RuntimeUpdatePhase,
+  PreparedRuntimeUpdate, RuntimeUpdateAcceptance, RuntimeUpdateApplication, RuntimeUpdateIdentity, RuntimeUpdatePhase,
   RuntimeUpdatePlan, RuntimeUpdateReceipt, RuntimeUpdateReference,
 } from '../shared/dto/runtime-update.js';
 
@@ -14,6 +14,29 @@ const hash = /^[a-f0-9]{64}$/;
 const finished = new Set<RuntimeUpdatePhase>(RUNTIME_UPDATE_TERMINAL_PHASES);
 const phases = new Set<RuntimeUpdatePhase>(['draining', 'aborted', 'stopping', 'starting', 'verifying', 'accepted', 'failed',
   'stopping-candidate', 'restoring', 'rolled-back', 'recovery-required']);
+
+const healthRank = { unknown: 0, unhealthy: 1, degraded: 2, healthy: 3, absent: 0 };
+
+/** The reviewed baseline remains the acceptance floor throughout the transition. */
+export function assertRuntimeUpdateHealth(previous: Pick<RuntimeUpdateApplication, 'handleKey' | 'health'>,
+  current: Pick<RuntimeUpdateApplication, 'handleKey' | 'health'>): void {
+  if (current.handleKey !== previous.handleKey || !Object.hasOwn(healthRank, previous.health) || !Object.hasOwn(healthRank, current.health))
+    throw Error('Invalid application health observation for ' + previous.handleKey);
+  if (healthRank[current.health] < healthRank[previous.health])
+    throw Error('Application health regressed for ' + previous.handleKey + ': ' + previous.health + ' -> ' + current.health);
+}
+
+function retainReviewedHealth(observed: RuntimeUpdatePlan, reviewed: RuntimeUpdatePlan): RuntimeUpdatePlan {
+  return { ...observed, stacks: observed.stacks.map(stack => {
+    const prior = reviewed.stacks.find(value => value.project === stack.project && value.stack === stack.stack);
+    return { ...stack, apps: stack.apps.map(app => {
+      const baseline = prior?.apps.find(value => value.handleKey === app.handleKey);
+      if (!baseline) return app; // Membership changes remain part of the exact plan comparison.
+      assertRuntimeUpdateHealth(baseline, app);
+      return { ...app, health: baseline.health };
+    }) };
+  }) };
+}
 
 export interface RuntimeUpdateRestoration {
   guardian(): RuntimeUpdateReceipt['restoreGuardian'];
@@ -163,7 +186,11 @@ export async function runRuntimeUpdate({ actions, directory, operation, digest: 
       prepared = await readPreparedRuntimeUpdate(directory);
       if (prepared?.digest !== review) throw Error('The requested local update is not the prepared plan' + (prepared ? '. Current plan ' + prepared.digest : ''));
     }
-    const plan = await actions.prepare(prepared?.plan);
+    const observed = await actions.prepare(prepared?.plan);
+    // Health is a live observation, not a new shutdown authorization. An
+    // improvement must not invalidate review; a regression must never silently
+    // lower the acceptance floor by publishing a replacement plan.
+    const plan = prepared ? retainReviewedHealth(observed, prepared.plan) : observed;
     if (operation === 'prepare' && record?.phase === 'accepted' && record.plan.target.artifact === plan.target.artifact &&
         plan.before.backend === plan.target.artifact && plan.before.owner === plan.target.artifact && plan.before.guardian === plan.target.artifact) {
       const declarations = (snapshot: RuntimeUpdatePlan) => snapshot.stacks.map(({ project, stack, enabled, startReview, selection, savedSelection }) =>

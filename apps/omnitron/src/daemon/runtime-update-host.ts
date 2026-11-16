@@ -9,6 +9,7 @@ import { LAUNCHD_LABEL, OWNER_LAUNCHD_LABEL } from '../commands/service-units.js
 import { localStackInventory } from '../project/local-stack-inventory.js';
 import { readRestartConfiguration, saveRestartConfiguration, restartConfigurationDigest, restartLaunchIntent, assertRestartOwnerDefaults, type RuntimeRestartConfiguration } from '../project/runtime-restart.js';
 import { privateControlClient } from './private-control-client.js';
+import { assertRuntimeUpdateHealth } from './runtime-update.js';
 import type { BackendControlService } from './backend-control.js';
 import type { BackendRpcService } from './backend.rpc-service.js';
 import type { ExecutionHostService } from './execution-host.js';
@@ -323,7 +324,6 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
     await assertCleanManagedShutdown(config, { pid: previous.ownerPid, lifetime: previous.ownerLifetime }, previous.retiredPids);
   };
   const sameOwner = (a: RuntimeUpdateIdentity, b: RuntimeUpdateIdentity) => (['scope', 'ownerId', 'ownerLifetime', 'ownerPid', 'guardianPid', 'backendPid', 'revision', 'backend', 'guardian', 'owner'] as const).every(k => a[k] === b[k]);
-  const healthRank = { unknown: 0, unhealthy: 1, degraded: 2, healthy: 3, absent: 0 };
   const accept = async (plan: RuntimeUpdatePlan, direction: 'target' | 'previous', inspected = false, interim = false) => {
     const target = direction === 'target', expect = target || interim ? plan.target.artifact : plan.before.backend;
     const observe = async () => {
@@ -343,7 +343,7 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
         for (const app of prior.apps) {
           const current = now.apps.find(v => v.handleKey === app.handleKey);
           if (current?.status !== 'online' || !current.generation || current.generation === app.generation) throw Error('Waiting for a verified new generation of ' + app.handleKey);
-          if (healthRank[current.health] < healthRank[app.health]) throw Error('Application health regressed for ' + app.handleKey + ': ' + app.health + ' -> ' + current.health);
+          assertRuntimeUpdateHealth(app, current);
           if ((app.release && !isDeepStrictEqual(current.release, app.release)) || (prior.selection.kind === 'release' &&
               (current.release?.id !== prior.selection.id || current.release?.manifestSha256 !== prior.selection.manifestSha256))) throw Error('Waiting for the running release receipt of ' + app.handleKey);
         }

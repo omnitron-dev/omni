@@ -36,7 +36,15 @@ export interface LoadedRelease {
 }
 
 export function releasesRoot(): string {
-  return path.join(OMNITRON_HOME, 'releases');
+  const configured = process.env['OMNITRON_RELEASES_DIR'];
+  if (configured === undefined) return path.join(OMNITRON_HOME, 'releases');
+  if (!path.isAbsolute(configured) || configured.includes('\0'))
+    throw new Error('OMNITRON_RELEASES_DIR must be an absolute directory');
+  // An external volume must already exist. Never create its missing mount
+  // path on the system disk or silently substitute the default store.
+  if (!fs.statSync(configured).isDirectory())
+    throw new Error('OMNITRON_RELEASES_DIR must name an existing directory');
+  return fs.realpathSync(configured);
 }
 
 function sha256Of(file: string): Promise<string> {

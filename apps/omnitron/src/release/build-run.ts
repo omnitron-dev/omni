@@ -20,11 +20,10 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 import { resolveProjectStacks } from '../config/project-stacks.js';
-import { OMNITRON_HOME } from '../config/defaults.js';
 import { ProjectRegistry } from '../project/registry.js';
 import { assembleManifest, gateOutcomesFromGates, releaseId } from './builder.js';
 import { planBuildRoot, readFrameworkLayout, resolveCheckouts } from './layout.js';
-import { assertReleaseId } from './load.js';
+import { assertReleaseId, releasesRoot } from './load.js';
 import { releaseWorkspaceDirectory } from './workspace-source.js';
 import { readPackageGates, runPackageGates } from './package-gates.js';
 import { resolveRegistryFramework } from './registry-framework.js';
@@ -88,6 +87,10 @@ const ENV_FORBIDDEN = new Set([
   'IFS',
   'BASH_ENV',
   'ENV',
+  // Host storage belongs to the controller, never to a per-build request.
+  'OMNITRON_RELEASES_DIR',
+  'TMP',
+  'TEMP',
 ]);
 
 /**
@@ -444,34 +447,14 @@ export async function withBuildRootGoneOnFailure<T>(
 }
 
 /**
- * The system's own temporary directory — the one the system clears by
- * itself — whatever TMPDIR this process was started with.
+ * Private scratch space under the operator's OS temporary directory. Respect
+ * TMPDIR/TMP/TEMP so large child outputs stay on the selected build disk.
+ * Cleanup owns only this unique child; an unavailable root fails the build.
+ * The short name leaves room for Unix socket paths on macOS.
  */
-export function systemTempRoot(platform: NodeJS.Platform = process.platform): string {
-  return platform === 'darwin' ? '/private/tmp' : '/tmp';
-}
-
-/**
- * A temporary directory for everything a build runs: TMPDIR for every step.
- *
- * Test runners, and the tools under them, write into TMPDIR and do not always
- * take it back. vitest 5.0.0 left `$TMPDIR/<nanoid>/ssr` behind on EVERY run
- * (patched in omni and sample since), and a gate killed at its timeout cleans
- * nothing at all. The master's TMPDIR is `~/.tmp`, which nothing clears:
- * measured 2026-09-29, 16 443 of those directories, 112 GB, from every suite
- * and every release gate since 2026-09-11 — and the Docker engine stopped
- * with the disk at 99 %.
- *
- * So a build gives its children a directory of its own and removes it when it
- * ends, however it ends (`withBuildRootGoneOnFailure`). It is made under the
- * system's own temporary directory, not TMPDIR, because a build whose process
- * is killed outright runs no cleanup, and its files must not stay for good
- * either. And it is short on purpose: a unix socket's path is limited to 104
- * bytes on macOS, tests make sockets under TMPDIR, and the build root's own
- * path is already longer than half of that.
- */
-export function makeBuildTempDir(root: string = systemTempRoot()): string {
-  return fs.mkdtempSync(path.join(root, 'omnitron-build-'));
+export function makeBuildTempDir(root: string = os.tmpdir()): string {
+  if (!path.isAbsolute(root) || root.includes('\0')) throw new Error('Build temporary root must be an absolute directory');
+  return fs.mkdtempSync(path.join(fs.realpathSync(root), 'ob-'));
 }
 
 async function buildRelease(
@@ -481,6 +464,7 @@ async function buildRelease(
   where: { root?: string; tmp?: string },
 ): Promise<BuildOutcome> {
   const started = Date.now();
+  const releasesDirectory = releasesRoot();
   const extra = checkedEnv(options.env);
   const env = buildEnv({ ...process.env, ...extra });
   // Native install scripts and compilation must use the same Node that fingerprints the closure.
@@ -572,7 +556,6 @@ async function buildRelease(
   if (layout.kind !== 'registry') announceFramework({ repository: omniSource.repo, ...(selectedSource?.ref && { ref: selectedSource.ref }) }, omniSource.commit);
   id = releaseId(projectName, new Date(), projectSha, omniSource.commit);
   assertReleaseId(id);
-  const releasesDirectory = path.join(OMNITRON_HOME, 'releases');
   fs.mkdirSync(releasesDirectory, { recursive: true });
   let releaseRoot = path.join(releasesDirectory, id);
   // A second build in the same minute must never overwrite another run's

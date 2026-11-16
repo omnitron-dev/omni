@@ -10,8 +10,7 @@
  * forgets.
  *
  * Held here: a build gives its steps a temporary directory of its own —
- *   - under the system's own temporary directory, which the system clears,
- *     so a build killed outright does not leave it for good;
+ *   - under the operator's selected temporary directory, including an external disk;
  *   - short enough that a test's unix socket under it fits in 104 bytes;
  *   - removed when the build ends, however it ends, `--keep-source` or not;
  * and a build request cannot point the steps somewhere else.
@@ -21,7 +20,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { checkedEnv, makeBuildTempDir, systemTempRoot, withBuildRootGoneOnFailure } from '../../src/release/build-run.js';
+import { checkedEnv, makeBuildTempDir, withBuildRootGoneOnFailure } from '../../src/release/build-run.js';
 
 const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'gates-temp-court-'));
 afterAll(() => fs.rmSync(HOME, { recursive: true, force: true }));
@@ -38,22 +37,23 @@ function aBuild(): { root: string; tmp: string } {
 }
 
 describe('where a build keeps its steps’ temporary files', () => {
-  it('is the system’s own temporary directory, not TMPDIR', () => {
-    expect(systemTempRoot('darwin')).toBe('/private/tmp');
-    expect(systemTempRoot('linux')).toBe('/tmp');
-  });
-
-  it('is a fresh directory there, short enough for a test’s unix socket', () => {
+  it('uses the OS-selected temporary root and a short, unique child', () => {
     const dir = makeBuildTempDir();
     try {
       expect(fs.statSync(dir).isDirectory()).toBe(true);
-      expect(dir.startsWith(path.join(systemTempRoot(), 'omnitron-build-'))).toBe(true);
-      // What a socket test makes: mkdtemp under TMPDIR, a socket inside.
-      const socket = path.join(dir, 'netron-unix-test-a1B2c3', 'server.sock');
-      expect(Buffer.byteLength(socket)).toBeLessThan(104);
+      expect(path.dirname(dir)).toBe(fs.realpathSync(os.tmpdir()));
+      expect(path.basename(dir)).toMatch(/^ob-.{6}$/);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it('refuses a missing or relative root without creating a fallback', () => {
+    const missing = path.join(HOME, 'unmounted');
+    expect(() => makeBuildTempDir(missing)).toThrow();
+    expect(fs.existsSync(missing)).toBe(false);
+    expect(() => makeBuildTempDir('relative')).toThrow(/absolute directory/);
+    expect(() => makeBuildTempDir('/invalid\0path')).toThrow(/absolute directory/);
   });
 });
 
@@ -95,6 +95,8 @@ describe('the temporary directory goes however the build ends', () => {
 describe('a build request cannot choose it', () => {
   it('refuses TMPDIR, and still takes what the gates need', () => {
     expect(() => checkedEnv({ TMPDIR: '/Users/someone/.tmp' })).toThrow(/may not set TMPDIR/);
+    for (const key of ['OMNITRON_RELEASES_DIR', 'TMP', 'TEMP'])
+      expect(() => checkedEnv({ [key]: '/somewhere' })).toThrow(/may not set/);
     expect(checkedEnv({ TEST_DATABASE__PORT: '5433' })).toEqual({ TEST_DATABASE__PORT: '5433' });
   });
 });

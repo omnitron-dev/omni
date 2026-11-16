@@ -140,7 +140,10 @@ it.each(['', 'projects/consumer'])('builds and verifies a registry release from 
     const repository = path.join(root, 'repository');
     const project = path.join(repository, subdirectory), app = path.join(project, 'apps/worker');
     const home = path.join(root, 'instance');
+    const store = path.join(root, 'external-releases');
+    await fs.mkdir(store);
     vi.stubEnv('OMNITRON_HOME', home);
+    vi.stubEnv('OMNITRON_RELEASES_DIR', store);
     vi.stubEnv('XDG_CACHE_HOME', path.join(root, 'cache'));
     await fs.mkdir(app, { recursive: true });
     await fs.mkdir(path.join(project, 'scripts'));
@@ -167,12 +170,15 @@ it.each(['', 'projects/consumer'])('builds and verifies a registry release from 
     vi.spyOn(ProjectRegistry, 'open').mockReturnValue({ get: () => ({ name: 'consumer', path: project }) } as unknown as InstanceType<typeof ProjectRegistry>);
     const { runReleaseBuild } = await import('../../src/release/build-run.js');
     const result = await runReleaseBuild('consumer', {});
-    expect(result.root.startsWith(home + path.sep)).toBe(true);
+    expect(result.root.startsWith(store + path.sep)).toBe(true);
+    await expect(fs.stat(path.join(home, 'releases'))).rejects.toMatchObject({ code: 'ENOENT' });
     expect(result.manifest.project.directory).toBe(subdirectory || undefined);
     expect(result.manifest.artifactFailures).toBeUndefined();
     expect(result.manifest.artifacts).toEqual([expect.objectContaining({ app: 'worker', sha256: expect.stringMatching(/^[a-f0-9]{64}$/) })]);
     expect(result.manifest.omni).toMatchObject({ commit, registry: { packages: archives.map(a => a.pin) } });
     expect(result.manifest.gates).toEqual([{ name: 'smoke', status: 'passed' }]);
+    const { loadRelease } = await import('../../src/release/load.js');
+    expect((await loadRelease(result.id)).root).toBe(result.root);
     const { readReleaseId } = await import('../../src/shared/release-reading.js');
     const second = await runReleaseBuild('consumer', {});
     expect(second.id).not.toBe(result.id);

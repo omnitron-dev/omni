@@ -12,7 +12,7 @@ const client: NetronSearchClient = { search: async query => {
 
 function SearchFixture() {
   const [open, setOpen] = useState(false);
-  return <PrismProvider>
+  return <PrismProvider mode={matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'}>
     <Button onClick={() => setOpen(true)}>Search documentation</Button>
     <LumenSearchDialog open={open} onClose={() => setOpen(false)} defaultTab="semantic" rpcClient={client} />
     <p id="guide">Documentation</p>

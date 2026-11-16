@@ -337,7 +337,10 @@ export function LumenSearchDialogContent({
           Search by topic, API name or phrase.
         </Typography>}
         {results.length > 0 && <List disablePadding aria-label="Search results" inert={isLoading || undefined}
-          sx={{ opacity: isLoading ? 0.5 : 1 }}>
+          sx={{ opacity: isLoading ? 0.5 : 1, '& mark': {
+            bgcolor: 'action.selected', color: 'text.primary', borderRadius: '2px', px: '1px',
+            '@media (forced-colors: active)': { bgcolor: 'Highlight', color: 'HighlightText' },
+          } }}>
           {results.map((result, index) => {
             const safeUrl = sanitizeSearchResultUrl(result.url);
             const snippetNodes = result.snippet ? parseSearchSnippet(result.snippet) : [];

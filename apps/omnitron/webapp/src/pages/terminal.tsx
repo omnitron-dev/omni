@@ -237,7 +237,6 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
       <Breadcrumbs
         active={visible}
         heading="SSH workspace"
-        links={[{ name: 'Infrastructure', href: '/nodes' }, { name: 'Terminal' }]}
         action={
           policy && (
             <Tooltip

@@ -337,7 +337,6 @@ function TopologyWorkspace() {
     <Stack spacing={1} sx={{ flex: 1, minHeight: 0, minWidth: 0 }}>
       <Breadcrumbs
         heading="Topology"
-        links={[{ name: 'Infrastructure', href: '/nodes' }, { name: 'Topology' }]}
         action={
           <Button component={RouterLink} to="/nodes" size="small">
             Nodes

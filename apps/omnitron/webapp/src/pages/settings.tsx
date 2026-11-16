@@ -423,7 +423,7 @@ function NotificationsSection() {
 export default function SettingsPage() {
   return (
     <Stack spacing={2}>
-      <Breadcrumbs heading="Settings" links={[{ name: 'System' }, { name: 'Settings' }]} />
+      <Breadcrumbs heading="Settings" />
     <Tabs defaultValue="general" keepMounted>
       <TabPanel value="general" label="General">
         <GeneralSection />

@@ -87,7 +87,7 @@ export default function AccessPage() {
     snapshot?.capabilities.filter((c) => `${c.service}.${c.method}`.toLowerCase().includes(query.toLowerCase())) ?? [];
   return (
     <Box>
-      <Breadcrumbs heading="Access" links={[{ name: 'System' }, { name: 'Access' }]} sx={{ mb: 2 }} />
+      <Breadcrumbs heading="Access" sx={{ mb: 2 }} />
       <Typography color="text.secondary" sx={{ mb: 2 }}>
         Your role: <strong>{snapshot?.role}</strong>. Permissions below come from this daemon’s active RPC policy.
       </Typography>

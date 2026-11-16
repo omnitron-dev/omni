@@ -44,6 +44,40 @@ function collector(db: Kysely<OmnitronDatabase>, filename: string) {
 }
 
 describe('durable log delivery', () => {
+  it('upgrades pending delivery indexes without replaying or losing either consumer acknowledgment', () => {
+    const filename = path.join(directory(), 'upgrade.sqlite');
+    let journal = new LogJournal<{ text: string }>(filename, true);
+    cleanup.push(() => journal.close());
+    for (const id of ['file-done', 'database-done', 'both-pending', 'assembling'])
+      journal.put(id, { text: id }, id !== 'assembling');
+    journal.acknowledge(journal.peek().filter(item => item.id === 'database-done'));
+    journal.acknowledge(journal.peek(500, 2 * 1024 * 1024, 'file').filter(item => item.id === 'file-done'), 'file');
+    const before = journal.stats();
+    journal.close();
+    const legacy = new Database(filename);
+    legacy.exec(`DROP INDEX records_delivery; DROP INDEX records_mirror;
+      CREATE INDEX records_ready ON records(ready, sequence);`);
+    legacy.close();
+
+    journal = new LogJournal(filename, true);
+    expect(journal.stats()).toEqual(before);
+    const database = journal.peek();
+    const file = journal.peek(500, 2 * 1024 * 1024, 'file');
+    expect(database.map(item => item.id)).toEqual(['file-done', 'both-pending']);
+    expect(file.map(item => item.id)).toEqual(['database-done', 'both-pending']);
+    const inspection = new Database(filename, { readonly: true });
+    try {
+      for (const consumer of ['delivered', 'mirrored']) {
+        const plan = inspection.prepare(`EXPLAIN QUERY PLAN SELECT id, payload, digest FROM records
+          WHERE ready = 1 AND ${consumer} = 0 ORDER BY sequence LIMIT 500`).all() as Array<{ detail: string }>;
+        expect(plan.map(row => row.detail).join('\n')).toContain(`ready=? AND ${consumer}=?`);
+      }
+    } finally { inspection.close(); }
+    journal.acknowledge(database);
+    journal.acknowledge(file, 'file');
+    expect(journal.stats()).toMatchObject({ pending: 1, assembling: 1 });
+  });
+
   it('confirms relay logs only after their SQLite transaction commits with the original identity and time', async () => {
     const dir = directory(), db = database(dir), sink = collector(db, path.join(dir, 'queue.sqlite'));
     const relay = createTelemetryRelay(sink);

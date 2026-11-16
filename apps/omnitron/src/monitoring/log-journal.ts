@@ -27,8 +27,14 @@ export class LogJournal<T> {
     this.db.exec(`CREATE TABLE IF NOT EXISTS records (
       sequence INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE,
       payload TEXT NOT NULL, digest TEXT NOT NULL, writer INTEGER NOT NULL, delivered INTEGER NOT NULL DEFAULT 0, mirrored INTEGER NOT NULL DEFAULT 1, ready INTEGER NOT NULL CHECK(ready IN (0,1))
-    ); CREATE INDEX IF NOT EXISTS records_ready ON records(ready, sequence);`);
+    );`);
     this.db.transaction(() => {
+      // A record acknowledged by one consumer remains until the other accepts
+      // it. Include that consumer's acknowledgment in the lookup so a delayed
+      // file mirror cannot make every database poll scan its entire backlog.
+      this.db.exec(`CREATE INDEX IF NOT EXISTS records_delivery ON records(ready, delivered, sequence);
+        CREATE INDEX IF NOT EXISTS records_mirror ON records(ready, mirrored, sequence);
+        DROP INDEX IF EXISTS records_ready;`);
       if (!(this.db.pragma('table_info(records)') as Array<{ name: string }>).some(column => column.name === 'writer_identity')) {
         this.db.exec('ALTER TABLE records ADD COLUMN writer_identity TEXT');
       }

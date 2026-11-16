@@ -54,7 +54,6 @@ export function omnitronTheme({ mode }: { mode: OmnitronColorMode }): ThemeOptio
           'code, kbd, pre, samp': { fontFamily: omnitronTokens.font.mono },
           'a:focus-visible, button:focus-visible, [tabindex]:focus-visible': focus,
           '::selection': { backgroundColor: 'color-mix(in srgb, var(--omni-accent) 24%, transparent)' },
-          '@media (prefers-reduced-motion: reduce)': { html: { scrollBehavior: 'auto' } },
         }),
       },
       MuiButtonBase: { styleOverrides: { root: { '&.Mui-focusVisible': focus } } },

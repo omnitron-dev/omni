@@ -1145,9 +1145,6 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
     MuiCssBaseline: {
       styleOverrides: (theme) => ({
         '.shiki span[style]': syntaxHighlightStyles(theme),
-        html: {
-          scrollBehavior: 'smooth',
-        },
         'html, body, *': scrollbarStyles(theme),
         '*, *::before, *::after': {
           boxSizing: 'border-box',

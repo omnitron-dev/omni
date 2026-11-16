@@ -160,6 +160,13 @@ that application may cancel. Preparation does not cancel work, pause schedules
 or grant shutdown authority. Restores, unknown outcomes and operations without
 confirmed local ownership block admission.
 
+Infrastructure preview reads the live controller through authenticated private
+RPC, including while its owned backups run. The response marks this observation
+as `reviewed-declarations`; it does not publish a recovery certificate. Offline
+preview keeps `certified-declarations` and `historical-declarations` distinct,
+and historical evidence cannot admit an automatic local update. A refused live
+review never falls back to an older journal entry.
+
 Runtime-only preparation captures the serving controller's effective project
 definitions and resolved next-start environments in a private file; the public
 plan records its digest and `basis: retained-next-start`. It compares those

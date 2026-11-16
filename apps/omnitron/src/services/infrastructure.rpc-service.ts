@@ -12,6 +12,7 @@ import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { Errors } from '@omnitron-dev/titan/errors';
 import { VIEWER_ROLES, OPERATOR_ROLES, CONTROL_PLANE_ROLES, CONTROL_PLANE_READ_ROLES } from '../shared/roles.js';
 import type { InfrastructureService } from '../infrastructure/infrastructure.service.js';
+import { resolveInfrastructureDefinition, type InfrastructureDefinition } from '../infrastructure/infrastructure-definition.js';
 import type { StackInfrastructureManager } from '../infrastructure/stack-infra-manager.js';
 import type { InfrastructureConfig, IServiceRequirement } from '../infrastructure/types.js';
 import { summariseProvisioning, provisioningVerdict, observeProvisioning } from '../infrastructure/provisioning-outcome.js';
@@ -97,11 +98,8 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
      * difference between "this node does not do that" and "it worked".
      */
     private readonly hostInfra?: (
-      config: InfrastructureConfig,
-      services: Record<string, IServiceRequirement>,
+      definition: InfrastructureDefinition,
       registry: import('../infrastructure/presets/registry.js').PresetRegistry,
-      overrides: Record<string, import('../infrastructure/types.js').IServiceOverride>,
-      stackOwned?: boolean,
     ) => InfrastructureService,
     /**
      * This node's secret store.
@@ -303,7 +301,7 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
   /** `provisionStack`'s work. Not an RPC method: it carries no `@Public`. */
   private async provisionStackNow(
     data: StackInfrastructureInput,
-    apply?: (config: InfrastructureConfig, definition: InfrastructureService) => Promise<InfrastructureService>,
+    apply?: (config: InfrastructureConfig, definition: InfrastructureDefinition) => Promise<InfrastructureService>,
     reviewOnly = false,
   ): ReturnType<InfrastructureRpcService['provisionStack']> {
     if (!this.hostInfra) {
@@ -391,10 +389,6 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     // name: the app is the side that knows what it needs of it.
     const declared = { ...fromStack, ...(data.services ?? {}) };
     const preserving = data.infrastructure === 'preserve';
-    const reused = apply || preserving ? null : this.getInfra();
-    let service = reused ?? this.hostInfra(config, declared, registry, data.overrides ?? {}, Boolean(apply) || preserving);
-    const definition = reused?.resolveDefinition(config, declared, data.overrides ?? {}) ?? service;
-    if (!preserving && data.project && data.stack) service.resumeStack({ project: data.project, stack: data.stack });
 
     // Write what the master sent, and point this node's containers at its own
     // copies. Before `provision()`, because a container created against a
@@ -405,51 +399,26 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     const staticRoots = preserving ? await this.checkStackStatics(data) : await this.acceptStaticRoots(data.staticRoots);
     const staticLinkRoots = preserving ? new Map([...staticRoots].map(([name]) => [name, `/opt/omnitron/stack-static/${name}`])) : await this.acceptStaticRoots(data.staticLinkRoots);
 
-    // Containers the applications declare, resolved the same way the master
-    // resolves them for a local stack.
-    if (Object.keys(data.services ?? {}).length > 0) {
-      // Only the app-declared half: the stack's own services are already in
-      // the service's desired set, and adding them twice gives one container
-      // two entries and the reconciler two opinions about it.
-      const { resolveAppInfrastructure } = await import('../infrastructure/service-resolver.js');
-      // With the stack's overrides: without them a service the stack runs
-      // on the node as a system service came up as a container as well.
-      // With this node's copies of what they mount (`shipped-config.ts`).
-      const containers = resolveAppInfrastructure(data.services ?? {}, data.overrides, undefined, configRoots);
-      if (containers.length > 0) definition.addAppContainers(containers);
-    }
-
-    if (configRoots.size > 0) {
-      // The gateway proxies through Redis for maintenance state, and its
-      // resolver needs to know where that is. It is the same Redis this stack
-      // just provisioned, on the same network as the gateway — the address
-      // the gateway's own container will use, not this daemon's.
-      //
-      // This said `host.docker.internal` and the host-published port. A node
-      // publishes every managed port on 127.0.0.1, so that address goes out
-      // to the docker bridge and finds nothing: every gateway request paid a
-      // 200ms Redis timeout and the maintenance check failed open, on a
-      // machine where the two containers were two IPs apart on one network.
-      const redisCfg = (config as {
-        redis?: { port?: number; db?: number; password?: string; databases?: Record<string, number> };
-      }).redis;
-      const endpoint = containerEndpoint('redis', REDIS_CONTAINER_PORT);
-      definition.setConfigRoots(configRoots, staticRoots, {
-        host: endpoint.host,
-        port: endpoint.port,
-        // Not `(redis.db ?? 0) + 1`: on sample/test that is 1, storage's
-        // database, while main wrote the lock to 5 — see gateway-redis-db.ts.
-        db: gatewayRedisDb(redisCfg?.databases),
+    // Resolve the entire declaration once, after binding this node's files.
+    // Preview is data construction: it must never instantiate a resource owner.
+    const redisCfg = config.redis;
+    if (redisCfg?.password !== undefined && typeof redisCfg.password !== 'string')
+      throw Errors.badRequest('Redis credentials must be resolved before infrastructure planning');
+    const endpoint = containerEndpoint('redis', REDIS_CONTAINER_PORT);
+    const definition = resolveInfrastructureDefinition({
+      config, normalizedServices: declared, presetRegistry: registry, serviceOverrides: data.overrides,
+      configRoots, mounts: { staticRoots, staticLinkRoots, redis: {
+        host: endpoint.host, port: endpoint.port, db: gatewayRedisDb(redisCfg?.databases),
         ...(redisCfg?.password ? { password: redisCfg.password } : {}),
-      }, staticLinkRoots);
-    }
+      } },
+    });
 
     if (preserving) {
       const { selectBareMetal } = await import('../infrastructure/bare-metal-plan.js');
       if (Object.entries(declared).some(([name, requirement]) => selectBareMetal(name, requirement, data.overrides?.[name])))
         throw Error('This host service has no verifiable preservation identity');
       const scope = { project: data.project!, stack: data.stack! };
-      const native = await reviewExistingContainers(definition.getDesiredContainers(), undefined, scope);
+      const native = await reviewExistingContainers([...definition.containers], undefined, scope);
       const preservation = { ...native, digest: native.digest && stackDefinitionFingerprint([native.digest, data.configFiles ?? {}, data.staticDigests ?? {}]) };
       if (!reviewOnly) {
         if (!preservation.digest || preservation.digest !== data.review) throw Error('Native infrastructure changed since review');
@@ -462,7 +431,9 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
       return { ready: preservation.digest !== null, detail: 'Existing infrastructure observation; provisioning, setup and migrations are forbidden',
         running: preservation.containers.map(container => container.name), failed: [], missing: [], preservation };
     }
-    if (apply) service = await apply(config, definition);
+    const reused = apply ? null : this.getInfra();
+    const service = apply ? await apply(config, definition) : reused ?? this.hostInfra(definition, registry);
+    if (!apply && data.project && data.stack) service.resumeStack({ project: data.project, stack: data.stack });
     const state = apply ? service.getState() : await service.provision(reused ? definition : undefined, data.infrastructure === 'reconcile' ? 'reconcile' : 'start');
     const outcome = summariseProvisioning(service.getDesiredServices(), state.services);
 

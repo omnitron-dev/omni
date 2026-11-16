@@ -11,6 +11,7 @@ vi.mock('../../src/infrastructure/container-runtime.js', async original => ({
   getContainerState: runtime.inspect, createContainer: runtime.create, startContainer: runtime.start, removeContainer: runtime.remove,
 }));
 import { InfrastructureService } from '../../src/infrastructure/infrastructure.service.js';
+import { resolveInfrastructureDefinition } from '../../src/infrastructure/infrastructure-definition.js';
 import { backendInfrastructureInput, readBackendInfrastructureInput, validateBackendInfrastructureInput, previewColdInfrastructure } from '../../src/daemon/backend-infrastructure-preflight.js';
 import { createDefaultRegistry } from '../../src/infrastructure/presets/index.js';
 import { normalizeInfraConfig } from '../../src/infrastructure/config-normalizer.js';
@@ -26,8 +27,8 @@ function fixture(name: string) {
   const observed: ContainerState = { name, image: desired.image, status: 'running', containerId: '1'.repeat(64),
     labels: desired.labels, specHash: 'd94b439555467d30', resources: { memoryBytes: 0, memoryReservationBytes: 0,
       nanoCpus: 0, shmBytes: 268435456, cpuQuota: 0, cpuPeriod: 0 } };
-  const service = new InfrastructureService(createNullLogger(), { services: {} }, {}, undefined, undefined, false);
-  service.addAppContainers([desired]);
+  const service = new InfrastructureService(createNullLogger(), resolveInfrastructureDefinition({ config: { services: {} }, normalizedServices: {}, appContainers: [desired] }));
+
   const snapshot = service.captureRecoveryState();
   snapshot.state.services[name] = observed;
   service.dispose();
@@ -68,7 +69,7 @@ it('previews a PostgreSQL preset change using the incoming resolver without oper
   const historical = normalizeInfraConfig(config, createDefaultRegistry());
   historical['postgres']!.healthCheck = { type: 'command', target: 'old-probe' };
   const snapshot = withInfrastructureScope('tenant', 'dev', () => {
-    const service = new InfrastructureService(createNullLogger(), config, historical, undefined, undefined, false);
+    const service = new InfrastructureService(createNullLogger(), resolveInfrastructureDefinition({ config, normalizedServices: historical }));
     try { return service.captureRecoveryState(); } finally { service.dispose(); }
   });
   const old = snapshot.containers[0]!;

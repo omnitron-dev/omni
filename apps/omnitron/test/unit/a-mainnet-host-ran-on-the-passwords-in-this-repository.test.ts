@@ -318,7 +318,6 @@ describe('the secret store, resolved per call', () => {
       resumeStack: () => {},
       getDesiredServices: () => [],
       getState: () => ({ services: {}, ready: true }),
-      addAppContainers: () => {},
     } as never;
 
     const service = new InfrastructureRpcService(
@@ -345,7 +344,6 @@ describe('the secret store, resolved per call', () => {
       resumeStack: () => {},
       getDesiredServices: () => [],
       getState: () => ({ services: {}, ready: true }),
-      addAppContainers: () => {},
     } as never;
 
     const service = new InfrastructureRpcService(

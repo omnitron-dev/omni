@@ -6,7 +6,10 @@ vi.mock('../../src/infrastructure/container-runtime.js', async original => ({
   createContainer: runtime.create, removeContainer: runtime.remove, ensureImage: runtime.image, createVolume: runtime.volume,
 }));
 import { InfrastructureService } from '../../src/infrastructure/infrastructure.service.js';
+import { resolveInfrastructureDefinition } from '../../src/infrastructure/infrastructure-definition.js';
 import { StackInfrastructureManager } from '../../src/infrastructure/stack-infra-manager.js';
+import { recoveryState } from '../../src/daemon/recovery-state.js';
+import type { IAppDefinition } from '../../src/config/types.js';
 import { containerSpecHash } from '../../src/infrastructure/container-runtime.js';
 import { assertReplacementVolumes } from '../../src/infrastructure/owned-container.js';
 import * as normalizer from '../../src/infrastructure/config-normalizer.js';
@@ -21,6 +24,35 @@ const definition = (target = 'http://localhost/health'): InfrastructureConfig =>
   gateway: { docker: { image: 'nginx:1' }, ports: {}, env: {}, healthCheck: { type: 'command', target: `wget -q -O /dev/null ${target}` } },
   storage: { docker: { image: 'storage:1', volumes: { data: { source: 'retained-data', target: '/data' } } }, ports: {}, env: {} },
 } });
+
+describe('infrastructure review ownership boundary', () => {
+  it('resolves application containers and the gateway without invalidating recovery or acquiring ownership', async () => {
+    const token = recoveryState.token();
+    expect(token).not.toBeNull();
+    const apps = new Map<string, IAppDefinition>([['api', {
+      name: 'api', version: '1.0.0', processes: [],
+      omnitronConfig: { infrastructure: {
+        cache: { docker: { image: 'redis:7' }, ports: {}, env: {} },
+      } },
+    }]]);
+    const containers = await manager.planStack('tenant', 'dev', scope,
+      { redis: {}, gateway: { port: 8080 } } as InfrastructureConfig, apps, '/fixture/project');
+    expect(containers.map(container => container.name)).toEqual(expect.arrayContaining([
+      'tenant-dev-cache', 'tenant-dev-gateway', 'tenant-dev-redis',
+    ]));
+    expect(recoveryState.token()).toBe(token);
+    expect(manager.getInstance('tenant', 'dev')).toBeNull();
+    expect(runtime.create).not.toHaveBeenCalled();
+    expect(runtime.remove).not.toHaveBeenCalled();
+  });
+
+  it('invalidates recovery when the resolved declaration is actually provisioned', async () => {
+    const token = recoveryState.token();
+    await manager.provisionStack('tenant', 'dev', scope, definition());
+    expect(recoveryState.token()).not.toBe(token);
+    expect(runtime.create).toHaveBeenCalledTimes(2);
+  });
+});
 const read = (name: string) => containers.has(name) ? structuredClone(containers.get(name)!) : null;
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -209,8 +241,9 @@ describe('a repeated stack start applies current infrastructure declarations', (
 
   it('cannot transfer retained native identities to another ownership label', async () => {
     const service = await manager.provisionStack('tenant', 'dev', scope, definition());
-    const before = service.getDesiredContainers(), candidate = new InfrastructureService(logger, {}, {}, undefined, undefined, false);
-    candidate.addAppContainers(before.map(container => ({ ...container, labels: { ...container.labels, 'omnitron.project': 'other' } })));
+    const before = service.getDesiredContainers(), candidate = resolveInfrastructureDefinition({ config: {},
+      appContainers: before.map(container => ({ ...container, labels: { ...container.labels, 'omnitron.project': 'other' } })),
+    });
     await expect(service.provision(candidate)).rejects.toThrow('cannot change retained ownership');
     expect(service.getDesiredContainers()).toEqual(before);
     expect(service.getState().ready).toBe(true);

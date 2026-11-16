@@ -25,7 +25,8 @@ import { usesGatewayTemplate, withInfrastructureScope } from './service-resolver
  */
 
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
-import type { InfrastructureConfig } from './types.js';
+import type { InfrastructureConfig, ResolvedContainer } from './types.js';
+import { copyInfrastructureDefinition, resolveInfrastructureDefinition, type InfrastructureDefinition } from './infrastructure-definition.js';
 import type { IStackConfig, IStackSettings } from '../config/types.js';
 import { InfrastructureService, type InfrastructureStartMode } from './infrastructure.service.js';
 import { reviewExistingContainers } from './existing-containers.js';
@@ -52,15 +53,16 @@ const REDIS_DB_RANGE_SIZE = 5;
 
 export class StackInfrastructureManager {
   /** Incoming declarations contain the destination's actual published ports; local stack offsets have already been resolved. */
+  @RecoveryMutation()
   async provisionHosted<T>(project: string, stack: string, work: (apply: (
-    config: InfrastructureConfig, definition: InfrastructureService
+    config: InfrastructureConfig, definition: InfrastructureDefinition
   ) => Promise<InfrastructureService>) => Promise<T>, legacy?: InfrastructureService | null, mode: InfrastructureStartMode = 'start'): Promise<T> {
     const key = `${project}/${stack}`;
     return this.mutateStack(key, () => withInfrastructureScope(project, stack, () => work(async (config, definition) => {
       const allocation = this.computePortAllocation(project, stack, {
         portOffsets: { postgres: 0, redis: 0, minio: 0 }, redisDbOffset: 0,
       }, config);
-      if (legacy) this.checkClaims(key, definition, 'host infrastructure', legacy);
+      if (legacy) this.checkClaims(key, definition, 'host infrastructure', legacy.getDesiredContainers());
       this.instances.get(key)?.resumeStack({ project, stack });
       return this.installDefinition(project, stack, definition, allocation, mode);
     })));
@@ -113,7 +115,7 @@ export class StackInfrastructureManager {
   /** Port allocations keyed by `${project}/${stack}` */
   private readonly portAllocations = new Map<string, StackPortAllocation>();
 
-  private readonly mutations = new Map<string, InfrastructureService | undefined>();
+  private readonly mutations = new Map<string, InfrastructureDefinition | undefined>();
   private handoffFrozen = false;
 
   /** Reserve the allocation before asynchronous resolution as well as native work. */
@@ -158,8 +160,8 @@ export class StackInfrastructureManager {
     if (!ownsStackInfrastructure(config)) return [];
     return withInfrastructureScope(project, stack, async () => {
       const allocation = this.computePortAllocation(project, stack, config.settings, infrastructure);
-      const service = await this.resolveStackDefinition(project, stack, config, infrastructure, allocation, definitions, directory, true);
-      return service.getDesiredContainers();
+      const service = await this.resolveStackDefinition(project, stack, config, infrastructure, allocation, definitions, directory);
+      return [...service.containers];
     });
   }
 
@@ -180,23 +182,26 @@ export class StackInfrastructureManager {
     const key = `${project}/${stack}`;
     return this.mutateStack(key, () => withInfrastructureScope(project, stack, async () => {
       const allocation = this.computePortAllocation(project, stack, config.settings, infrastructure);
-      const candidate = await this.resolveStackDefinition(project, stack, config, infrastructure, allocation, definitions, directory, true);
+      const candidate = await this.resolveStackDefinition(project, stack, config, infrastructure, allocation, definitions, directory);
       return this.preserveDefinition(project, stack, candidate, review, allocation);
     }));
   }
 
-  async preserveHosted(project: string, stack: string, config: InfrastructureConfig, definition: InfrastructureService, review: string): Promise<InfrastructureService> {
+  @RecoveryMutation()
+  async preserveHosted(project: string, stack: string, config: InfrastructureConfig, definition: InfrastructureDefinition, review: string): Promise<InfrastructureService> {
     const key = `${project}/${stack}`;
     return this.mutateStack(key, () => this.preserveDefinition(project, stack, definition, review,
       this.computePortAllocation(project, stack, { portOffsets: { postgres: 0, redis: 0, minio: 0 }, redisDbOffset: 0 }, config)));
   }
 
-  private async preserveDefinition(project: string, stack: string, definition: InfrastructureService,
+  private async preserveDefinition(project: string, stack: string, definition: InfrastructureDefinition,
     review: string, allocation: StackPortAllocation): Promise<InfrastructureService> {
     const key = `${project}/${stack}`;
-    for (const [owner, service] of [...this.instances, ...this.mutations]) if (service && owner !== key) this.checkClaims(key, definition, owner, service);
+    definition = copyInfrastructureDefinition(definition);
+    for (const [owner, service] of this.instances) if (owner !== key) this.checkClaims(key, definition, owner, service.getDesiredContainers());
+    for (const [owner, pending] of this.mutations) if (pending && owner !== key) this.checkClaims(key, definition, owner, pending.containers);
     this.mutations.set(key, definition);
-    const service = this.instances.get(key) ?? definition;
+    const service = this.instances.get(key) ?? new InfrastructureService(this.logger.child({ stack: key }), definition);
     await service.preserveExisting(review, definition, { project, stack });
     this.instances.set(key, service);
     this.portAllocations.set(key, allocation);
@@ -218,14 +223,14 @@ export class StackInfrastructureManager {
     return this.installDefinition(project, stack, definition, portAlloc, mode);
   }
 
-  private async installDefinition(project: string, stack: string, definition: InfrastructureService, portAlloc: StackPortAllocation, mode: InfrastructureStartMode): Promise<InfrastructureService> {
+  private async installDefinition(project: string, stack: string, definition: InfrastructureDefinition, portAlloc: StackPortAllocation, mode: InfrastructureStartMode): Promise<InfrastructureService> {
     const key = `${project}/${stack}`;
-    for (const [owner, service] of [...this.instances, ...this.mutations]) {
-      if (service && owner !== key) this.checkClaims(key, definition, owner, service);
-    }
+    definition = copyInfrastructureDefinition(definition);
+    for (const [owner, service] of this.instances) if (owner !== key) this.checkClaims(key, definition, owner, service.getDesiredContainers());
+    for (const [owner, pending] of this.mutations) if (pending && owner !== key) this.checkClaims(key, definition, owner, pending.containers);
     this.mutations.set(key, definition);
     const existing = this.instances.get(key);
-    const infraService = existing ?? definition;
+    const infraService = existing ?? new InfrastructureService(this.logger.child({ stack: key }), definition);
 
     // Register BEFORE provision so the UI can query intermediate state
     // during the provisioning process (which may take 30+ seconds).
@@ -241,15 +246,14 @@ export class StackInfrastructureManager {
       if (!existing) {
         this.instances.delete(key);
         this.portAllocations.delete(key);
-      } else if (isDeepStrictEqual(existing.getDesiredContainers(), definition.getDesiredContainers())) this.portAllocations.set(key, portAlloc);
+      } else if (isDeepStrictEqual(existing.getDesiredContainers(), definition.containers)) this.portAllocations.set(key, portAlloc);
       this.logger.error({ project, stack, error: (err as Error).message }, 'Failed to provision stack infrastructure');
       throw err;
     }
   }
 
-  private checkClaims(key: string, definition: InfrastructureService, owner: string, service: InfrastructureService): void {
-    const occupied = service.getDesiredContainers();
-    for (const candidate of definition.getDesiredContainers()) {
+  private checkClaims(key: string, definition: InfrastructureDefinition, owner: string, occupied: readonly ResolvedContainer[]): void {
+    for (const candidate of definition.containers) {
       for (const other of occupied) {
         const port = candidate.ports.find(p => other.ports.some(binding => hostPortsOverlap(p, binding)));
         const volume = candidate.volumes.find(v => other.volumes.some(m => m.source === v.source && (!v.readonly || !m.readonly)));
@@ -285,7 +289,7 @@ export class StackInfrastructureManager {
     }
     if (!existing || !allocation) throw new Error(`No active infrastructure ownership for ${key}`);
     return withInfrastructureScope(project, stack, async () => {
-      const candidate = await this.resolveStackDefinition(project, stack, stackConfig, baseInfraConfig, allocation, appDefinitions, projectRoot, true);
+      const candidate = await this.resolveStackDefinition(project, stack, stackConfig, baseInfraConfig, allocation, appDefinitions, projectRoot);
       return existing.refreshOwnershipFrom(candidate);
     });
   }
@@ -294,9 +298,7 @@ export class StackInfrastructureManager {
     project: string, stack: string, stackConfig: IStackConfig, baseInfraConfig: InfrastructureConfig,
     portAlloc: StackPortAllocation,
     appDefinitions?: Map<string, import('../config/types.js').IAppDefinition>, projectRoot?: string,
-    strict = true,
-  ): Promise<InfrastructureService> {
-    const key = `${project}/${stack}`;
+  ): Promise<InfrastructureDefinition> {
     // 2. Build stack-specific infrastructure config with port overrides
     const stackInfraConfig = this.mergeInfraConfig(baseInfraConfig, stackConfig, portAlloc);
 
@@ -320,49 +322,14 @@ export class StackInfrastructureManager {
       'Resolved stack infrastructure'
     );
 
-    // 4. Normalize infrastructure config through preset system
-    let normalizedServices: Record<string, import('./types.js').IServiceRequirement> | undefined;
-    // Declared here rather than hoisted out of the try/catch with `var`:
-    // both arms below assign it and the code after the block uses it, which
-    // is exactly what a `let` in the enclosing scope says.
-    let infraService: InfrastructureService;
-    try {
-      const { normalizeInfraConfig } = await import('./config-normalizer.js');
-      const { createDefaultRegistry } = await import('./presets/index.js');
-      const registry = createDefaultRegistry();
-      normalizedServices = normalizeInfraConfig(stackInfraConfig, registry);
-
-      // Gateway is resolved separately (needs special volume mounts + entrypoint).
-      // Exclude from generic resolver to avoid creating a "bare" gateway container.
-      const servicesForResolver = { ...normalizedServices };
-      if (usesGatewayTemplate(normalizedServices['gateway'])) delete servicesForResolver['gateway'];
-
-      this.logger.info(
-        { services: Object.keys(normalizedServices), resolved: Object.keys(servicesForResolver) },
-        'Normalized infrastructure services via presets'
-      );
-
-      // 4a. Create InfrastructureService with normalized services + preset registry
-      infraService = new InfrastructureService(
-        this.logger.child({ stack: key }),
-        stackInfraConfig,
-        servicesForResolver,
-        registry,
-        undefined,
-        false // An application stack never owns the host control-plane database.
-      );
-    } catch (err) {
-      if (strict) throw err;
-      this.logger.warn({ error: (err as Error).message }, 'Preset normalization failed — only application declarations will be resolved');
-      infraService = new InfrastructureService(
-        this.logger.child({ stack: key }),
-        stackInfraConfig,
-        {},
-        undefined,
-        undefined,
-        false
-      );
-    }
+    const { normalizeInfraConfig } = await import('./config-normalizer.js');
+    const { createDefaultRegistry } = await import('./presets/index.js');
+    const registry = createDefaultRegistry();
+    const normalizedServices = normalizeInfraConfig(stackInfraConfig, registry);
+    // The gateway needs project-specific mounts; resolve it once below.
+    const servicesForResolver = { ...normalizedServices };
+    if (usesGatewayTemplate(normalizedServices['gateway'])) delete servicesForResolver['gateway'];
+    const extraContainers: ResolvedContainer[] = [];
 
     // 5. Add app-declared infrastructure services (bitcoin, monero, etc.)
     if (appDefinitions) {
@@ -374,7 +341,7 @@ export class StackInfrastructureManager {
         const appContainers = resolveAppInfrastructure(infraReqs, stackConfig.serviceOverrides, appName);
 
         if (appContainers.length > 0) {
-          infraService.addAppContainers(appContainers);
+          extraContainers.push(...appContainers);
           this.logger.info(
             { app: appName, services: appContainers.map((c) => c.name) },
             'Resolved app infrastructure services'
@@ -417,14 +384,15 @@ export class StackInfrastructureManager {
         redisConfig,
         projectRoot
       );
-      infraService.addAppContainers([gatewayContainer]);
+      extraContainers.push(gatewayContainer);
       this.logger.info(
         { gateway: gatewayContainer.name, port: gwPort, redisDb: gatewayRedisDb },
         'Resolved API gateway'
       );
     }
 
-    return infraService;
+    return resolveInfrastructureDefinition({ config: stackInfraConfig, normalizedServices: servicesForResolver,
+      presetRegistry: registry, serviceOverrides: stackConfig.serviceOverrides, appContainers: extraContainers });
   }
 
   async inspectStopContainers(project: string, stack: string) {

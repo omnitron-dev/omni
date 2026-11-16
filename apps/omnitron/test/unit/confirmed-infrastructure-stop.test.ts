@@ -6,6 +6,7 @@ vi.mock('../../src/infrastructure/container-runtime.js', async original => ({
   ...(await original<Record<string, unknown>>()), removeContainer: removed, inspectStackContainers: inspect, getContainerState: native,
 }));
 import { InfrastructureService } from '../../src/infrastructure/infrastructure.service.js';
+import { resolveInfrastructureDefinition } from '../../src/infrastructure/infrastructure-definition.js';
 import { StackInfrastructureManager } from '../../src/infrastructure/stack-infra-manager.js';
 import { InfrastructureRpcService } from '../../src/services/infrastructure.rpc-service.js';
 const logger: any = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child() { return this; } };
@@ -34,7 +35,7 @@ describe('infrastructure stop acknowledgements', () => {
   });
 
   it('retires one allocation after active reconciliation finishes and preserves the other stack', async () => {
-    const service: any = new InfrastructureService(logger, { services: {} } as any);
+    const service: any = new InfrastructureService(logger, resolveInfrastructureDefinition({ config: { services: {} } as any }));
     const own = { name: 'own', labels: { 'omnitron.project': 'sample', 'omnitron.stack': 'prod' } };
     const other = { name: 'other', labels: { 'omnitron.project': 'sample', 'omnitron.stack': 'test' } };
     service.desiredContainers = [own, other];
@@ -56,7 +57,7 @@ describe('infrastructure stop acknowledgements', () => {
   });
 
   it('reports each failed container instead of claiming success', async () => {
-    const service: any = new InfrastructureService(logger, { services: {} } as any);
+    const service: any = new InfrastructureService(logger, resolveInfrastructureDefinition({ config: { services: {} } as any }));
     const labels = { 'omnitron.managed': 'true' };
     service.desiredContainers = [{ name: 'one', labels }, { name: 'two', labels }];
     native.mockImplementation(async name => ({ name, labels, containerId: (name === 'one' ? '1' : '2').repeat(64) }));

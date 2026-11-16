@@ -151,7 +151,7 @@ describe('an onion that resolved its gateway once', () => {
   /**
    * The node's road. A node does not run the stack manager's resolution; it
    * re-resolves its infrastructure once the master's files arrive
-   * (`InfrastructureService.setConfigRoots` → `resolveInfrastructure`), and
+   * (`resolveInfrastructureDefinition` → `resolveInfrastructure`), and
    * that road handed the gateway port, configDir and staticDir only. On
    * sample/test, 2026-09-26, with f0e19089 on the node, the gateway came up
    * with no GATEWAY_UNIX_SOCKET and no socket volume while Tor, resolved on

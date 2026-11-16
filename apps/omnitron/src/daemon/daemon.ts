@@ -61,6 +61,7 @@ import { prepareDaemonDatabase } from './database-startup.js';
 import type { OrchestratorControl as OrchestratorService } from '../orchestrator/execution-contract.js';
 import type { WatchedApplication } from '../shared/dto/services.js';
 import { InfrastructureService } from '../infrastructure/infrastructure.service.js';
+import { resolveInfrastructureDefinition } from '../infrastructure/infrastructure-definition.js';
 import type { InfrastructureGate } from '../infrastructure/infrastructure-gate.js';
 import { DockerHealthIndicator } from '../monitoring/docker-health.indicator.js';
 import { AppHealthIndicator } from '../monitoring/app-health.indicator.js';
@@ -454,10 +455,14 @@ export class OmnitronDaemon {
     const registryDigest = projects.recoveryRegistryDigest();
     const value = await capture(projects, before, registryDigest);
     const after = await this.execution.controlledOwnerSnapshot(before.status.controller);
-    if ((review ? reviewToken() !== token || activeBackups !== (this.backupService?.activeOperationCount() ?? 0) ||
-        !isDeepStrictEqual(backups, this.backupService?.reviewHandoffOperations() ?? []) : !recoveryState.unchanged(token)) ||
-        before.inventoryDigest !== after.inventoryDigest || registryDigest !== projects.recoveryRegistryDigest())
-      throw Error('Effective configuration or application ownership changed during restart review');
+    const changed = [
+      ...((review ? reviewToken() !== token : !recoveryState.unchanged(token)) ? ['configuration revision'] : []),
+      ...(review && (activeBackups !== (this.backupService?.activeOperationCount() ?? 0) ||
+        !isDeepStrictEqual(backups, this.backupService?.reviewHandoffOperations() ?? [])) ? ['backup operations'] : []),
+      ...(before.inventoryDigest !== after.inventoryDigest ? ['application inventory'] : []),
+      ...(registryDigest !== projects.recoveryRegistryDigest() ? ['project registry'] : []),
+    ];
+    if (changed.length) throw Error('Effective configuration or application ownership changed during restart review: ' + changed.join(', '));
     return { backups, value };
   }
 
@@ -1218,19 +1223,9 @@ export class OmnitronDaemon {
       // second one over RPC would give one machine two reconcilers over one
       // set of containers.
       isSlave
-        ? (infraConfig, declaredServices, presetRegistry, serviceOverrides, stackOwned) => {
-            const service = new InfrastructureService(
-              loggerModule.logger.child({ component: 'infra' }),
-              infraConfig,
-              declaredServices,
-              presetRegistry,
-              serviceOverrides,
-              // A node keeps its own state in SQLite. Provisioning a
-              // control-plane Postgres for it gives the host a database
-              // nobody queries, on default credentials.
-              false,
-            );
-            if (!stackOwned) this.infraService = service;
+        ? (definition, presetRegistry) => {
+            const service = new InfrastructureService(loggerModule.logger.child({ component: 'infra' }), definition, { presetRegistry });
+            this.infraService = service;
             return service;
           }
         : undefined,
@@ -1750,7 +1745,7 @@ export class OmnitronDaemon {
       try {
         // The control-plane database was prepared before DI. This allocator
         // owns application services only, including when PostgreSQL is external.
-        this.infraService = new InfrastructureService(logger, config.infrastructure, undefined, undefined, undefined, false);
+        this.infraService = new InfrastructureService(logger, resolveInfrastructureDefinition({ config: config.infrastructure }));
         const infraState = await this.infraService.provision(undefined, 'automatic');
 
         const provisionTimeMs = Date.now() - startTime;

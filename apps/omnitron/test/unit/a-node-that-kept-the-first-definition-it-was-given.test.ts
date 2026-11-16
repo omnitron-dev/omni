@@ -27,8 +27,8 @@ const tiles = (image: string) => ({ ports: { http: 80 }, env: {}, docker: { imag
 describe('a node asked twice', () => {
   it('reconciles what the second call declares, on the service the first call built', async () => {
     let hosted: InfrastructureService | null = null;
-    const host = vi.fn((config: never, declared: never, registry: never, overrides: never) => {
-      hosted = new InfrastructureService(quiet(), config, declared, registry, overrides, false);
+    const host = vi.fn((definition: never, registry: never) => {
+      hosted = new InfrastructureService(quiet(), definition, { presetRegistry: registry });
       vi.spyOn(hosted as any, 'provisionOwned').mockResolvedValue({ services: {}, ready: true });
       return hosted;
     });

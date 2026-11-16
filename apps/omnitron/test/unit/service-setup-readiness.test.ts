@@ -7,6 +7,7 @@ vi.mock('../../src/infrastructure/container-runtime.js', async original => ({
 import { InfrastructureRpcService } from '../../src/services/infrastructure.rpc-service.js';
 import { DockerHealthIndicator } from '../../src/monitoring/docker-health.indicator.js';
 import { InfrastructureService } from '../../src/infrastructure/infrastructure.service.js';
+import { resolveInfrastructureDefinition } from '../../src/infrastructure/infrastructure-definition.js';
 import { PresetRegistry } from '../../src/infrastructure/presets/registry.js';
 import { containerSpecHash } from '../../src/infrastructure/container-runtime.js';
 import { retainProvisioningObservation, stackServiceObservation, summariseProvisioning } from '../../src/infrastructure/provisioning-outcome.js';
@@ -20,7 +21,7 @@ function fixture() {
   const hook = vi.fn().mockResolvedValue(undefined), registry = new PresetRegistry();
   registry.register({ name: 'fixture', type: 'storage', defaultImage: 'fixture:1', defaultPorts: {},
     defaultDocker: {}, defaultSecrets: {}, defaultHealthCheck: { type: 'command', target: 'true' }, postProvision: hook });
-  const service: any = new InfrastructureService(logger, { services: { storage: { preset: 'fixture' } } }, undefined, registry, undefined, false);
+  const service: any = new InfrastructureService(logger, resolveInfrastructureDefinition({ config: { services: { storage: { preset: 'fixture' } } }, presetRegistry: registry }), { presetRegistry: registry });
   instances.push(service);
   const desired = service.getDesiredContainers()[0];
   const actual: ContainerState = { name: desired.name, image: desired.image, status: 'running', health: 'healthy',
@@ -84,7 +85,7 @@ describe('declared service setup belongs to infrastructure readiness', () => {
     const declarations = structuredClone(service.getNormalizedServices());
     declarations.storage._presetConfig = { buckets: ['new-bucket'] };
     service.provisionOwned = vi.fn(async () => service.getState());
-    await service.provision(service.resolveDefinition({ services: {} }, declarations));
+    await service.provision(resolveInfrastructureDefinition({ config: { services: {} }, normalizedServices: declarations }));
     expect(service.getState().services[actual.name]).toMatchObject({ provisioning: 'pending', error: expect.stringContaining('setup changed') });
   });
   it('redacts known credentials before an error reaches the shared state and diagnostic logger', async () => {

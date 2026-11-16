@@ -85,6 +85,8 @@ The review requires existing, running resources whose native identities and spec
 
 An enabled-stack reconciler tick with no eligible launch leaves a recovery review valid. Actual configuration loads, launch attempts and retry bookkeeping invalidate recovery before they change state; a stack waiting for its retry deadline does not invalidate a review merely because its timer ran.
 
+Infrastructure planning resolves one complete data definition: presets, application containers, overrides and mounted configuration. Local, CLI and remote paths use that same resolver. A preview does not create a resource owner, reserve ports or invalidate recovery. Applying a definition acquires ownership and rechecks native identities; conflicting container declarations are rejected before provisioning. Handoff restores the recorded definition without resolving it against a newer preset implementation.
+
 After the planned runtime transition, inspect again if its owner or launch context changed, then use the current review:
 
 ```sh

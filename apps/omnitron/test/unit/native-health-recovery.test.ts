@@ -4,6 +4,7 @@ vi.mock('../../src/infrastructure/container-runtime.js', async original => ({
   ...(await original<Record<string, unknown>>()), getContainerState: runtime.get, removeContainer: runtime.remove, restartContainer: runtime.restart,
 }));
 import { InfrastructureService } from '../../src/infrastructure/infrastructure.service.js';
+import { resolveInfrastructureDefinition } from '../../src/infrastructure/infrastructure-definition.js';
 import { containerSpecHash } from '../../src/infrastructure/container-runtime.js';
 import { nativeHealthCheck, observeUnhealthy } from '../../src/infrastructure/health-recovery.js';
 import * as existing from '../../src/infrastructure/existing-containers.js';
@@ -17,8 +18,8 @@ function fixture() {
   const desired: ResolvedContainer = { name: 'fixture', image: 'fixture:1', ports: [], volumes: [], environment: {},
     labels: { 'omnitron.managed': 'true', 'omnitron.project': 'sample', 'omnitron.stack': 'dev', 'omnitron.service': 'fixture' },
     restart: 'unless-stopped', critical: false } as ResolvedContainer;
-  const service: any = new InfrastructureService(logger, { services: {} }, {}, undefined, undefined, false);
-  service.addAppContainers([desired]); services.push(service);
+  const service: any = new InfrastructureService(logger, resolveInfrastructureDefinition({ config: { services: {} }, normalizedServices: {}, appContainers: [desired] }));
+ services.push(service);
   service.createAndStart = vi.fn().mockResolvedValue(undefined);
   const actual: ContainerState = { name: desired.name, image: desired.image, status: 'running', health: 'unhealthy',
     containerId: 'a'.repeat(64), startedAt: '2026-01-01T00:00:00Z', labels: desired.labels,

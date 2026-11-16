@@ -12,6 +12,7 @@ vi.mock('../../src/infrastructure/container-runtime.js', async original => ({
 
 import { containerResources, containerSpecHash } from '../../src/infrastructure/container-runtime.js';
 import { InfrastructureService } from '../../src/infrastructure/infrastructure.service.js';
+import { resolveInfrastructureDefinition } from '../../src/infrastructure/infrastructure-definition.js';
 import { resolveInfrastructure, resolveOmnitronPg, withInfrastructureScope } from '../../src/infrastructure/service-resolver.js';
 import { StackInfrastructureManager } from '../../src/infrastructure/stack-infra-manager.js';
 
@@ -34,7 +35,7 @@ function container(desired: ResolvedContainer, status: ContainerState['status'],
 
 function monitor(hostDatabase: boolean) {
   return withInfrastructureScope('sample', 'test', () => {
-    const service = new InfrastructureService(logger(), config, redis, undefined, undefined, hostDatabase);
+    const service = new InfrastructureService(logger(), resolveInfrastructureDefinition({ config, normalizedServices: redis }), { needsControlPlaneDatabase: hostDatabase });
     const [desiredRedis] = resolveInfrastructure(config, redis);
     return { service, redis: container(desiredRedis!, 'running', 'b') };
   });

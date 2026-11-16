@@ -6,7 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProjectService } from '../../src/services/project.service.js';
 import { InfrastructureRpcService } from '../../src/services/infrastructure.rpc-service.js';
 import { InfrastructureService } from '../../src/infrastructure/infrastructure.service.js';
+import { resolveInfrastructureDefinition } from '../../src/infrastructure/infrastructure-definition.js';
 import { StackInfrastructureManager } from '../../src/infrastructure/stack-infra-manager.js';
+import { recoveryState } from '../../src/daemon/recovery-state.js';
 import * as runtime from '../../src/infrastructure/container-runtime.js';
 import type { ExistingInfrastructureReview } from '../../src/shared/dto/project.js';
 
@@ -56,6 +58,26 @@ function fixture() {
 }
 
 describe('stack preservation admission', () => {
+  it('reviews the complete remote declaration without creating an owner or changing recovery', async () => {
+    const manager = new StackInfrastructureManager(logger);
+    const host = vi.fn((definition, registry) => new InfrastructureService(logger, definition, { presetRegistry: registry }));
+    const rpc = new InfrastructureRpcService(() => null, host, undefined, logger, undefined, undefined, manager);
+    // Native filesystem inspection is the boundary; the definition and ownership paths are real.
+    vi.spyOn(rpc as any, 'checkStackConfigs').mockResolvedValue(new Map([['gateway', '/fixture/gateway']]));
+    const token = recoveryState.token();
+    const result = await rpc.reviewStack({ ...scope, infrastructure: 'preserve',
+      config: { redis: {}, gateway: { port: 8080 } },
+      services: { cache: { docker: { image: 'redis:7' }, ports: {}, env: {} } },
+    });
+    expect(result.digest).toMatch(/^[a-f0-9]{64}$/);
+    expect(native.review.mock.calls[0]![0].map((container: { name: string }) => container.name))
+      .toEqual(expect.arrayContaining(['sample-dev-redis', 'sample-dev-gateway', 'sample-dev-cache']));
+    expect(host).not.toHaveBeenCalled();
+    expect(manager.listInstances()).toEqual([]);
+    expect(recoveryState.token()).toBe(token);
+    manager.dispose();
+  });
+
   it('reviews desired infrastructure before a stop, without executing application declarations or migrations', async () => {
     const f = fixture();
     const review = await f.service.reviewStackStart('sample', 'dev', { infrastructure: 'preserve' });
@@ -139,7 +161,7 @@ describe('recipient preservation uses the existing infrastructure lifecycle', ()
     const spies = effects.map(name => vi.spyOn(runtime, name).mockImplementation(async () => { throw Error('FORBIDDEN NATIVE EFFECT'); }));
     const manager = new StackInfrastructureManager(logger);
     const rpc = new InfrastructureRpcService(() => null,
-      (config, services, registry, overrides) => new InfrastructureService(logger, config, services, registry, overrides, false), undefined, logger, undefined, undefined, manager);
+      (definition, registry) => new InfrastructureService(logger, definition, { presetRegistry: registry }), undefined, logger, undefined, undefined, manager);
     const input = { ...scope, config: {}, infrastructure: 'preserve' as const };
     const before = await rpc.reviewStack(input);
     expect(manager.listInstances()).toHaveLength(0);
@@ -161,7 +183,7 @@ describe('recipient preservation uses the existing infrastructure lifecycle', ()
   it('refuses replaced native identity on the recipient before ownership adoption or setup', async () => {
     const manager = new StackInfrastructureManager(logger), adopt = vi.spyOn(manager, 'preserveHosted');
     const rpc = new InfrastructureRpcService(() => null,
-      (config, services, registry, overrides) => new InfrastructureService(logger, config, services, registry, overrides, false), undefined, logger, undefined, undefined, manager);
+      (definition, registry) => new InfrastructureService(logger, definition, { presetRegistry: registry }), undefined, logger, undefined, undefined, manager);
     const input = { ...scope, config: {}, infrastructure: 'preserve' as const };
     const review = await rpc.reviewStack(input);
     native.review.mockResolvedValue({ ...observation(), digest: 'b'.repeat(64) });
@@ -173,13 +195,13 @@ describe('recipient preservation uses the existing infrastructure lifecycle', ()
   it('revalidates once more at native adoption and keeps a failed recovery fenced', async () => {
     const manager = new StackInfrastructureManager(logger);
     const rpc = new InfrastructureRpcService(() => null,
-      (config, services, registry, overrides) => new InfrastructureService(logger, config, services, registry, overrides, false), undefined, logger, undefined, undefined, manager);
+      (definition, registry) => new InfrastructureService(logger, definition, { presetRegistry: registry }), undefined, logger, undefined, undefined, manager);
     const input = { ...scope, config: {}, infrastructure: 'preserve' as const };
     const review = await rpc.reviewStack(input);
     native.review.mockResolvedValueOnce(observation()).mockResolvedValueOnce({ ...observation(), digest: 'c'.repeat(64) });
     await expect(rpc.provisionStack({ ...input, review: review.digest! })).rejects.toThrow('changed after review');
     expect(manager.listInstances()).toHaveLength(0);
-    const existing = new InfrastructureService(logger, {}, {}, undefined, undefined, false);
+    const existing = new InfrastructureService(logger, resolveInfrastructureDefinition({ config: {}, normalizedServices: {} }));
     await existing.holdForPreservation();
     expect(existing.captureRecoveryState().preservationPending).toBe(true);
     await expect(existing.provision()).rejects.toThrow('explicit reconcile');

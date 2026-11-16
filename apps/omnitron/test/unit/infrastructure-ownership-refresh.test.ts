@@ -5,6 +5,7 @@ vi.mock('../../src/infrastructure/container-runtime.js', async original => ({
   createContainer: runtime.create, removeContainer: runtime.remove, startContainer: runtime.start, restartContainer: runtime.restart,
 }));
 import { InfrastructureService } from '../../src/infrastructure/infrastructure.service.js';
+import { resolveInfrastructureDefinition } from '../../src/infrastructure/infrastructure-definition.js';
 import * as normalizer from '../../src/infrastructure/config-normalizer.js';
 import { StackInfrastructureManager } from '../../src/infrastructure/stack-infra-manager.js';
 import { containerSpecHash } from '../../src/infrastructure/container-runtime.js';
@@ -15,10 +16,11 @@ function desired(name: string): ResolvedContainer {
     labels: { 'omnitron.managed': 'true', 'omnitron.project': 'tenant', 'omnitron.stack': 'prod', 'omnitron.service': name },
     restart: 'unless-stopped', critical: false } as ResolvedContainer;
 }
+function definition(...containers: ResolvedContainer[]) {
+  return resolveInfrastructureDefinition({ config: {}, appContainers: containers });
+}
 function service(...containers: ResolvedContainer[]): any {
-  const svc = new InfrastructureService(logger, { services: {} } as any, {}, undefined, undefined, false);
-  svc.addAppContainers(containers);
-  return svc;
+  return new InfrastructureService(logger, definition(...containers));
 }
 function actual(d: ResolvedContainer, extras: any = {}) {
   return { name: d.name, image: d.image, status: 'running', containerId: '1'.repeat(64), labels: d.labels, specHash: containerSpecHash(d), ...extras };
@@ -29,8 +31,7 @@ beforeEach(() => { vi.clearAllMocks(); runtime.get.mockResolvedValue(null); });
 describe('native monitoring ownership refresh', () => {
   it('permanently relinquishes legacy control-plane and janitor ownership after every actor drains', async () => {
     const redis = desired('redis');
-    const original: any = new InfrastructureService(logger, {} as any, {}, undefined, undefined, true);
-    original.addAppContainers([redis]);
+    const original: any = new InfrastructureService(logger, definition(redis), { needsControlPlaneDatabase: true });
     const sweep = deferred<void>(), reconcile = deferred<void>(), janitor = deferred<void>();
     original.activeSweeps.add(sweep.promise); original.reconcileTasks.set('redis', reconcile.promise);
     const stop = vi.fn(), drain = vi.fn(() => janitor.promise);
@@ -42,7 +43,7 @@ describe('native monitoring ownership refresh', () => {
     expect(original.healthTimer).toBeNull();
     await expect(original.teardown()).rejects.toThrow('frozen');
     await expect(original.retireStack({ project: 'tenant', stack: 'prod' })).rejects.toThrow('frozen');
-    expect(() => original.addAppContainers([redis])).toThrow('frozen');
+    await expect(original.provision(definition(redis))).rejects.toThrow('frozen');
     expect(() => original.resumeStack({ project: 'tenant', stack: 'prod' })).toThrow('frozen');
     sweep.resolve(); reconcile.resolve(); await Promise.resolve(); expect(finished).toBe(false);
     janitor.resolve();
@@ -53,7 +54,8 @@ describe('native monitoring ownership refresh', () => {
     expect(original.ownershipFrozen).toBe(true); expect(original.healthTimer).toBeNull();
     await expect(original.provision()).rejects.toThrow('relinquished');
     await expect(original.teardown()).rejects.toThrow('relinquished');
-    expect(() => original.addAppContainers([redis])).toThrow('relinquished');
+    await expect(original.refreshOwnershipFrom(definition(redis))).rejects.toThrow('relinquished');
+    await expect(original.preserveExisting('a'.repeat(64), definition(redis))).rejects.toThrow('relinquished');
     expect(runtime.get).not.toHaveBeenCalled(); expect(runtime.create).not.toHaveBeenCalled();
     expect(runtime.start).not.toHaveBeenCalled(); expect(runtime.remove).not.toHaveBeenCalled();
   });
@@ -234,7 +236,7 @@ describe('native monitoring ownership refresh', () => {
   it('releases only omitted names and never mutates Docker', async () => {
     const origin = desired('origin'), redis = desired('redis'); const svc = service(origin, redis);
     svc.state.services.origin = actual(origin);
-    expect(await svc.refreshOwnershipFrom(service(redis))).toEqual({ released: ['origin'], adopted: [] });
+    expect(await svc.refreshOwnershipFrom(definition(redis))).toEqual({ released: ['origin'], adopted: [] });
     expect(svc.getDesiredServices().map((x: any) => x.name)).toEqual(['redis']);
     expect(svc.getState().services.origin).toBeUndefined();
     expect(runtime.create).not.toHaveBeenCalled(); expect(runtime.remove).not.toHaveBeenCalled(); expect(runtime.start).not.toHaveBeenCalled();
@@ -242,7 +244,7 @@ describe('native monitoring ownership refresh', () => {
   it('drains a stale health snapshot before acknowledging release; remaining services remain monitored', async () => {
     const origin = desired('origin'), redis = desired('redis'); const svc = service(origin, redis);
     const state = deferred<any>(); runtime.get.mockReturnValueOnce(state.promise);
-    const sweep = svc.healthSweep(); const refresh = svc.refreshOwnershipFrom(service(redis));
+    const sweep = svc.healthSweep(); const refresh = svc.refreshOwnershipFrom(definition(redis));
     let done = false; void refresh.then(() => { done = true; }); await Promise.resolve(); expect(done).toBe(false);
     state.resolve(null); await sweep; await refresh;
     expect(runtime.remove).not.toHaveBeenCalled(); expect(runtime.create).not.toHaveBeenCalled();
@@ -252,7 +254,7 @@ describe('native monitoring ownership refresh', () => {
   it('drains an inspect already in reconcile before releasing its service', async () => {
     const origin = desired('origin'), svc = service(origin); const state = deferred<any>();
     runtime.get.mockReturnValueOnce(state.promise); const reconcile = svc.reconcileService(origin);
-    const refresh = svc.refreshOwnershipFrom(service()); state.resolve(null); await reconcile; await refresh;
+    const refresh = svc.refreshOwnershipFrom(definition()); state.resolve(null); await reconcile; await refresh;
     expect(runtime.create).not.toHaveBeenCalled(); expect(svc.getDesiredServices()).toEqual([]);
   });
   it('waits for an already-started unhealthy restart before handing off', async () => {
@@ -265,25 +267,25 @@ describe('native monitoring ownership refresh', () => {
     runtime.restart.mockImplementationOnce(() => { removing.resolve(); return removed.promise; });
     svc.createAndStart = vi.fn().mockResolvedValue(undefined);
     const sweep = svc.healthSweep(); await removing.promise; expect(runtime.restart).toHaveBeenCalledOnce();
-    const refresh = svc.refreshOwnershipFrom(service()); let done = false; void refresh.then(() => { done = true; });
+    const refresh = svc.refreshOwnershipFrom(definition()); let done = false; void refresh.then(() => { done = true; });
     await Promise.resolve(); expect(done).toBe(false); removed.resolve(); await sweep; await refresh;
     expect(runtime.remove).not.toHaveBeenCalled(); expect(svc.createAndStart).not.toHaveBeenCalled(); expect(svc.getDesiredServices()).toEqual([]);
   });
   it('rejects retained spec changes without losing monitoring ownership', async () => {
     const origin = desired('origin'), svc = service(origin);
-    await expect(svc.refreshOwnershipFrom(service({ ...origin, image: 'nginx:other' }))).rejects.toThrow('retained service spec');
+    await expect(svc.refreshOwnershipFrom(definition({ ...origin, image: 'nginx:other' }))).rejects.toThrow('retained service spec');
     expect(svc.getDesiredServices()).toEqual([{ name: 'origin', image: 'nginx:1.27' }]);
   });
   it('re-adopts an exact running native container after rollback, without restarting it', async () => {
     const origin = desired('origin'), svc = service(); runtime.get.mockResolvedValue(actual(origin));
-    expect(await svc.refreshOwnershipFrom(service(origin))).toEqual({ released: [], adopted: ['origin'] });
+    expect(await svc.refreshOwnershipFrom(definition(origin))).toEqual({ released: [], adopted: ['origin'] });
     expect(runtime.create).not.toHaveBeenCalled(); expect(runtime.start).not.toHaveBeenCalled();
   });
   it.each([
     { status: 'exited' }, { specHash: 'different' }, { labels: { 'omnitron.managed': 'true', 'omnitron.project': 'other' } }, { networkAttached: false },
   ])('rejects unproven adoption %j and keeps previous ownership', async extras => {
     const origin = desired('origin'), svc = service(); runtime.get.mockResolvedValue(actual(origin, extras));
-    await expect(svc.refreshOwnershipFrom(service(origin))).rejects.toThrow('Cannot adopt'); expect(svc.getDesiredServices()).toEqual([]);
+    await expect(svc.refreshOwnershipFrom(definition(origin))).rejects.toThrow('Cannot adopt'); expect(svc.getDesiredServices()).toEqual([]);
   });
   it('fresh stack resolution uses the existing manager and never provisions a second service', async () => {
     const provision = vi.spyOn(InfrastructureService.prototype, 'provision').mockResolvedValue({ services: {}, ready: true });

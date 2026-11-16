@@ -11,6 +11,7 @@ vi.mock('@xec-sh/core', () => ({
 }));
 import { containerResources, containerResourcesMatch, containerSpecHash, createContainer, getContainerState } from '../../src/infrastructure/container-runtime.js';
 import { InfrastructureService } from '../../src/infrastructure/infrastructure.service.js';
+import { resolveInfrastructureDefinition } from '../../src/infrastructure/infrastructure-definition.js';
 import { resolveServiceRequirement } from '../../src/infrastructure/service-resolver.js';
 import type { ContainerState, ResolvedContainer } from '../../src/infrastructure/types.js';
 const id = 'a'.repeat(64);
@@ -107,7 +108,7 @@ describe('invalid declarations fail before any Docker side effect', () => {
 
 const quiet = () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => quiet() }) as never;
 const action = (desired: ResolvedContainer, actual: ContainerState) => {
-  const service = new InfrastructureService(quiet(), {}, {}, undefined, undefined, false);
+  const service = new InfrastructureService(quiet(), resolveInfrastructureDefinition({ config: {}, normalizedServices: {} }));
   return (service as unknown as { computeAction(d: ResolvedContainer, a: ContainerState): { type: string; reason?: string } }).computeAction(desired, actual);
 };
 describe('resource identity and reconciliation', () => {

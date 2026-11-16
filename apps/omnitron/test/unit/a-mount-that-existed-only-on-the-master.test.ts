@@ -25,6 +25,7 @@ import path from 'node:path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 
 import { InfrastructureService } from '../../src/infrastructure/infrastructure.service.js';
+import { type InfrastructureDefinition } from '../../src/infrastructure/infrastructure-definition.js';
 import { pointMountsAtShippedConfig, shippedMountPath } from '../../src/infrastructure/shipped-config.js';
 import { resolveAppInfrastructure } from '../../src/infrastructure/service-resolver.js';
 import type { ResolvedContainer } from '../../src/infrastructure/types.js';
@@ -243,8 +244,8 @@ describe('from the master\'s call to the node\'s container, through the calls th
     let hosted: InfrastructureService | null = null;
     const node = new InfrastructureRpcService(
       () => hosted,
-      ((config: never, declared: never, registry: never, overrides: never) => {
-        hosted = new InfrastructureService(quiet(), config, declared, registry, overrides, false);
+      ((definition: never, registry: never) => {
+        hosted = new InfrastructureService(quiet(), definition, { presetRegistry: registry });
         vi.spyOn(hosted, 'provision').mockResolvedValue({ services: {}, ready: true } as never);
         return hosted;
       }) as never,
@@ -301,14 +302,10 @@ describe('from the master\'s call to the node\'s container, through the calls th
     const nodeHome = path.join(scratch, 'node-home-apps');
     fs.mkdirSync(nodeHome);
     setEnvOverride({ HOME: nodeHome });
-    // A node that already hosts this stack: the service is reused, and only
-    // the applications' containers are added to it.
+    // A node that already hosts this stack receives one complete, locally bound declaration.
     const added: ResolvedContainer[] = [];
     const reused = {
-      resolveDefinition: vi.fn(function resolveDefinition(this: unknown) { return this; }),
-      addAppContainers: (cs: ResolvedContainer[]) => added.push(...cs),
-      setConfigRoots: vi.fn(),
-      provision: vi.fn(async () => ({ services: {}, ready: true })),
+      provision: vi.fn(async (definition: InfrastructureDefinition) => { added.push(...definition.containers); return { services: {}, ready: true }; }),
       resumeStack: () => {},
       getDesiredServices: () => [],
     };

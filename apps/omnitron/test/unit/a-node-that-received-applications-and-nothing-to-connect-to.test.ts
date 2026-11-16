@@ -24,6 +24,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 import { InfrastructureRpcService } from '../../src/services/infrastructure.rpc-service.js';
 import { InfrastructureService } from '../../src/infrastructure/infrastructure.service.js';
+import { resolveInfrastructureDefinition, type InfrastructureDefinition } from '../../src/infrastructure/infrastructure-definition.js';
 import { StackInfrastructureManager } from '../../src/infrastructure/stack-infra-manager.js';
 
 /** An InfrastructureService stand-in that records what it was asked for. */
@@ -36,7 +37,6 @@ function fakeInfra(services: Record<string, unknown>, desired: Array<{ name: str
     }),
     getDesiredServices: () => desired,
     getState: () => ({ services, ready: true }),
-    resolveDefinition: vi.fn(function resolveDefinition(this: unknown) { return this; }),
   } as never;
 }
 
@@ -47,7 +47,7 @@ const CONFIG = { postgres: { image: 'postgres:16', port: 5432 } } as never;
 describe('asking a node to host a stack s infrastructure', () => {
   it('isolates concurrent declarations, reserved ports and credentials by the owning project and stack', async () => {
     const entered = Promise.withResolvers<void>(), proceed = Promise.withResolvers<void>();
-    const logger = { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() } as never;
+    const logger = { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn(), child() { return this; } } as never;
     const manager = new StackInfrastructureManager(logger);
     const native = vi.spyOn(InfrastructureService.prototype, 'provision').mockImplementation(async function provisionFixture(this: InfrastructureService) {
       const services = this.getDesiredServices();
@@ -58,7 +58,7 @@ describe('asking a node to host a stack s infrastructure', () => {
       return state;
     });
     const endpoint = new InfrastructureRpcService(() => null,
-      (config, declared, registry, overrides) => new InfrastructureService(logger, config, declared, registry, overrides, false),
+      (definition, registry) => new InfrastructureService(logger, definition, { presetRegistry: registry }),
       () => ({ get: vi.fn(), set: vi.fn() }), logger, undefined, undefined, manager);
     const provision = (project: string, port: number) => endpoint.provisionStack({ project, stack: 'test',
       config: { postgres: { port, password: project + '-fixture' } } as never });
@@ -88,8 +88,8 @@ describe('asking a node to host a stack s infrastructure', () => {
     // The config, and the services it expands to — the stack's Postgres is
     // written as sugar and has to be a service requirement before anything
     // can act on it.
-    expect(host.mock.calls[0]![0]).toBe(CONFIG);
-    expect(Object.keys(host.mock.calls[0]![1] as Record<string, unknown>)).toContain('postgres');
+    expect((host.mock.calls[0]![0] as InfrastructureDefinition).config).toEqual(CONFIG);
+    expect(Object.keys((host.mock.calls[0]![0] as InfrastructureDefinition).normalizedServices as Record<string, unknown>)).toContain('postgres');
     expect(report.ready).toBe(true);
     expect(report.running.sort()).toEqual(['pg', 'redis']);
     expect(report.missing).toEqual([]);
@@ -126,7 +126,8 @@ describe('asking a node to host a stack s infrastructure', () => {
     expect((infra as any).provisions).toBe(2);
     // And each call's definition is the one it serves — see
     // `a-node-that-kept-the-first-definition-it-was-given`.
-    expect((infra as any).resolveDefinition).toHaveBeenCalledTimes(2);
+    expect((infra as any).provision).toHaveBeenCalledTimes(2);
+    expect((infra as any).provision.mock.calls[0][0].normalizedServices).toHaveProperty('postgres');
   });
 
   it('refuses on a daemon that does not host one', async () => {
@@ -147,7 +148,6 @@ describe('asking a node to host a stack s infrastructure', () => {
 describe('what the applications in a stack declare', () => {
   it('reaches the node, because the node cannot know it', async () => {
     const infra = fakeInfra({ pg: up('pg') }, [{ name: 'pg' }]);
-    (infra as any).addAppContainers = vi.fn();
     const host = vi.fn((_config: unknown, _services: Record<string, unknown>) => infra);
     const service = new InfrastructureRpcService(() => null, host as never);
 
@@ -160,7 +160,7 @@ describe('what the applications in a stack declare', () => {
     // The node does not have the application definitions when it is asked,
     // and reading them again on that side would be a second implementation
     // of variant selection and override merging.
-    expect(host.mock.calls[0]![1]).toMatchObject(declared as Record<string, unknown>);
+    expect((host.mock.calls[0]![0] as InfrastructureDefinition).normalizedServices).toMatchObject(declared as Record<string, unknown>);
   });
 
   it('is optional — a stack may declare nothing of its own', async () => {
@@ -184,13 +184,12 @@ describe('the stack s own services reach the node', () => {
     // degraded provision: it is an empty one that reports success. Measured:
     // a node asked for `postgres, redis, minio` answered "nothing is
     // declared, so nothing was provisioned".
-    const declared = host.mock.calls[0]![1] as Record<string, unknown>;
+    const declared = (host.mock.calls[0]![0] as InfrastructureDefinition).normalizedServices as Record<string, unknown>;
     expect(Object.keys(declared)).toContain('postgres');
   });
 
   it('lets an application s declaration win over the stack s sugar', async () => {
     const infra = fakeInfra({}, []);
-    (infra as any).addAppContainers = vi.fn();
     const host = vi.fn((_config: unknown, _services: Record<string, unknown>) => infra);
     const service = new InfrastructureRpcService(() => null, host as never);
 
@@ -201,8 +200,8 @@ describe('the stack s own services reach the node', () => {
     });
 
     // The app is the side that knows what it needs of it.
-    const declared = host.mock.calls[0]![1] as Record<string, unknown>;
-    expect(declared['redis']).toBe(appVersion);
+    const declared = (host.mock.calls[0]![0] as InfrastructureDefinition).normalizedServices as Record<string, unknown>;
+    expect(declared['redis']).toEqual(appVersion);
   });
 });
 
@@ -248,8 +247,8 @@ describe('what runs inside the containers', () => {
     const errors: unknown[] = [];
     const logger: any = { info() {}, warn() {}, debug() {}, trace() {}, fatal() {}, error: (error: unknown) => errors.push(error) };
     const config = { services: { postgres: { preset: 'postgres', config: { databases: { main: {} } } } } };
-    const declared = new InfrastructureService(logger, config, undefined, undefined, undefined, false);
-    const service = new InfrastructureService(logger, config, declared.getNormalizedServices(), undefined, undefined, false);
+    const declared = new InfrastructureService(logger, resolveInfrastructureDefinition({ config }));
+    const service = new InfrastructureService(logger, resolveInfrastructureDefinition({ config, normalizedServices: declared.getNormalizedServices() }));
     const desired = service.getDesiredContainers()[0]!;
     const hook = vi.spyOn(postgresPreset, 'postProvision').mockResolvedValue(undefined);
     const get = vi.spyOn(runtime, 'getContainerState').mockResolvedValue({ name: desired.name, image: desired.image,
@@ -273,7 +272,7 @@ describe('what runs inside the containers', () => {
       error: (o: unknown) => errors.push(o), child: () => noisy,
     };
 
-    const service = new InfrastructureService(noisy, {}, { custom: {} as never });
+    const service = new InfrastructureService(noisy, resolveInfrastructureDefinition({ config: {}, normalizedServices: { custom: {} as never } }));
 
     await (service as unknown as { runPresetPostProvisionHooks(): Promise<void> }).runPresetPostProvisionHooks();
 
@@ -295,8 +294,8 @@ describe('a database the node never reads', () => {
     // provisioned node a database nobody queries, on default credentials,
     // and until published ports were bound to loopback it answered on
     // 0.0.0.0:5480 on a host whose firewall allows only SSH.
-    const node = new InfrastructureService(silent, {}, {}, undefined, {}, false);
-    const master = new InfrastructureService(silent, {}, {}, undefined, {}, true);
+    const node = new InfrastructureService(silent, resolveInfrastructureDefinition({ config: {}, normalizedServices: {}, serviceOverrides: {} }));
+    const master = new InfrastructureService(silent, resolveInfrastructureDefinition({ config: {}, normalizedServices: {}, serviceOverrides: {} }), { needsControlPlaneDatabase: true });
 
     expect((node as unknown as { needsControlPlaneDatabase: boolean }).needsControlPlaneDatabase).toBe(false);
     // A master's own state IS there: projects, nodes, metrics, logs.
@@ -310,7 +309,7 @@ describe('a database the node never reads', () => {
       child: () => silent,
     };
 
-    const service = new InfrastructureService(silent, {});
+    const service = new InfrastructureService(silent, resolveInfrastructureDefinition({ config: {} }));
 
     expect(service.captureRecoveryState().needsControlPlaneDatabase).toBe(false);
     service.dispose();

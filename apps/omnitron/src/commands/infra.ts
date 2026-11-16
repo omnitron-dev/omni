@@ -24,6 +24,7 @@ import { createDaemonClient, LONG_REQUEST_TIMEOUT } from '../daemon/daemon-clien
 import { emitError, emitJson, isJsonMode } from './output.js';
 import type { IStackInfo } from '../shared/dto/project.js';
 import { InfrastructureService } from '../infrastructure/infrastructure.service.js';
+import { resolveInfrastructureDefinition } from '../infrastructure/infrastructure-definition.js';
 import type { ContainerState } from '../infrastructure/types.js';
 import { summariseProvisioning } from '../infrastructure/provisioning-outcome.js';
 import { probeFields, type ProbeReading } from '../infrastructure/host-inspection.js';
@@ -50,7 +51,7 @@ async function standaloneServices(): Promise<InfrastructureService> {
   const config = await loadEcosystemConfig();
   if (!config.infrastructure) throw new Error('No infrastructure declared in this ecosystem');
   if (config.stacks && Object.keys(config.stacks).length) throw new Error('This project declares stacks. Select its project and stack through omnitron stack.');
-  return new InfrastructureService(cliLogger, config.infrastructure, undefined, undefined, undefined, false);
+  return new InfrastructureService(cliLogger, resolveInfrastructureDefinition({ config: config.infrastructure }));
 }
 
 export async function infraUpCommand(): Promise<void> {

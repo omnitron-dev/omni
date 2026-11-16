@@ -17,6 +17,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { containerSpecHash } from '../../src/infrastructure/container-runtime.js';
 import { InfrastructureService } from '../../src/infrastructure/infrastructure.service.js';
+import { resolveInfrastructureDefinition } from '../../src/infrastructure/infrastructure-definition.js';
 import type { ContainerState, ResolvedContainer } from '../../src/infrastructure/types.js';
 
 const quiet = () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => quiet() }) as never;
@@ -30,7 +31,7 @@ const desired = {
 } as unknown as ResolvedContainer;
 
 const action = (actual: Partial<ContainerState> | null) => {
-  const svc = new InfrastructureService(quiet(), {} as never, {} as never, undefined, undefined, false);
+  const svc = new InfrastructureService(quiet(), resolveInfrastructureDefinition({ config: {} as never, normalizedServices: {} as never }));
   return (svc as unknown as { computeAction(d: ResolvedContainer, a: ContainerState | null): { type: string; reason?: string } }).computeAction(
     desired,
     actual as ContainerState | null,

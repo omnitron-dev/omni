@@ -6,12 +6,13 @@ vi.mock('../../src/infrastructure/container-runtime.js', async original => ({
   removeContainer: async (name:string) => { removed.push(name); },
 }));
 import { InfrastructureService } from '../../src/infrastructure/infrastructure.service.js';
+import { resolveInfrastructureDefinition } from '../../src/infrastructure/infrastructure-definition.js';
 import { ProjectService } from '../../src/services/project.service.js';
 const logger:any={info(){},warn(){},error(){},debug(){},child(){return logger;}};
 it('daemon disposal cancels resource monitors without deleting live stack containers; explicit teardown still deletes',async()=>{
   removed.length=0;
   const service:any=new ProjectService(logger,{list:()=>[]} as any,{selectProjectsSync:()=>[],kvGetSync:()=>null,get:()=>null,set(){}} as any);
-  const infra=new InfrastructureService(logger,{services:{}} as any);
+  const infra=new InfrastructureService(logger, resolveInfrastructureDefinition({ config: {services:{}} as any }));
   (infra as any).desiredContainers=['one-prod-postgres','one-prod-origin'].map(name=>({name,labels:{'omnitron.managed':'true'}}));
   (infra as any).usingGlobalOmnitronPg=true;
   const timer=setInterval(()=>{},60000); (infra as any).healthTimer=timer;

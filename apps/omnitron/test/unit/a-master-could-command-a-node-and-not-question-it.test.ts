@@ -41,6 +41,7 @@ import {
 } from '../../src/shared/roles.js';
 import { stripComments } from '../../../../scripts/lib/strip-comments.mjs';
 import { InfrastructureService } from '../../src/infrastructure/infrastructure.service.js';
+import { resolveInfrastructureDefinition } from '../../src/infrastructure/infrastructure-definition.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const rpc = stripComments(
@@ -104,11 +105,11 @@ describe('a credential is not a reading', () => {
 
   it('returns the configured credentials through the actual infrastructure API', () => {
     const logger = { info() {}, warn() {}, error() {}, debug() {}, child() { return this; } };
-    const infra = new InfrastructureService(logger as never, {
+    const infra = new InfrastructureService(logger as never, resolveInfrastructureDefinition({ config: {
       postgres: { password: 'database-fixture', databases: { sample: {} } },
       redis: { password: 'cache-fixture' },
       minio: { accessKey: 'objects-fixture', secretKey: 'objects-secret-fixture' },
-    });
+    } }));
     expect(infra.getConnectionInfo('postgres')).toMatchObject({ password: 'database-fixture' });
     expect(infra.getConnectionInfo('redis')).toMatchObject({ password: 'cache-fixture' });
     expect(infra.getConnectionInfo('minio')).toMatchObject({ accessKey: 'objects-fixture', secretKey: 'objects-secret-fixture' });

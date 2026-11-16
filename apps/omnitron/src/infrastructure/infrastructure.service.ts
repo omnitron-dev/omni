@@ -28,10 +28,11 @@ import type {
   ResolvedContainer,
   ReconcileAction,
 } from './types.js';
-import { resolveInfrastructure, resolveOmnitronPg, getManagedNetwork } from './service-resolver.js';
+import { resolveOmnitronPg, getManagedNetwork } from './service-resolver.js';
 import { assertReplacementVolumes, ownedContainerId } from './owned-container.js';
 import { observeUnhealthy, type UnhealthyEvidence } from './health-recovery.js';
-import { normalizeInfraConfig } from './config-normalizer.js';
+import { copyInfrastructureDefinition, type InfrastructureDefinition } from './infrastructure-definition.js';
+import type { PresetRegistry } from './presets/registry.js';
 import { createDefaultRegistry } from './presets/index.js';
 import { PhantomEndpointJanitor } from './phantom-endpoint-janitor.js';
 import { inspectExistingInfrastructure, planLegacyContainer, reviewExistingContainers } from './existing-containers.js';
@@ -150,68 +151,31 @@ export class InfrastructureService {
   private handoffMonitoring = false;
   private janitorNetworks: string[] = [];
 
+  private config: InfrastructureConfig;
+  private serviceOverrides: InfrastructureDefinition['serviceOverrides'];
+  private readonly presetRegistry: PresetRegistry;
+  /** Fixed ownership capability; replacing a declaration cannot acquire the host database. */
+  private readonly needsControlPlaneDatabase: boolean;
+
   constructor(
     private readonly logger: ILogger,
-    private config: InfrastructureConfig,
-    normalizedServices?: Record<string, import('./types.js').IServiceRequirement>,
-    private readonly presetRegistry?: import('./presets/registry.js').PresetRegistry,
-    /**
-     * Stack overrides. A service marked `disabled` here is not provisioned,
-     * and one pointed at an `external` address is not provisioned either —
-     * there is nothing to create, and the address reaches the application
-     * through its environment instead.
-     */
-    private serviceOverrides?: Record<string, import('./types.js').IServiceOverride>,
-    /**
-     * An older handoff can include the host database in its ownership record.
-     * New allocations leave the host database to daemon startup.
-     */
-    private readonly needsControlPlaneDatabase = false,
+    definition: InfrastructureDefinition,
+    options: { presetRegistry?: PresetRegistry; needsControlPlaneDatabase?: boolean } = {},
   ) {
-    this.presetRegistry ??= createDefaultRegistry();
-    if (!normalizedServices) {
-      normalizedServices = normalizeInfraConfig(config, this.presetRegistry);
-    }
-    this.normalizedServices = normalizedServices;
-    this.desiredContainers = resolveInfrastructure(config, normalizedServices, serviceOverrides);
-    for (const desired of this.desiredContainers) containerResources(desired);
+    const owned = copyInfrastructureDefinition(definition);
+    this.config = owned.config;
+    this.normalizedServices = owned.normalizedServices;
+    this.serviceOverrides = owned.serviceOverrides;
+    this.desiredContainers = [...owned.containers];
+    this.presetRegistry = options.presetRegistry ?? createDefaultRegistry();
+    this.needsControlPlaneDatabase = options.needsControlPlaneDatabase ?? false;
     this.omnitronPgContainer = resolveOmnitronPg();
   }
 
-  /**
-   * Add app-declared infrastructure containers to the provisioning list.
-   * Called by StackInfrastructureManager after resolving app requirements.
-   *
-   * T#76: dedupe by container name. The `${CONTAINER_PREFIX}-${service}`
-   * naming convention means two apps that BOTH declare a `postgres`
-   * requirement produce two identical-named entries. Pre-T#76, the
-   * provisioning loop tried to create the container twice; Docker's
-   * name-uniqueness check failed the second create with "name already
-   * in use", leaving the second app's perspective on infrastructure
-   * broken (it saw a failure that, from the cluster's view, was a
-   * benign collision — the shared service was actually fine).
-   *
-   * The intended semantics for shared infrastructure is "all apps that
-   * declare `postgres` use the same container", so
-   * identical declarations are shared. Conflicting specifications refuse
-   * the plan before anything is provisioned.
-   */
-  @RecoveryMutation()
-  addAppContainers(containers: ResolvedContainer[]): void {
-    for (const desired of containers) containerResources(desired);
-    if (this.monitoringRelinquished) throw new Error('Infrastructure monitoring ownership has been relinquished');
-    if (this.ownershipFrozen) throw new Error('Infrastructure ownership is frozen');
-    for (const c of containers) {
-      const existing = this.desiredContainers.find((d) => d.name === c.name);
-      if (!existing) {
-        this.desiredContainers.push(c);
-        continue;
-      }
-      if (containerSpecHash(existing) !== containerSpecHash(c)) {
-        throw new Error(`Conflicting infrastructure declarations for ${c.name}; use one shared specification or distinct service names`);
-      }
-      // else: identical declaration, silent dedupe — this is the common case
-    }
+  /** Detached desired data. It carries no resource ownership or mutation authority. */
+  getDefinition(): InfrastructureDefinition {
+    return copyInfrastructureDefinition({ config: this.config, normalizedServices: this.normalizedServices,
+      serviceOverrides: this.serviceOverrides, containers: this.desiredContainers });
   }
 
   /**
@@ -220,7 +184,7 @@ export class InfrastructureService {
    * runs post-provisioning setup, and starts the health monitor.
    */
   @RecoveryMutation()
-  async provision(definition?: InfrastructureService, mode: InfrastructureStartMode = 'start'): Promise<InfrastructureState> {
+  async provision(definition?: InfrastructureDefinition, mode: InfrastructureStartMode = 'start'): Promise<InfrastructureState> {
     if (this.monitoringRelinquished) throw new Error('Infrastructure monitoring ownership has been relinquished');
     if (this.ownershipFrozen) throw new Error('Infrastructure ownership is frozen');
     if ((this.preservation || this.preservationPending) && mode !== 'reconcile') throw new Error('Infrastructure is preserved; an explicit reconcile start is required');
@@ -229,22 +193,13 @@ export class InfrastructureService {
       return this.provisioning;
     }
     if (mode === 'reconcile') { this.preservation = undefined; this.preservationPending = false; }
-    const task = this.provisionDefinition(definition, mode);
+    const task = this.provisionDefinition(definition && copyInfrastructureDefinition(definition), mode);
     this.provisioning = task;
     try { return await task; }
     finally { if (this.provisioning === task) this.provisioning = undefined; }
   }
 
-  /** Resolve a plan without installing another monitor or changing the current definition. */
-  resolveDefinition(
-    config: InfrastructureConfig,
-    services: Record<string, import('./types.js').IServiceRequirement>,
-    overrides?: Record<string, import('./types.js').IServiceOverride>,
-  ): InfrastructureService {
-    return new InfrastructureService(this.logger, config, services, this.presetRegistry, overrides, this.needsControlPlaneDatabase);
-  }
-
-  private async provisionDefinition(definition: InfrastructureService | undefined, mode: InfrastructureStartMode): Promise<InfrastructureState> {
+  private async provisionDefinition(definition: InfrastructureDefinition | undefined, mode: InfrastructureStartMode): Promise<InfrastructureState> {
     const monitored = this.healthTimer !== null;
     this.definitionChanging = true;
     try {
@@ -255,9 +210,9 @@ export class InfrastructureService {
         await this.phantomJanitor?.drain();
         if (definition && this.ownershipFrozen) throw new Error('Infrastructure ownership changed before the new declaration was applied');
         if (mode === 'automatic') {
-          const candidate = definition ?? this;
+          const candidate = definition ?? this.getDefinition();
           // Review the whole allocation before changing its monitor, running hooks or creating siblings.
-          await Promise.all(candidate.desiredContainers.map(async desired => {
+          await Promise.all(candidate.containers.map(async desired => {
             const actual = await getContainerState(desired.name, { orThrow: true, fullId: true });
             if (!actual) return;
             const id = ownedContainerId(desired, actual);
@@ -265,7 +220,7 @@ export class InfrastructureService {
               await planLegacyContainer(desired, id);
               return;
             }
-            candidate.assertStartAction(candidate.computeAction(desired, actual), mode);
+            this.assertStartAction(this.computeAction(desired, actual), mode);
           }));
         }
         if (definition) this.replaceDefinitionFrom(definition);
@@ -404,6 +359,7 @@ export class InfrastructureService {
   /** Adopt a reviewed native generation with no provisioning, setup or mutation monitor. */
   @RecoveryMutation()
   async holdForPreservation(): Promise<void> {
+    if (this.monitoringRelinquished) throw new Error('Infrastructure monitoring ownership has been relinquished');
     if (this.ownershipFrozen) throw new Error('Infrastructure ownership is frozen');
     this.preservationPending = true;
     this.stopHealthMonitor();
@@ -415,9 +371,11 @@ export class InfrastructureService {
 
   /** Adopt a reviewed native generation with no provisioning, setup or mutation monitor. */
   @RecoveryMutation()
-  async preserveExisting(review: string, candidate: InfrastructureService = this, scope?: { project: string; stack: string }): Promise<ExistingInfrastructureReview> {
+  async preserveExisting(review: string, candidate: InfrastructureDefinition = this.getDefinition(), scope?: { project: string; stack: string }): Promise<ExistingInfrastructureReview> {
+    if (this.monitoringRelinquished) throw new Error('Infrastructure monitoring ownership has been relinquished');
     if (!/^[a-f0-9]{64}$/.test(review) || this.ownershipFrozen || this.provisioning)
       throw new Error('Infrastructure preservation requires a current review and idle ownership');
+    candidate = copyInfrastructureDefinition(candidate);
     this.preservationPending = true;
     this.definitionChanging = true;
     try {
@@ -426,7 +384,7 @@ export class InfrastructureService {
       await this.phantomJanitor?.drain();
       this.phantomJanitor = null;
       this.janitorNetworks = [];
-      const { review: observed, state } = await inspectExistingInfrastructure(candidate.desiredContainers, undefined, scope ?? this.preservation?.scope);
+      const { review: observed, state } = await inspectExistingInfrastructure(candidate.containers, undefined, scope ?? this.preservation?.scope);
       if (!observed.digest || observed.digest !== review) throw new Error('Native infrastructure changed after review; nothing was provisioned');
       this.replaceDefinitionFrom(candidate);
       this.preservation = observed;
@@ -461,15 +419,17 @@ export class InfrastructureService {
    * earlier monitor/reconcile work before acknowledging a handoff.
    */
   @RecoveryMutation()
-  async refreshOwnershipFrom(candidate: InfrastructureService): Promise<{ released: string[]; adopted: string[] }> {
+  async refreshOwnershipFrom(candidate: InfrastructureDefinition): Promise<{ released: string[]; adopted: string[] }> {
+    if (this.monitoringRelinquished) throw new Error('Infrastructure monitoring ownership has been relinquished');
     if (this.ownershipFrozen || this.provisioning) throw new Error('Infrastructure ownership refresh or provisioning already in progress');
+    candidate = copyInfrastructureDefinition(candidate);
     this.ownershipFrozen = true;
     try {
       const drained = await Promise.allSettled([...this.activeSweeps, ...this.reconcileTasks.values()]);
       if (drained.some(result => result.status === 'rejected')) throw new Error('In-flight infrastructure reconciliation failed; retry ownership refresh');
       const current = new Map(this.desiredContainers.map(c => [c.name, c]));
-      const next = new Map(candidate.desiredContainers.map(c => [c.name, c]));
-      if (next.size !== candidate.desiredContainers.length) throw new Error('Duplicate desired container identity');
+      const next = new Map(candidate.containers.map(c => [c.name, c]));
+      if (next.size !== candidate.containers.length) throw new Error('Duplicate desired container identity');
       const adopted: string[] = [];
       for (const [name, desired] of next) {
         const prior = current.get(name);
@@ -568,9 +528,10 @@ export class InfrastructureService {
   /** Read and validate existing containers. Never provision, start or recreate during adoption. */
   static async adoptHandoff(logger: ILogger, snapshot: InfrastructureHandoffState): Promise<InfrastructureService> {
     const validated = await InfrastructureService.validateHandoff(snapshot);
-    const service = new InfrastructureService(logger, snapshot.config, snapshot.normalizedServices,
-      undefined, snapshot.serviceOverrides, snapshot.needsControlPlaneDatabase);
-    service.desiredContainers = structuredClone(snapshot.containers);
+    const service = new InfrastructureService(logger, {
+      config: snapshot.config, normalizedServices: snapshot.normalizedServices,
+      serviceOverrides: snapshot.serviceOverrides, containers: snapshot.containers,
+    }, { needsControlPlaneDatabase: snapshot.needsControlPlaneDatabase });
     for (const key of snapshot.retiredStacks ?? []) service.retiredStacks.add(key);
     service.omnitronPgContainer = structuredClone(snapshot.controlPlaneContainer);
     service.janitorNetworks = [...snapshot.janitorNetworks];
@@ -751,11 +712,9 @@ export class InfrastructureService {
   }
 
   /** Called only after older native work has drained and new observations are held. */
-  private replaceDefinitionFrom(candidate: InfrastructureService): void {
-    if (candidate.needsControlPlaneDatabase !== this.needsControlPlaneDatabase)
-      throw new Error('Infrastructure declaration cannot change control-plane database ownership');
-    const next = new Map(candidate.desiredContainers.map(container => [container.name, container]));
-    if (next.size !== candidate.desiredContainers.length) throw new Error('Duplicate desired container identity');
+  private replaceDefinitionFrom(candidate: InfrastructureDefinition): void {
+    const next = new Map(candidate.containers.map(container => [container.name, container]));
+    if (next.size !== candidate.containers.length) throw new Error('Duplicate desired container identity');
     for (const container of this.desiredContainers) {
       const replacement = next.get(container.name);
       if (replacement && !sameRecord(container.labels, replacement.labels))
@@ -774,7 +733,7 @@ export class InfrastructureService {
     this.config = candidate.config;
     this.normalizedServices = candidate.normalizedServices;
     this.serviceOverrides = candidate.serviceOverrides;
-    this.desiredContainers = [...candidate.desiredContainers];
+    this.desiredContainers = [...candidate.containers];
     this.invalidateChangedSetup(previousServices);
     this.state.ready = summariseProvisioning(this.desiredContainers, this.state.services).ready;
   }
@@ -900,49 +859,6 @@ export class InfrastructureService {
   private provisioning: Promise<InfrastructureState> | undefined;
   private relinquishedNames: string[] = [];
 
-
-  /**
-   * Where this node keeps each service's config files, once a master sent them.
-   *
-   * The gateway is not an ordinary preset container — it needs four bind
-   * mounts, an entrypoint and fifteen upstream variables, and `resolveGateway`
-   * is the only thing that produces them. The constructor resolved everything
-   * through the generic preset path, because at construction time this node
-   * had no files and no local path to mount from.
-   *
-   * So this RE-RESOLVES rather than patching the volumes of a container built
-   * without them. A spec assembled by the wrong resolver is missing more than
-   * paths, and rewriting one field of it would produce a container that looks
-   * configured and is not — which is the failure that was already shipping,
-   * one level down.
-   *
-   * Called before `provision()`, so the recreation the changed spec hash
-   * implies happens on the first pass rather than the second.
-   */
-  @RecoveryMutation()
-  setConfigRoots(
-    roots: Map<string, string>,
-    staticRoots: Map<string, string>,
-    redis: { host: string; port: number; db: number; password?: string },
-    /**
-     * The static ROOT per service, when the delivery made a
-     * `current-<project>-<stack>` link inside it. Given, the gateway mounts
-     * the root and serves through the link — a path that does not change from
-     * one release to the next, so the container is not recreated and the
-     * second of 000 a deployment cost goes with it. Empty, everything below
-     * resolves exactly as before.
-     */
-    staticLinkRoots?: Map<string, string>,
-  ): void {
-    if (roots.size === 0) return;
-    this.desiredContainers = resolveInfrastructure(
-      this.config,
-      this.normalizedServices,
-      this.serviceOverrides,
-      roots,
-      { redis, staticRoots, ...(staticLinkRoots && { staticLinkRoots }) },
-    );
-  }
 
   private reconcileService(desired: ResolvedContainer, mode: InfrastructureStartMode = 'start'): Promise<void> {
     return this.withContainerReconciliation(desired, () => this.reconcileServiceLocked(desired, mode));

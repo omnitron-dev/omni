@@ -8,6 +8,9 @@ import { create } from 'tar';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import { ProjectService } from '../../src/services/project.service.js';
+import { OmnitronDaemon } from '../../src/daemon/daemon.js';
+import { recoveryState } from '../../src/daemon/recovery-state.js';
+import * as nativeInfrastructure from '../../src/infrastructure/existing-containers.js';
 import { DaemonStateStore } from '../../src/daemon/daemon-state-store.service.js';
 import { DEFAULT_ECOSYSTEM } from '../../src/config/defaults.js';
 import { CLOSURE_FILE } from '../../src/release/application-closure.js';
@@ -37,7 +40,7 @@ const sha = (value: string | Buffer) => createHash('sha256').update(value).diges
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const close of cleanup.splice(0)) await close(); vi.restoreAllMocks(); });
 
-async function fixture(bootstrap = false) {
+async function fixture(bootstrap = false, ownInfrastructure = false) {
   const home = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'retained-restart-')));
   const repo = path.join(home, 'project'), payload = path.join(home, 'payload'), store = path.join(home, 'releases');
   await Promise.all([repo, payload, path.join(home, 'old-owner'), path.join(home, 'new-owner'), path.join(home, 'data')].map(dir => fs.mkdir(dir)));
@@ -74,7 +77,7 @@ async function fixture(bootstrap = false) {
   const release = await loadRelease('fixture', store);
   const scope = { project: 'sample', stack: 'dev' }, registration = { name: 'sample', path: repo, registeredAt: '2026-11-14T00:00:00Z', enabledStacks: ['dev'] };
   const config: IEcosystemConfig = { ...structuredClone(DEFAULT_ECOSYSTEM), apps: [{ name: 'worker', ...(bootstrap ? { bootstrap: 'main.js' } : { script: 'main.js' }), cwd: repo,
-    env: { NATIVE_SHA: 'retained-binary-proof' } }], stacks: { dev: { type: 'local', infrastructureOwnership: 'external',
+    env: { NATIVE_SHA: 'retained-binary-proof' } }], stacks: { dev: { type: 'local', ...(ownInfrastructure ? { infrastructure: { redis: {}, gateway: { port: 8080 } } } : { infrastructureOwnership: 'external' as const }),
       settings: { env: { PRIVATE_VALUE: 'retained-secret' } } } } };
   const handles = new Map<string, { name: string; entry: IEcosystemAppEntry; status: string; pid: number }>();
   let ownerRoot = path.join(home, 'old-owner');
@@ -94,14 +97,14 @@ async function fixture(bootstrap = false) {
     toStackInfo: () => ({ name: scope.stack, type: 'local', status: 'running', apps: [...handles.values()] }),
   });
   service.configRegistry.set(scope.project, { config, loadedAt: 1000 });
-  vi.spyOn(service.infraManager, 'reviewPreservation').mockResolvedValue({ protocol: 1, mode: 'preserve', scope,
+  if (!ownInfrastructure) vi.spyOn(service.infraManager, 'reviewPreservation').mockResolvedValue({ protocol: 1, mode: 'preserve', scope,
     digest: 'c'.repeat(64), checks: [], containers: [] });
   const provision = vi.spyOn(service.infraManager, 'provisionStack');
   const migrations = vi.spyOn(service, 'runStackMigrations');
   const selector = service.localSelection(scope.project, scope.stack);
   selector.select(0, { id: release.id, manifestSha256: release.manifestSha256 });
   const installed = await service.installedRelease(scope.project, scope.stack, config.stacks!['dev'], config, release, true);
-  if (bootstrap) service.bootstrapMetadata.save(captureBootstrapMetadata(installed.entries[0].bootstrap, installed.entries[0].bootstrap, { requires: {} }));
+  if (bootstrap) service.bootstrapMetadata.save(captureBootstrapMetadata(installed.entries[0].bootstrap, installed.entries[0].bootstrap, { requires: {}, ...(ownInfrastructure ? { omnitronConfig: { infrastructure: { cache: { docker: { image: 'redis:7' }, ports: {}, env: {} } } } } : {}) }));
   const environment = await service.stackEnvFor(scope.project, scope.stack, config.stacks!['dev'], ['worker']);
   const definitions = service.preservationDefinitions(scope.project, scope.stack, installed.entries);
   const entry = service.stackEntryBuilder(scope.project, scope.stack, config.stacks!['dev'], config, definitions, environment)(installed.entries[0]);
@@ -124,6 +127,39 @@ async function fixture(bootstrap = false) {
   };
   return { service, scope, config, registration, capture, boot, repo, home, release, entry, handles, owner, selector, provision, migrations, archive };
 }
+
+it('reviews a retained release through the daemon and real infrastructure resolver without invalidating its own admission', async () => {
+  const native = vi.spyOn(nativeInfrastructure, 'reviewExistingContainers').mockImplementation(async (_containers, _node, scope) => ({
+    protocol: 1, mode: 'preserve', ...(scope && { scope }), digest: 'c'.repeat(64), checks: [], containers: [],
+  }));
+  const f = await fixture(true, true);
+  const daemon = Object.assign(Object.create(OmnitronDaemon.prototype), {
+    watchConfig: f.config, runtimeRestartAdmission: null,
+    execution: { state: () => ({ phase: 'active' }), controlledOwnerSnapshot: async () => ({
+      status: { owner: { id: 'fixture-owner' }, controller: { epoch: 1 } }, inventoryDigest: 'e'.repeat(64),
+    }) }, app: { container: { resolveAsync: async () => f.service } },
+    recoveryMonitor: { status: () => ({ status: 'ready' }) },
+  }) as OmnitronDaemon;
+  const before = recoveryState.token();
+  const review = await daemon.reviewRuntimeRestart([f.scope]);
+  expect(review.configuration.stacks[0]!.review.digest).toMatch(/^[a-f0-9]{64}$/);
+  expect(native.mock.calls.at(-1)![0].map(container => container.name)).toEqual(expect.arrayContaining([
+    'sample-dev-redis', 'sample-dev-gateway', 'sample-dev-cache',
+  ]));
+  expect(recoveryState.token()).toBe(before);
+  expect(f.provision).not.toHaveBeenCalled();
+  expect(f.owner.startApp).not.toHaveBeenCalled();
+  expect(f.service.infraManager.listInstances()).toEqual([]);
+
+  // An actual mutation during the same capture must still invalidate admission.
+  const capture = f.service.captureRuntimeRestart.bind(f.service);
+  vi.spyOn(f.service, 'captureRuntimeRestart').mockImplementation(async (...args: unknown[]) => {
+    const result = await capture(...args);
+    recoveryState.run('synthetic concurrent ownership mutation', () => {});
+    return result;
+  });
+  await expect(daemon.reviewRuntimeRestart([f.scope])).rejects.toThrow('changed during restart review');
+});
 
 it('restarts the retained release after unused imported source changes, restages for the new owner, and restores the old owner binding', async () => {
   const f = await fixture(), configuration = await f.capture();

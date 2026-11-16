@@ -55,6 +55,7 @@ vi.mock('../../src/infrastructure/service-resolver.js', () => ({
 }));
 
 import { InfrastructureService } from '../../src/infrastructure/infrastructure.service.js';
+import { resolveInfrastructureDefinition } from '../../src/infrastructure/infrastructure-definition.js';
 import * as runtime from '../../src/infrastructure/container-runtime.js';
 
 const logger: any = {
@@ -68,7 +69,7 @@ const logger: any = {
 };
 
 function mkSvc(): InfrastructureService {
-  const svc: any = new InfrastructureService(logger, { services: {} } as any);
+  const svc: any = new InfrastructureService(logger, resolveInfrastructureDefinition({ config: { services: {} } as any }));
   // Replant a single fake desired container so the sweep has
   // something concrete to reconcile.
   svc.desiredContainers.length = 0;

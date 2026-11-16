@@ -308,7 +308,7 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
   const coldPreview = async (artifact: string): Promise<RuntimeUpdateInfrastructure> => {
     const response = await call<ColdStartObservation>(['backend', 'select', artifact, '--check']);
     const infra = response.infrastructure;
-    if (!response.checked || response.candidate !== artifact || infra?.coverage !== 'certified-declarations' || !Array.isArray(infra.containers) ||
+    if (!response.checked || response.candidate !== artifact || !['certified-declarations', 'reviewed-declarations'].includes(infra?.coverage ?? '') || !Array.isArray(infra?.containers) ||
         !hash.test(infra.digest) || infra.containers.some(v => v.action !== 'retain' || !hash.test(v.id)) ||
         (infra.controlPlaneDatabase && infra.controlPlaneDatabase.action !== 'retain')) throw Error('Automatic local restart requires verified retained infrastructure; inspect backend select ' + artifact + ' --check for the proposed changes');
     return { schemaScope: response.schemaScope, ...(response.coldStackAdmissionProtocol === 1 && { coldStackAdmissionProtocol: 1 as const }),

@@ -5,11 +5,11 @@ import os from 'node:os';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  ambientHome: '/ambient-instance-must-not-be-used', daemon: vi.fn(), control: vi.fn(), candidate: vi.fn(), migrations: vi.fn(), installation: vi.fn(), inspection: vi.fn(), supervised: vi.fn(), adoption: vi.fn(),
+  ambientHome: '/ambient-instance-must-not-be-used', daemon: vi.fn(), control: vi.fn(), candidate: vi.fn(), migrations: vi.fn(), installation: vi.fn(), inspection: vi.fn(), supervised: vi.fn(), adoption: vi.fn(), coldPreview: vi.fn(),
 }));
 vi.mock('../../src/daemon/daemon-client.js', () => ({ createDaemonClient: mocks.daemon }));
 vi.mock('../../src/daemon/private-control-client.js', () => ({ privateControlClient: mocks.control }));
-vi.mock('../../src/daemon/backend-candidate.js', () => ({ checkBackendCandidate: mocks.candidate, assertBackendMigrationsCompatible: mocks.migrations, checkBackendAdoption: mocks.adoption }));
+vi.mock('../../src/daemon/backend-candidate.js', () => ({ checkBackendCandidate: mocks.candidate, assertBackendMigrationsCompatible: mocks.migrations, checkBackendAdoption: mocks.adoption, previewBackendColdStart: mocks.coldPreview }));
 vi.mock('../../src/daemon/runtime-installation.js', () => ({ RuntimeInstallation: { open: mocks.installation, openReadOnly: mocks.inspection } }));
 vi.mock('../../src/daemon/backend-child.js', () => ({ supervisesBackendChildren: mocks.supervised }));
 vi.mock('../../src/config/defaults.js', async importOriginal => ({
@@ -23,11 +23,14 @@ import { BackendRecoveryJournal, type BackendRecoveryRecord } from '../../src/da
 import { writePrivateRecord } from '../../src/daemon/execution-journal.js';
 import type { OperationReceipt } from '../../src/shared/dto/execution-operations.js';
 import { backendConfigurationDigest, type BackendBootRecord } from '../../src/daemon/backend-handoff-types.js';
+import { PidManager } from '../../src/daemon/pid-manager.js';
+import { coldStartPreview } from '../../src/commands/backend.js';
+import type { BackendArtifact } from '../../src/daemon/backend-candidate.js';
 
 const roots: string[] = [];
 beforeEach(() => { vi.resetAllMocks(); mocks.ambientHome = '/ambient-instance-must-not-be-used'; mocks.supervised.mockReturnValue(false);
   mocks.migrations.mockResolvedValue({ kind: 'identical' }); });
-afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
+afterEach(async () => { vi.restoreAllMocks(); for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
 async function fixture(managed = false, certified = true) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'omni-instance-')); roots.push(root);
   const home = path.join(root, 'home'), execution = path.join(root, 'e');
@@ -80,6 +83,56 @@ async function fixture(managed = false, certified = true) {
   }
   return { root, home, execution, socket, control, config, record, upgrade, recover, status, snapshot, observe, prepare, supervisorStatus, admission, handoffReview, observedRecord, getOperation };
 }
+
+const coldArtifact = { coldInfrastructureProtocol: 1, runtimeHash: 'a'.repeat(64) } as BackendArtifact;
+
+it('previews current infrastructure during backup without certifying recovery or cancelling work', async () => {
+  const target = await fixture();
+  vi.spyOn(PidManager.prototype, 'getPid').mockReturnValue(target.status.pid);
+  const journal = new BackendRecoveryJournal(target.execution);
+  journal.invalidate('Backup or restore in progress');
+  const before = journal.read();
+  mocks.coldPreview.mockResolvedValue({ digest: 'c'.repeat(64), containers: [] });
+  try {
+    await expect(coldStartPreview(coldArtifact, target.record.daemonConfig, target.home))
+      .resolves.toMatchObject({ coverage: 'reviewed-declarations', digest: 'c'.repeat(64) });
+    expect(mocks.daemon).toHaveBeenCalledWith(target.socket);
+    expect(mocks.coldPreview).toHaveBeenCalledWith(coldArtifact, target.observedRecord);
+    expect(journal.read()).toEqual(before);
+    expect(target.prepare).not.toHaveBeenCalled();
+    expect(target.upgrade).not.toHaveBeenCalled();
+    expect(mocks.installation).not.toHaveBeenCalled();
+  } finally { await journal.close(); }
+});
+
+it.each(['refused', 'pid', 'instance', 'owner', 'epoch', 'configuration'])('never falls back to historical infrastructure after a %s live review', async changed => {
+  const target = await fixture();
+  vi.spyOn(PidManager.prototype, 'getPid').mockReturnValue(target.status.pid);
+  if (changed === 'refused') target.handoffReview.mockRejectedValue(Error('Unfinished ownership mutation'));
+  if (changed === 'pid') target.status.pid++;
+  if (changed === 'instance') target.status.instanceHome = '/another-instance';
+  if (changed === 'owner') target.observedRecord.controller.ownerId = 'another-owner';
+  if (changed === 'epoch') target.observedRecord.controller.epoch++;
+  if (changed === 'configuration') target.admission.configuration.sha256 = '0'.repeat(64);
+  await expect(coldStartPreview(coldArtifact, target.record.daemonConfig, target.home)).rejects.toThrow();
+  expect(mocks.coldPreview).not.toHaveBeenCalled();
+  expect(target.prepare).not.toHaveBeenCalled();
+});
+
+it('keeps offline historical evidence distinct from certified evidence', async () => {
+  const target = await fixture();
+  vi.spyOn(PidManager.prototype, 'getPid').mockReturnValue(null);
+  mocks.coldPreview.mockResolvedValue({ digest: 'c'.repeat(64), containers: [] });
+  await expect(coldStartPreview(coldArtifact, target.record.daemonConfig, target.home))
+    .resolves.toMatchObject({ coverage: 'certified-declarations' });
+  const journal = new BackendRecoveryJournal(target.execution);
+  journal.invalidate('Backup or restore in progress');
+  await journal.close();
+  await expect(coldStartPreview(coldArtifact, target.record.daemonConfig, target.home))
+    .resolves.toMatchObject({ coverage: 'historical-declarations' });
+  expect(mocks.daemon).not.toHaveBeenCalled();
+  expect(mocks.control).not.toHaveBeenCalled();
+});
 
 it('uses the selected socket identity even when its location differs from instance home', async () => {
   const target = await fixture();

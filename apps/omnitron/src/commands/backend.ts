@@ -13,7 +13,9 @@ import { executionDirectory } from '../daemon/execution-launcher.js';
 import { readSavedDaemonConfig, savedDaemonOverrides } from '../config/saved.js';
 import { assertBackendMigrationsCompatible, backendSchemaScope, previewBackendColdStart, type BackendArtifact } from '../daemon/backend-candidate.js';
 import { BackendRecoveryJournal } from '../daemon/backend-recovery-journal.js';
-import { checkpointInstanceHome } from '../daemon/backend-handoff-types.js';
+import { assertBackendHandoffReview, checkpointInstanceHome } from '../daemon/backend-handoff-types.js';
+import { privateControlClient } from '../daemon/private-control-client.js';
+import type { BackendControlService } from '../daemon/backend-control.js';
 import { readManagedRuntime } from '../daemon/managed-runtime.js';
 import { recoverBackendAfterCrash } from '../daemon/backend-crash-recovery.js';
 
@@ -108,8 +110,29 @@ export async function backendInstallationCommand(options: { recovery?: boolean }
   finally { await installation?.close(); }
 }
 
-async function coldStartPreview(artifact: BackendArtifact, config: typeof DEFAULT_DAEMON_CONFIG, home: string) {
+export async function coldStartPreview(artifact: BackendArtifact, config: typeof DEFAULT_DAEMON_CONFIG, home: string) {
   if (artifact.coldInfrastructureProtocol !== 1) return { coverage: 'unavailable', reason: 'Candidate predates cold infrastructure preview' } as const;
+  const pid = new PidManager(expandPath(config.pidFile)).getPid();
+  if (pid !== null) {
+    // A live review can observe owned backups without cancelling them. Never
+    // mistake it for a durable recovery certificate or fall back after refusal.
+    const client = createDaemonClient(expandPath(config.socketPath));
+    let address: { socket: string };
+    try { address = await (await client.service<BackendRpcService>('OmnitronBackend')).controlAddress(); }
+    finally { await client.disconnect(); }
+    const control = await privateControlClient<BackendControlService>(address.socket, 'OmnitronBackendControl');
+    try {
+      const status = await control.service.status();
+      if (status.pid !== pid || path.resolve(status.instanceHome) !== path.resolve(home) ||
+          status.retired || status.ticketId || status.backendHandoffReviewProtocol !== 1)
+        throw Error('Cold infrastructure review requires the selected live controller');
+      const review = await control.service.handoffReview();
+      assertBackendHandoffReview(review, { pid, entry: status.entry, instanceHome: home,
+        ownerId: status.runtime.owner?.id, epoch: status.runtime.epoch });
+      const native = await previewBackendColdStart(artifact, review.record);
+      return { coverage: 'reviewed-declarations' as const, capturedAt: review.record.createdAt, ...native };
+    } finally { await control.close(); }
+  }
   const directory = executionDirectory(config);
   try { await fs.access(path.join(directory, 'recovery.db')); }
   catch (error) {

@@ -3602,7 +3602,6 @@ export class ProjectService extends EventEmitter {
     this.logger.info({ intervalMs }, 'Enabled-stacks reconciler started');
   }
 
-  @RecoveryMutation()
   private async reconcileEnabledStacks(): Promise<void> {
     // Collect the divergence set first — cheap, no I/O.
     const pending: Array<{ project: string; stack: string }> = [];
@@ -3622,44 +3621,51 @@ export class ProjectService extends EventEmitter {
         pending.push({ project: project.name, stack: stackName });
       }
     }
-    if (pending.length === 0) return;
+    const now = Date.now();
+    const due = pending.filter(({ project, stack }) => {
+      const backoff = this.resumeBackoff.get(`${project}/${stack}`);
+      return !backoff || now >= backoff.nextAt;
+    });
+    if (due.length === 0) return;
 
     // Infrastructure admission belongs to startStack, including ownership and
     // inferred requirements. A global Docker probe would strand remote and
     // externally provisioned stacks behind an unrelated local dependency.
-    const now = Date.now();
-    for (const { project, stack } of pending) {
-      const key = `${project}/${stack}`;
-      const backoff = this.resumeBackoff.get(key);
-      if (backoff && now < backoff.nextAt) continue;
+    // An observational tick must not invalidate a concurrent restart review.
+    // Configuration loads, launch attempts and backoff changes remain fenced.
+    await recoveryState.run('reconcileEnabledStacks', async () => {
+      for (const { project, stack } of due) {
+        const key = `${project}/${stack}`;
+        const backoff = this.resumeBackoff.get(key);
 
-      this.logger.info({ project, stack, attemptDelayMs: backoff?.delayMs ?? 0 }, 'Reconciler: resuming enabled stack');
-      try {
-        // Config may not be loaded yet on a fresh daemon (boot resume died
-        // before reaching this project) — load lazily, same as boot does.
-        if (!this.getLoadedConfig(project)) {
-          await this.loadProjectConfig(project);
-        }
-        const result = await this.startStack(project, stack, { source: 'auto-resume' });
-        if (result.type === 'local' && result.status !== 'running') {
-          if (result.status === 'degraded') {
-            this.logger.warn({ project, stack, notUp: result.notUp }, 'Reconciler: partial start under application supervision');
-            continue;
+        this.logger.info({ project, stack, attemptDelayMs: backoff?.delayMs ?? 0 }, 'Reconciler: resuming enabled stack');
+        try {
+          // Config may not be loaded yet on a fresh daemon (boot resume died
+          // before reaching this project) — load lazily, same as boot does.
+          if (!this.getLoadedConfig(project)) {
+            await this.loadProjectConfig(project);
           }
-          throw new Error(result.notUp?.join(', ') || `Stack state: ${result.status}`);
+          const result = await this.startStack(project, stack, { source: 'auto-resume' });
+          if (result.type === 'local' && result.status !== 'running') {
+            if (result.status === 'degraded') {
+              this.logger.warn({ project, stack, notUp: result.notUp }, 'Reconciler: partial start under application supervision');
+              continue;
+            }
+            throw new Error(result.notUp?.join(', ') || `Stack state: ${result.status}`);
+          }
+          this.resumeBackoff.delete(key);
+          this.logger.info({ project, stack }, 'Reconciler: stack resumed');
+        } catch (err) {
+          const prev = backoff?.delayMs ?? 0;
+          const delayMs = Math.min(prev > 0 ? prev * 2 : 60_000, 15 * 60_000);
+          this.resumeBackoff.set(key, { nextAt: Date.now() + delayMs, delayMs });
+          this.logger.error(
+            { project, stack, error: (err as Error).message, retryInMs: delayMs },
+            'Reconciler: stack resume failed — will retry',
+          );
         }
-        this.resumeBackoff.delete(key);
-        this.logger.info({ project, stack }, 'Reconciler: stack resumed');
-      } catch (err) {
-        const prev = backoff?.delayMs ?? 0;
-        const delayMs = Math.min(prev > 0 ? prev * 2 : 60_000, 15 * 60_000);
-        this.resumeBackoff.set(key, { nextAt: Date.now() + delayMs, delayMs });
-        this.logger.error(
-          { project, stack, error: (err as Error).message, retryInMs: delayMs },
-          'Reconciler: stack resume failed — will retry',
-        );
       }
-    }
+    });
   }
 
   /**

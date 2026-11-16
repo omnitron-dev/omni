@@ -83,6 +83,8 @@ omnitron stack start acme prod --release <release-id> --infrastructure preserve 
 
 The review requires existing, running resources whose native identities and specification match the declaration. It cannot provision, recreate or restart infrastructure, run post-provision setup or framework migrations. Changed presets or unverifiable resource receipts require a separate reconcile.
 
+An enabled-stack reconciler tick with no eligible launch leaves a recovery review valid. Actual configuration loads, launch attempts and retry bookkeeping invalidate recovery before they change state; a stack waiting for its retry deadline does not invalidate a review merely because its timer ran.
+
 After the planned runtime transition, inspect again if its owner or launch context changed, then use the current review:
 
 ```sh

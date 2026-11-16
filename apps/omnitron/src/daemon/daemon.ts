@@ -1,4 +1,4 @@
-import { RecoveryMutation, RecoveryBusyError } from './recovery-state.js';
+import { RecoveryMutation, RecoveryBusyError, observeRecoveryState } from './recovery-state.js';
 import { BackendRecoveryMonitor } from './backend-recovery-monitor.js';
 import { checkBackendCandidate, type BackendArtifact } from './backend-candidate.js';
 import { fileURLToPath } from 'node:url';
@@ -427,7 +427,7 @@ export class OmnitronDaemon {
   async reviewBackendHandoff(): Promise<BackendHandoffReview> {
     const { value: record, backups } = await this.observeRuntimeState(true, (projects, owner) => {
       if (!this.recoveryMonitor) throw Error('Backend snapshot provenance is unavailable');
-      return this.recoveryMonitor.snapshotRecord(owner, { watchConfig: this.watchConfig!, projects, infrastructure: this.infraService });
+      return observeRecoveryState(() => this.recoveryMonitor!.snapshotRecord(owner, { watchConfig: this.watchConfig!, projects, infrastructure: this.infraService }));
     });
     return { record, admission: { backend: { pid: record.previousPid, controller: structuredClone(record.controller) }, backups, configuration: {
       registryDigest: record.registryDigest, sha256: backendConfigurationDigest(record, record.registryDigest),

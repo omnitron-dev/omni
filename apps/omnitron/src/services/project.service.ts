@@ -43,7 +43,7 @@ import { getCachedBootstrapDefinition } from '../orchestrator/bootstrap-loader.j
 import { BootstrapMetadataStore, readBootstrapMetadata, metadataSourceChanged, TOPOLOGY_REFRESH_TIMEOUT_MS } from '../project/bootstrap-metadata.js';
 import { appDependencies } from '../project/dependency-topology.js';
 import { isControlPlaneWorkspace } from '../project/workspace-kind.js';
-import { recoveryState, RecoveryMutation, RecoveryBusyError } from '../daemon/recovery-state.js';
+import { recoveryState, RecoveryMutation, RecoveryBusyError, observeRecoveryState } from '../daemon/recovery-state.js';
 /**
  * ProjectService — Manages projects and their stacks
  *
@@ -1581,7 +1581,10 @@ export class ProjectService extends EventEmitter {
   /** Used only by private local runtime preparation; ordinary deployment keeps
    * source admission. Every recorded entry must match the owner's next start. */
   async captureRuntimeRestart(scopes: readonly StackExecutionScope[]): Promise<Pick<RuntimeRestartConfiguration, 'projects' | 'stacks'>> {
-    this.captureRecoveryState();
+    // A read-only health sweep may overlap either boundary. Wait for that
+    // observation to settle without repeating installed-payload verification.
+    // The daemon still brackets the whole capture with its ownership revision.
+    await observeRecoveryState(() => this.captureRecoveryState());
     await this.orchestrator.refreshObservation?.();
     const projects = structuredClone([...this.configRegistry]);
     for (const [name, loaded] of projects) loaded.config.stacks = structuredClone(this.resolveStacks(loaded.config, name));
@@ -1618,7 +1621,7 @@ export class ProjectService extends EventEmitter {
       retained.review.checkedAt = '';
       stacks.push(retained);
     }
-    this.captureRecoveryState();
+    await observeRecoveryState(() => this.captureRecoveryState());
     return { projects, stacks };
   }
 

@@ -9,7 +9,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import { ProjectService } from '../../src/services/project.service.js';
 import { OmnitronDaemon } from '../../src/daemon/daemon.js';
-import { recoveryState } from '../../src/daemon/recovery-state.js';
+import { recoveryState, RecoveryBusyError } from '../../src/daemon/recovery-state.js';
 import * as nativeInfrastructure from '../../src/infrastructure/existing-containers.js';
 import { DaemonStateStore } from '../../src/daemon/daemon-state-store.service.js';
 import { DEFAULT_ECOSYSTEM } from '../../src/config/defaults.js';
@@ -139,6 +139,44 @@ it('verifies installed payloads once per restart capture and refuses changes on 
   await fs.writeFile(f.entry.script!, 'throw Error("modified executable");');
   await expect(f.capture()).rejects.toThrow();
   expect(f.owner.startApp).not.toHaveBeenCalled();
+});
+
+it('settles an overlapping final health observation without re-verifying installed payloads', async () => {
+  const f = await fixture();
+  const inspected = vi.spyOn(f.service, 'installedRelease');
+  const snapshot = f.service.captureRecoveryState.bind(f.service);
+  let attempts = 0;
+  vi.spyOn(f.service, 'captureRecoveryState').mockImplementation(() => {
+    attempts++;
+    if (attempts === 2 || attempts === 3) throw new RecoveryBusyError('Infrastructure ownership is changing');
+    return snapshot();
+  });
+  const result = await f.capture();
+  expect(result.stacks).toHaveLength(1);
+  expect(attempts).toBe(4);
+  expect(inspected).toHaveBeenCalledTimes(1);
+  expect(f.owner.startApp).not.toHaveBeenCalled();
+  expect(f.provision).not.toHaveBeenCalled();
+});
+
+it('bounds a busy restart observation and never retries a non-transient failure', async () => {
+  const f = await fixture();
+  const capture = vi.spyOn(f.service, 'captureRecoveryState').mockImplementation(() => {
+    throw new RecoveryBusyError('Infrastructure ownership is changing');
+  });
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+  try {
+    const result = f.capture().catch((error: Error) => error);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(await result).toBeInstanceOf(RecoveryBusyError);
+    const attempts = capture.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(capture).toHaveBeenCalledTimes(attempts);
+    capture.mockImplementation(() => { throw new Error('Missing infrastructure ownership'); });
+    await expect(f.capture()).rejects.toThrow('Missing infrastructure ownership');
+    expect(capture).toHaveBeenCalledTimes(attempts + 1);
+    expect(f.owner.startApp).not.toHaveBeenCalled();
+  } finally { vi.useRealTimers(); }
 });
 
 it('reviews a retained release through the daemon and real infrastructure resolver without invalidating its own admission', async () => {

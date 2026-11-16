@@ -1,3 +1,5 @@
+import { retry, BackoffStrategy } from '@omnitron-dev/titan/utils';
+
 /**
  * Write-ahead invalidation for controller bookkeeping. Application processes
  * remain in the owner; this boundary only decides whether a saved controller
@@ -78,6 +80,17 @@ export class RecoveryState {
 
 export const recoveryState = new RecoveryState();
 export class RecoveryBusyError extends Error {}
+
+/** Wait only for transient read-side ownership observations. The caller keeps
+ * its revision fence; native mutations and payload verification are not retried. */
+export function observeRecoveryState<T>(capture: () => T): Promise<T> {
+  const deadline = performance.now() + 30_000;
+  return retry(async () => capture(), {
+    maxRetries: 120, initialDelay: 250, maxDelay: 250,
+    backoffStrategy: BackoffStrategy.Fixed, jitterFactor: 0,
+    shouldRetry: error => error instanceof RecoveryBusyError && performance.now() < deadline,
+  });
+}
 
 /** A finite list of ownership mutations, including internal scheduled work. */
 export function RecoveryMutation(): MethodDecorator {

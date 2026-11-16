@@ -36,7 +36,8 @@ const workspace = (
       </ConsoleAccessProvider>
 );
 createRoot(document.getElementById('root')!).render(
-  <PrismProvider themeOverrides={omnitronTheme} defaultSettings={{ mode: params.get('mode') === 'light' ? 'light' : 'dark', preset: 'minimal', direction }}>
+  <PrismProvider mode={params.has('mode') ? (params.get('mode') === 'light' ? 'light' : 'dark') : undefined}
+    themeOverrides={omnitronTheme} defaultSettings={{ mode: 'dark', preset: 'minimal', direction }}>
     {location.pathname === '/workspace.html'
       ? <MemoryRouter initialEntries={[view === 'files' ? '/files' : view === 'audit' ? '/audit' : '/']}>{workspace}</MemoryRouter>
       : <BrowserRouter>{workspace}</BrowserRouter>}

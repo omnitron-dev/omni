@@ -23,6 +23,18 @@ beforeEach(() => useSettingsStore.setState({ mode: 'light', direction: 'ltr' }))
 afterEach(cleanup);
 
 describe('mode-aware application themes at the provider boundary', () => {
+  it('retains saved preferences instead of replacing them with application defaults on mount', () => {
+    useSettingsStore.setState({ mode: 'system', preset: 'minimal', direction: 'rtl' });
+    const tree = <PrismProvider defaultSettings={{ mode: 'dark', preset: 'default-light', direction: 'ltr' }}><Probe /></PrismProvider>;
+    const first = render(tree);
+    expect(state().requested).toBe('system');
+    expect(useSettingsStore.getState()).toMatchObject({ preset: 'minimal', direction: 'rtl' });
+    fireEvent.click(screen.getByText('Switch theme'));
+    const selected = state().requested;
+    first.unmount();
+    render(tree);
+    expect(state().requested).toBe(selected);
+  });
   it('changes a branded palette together with the native Prism mode in both directions', () => {
     render(<PrismProvider themeOverrides={({ mode }) => ({ palette: {
       primary: { main: mode === 'dark' ? '#C9B2FF' : '#7446A6' },

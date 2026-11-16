@@ -25,7 +25,7 @@ import { defaultPrismConfig } from '../types/config.js';
 import { PrismContext } from './context.js';
 import type { PrismSettingsState, PrismContextValue } from './context.js';
 import { createPrismTheme, type PrismThemeOverrides } from '../theme/create-theme.js';
-import { useSettingsStore } from '../state/stores/settings.js';
+import { useSettingsStore, type SettingsValues } from '../state/stores/settings.js';
 import { useResolvedMode } from './hooks/use-media-query.js';
 
 /**
@@ -45,7 +45,7 @@ export interface PrismProviderProps {
   /** Initial selection for modeStorageKey; also pass it to PrismThemeScript. */
   defaultMode?: ThemeMode;
   /** Default settings (overrides defaults but not persisted values) */
-  defaultSettings?: Partial<PrismSettingsState>;
+  defaultSettings?: Partial<SettingsValues>;
   /** Disable CSS baseline */
   disableCssBaseline?: boolean;
   /** Static overrides or palettes compiled for both native modes before first paint. */
@@ -166,13 +166,12 @@ export function PrismProvider({
     onModeChange?.(nextMode);
   }, [controlledMode, setStoreMode, onModeChange]);
 
-  // Initialize store with config values on first mount
-  useEffect(() => {
-    if (controlledMode === undefined && modeStorageKey === undefined && defaultSettings?.mode) setStoreMode(defaultSettings.mode);
-    if (defaultSettings?.preset) setPreset(defaultSettings.preset);
-    if (defaultSettings?.direction) setDirection(defaultSettings.direction);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only on mount - intentionally empty deps
+  useEnhancedEffect(() => {
+    const { mode: initialMode, ...initialSettings } = defaultSettings ?? {};
+    void useSettingsStore.initializeDefaults({ ...initialSettings,
+      ...(controlledMode === undefined && modeStorageKey === undefined && initialMode !== undefined && { mode: initialMode }),
+    });
+  }, [controlledMode, modeStorageKey, defaultSettings]);
 
   // Create settings object for context (backwards compatibility)
   const settings = useMemo<PrismSettingsState>(

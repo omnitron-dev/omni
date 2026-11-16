@@ -80,6 +80,48 @@ async function until(predicate: () => boolean, budgetMs = 2000): Promise<void> {
 const rehydrated = (s: { persist?: { hasHydrated?: () => boolean } }) =>
   until(() => s.persist?.hasHydrated?.() ?? true);
 
+describe('application defaults and saved preferences', () => {
+  it.each(['light', 'dark', 'system'])('keeps an explicit %s choice across fresh stores and provider remounts', async mode => {
+    const first = store({ mode: 'light', preset: 'default-light', direction: 'ltr' });
+    await first.initializeDefaults({ mode: 'dark', preset: 'minimal' });
+    expect(first.getState()['mode']).toBe('dark');
+    first.getState().set({ mode, preset: 'luxury', direction: 'rtl' });
+    await first.initializeDefaults({ mode: 'dark', preset: 'minimal', direction: 'ltr' });
+    const next = store({ mode: 'light', preset: 'default-light', direction: 'ltr' });
+    await next.initializeDefaults({ mode: 'dark', preset: 'minimal', direction: 'ltr' });
+    expect(next.getState()).toMatchObject({ mode, preset: 'luxury', direction: 'rtl' });
+  });
+
+  it('uses defaults for missing fields, preserving a partial saved record', async () => {
+    seed({ mode: 'system' });
+    const preferences = store({ mode: 'light', preset: 'default-light', fontSize: 16 });
+    await preferences.initializeDefaults({ mode: 'dark', preset: 'minimal', fontSize: 14 });
+    expect(preferences.getState()).toMatchObject({ mode: 'system', preset: 'minimal', fontSize: 14 });
+  });
+
+  it('does not reset an in-memory selection when storage is unavailable', async () => {
+    vi.stubGlobal('localStorage', { getItem() { throw Error('blocked'); }, setItem() { throw Error('blocked'); } });
+    const preferences = store({ mode: 'light' });
+    await preferences.initializeDefaults({ mode: 'dark' });
+    preferences.getState().set({ mode: 'system' });
+    await preferences.initializeDefaults({ mode: 'dark' });
+    expect(preferences.getState()['mode']).toBe('system');
+  });
+
+  it('preserves edits made while custom asynchronous storage is being read', async () => {
+    const preferences = store({ mode: 'light', preset: 'default-light' });
+    let resolve!: (value: null) => void;
+    preferences.persist.setOptions({ storage: {
+      getItem: () => new Promise<null>(done => { resolve = done; }), setItem() {}, removeItem() {},
+    } });
+    const initialized = preferences.initializeDefaults({ mode: 'dark', preset: 'minimal' });
+    preferences.getState().set({ mode: 'system' });
+    resolve(null);
+    await initialized;
+    expect(preferences.getState()).toMatchObject({ mode: 'system', preset: 'minimal' });
+  });
+});
+
 describe('persisted settings across a version bump', () => {
   it('keeps what the user chose', async () => {
     const before = store({ mode: 'light', density: 'standard' });

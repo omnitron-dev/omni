@@ -17,7 +17,7 @@ import '@fontsource/inter/700.css';
 const params = new URLSearchParams(location.search);
 const mode = params.get('mode') === 'light' ? 'light' : 'dark';
 createRoot(document.getElementById('root')!).render(
-  <PrismProvider themeOverrides={omnitronTheme} defaultSettings={{ mode, preset: 'minimal' }}>
+  <PrismProvider mode={mode} themeOverrides={omnitronTheme} defaultSettings={{ preset: 'minimal' }}>
     <MemoryRouter>
       <Box sx={{ p: { xs: 2, sm: 4 }, maxWidth: 1200, mx: 'auto' }}>
         <OmnitronBrand size={36} />

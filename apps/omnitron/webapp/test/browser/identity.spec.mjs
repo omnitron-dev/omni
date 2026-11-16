@@ -1,5 +1,28 @@
 import { test, expect, stubInventory } from './fixtures.mjs';
 
+test('Console keeps each theme choice after full reload and follows system changes', async ({ page, url }) => {
+  await stubInventory(page);
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto(url + '/workspace.html');
+  const selection = async (next, palette) => {
+    await expect(page.getByRole('button', { name: `Switch to ${next} mode` })).toBeVisible();
+    await expect(page.locator('html')).toHaveAttribute('data-prism-color-scheme', palette);
+  };
+  await selection('system', 'dark');
+  for (const [mode, next, palette] of [['system', 'light', 'dark'], ['light', 'dark', 'light'], ['dark', 'system', 'dark']]) {
+    await page.getByRole('button', { name: `Switch to ${mode} mode` }).click();
+    await selection(next, palette);
+    await page.reload();
+    await selection(next, palette);
+    if (mode === 'system') {
+      await page.emulateMedia({ colorScheme: 'light' });
+      await selection(next, 'light');
+      await page.emulateMedia({ colorScheme: 'dark' });
+      await selection(next, 'dark');
+    }
+  }
+});
+
 for (const mode of ['light', 'dark']) {
   test('shared identity remains readable and operable in ' + mode, async ({ page, url }) => {
     await page.setViewportSize({ width: 320, height: 740 });

@@ -58,6 +58,8 @@ type ImmerMiddleware = ['zustand/immer', never];
  * because this factory always installs the middleware.
  */
 export type PersistedStore<T extends object> = UseBoundStore<StoreApi<T>> & {
+  /** Apply application defaults once, without replacing saved preferences or later edits. */
+  initializeDefaults: (defaults: Partial<T>) => void | Promise<void>;
   persist: {
     hasHydrated: () => boolean;
     rehydrate: () => Promise<void> | void;
@@ -179,7 +181,7 @@ export function createPersistedStore<T extends object>(
   // `persist.rehydrate()`. Stating the narrower type here is what makes
   // those reachable; without it a caller has to cast, which is how a store
   // that does not persist would look identical to one that does.
-  return createPrismStore(initializer, {
+  const store = createPrismStore(initializer, {
     name,
     persist: {
       version: 1,
@@ -218,6 +220,29 @@ export function createPersistedStore<T extends object>(
       ...persistOptions,
     },
   }) as PersistedStore<T>;
+  let initialized = false;
+  store.initializeDefaults = (defaults) => {
+    if (initialized || Object.keys(defaults).length === 0) return undefined;
+    initialized = true;
+    const before = store.getState();
+    const { name: key, storage } = store.persist.getOptions();
+    const apply = (stored: { state: unknown } | null | undefined) => {
+      const saved = stored?.state && typeof stored.state === 'object' ? stored.state : {};
+      const current = store.getState();
+      const updates: Partial<T> = {};
+      for (const field of Object.keys(defaults) as Array<keyof T>) {
+        if (Object.hasOwn(saved, field) || !Object.is(current[field], before[field]) ||
+            typeof current[field] === 'function' || defaults[field] === undefined) continue;
+        updates[field] = defaults[field];
+      }
+      if (Object.keys(updates).length) store.setState(updates);
+    };
+    const saved = key ? storage?.getItem(key) : null;
+    // Default storage is synchronous: initialize before first paint. Custom
+    // asynchronous storage must not overwrite an edit made while it was read.
+    return saved && 'then' in saved ? Promise.resolve(saved).then(apply) : apply(saved);
+  };
+  return store;
 }
 
 /**

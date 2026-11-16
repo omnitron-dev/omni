@@ -12,6 +12,7 @@ import { assertPipelineSucceeded } from '../../scripts/lib/pipeline-result.mjs';
 /** Consumer acceptance never builds or packs: it consumes this exact immutable batch. */
 export async function checkPackageArchives(root, artifacts, { consumer, run = releaseCommand, signal, env } = {}) {
   const execute = (cwd, command, args, options) => run(cwd, command, args, { signal, envMode: 'replace', env: env ?? process.env, ...options });
+  const streamOutput = event => { if (event.type === 'command-output') process[event.stream].write(event.text); };
   const selected = new Map(artifacts.map(artifact => [artifact.name, artifact]));
   if (selected.size !== artifacts.length) throw new Error('Duplicate archive identity');
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'omni-pack-check-'));
@@ -167,11 +168,15 @@ export async function checkPackageArchives(root, artifacts, { consumer, run = re
       // Fixtures are copied into the consumer; no source/dist aliases satisfy imports.
       await execute(path.join(root, 'packages/lumen'), 'pnpm', ['exec', 'vitest', 'run', 'tests/mcp-stdio.test.ts', 'tests/ssr-consumer-peers.test.ts', '--maxWorkers', '1',
         '--no-cache', '--fsModuleCachePath', path.join(temporary, 'mcp-cache')], {
-        env: consumerEnv, timeoutMs: 120_000,
+        env: consumerEnv, timeoutMs: 120_000, onEvent: streamOutput,
       });
       const browserCwd = path.join(root, 'packages/lumen-ui');
-      await execute(browserCwd, 'pnpm', ['exec', 'playwright', 'install', '--only-shell', 'chromium'], { timeoutMs: 300_000 });
-      await execute(browserCwd, 'pnpm', ['run', 'test:browser', '--output', path.join(temporary, 'browser-results')], { env: consumerEnv, timeoutMs: 300_000 });
+      await execute(browserCwd, 'pnpm', ['exec', 'playwright', 'install', '--only-shell', 'chromium'], { timeoutMs: 300_000, onEvent: streamOutput });
+      // The suite builds independent browser fixtures from the installed archives.
+      // Keep per-test deadlines and allow their aggregate work on external storage.
+      await execute(browserCwd, 'pnpm', ['run', 'test:browser', '--output', path.join(temporary, 'browser-results')], {
+        env: consumerEnv, timeoutMs: 600_000, onEvent: streamOutput,
+      });
     }
   } finally {
     fs.rmSync(temporary, { recursive: true, force: true });

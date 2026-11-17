@@ -30,13 +30,14 @@ export function StackRecoveryAction({ stack, onResume, onReviewStop }: {
 
 export function StackResumeNotice({ stack }: { stack: IStackInfo }) {
   const result = stack.resumeOperation;
-  if (!result || result.stopOperationId !== stack.stopOperation?.id) return null;
+  if (!result) return null;
   const complete = result.outcome === 'running';
+  const active = !complete && result.stopOperationId === stack.stopOperation?.id && !stack.stopOperation.supersededAt;
   const confirmed = result.nodes.filter(node => node.outcome === 'running').length;
-  return <Box component="details" open={!complete} sx={{ mb: 2, typography: 'body2', overflowWrap: 'anywhere' }}>
+  return <Box component="details" open={active} sx={{ mb: 2, typography: 'body2', overflowWrap: 'anywhere' }}>
     <summary>Installed recovery · {result.outcome} · {confirmed}/{result.nodes.length} nodes confirmed</summary>
-    {!complete && <Alert severity="warning">Inspect each node before requesting a new stop and recovery.</Alert>}
-    <Typography variant="caption">Operation {result.operationId}</Typography>
+    {active && <Alert severity="warning">Inspect each node before requesting a new stop and recovery.</Alert>}
+    <Typography variant="caption">Operation {result.operationId} · Stop {result.stopOperationId}</Typography>
     {result.nodes.map(node => (
       <Typography key={node.node} variant="body2">
         {[node.node, node.outcome, node.apps?.join(', '), node.reason, node.observedAt && formatTimestamp(node.observedAt)].filter(Boolean).join(' · ')}

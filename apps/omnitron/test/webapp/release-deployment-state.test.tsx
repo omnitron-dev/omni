@@ -1,8 +1,10 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { MemoryRouter, Link, Route, Routes, useLocation } from 'react-router-dom';
 const mocks = vi.hoisted(() => ({ stacks: vi.fn(), deployments: vi.fn(), selectProject: vi.fn(), selectStack: vi.fn(), activeProject: 'sample' }));
+vi.mock('src/auth/access', () => ({ useAccess: () => ({ can: () => true }), Can: ({ children }: { children: ReactNode }) => children }));
 vi.mock('src/netron/release-wire', () => ({ releaseApi: { deployments: mocks.deployments } }));
 vi.mock('src/netron/client', () => ({ daemonClient: { invoke: vi.fn() } }));
 vi.mock('src/stores/project.store', () => ({ useProjectStore: { getState: () => ({ fetchStacks: mocks.stacks, activeProject: mocks.activeProject, selectProject: mocks.selectProject, selectStack: mocks.selectStack }) } }));

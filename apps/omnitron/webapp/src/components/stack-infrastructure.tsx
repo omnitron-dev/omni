@@ -75,7 +75,8 @@ function Services({ services, label }: { services: IStackInfraStatus['services']
       const ports = portsLabel(svc.ports, svc.port);
       const status = svc.nativeStatus ?? svc.status;
       return <Box component="li" key={key} sx={{ display: 'grid', gap: { xs: 0.5, sm: 2 }, py: 1,
-        gridTemplateColumns: { xs: '1fr', sm: 'minmax(0, 1fr) minmax(0, auto)' },
+        gridTemplateColumns: 'minmax(0, 1fr)',
+        '@container (min-width: 38rem)': { gridTemplateColumns: 'minmax(0, 1fr) minmax(0, auto)' },
         '& + &': { borderTop: 1, borderColor: 'divider' } }}>
         <Box sx={{ minWidth: 0 }}>
           <Typography component="span" variant="body2" sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>{name}</Typography>
@@ -86,6 +87,7 @@ function Services({ services, label }: { services: IStackInfraStatus['services']
           {svc.error && <Typography variant="caption" color="error.main" sx={{ overflowWrap: 'anywhere' }}>{svc.error}</Typography>}
         </Box>
         <Stack direction="row" useFlexGap sx={{ alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+          {svc.status === 'error' && status !== svc.status && <Chip size="small" label="Service error" color="error" />}
           <Chip size="small" variant="outlined" label={status} color={statusColor(status)} />
           {svc.health && svc.health !== 'none' && <Chip size="small" variant="outlined" label={svc.health} color={statusColor(svc.health)} />}
           {svc.provisioning && <Chip size="small" variant="outlined" label={`Setup ${svc.provisioning}`}
@@ -125,7 +127,7 @@ export function StackInfrastructure({ stack }: { stack: IStackInfo }) {
       qualified.set(node, rows);
     }
   }
-  return <Card component="section" aria-label="Stack infrastructure" variant="outlined">
+  return <Card component="section" aria-label="Stack infrastructure" variant="outlined" sx={{ containerType: 'inline-size' }}>
     <CardContent>
       <Typography component="h2" variant="subtitle1">Infrastructure</Typography>
       {placements?.length ? placements.map(node => {

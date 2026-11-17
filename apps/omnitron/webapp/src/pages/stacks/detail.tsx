@@ -1,560 +1,173 @@
-import { StackHealthStatus, ApplicationHealthStatus } from 'src/components/stack-health-status';
-import { StackResumeNotice } from 'src/components/stack-recovery';
-import { StackLifecycleActions } from 'src/components/stack-lifecycle-actions';
-import { statusColor } from 'src/utils/constants';
-import { StackStopDialog } from 'src/components/stack-stop-dialog';
-import { StackDiagnosisDialog } from 'src/components/stack-diagnosis-dialog';
-import { StackStopNotice } from 'src/components/stack-stop-notice';
-import { StackInfrastructure } from 'src/components/stack-infrastructure';
-import { StackStartNotice } from 'src/components/stack-start-notice';
-import { Can } from 'src/auth/access';
-/**
- * StackDetailPage — Detailed view of a single stack
- *
- * Shows:
- * - Overview: type, status, settings, port range
- * - Nodes: list with status, SSH info, sync status
- * - Infrastructure: provisioned services with connection info
- * - Apps: app status within this stack
- */
-
-import { useState, useCallback } from 'react';
-import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom';
-import Box from '@mui/material/Box';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import Typography from '@mui/material/Typography';
-import Chip from '@mui/material/Chip';
-import Button from '@mui/material/Button';
-import IconButton from '@mui/material/IconButton';
-import Dialog from '@mui/material/Dialog';
-import DialogTitle from '@mui/material/DialogTitle';
-import DialogContent from '@mui/material/DialogContent';
-import DialogContentText from '@mui/material/DialogContentText';
-import DialogActions from '@mui/material/DialogActions';
+import { useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { Box, Button, Card, CardContent, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle,
+  IconButton, Stack, Typography } from '@mui/material';
 import { Alert, FormAlert } from '@omnitron-dev/prism/components/alert';
-import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import { PageContent } from '@omnitron-dev/prism/components/page-content';
-import { Table, type TableColumn } from '@omnitron-dev/prism/components/table';
-import { RefreshIcon, SyncIcon, DeployIcon, DeleteIcon } from '../../assets/icons';
-import {
-  useProjectStore,
-  useActiveProject,
-  useActiveProjectStacks,
-} from '../../stores/project.store';
-import { formatUptime } from '../../utils/formatters';
+import { Tabs } from '@omnitron-dev/prism/components/tabs';
+import { DeleteIcon, DeployIcon, RefreshIcon } from 'src/assets/icons';
+import { Can, useAccess } from 'src/auth/access';
 import { DeployReleaseDialog } from 'src/components/deploy-release-dialog';
 import { OperationStatus } from 'src/components/operation-status';
+import { Breadcrumbs } from 'src/components/page-breadcrumbs';
+import { StackDiagnosisDialog } from 'src/components/stack-diagnosis-dialog';
+import { StackLifecycleActions } from 'src/components/stack-lifecycle-actions';
+import { hasInstalledRecovery, StackResumeNotice } from 'src/components/stack-recovery';
 import { StackReleaseCard } from 'src/components/stack-release-card';
+import { StackStartNotice } from 'src/components/stack-start-notice';
+import { StackStopDialog } from 'src/components/stack-stop-dialog';
+import { StackStopNotice } from 'src/components/stack-stop-notice';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
-import type { IStackAppStatus, IStackNodeStatus } from '@omnitron-dev/omnitron/dto/services';
-import { syncFinding, syncWords, syncSeverity } from '@omnitron-dev/omnitron/sync-reading';
+import { useProjectStore, useActiveProject, useActiveProjectStacks } from 'src/stores/project.store';
+import { RuntimeSummary, StackRuntime } from './runtime';
+
+type DialogName = 'delete' | 'stop' | 'diagnose' | 'deploy' | 'working-tree';
 
 export default function StackDetailPage() {
   const { name } = useParams<{ name: string }>();
   const activeProject = useActiveProject();
-  return <StackDetail key={JSON.stringify([activeProject, name])} name={name} activeProject={activeProject} />;
+  return <StackDetail key={JSON.stringify([activeProject, name])} name={name} project={activeProject} />;
 }
 
-function StackDetail({ name, activeProject }: { name: string | undefined; activeProject: string | null }) {
+function StackDetail({ name, project }: { name: string | undefined; project: string | null }) {
   const navigate = useNavigate();
+  const { can } = useAccess();
   const stacks = useActiveProjectStacks();
-  const known = useProjectStore(s => Boolean(activeProject && s.stacksByProject[activeProject]));
-  const readError = useProjectStore(s => activeProject ? s.stackReadErrors[activeProject] : null);
-  const fetchStacks = useProjectStore((s) => s.fetchStacks);
-  const resumeInstalled = useProjectStore(s => s.resumeInstalledStack);
-  const startStack = useProjectStore((s) => s.startStack);
-  const stopStack = useProjectStore((s) => s.stopStack);
-  const deleteStack = useProjectStore((s) => s.deleteStack);
-  const opKey = `${activeProject}/${name}`;
-  const error = useProjectStore(s => s.stackNotices[opKey]);
-  const clearError = useProjectStore(s => s.clearStackNotice);
-  const pendingOps = useProjectStore((s) => s.pendingOps);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [stopOpen, setStopOpen] = useState(false);
-  const [diagnoseOpen, setDiagnoseOpen] = useState(false);
-  const [deployOpen, setDeployOpen] = useState(false);
-  const [workingTreeOpen, setWorkingTreeOpen] = useState(false);
+  const known = useProjectStore(state => Boolean(project && state.stacksByProject[project]));
+  const readError = useProjectStore(state => project ? state.stackReadErrors[project] : null);
+  const fetchStacks = useProjectStore(state => state.fetchStacks);
+  const startStack = useProjectStore(state => state.startStack);
+  const stopStack = useProjectStore(state => state.stopStack);
+  const deleteStack = useProjectStore(state => state.deleteStack);
+  const resumeInstalled = useProjectStore(state => state.resumeInstalledStack);
+  const key = `${project}/${name}`;
+  const notice = useProjectStore(state => state.stackNotices[key]);
+  const clearNotice = useProjectStore(state => state.clearStackNotice);
+  const pending = useProjectStore(state => state.pendingOps[key] ?? null);
+  const [dialog, setDialog] = useState<DialogName | null>(null);
 
-  const stack = stacks.find((s) => s.name === name);
-  const pendingOp = activeProject && name ? (pendingOps[`${activeProject}/${name}`] ?? null) : null;
-
-  const hasPendingOps = Object.keys(pendingOps).length > 0;
-  usePollingEffect(() => void (activeProject && fetchStacks(activeProject)), {
-    intervalMs: hasPendingOps ? 3_000 : 10_000,
-    enabled: Boolean(activeProject), resourceKey: activeProject,
+  usePollingEffect(() => { if (project) void fetchStacks(project); }, {
+    intervalMs: pending ? 3_000 : 10_000, enabled: Boolean(project), resourceKey: project,
   });
 
-  // See `stacks/index.tsx`: these two never reject, so a catch here is a
-  // handler that cannot run. The store's `error` is what the page shows.
-  const handleStart = useCallback(async () => {
-    if (!activeProject || !name) return;
-    await startStack(activeProject, name);
-  }, [activeProject, name, startStack]);
+  const stack = stacks.find(item => item.name === name);
+  const refresh = () => { if (project) void fetchStacks(project); };
+  const tools = <Breadcrumbs links={[{ name: 'Stacks', href: '/stacks' }, { name: name ?? 'Stack' }]}
+    action={<Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+      {stack && <Can permission="OmnitronProject.diagnoseStack"><Button size="small" variant="outlined"
+        onClick={() => setDialog('diagnose')}>Check start prerequisites</Button></Can>}
+      {project && <IconButton data-console-command="refresh" size="small" aria-label="Refresh stack" title="Refresh stack" onClick={refresh}><RefreshIcon /></IconButton>}
+    </Stack>} />;
 
-  const handleDelete = useCallback(async () => {
-    if (!activeProject || !name) return;
-    try {
-      await deleteStack(activeProject, name);
-      navigate('/stacks');
-    } catch { /* error in store */ }
-    setDeleteOpen(false);
-  }, [activeProject, name, deleteStack, navigate]);
+  if (!project || !stack) return <PageContent>{tools}
+    {!project ? <Alert severity="info">Select a project to view this stack.</Alert>
+      : readError ? <Alert severity="error">Stack inventory unavailable · {readError} <Button onClick={refresh}>Retry</Button></Alert>
+      : !known ? <OperationStatus active label="Reading stack inventory" />
+      : <Alert severity="warning">Stack “{name}” was not found in {project}. <Button onClick={() => navigate('/stacks')}>Back to stacks</Button></Alert>}
+  </PageContent>;
 
-  if (!stack && activeProject && readError) return <Alert severity="error">Stack inventory unavailable · {readError} <Button onClick={() => void fetchStacks(activeProject)}>Retry</Button></Alert>;
-  if (!stack && activeProject && !known) return <OperationStatus active label="Reading stack inventory" />;
-  if (!stack) {
-    return (
-      <PageContent>
-        <Alert severity="warning">
-          Stack "{name}" not found.{' '}
-          <Button size="small" onClick={() => navigate('/stacks')}>
-            Back to Stacks
-          </Button>
-        </Alert>
-      </PageContent>
-    );
-  }
-
-  const appColumns: TableColumn<IStackAppStatus>[] = [
-    { id: 'name', label: 'App', render: (app) => <Box sx={{ fontWeight: 600 }}>{app.name}</Box> },
-    {
-      id: 'status',
-      label: 'Process',
-      render: (app) => (
-        <Chip
-          label={app.status}
-          size="small"
-          color={
-            app.status === 'online'
-              ? 'success'
-              : app.status === 'crashed' || app.status === 'errored'
-                ? 'error'
-                : 'default'
-          }
-          sx={{ height: 18, fontSize: '0.6rem' }}
-        />
-      ),
-    },
-    {
-      id: 'health', label: 'Health', render: (app) => <ApplicationHealthStatus status={app.health} />,
-    },
-    {
-      id: 'pid',
-      label: 'PID',
-      render: (app) => (
-        <Box sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{app.pid ?? '—'}</Box>
-      ),
-    },
-    { id: 'instances', label: 'Instances', render: (app) => app.instances },
-    {
-      id: 'uptime',
-      label: 'Uptime',
-      render: (app) => (
-        <Box sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
-          {app.uptime > 0 ? formatUptime(app.uptime) : '—'}
-        </Box>
-      ),
-    },
-  ];
-
-  const nodeColumns: TableColumn<IStackNodeStatus>[] = [
-    {
-      id: 'host',
-      label: 'Host',
-      render: (node) => (
-        <Box sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
-          {node.host}:{node.port}
-          {node.label && (
-            <Typography component="span" variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>
-              ({node.label})
-            </Typography>
-          )}
-        </Box>
-      ),
-    },
-    {
-      id: 'role',
-      label: 'Role',
-      render: (node) => <Chip label={node.role} size="small" sx={{ height: 18, fontSize: '0.6rem' }} />,
-    },
-    {
-      id: 'daemonRole',
-      label: 'Daemon',
-      render: (node) => (
-        <Chip
-          label={node.daemonRole}
-          size="small"
-          color={node.daemonRole === 'master' ? 'primary' : 'default'}
-          sx={{ height: 18, fontSize: '0.6rem' }}
-        />
-      ),
-    },
-    {
-      id: 'connected',
-      label: 'Status',
-      render: (node) => (
-        <>
-          <Box
-            component="span"
-            sx={{
-              display: 'inline-block',
-              width: 8,
-              height: 8,
-              borderRadius: '50%',
-              bgcolor: node.connected ? 'success.main' : 'warning.main',
-              mr: 0.5,
-            }}
-          />
-          {node.connected ? 'Inventory observed' : 'Inventory unavailable'}
-        </>
-      ),
-    },
-    {
-      id: 'lastSeen',
-      label: 'Last Seen',
-      render: (node) => (
-        <Box sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
-          {node.lastSeen ? new Date(node.lastSeen).toLocaleTimeString() : '—'}
-        </Box>
-      ),
-    },
-  ];
-
-  const takesReleasesOnly = stack.config?.release?.mode === 'required';
+  const close = () => setDialog(null);
   const isStopped = stack.status === 'stopped';
-  const busy = !!pendingOp;
+  const busy = Boolean(pending) || stack.status === 'starting' || stack.status === 'stopping';
+  const canChange = can('OmnitronProject.startStack') || can('OmnitronProject.reviewStackStop') ||
+    can('OmnitronProject.resumeInstalledStack') || can('OmnitronProject.deleteStack');
+  const requiresRelease = stack.config?.release?.mode === 'required';
+  const owner = stack.config?.managedOrigin;
+  const primaryDeploy = isStopped && requiresRelease && !stack.selectedRelease && !hasInstalledRecovery(stack);
+  const canSelectSource = !owner && !busy && can('OmnitronProject.startStack');
+  const canUseTree = canSelectSource && Boolean(stack.selectedRelease) && isStopped && !requiresRelease;
+  const canDelete = can('OmnitronProject.deleteStack') && isStopped && !busy;
+  const activeStop = stack.stopOperation && !stack.stopOperation.supersededAt && stack.stopOperation.phase !== 'stopped';
+  const activeResume = stack.resumeOperation && stack.resumeOperation.outcome !== 'running' &&
+    !stack.stopOperation?.supersededAt && stack.stopOperation?.id === stack.resumeOperation.stopOperationId;
+  const historyStop = stack.stopOperation && !activeStop;
+  const historyResume = stack.resumeOperation && !activeResume;
 
-  return (
-    <PageContent>
-      <Breadcrumbs
-        linkComponent={RouterLink}
-        links={[
-          { name: 'Stacks', href: '/stacks' },
-          { name: stack.name },
-        ]}
-        action={
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
-            {isStopped && !busy && (
-              <Can permission="OmnitronProject.deleteStack"><IconButton size="small" color="error" onClick={() => setDeleteOpen(true)} title="Delete stack" aria-label={`Delete stack ${stack.name}`} sx={{ marginInlineEnd: 1 }}>
-                <DeleteIcon />
-              </IconButton></Can>
-            )}
-            <Chip
-              label={stack.status.charAt(0).toUpperCase() + stack.status.slice(1)}
-              size="small"
-              color={statusColor(stack.status)}
-            />
-            <Can permission="OmnitronProject.diagnoseStack"><Button size="small" onClick={() => setDiagnoseOpen(true)}>Diagnose</Button></Can>
-            <IconButton size="small" aria-label="Refresh stack" title="Refresh stack" onClick={() => activeProject && fetchStacks(activeProject)}>
-              <RefreshIcon />
-            </IconButton>
-            {activeProject && name && <StackLifecycleActions detailed stack={stack} pending={pendingOp}
-              onStart={handleStart} onDeploy={() => setDeployOpen(true)}
-              onResume={() => void resumeInstalled(activeProject, name)} onReviewStop={() => setStopOpen(true)} />}
-          </Box>
-        }
-      />
-
-      {stopOpen && activeProject && name && <StackStopDialog key={`${activeProject}/${name}`} project={activeProject} stack={name}
-        onClose={() => setStopOpen(false)} onConfirm={(digest, keepInfrastructure) => {
-          setStopOpen(false); void stopStack(activeProject, name, digest, keepInfrastructure);
-        }} />}
-      {diagnoseOpen && activeProject && name && <StackDiagnosisDialog key={`${activeProject}/${name}`} project={activeProject} stack={name} onClose={() => setDiagnoseOpen(false)} />}
-      <StackStopNotice operation={stack.stopOperation} />
-      <StackResumeNotice stack={stack} />
-      <StackStartNotice stack={stack} />
-      <StackHealthStatus stack={stack} />
-
-      {/* Start, stop and delete put their reason in the store's `error` and
-          never reject. This page did not read it, so a stack that refused to
-          start produced nothing at all here — the reason was recorded, and
-          only the stacks index would have shown it. "Handled elsewhere" is
-          only true when the elsewhere is on screen. */}
-      {readError && <Alert severity="warning">Showing the last stack inventory · {readError}</Alert>}
-      {error && error !== readError && (
-        <FormAlert sx={{ mb: 2 }} onClose={() => clearError(opKey)}>
-          {error}
-        </FormAlert>
-      )}
-
-      {/* What this stack is carrying, before anything about its processes:
-          «which build is on test» is the first question in front of a remote
-          stack, and the console could not answer it at all. */}
-      {activeProject && name && (
-        <StackReleaseCard
-          project={activeProject}
-          stack={name}
-          requiresRelease={Boolean(takesReleasesOnly)}
-          managed={Boolean(stack.config.managedOrigin)}
-          selected={stack.selectedRelease?.id}
-          onWorkingTree={stack.selectedRelease && isStopped && !busy && !takesReleasesOnly ? () => setWorkingTreeOpen(true) : undefined}
-          onDeploy={() => setDeployOpen(true)}
-        />
-      )}
-
-      {/* Deployment banner for remote/cluster stacks */}
-      {stack.type !== 'local' && !isStopped && stack.status !== 'starting' && (
-        <Card variant="outlined" sx={{ mb: 2, p: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <DeployIcon sx={{ fontSize: 20, color: 'primary.main' }} />
-            <Box sx={{ flex: 1 }}>
-              <Typography variant="body2" sx={{
-                fontWeight: 600
-              }}>
-                {stack.nodes.filter((n) => n.connected).length}/{stack.nodes.length} node inventories observed
-              </Typography>
-              <Typography variant="caption" sx={{
-                color: "text.secondary"
-              }}>
-                {stack.type === 'remote' ? 'SSH' : 'Cluster'} deployment — {replicationWords(stack.nodes)}
-              </Typography>
-            </Box>
-            {stack.nodes.some((n) => !n.connected) && (
-              <Chip
-                label={`${stack.nodes.filter((n) => !n.connected).length} unobserved`}
-                size="small"
-                color="warning"
-                sx={{ height: 22, fontSize: '0.65rem' }}
-              />
-            )}
-          </Box>
-        </Card>
-      )}
-      {/* Applications — top priority */}
-      <Card variant="outlined">
-        <CardContent>
-          <Typography variant="overline" sx={{ color: 'text.secondary', fontSize: '0.65rem', mb: 1, display: 'block' }}>
-            Applications ({stack.apps.length})
-          </Typography>
-          <Table<IStackAppStatus>
-            scrollLabel="Stack applications"
-            sx={{ minWidth: 640 }}
-            columns={appColumns}
-            data={stack.apps}
-            rowKey={(app) => app.handleKey}
-            dense
-            containerSx={{ border: 'none', borderRadius: 0 }}
-            emptyContent={
-              <Typography variant="caption" sx={{ color: 'text.disabled' }}>
-                No apps configured
-              </Typography>
-            }
-          />
-        </CardContent>
-      </Card>
-      {/* Overview */}
-      <Card variant="outlined">
-        <CardContent>
-          <Typography variant="overline" sx={{ color: 'text.secondary', fontSize: '0.65rem' }}>
-            Overview
-          </Typography>
-          <InfoRow label="Type" value={stack.type === 'local' ? 'Local' : stack.type === 'remote' ? 'Remote (SSH)' : 'Cluster'} />
-          <InfoRow label="Apps" value={`${stack.apps.filter((a) => a.status === 'online').length} / ${stack.apps.length}`} />
-          <InfoRow label="Nodes" value={`${stack.nodes.filter((n) => n.connected).length} / ${stack.nodes.length}`} />
-          {stack.uptime > 0 && <InfoRow label="Uptime" value={formatUptime(stack.uptime)} />}
-          {stack.portRange && (
-            <InfoRow label="Port Range" value={`${stack.portRange.start}–${stack.portRange.end}`} mono />
-          )}
-          {/* A remote stack's start is its nodes' — the longest-running app they
-              report online — and when this master took it over is another
-              moment: it read «Started 16:03» beside apps up 68 minutes, the
-              master's restart presented as the stack's. */}
-          {stack.type === 'local' ? (
-            stack.startedAt && <InfoRow label="Started" value={new Date(stack.startedAt).toLocaleString()} />
-          ) : (
-            <>
-              <InfoRow
-                label="Started"
-                value={
-                  stack.startedAt
-                    ? `${new Date(stack.startedAt).toLocaleString()}, as its nodes report`
-                    : 'unknown — no node reported an app of it running'
-                }
-              />
-              {stack.attachedAt && (
-                <InfoRow label="Attached" value={`${new Date(stack.attachedAt).toLocaleString()} — by this master`} />
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
-      <StackInfrastructure stack={stack} />
-      {/* Sync Status (remote/cluster only) */}
-      {stack.type !== 'local' && (
-        <Card variant="outlined">
-          <CardContent>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
-              <SyncIcon sx={{ fontSize: 16 }} />
-              <Typography variant="overline" sx={{ color: 'text.secondary', fontSize: '0.65rem' }}>
-                Sync Status
-              </Typography>
-            </Box>
-            {stack.nodes.map((node) => (
-              <NodeSyncRow key={node.host} node={node} />
-            ))}
-            {stack.nodes.length === 0 && (
-              <Typography variant="caption" sx={{ color: 'text.disabled' }}>
-                No nodes configured
-              </Typography>
-            )}
-          </CardContent>
-        </Card>
-      )}
-      {/* Nodes Table */}
-      {stack.nodes.length > 0 && (
-        <Card variant="outlined">
-          <CardContent>
-            <Typography variant="overline" sx={{ color: 'text.secondary', fontSize: '0.65rem', mb: 1, display: 'block' }}>
-              Nodes ({stack.nodes.length})
-            </Typography>
-            <Table<IStackNodeStatus>
-              scrollLabel="Stack nodes"
-              sx={{ minWidth: 560 }}
-              columns={nodeColumns}
-              data={stack.nodes}
-              rowKey={(node) => node.host}
-              dense
-              containerSx={{ border: 'none', borderRadius: 0 }}
-            />
-          </CardContent>
-        </Card>
-      )}
-      <Can permission="OmnitronProject.startStack"><DeployReleaseDialog
-        open={deployOpen}
-        onClose={() => setDeployOpen(false)}
-        project={activeProject ?? ''}
-        release={null}
-        {...(name ? { stack: name } : {})}
-      /></Can>
-
-      <Dialog open={workingTreeOpen} onClose={() => setWorkingTreeOpen(false)}>
-        <DialogTitle>Start from the working tree?</DialogTitle>
-        <DialogContent><DialogContentText>
-          {stack.name} will start from its registered project directory. Future restarts will use that directory until you select a release.
-        </DialogContentText></DialogContent>
-        <DialogActions>
-          <Button onClick={() => setWorkingTreeOpen(false)}>Cancel</Button>
-          <Can permission="OmnitronProject.startStack"><Button variant="contained" disabled={!isStopped || busy || takesReleasesOnly}
-            onClick={() => { setWorkingTreeOpen(false); if (activeProject && name) void startStack(activeProject, name, { workingTree: true }); }}>
-            Start from working tree
-          </Button></Can>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)}>
-        <DialogTitle>Delete Stack</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Are you sure you want to delete stack <strong>{stack.name}</strong>? This action cannot be undone.
-            All infrastructure configuration for this stack will be removed.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeleteOpen(false)}>Cancel</Button>
-          <Can permission="OmnitronProject.deleteStack"><Button onClick={handleDelete} color="error" variant="contained">Delete</Button></Can>
-        </DialogActions>
-      </Dialog>
-    </PageContent>
-  );
-}
-
-// =============================================================================
-// Helpers
-// =============================================================================
-
-function InfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 0.5 }}>
-      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-        {label}
-      </Typography>
-      <Typography variant="body2" sx={{ fontWeight: 600, ...(mono && { fontFamily: 'monospace', fontSize: '0.8rem' }) }}>
-        {value}
-      </Typography>
-    </Box>
-  );
-}
-
-/**
- * The stack's replication in a line. It summed `pendingItems` into «258 items
- * pending sync» — entries the next 15-second pull takes, on a node keeping
- * up — so the line read as a backlog whenever the node was busy.
- */
-function replicationWords(nodes: IStackNodeStatus[]): string {
-  const findings = nodes.map((n) => (n.syncStatus ? syncFinding(n.syncStatus) : null));
-  const behind = findings.filter((f) => f?.state === 'behind').length;
-  const catchingUp = findings.filter((f) => f?.state === 'catching-up').length;
-  const unknown = findings.filter((f) => f?.state === 'unknown').length;
-  const silent = findings.filter((f) => f === null).length;
-  if (behind + catchingUp + unknown + silent === 0) return 'replication in sync';
-  return [behind > 0 && `${behind} of ${nodes.length} behind`, catchingUp > 0 && `${catchingUp} catching up`,
-    unknown > 0 && `${unknown} queue age unavailable`, silent > 0 && `${silent} not reporting`]
-    .filter(Boolean)
-    .join(', ');
-}
-
-function NodeSyncRow({ node }: { node: IStackNodeStatus }) {
-  const sync = node.syncStatus;
-  // Read off `pendingItems` and `lastSyncAt`. `sync.connected` is the push
-  // channel no production code opens: read, it made every node «Buffering».
-  const finding = sync ? syncFinding(sync) : null;
-
-  return (
-    <Box sx={{ py: 0.75 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Box
-            sx={{
-              width: 8,
-              height: 8,
-              borderRadius: '50%',
-              bgcolor: node.connected ? 'success.main' : 'warning.main',
-            }}
-          />
-          <Box>
-            <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem', fontWeight: 600 }}>
-              {node.host}:{node.port}
-            </Typography>
-            <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.6rem' }}>
-              {node.daemonRole}{node.label ? ` — ${node.label}` : ''}
-            </Typography>
-          </Box>
-        </Box>
-
-        {sync && finding ? (
-          <Box sx={{ textAlign: 'right' }}>
-            <Chip
-              label={syncWords(finding)}
-              size="small"
-              color={syncSeverity(finding)}
-              variant="outlined"
-              sx={{ height: 20, fontSize: '0.6rem', fontWeight: 600 }}
-            />
-            {sync.lastSyncAt && (
-              <Typography variant="caption" sx={{ color: 'text.disabled', display: 'block', fontSize: '0.5rem', mt: 0.25 }}>
-                last sync {new Date(sync.lastSyncAt).toLocaleTimeString()}
-              </Typography>
-            )}
-          </Box>
-        ) : (
-          <Chip
-            label={node.connected ? 'Inventory observed' : 'Inventory unavailable'}
-            size="small"
-            color={node.connected ? 'success' : 'warning'}
-            variant="outlined"
-            sx={{ height: 20, fontSize: '0.6rem' }}
-          />
-        )}
+  const configuration = <Card component="section" aria-label="Stack configuration" variant="outlined">
+    <CardContent>
+      <Typography component="h2" variant="subtitle1">Start configuration</Typography>
+      <Box component="dl" sx={{ my: 1.5, display: 'grid', gridTemplateColumns: 'minmax(7em, auto) minmax(0, 1fr)',
+        gap: 1.25, typography: 'body2', '& dt': { color: 'text.secondary' }, '& dd': { m: 0, overflowWrap: 'anywhere' } }}>
+        {owner && <><dt>Managed by</dt><dd>{owner.project}/{owner.stack}</dd></>}
+        <dt>Release policy</dt><dd>{requiresRelease ? 'Required' : 'Optional'}</dd>
+        {stack.selectedRelease && <><dt>Selected release</dt><dd>{stack.selectedRelease.id}</dd></>}
+        <dt>Infrastructure at start</dt><dd>{stack.infrastructureMode === 'preserve' ? 'Preserve existing infrastructure'
+          : stack.infrastructureMode === 'reconcile' ? 'Reconcile infrastructure' : 'Not reported'}</dd>
+        {stack.portRange && <><dt>Port range</dt><dd>{stack.portRange.start}–{stack.portRange.end}</dd></>}
       </Box>
+      <Stack role="group" aria-label="Stack actions" direction="row" useFlexGap sx={{ gap: 1, pt: 1.5,
+        flexWrap: 'wrap', borderTop: 1, borderColor: 'divider', '&:empty': { display: 'none' } }}>
+        <StackLifecycleActions detailed stack={stack} pending={pending}
+          onStart={() => void startStack(project, stack.name)} onDeploy={() => setDialog('deploy')}
+          onResume={() => void resumeInstalled(project, stack.name)} onReviewStop={() => setDialog('stop')} />
+        {canSelectSource && !primaryDeploy && <Button size="small" startIcon={<DeployIcon />} onClick={() => setDialog('deploy')}>Deploy release…</Button>}
+        {canUseTree && <Button size="small" onClick={() => setDialog('working-tree')}>Use working tree…</Button>}
+        {canDelete && <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => setDialog('delete')}>Delete stack…</Button>}
+      </Stack>
+    </CardContent>
+  </Card>;
 
+  return <PageContent gap={2} sx={{ minWidth: 0 }}>
+    {tools}
+    {readError && <Alert severity="warning">Showing the last stack inventory · {readError}</Alert>}
+    {notice && notice !== readError && <FormAlert onClose={() => clearNotice(key)}>{notice}</FormAlert>}
+    <StackStartNotice stack={stack} />
+    {activeStop && <StackStopNotice operation={stack.stopOperation} />}
+    {activeResume && <StackResumeNotice stack={stack} />}
+    {pending && !activeStop && <OperationStatus active label={pending === 'starting' ? 'Starting stack' :
+      pending === 'resuming' ? 'Resuming installed applications' : 'Stopping stack'} />}
+    <RuntimeSummary stack={stack} />
+    <Tabs defaultValue="runtime" variant="scrollable" scrollButtons="auto" aria-label="Stack details" tabs={[
+      { value: 'runtime', label: 'Runtime', content: <StackRuntime stack={stack} /> },
+      { value: 'history', label: 'Releases & history', content: <Stack spacing={2}>
+        <StackReleaseCard project={project} stack={stack} />
+        {(historyStop || historyResume) && <Card component="section" aria-label="Operation receipts" variant="outlined">
+          <CardContent><Typography component="h2" variant="subtitle1" sx={{ mb: 1 }}>Operation receipts</Typography>
+            {historyStop && <StackStopNotice operation={stack.stopOperation} />}
+            {historyResume && <StackResumeNotice stack={stack} />}
+          </CardContent>
+        </Card>}
+      </Stack> },
+      { value: 'configuration', label: canChange ? 'Configuration & actions' : 'Configuration', content: configuration },
+    ]} />
 
-      {/* Error message */}
-      {sync?.lastError && (
-        <Typography variant="caption" sx={{ color: 'error.main', fontSize: '0.55rem', mt: 0.25, display: 'block', ml: 2.5 }}>
-          {sync.lastError}
-        </Typography>
-      )}
-    </Box>
-  );
+    {dialog === 'diagnose' && can('OmnitronProject.diagnoseStack') &&
+      <StackDiagnosisDialog project={project} stack={stack.name} onClose={close} />}
+    {dialog === 'stop' && can('OmnitronProject.reviewStackStop') && <StackStopDialog project={project} stack={stack.name}
+      onClose={close} onConfirm={(digest, keepInfrastructure) => {
+        close();
+        void stopStack(project, stack.name, digest, keepInfrastructure);
+      }} />}
+    {dialog === 'deploy' && can('OmnitronProject.startStack') &&
+      <DeployReleaseDialog open project={project} stack={stack.name} release={null} onClose={close} />}
+    <Dialog open={dialog === 'working-tree' && can('OmnitronProject.startStack')} onClose={close} aria-labelledby="working-tree-title">
+      <DialogTitle id="working-tree-title">Start from the working tree?</DialogTitle>
+      <DialogContent><DialogContentText>
+        {project}/{stack.name} will start from its registered project directory. Future restarts will use that directory until you select a release.
+      </DialogContentText></DialogContent>
+      <DialogActions>
+        <Button onClick={close}>Cancel</Button>
+        <Button variant="contained" disabled={!canUseTree} onClick={() => {
+          close();
+          void startStack(project, stack.name, { workingTree: true });
+        }}>Start from working tree</Button>
+      </DialogActions>
+    </Dialog>
+    <Dialog open={dialog === 'delete' && can('OmnitronProject.deleteStack')} onClose={close} aria-labelledby="delete-stack-title">
+      <DialogTitle id="delete-stack-title">Delete stack {stack.name}?</DialogTitle>
+      <DialogContent><DialogContentText>
+        This permanently removes the stack and its infrastructure configuration from {project}.
+      </DialogContentText></DialogContent>
+      <DialogActions>
+        <Button onClick={close}>Cancel</Button>
+        <Button variant="contained" color="error" disabled={!canDelete} onClick={async () => {
+          try {
+            await deleteStack(project, stack.name);
+            navigate('/stacks');
+          } catch { /* The store supplies the scoped failure notice. */ }
+          close();
+        }}>Delete stack</Button>
+      </DialogActions>
+    </Dialog>
+  </PageContent>;
 }

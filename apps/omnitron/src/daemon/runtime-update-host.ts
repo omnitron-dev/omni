@@ -484,7 +484,10 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
         await call(['backend', 'guardian', 'apply', transition.file]);
       }
       const web = 'artifact' in destination ? (plan.before.console && backend) : destination.console;
-      if (web) {
+      if (web && web !== backend) {
+        // The selected backend owns Console autostart. Starting the same
+        // container here races that lifecycle and can reject a successful boot.
+        // A rollback with a separately pinned Console still selects it explicitly.
         await until('Waiting for the selected backend', async () => {
           const status = await call<{ build: BuildStamp | null }>(['backend', 'status']);
           if (status.build?.commit !== await runtimeBuildCommit(installed(backend))) throw Error('Selected backend is starting');

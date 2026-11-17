@@ -12,16 +12,17 @@ import { CommandResultError, readCommandResult } from '../../apps/omnitron/src/s
 async function runUpdate(operation, target, values, options) {
   const local = operation.startsWith('local-');
   if (values.rollback && !values.review) throw new UserError('--rollback requires the exact --review digest');
+  if (values.reconcile && !values.review) throw new UserError('--reconcile requires the exact --review digest');
   if (values.review !== undefined && !/^[a-f0-9]{64}$/.test(values.review))
     throw new UserError('--review requires the exact 64-character SHA-256 digest');
   const root = options.root ?? process.cwd();
   const run = options.run ?? releaseCommand;
   const progress = options.progress ?? console.log;
   if (values.cacheDir && (!local || target)) throw Error('--cache-dir applies only when building the current local revision');
-  const inspection = operation === 'local-sync' && (values.status || values.rollback);
+  const inspection = operation === 'local-sync' && (values.status || values.rollback || values.reconcile);
   if (local && values.cli && !inspection) throw new UserError('Local updates require the candidate and its own CLI');
   if (operation === 'local-sync' && target) throw new UserError('local-sync finalizes the current clean checkout');
-  if (values.rollback && values.cacheDir) throw new UserError('Recovery uses the reviewed installed runtime; inspect local-sync --status');
+  if ((values.rollback || values.reconcile) && values.cacheDir) throw new UserError('Recovery uses the reviewed installed runtime; inspect local-sync --status');
   const cache = values.cacheDir ?? process.env.OMNITRON_DEV_CACHE;
   const candidate = local && !inspection ? (target ? path.resolve(root, target) :
     await localRuntime(root, cache && path.resolve(root, cache), run, progress)) : null;
@@ -61,7 +62,7 @@ async function runUpdate(operation, target, values, options) {
       if (stamp.commit !== revision || stamp.dirty !== false || (await run(root, 'git', ['status', '--porcelain'])).trim())
         throw new UserError('The development checkout changed after runtime preparation. Commit the batch and prepare it again');
     }
-    const action = values.status ? ['status'] : values.rollback ? ['recover', values.review] :
+    const action = values.status ? ['status'] : values.rollback ? ['recover', values.review] : values.reconcile ? ['reconcile', values.review] :
       values.review ? ['apply', values.review] : ['prepare', runtime];
     const result = await call(['runtime', 'update', ...action]);
     progress(JSON.stringify(result, null, 2));
@@ -143,8 +144,9 @@ operation inspect status; use reconciliation/recovery instead of replaying apply
     .option('--cache-dir <directory>', 'Private retained build directory for the current local revision')
     .option('--review <sha256>', 'Apply or recover exactly this reviewed local plan')
     .option('--rollback', 'Recover the reviewed local plan; requires --review')
+    .addOption(program.createOption('--reconcile', 'Confirm an already serving candidate without restarting; requires --review').conflicts(['rollback', 'status', 'cacheDir']))
     .addOption(program.createOption('--status', 'Inspect local state without preparing a build')
-      .conflicts(['review', 'rollback', 'cacheDir']))
+      .conflicts(['review', 'rollback', 'reconcile', 'cacheDir']))
     .action(values => runUpdate('local-sync', undefined, values, options));
   update.action(() => update.help());
 }

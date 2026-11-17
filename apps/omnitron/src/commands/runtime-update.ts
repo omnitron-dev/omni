@@ -59,10 +59,10 @@ export async function runtimeUpdateStatusCommand(digest?: string): Promise<void>
 }
 
 /** Host authority stays in the verified candidate's local CLI and its private instance journal. */
-export async function runtimeUpdateCommand(operation: 'prepare' | 'apply' | 'recover', value: string): Promise<void> {
+export async function runtimeUpdateCommand(operation: 'prepare' | 'apply' | 'recover' | 'reconcile', value: string): Promise<void> {
   try {
     let runtime = operation === 'prepare' ? await verifyRuntimeUpdateTarget(path.resolve(value)) : (await inspect(value)).runtime;
-    if (operation === 'recover') {
+    if (operation === 'recover' || operation === 'reconcile') {
       // A verified installed CLI can repair an older interrupted transaction.
       // Its receipt still pins every role and effect; do not delegate recovery
       // back to the old interpreter whose defect may have caused the failure.

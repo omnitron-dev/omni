@@ -434,6 +434,48 @@ test('applying the same review twice verifies a new live process generation and 
   assert.deepEqual(events.filter(event => event !== 'accept'), ['stop', 'start', 'stop', 'start']);
 });
 
+test('reconciliation confirms a serving candidate after a lost result without replaying lifecycle actions', { skip: !native }, async t => {
+  const directory = await privateInstance(t);
+  let owner = await ownerGeneration(t, directory, previous);
+  const original = owner.identity;
+  const plan = planFor(directory, original);
+  let starts = 0, stops = 0, observed = false;
+  const actions = {
+    async prepare() { return plan; }, async admit() {}, async validateStop() {},
+    async stop() { stops++; await owner.stop(); }, async assertStopped() {},
+    async start() { starts++; owner = await ownerGeneration(t, directory, target); throw Error('Console reply lost'); },
+    async canRestore() { return false; },
+    async captureForRollback() { throw Error('owner startup observation pending'); },
+    async accept(reviewed, direction, inspectOnly) {
+      assert.deepEqual(reviewed, plan);
+      assert.equal(direction, 'target');
+      assert.equal(inspectOnly, true);
+      if (!observed) throw Error('target not fully observed');
+      const actual = await owner.observe();
+      assert.equal(actual.artifact, target);
+      assert.notEqual(actual.generation, original.generation);
+      return actual;
+    },
+  };
+  const review = await runRuntimeUpdate({ actions, directory, operation: 'prepare' });
+  await assert.rejects(runRuntimeUpdate({ actions, directory, operation: 'apply', digest: review.digest }), /startup observation pending/);
+  const pending = await readRuntimeUpdateReceipt(directory);
+  assert.equal(pending.phase, 'recovery-required');
+  await assert.rejects(runRuntimeUpdate({ actions, directory, operation: 'reconcile', digest: review.digest }), /not fully observed/);
+  assert.deepEqual(await readRuntimeUpdateReceipt(directory), pending, 'a refused observation cannot rewrite the receipt');
+  observed = true;
+  const accepted = await runRuntimeUpdate({ actions, directory, operation: 'reconcile', digest: review.digest });
+  assert.equal(accepted.phase, 'accepted');
+  assert.equal(accepted.error, 'Console reply lost', 'the original failure remains auditable');
+  assert.equal(accepted.recoveryError, undefined, 'confirmed acceptance resolves the failed recovery observation');
+  assert.deepEqual(accepted.acceptance, await owner.observe());
+  assert.deepEqual(await runRuntimeUpdate({ actions, directory, operation: 'reconcile', digest: review.digest }), accepted);
+  assert.equal(starts, 1); assert.equal(stops, 1);
+  await fs.writeFile(path.join(directory, 'current.json'), JSON.stringify({ ...pending, restoreAttempted: true }));
+  await assert.rejects(runRuntimeUpdate({ actions, directory, operation: 'reconcile', digest: review.digest }), /entered restoration/);
+  assert.equal(starts, 1); assert.equal(stops, 1);
+});
+
 test('a lost rollback acknowledgement is inspected without a second cold start', { skip: !native }, async t => {
   const directory = await privateInstance(t);
   const plan = planFor(directory, { pid: process.pid, generation: 'original' });

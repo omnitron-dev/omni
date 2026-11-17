@@ -109,6 +109,11 @@ runtimeUpdate.command('recover <digest>').description('Restore the reviewed prev
     const { runtimeUpdateCommand } = await import('../commands/runtime-update.js');
     await runtimeUpdateCommand('recover', digest);
   });
+runtimeUpdate.command('reconcile <digest>').description('Confirm the reviewed candidate is serving after a lost result; never restart processes')
+  .structuredAction(async (digest: string) => {
+    const { runtimeUpdateCommand } = await import('../commands/runtime-update.js');
+    await runtimeUpdateCommand('reconcile', digest);
+  });
 
 const backend = program.command('backend').description('Inspect and replace the control plane without restarting resident applications');
 const ownerRecovery = backend.command('owner-reconcile').description('Explicit offline recovery after an execution-owner crash; never stops applications');

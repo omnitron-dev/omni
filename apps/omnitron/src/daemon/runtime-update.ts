@@ -101,7 +101,7 @@ export async function readPreparedRuntimeUpdate(directory: string): Promise<Prep
 export async function runRuntimeUpdate({ actions, directory, operation, digest: review, progress = () => {} }: {
   actions: RuntimeUpdateActions;
   directory: string;
-  operation: 'prepare' | 'apply' | 'recover';
+  operation: 'prepare' | 'apply' | 'recover' | 'reconcile';
   digest?: string;
   progress?: (phase: RuntimeUpdatePhase) => void;
 }): Promise<PreparedRuntimeUpdate | RuntimeUpdateReceipt> {
@@ -179,6 +179,17 @@ export async function runRuntimeUpdate({ actions, directory, operation, digest: 
         throw Error('Local recovery requires inspection: ' + message, { cause: error });
       }
     };
+    if (operation === 'reconcile') {
+      if (!record || record.digest !== review) throw Error('The requested local update is not the current receipt');
+      if (record.restoreAttempted || record.rollbackOwner || !['starting', 'verifying', 'failed', 'recovery-required', 'accepted'].includes(record.phase))
+        throw Error('Only a candidate which has started and has not entered restoration can be reconciled');
+      // Observation cannot stop, start, release admission or replay a failed
+      // action. Accept only the exact serving roles, stacks and infrastructure.
+      const acceptance = await actions.accept(record.plan, 'target', true);
+      if (record.phase === 'accepted') return record;
+      delete record.recoveryError;
+      return save('accepted', { acceptance });
+    }
     if (operation === 'recover') {
       if (!record || record.digest !== review) throw Error('The requested local update is not the current receipt');
       if (record.phase === 'rolled-back') { await actions.accept(record.plan, 'previous', true); return record; }

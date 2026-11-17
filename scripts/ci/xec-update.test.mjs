@@ -49,12 +49,16 @@ test('local status and recovery use the public CLI without a build or private in
   } };
   assert.deepEqual(await runUpdate(['local-sync', '--status', '--cli', '/operator/omnitron'], options), status);
   await runUpdate(['local-sync', '--review', digest, '--rollback', '--cli', '/operator/omnitron'], options);
+  await runUpdate(['local-sync', '--review', digest, '--reconcile', '--cli', '/operator/omnitron'], options);
   assert.deepEqual(calls, [
     ['--json', 'runtime', 'update', 'status'], ['--json', 'runtime', 'update', 'recover', digest],
+    ['--json', 'runtime', 'update', 'reconcile', digest],
   ]);
   await assert.rejects(runUpdate(['local-sync', '--status', '--review', digest], options), /cannot be used with option/);
   await assert.rejects(runUpdate(['local-apply', '--review', digest], options), /unknown option/);
-  assert.equal(calls.length, 2);
+  await assert.rejects(runUpdate(['local-sync', '--reconcile', '--rollback', '--review', digest], options), /cannot be used with option/);
+  await assert.rejects(runUpdate(['local-sync', '--reconcile'], options), /requires the exact/);
+  assert.equal(calls.length, 3);
 });
 
 test('Xec stages a reviewed candidate through Omnitron without activating or using SSH', async t => {

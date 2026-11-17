@@ -12,6 +12,7 @@ import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 
 import { createPrismTheme } from '../../src/theme';
+import { PrismProvider } from '../../src/core/provider';
 import { DialogTestPage } from './pages/dialog';
 import { DashboardBlockTestPage } from './pages/dashboard-block';
 import { FormTestPage } from './pages/form';
@@ -90,6 +91,16 @@ function App() {
 }
 
 function Root() {
+  if (window.location.pathname === '/test/initial-settings') {
+    const content = <main>Application ready</main>;
+    return (
+      <PrismProvider defaultSettings={{ mode: 'dark', preset: 'midnight' }}>
+        {new URLSearchParams(window.location.search).has('nested')
+          ? <PrismProvider>{content}</PrismProvider>
+          : content}
+      </PrismProvider>
+    );
+  }
   const theme = createPrismTheme({ mode: 'light' });
 
   return (

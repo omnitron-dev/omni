@@ -9,7 +9,7 @@
 
 import type { ReactNode } from 'react';
 import type {} from '@mui/material/themeCssVarsAugmentation';
-import { useMemo, useEffect, useCallback } from 'react';
+import { useMemo, useEffect, useCallback, useState } from 'react';
 import createCache from '@emotion/cache';
 import { CacheProvider } from '@emotion/react';
 import { ThemeProvider as MuiThemeProvider, useColorScheme, useTheme } from '@mui/material/styles';
@@ -166,11 +166,16 @@ export function PrismProvider({
     onModeChange?.(nextMode);
   }, [controlledMode, setStoreMode, onModeChange]);
 
+  const [, setDefaultsApplied] = useState(false);
   useEnhancedEffect(() => {
+    const previous = useSettingsStore.getState();
     const { mode: initialMode, ...initialSettings } = defaultSettings ?? {};
     void useSettingsStore.initializeDefaults({ ...initialSettings,
       ...(controlledMode === undefined && modeStorageKey === undefined && initialMode !== undefined && { mode: initialMode }),
     });
+    // On the first commit React may not have subscribed to the external
+    // store yet. Apply synchronous defaults to MUI before the browser paints.
+    if (useSettingsStore.getState() !== previous) setDefaultsApplied(true);
   }, [controlledMode, modeStorageKey, defaultSettings]);
 
   // Create settings object for context (backwards compatibility)

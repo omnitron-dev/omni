@@ -39,7 +39,7 @@ Prism does not force smooth document scrolling. Keep native fragment navigation 
 
 For a server-rendered site, use `PrismProvider modeStorageKey="site-theme"` and place `PrismThemeScript` from `@omnitron-dev/prism/core` before visible content. Both use `defaultMode="system"` unless specified. MUI owns persistence and operating-system changes; both palettes are emitted before React loads, with a CSS system fallback when JavaScript or storage is unavailable. A controlled `mode` and `onModeChange` instead keep ownership in the parent; do not combine them with `modeStorageKey`. Without either, the provider uses Prism's settings store.
 
-`defaultSettings` supplies initial application preferences for the settings-store mode. Saved values take precedence, including an explicit light theme. Defaults are applied once before the first client paint; remounting the provider does not reset a user's selection. Controlled and MUI-persisted modes keep their own mode authority.
+`defaultSettings` supplies initial application preferences for the settings-store mode. Saved values take precedence, including an explicit light theme. With the built-in synchronous storage, MUI receives missing defaults before the browser paints the mounted application. A remount preserves the current selection. Controlled and MUI-persisted modes keep their own mode authority.
 
 Use `theme.vars` and `theme.applyStyles()` for mode-dependent component CSS. Application `themeOverrides` callbacks compile both palettes; their typography and component definitions should not change with the callback's mode. SSR and the initial client tree share the same provider configuration.
 

@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { ReleaseCommandError } from '@xec-sh/ops/release';
+import { releaseCommand, ReleaseCommandError } from '@xec-sh/ops/release';
 import { command as registerUpdate } from '../../.xec/commands/update.js';
 import { locateQualifiedLocalRuntime } from '../../.xec/qualification.mjs';
 import { runtimeArtifactDigest, verifyRuntimeArtifact } from '../../apps/omnitron/src/shared/runtime-artifact.ts';
@@ -146,6 +146,7 @@ test('check builds one isolated local revision and apply consumes the same verif
   let dist, dirty = false;
   const options = { progress() {}, run: async (_root, executable, args) => {
     events.push([executable, ...args]);
+    if (executable === '/bin/rm') return releaseCommand(_root, executable, args);
     if (args[0] === '--conditions=omnitron-source') return JSON.stringify(await verifyRuntimeArtifact(args.at(-1)));
     if (args[0] === 'rev-parse') return commit;
     if (args[0] === 'status') return dirty ? ' M pkg.ts' : '';
@@ -164,6 +165,7 @@ test('check builds one isolated local revision and apply consumes the same verif
     return '';
   } };
   await runUpdate(['local-check', '--cache-dir', cache], options);
+  assert(!(await fs.readdir(cache)).some(entry => entry.startsWith('.build-')), 'isolated source cleanup must finish before admission');
   await runUpdate(['local-apply', '--cache-dir', cache], options);
   assert.equal(events.filter(([command, arg]) => command === 'pnpm' && arg === 'install').length, 1);
   assert.equal(events.filter(call => call.includes('upgrade')).length, 2);

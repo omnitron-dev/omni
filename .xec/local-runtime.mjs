@@ -77,6 +77,15 @@ export async function localRuntime(root, cache, run, progress) {
       await verify(output);
       await fs.rename(output, destination);
       return dist;
-    } finally { await fs.rm(stage, { recursive: true, force: true }); }
+    } finally {
+      progress('Cleaning isolated build workspace');
+      const cleanupStarted = performance.now();
+      // Native recursive removal avoids a JavaScript filesystem walk over the
+      // dependency tree. Xec still owns the deadline and observes completion.
+      if (['darwin', 'linux'].includes(process.platform))
+        await run(root, '/bin/rm', ['-rf', '--', stage], { timeoutMs: 5 * 60_000 });
+      else await fs.rm(stage, { recursive: true, force: true });
+      progress('Build workspace cleanup: ' + ((performance.now() - cleanupStarted) / 1000).toFixed(1) + 's');
+    }
   });
 }

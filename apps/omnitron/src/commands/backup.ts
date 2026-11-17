@@ -5,6 +5,7 @@
  */
 
 import { log } from '@xec-sh/kit';
+import { assertOperationId } from '@xec-sh/core';
 import {
   formatBackupSize,
   formatUtc,
@@ -14,15 +15,16 @@ import {
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import { emitError, emitJson, isJsonMode } from './output.js';
 import type { BackupArtifactRequest, BackupRecord } from '../shared/dto/backups.js';
+import type { IOmnitronBackupsService } from '../shared/dto/services.js';
+import type { OperationReceipt } from '../shared/dto/execution-operations.js';
 
-async function invokeRpc(method: string, data?: any): Promise<any> {
+async function withBackups<T>(invoke: (service: IOmnitronBackupsService) => Promise<T>): Promise<T> {
   const client = createDaemonClient();
   try {
     if (!(await client.isReachable())) {
       throw new Error('omnitron daemon is not running (start it with `omnitron up`)');
     }
-    const svc = await client.service<Record<string, (arg?: any) => Promise<any>>>('OmnitronBackups');
-    return data !== undefined ? await svc[method]!(data) : await svc[method]!();
+    return await invoke(await client.service<IOmnitronBackupsService>('OmnitronBackups'));
   } finally {
     await client.disconnect();
   }
@@ -31,7 +33,7 @@ async function invokeRpc(method: string, data?: any): Promise<any> {
 /** The status the daemon reports beside the index rows, or why there is none. */
 async function readBackupStatus(): Promise<{ status?: any; unavailable?: string }> {
   try {
-    const status = await invokeRpc('getBackupStatus');
+    const status = await withBackups(service => service.getBackupStatus());
     return status ? { status } : { unavailable: 'the daemon returned no backup status' };
   } catch (err) {
     return { unavailable: (err as Error).message };
@@ -69,7 +71,7 @@ export async function backupCreateCommand(database?: string): Promise<void> {
     // default for data protection). A specific name backs up just that DB.
     if (!database) {
       log.info('Creating backups for all running-stack databases...');
-      const results: any[] = await invokeRpc('createAllBackups');
+      const results = await withBackups(service => service.createAllBackups());
       if (!results || results.length === 0) {
         log.warn('No databases found to back up — is a stack running?');
         process.exitCode = 1;
@@ -80,7 +82,7 @@ export async function backupCreateCommand(database?: string): Promise<void> {
     }
 
     log.info(`Creating backup for '${database}'...`);
-    const backup: any = await invokeRpc('createBackup', { database, compress: true });
+    const backup = await withBackups(service => service.createBackup({ database, compress: true }));
     log.success(`Backup created: ${backup.filename} (${formatBackupSize(backup.size)})`);
     log.info(`  ID: ${backup.id}`);
     log.info(`  Database: ${backup.database}`);
@@ -97,14 +99,59 @@ export async function backupArtifactCommand(kind: string, options: { project: st
   else if (kind === 'tor-keys' && options.bucket === undefined)
     request = { kind, project: options.project, stack: options.stack };
   else throw new Error('Use storage-objects with --bucket, or tor-keys without --bucket');
-  const backup = await invokeRpc('createArtifactBackup', request) as BackupRecord;
+  const backup: BackupRecord = await withBackups(service => service.createArtifactBackup(request));
   if (isJsonMode()) emitJson(backup);
   else log.success(`${backup.project}/${backup.stack}/${kind}${backup.bucket ? '/' + backup.bucket : ''}: ${backup.id} (${formatBackupSize(backup.size)})`);
 }
 
+function printOperation(receipt: OperationReceipt): void {
+  log.info(`${receipt.id} · ${receipt.kind} · ${receipt.state} · revision ${receipt.revision}`);
+  for (const resource of receipt.resources.filter(value => value.kind === 'database'))
+    log.info(`  ${resource.project}/${resource.stack}/${resource.name}`);
+  if (receipt.execution) log.info(`  Docker ${receipt.execution.daemonId} · container ${receipt.execution.id ?? 'not acknowledged'}`);
+  if (receipt.code) log.info(`  ${receipt.code}`);
+}
+
+/** Full receipts, including unknown outcomes. Reading never retries an effect. */
+export async function backupOperationsCommand(id?: string): Promise<void> {
+  try {
+    if (id !== undefined) assertOperationId(id);
+    const result = await withBackups<OperationReceipt | OperationReceipt[] | null>(service => id === undefined
+      ? service.listOperations() : service.getOperation({ id }));
+    if (result === null) throw new Error('Backup operation not found');
+    if (emitJson(result)) return;
+    const receipts = Array.isArray(result) ? result : [result];
+    if (!receipts.length) log.info('No unfinished backup or restore operations');
+    else receipts.forEach(printOperation);
+  } catch (error) { emitError(error); process.exitCode = 1; }
+}
+
+/** The operator supplies the revision they inspected; never fetch a newer one
+ * and silently expand cancellation authority after a conflict. */
+export async function backupOperationActionCommand(action: 'cancel' | 'reconcile', id: string,
+  options: { revision: string }): Promise<void> {
+  try {
+    assertOperationId(id);
+    if (!/^[1-9]\d*$/.test(options.revision) || !Number.isSafeInteger(Number(options.revision)))
+      throw new Error('--revision must be a positive safe integer from the inspected operation');
+    const request = { id, revision: Number(options.revision) };
+    const receipt = await withBackups(service => action === 'cancel'
+      ? service.cancelOperation(request) : service.reconcileOperation(request));
+    if (!['succeeded', 'failed', 'cancelled'].includes(receipt.state)) {
+      emitError('Backup execution is still unconfirmed; no retry or release of its resource claim was authorized', {
+        code: 'BACKUP_OUTCOME_UNCONFIRMED', outcome: 'unknown', operation: receipt,
+      });
+      if (!isJsonMode()) printOperation(receipt);
+      process.exitCode = 1;
+      return;
+    }
+    if (!emitJson(receipt)) printOperation(receipt);
+  } catch (error) { emitError(error); process.exitCode = 1; }
+}
+
 export async function backupListCommand(): Promise<void> {
   try {
-    const backups: any[] = await invokeRpc('listBackups');
+    const backups = await withBackups(service => service.listBackups());
 
     if (backups.length === 0) {
       log.info('No backups available');
@@ -211,7 +258,7 @@ function renderTable(header: string[], rows: string[][]): string[] {
 export async function backupFullCommand(): Promise<void> {
   try {
     log.info('Creating FULL backup (all DBs + control-plane DB + storage + tor keys + daemon-state)...');
-    const results: any[] = await invokeRpc('createFullBackup');
+    const results = await withBackups(service => service.createFullBackup());
     if (!results || results.length === 0) {
       log.warn('Nothing to back up — is a stack running?');
       process.exitCode = 1;
@@ -226,7 +273,7 @@ export async function backupFullCommand(): Promise<void> {
 
 export async function backupScheduleCommand(target: string, cron: string): Promise<void> {
   try {
-    const result = await invokeRpc('setSchedule', { database: target, cron });
+    const result = await withBackups(service => service.setSchedule({ database: target, cron }));
     if (result?.success !== true) throw new Error('The daemon did not confirm the backup schedule');
     log.success(`Scheduled backup of '${target}': ${cron}`);
     log.info(`  (use 'all' to back up every running-stack database)`);
@@ -282,7 +329,7 @@ export async function backupSchedulesCommand(): Promise<void> {
 
 export async function backupUnscheduleCommand(target: string): Promise<void> {
   try {
-    const result = await invokeRpc('removeSchedule', { database: target });
+    const result = await withBackups(service => service.removeSchedule({ database: target }));
     if (result?.success !== true) throw new Error('The daemon did not confirm removal of the backup schedule');
     log.success(`Removed backup schedule for '${target}'`);
   } catch (err) {
@@ -296,7 +343,7 @@ export async function backupRestoreCommand(id: string): Promise<void> {
     // Resolved here as well as in the daemon, so the operator sees WHICH
     // backup a prefix named before anything is overwritten — and the daemon
     // is then handed the full id, which every daemon version accepts.
-    const backups: any[] = await invokeRpc('listBackups');
+    const backups = await withBackups(service => service.listBackups());
     const target = resolveBackupId(
       backups,
       id,
@@ -305,7 +352,7 @@ export async function backupRestoreCommand(id: string): Promise<void> {
     log.info(
       `Restoring ${target.id} — ${qualifiedName(target, target.database)}, taken ${formatUtc(target.createdAt)} (${target.filename})...`,
     );
-    const result = await invokeRpc('restoreBackup', { backupId: target.id });
+    const result = await withBackups(service => service.restoreBackup({ backupId: target.id }));
     if (result?.success !== true) throw new Error('The daemon did not confirm the restore; inspect the destination before retrying');
     log.success('Backup restored successfully');
   } catch (err) {

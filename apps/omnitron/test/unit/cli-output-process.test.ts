@@ -93,6 +93,26 @@ describe('actual CLI machine output boundary', () => {
     }
   );
   it.each([
+    ['operations'],
+    ['operations', 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'],
+    ['cancel', 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', '--revision', '5'],
+    ['reconcile', 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', '--revision', '5'],
+  ])('admits backup recovery command %s through the real CLI JSON boundary', (...args) => {
+    const result = run(['--json', 'backup', ...args]);
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(JSON.parse(result.stderr)).toMatchObject({ ok: false, error: 'omnitron daemon is not running (start it with `omnitron up`)' });
+    expect(result.stderr).not.toContain('JSON_OUTPUT_UNSUPPORTED');
+    expect(result.instanceCreated).toBe(false);
+  });
+  it('requires an inspected revision for backup recovery before starting its handler', () => {
+    const result = run(['backup', 'cancel', 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee']);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('--revision');
+    expect(result.instanceCreated).toBe(false);
+  });
+  it.each([
     ['create', 'main'],
     ['full'],
     ['list'],

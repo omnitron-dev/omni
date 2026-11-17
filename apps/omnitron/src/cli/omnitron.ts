@@ -1347,6 +1347,24 @@ pipeline.command('cancel <runId>').description('Cancel a run and wait for its ex
 
 const backup = program.command('backup').description('Database backup and restore');
 
+backup.command('operations [id]')
+  .description('Inspect unfinished backup/restore receipts, or one exact operation UUID')
+  .structuredAction(async id => {
+    const { backupOperationsCommand } = await import('../commands/backup.js');
+    await backupOperationsCommand(id);
+  });
+
+for (const action of ['cancel', 'reconcile'] as const) {
+  backup.command(`${action} <id>`)
+    .description(action === 'cancel' ? 'Cancel only the inspected backup/restore attempt'
+      : 'Reconcile an interrupted attempt without repeating its database command')
+    .requiredOption('--revision <number>', 'Exact revision returned by backup operations')
+    .structuredAction(async (id, options) => {
+      const { backupOperationActionCommand } = await import('../commands/backup.js');
+      await backupOperationActionCommand(action, id, options);
+    });
+}
+
 backup.command('artifact <kind>')
   .description('Back up storage-objects or tor-keys of an explicit provisioned stack')
   .requiredOption('--project <name>', 'Project registration')

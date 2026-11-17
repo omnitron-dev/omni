@@ -1212,11 +1212,12 @@ export class OmnitronDaemon {
     backupService.configure(this.dc.backups);
     this.backupService = backupService;
     const backupRpcService = new BackupRpc(backupService, isSlave ? null : await container.resolveAsync<AuthService>(AUTH_SERVICE_TOKEN));
-    await this.app.netron.peer.exposeService(backupRpcService);
-    // Re-arm any persisted backup schedules so they survive daemon restarts.
+    // Observe native update admission before exposing manual operations or
+    // restoring schedules. A replacement retains an unfinished update's hold.
     await backupService.restoreSchedules().catch((err: unknown) =>
       loggerModule.logger.warn({ err: (err as Error).message }, 'Failed to restore backup schedules'),
     );
+    await this.app.netron.peer.exposeService(backupRpcService);
 
     // Infrastructure RPC service (reports infra state — slave has no infra)
     const { InfrastructureRpcService: InfraRpc } = await import('../services/infrastructure.rpc-service.js');

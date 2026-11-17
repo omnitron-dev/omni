@@ -16,6 +16,9 @@ import { BackendControlService } from '../../src/daemon/backend-control.js';
 import { readBackendBootRecord, backendConfigurationDigest } from '../../src/daemon/backend-handoff-types.js';
 import { DEFAULT_DAEMON_CONFIG, DEFAULT_ECOSYSTEM } from '../../src/config/defaults.js';
 import { fileURLToPath } from 'node:url';
+import * as runtimeUpdate from '../../src/daemon/runtime-update.js';
+import { writePrivateRecord } from '../../src/daemon/execution-journal.js';
+import type { RuntimeUpdatePhase, RuntimeUpdatePlan } from '../../src/shared/dto/runtime-update.js';
 
 const fixture = vi.hoisted(() => ({ home: '' }));
 vi.mock('../../src/config/defaults.js', async original => ({
@@ -92,6 +95,135 @@ afterEach(async () => {
   for (const operation of backups.listOperations()) recoveryState.release(`execution.operation.${operation.id}`);
   backups.dispose(); await executor.dispose(); await store.dispose(); vi.restoreAllMocks();
   fs.rmSync(fixture.home, { recursive: true, force: true });
+});
+
+async function runtimeReceipt(phase: RuntimeUpdatePhase, artifact = 'b'.repeat(64)) {
+  const original = 'a'.repeat(64);
+  const plan: RuntimeUpdatePlan = { protocol: 1, instance: fixture.home, backupOperations: [],
+    target: { artifact, commit: 'b'.repeat(40) }, before: { backend: original, owner: original, guardian: original,
+      backendCommit: 'a'.repeat(40), ownerCommit: 'a'.repeat(40), scope: 'user', ownerId: 'original', ownerPid: 123,
+      ownerLifetime: '01234567-0000-0000-0000-000000000001:1234', guardianPid: 124, backendPid: 125, revision: 1,
+      retiredPids: [], console: null, consoleCommit: null }, stacks: [], excluded: [], watches: [],
+    infrastructure: { schemaScope: 'all', digest: 'c'.repeat(64), database: null, containers: [] } };
+  const receipt = { protocol: 1 as const, plan, digest: runtimeUpdate.runtimeUpdatePlanDigest(plan), phase, updatedAt: new Date().toISOString() };
+  await writePrivateRecord(path.join(fixture.home, 'runtime/local-updates/current.json'), receipt);
+  return receipt;
+}
+
+describe('backup admission follows the native runtime receipt', () => {
+  it.each(['draining', 'stopping', 'starting', 'verifying', 'failed', 'stopping-candidate', 'restoring', 'recovery-required'] as const)(
+    'a replacement backend preserves schedules and denies new effects in %s', async phase => {
+      store.kvSetSync('backup:schedules', { 'one/dev/ledger': 'hourly' });
+      const receipt = await runtimeReceipt(phase);
+      await backups.restoreSchedules();
+      await expect(backups.createBackup('one/dev/ledger')).rejects.toThrow('paused for runtime update');
+      expect(executor.execute).not.toHaveBeenCalled();
+      expect(backups.listOperations()).toEqual([]);
+      expect(await backups.getStatus()).toMatchObject({ admission: { status: 'paused', runtimeUpdate: { digest: receipt.digest, phase } },
+        schedules: [{ armed: false, nextRunAt: null }] });
+      expect(await backups.listSchedules()).toEqual({ 'one/dev/ledger': 'hourly' });
+    });
+
+  it.each(['accepted', 'rolled-back', 'aborted'] as const)('resumes from %s after a lost acknowledgement without another release command', async phase => {
+    store.kvSetSync('backup:schedules', { 'one/dev/ledger': 'hourly' });
+    await runtimeReceipt('starting');
+    await Promise.all([backups.restoreSchedules(), backups.restoreSchedules()]);
+    expect((await backups.getStatus()).schedules[0]!.armed).toBe(false);
+    await runtimeReceipt(phase); // Simulate terminal fsync followed by loss of the CLI reply.
+    await vi.waitFor(async () => expect((await backups.getStatus()).schedules[0]!.armed).toBe(true), { timeout: 4000 });
+    const next = (await backups.getStatus()).schedules[0]!.nextRunAt;
+    await Promise.all([backups.restoreSchedules(), backups.restoreSchedules()]);
+    expect((await backups.getStatus()).schedules[0]!.nextRunAt).toBe(next);
+    expect((await backups.getStatus()).admission).toBeUndefined();
+    await expect(backups.createBackup('one/dev/ledger')).resolves.toBeTruthy();
+    expect(executor.execute).toHaveBeenCalledOnce();
+  });
+
+  it('does not let a stale terminal receipt release a newer held digest', async () => {
+    store.kvSetSync('backup:schedules', { all: 'hourly' });
+    const held = await runtimeReceipt('verifying', 'c'.repeat(64));
+    await backups.restoreSchedules();
+    await runtimeReceipt('accepted');
+    await expect(backups.restoreSchedules()).rejects.toThrow('held runtime update has no terminal receipt');
+    expect((await backups.getStatus()).admission?.status).toBe('unconfirmed');
+    await expect(backups.createBackup('one/dev/ledger')).rejects.toThrow('held runtime update');
+    expect(executor.execute).not.toHaveBeenCalled();
+    await writePrivateRecord(path.join(fixture.home, 'runtime/local-updates', held.digest + '.json'), { ...held, phase: 'accepted' });
+    await backups.restoreSchedules();
+    expect((await backups.getStatus()).schedules[0]!.armed).toBe(true);
+  });
+
+  it.each(['missing', 'corrupt', 'dangling'] as const)('keeps a %s held receipt visibly unconfirmed instead of silently resuming', async defect => {
+    store.kvSetSync('backup:schedules', { all: 'hourly' });
+    await runtimeReceipt('restoring');
+    await backups.restoreSchedules();
+    const file = path.join(fixture.home, 'runtime/local-updates/current.json');
+    if (defect === 'corrupt') fs.writeFileSync(file, '{');
+    else {
+      fs.unlinkSync(file);
+      if (defect === 'dangling') fs.symlinkSync(path.join(fixture.home, 'absent.json'), file);
+    }
+    await expect(backups.restoreSchedules()).rejects.toThrow();
+    expect(await backups.getStatus()).toMatchObject({ admission: { status: 'unconfirmed' }, schedules: [{ armed: false }] });
+    await expect(backups.createBackup('one/dev/ledger')).rejects.toThrow();
+    expect(executor.execute).not.toHaveBeenCalled();
+  });
+
+  it('closes scheduling before an in-flight receipt read can arm timers after disposal', async () => {
+    store.kvSetSync('backup:schedules', { all: 'hourly' });
+    let complete!: (value: null) => void;
+    vi.spyOn(runtimeUpdate, 'readRuntimeUpdateReceipt').mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
+    const restoring = backups.restoreSchedules();
+    backups.dispose();
+    complete(null);
+    await restoring;
+    expect((await backups.getStatus()).schedules[0]!.armed).toBe(false);
+    await expect(backups.createBackup('one/dev/ledger')).rejects.toThrow('paused');
+    expect(executor.execute).not.toHaveBeenCalled();
+  });
+
+  it('rechecks admission after target discovery before persisting or dispatching a new database effect', async () => {
+    vi.mocked(executor.inspectDockerTarget).mockImplementationOnce(async () => {
+      await runtimeReceipt('draining');
+      return { id: containers.one, image };
+    });
+    await expect(backups.createBackup('one/dev/ledger')).rejects.toThrow('paused for runtime update');
+    expect(executor.execute).not.toHaveBeenCalled();
+    expect(backups.listOperations()).toEqual([]);
+  });
+
+  it('a late terminal read may arm a timer but cannot admit work after a newer transition starts', async () => {
+    store.kvSetSync('backup:schedules', { all: 'hourly' });
+    await runtimeReceipt('accepted');
+    const read = runtimeUpdate.readRuntimeUpdateReceipt;
+    vi.spyOn(runtimeUpdate, 'readRuntimeUpdateReceipt').mockImplementationOnce(async (...args) => {
+      const terminal = await read(...args);
+      await runtimeReceipt('draining', 'c'.repeat(64));
+      return terminal;
+    });
+    await backups.restoreSchedules();
+    expect((await backups.getStatus()).schedules[0]!.armed).toBe(true);
+    await expect(backups.createBackup('one/dev/ledger')).rejects.toThrow('paused for runtime update');
+    expect(executor.execute).not.toHaveBeenCalled();
+    expect(backups.listOperations()).toEqual([]);
+    expect((await backups.getStatus()).schedules[0]!.armed).toBe(false);
+    await runtimeReceipt('accepted', 'c'.repeat(64));
+    await vi.waitFor(async () => expect((await backups.getStatus()).schedules[0]!.armed).toBe(true), { timeout: 4000 });
+  });
+
+  it('does not release unknown database claims when a runtime receipt becomes terminal', async () => {
+    mode = 'unknown';
+    await expect(backups.createBackup('one/dev/ledger')).rejects.toThrow();
+    const unknown = backups.listOperations()[0]!;
+    await runtimeReceipt('recovery-required');
+    await backups.restoreSchedules();
+    await runtimeReceipt('accepted');
+    await backups.restoreSchedules();
+    mode = 'complete';
+    await expect(backups.createBackup('one/dev/ledger')).rejects.toThrow();
+    expect(backups.getOperation(unknown.id)).toEqual(unknown);
+    expect(executor.execute).toHaveBeenCalledOnce();
+  });
 });
 
 describe('durable backup execution', () => {

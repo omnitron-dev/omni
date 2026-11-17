@@ -30,6 +30,9 @@ vi.mock('../../src/config/defaults.js', async importOriginal => ({
 vi.mock('../../src/shared/paths.js', () => ({
   expandPath: (p: string) => (p === '~' || p.startsWith('~/') ? env.home + p.slice(1) : p),
 }));
+// This suite owns a synthetic clock. Runtime receipt IO and crash/release
+// behaviour use real files and time in backup-operation-lifecycle.test.ts.
+vi.mock('../../src/daemon/runtime-update.js', () => ({ readRuntimeUpdateReceipt: async () => null }));
 
 const printed: Array<{ level: string; text: string }> = [];
 vi.mock('@xec-sh/kit', () => ({

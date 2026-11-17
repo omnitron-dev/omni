@@ -314,6 +314,7 @@ export async function backupSchedulesCommand(): Promise<void> {
     if (isJsonMode()) { emitJson(status); return; }
     if (Number.isFinite(status.databaseTimeoutMs))
       log.info(`Database transfer deadline: ${status.databaseTimeoutMs < 1000 ? `${status.databaseTimeoutMs} ms` : formatAge(status.databaseTimeoutMs)}`);
+    if (status.admission) log.warn(`Backup admission ${status.admission.status}: ${status.admission.reason}`);
     const schedules: any[] = status.schedules ?? [];
     if (schedules.length === 0) {
       log.info('No backup schedules configured');

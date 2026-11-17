@@ -106,6 +106,12 @@ export interface BackupScheduleStatus {
 export interface BackupStatus {
   /** Effective deadline for each PostgreSQL dump or restore, in milliseconds. */
   databaseTimeoutMs: number;
+  /** Live admission observation; persisted schedules and archives are retained. */
+  admission?: {
+    status: 'paused' | 'unconfirmed';
+    reason: string;
+    runtimeUpdate?: { digest: string; phase: import('./runtime-update.js').RuntimeUpdatePhase };
+  };
   schedules: BackupScheduleStatus[];
   /** Every running stack, and whether this host backs its databases up. */
   stacks: BackupStackCoverage[];

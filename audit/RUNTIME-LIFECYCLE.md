@@ -86,41 +86,43 @@ injects expiry or a lost read, and proves no rollback is attempted. Reconciliati
 then accepts the candidate with those counts unchanged. Existing interruption,
 lease, generation, health-floor and repeated-recovery checks remain in the suite.
 
+## Durable backup admission
+
+`services/backup.service.ts` previously held `quiescing` and `handoffOwner` only
+in memory while `daemon.ts` unconditionally restored schedules in the next
+backend. An overdue dump could begin during acceptance or restoration and
+contend with the update's certificate. This was a cross-process admission gap,
+not a reason to remove backup verification.
+
+The corrected service derives admission from the validated native current
+receipt and instance. Every nonterminal phase holds schedules and new effects,
+including `recovery-required`. After `accepted`, `rolled-back` or `aborted` is
+persisted, one scoped scheduler observer resumes the unchanged saved schedules.
+Only a held or unreadable receipt needs a one-second recheck. No release RPC,
+second journal or persisted pause flag exists, so losing a terminal CLI reply
+does not require another operator action to restore scheduling.
+
+Admission is counted as in-flight before awaiting its receipt read. It rechecks
+the local handoff fence afterwards, and database effects recheck the durable
+receipt after asynchronous target discovery. A timer armed just before a new
+transition cannot bypass the fresh effect gate. Disposal closes local admission
+and the observation scope before clearing timers; a late read cannot re-arm them.
+
+A previously observed hold cannot disappear silently. A missing or malformed
+receipt produces a visible `unconfirmed` status and keeps schedules unarmed.
+If a different terminal digest is observed, the held digest's retained history
+must prove its terminal state before release. Unknown operation claims remain
+owned by the execution journal even after the runtime update is accepted.
+
+Oracles in `test/unit/backup-operation-lifecycle.test.ts`: every nonterminal phase;
+each terminal phase without a release notification; repeated restoration without
+resetting an armed timer; stale terminal receipt against a newer hold;
+missing/corrupt/dangling receipt; disposal during a blocked read; transition
+beginning during Docker target discovery; unknown claims surviving acceptance.
+The existing schedule-cadence and artifact handoff suites continue to cover
+deadline calculation, serialization and full-pass retention ownership.
+
 ## Remaining architectural gaps
-
-### Backup admission does not survive backend replacement
-
-`services/backup.service.ts` stores `quiescing` and `handoffOwner` in memory.
-`daemon.ts` restores schedules when the next backend initializes. A reviewed
-pause therefore ends when the old backend dies, before the whole local update
-has been accepted. An overdue scheduled dump can begin during acceptance or
-restoration and contend with its certificate. This is a missing cross-process
-admission contract, not a reason to remove backup verification.
-
-Proposed correction, not implemented in this batch:
-
-1. Derive the hold from the validated current local update receipt and its
-   instance/digest. Do not add a separate pause file or another journal.
-   Every nonterminal phase retains the hold, including `recovery-required`.
-2. The starting backend checks this admission before arming restored schedules
-   and before admitting manual backup effects. Persisted schedule definitions,
-   completed archives and unknown operation claims remain unchanged.
-3. Terminal `accepted`, `rolled-back` or `aborted` receipts release only their
-   own digest. Perform terminal persistence before notifying the current backend.
-   The release operation reads the current receipt again, so a stale notification
-   cannot release a newer transition's hold.
-4. Reconcile admission during backend startup and ordinary scheduler service
-   reconciliation. A lost terminal notification must not leave schedules paused
-   forever. Repeated notification is observation, not another backup attempt.
-5. Before shutdown, keep the existing exact backup cancellation/release protocol.
-   After replacement, release must address the current backend and authoritative
-   receipt; requiring the retired backend PID would make recovery impossible.
-
-Required oracles: crash before/after terminal persistence; lost release reply;
-backend boot in every nonterminal phase; accepted and rolled-back release;
-stale digest against a newer hold; corrupt receipt; unchanged user schedules;
-unknown backup claims still blocking admission; no duplicate overdue backup.
-The implementation must establish these before claiming a durable pause.
 
 ### Other lifecycle waits still conflate failure and waiting
 

@@ -48,6 +48,8 @@ import type {
 import { inspectStackContainers } from '../infrastructure/container-runtime.js';
 import { recoveryState } from '../daemon/recovery-state.js';
 import { backupStorageObjects, restoreStorageObjects, validateStorageBucket } from './backup-storage.js';
+import { readRuntimeUpdateReceipt } from '../daemon/runtime-update.js';
+import { RUNTIME_UPDATE_TERMINAL_PHASES, type RuntimeUpdatePhase } from '../shared/dto/runtime-update.js';
 
 // =============================================================================
 // Types
@@ -72,6 +74,17 @@ interface ScheduleEntry {
   /** Set once a schedule has been cancelled, so an in-flight tick stops. */
   cancelled?: boolean;
 }
+
+interface ScheduleObservation {
+  controller: AbortController;
+  work?: Promise<void>;
+  timer?: NodeJS.Timeout;
+  heldDigest?: string;
+  fault?: string;
+}
+
+const terminalRuntimePhases = new Set<RuntimeUpdatePhase>(RUNTIME_UPDATE_TERMINAL_PHASES);
+const RUNTIME_ADMISSION_RECHECK_MS = 1000;
 
 /**
  * A schedule's first run after a start is never sooner than this — the
@@ -327,6 +340,7 @@ export class BackupService {
   private handoffBlockingOperations = 0;
   private quiescing = false;
   private handoffOwner: string | null = null;
+  private scheduleObservation: ScheduleObservation | null = null;
   private databaseTimeoutMs = 30 * 60_000;
   private readonly operations: OperationJournal;
   private readonly databaseOperations = new Map<string, { controller: AbortController; done: Promise<void> }>();
@@ -382,7 +396,7 @@ export class BackupService {
     if (this.handoffOwner !== owner) throw new Error('Only the owning transition can resume backup admission');
     this.quiescing = false;
     try {
-      this.restoreScheduleTimers();
+      await this.restoreSchedules();
       this.handoffOwner = null;
     } catch (error) {
       this.quiescing = true;
@@ -397,7 +411,13 @@ export class BackupService {
     if (!cancellableBackup) this.handoffBlockingOperations++;
     let work: Promise<T> | undefined;
     try {
-      work = recoveryState.run('Backup or restore in progress', operation);
+      work = recoveryState.run('Backup or restore in progress', async () => {
+        await this.assertRuntimeAdmission();
+        // Admission is counted before its asynchronous receipt read. A handoff
+        // cannot mistake this request for idle work or let it pass a late fence.
+        if (this.quiescing) throw new Error('Backup admission is paused for backend handoff');
+        return operation();
+      });
       this.inFlight.add(work);
       return await work;
     } finally {
@@ -476,6 +496,7 @@ export class BackupService {
     artifact?: (value: T) => OperationArtifact): Promise<T> {
     const { dbConfig, origin } = target;
     const binding = target.isDocker ? await this.execution.inspectDockerTarget(target.containerName) : undefined;
+    await this.assertRuntimeAdmission();
     if (this.quiescing) throw new Error('Backup admission is paused for runtime update');
     const prepared = this.operations.prepare({ id, kind,
       resources: [{ kind: 'database', name: dbConfig.database,
@@ -1183,6 +1204,12 @@ export class BackupService {
    * prints, and what `backup list` warns from.
    */
   async getStatus(): Promise<BackupStatus> {
+    let admission: BackupStatus['admission'];
+    try {
+      const held = await this.runtimeAdmission();
+      if (held) admission = { status: 'paused', reason: `Runtime update ${held.digest} is ${held.phase}`, runtimeUpdate: held };
+      else if (this.quiescing) admission = { status: 'paused', reason: 'Backend handoff has paused new backup operations' };
+    } catch (error) { admission = { status: 'unconfirmed', reason: reasonOf(error) }; }
     const specs = await this.listSchedules();
     const passes = this.lastPasses();
     const schedules: BackupScheduleStatus[] = Object.entries(specs).map(([target, spec]) => {
@@ -1205,7 +1232,7 @@ export class BackupService {
         nextRunAt: this.schedules.get(target)?.nextRunAt ?? null,
       };
     });
-    return { databaseTimeoutMs: this.databaseTimeoutMs, schedules, stacks: this.surveyStacks().stacks };
+    return { databaseTimeoutMs: this.databaseTimeoutMs, ...(admission && { admission }), schedules, stacks: this.surveyStacks().stacks };
   }
 
   // ===========================================================================
@@ -1334,6 +1361,7 @@ export class BackupService {
     // running at a time nobody chose. `parseSchedule` throws rather than
     // defaulting, which is the entire contract.
     const plan = parseSchedule(cron);
+    await this.assertRuntimeAdmission();
     this.armSchedule(database, plan);
     const map = this.store.kvGetSync<Record<string, string>>(BackupService.SCHEDULES_KV_KEY) ?? {};
     map[database] = cron;
@@ -1357,9 +1385,80 @@ export class BackupService {
     this.logger.info({ database }, 'Backup schedule removed');
   }
 
-  /** Re-arm every persisted schedule. Called once at daemon start. */
+  /** Re-arm persisted schedules only after the native transition's durable
+   * receipt permits it. No release RPC or remembered pause flag is authority. */
   async restoreSchedules(): Promise<void> {
-    this.restoreScheduleTimers();
+    const observation = this.scheduleObservation ??= { controller: new AbortController() };
+    if (observation.work) { await observation.work; return; }
+    const work = this.observeScheduleAdmission(observation);
+    observation.work = work;
+    try { await work; } finally { delete observation.work; }
+  }
+
+  private async runtimeAdmission(): Promise<{ digest: string; phase: RuntimeUpdatePhase } | null> {
+    const directory = path.join(OMNITRON_HOME, 'runtime/local-updates');
+    const current = await readRuntimeUpdateReceipt(directory);
+    const held = this.scheduleObservation?.heldDigest;
+    if (!current) {
+      if (held) throw Error('Runtime update receipt disappeared while backup admission was held: ' + held);
+      return null;
+    }
+    if (current.plan.instance !== OMNITRON_HOME) throw Error('Backup admission receipt belongs to another instance');
+    if (!terminalRuntimePhases.has(current.phase)) return { digest: current.digest, phase: current.phase };
+    if (held && held !== current.digest) {
+      // A later transition can replace a terminal receipt. Its retained history
+      // must prove that the previously observed hold ended, not just vanished.
+      const prior = await readRuntimeUpdateReceipt(directory, held);
+      if (!prior || prior.plan.instance !== OMNITRON_HOME || !terminalRuntimePhases.has(prior.phase))
+        throw Error('The held runtime update has no terminal receipt: ' + held);
+    }
+    return null;
+  }
+
+  private async assertRuntimeAdmission(): Promise<void> {
+    const held = await this.runtimeAdmission();
+    if (held) {
+      // A transition can begin after startup observation. Stop existing timers
+      // and follow its receipt instead of postponing them by an entire interval.
+      if (this.scheduleObservation) await this.restoreSchedules();
+      throw Error(`Backup admission is paused for runtime update ${held.digest} (${held.phase})`);
+    }
+  }
+
+  private async observeScheduleAdmission(observation: ScheduleObservation): Promise<void> {
+    if (observation.timer) { clearTimeout(observation.timer); delete observation.timer; }
+    try {
+      const held = await this.runtimeAdmission();
+      if (observation.controller.signal.aborted || this.scheduleObservation !== observation) return;
+      delete observation.fault;
+      if (held || this.quiescing) {
+        if (held) observation.heldDigest = held.digest;
+        this.stopScheduleTimers();
+        this.recheckScheduleAdmission(observation);
+        return;
+      }
+      delete observation.heldDigest;
+      this.restoreScheduleTimers();
+    } catch (error) {
+      if (observation.controller.signal.aborted || this.scheduleObservation !== observation) return;
+      this.stopScheduleTimers();
+      const fault = reasonOf(error);
+      if (observation.fault !== fault) this.logger.error({ error: fault }, 'Backup admission is unconfirmed; schedules remain paused');
+      observation.fault = fault;
+      this.recheckScheduleAdmission(observation);
+      throw error;
+    }
+  }
+
+  private recheckScheduleAdmission(observation: ScheduleObservation): void {
+    if (observation.controller.signal.aborted || this.scheduleObservation !== observation || observation.timer) return;
+    observation.timer = setTimeout(() => {
+      delete observation.timer;
+      // observeScheduleAdmission reports errors and retains the same hold. A
+      // lost caller acknowledgement cannot prevent terminal reconciliation.
+      void this.restoreSchedules().catch(() => undefined);
+    }, RUNTIME_ADMISSION_RECHECK_MS);
+    observation.timer.unref();
   }
 
   private restoreScheduleTimers(): void {
@@ -1367,6 +1466,7 @@ export class BackupService {
     let n = 0;
     const rejected: string[] = [];
     for (const [database, cron] of Object.entries(map)) {
+      if (this.schedules.get(database)?.cron === cron) continue;
       // A stored row can be unreadable — written before this was validated,
       // or hand-edited. Neither reaction is obvious, so both are wrong on
       // their own: refusing to boot over one bad backup schedule is out of
@@ -1443,7 +1543,10 @@ export class BackupService {
       entry.nextRunAt = new Date(Date.now() + delay).toISOString();
       entry.timer = setTimeout(() => {
         const startedAt = Date.now();
-        void this.runExclusive(() => entry.cancelled ? Promise.resolve('empty' as BackupPassOutcome) : this.runScheduledBackup(database)).then((outcome) => {
+        void this.runExclusive(() => entry.cancelled ? Promise.resolve('empty' as BackupPassOutcome) : this.runScheduledBackup(database)).catch(error => {
+          this.logger.error({ database, error: reasonOf(error) }, 'Scheduled backup admission failed');
+          return 'empty' as BackupPassOutcome;
+        }).then((outcome) => {
           if (plan.kind === 'interval') {
             const backedUpSomething = outcome === 'ok' || outcome === 'partial';
             const wait = backedUpSomething ? plan.intervalMs : Math.min(plan.intervalMs, RETRY_AFTER_NOTHING_MS);
@@ -1623,6 +1726,15 @@ export class BackupService {
   }
 
   dispose(): void {
+    this.quiescing = true;
+    const observation = this.scheduleObservation;
+    this.scheduleObservation = null;
+    observation?.controller.abort();
+    if (observation?.timer) clearTimeout(observation.timer);
+    this.stopScheduleTimers();
+  }
+
+  private stopScheduleTimers(): void {
     for (const entry of this.schedules.values()) {
       // Flag first: clearing the timer does not stop a cron tick that is
       // already running, and that tick re-arms itself when it finishes.

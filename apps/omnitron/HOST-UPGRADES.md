@@ -202,11 +202,24 @@ and cancels only its reviewed backup attempts through the operation journal.
 A backup that already finished keeps its terminal receipt and is not replayed.
 A new attempt or changed active revision requires a new review. Before any
 process is stopped, the controller must publish a fresh recovery certificate
-and confirm the reviewed restart intent against a fresh, fully verified snapshot. Scheduled and manual
-backups remain paused until the old controller stops. If admission fails,
+and confirm the reviewed restart intent against a fresh, fully verified snapshot.
+Scheduled and manual backups remain paused across backend replacement and
+restoration while the current native update receipt is nonterminal. The new
+controller reads that same receipt before arming schedules and before admitting
+an effect; no second pause journal or release RPC is involved. If admission fails,
 Omnitron releases only this plan's pause and records `aborted`; applications
 continue without a rollback restart. A lost release acknowledgement remains
 `draining`. Recovery of that phase only releases the same plan's pause.
+
+Once `accepted`, `rolled-back` or `aborted` is persisted, the backup scheduler
+reconciles the receipt and resumes the saved policy. While held, one observation
+runs at a time and rechecks after one second; disposal closes that observer before
+clearing timers. A lost CLI reply therefore cannot leave schedules paused forever.
+A missing previously observed receipt, malformed state or an unproven older
+terminal digest keeps admission closed with a visible `unconfirmed` reason.
+`backup schedules --json` includes `admission` with the reason and, when known,
+the current update digest/phase. The human command reports the same pause.
+These transitions do not edit user schedules or release unknown backup claims.
 
 Database backup execution uses the shared Xec executor. PostgreSQL in Docker
 runs each dump or restore in an owned, resource-limited job using the database

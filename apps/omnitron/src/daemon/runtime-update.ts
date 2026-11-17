@@ -3,6 +3,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { withKernelFileLock } from '@xec-sh/ops/utils/file-lock';
+import { withInstancePolicy } from '../config/saved.js';
 import { readPrivateRecord, writePrivateRecord } from './execution-journal.js';
 import { RUNTIME_UPDATE_TERMINAL_PHASES } from '../shared/dto/runtime-update.js';
 import { RuntimeObservationUnconfirmed } from './runtime-observation.js';
@@ -62,6 +63,8 @@ export interface RuntimeUpdateActions {
   stop(previous: RuntimeUpdateRetiringIdentity): Promise<unknown>;
   assertStopped(previous: RuntimeUpdateRetiringIdentity): Promise<unknown>;
   canRestore(previous: RuntimeUpdateRetiringIdentity): Promise<boolean>;
+  /** Verify the reviewed cold starter before retiring a candidate that may still be serving. */
+  validateRestore(plan: RuntimeUpdatePlan): Promise<void>;
   /** Prove the original roles, processes and retained intent still serve after a refused stop. */
   isPreviousServing?(plan: RuntimeUpdatePlan): Promise<boolean>;
   captureForRollback(plan: RuntimeUpdatePlan): Promise<RuntimeUpdateRetiringIdentity>;
@@ -164,6 +167,7 @@ export async function runRuntimeUpdate({ actions, directory, operation, digest: 
           const acceptance = await actions.accept(plan, 'previous', true);
           return await save('rolled-back', { acceptance });
         }
+        await actions.validateRestore(plan);
         if (!(await actions.canRestore(record.rollbackOwner ?? plan.before))) {
           const live = await actions.captureForRollback(plan);
           await actions.validateStop(live);
@@ -237,7 +241,8 @@ export async function runRuntimeUpdate({ actions, directory, operation, digest: 
     }
     if (record) await writePrivateRecord(path.join(directory, record.digest + '.json'), record);
     record = { protocol: 1, digest, plan, phase: 'draining', updatedAt: new Date().toISOString() };
-    await save('draining');
+    // Prior operator mutations finish before this receipt excludes new ones. Release before calling the daemon.
+    await withInstancePolicy(plan.instance, () => save('draining'));
     try {
       await actions.admit(plan, digest);
       await actions.validateStop(plan.before, plan);

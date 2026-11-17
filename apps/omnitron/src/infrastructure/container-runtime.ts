@@ -470,6 +470,7 @@ export function containerObservation(info: NativeContainerObservation, name: str
   // recreate instead of trusting the 'running' status.
   const networkAttached = Object.keys(info.NetworkSettings?.Networks ?? {}).length > 0;
   const failure = describeContainerFailure(info.State);
+  const bindings = info.NetworkSettings?.Ports;
   return {
     name: (info.Name ?? name).replace(/^\//, ''),
     image: info.Config?.Image ?? '',
@@ -479,6 +480,11 @@ export function containerObservation(info: NativeContainerObservation, name: str
     healthCheck: nativeHealthCheck(info.State?.Health),
     startedAt: info.State?.StartedAt,
     ports: publishedPorts(info),
+    ...(fullId && bindings && { portBindings: Object.fromEntries(Object.entries(bindings).map(([key, values]) =>
+      [key, (values ?? []).flatMap(({ HostIp, HostPort }) => {
+        const port = Number(HostPort);
+        return HostIp && Number.isInteger(port) && port > 0 && port <= 65535 ? [{ address: HostIp, port }] : [];
+      })])) }),
     resources: observedResources(info),
     specHash: info.Config?.Labels?.[SPEC_HASH_LABEL],
     labels: info.Config?.Labels,
@@ -642,7 +648,7 @@ export async function describeBindFailure(
 /**
  * Create and start a container from a resolved config.
  */
-export async function createContainer(config: ResolvedContainer): Promise<string> {
+export async function createContainer(config: ResolvedContainer, options: { fullId?: boolean; pull?: 'never' } = {}): Promise<string> {
   const resources = containerResources(config);
   // Ensure the managed network exists before we try to attach to it.
   // Idempotent — `docker network create` errors with "already exists"
@@ -663,12 +669,13 @@ export async function createContainer(config: ResolvedContainer): Promise<string
   }
 
   // Pull image if not present
-  await ensureImage(config.image);
+  if (options.pull !== 'never') await ensureImage(config.image);
 
   // Use the local Xec executor with explicit argv. The command can contain
   // credentials in environment, application flags and nested health checks;
   // raw execFile errors would print those arguments before any logger sees them.
   const args: string[] = ['docker', 'run', '-d', '--name', config.name];
+  if (options.pull === 'never') args.push('--pull=never');
 
   // Network — explicit network avoids the default bridge, which
   // accumulates phantom endpoints after dockerd restarts on macOS and
@@ -770,7 +777,22 @@ export async function createContainer(config: ResolvedContainer): Promise<string
   // Deliberately narrow. A missing image, a bad flag, or a port genuinely
   // held by something else is permanent, and retrying it turns one clear
   // error into several identical ones separated by delays.
-  const runDocker = () => executeDocker(args.slice(1));
+  const runDocker = async (): Promise<{ stdout: string }> => {
+    let failure: unknown;
+    try {
+      const result = await executeDocker(args.slice(1));
+      if (/^[a-f0-9]{64}$/.test(result.stdout.trim())) return result;
+      failure = Error('Docker did not confirm the identity of ' + config.name);
+    } catch (error) { failure = error; }
+    // The name and spec may also describe a competing start. Only this run's nonce can recover its lost reply.
+    const actual = await getContainerState(config.name, { orThrow: true, fullId: true });
+    if (!actual || actual.labels?.['omnitron.creation'] !== creation || actual.status !== 'running') throw failure;
+    const id = actual.containerId;
+    if (!id || !/^[a-f0-9]{64}$/.test(id) || actual.specHash !== labels[SPEC_HASH_LABEL] || actual.image !== config.image ||
+        !containerResourcesMatch(config, actual) || config.ports.length && !await arePortsPublished(id, config.ports))
+      throw Error('The running container cannot confirm this creation: ' + config.name, { cause: failure });
+    return { stdout: id };
+  };
 
   let stdout: string | undefined;
   let lastError: unknown;
@@ -846,7 +868,7 @@ export async function createContainer(config: ResolvedContainer): Promise<string
     }
   }
 
-  return id.slice(0, 12);
+  return options.fullId ? id : id.slice(0, 12);
 }
 
 /** A failed docker run may leave its own container in Created. Never follow a reused name. */

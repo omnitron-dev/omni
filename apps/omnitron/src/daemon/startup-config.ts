@@ -34,7 +34,7 @@ export async function loadRegisteredStartupEcosystem(cwd: string) {
 /** Shared cold-start configuration for the control plane and resident owner. */
 export async function loadStartupConfig(cwd: string) {
   const config = await loadStartupEcosystem(cwd);
-  const jwtSecret = ensurePersistedJwtSecret();
+  const jwtSecret = await ensurePersistedJwtSecret();
   const daemonConfig = {
     ...DEFAULT_DAEMON_CONFIG,
     ...savedDaemonOverrides(readSavedDaemonConfig()),

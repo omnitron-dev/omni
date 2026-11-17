@@ -143,11 +143,16 @@ process.send(observation);`);
 function planFor(directory, identity) {
   return { protocol: 1, instance: directory,
     target: { artifact: target, commit: source },
-    before: { backend: previous, owner: previous, guardian: previous, console: null, scope: 'user',
+    before: { backend: previous, owner: previous, guardian: previous, console: null, consoleCommit: null, scope: 'user',
       ownerPid: identity.pid, backendPid: identity.pid, guardianPid: identity.pid, ownerId: identity.generation,
       ownerLifetime: identity.generation, retiredPids: [], revision: 1 },
     stacks: [], infrastructure: [], backupOperations: [],
   };
+}
+
+async function validateFixtureRestore(plan) {
+  assert.equal(plan.before.console, null);
+  assert.equal(plan.before.consoleCommit, null);
 }
 
 test('an in-flight operation must be clear before a review can stop the private instance', { skip: !native }, async t => {
@@ -175,6 +180,22 @@ test('an in-flight operation must be clear before a review can stop the private 
   await assert.rejects(runRuntimeUpdate({ ...config, operation: 'apply', digest }), /activity counters/);
   blockers.backupOperations = 0;
   assert.equal((await runRuntimeUpdate({ ...config, operation: 'prepare' })).digest, digest);
+});
+
+test('recovery checks an older cold controller before any candidate retirement or new start', { skip: !native }, async t => {
+  const directory = await privateInstance(t);
+  const plan = planFor(directory, { pid: process.pid, generation: 'fixture-owner' });
+  const actions = { async prepare() { return plan; }, async validateRestore() { throw Error('Legacy controller cannot restore this Console'); },
+    async canRestore() { assert.fail('recovery must refuse before inspecting retirement'); },
+    async stop() { assert.fail('recovery must preserve the candidate'); }, async start() { assert.fail('cannot start an unqualified controller'); } };
+  const prepared = await runRuntimeUpdate({ actions, directory, operation: 'prepare' });
+  await fs.writeFile(path.join(directory, 'current.json'), JSON.stringify({ ...prepared, phase: 'failed',
+    updatedAt: new Date().toISOString() }), { mode: 0o600 });
+  await assert.rejects(runRuntimeUpdate({ actions, directory, operation: 'recover', digest: prepared.digest }), /Legacy controller/);
+  const receipt = await readRuntimeUpdateReceipt(directory);
+  assert.equal(receipt.phase, 'recovery-required');
+  assert.deepEqual(receipt.plan, plan);
+  assert.equal(receipt.restoreAttempted, undefined);
 });
 
 test('a pending review holds the native instance lock and a concurrent operation exits before preparation', { skip: !native }, async t => {
@@ -291,6 +312,7 @@ test('a shutdown admission refusal preserves the original owner without starting
         throw refusal;
       },
       async stop() { assert.fail('admission refused before shutdown'); },
+      validateRestore: validateFixtureRestore,
       async canRestore() { assert.fail('an admission refusal cannot start recovery'); },
     },
   };
@@ -333,6 +355,7 @@ test('a lost drain acknowledgement retains durable admission intent and recovery
     },
     async validateStop() { assert.fail('unknown admission cannot authorize shutdown'); },
     async stop() { assert.fail('recovery of admission cannot stop a process'); },
+    validateRestore: validateFixtureRestore,
     async canRestore() { assert.fail('recovery of admission cannot enter owner restoration'); },
   };
   prepared = await runRuntimeUpdate({ actions, directory, operation: 'prepare' });
@@ -367,6 +390,7 @@ test('a refused stop reconciles the unchanged original owner without restarting 
       return confirmed;
     },
     async releaseAdmission() { released++; },
+    validateRestore: validateFixtureRestore,
     async canRestore() { return false; },
     async captureForRollback() { throw Error('candidate never served'); },
     async start() { assert.fail('the original owner must never be restarted'); },
@@ -418,6 +442,7 @@ test('applying the same review twice verifies a new live process generation and 
       events.push('accept');
       return identity;
     },
+    validateRestore: validateFixtureRestore,
     async canRestore() { return false; },
     async captureForRollback() {
       const identity = await owner.observe();
@@ -485,6 +510,7 @@ test('native recovery records backend absence before stopping and resumes a lost
       return { ownerId: 'restored-owner' };
     },
     async isPreviousServing() { return false; },
+    validateRestore: validateFixtureRestore,
     async canRestore(identity) { return identity.ownerId === retired.ownerId && candidateStopped; },
     async captureForRollback() { captures++; return retired; },
   };
@@ -513,6 +539,7 @@ test('reconciliation confirms a serving candidate after a lost result without re
     async prepare() { return plan; }, async admit() {}, async validateStop() {},
     async stop() { stops++; await owner.stop(); }, async assertStopped() {},
     async start() { starts++; owner = await ownerGeneration(t, directory, target); throw Error('Console reply lost'); },
+    validateRestore: validateFixtureRestore,
     async canRestore() { return false; },
     async captureForRollback() { throw Error('owner startup observation pending'); },
     async accept(reviewed, direction, inspectOnly) {
@@ -553,6 +580,7 @@ test(`${error.code} retains the serving candidate without starting an automatic 
   const actions = {
     async prepare() { return plan; }, async admit() {}, async validateStop() {},
     async stop() { stops++; }, async assertStopped() {}, async start() { starts++; },
+    validateRestore: validateFixtureRestore,
     async canRestore() { assert.fail('expiry is not evidence for rollback'); },
     async captureForRollback() { assert.fail('expiry cannot retire a serving candidate'); },
     async accept() {
@@ -585,6 +613,7 @@ test('a lost rollback acknowledgement is inspected without a second cold start',
     async validateStop() {},
     async stop() {},
     async assertStopped() {},
+    validateRestore: validateFixtureRestore,
     async canRestore() { return true; },
     async start(destination, _plan, restoration) {
       starts++;

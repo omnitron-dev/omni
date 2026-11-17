@@ -57,6 +57,8 @@ import { SystemInfoService } from '../services/system-info.service.js';
 import { SystemInfoRpcService } from '../services/system-info.rpc-service.js';
 import { PidManager } from './pid-manager.js';
 import { readColdBatch } from '../project/cold-stack-start.js';
+import { WebappService } from '../webapp/webapp.service.js';
+import { readSavedDaemonConfig } from '../config/saved.js';
 import { RuntimeObservationPending } from './runtime-observation.js';
 import { prepareDaemonDatabase } from './database-startup.js';
 import type { OrchestratorControl as OrchestratorService } from '../orchestrator/execution-contract.js';
@@ -325,6 +327,7 @@ export class OmnitronDaemon {
   private metricsBridge: import('../observability/index.js').MetricsBridge | null = null;
   private metricSampling?: ReturnType<typeof registerDaemonJobs>;
   private dc: IDaemonConfig = DEFAULT_DAEMON_CONFIG;
+  private webapp: WebappService | null = null;
   private execution: ExecutionClient | null = null;
   private handingOffBackend = false;
   private preparingBackend = false;
@@ -337,6 +340,12 @@ export class OmnitronDaemon {
 
   /** Daemon config accessor for external use (e.g., DaemonRpcService) */
   get daemonConfig(): IDaemonConfig { return this.dc; }
+
+  async startConsole(options: { force?: boolean; temporary?: boolean }) {
+    if (!this.webapp || this.isShuttingDown || this.preparingBackend || this.handingOffBackend)
+      throw Error('The serving daemon is unavailable for Console publication');
+    return this.webapp.start(options);
+  }
 
   private assertBackendReady(): void {
     if (!this.backendAdmitted) throw Errors.unavailable('Omnitron backend', 'The replacement is restoring its checkpoint; retry after readiness');
@@ -661,6 +670,15 @@ export class OmnitronDaemon {
 
     const loggerModule = await this.app.container.resolveAsync<ILoggerModule>(LOGGER_SERVICE_TOKEN);
     const logger = loggerModule.logger;
+    const application = this.app;
+    this.webapp = new WebappService(logger, { port: this.dc.httpPort ?? 9800, bindHost: async () => {
+      const configured = this.dc.consoleBindHost ?? '127.0.0.1';
+      if (!isLoopbackHost(configured) && await isSeededAdminPasswordInUse(application, logger)) {
+        logger.error({ configured, bound: '127.0.0.1' }, 'Binding the Console to loopback until the seeded admin password is changed');
+        return '127.0.0.1';
+      }
+      return configured;
+    } });
     // Install the complete cleanup contract BEFORE Titan installs signal
     // handlers. A stop during boot must own every resource boot can create.
     this.registerShutdownTasks(this.app, logger);
@@ -784,47 +802,12 @@ export class OmnitronDaemon {
     }
     this.startupAbort.signal.throwIfAborted();
 
-    // 8.8. Start webapp (nginx container serving Console UI) if enabled
-    {
-      const { readSavedDaemonConfig } = await import('../config/saved.js');
-      const savedConfig = readSavedDaemonConfig();
-
-      if (savedConfig?.webapp && !options?.backendHandoff) {
-        try {
-          const { WebappService } = await import('../webapp/webapp.service.js');
-
-          // Publishing the console while the seeded password is still in
-          // place hands the whole control plane — start, stop, restart, logs,
-          // config — to anyone who can reach the port and guess a word that
-          // is written in the migration. Migration 001 says the password
-          // "MUST be changed on first login"; nothing enforced it, and a
-          // comment is not a control.
-          //
-          // So the console falls back to loopback rather than refusing to
-          // start: the operator needs it to change the password, and a
-          // control plane that will not come up is its own outage. The log
-          // line says what to do and that this is not the configured bind.
-          let consoleHost = this.dc.consoleBindHost ?? '127.0.0.1';
-          if (!isLoopbackHost(consoleHost) && (await isSeededAdminPasswordInUse(this.app, logger))) {
-            logger.error(
-              { configured: consoleHost, bound: '127.0.0.1' },
-              'REFUSING to publish the Console while the seeded admin password is unchanged — ' +
-                'binding loopback instead. Sign in at http://127.0.0.1 and change it, then restart.',
-            );
-            consoleHost = '127.0.0.1';
-          }
-
-          const webapp = new WebappService(
-            logger,
-            process.cwd(),
-            (this.dc.httpPort ?? 9800) + 1,
-            this.dc.httpPort ?? 9800,
-            consoleHost
-          );
-          await webapp.start();
-        } catch (err) {
-          logger.warn({ error: (err as Error).message }, 'Webapp failed to start — Console UI may not be available');
-        }
+    // Warm backend transfers retain the serving Console. Cold startup consumes its own reviewed artifact.
+    if (!options?.backendHandoff && (coldBatch || readSavedDaemonConfig()?.webapp)) {
+      try { await this.webapp.startOnBoot(coldBatch); }
+      catch (error) {
+        if (coldBatch) throw error;
+        logger.warn({ error: (error as Error).message }, 'Webapp failed to start');
       }
     }
     this.startupAbort.signal.throwIfAborted();
@@ -1292,7 +1275,6 @@ export class OmnitronDaemon {
     if (!isSlave) {
       const { ReleaseService } = await import('../services/release.service.js');
       const { ReleaseRpcService } = await import('../services/release.rpc-service.js');
-      const { readSavedDaemonConfig } = await import('../config/saved.js');
       this.releaseService = new ReleaseService(loggerModule.logger.child({ component: 'release' }), dc.releaseBuildConcurrency, stateStore,
         readSavedDaemonConfig()?.releaseStore ? async (id, { signal, progress }) => {
           if (!audit) throw Error('Publishing requires audit storage');
@@ -2879,10 +2861,8 @@ export class OmnitronDaemon {
       // Backend replacement and instances without a Console must leave it up.
       if (!this.handingOffBackend && (!this.execution || this.stopApplicationsOnExit)) {
         try {
-          const { readSavedDaemonConfig } = await import('../config/saved.js');
           if (readSavedDaemonConfig()?.webapp) {
-            const { WebappService } = await import('../webapp/webapp.service.js');
-            await new WebappService(logger).stop();
+            await this.webapp?.stop(true);
           }
         } catch (error) {
           logger.warn({ error }, 'Could not stop this instance’s Console');

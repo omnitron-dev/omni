@@ -17,12 +17,12 @@ const sha = (c: string) => c.repeat(64);
 const scope = { project: 'runtime-tenant', stack: 'dev' };
 const publicScope = { project: 'example', stack: 'test' };
 const old = { ownerId: 'retired', ownerPid: 42, ownerLifetime: '01234567-0000-0000-0000-000000000001:1234', revision: 8,
-  backend: sha('a'), owner: sha('b') };
+  backend: sha('a'), owner: sha('b'), console: null as string | null, consoleCommit: null as string | null };
 const owner = { ownerId: 'next-owner', ownerPid: 84, ownerLifetime: '01234567-0000-0000-0000-000000000001:9123' };
 let home: string, file: string, store: DaemonStateStore;
 const review = sha('c');
 function makePlan() {
-  return { protocol: 1, stackAdmissionProtocol: 1, instance: home, target: { artifact: sha('d') }, before: old,
+  return { protocol: 1, stackAdmissionProtocol: 1, instance: home, target: { artifact: sha('d'), commit: 'd'.repeat(40) }, before: old,
     infrastructure: { database: sha('f') },
     stacks: [{ ...publicScope, runtimeScope: scope, path: home, enabled: true, startReview: review }],
     excluded: [{ project: 'example', stack: 'remote', reason: 'remote' }, { project: 'example', stack: 'archive', reason: 'disabled' }] };
@@ -46,6 +46,19 @@ afterEach(async () => { await store.dispose(); await rm(home, { recursive: true,
 const registered = () => ({ path: home, registeredAt: '2026-11-13T12:00:00Z', enabledStacks: ['dev', 'remote'] });
 
 describe('one local cold admission', () => {
+  it('selects the reviewed Console independently of the bridge and validates the artifact and commit together', async () => {
+    const plan = makePlan();
+    const retained = { artifact: sha('e'), commit: 'e'.repeat(40) };
+    plan.before = { ...old, console: retained.artifact, consoleCommit: retained.commit };
+    await save('starting', plan);
+    expect((await batch()).console).toEqual(plan.target);
+    await save('restoring', plan);
+    expect((await batch()).console).toEqual(retained);
+    await save('restoring');
+    expect((await batch()).console).toBeNull();
+    await save('restoring', { ...plan, before: { ...plan.before, consoleCommit: null } });
+    await expect(batch()).rejects.toThrow('Console artifact or build');
+  });
   it('holds cold starts during backup admission and releases the hold when admission aborts without a process transition', async () => {
     await save('draining');
     const observed = vi.fn(async () => owner);

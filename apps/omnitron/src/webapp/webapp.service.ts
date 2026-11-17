@@ -15,6 +15,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { LONG_REQUEST_TIMEOUT } from '../shared/dto/services.js';
 import { OMNITRON_HOME } from '../config/defaults.js';
 import { execFile } from 'node:child_process';
@@ -30,7 +31,11 @@ import {
   containerSpecHash,
 } from '../infrastructure/container-runtime.js';
 import { resolveOmnitronNginx } from '../infrastructure/service-resolver.js';
-import { consoleContainerName, assertConsoleOwnership } from './console-container.js';
+import { consoleContainerName, assertConsoleOwnership, consoleEndpoint, assertConsoleBuild, inspectInstalledConsole, assertConsoleOperatorAllowed, withConsoleOperator, saveConsoleBootPolicy } from './console-container.js';
+import { readSavedDaemonConfig, withInstancePolicy } from '../config/saved.js';
+import { readBuildStamp } from '../shared/build-stamp.js';
+import { readColdBatch, type ColdBatch } from '../project/cold-stack-start.js';
+import type { RuntimeUpdateReference } from '../shared/dto/runtime-update.js';
 
 const exec = promisify(execFile);
 
@@ -217,35 +222,13 @@ ${securityHeaders('            ')}
 // =============================================================================
 
 export class WebappService {
-  private readonly webappDir: string;
   private readonly configDir: string;
 
   constructor(
     private readonly logger: ILogger,
-    _projectRoot?: string,
-    private readonly apiPort: number = 9801,
-    private readonly publicPort: number = 9800,
-    /**
-     * Interface the console's port is published on. Loopback by default.
-     *
-     * The daemon binds its own HTTP transport to 127.0.0.1, but the console's
-     * nginx container published `-p 9800:80` — every interface — and proxies
-     * `/netron/` straight to that daemon port. So the whole RPC surface was
-     * reachable from the network, and the methods that carry
-     * `allowAnonymous` were reachable without credentials: app metrics could
-     * be read, and `OmnitronTelemetry.pushBatch` accepted arbitrary rows into
-     * the daemon's `logs` table. Verified by writing one and deleting it.
-     *
-     * Set `daemon.consoleBindHost` to '0.0.0.0' to publish it, deliberately,
-     * to a network where something else is doing the authenticating.
-     */
-    private readonly bindHost: string = '127.0.0.1'
+    private readonly publication?: { port: number; bindHost: () => Promise<string> },
+    private readonly webappDir = fileURLToPath(new URL('../../webapp/', import.meta.url)),
   ) {
-    // Resolve webapp dir — find it relative to this module's location (not CWD)
-    const thisDir = path.dirname(new URL(import.meta.url).pathname);
-    // thisDir = .../apps/omnitron/src/webapp/ or .../apps/omnitron/dist/webapp/
-    const omnitronRoot = path.resolve(thisDir, '..', '..');
-    this.webappDir = path.join(omnitronRoot, 'webapp');
     // Generated configuration belongs to the instance. Writing into the
     // package would invalidate a sealed backend artifact on its first boot.
     this.configDir = path.join(OMNITRON_HOME, 'webapp', 'nginx');
@@ -284,130 +267,117 @@ export class WebappService {
     return { distPath, duration };
   }
 
-  /**
-   * Start the omnitron-nginx container serving the webapp.
-   * If the container is already running and healthy, skips recreation.
-   * Pass force=true to always recreate the container (e.g. after config changes).
-   */
-  async start(options?: { force?: boolean }): Promise<void> {
-    const force = options?.force ?? false;
+  async start(options: { force?: boolean; temporary?: boolean } = {}) {
+    await assertConsoleOperatorAllowed(OMNITRON_HOME);
+    const prepared = await this.prepare(null);
+    return withConsoleOperator(() => this.startLocked(Boolean(options.force), prepared, !options.temporary));
+  }
 
-    // 1. Render the config we WANT before deciding whether to keep the running
-    //    container.
-    //
-    //    This ordering matters. `start()` used to return as soon as it saw a
-    //    healthy container, without ever comparing configuration — so an
-    //    edit to the nginx template took effect only if someone happened to
-    //    remove the container by hand. The security headers added in this
-    //    same change went live only after a manual recreate, which is exactly
-    //    the drift the infrastructure reconciler already guards against for
-    //    every other managed container.
-    //
-    //    WS transport lives on httpPort + 2; daemon HTTP (apiPort) is
-    //    httpPort + 1.
-    const nginxConfig = generateNginxConfig('host.docker.internal', this.apiPort, this.apiPort + 1);
-    const configPath = path.join(this.configDir, 'nginx.conf');
-    const appliedConfig = fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf-8') : null;
-    const configChanged = appliedConfig !== nginxConfig;
-
-    // The container spec we want, needed here rather than at creation time
-    // because step 2 compares it against what is actually running.
-    const distPathForSpec = path.join(this.webappDir, 'dist');
-    const desiredSpec = resolveOmnitronNginx({
-      port: this.publicPort,
-      internalApiPort: this.apiPort,
-      webappDistPath: distPathForSpec,
-      bindHost: this.bindHost,
+  /** Cold startup owns the reviewed Console, including a distinct retained Console during restoration. */
+  async startOnBoot(startup: ColdBatch | null): Promise<void> {
+    const prepared = (startup ? startup.console !== null : readSavedDaemonConfig()?.webapp)
+      ? await this.prepare(startup?.console ?? null) : null;
+    await withInstancePolicy(OMNITRON_HOME, async () => {
+      const batch = await readColdBatch(OMNITRON_HOME);
+      if (batch?.digest !== startup?.digest || batch?.direction !== startup?.direction ||
+          batch && !['starting', 'verifying', 'restoring'].includes(batch.phase))
+        throw Error('Console startup no longer belongs to the reviewed local update');
+      const enabled = Boolean(readSavedDaemonConfig()?.webapp);
+      if (batch && Boolean(batch.console) !== enabled) throw Error('Saved Console policy differs from the reviewed local update');
+      if (enabled && prepared) await this.startLocked(false, prepared, false);
     });
-    desiredSpec.volumes.push({ source: configPath, target: '/etc/nginx/nginx.conf', readonly: true });
-    const desiredHash = containerSpecHash(desiredSpec);
-    const state = await getContainerState(desiredSpec.name, { orThrow: true, fullId: true });
-    const currentId = state && assertConsoleOwnership(state);
+  }
 
-    // 2. Keep a healthy container only when it is running the current config
-    //    AND the current spec.
-    //
-    //    The config comparison alone was not enough: changing the published
-    //    port, its bind address, the image or a volume leaves nginx.conf
-    //    identical, so a healthy container kept running with the old spec and
-    //    the change took effect only if someone removed it by hand. Found by
-    //    binding the port to loopback and watching `docker ps` still report
-    //    0.0.0.0 after a full daemon restart.
-    //
-    //    Every other managed container is reconciled on this hash already;
-    //    the console was the one that reconciled on a file instead.
-    if (!force && !configChanged) {
-      if (state?.status === 'running') {
-        if (state.specHash && state.specHash !== desiredHash) {
-          this.logger.info(
-            { current: state.specHash, desired: desiredHash },
-            'Console container spec changed — recreating'
-          );
-        } else if (state.health === 'healthy') {
-          this.logger.info({ port: this.publicPort }, 'Omnitron Console is already running');
-          return;
-        }
-        if (state.health !== 'healthy') {
-          this.logger.warn('Nginx container running but not healthy — recreating...');
-        }
-      }
-    } else if (configChanged && appliedConfig !== null) {
-      this.logger.info('Nginx config changed — recreating the console container');
-    }
-
-    // 3. Check webapp is built
-    const distPath = path.join(this.webappDir, 'dist');
-    if (!fs.existsSync(path.join(distPath, 'index.html'))) {
-      this.logger.info('Webapp not built — building now...');
+  private async prepare(release: RuntimeUpdateReference | null) {
+    if (!this.publication) throw Error('Console start requires the serving daemon publication policy');
+    const localDist = path.join(this.webappDir, 'dist');
+    // Native startup has verified its own release. A different Console needs its own seal.
+    const { dist, inspection } = release ? await inspectInstalledConsole(OMNITRON_HOME, release, localDist) : { dist: localDist, inspection: undefined };
+    const prior = await getContainerState(consoleContainerName(), { orThrow: true, fullId: true });
+    if (prior) assertConsoleOwnership(prior);
+    if (!fs.existsSync(path.join(dist, 'index.html'))) {
+      if (release) throw Error('Reviewed Console index.html is missing');
       await this.build();
     }
+    const image = resolveOmnitronNginx().image;
+    await ensureImage(image);
+    return { dist, release, image, inspection };
+  }
 
-    await ensureImage(desiredSpec.image);
-    fs.mkdirSync(this.configDir, { recursive: true });
-    fs.writeFileSync(configPath, nginxConfig, 'utf-8');
-    this.logger.info({ configPath }, 'Generated nginx config');
+  private async startLocked(force: boolean, prepared: Awaited<ReturnType<WebappService['prepare']>>, persist: boolean) {
+    const { dist, release, image, inspection } = prepared;
+    const { port } = this.publication!;
+    const bindHost = await this.publication!.bindHost();
+    const nginxConfig = generateNginxConfig('host.docker.internal', port + 1, port + 2);
+    const configPath = path.join(this.configDir, 'nginx.conf');
+    const appliedConfig = fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf8') : null;
+    const spec = resolveOmnitronNginx({ port, internalApiPort: port + 1, webappDistPath: dist, bindHost, image });
+    spec.volumes.push({ source: configPath, target: '/etc/nginx/nginx.conf', readonly: true });
+    const hash = containerSpecHash(spec);
+    const inspect = () => getContainerState(spec.name, { orThrow: true, fullId: true });
+    const prior = await inspect();
+    const priorId = prior && assertConsoleOwnership(prior);
+    await inspection?.assertUnchanged();
+    if (!fs.statSync(path.join(dist, 'index.html')).isFile()) throw Error('Console index.html is not a regular file');
+    const stamp = readBuildStamp(dist);
+    if (!stamp || release && (stamp.commit !== release.commit || stamp.dirty)) throw Error('Console build differs from the selected release');
 
-    // 4. Remove existing container if any
-    if (currentId) await removeContainer(currentId, { graceful: true });
+    const confirm = async (expectedId: string) => {
+      const serving = await inspect();
+      if (!serving) throw Error('Console creation has no native receipt');
+      const id = assertConsoleOwnership(serving);
+      const bindings = serving.portBindings?.['80/tcp'];
+      if (id !== expectedId || serving.status !== 'running' || serving.specHash !== hash ||
+          serving.image !== spec.image || !bindings?.length || bindings.some(value => value.port !== port || value.address !== bindHost) ||
+          !spec.volumes.every(volume => serving.mounts?.some(mount => mount.target === volume.target && mount.source === volume.source && mount.readOnly === true)))
+        throw Error('The native Console differs from the requested container specification');
+      if (serving.health !== 'healthy' && !await waitForHealthy(id, 30_000)) throw Error('Console health was not confirmed within 30 seconds');
+      await assertConsoleBuild(serving, stamp);
+      return { running: true, healthy: true, ...consoleEndpoint(serving) };
+    };
 
-    // 5. Create container
-    // Same spec the comparison above used, so what runs is what was compared.
-    const containerSpec = desiredSpec;
-
-    await createContainer(containerSpec);
-
-    // 6. Wait for healthy
-    const healthy = await waitForHealthy(desiredSpec.name, 30_000);
-    if (healthy) {
-      this.logger.info({ port: this.publicPort }, 'Omnitron Console available');
-    } else {
-      throw new Error('Console container started but did not become healthy within 30 seconds');
+    if (!force && prior?.status === 'running' && prior.specHash === hash && appliedConfig === nginxConfig) {
+      const status = await confirm(priorId!);
+      return { ...status, autoStart: persist ? saveConsoleBootPolicy(true) : readSavedDaemonConfig()?.webapp ?? null };
     }
+    // The saved boot flag is also the durable operator intent if the process exits during the Docker operation.
+    const autoStart = persist ? saveConsoleBootPolicy(true) : readSavedDaemonConfig()?.webapp ?? null;
+    if (priorId) await removeContainer(priorId, { graceful: true });
+    fs.mkdirSync(this.configDir, { recursive: true });
+    fs.writeFileSync(configPath, nginxConfig, 'utf8');
+    const created = await createContainer(spec, { fullId: true, pull: 'never' });
+    return { ...await confirm(created), autoStart };
   }
 
-  /**
-   * Stop the omnitron-nginx container.
-   */
-  async stop(): Promise<void> {
-    const state = await getContainerState(consoleContainerName(), { orThrow: true, fullId: true });
-    if (!state) return;
-    const target = assertConsoleOwnership(state);
-    await stopContainer(target, 5);
-    await removeContainer(target);
-    this.logger.info('Omnitron Console stopped');
+  /** Explicit stop also works with a failed daemon. Shutdown preserves its next-start policy. */
+  async stop(shutdown = false): Promise<boolean | null> {
+    const stop = async () => {
+      if (shutdown && !readSavedDaemonConfig()?.webapp) return null;
+      const inspect = () => getContainerState(consoleContainerName(), { orThrow: true, fullId: true });
+      const state = await inspect();
+      const id = state && assertConsoleOwnership(state);
+      const autoStart = shutdown ? true : saveConsoleBootPolicy(false);
+      if (id) {
+        try {
+          await stopContainer(id, 5);
+          await removeContainer(id);
+        } catch (error) {
+          if (await inspect()) throw error;
+          return autoStart;
+        }
+        if (await inspect()) throw Error('Console removal is unconfirmed');
+      }
+      return autoStart;
+    };
+    return shutdown ? withInstancePolicy(OMNITRON_HOME, stop) : withConsoleOperator(stop);
   }
 
-  /**
-   * Get status of the nginx container.
-   */
-  async status(): Promise<{ running: boolean; port: number; healthy: boolean }> {
+  async status(): Promise<{ running: boolean; port: number; healthy: boolean; url: string }> {
     const state = await getContainerState(consoleContainerName(), { orThrow: true, fullId: true });
     if (state) assertConsoleOwnership(state);
-    return {
-      running: state?.status === 'running',
-      port: this.publicPort,
-      healthy: state?.health === 'healthy',
-    };
+    if (state?.status === 'running') return { running: true, healthy: state.health === 'healthy', ...consoleEndpoint(state) };
+    const port = this.publication?.port ?? readSavedDaemonConfig()?.httpPort ?? 9800;
+    return { running: false, healthy: false, port, url: 'http://localhost:' + port };
   }
 
   /**

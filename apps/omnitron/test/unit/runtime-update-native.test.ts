@@ -13,8 +13,8 @@ function observation(): NativeEmptyRuntimeObservation {
     config: { protocol: 1, instanceHome: home, directory: home + '/execution', scope: 'user', cwd: home,
       environment: { OMNITRON_HOME: home }, owner: { label: 'dev.omnitron.owner', unit: 'omnitron-owner.service', artifact: target.artifact },
       backend: { label: 'dev.omnitron.daemon', unit: 'omnitron-daemon.service', artifact: target.artifact } },
-    selection: { current: target.artifact, revision: 2 },
-    owner: { protocol: 1, ownerBuild: { commit: target.commit, dirty: false },
+    selection: { protocol: 1, current: target.artifact, previous: null, bootstrap: target.artifact, revision: 2, selectedAt: '2026-11-17T18:00:00Z' },
+    owner: { protocol: 1, ownerBuild: { commit: target.commit, dirty: false, builtAt: '2026-11-17T18:00:00Z' },
       status: { owner: { id: 'candidate', pid: 101, startedAt: '2026-11-17T18:00:00Z' }, phase: 'active', inFlight: 0,
         pending: null, controller: { controllerId: 'unclaimed', ownerId: 'candidate', epoch: 1 } }, apps: [], workers: [], watchedApps: [] },
     guardian: { pid: 102, ownerPid: 101, backendPid: 103, operationPending: false, state: 'blocked', reason: 'Cold startup held', at: '' },
@@ -24,7 +24,7 @@ function observation(): NativeEmptyRuntimeObservation {
       sockets: [], native: { platform: 'darwin', domain: 'gui/501', bootSession: boot.slice(7), processGroups: [101, 102] },
       cohort: [101, 102].map((pid, i) => ({ pid, ppid: 1, pgid: pid, uid: 501, lifetime: i ? guardianLife : ownerLife,
         executable: home + '/runtime/releases/' + target.artifact + '/node' })) },
-  } as NativeEmptyRuntimeObservation;
+  };
 }
 
 describe('native rollback observation without a serving backend', () => {

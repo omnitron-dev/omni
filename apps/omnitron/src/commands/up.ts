@@ -33,7 +33,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Saved daemon config (~/.omnitron/config.json)
 // =============================================================================
 
-import { readSavedDaemonConfig, writeSavedDaemonConfig, savedDaemonOverrides } from '../config/saved.js';
+import { readSavedDaemonConfig, writeSavedDaemonConfig, savedDaemonOverrides, initializeInstanceConfig } from '../config/saved.js';
 import type { SavedDaemonConfig } from '../config/saved.js';
 export { readSavedDaemonConfig, writeSavedDaemonConfig, savedDaemonOverrides, ensurePersistedJwtSecret } from '../config/saved.js';
 export type { SavedDaemonConfig } from '../config/saved.js';
@@ -120,11 +120,16 @@ async function ensureDaemonConfig(options?: UpCommandOptions): Promise<SavedDaem
     ...(masterAddr ? { master: masterAddr } : {}),
   };
 
-  writeSavedDaemonConfig(savedConfig);
+  const initialized = await initializeInstanceConfig(() => {
+    const current = readSavedDaemonConfig();
+    if (current) return current;
+    writeSavedDaemonConfig(savedConfig);
+    return savedConfig;
+  });
   log.success(`Role: ${role}`);
 
   log.success('Configuration saved to ~/.omnitron/config.json\n');
-  return savedConfig;
+  return initialized;
 }
 
 /** A foreground daemon owns process shutdown after startup has completed. */
@@ -146,12 +151,6 @@ export async function upCommand(options?: UpCommandOptions): Promise<'foreground
   }
   // 1. First-run setup — configure daemon role
   const savedConfig = await ensureDaemonConfig(options);
-
-  // 1.1. Update webapp flag if explicitly provided
-  if (options?.webapp !== undefined) {
-    savedConfig.webapp = options.webapp;
-    writeSavedDaemonConfig(savedConfig);
-  }
 
   // 1.5. Resolve ecosystem config
   const registry = ProjectRegistry.open();
@@ -206,6 +205,12 @@ export async function upCommand(options?: UpCommandOptions): Promise<'foreground
     log.info('Use `omnitron stack start/stop` to manage stacks.');
     log.info('Use `omnitron down` to stop.');
     return 'completed';
+  }
+
+  if (options?.webapp !== undefined) {
+    const { withConsoleOperator, saveConsoleBootPolicy } = await import('../webapp/console-container.js');
+    const enabled = options.webapp;
+    await withConsoleOperator(async () => saveConsoleBootPolicy(enabled));
   }
 
   // 3. Foreground mode — blocks terminal

@@ -63,11 +63,14 @@ async function candidate(home, reply = { ok: true, data: { delegated: true } }, 
   const stage = path.join(home, 'candidate');
   const called = path.join(home, 'called');
   await fs.mkdir(path.join(stage, 'packages/0/dist/cli'), { recursive: true, mode: 0o700 });
+  await fs.mkdir(path.join(stage, 'packages/0/dist/daemon'), { recursive: true, mode: 0o700 });
   await fs.mkdir(path.join(stage, 'packages/0/webapp/dist'), { recursive: true, mode: 0o700 });
+  await fs.writeFile(path.join(stage, 'packages/0/webapp/dist/index.html'), '<html>Console fixture</html>');
   for (const output of ['dist', 'webapp/dist']) {
-    await fs.writeFile(path.join(stage, 'packages/0', output, 'BUILD.json'), JSON.stringify({ commit, dirty: false }), { mode: 0o600 });
+    await fs.writeFile(path.join(stage, 'packages/0', output, 'BUILD.json'), JSON.stringify({ commit, dirty: false, builtAt: '2026-11-17T18:00:00Z' }), { mode: 0o600 });
   }
   await fs.writeFile(path.join(stage, 'packages/0/dist/cli/omnitron.js'), '// Verified fixture entry\n', { mode: 0o600 });
+  await fs.writeFile(path.join(stage, 'packages/0/dist/daemon/daemon-entry.js'), '// Sealed preflight entry\n', { mode: 0o600 });
   const quoted = "'" + called.replaceAll("'", "'\\''") + "'";
   const encoded = "'" + JSON.stringify(reply).replaceAll("'", "'\\''") + "'";
   await fs.writeFile(path.join(stage, 'node'), `#!/bin/sh\nprintf '%s\\n' "$@" > ${quoted}\nprintf '%s\\n' ${encoded}\nexit ${status}\n`, { mode: 0o700 });
@@ -79,6 +82,28 @@ async function candidate(home, reply = { ok: true, data: { delegated: true } }, 
   await fs.rename(stage, directory);
   return { artifact, directory, called, manifest };
 }
+
+for (const capable of [false, true]) test('offline recovery checks the sealed cold starter for an independent Console (capable=' + capable + ')', async t => {
+  const { home } = await instance(t);
+  const fixture = await candidate(home, { protocol: 1, build: { commit, dirty: false }, ...(capable && { coldConsoleProtocol: 1 }) });
+  const actions = await runtimeUpdateActions({ instance: home, runtime: await verifyRuntimeUpdateTarget(fixture.directory),
+    call: () => assert.fail('an unavailable serving backend cannot be needed for restore preflight'),
+    run: () => assert.fail('the preflight must not change native services') });
+  const plan = { stackAdmissionProtocol: 1, configuration: { sha256: 'a'.repeat(64), basis: 'retained-next-start' },
+    target: { artifact: fixture.artifact, commit }, before: { backend: 'a'.repeat(64), console: null, consoleCommit: null } };
+  await actions.validateRestore(plan);
+  await assert.rejects(fs.access(fixture.called));
+  const previousConsole = await candidate(home);
+  plan.before.console = previousConsole.artifact;
+  plan.before.consoleCommit = commit;
+  if (capable) await actions.validateRestore(plan);
+  else await assert.rejects(actions.validateRestore(plan), /cannot restore the independently selected Console/);
+  assert.deepEqual((await fs.readFile(fixture.called, 'utf8')).trim().split('\n'), [
+    path.join(fixture.directory, 'packages/0/dist/daemon/daemon-entry.js'), '--check-backend',
+  ]);
+  await fs.appendFile(path.join(previousConsole.directory, 'packages/0/webapp/dist/index.html'), 'changed');
+  await assert.rejects(actions.validateRestore(plan), /changed after sealing/);
+});
 
 test('native lifecycle children use human output even when the parent is in JSON mode', async t => {
   const { home } = await instance(t);

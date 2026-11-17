@@ -139,6 +139,17 @@ export interface RuntimeUpdatePlan {
   infrastructure: RuntimeUpdateInfrastructure;
 }
 
+/** Both the cold starter and its independent observer use the artifact selected by the review. */
+export function reviewedRuntimeConsole(plan: RuntimeUpdatePlan, direction: 'target' | 'previous'): RuntimeUpdateReference | null {
+  const { console: artifact, consoleCommit: commit } = plan.before;
+  if (artifact === null && commit === null) return null;
+  if (typeof artifact !== 'string' || !/^[a-f0-9]{64}$/.test(artifact) ||
+      typeof commit !== 'string' || !/^[a-f0-9]{40}$/.test(commit) ||
+      !/^[a-f0-9]{64}$/.test(plan.target.artifact) || !/^[a-f0-9]{40}$/.test(plan.target.commit))
+    throw Error('Invalid reviewed Console artifact or build');
+  return direction === 'target' ? plan.target : { artifact, commit };
+}
+
 export interface PreparedRuntimeUpdate {
   protocol: 1;
   digest: string;

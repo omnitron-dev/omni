@@ -3,6 +3,8 @@ import { log, prism } from '@xec-sh/kit';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { WebappService } from '../webapp/webapp.service.js';
+import { createDaemonClient } from '../daemon/daemon-client.js';
+import type { BackendRpcService } from '../daemon/backend.rpc-service.js';
 import { expandPath } from '../shared/paths.js';
 import { emitError, emitInfo, emitJson, isJsonMode } from './output.js';
 
@@ -25,7 +27,7 @@ function createWebappService(): WebappService {
     trace: () => {},
     child: () => cliLogger,
   } as any;
-  return new WebappService(cliLogger, process.cwd());
+  return new WebappService(cliLogger);
 }
 
 async function requireRunningDaemon(): Promise<boolean> {
@@ -40,12 +42,10 @@ async function requireRunningDaemon(): Promise<boolean> {
   return false;
 }
 
-async function persistAutoStart(enabled: boolean): Promise<boolean | null> {
-  const { readSavedDaemonConfig, writeSavedDaemonConfig } = await import('../config/saved.js');
-  const saved = readSavedDaemonConfig();
-  if (!saved) return null;
-  if (saved.webapp !== enabled) writeSavedDaemonConfig({ ...saved, webapp: enabled });
-  return enabled;
+async function startOnDaemon(options: { force?: boolean; temporary?: boolean } = {}) {
+  const client = createDaemonClient(undefined, 11 * 60_000);
+  try { return await (await client.service<BackendRpcService>('OmnitronBackend')).startConsole(options); }
+  finally { await client.disconnect(); }
 }
 
 function failed(error: unknown, operation: string, applied: boolean): void {
@@ -74,13 +74,9 @@ export async function webappStartCommand(options?: { force?: boolean }): Promise
   let applied = false;
   try {
     if (!(await requireRunningDaemon())) return;
-    const svc = createWebappService();
-    await svc.start(options?.force ? { force: true } : undefined);
+    const status = await startOnDaemon(options?.force ? { force: true } : {});
     applied = true;
-    const autoStart = await persistAutoStart(true);
-    const status = await svc.status();
-    const url = `http://localhost:${status.port}`;
-    if (!emitJson({ operation: 'start', ...status, url, autoStart })) emitInfo(`Omnitron Console: ${url}`);
+    if (!emitJson({ operation: 'start', ...status })) emitInfo(`Omnitron Console: ${status.url}`);
   } catch (error) {
     failed(error, 'start', applied);
   }
@@ -89,9 +85,8 @@ export async function webappStartCommand(options?: { force?: boolean }): Promise
 export async function webappStopCommand(): Promise<void> {
   let applied = false;
   try {
-    await createWebappService().stop();
+    const autoStart = await createWebappService().stop();
     applied = true;
-    const autoStart = await persistAutoStart(false);
     if (!emitJson({ operation: 'stop', stopped: true, autoStart })) emitInfo('Omnitron Console stopped');
   } catch (error) {
     failed(error, 'stop', applied);
@@ -101,12 +96,11 @@ export async function webappStopCommand(): Promise<void> {
 export async function webappStatusCommand(): Promise<void> {
   try {
     const status = await createWebappService().status();
-    const url = `http://localhost:${status.port}`;
-    if (emitJson({ ...status, url })) return;
+    if (emitJson(status)) return;
     if (status.running) {
       const health = status.healthy ? prism.green('healthy') : prism.yellow('starting');
       log.success(`Omnitron Console: ${prism.green('running')} on port ${status.port} (${health})`);
-      emitInfo(`URL: ${url}`);
+      emitInfo(`URL: ${status.url}`);
     } else {
       log.warn(`Omnitron Console: ${prism.red('stopped')}`);
       emitInfo('Start with: omnitron webapp start');
@@ -125,11 +119,10 @@ export async function webappOpenCommand(): Promise<void> {
     if (!status.running) {
       if (!(await requireRunningDaemon())) return;
       emitInfo('Webapp not running. Starting...');
-      await svc.start();
+      status = await startOnDaemon({ temporary: true });
       applied = true;
-      status = await svc.status();
     }
-    const url = `http://localhost:${status.port}`;
+    const url = status.url;
     emitInfo(`Opening ${url}...`);
     const command = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd.exe' : 'xdg-open';
     const args = process.platform === 'win32' ? ['/d', '/c', 'start', '', url] : [url];

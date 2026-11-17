@@ -115,7 +115,7 @@ async function fixture(bootstrap = false, ownInfrastructure = false) {
   const boot = async (configuration: RuntimeRestartConfiguration, direction = 'starting') => {
     const digest = await saveRestartConfiguration(home, configuration);
     const plan = { protocol: 1, stackAdmissionProtocol: 1, instance: home, configuration: { sha256: digest, basis: 'retained-next-start' },
-      target: { artifact: 'd'.repeat(64) }, before: { backend: 'f'.repeat(64), owner: 'f'.repeat(64), ownerId: 'original', ownerPid: 42,
+      target: { artifact: 'd'.repeat(64), commit: 'd'.repeat(40) }, before: { backend: 'f'.repeat(64), owner: 'f'.repeat(64), console: null, consoleCommit: null, ownerId: 'original', ownerPid: 42,
         ownerLifetime: '01234567-0000-0000-0000-000000000001:12', revision: 1 }, infrastructure: { database: null },
       stacks: [{ ...scope, runtimeScope: scope, path: repo, enabled: true, startReview: configuration.stacks[0]!.review.digest }], excluded: [] };
     await writePrivateRecord(path.join(home, 'runtime/local-updates/current.json'), { protocol: 1, digest: sha(JSON.stringify(plan)), plan, phase: direction });

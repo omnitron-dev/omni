@@ -1,7 +1,7 @@
 /** Persisted instance policy. Importing configuration must never load the daemon or CLI startup. */
 import path from 'node:path';
 import fs from 'node:fs';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { DEFAULT_DAEMON_CONFIG, OMNITRON_HOME } from './defaults.js';
 import type { DaemonRole, IDaemonConfig } from './types.js';
 
@@ -55,10 +55,26 @@ export interface SavedDaemonConfig {
   host?: string;
   port?: number;
   httpPort?: number;
+  consoleBindHost?: IDaemonConfig['consoleBindHost'];
   advertiseHost?: string;
 }
 
 const DAEMON_CONFIG_PATH = path.join(OMNITRON_HOME, 'config.json');
+const nativePolicySupported = process.platform === 'darwin' || process.platform === 'linux';
+
+/** Serialize instance policy writers, Console effects, and publication of a local-update hold. */
+export async function withInstancePolicy<T>(home: string, action: () => Promise<T>): Promise<T> {
+  if (!nativePolicySupported) throw Error('Local Console lifecycle requires the native macOS or Linux instance lock');
+  const directory = path.join(home, 'runtime/policy');
+  await fs.promises.mkdir(directory, { recursive: true, mode: 0o700 });
+  const { withKernelFileLock } = await import('@xec-sh/ops/utils/file-lock');
+  return withKernelFileLock(path.join(directory, 'instance.lock'), action, 120);
+}
+
+/** Initial configuration is also used outside the supported native Console and local-update hosts. */
+export async function initializeInstanceConfig<T>(initialize: () => T): Promise<T> {
+  return nativePolicySupported ? withInstancePolicy(OMNITRON_HOME, async () => initialize()) : initialize();
+}
 
 export function readSavedDaemonConfig(configPath = DAEMON_CONFIG_PATH): SavedDaemonConfig | null {
   try {
@@ -92,19 +108,26 @@ export function savedDaemonOverrides(saved: SavedDaemonConfig | null): Partial<I
     host: effectiveBindHost(saved),
     ...(saved.port ? { port: saved.port } : {}),
     ...(saved.httpPort ? { httpPort: saved.httpPort } : {}),
+    ...(saved.consoleBindHost !== undefined ? { consoleBindHost: saved.consoleBindHost } : {}),
     ...(saved.advertiseHost ? { advertiseHost: saved.advertiseHost } : {}),
   };
 }
 
 export function writeSavedDaemonConfig(config: SavedDaemonConfig): void {
   fs.mkdirSync(OMNITRON_HOME, { recursive: true });
-  // 0600 — the file now carries the JWT signing secret, so keep it owner-only.
-  fs.writeFileSync(DAEMON_CONFIG_PATH, JSON.stringify(config, null, 2) + '\n', { encoding: 'utf-8', mode: 0o600 });
+  const temp = DAEMON_CONFIG_PATH + '.' + randomUUID();
+  const fd = fs.openSync(temp, 'wx', 0o600);
   try {
-    fs.chmodSync(DAEMON_CONFIG_PATH, 0o600); // tighten perms even if the file pre-existed world-readable
-  } catch {
-    /* best-effort on platforms without chmod semantics */
-  }
+    try {
+      fs.writeFileSync(fd, JSON.stringify(config, null, 2) + '\n');
+      fs.fsyncSync(fd);
+    } finally { fs.closeSync(fd); }
+    fs.renameSync(temp, DAEMON_CONFIG_PATH);
+    if (process.platform !== 'win32') {
+      const directory = fs.openSync(OMNITRON_HOME, 'r');
+      try { fs.fsyncSync(directory); } finally { fs.closeSync(directory); }
+    }
+  } finally { fs.rmSync(temp, { force: true }); }
 }
 
 /**
@@ -117,15 +140,15 @@ export function writeSavedDaemonConfig(config: SavedDaemonConfig): void {
  * restarts — otherwise every `/netron/invoke` 401s after a restart and the
  * operator is silently logged out.
  */
-export function ensurePersistedJwtSecret(): string {
+export async function ensurePersistedJwtSecret(): Promise<string> {
   const existing = readSavedDaemonConfig();
   if (existing?.auth?.jwtSecret) return existing.auth.jwtSecret;
-  const jwtSecret = randomBytes(32).toString('hex');
-  const base: SavedDaemonConfig = existing ?? {
-    role: 'master',
-    initialized: true,
-    initializedAt: new Date().toISOString(),
-  };
-  writeSavedDaemonConfig({ ...base, auth: { ...existing?.auth, jwtSecret } });
-  return jwtSecret;
+  return initializeInstanceConfig(() => {
+    const current = readSavedDaemonConfig();
+    if (current?.auth?.jwtSecret) return current.auth.jwtSecret;
+    const jwtSecret = randomBytes(32).toString('hex');
+    const base = current ?? { role: 'master', initialized: true, initializedAt: new Date().toISOString() };
+    writeSavedDaemonConfig({ ...base, auth: { ...current?.auth, jwtSecret } });
+    return jwtSecret;
+  });
 }

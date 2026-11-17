@@ -13,7 +13,7 @@ vi.mock('@xec-sh/core', () => ({
     dispose = native.dispose;
   },
 }));
-import { createContainer } from '../../src/infrastructure/container-runtime.js';
+import { createContainer, containerSpecHash } from '../../src/infrastructure/container-runtime.js';
 import type { ResolvedContainer } from '../../src/infrastructure/types.js';
 const config = (): ResolvedContainer => ({
   name: 'sample-service', image: 'example/service:1', ports: [], volumes: [], labels: {}, restart: 'no', critical: false,
@@ -52,6 +52,26 @@ describe('container execution security boundary', () => {
     expect(await createContainer(config())).toBe('abcdef123456');
     expect(native.remove).toHaveBeenCalledWith('f'.repeat(64), true, {});
     expect(native.execute).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['own', 'foreign', 'wrong-spec', 'wrong-binding'] as const)('reconciles a lost docker run response only for its exact live creation (%s)', async proof => {
+    const id = 'd'.repeat(64);
+    const desired = { ...config(), ports: [{ host: 19800, container: 80, bindHost: '127.0.0.1' }],
+      labels: { 'omnitron.instance-home': '/reviewed/instance' } };
+    native.execute.mockRejectedValueOnce(Error('Docker acknowledgement lost'));
+    native.inspect.mockImplementation(async () => {
+      const args = native.execute.mock.calls[0]![0].args as string[];
+      const nonce = args.find(arg => arg.startsWith('omnitron.creation='))!.slice('omnitron.creation='.length);
+      return { Name: '/sample-service', Id: id, State: { Status: 'running' }, Config: { Image: desired.image, Labels: {
+        ...desired.labels, 'omnitron.creation': proof === 'foreign' ? 'another-creation' : nonce,
+        'omnitron.spec-hash': proof === 'wrong-spec' ? 'different' : containerSpecHash(desired),
+      } }, NetworkSettings: { Ports: { '80/tcp': [{ HostIp: proof === 'wrong-binding' ? '0.0.0.0' : '127.0.0.1', HostPort: '19800' }] } } };
+    });
+    const action = createContainer(desired, { fullId: true });
+    if (proof === 'own') await expect(action).resolves.toBe(id);
+    else await expect(action).rejects.toThrow();
+    expect(native.execute).toHaveBeenCalledOnce();
+    expect(native.remove).not.toHaveBeenCalled();
   });
 
   it('checks both port numbers and the bind address on the exact container returned by Docker', async () => {

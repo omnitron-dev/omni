@@ -17,7 +17,9 @@ vi.mock('../../src/infrastructure/container-runtime.js', () => ({
   stopContainer: runtime.stop, createContainer: runtime.create,
   containerSpecHash: () => 'fixture', ensureImage: vi.fn(), waitForHealthy: vi.fn(),
 }));
-vi.mock('../../src/config/saved.js', async (original) => ({ ...await original<object>(), readSavedDaemonConfig: () => ({ webapp: false }) }));
+vi.mock('../../src/config/saved.js', async (original) => ({ ...await original<object>(), readSavedDaemonConfig: () => ({ webapp: false }),
+  withInstancePolicy: (_home: string, action: () => Promise<unknown>) => action() }));
+vi.mock('../../src/daemon/runtime-update.js', async original => ({ ...await original<object>(), readRuntimeUpdateReceipt: async () => null }));
 import { WebappService } from '../../src/webapp/webapp.service.js';
 import { OmnitronDaemon } from '../../src/daemon/daemon.js';
 
@@ -25,7 +27,7 @@ const state = (changes: Partial<ContainerState> = {}): ContainerState => ({
   name: consoleContainerName(), containerId: 'a'.repeat(64), image: 'nginx:alpine', status: 'running',
   health: 'healthy', ports: {}, labels: { [CONSOLE_INSTANCE_LABEL]: path.resolve(OMNITRON_HOME) }, ...changes,
 });
-beforeEach(() => { vi.clearAllMocks(); runtime.state = null; });
+beforeEach(() => { vi.clearAllMocks(); runtime.state = null; runtime.remove.mockImplementation(async () => { runtime.state = null; }); });
 afterEach(() => { expect(runtime.inspect).not.toHaveBeenCalled(); });
 
 describe('Console belongs to an instance', () => {
@@ -44,7 +46,7 @@ describe('Console belongs to an instance', () => {
 
   it('refuses foreign containers before start or stop can mutate anything', async () => {
     runtime.state = state({ labels: { [CONSOLE_INSTANCE_LABEL]: '/tmp/other' } });
-    const service = new WebappService(createNullLogger());
+    const service = new WebappService(createNullLogger(), { port: 9800, bindHost: async () => '127.0.0.1' });
     await expect(service.start()).rejects.toThrow('does not belong');
     await expect(service.stop()).rejects.toThrow('does not belong');
     expect(runtime.remove).not.toHaveBeenCalled();

@@ -280,6 +280,29 @@ matching an error message. An accepted digest can be checked again without
 restarting a stack. The instance keeps the previous receipt when a new reviewed
 batch begins.
 
+Cold startup owns the Console container. When the review records an enabled
+Console, the target controller mounts its own Console on apply. During rollback
+the cold controller mounts the exact previous Console artifact and verifies its
+served `BUILD.json` before transferring the backend and guardian. A previously
+disabled Console stays off in both directions. Preparation checks the cold
+controller's `coldConsoleProtocol` capability when rollback would mount a
+different artifact. Recovery also checks that capability in the installed cold
+controller before retiring a candidate, including when the backend is unavailable.
+
+`omnitron webapp start` uses the serving daemon's local administrator socket,
+HTTP port, bind address and seeded-password check. `--force` requests replacement
+of the owned container. `webapp open` can start it temporarily and preserves the
+boot preference. `webapp stop` disables automatic start and can remove the owned
+container by its full Docker ID while the backend is down. `webapp status` reads
+the actual Docker publication. Operator mutations and update admission share the
+instance policy lock. An unfinished update holds manual Console changes until
+its receipt reaches a terminal phase.
+
+Native Console lifecycle uses the local Unix administrator socket and the Xec
+kernel file lock on macOS and Linux. Omnitron's daemon and CLI register the Unix
+socket transport. Windows local administration would require integrating Titan's
+named-pipe transport and a matching native lock.
+
 If acceptance times out or a read loses its result, the receipt becomes
 `recovery-required`; this is not evidence that the candidate failed. The update
 does not stop that candidate automatically. Inspect status, then choose the

@@ -3,6 +3,8 @@ import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
 import { inspectRuntimeArtifact, verifyRuntimeArtifact } from '../shared/runtime-artifact.js';
+import { readBuildStamp } from '../shared/build-stamp.js';
+import { reviewedRuntimeConsole } from '../shared/dto/runtime-update.js';
 import { BACKEND_ACTIVITY_COUNTERS } from '../shared/dto/backend.js';
 import { retainReviewedBackups } from '../shared/backup-admission.js';
 import { LAUNCHD_LABEL, OWNER_LAUNCHD_LABEL } from '../commands/service-units.js';
@@ -29,10 +31,11 @@ import type { StackStartReview, SelectedRelease } from '../shared/dto/project.js
 import type { RuntimeUpdateActions, RuntimeUpdateRestoration } from './runtime-update.js';
 import type { RuntimeRestartReview, RuntimeUpdateIdentity, RuntimeUpdateRetiringIdentity, RuntimeUpdateInfrastructure, RuntimeUpdatePlan, RuntimeUpdateProjectObservation, RuntimeUpdateStack, RuntimeUpdateStackObservation, RuntimeUpdateStatusObservation, RuntimeUpdateSelection, ReviewedRuntimeUpdateStack, VerifiedRuntimeReference } from '../shared/dto/runtime-update.js';
 
-export type RuntimeUpdateCall = <T>(argv: readonly string[], runtimeRoot?: string, options?: { timeoutMs?: number; signal?: AbortSignal }) => Promise<T>;
+export type RuntimeUpdateCall = <T>(argv: readonly string[], options?: { timeoutMs?: number; signal?: AbortSignal }) => Promise<T>;
 interface ColdStartObservation {
   checked: boolean; candidate: string; schemaScope: 'node' | 'all'; coldStackAdmissionProtocol?: number | null;
   runtimeRestartProtocol?: number | null;
+  coldConsoleProtocol?: number | null;
   infrastructure: { coverage: string; intentDigest: string; containers: Array<{ name: string; id: string; action: string }>; controlPlaneDatabase?: { id: string; action: string } };
 }
 
@@ -198,7 +201,7 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
   };
   const manifest = await inspectedRuntime(reference);
   const [{ readManagedRuntime, verifyManagedIsolation }, { assertCleanManagedShutdown }, { assertResidentServicesStopped },
-    { getContainerState, listManagedContainers }, { assertConsoleOwnership, consoleContainerName }, { readProcessLifetime }, { readSavedDaemonConfig },
+    { getContainerState, listManagedContainers }, { assertConsoleOwnership, consoleContainerName, assertConsoleBuild, inspectInstalledConsole }, { readProcessLifetime }, { readSavedDaemonConfig },
     { createDaemonClient }, { assertBackendMigrationsCompatible }] = await Promise.all([
     import('./managed-runtime.js'), import('./owner-reconciliation.js'), import('../commands/service-resident.js'),
     import('../infrastructure/container-runtime.js'), import('../webapp/console-container.js'),
@@ -210,23 +213,25 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
     timeoutMs: 10 * 60_000, env: { OMNITRON_OUTPUT: 'human' },
   });
   const observeCall = <T>(args: readonly string[], observation?: RuntimeObservation): Promise<T> =>
-    call<T>(args, undefined, observation ? { timeoutMs: observation.remaining(), signal: observation.signal } : undefined);
+    call<T>(args, observation ? { timeoutMs: observation.remaining(), signal: observation.signal } : undefined);
   const consoleState = async (observation?: RuntimeObservation) => {
-    const service = await observeCall<{ running: boolean; port: number }>(['webapp', 'status'], observation);
     const state = await getContainerState(consoleContainerName(home), { orThrow: true, fullId: true });
-    if (Boolean(readSavedDaemonConfig()?.webapp) !== service.running) throw Error('Serving Console disagrees with its saved boot policy');
-    if (!service.running && (!state || state.status === 'exited')) return { artifact: null, commit: null };
-    if (!state || !service.running || !Number.isSafeInteger(service.port) || service.port < 1 || service.port > 65535) throw Error('Console has no verified serving address');
+    const running = state?.status === 'running';
+    if (Boolean(readSavedDaemonConfig(path.join(home, 'config.json'))?.webapp) !== running)
+      throw Error('Serving Console disagrees with its saved boot policy');
+    if (!state) return { artifact: null, commit: null };
     assertConsoleOwnership(state, home);
+    if (state.status === 'exited') return { artifact: null, commit: null };
+    if (!running || state.health !== 'healthy') throw Error('Console has no healthy native serving identity');
     const mount = state.mounts?.find(volume => volume.target === '/usr/share/nginx/html');
     const id = mount && path.relative(path.join(installation, 'releases'), mount.source).split(path.sep)[0];
-    if (!mount || !id || !hash.test(id) || mount.source !== path.join(installed(id), 'packages/0/webapp/dist')) throw Error('Serving Console does not have a verified installed rollback artifact');
+    if (!mount?.readOnly || !id || !hash.test(id) || mount.source !== path.join(installed(id), 'packages/0/webapp/dist'))
+      throw Error('Serving Console does not have a verified installed rollback artifact');
+    const stamp = readBuildStamp(mount.source);
+    if (!cleanBuild(stamp)) throw Error('Mounted Console has no clean installed build');
     const timeout = AbortSignal.timeout(observation?.remaining(5000) ?? 5000);
-    const response = await fetch(`http://127.0.0.1:${service.port}/BUILD.json`, { redirect: 'error', cache: 'no-store',
-      signal: observation ? AbortSignal.any([observation.signal, timeout]) : timeout });
-    const actual = response.ok ? await response.json() as BuildStamp : null;
-    if (!cleanBuild(actual) || actual.commit !== await runtimeBuildCommit(installed(id), true)) throw Error('Console HTTP build disagrees with its mounted release');
-    return { artifact: id, commit: actual.commit };
+    await assertConsoleBuild(state, stamp, observation ? AbortSignal.any([observation.signal, timeout]) : timeout, home);
+    return { artifact: id, commit: stamp.commit };
   };
   const installationState = async (observation?: RuntimeObservation) => {
     const state = await observeCall<{ directory: string; selection: RuntimeSelection | null; activation: unknown }>(['backend', 'installation'], observation);
@@ -354,9 +359,11 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
     else throw Error('Saved launch and reviewed release disagree for ' + projectKey(stack));
     return { digest: review.digest, selection };
   };
-  const coldPreview = async (artifact: string, observation?: RuntimeObservation): Promise<RuntimeUpdateInfrastructure> => {
+  const coldPreview = async (artifact: string, observation?: RuntimeObservation, separateConsole = false): Promise<RuntimeUpdateInfrastructure> => {
     const response = await observeCall<ColdStartObservation>(['backend', 'select', artifact, '--check'], observation);
     const infra = response.infrastructure;
+    if (separateConsole && response.coldConsoleProtocol !== 1)
+      throw Error('The cold controller cannot restore the independently selected Console');
     if (!response.checked || response.candidate !== artifact || !['certified-declarations', 'reviewed-declarations'].includes(infra?.coverage ?? '') || !Array.isArray(infra?.containers) ||
         !hash.test(infra.intentDigest) || infra.containers.some(v => v.action !== 'retain' || !hash.test(v.id)) ||
         (infra.controlPlaneDatabase && infra.controlPlaneDatabase.action !== 'retain')) throw Error('Automatic local restart requires verified retained infrastructure; inspect backend select ' + artifact + ' --check for the proposed changes');
@@ -385,7 +392,8 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
         throw new RuntimeObservationPending('controller', status.execution.recovery.reason ?? 'Controller startup observation is pending', status.pid);
       if (status.execution?.recovery?.status !== 'ready') throw Error('The serving controller has no recovery readiness evidence');
       const [web, stacks] = await Promise.all([consoleState(observation), inventory(status, observation)]);
-      if (web.artifact !== (target && plan.before.console ? expect : plan.before.console))
+      const reviewedConsole = reviewedRuntimeConsole(plan, direction);
+      if (web.artifact !== (reviewedConsole?.artifact ?? null) || web.commit !== (reviewedConsole?.commit ?? null))
         throw new RuntimeObservationConflict('The serving Console has not reached its reviewed version');
       if (stacks.targets.length !== plan.stacks.length || !isDeepStrictEqual(stacks.excluded, plan.excluded))
         throw new RuntimeObservationConflict('Local stack membership differs from the plan');
@@ -470,7 +478,7 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
         candidate = { id: manifest.sha256, directory: installed(manifest.sha256), build: { commit: await runtimeBuildCommit(installed(manifest.sha256)), dirty: false } };
       } else candidate = await call<{ id: string; directory: string; build: BuildStamp }>(['backend', 'install', runtime]);
       if (candidate.id !== manifest.sha256 || candidate.directory !== installed(candidate.id) || !cleanBuild(candidate.build) || candidate.build.commit !== await runtimeBuildCommit(runtime, true)) throw Error('Installed candidate or Console differs from the sealed checkout');
-      const infrastructure = await coldPreview(candidate.id);
+      const infrastructure = await coldPreview(candidate.id, undefined, web.artifact !== null && web.artifact !== candidate.id);
       if (before.backend !== candidate.id) {
         await assertBackendMigrationsCompatible(path.join(installed(candidate.id), cliDist), path.join(installed(before.backend), cliDist), infrastructure.schemaScope);
         await coldPreview(before.backend);
@@ -508,6 +516,9 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
     },
     async admit(plan, planDigest) {
       if (!plan.configuration) throw Error('Runtime update admission requires retained next-start intent');
+      const web = await consoleState();
+      if (web.artifact !== plan.before.console || web.commit !== plan.before.consoleCommit)
+        throw Error('Console changed before runtime admission');
       const reviewed = await retainedReview(plan.stacks);
       if (!await sameRetainedIntent(plan, reviewed.configuration)) throw Error('Retained next-start intent changed before backup admission');
       await backupReview(reviewed.backups, plan.backupOperations);
@@ -543,6 +554,18 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
     stop: previous => raw(previous.backend, ['down']),
     assertStopped: previous => until('Clean shutdown could not be confirmed', () => stopped(previous), 90_000),
     async canRestore(previous) { try { await stopped(previous); return true; } catch { return false; } },
+    async validateRestore(plan) {
+      const starter = plan.configuration ? plan.target.artifact : plan.before.backend;
+      const retained = reviewedRuntimeConsole(plan, 'previous');
+      if (!retained) return;
+      await inspectInstalledConsole(home, retained);
+      if (retained.artifact === starter) return;
+      if (plan.stackAdmissionProtocol !== 1) throw Error('The retained Console requires a cold-start admission receipt');
+      // Recovery can be invoked by a newer installed CLI while the daemon is unavailable.
+      const { checkBackendCandidate } = await import('./backend-candidate.js');
+      const controller = await checkBackendCandidate(path.join(installed(starter), cliDist), undefined, starter);
+      if (controller.coldConsoleProtocol !== 1) throw Error('The installed cold controller cannot restore the independently selected Console');
+    },
     async isPreviousServing(this: RuntimeUpdateActions, plan) {
       try {
         await this.validateStop(plan.before, plan);
@@ -582,17 +605,6 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
         const transition = await call<{ file: string }>(['backend', 'guardian', 'prepare', installed(guardian)]);
         await call(['backend', 'guardian', 'apply', transition.file, '--check']);
         await call(['backend', 'guardian', 'apply', transition.file]);
-      }
-      const web = 'artifact' in destination ? (plan.before.console && backend) : destination.console;
-      if (web && web !== backend) {
-        // The selected backend owns Console autostart. Starting the same
-        // container here races that lifecycle and can reject a successful boot.
-        // A rollback with a separately pinned Console still selects it explicitly.
-        await until('Waiting for the selected backend', async () => {
-          const status = await call<{ build: BuildStamp | null }>(['backend', 'status']);
-          if (status.build?.commit !== await runtimeBuildCommit(installed(backend))) throw Error('Selected backend is starting');
-        }, 5 * 60_000);
-        await call(['webapp', 'start'], installed(web));
       }
       if (restoring && plan.configuration) await completeRestore(plan, restoration!);
     },

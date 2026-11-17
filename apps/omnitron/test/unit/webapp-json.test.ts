@@ -5,8 +5,7 @@ const runtime = vi.hoisted(() => ({
   stop: vi.fn(),
   status: vi.fn(),
   build: vi.fn(),
-  read: vi.fn(),
-  write: vi.fn(),
+  disconnect: vi.fn(),
   browser: vi.fn(),
   running: true,
   logger: null as any,
@@ -18,7 +17,6 @@ vi.mock('../../src/webapp/webapp.service.js', () => ({
     constructor(logger: unknown) {
       runtime.logger = logger;
     }
-    start = runtime.start;
     stop = runtime.stop;
     status = runtime.status;
     build = runtime.build;
@@ -31,9 +29,8 @@ vi.mock('../../src/daemon/pid-manager.js', () => ({
     }
   },
 }));
-vi.mock('../../src/config/saved.js', () => ({
-  readSavedDaemonConfig: runtime.read,
-  writeSavedDaemonConfig: runtime.write,
+vi.mock('../../src/daemon/daemon-client.js', () => ({
+  createDaemonClient: () => ({ service: async () => ({ startConsole: runtime.start }), disconnect: runtime.disconnect }),
 }));
 vi.mock('node:child_process', () => ({ execFile: runtime.browser }));
 import {
@@ -49,12 +46,10 @@ beforeEach(() => {
   process.exitCode = undefined;
   setEnvOverride({ OMNITRON_OUTPUT: 'json' });
   runtime.running = true;
-  runtime.read.mockReturnValue({ initialized: true, role: 'master', webapp: false, files: { enabled: false } });
-  runtime.status.mockResolvedValue({ running: true, healthy: true, port: 9800 });
-  runtime.start.mockImplementation(async () => {
-    runtime.logger.info('progress');
-    runtime.logger.warn('progress warning');
-  });
+  const status = { running: true, healthy: true, port: 19800, url: 'http://127.0.0.1:19800' };
+  runtime.status.mockResolvedValue(status);
+  runtime.start.mockResolvedValue({ ...status, autoStart: true });
+  runtime.stop.mockResolvedValue(false);
   runtime.build.mockResolvedValue({ distPath: '/fixture/dist', duration: 1200 });
   runtime.browser.mockImplementation((_command, _args, _options, callback) => callback(null, '', ''));
   out = [];
@@ -84,18 +79,18 @@ const failure = () => {
   return JSON.parse(err.join(''));
 };
 describe('Console lifecycle machine protocol', () => {
-  it('reports one result after start and persistence, suppressing service progress', async () => {
+  it('reports the serving daemon receipt and its configured port', async () => {
     await webappStartCommand({ force: true });
     expect(runtime.start).toHaveBeenCalledWith({ force: true });
-    expect(runtime.write).toHaveBeenCalledWith(expect.objectContaining({ webapp: true, files: { enabled: false } }));
+    expect(runtime.disconnect).toHaveBeenCalledOnce();
     expect(success()).toEqual({
       ok: true,
       data: {
         operation: 'start',
         running: true,
         healthy: true,
-        port: 9800,
-        url: 'http://localhost:9800',
+        port: 19800,
+        url: 'http://127.0.0.1:19800',
         autoStart: true,
       },
     });
@@ -104,34 +99,31 @@ describe('Console lifecycle machine protocol', () => {
     runtime.running = false;
     await webappStartCommand();
     expect(runtime.start).not.toHaveBeenCalled();
-    expect(runtime.write).not.toHaveBeenCalled();
+    expect(runtime.disconnect).not.toHaveBeenCalled();
     expect(failure()).toMatchObject({ ok: false, code: 'DAEMON_NOT_RUNNING', outcome: 'not-started' });
   });
   it('retains partial-operation uncertainty when container start fails', async () => {
     runtime.start.mockRejectedValue(new Error('Container readiness timed out'));
     await webappStartCommand();
-    expect(runtime.write).not.toHaveBeenCalled();
+    expect(runtime.disconnect).toHaveBeenCalledOnce();
     expect(failure()).toMatchObject({ ok: false, operation: 'start', outcome: 'unknown' });
   });
-  it('does not claim start was undone when saving its preference fails', async () => {
-    runtime.write.mockImplementation(() => {
-      throw Error('Disk unavailable');
-    });
+  it('does not repeat the mutation when a daemon acknowledgement is lost', async () => {
+    runtime.start.mockRejectedValue(Error('Acknowledgement lost'));
     await webappStartCommand();
     expect(runtime.start).toHaveBeenCalledOnce();
-    expect(failure()).toMatchObject({ ok: false, operation: 'start', outcome: 'applied' });
+    expect(failure()).toMatchObject({ ok: false, operation: 'start', outcome: 'unknown' });
   });
-  it('reports stop and preserves unrelated saved policy', async () => {
-    runtime.read.mockReturnValue({ webapp: true, files: { enabled: false } });
+  it('can stop through the instance service when the daemon is down', async () => {
+    runtime.running = false;
     await webappStopCommand();
     expect(runtime.stop).toHaveBeenCalledOnce();
-    expect(runtime.write).toHaveBeenCalledWith({ webapp: false, files: { enabled: false } });
+    expect(runtime.disconnect).not.toHaveBeenCalled();
     expect(success()).toMatchObject({ ok: true, data: { operation: 'stop', stopped: true, autoStart: false } });
   });
-  it('reports stop failure without disabling startup policy', async () => {
+  it('reports stop failure without claiming a native receipt', async () => {
     runtime.stop.mockRejectedValue(new Error('Docker unavailable'));
     await webappStopCommand();
-    expect(runtime.write).not.toHaveBeenCalled();
     expect(failure()).toMatchObject({ operation: 'stop', outcome: 'unknown' });
   });
   it('reports build duration and published path', async () => {
@@ -156,6 +148,7 @@ describe('Console lifecycle machine protocol', () => {
     );
     await webappOpenCommand();
     expect(runtime.start).toHaveBeenCalledOnce();
+    expect(runtime.start).toHaveBeenCalledWith({ temporary: true });
     expect(failure()).toMatchObject({ operation: 'open', outcome: 'applied' });
   });
 });

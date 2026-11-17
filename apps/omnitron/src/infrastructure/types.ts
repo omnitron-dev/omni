@@ -258,6 +258,8 @@ export interface ContainerState {
   containerId?: string | undefined;
   /** Published ports as `"80/tcp" -> 9800`. Absent when nothing is published. */
   ports?: Record<string, number> | undefined;
+  /** Native host addresses for each published port, available on a full inspection. */
+  portBindings?: Record<string, Array<{ address: string; port: number }>>;
   health?: 'healthy' | 'unhealthy' | 'starting' | 'none' | undefined;
   /** Last completed native check. Re-reading cached health is not a new failure. */
   healthCheck?: { completedAt: string; exitCode: number } | undefined;

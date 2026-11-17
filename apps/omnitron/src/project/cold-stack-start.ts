@@ -6,7 +6,7 @@ import { readManagedRuntime, verifyManagedIsolation } from '../daemon/managed-ru
 import { RuntimeInstallation } from '../daemon/runtime-installation.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import { stackExecutionKey, type StackExecutionScope } from '../shared/dto/stack-execution.js';
-import { RUNTIME_UPDATE_TERMINAL_PHASES } from '../shared/dto/runtime-update.js';
+import { RUNTIME_UPDATE_TERMINAL_PHASES, reviewedRuntimeConsole } from '../shared/dto/runtime-update.js';
 import type { RuntimeUpdateOwner, RuntimeUpdatePlan, RuntimeUpdateReceipt, ReviewedRuntimeUpdateStack } from '../shared/dto/runtime-update.js';
 
 const sha = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
@@ -14,6 +14,7 @@ type Direction = 'target' | 'previous';
 export interface ColdBatch {
   digest: string; phase: string; direction: Direction;
   artifact: string; ownerArtifact: string; before: RuntimeUpdatePlan['before']; retiringOwner: RuntimeUpdateOwner; target: string;
+  console: RuntimeUpdatePlan['target'] | null;
   database: string | null; stacks: ReviewedRuntimeUpdateStack[]; excluded: RuntimeUpdatePlan['excluded'];
   configuration?: string;
 }
@@ -51,7 +52,7 @@ export async function readColdBatch(instance: string): Promise<ColdBatch | null>
     throw Error('Cannot identify the retiring execution owner');
   return { digest: receipt.digest, phase: receipt.phase, direction, retiringOwner, artifact: direction === 'target' || plan.configuration ? plan.target.artifact : plan.before.backend,
     ownerArtifact: direction === 'target' ? plan.target.artifact : plan.before.owner, before: plan.before, target: plan.target.artifact,
-    database: plan.infrastructure.database, stacks: plan.stacks, excluded: plan.excluded,
+    console: reviewedRuntimeConsole(plan, direction), database: plan.infrastructure.database, stacks: plan.stacks, excluded: plan.excluded,
     ...(plan.configuration && { configuration: plan.configuration.sha256 }) };
 }
 

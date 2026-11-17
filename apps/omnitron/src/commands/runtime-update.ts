@@ -76,8 +76,7 @@ export async function runtimeUpdateCommand(operation: 'prepare' | 'apply' | 'rec
       // A complete transition includes its possible restoration. Its caller must outlive both bounded phases.
       result = await callRuntime(runtime, ['runtime', 'update', operation, operation === 'prepare' ? runtime.directory : value], 60 * 60_000);
     } else {
-      const call: RuntimeUpdateCall = async <T>(args: readonly string[], runtimeRoot?: string, options?: { timeoutMs?: number; signal?: AbortSignal }): Promise<T> =>
-        callRuntime<T>(runtimeRoot ? await verifyRuntimeUpdateTarget(runtimeRoot) : runtime, args, options?.timeoutMs, options?.signal);
+      const call: RuntimeUpdateCall = (args, options) => callRuntime(runtime, args, options?.timeoutMs, options?.signal);
       const actions = await runtimeUpdateActions({ runtime, instance: OMNITRON_HOME, call,
         run: releaseCommand, progress: emitStep });
       result = await runRuntimeUpdate({ actions, directory, operation, ...(operation !== 'prepare' && { digest: value }), progress: emitStep });

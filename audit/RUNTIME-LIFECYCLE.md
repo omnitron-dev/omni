@@ -16,6 +16,7 @@ The broader execution architecture is in [AUTOMATION-ARCHITECTURE.md](./AUTOMATI
 | Native supervision | Guardian and existing supervisor transaction | A restoration binds the original guardian transaction and resumes it; it cannot manufacture a second transition. |
 | Launch policy | Project registry and private `RuntimeRestartConfiguration` | Preserve effective definitions, environment, order, source watches and release pins. Stored bytes and semantic intent prove different things. |
 | Backup effects | BackupService and execution operation receipts | Only exact owned attempts may be cancelled; uncertainty retains claims and history. Schedule policy is not evidence of a completed backup. |
+| Console publication | Instance WebappService, reviewed release and native Docker identity | The cold controller selects the reviewed artifact. Local start uses the serving daemon's publication policy. Independent stop verifies Docker ownership. |
 | Acceptance | `daemon/runtime-update-host.ts`; complete independent observation | Owner readiness alone is insufficient: verify roles, applications, launches, Console, source watches and native containers before committing acceptance. |
 
 These boundaries are not interchangeable. The update receipt orchestrates the
@@ -24,6 +25,35 @@ report can expose an active owner while the backend is still restoring its own
 watches and recovery certificate.
 
 ## Corrected causes
+
+### A restoring controller and CLI both created the same Console
+
+The bridge controller could start its own nginx while the update host launched
+the previous Console through a different CLI. The bridge now reads the exact
+Console artifact and commit from the private receipt. On restoration it mounts
+that release before the warm backend and guardian handoffs. An OFF review has
+no Console start. The host verifies the published HTTP build and full native
+container ID independently.
+
+Manual start, offline stop, instance configuration writes and admission share
+the instance policy lock. Image preparation and source compilation finish
+before a writer enters the lock. The Docker creator can recover a lost reply
+using its own creation nonce. A matching name, spec and instance alone cannot
+take ownership of a competing creation.
+
+The supported control path uses Xec's macOS/Linux kernel file lock.
+`daemon/daemon.ts` and `daemon/daemon-client.ts` register Titan's Unix socket
+transport. Titan's `netron/transport/unix-transport.ts` supplies a separate
+`NamedPipeTransport` for Windows, and `daemon/execution-platform.ts` explicitly
+requires owner-only Unix sockets for resident execution. Instance configuration
+can still be initialized on other operating systems.
+
+The Console lifecycle tests exercise competing requests, separate retained
+artifacts, disabled startup, broken artifacts, HTTP build drift and offline
+stop. The Docker execution tests distinguish a lost creation reply from a
+different creator with the same specification. The recovery tests run the
+sealed cold controller's preflight without a serving backend and check that an
+unsupported restoration preserves the candidate.
 
 ### Observation metadata was treated as authorization
 

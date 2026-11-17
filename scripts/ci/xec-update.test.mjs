@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { withLocalRuntime } from '../../.xec/local-runtime.mjs';
 import test from 'node:test';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -237,3 +238,92 @@ test('local sync consumes the completed native release build without another bui
     await fs.writeFile(path.join(selection, 'selected.json'), JSON.stringify({ identity, key: '../elsewhere' }));
     await assert.rejects(locateQualifiedLocalRuntime(root, commit, producer), /Invalid selected local qualification/);
   });
+
+async function finalizationFixture(t, hooks = {}) {
+  const cache = await fs.mkdtemp(path.join(os.tmpdir(), 'xec-runtime-finalization-'));
+  t.after(() => fs.rm(cache, { recursive: true, force: true }));
+  const commit = 'd'.repeat(40);
+  const run = async (root, executable, args, options) => {
+    if (executable === '/bin/rm') {
+      await hooks.cleanup?.(options);
+      await fs.rm(args.at(-1), { recursive: true, force: true });
+      return '';
+    }
+    if (args[0] === 'rev-parse') return commit;
+    if (args[0] === 'status') return '';
+    if (executable === 'pnpm' && args[0] === 'install') await hooks.build?.();
+    if (args[0] === '--conditions=omnitron-source') return JSON.stringify(await verifyRuntimeArtifact(args.at(-1)));
+    if (args[0]?.endsWith('/freeze-backend.mjs')) {
+      const directory = args[2];
+      for (const subpath of ['dist', 'webapp/dist']) {
+        const out = path.join(directory, 'packages/0', subpath);
+        await fs.mkdir(out, { recursive: true });
+        await fs.writeFile(path.join(out, 'BUILD.json'), JSON.stringify({ commit, dirty: false }));
+      }
+      await fs.writeFile(path.join(directory, 'RUNTIME.json'), JSON.stringify({ protocol: 1,
+        sha256: await runtimeArtifactDigest(directory), platform: process.platform, arch: process.arch, nodeVersion: process.version }));
+    }
+    return '';
+  };
+  return { cache, run, directory: path.join(cache, [commit, process.platform, process.arch, process.version].join('-')) };
+}
+
+const finalizationOptions = { skip: !['linux', 'darwin'].includes(process.platform), timeout: 10_000 };
+test('Xec prepares the published runtime while joining checkout cleanup', finalizationOptions, async t => {
+  let release, started;
+  const gate = new Promise(resolve => { release = resolve; }), cleaning = new Promise(resolve => { started = resolve; });
+  let cleaned = false;
+  const fixture = await finalizationFixture(t, { cleanup: async options => {
+    assert(options.signal instanceof AbortSignal); started(); await gate; cleaned = true;
+  } });
+  const value = await withLocalRuntime(process.cwd(), fixture.cache, fixture.run, () => {}, async (dist, signal) => {
+    assert(signal instanceof AbortSignal);
+    await cleaning;
+    assert.equal(cleaned, false);
+    assert.equal(dist, path.join(fixture.directory, 'packages/0/dist'));
+    await verifyRuntimeArtifact(fixture.directory);
+    release(); return 'prepared';
+  }, { prepareWhileCleaning: true });
+  assert.equal(value, 'prepared'); assert.equal(cleaned, true);
+  assert(!(await fs.readdir(fixture.cache)).some(file => file.startsWith('.build-')));
+});
+
+test('a prepare refusal still joins cleanup and preserves both failures', finalizationOptions, async t => {
+  let release, refused;
+  const gate = new Promise(resolve => { release = resolve; }), preparation = new Promise(resolve => { refused = resolve; });
+  const fixture = await finalizationFixture(t, { cleanup: async () => { await gate; throw Error('cleanup failure'); } });
+  let finished = false;
+  const result = withLocalRuntime(process.cwd(), fixture.cache, fixture.run, () => {}, async () => {
+    refused(); throw Error('prepare refusal');
+  }, { prepareWhileCleaning: true });
+  const observed = result.then(() => { finished = true; }, error => { finished = true; return error; });
+  await preparation; await new Promise(resolve => setImmediate(resolve));
+  assert.equal(finished, false); release();
+  const error = await observed;
+  assert(error instanceof AggregateError);
+  assert.deepEqual(error.errors.map(item => item.message).sort(), ['cleanup failure', 'prepare refusal']);
+  await verifyRuntimeArtifact(fixture.directory);
+});
+
+test('cleanup failure cannot silently turn a prepared receipt into success or delete its runtime', finalizationOptions, async t => {
+  let preparations = 0;
+  const fixture = await finalizationFixture(t, { cleanup: async () => { throw Error('cleanup failure'); } });
+  await assert.rejects(withLocalRuntime(process.cwd(), fixture.cache, fixture.run, () => {}, async () => {
+    preparations++; return { digest: 'e'.repeat(64) };
+  }, { prepareWhileCleaning: true }), error => error instanceof AggregateError && error.errors[0].message === 'cleanup failure');
+  assert.equal(preparations, 1); await verifyRuntimeArtifact(fixture.directory);
+});
+
+test('build failure never starts preparation and retains a cleanup failure as a separate cause', finalizationOptions, async t => {
+  const fixture = await finalizationFixture(t, { build: async () => { throw Error('build failure'); },
+    cleanup: async () => { throw Error('cleanup failure'); } });
+  await assert.rejects(withLocalRuntime(process.cwd(), fixture.cache, fixture.run, () => {}, async () => assert.fail('unbuilt runtime'),
+    { prepareWhileCleaning: true }), error => error instanceof AggregateError &&
+      error.errors.map(item => item.message).join(',') === 'build failure,cleanup failure');
+});
+
+test('effecting consumers wait for cleanup and do not run if it fails', finalizationOptions, async t => {
+  const fixture = await finalizationFixture(t, { cleanup: async () => { throw Error('cleanup failure'); } });
+  await assert.rejects(withLocalRuntime(process.cwd(), fixture.cache, fixture.run, () => {}, async () => assert.fail('activation must wait')),
+    /cleanup failure/);
+});

@@ -160,9 +160,18 @@ tests in `runtime-artifact-snapshot.test.ts` remain applicable.
 
 This does not remove all duplicate work. The seal still hashes before and after
 writing its manifest, staging is verified again after its own rename, and checkout
-cleanup still blocks preparation. Their removal requires ownership of the exact
-manifest write/rename and of cleanup completion; a persistent "already verified"
-flag or an unjoined background process would not satisfy that contract.
+cleanup previously blocked preparation. Xec now overlaps read-only preparation
+with cleanup only after publishing and verifying the runtime outside its checkout.
+Both steps are joined before success; build, preparation and cleanup failures
+retain their causes and do not delete the published runtime or its receipt.
+Mutation paths remain sequential. The final command output follows the join,
+so a successful receipt cannot hide a failed cleanup. Tests in
+`scripts/ci/xec-update.test.mjs` cover overlap, independent failures, failure drain,
+retained runtime and the absence of activation after failed cleanup.
+
+Eliminating the remaining seal/rename rehashes requires ownership of the exact
+manifest write/rename. A persistent "already verified" flag would not satisfy
+that contract.
 
 ## Remaining architectural gaps
 

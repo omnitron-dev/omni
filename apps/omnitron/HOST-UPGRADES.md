@@ -166,6 +166,14 @@ files together, flushes directories after their descendants, then publishes the
 directory. Failed copies and flushes settle before cleanup; neither parallelism
 nor proof reuse changes the reviewed selection or permits a partial installation.
 
+Once a new runtime is verified and published outside its isolated checkout,
+Xec runs read-only plan preparation and checkout cleanup as two independent
+pipeline steps. It joins both before returning the final receipt. A cleanup
+failure preserves the runtime and any prepared plan, reports failure and does
+not apply or repeat the plan. Inspect `xec update local-sync --status` if needed.
+Activation, backend replacement and explicit admission checks still wait for
+cleanup before starting; this overlap grants no service interruption authority.
+
 Preparation stages the candidate alongside the running installation. The plan
 names both native process owners, the serving Console, physical container IDs,
 logical project and stack names, application generations, source watches and

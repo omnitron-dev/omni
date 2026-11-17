@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { Pipeline } from '@xec-sh/ops/pipeline';
 import { developmentCacheDirectory } from '../apps/omnitron/bin/sdk-transition.js';
 import { locateQualifiedLocalRuntime } from './qualification.mjs';
 
@@ -13,7 +14,7 @@ export async function verifyLocalRuntime(root, directory, run) {
 }
 
 /** Prepare one native development runtime per committed revision and producer. */
-export async function localRuntime(root, cache, run, progress) {
+export async function withLocalRuntime(root, cache, run, progress, use, { prepareWhileCleaning = false } = {}) {
   const { withKernelFileLock } = await import('@xec-sh/ops/utils/file-lock');
   const revision = (await run(root, 'git', ['rev-parse', '--verify', 'HEAD^{commit}'])).trim();
   if (!/^[a-f0-9]{40}$/.test(revision)) throw Error('Cannot identify the local source commit');
@@ -40,7 +41,7 @@ export async function localRuntime(root, cache, run, progress) {
       if (!saved.isDirectory() || saved.isSymbolicLink()) throw Error('Invalid local runtime cache entry');
       await verify(destination);
       progress('Using local runtime ' + revision);
-      return dist;
+      return use(dist);
     }
     const qualified = await locateQualifiedLocalRuntime(root, revision, {
       nodeVersion: process.version, platform: process.platform, arch: process.arch,
@@ -48,9 +49,21 @@ export async function localRuntime(root, cache, run, progress) {
     if (qualified) {
       await verify(qualified.directory, qualified.sha256);
       progress('Using qualified local runtime ' + revision);
-      return path.join(qualified.directory, 'packages/0/dist');
+      return use(path.join(qualified.directory, 'packages/0/dist'));
     }
     const stage = await fs.mkdtemp(path.join(base, '.build-'));
+    let cleanupStarted = false;
+    const cleanup = async signal => {
+      cleanupStarted = true;
+      progress('Cleaning isolated build workspace');
+      const started = performance.now();
+      // Xec owns the subprocess, its deadline and cancellation. No detached removal.
+      if (['darwin', 'linux'].includes(process.platform))
+        await run(root, '/bin/rm', ['-rf', '--', stage], { timeoutMs: 5 * 60_000, ...(signal && { signal }) });
+      else await fs.rm(stage, { recursive: true, force: true });
+      progress('Build workspace cleanup: ' + ((performance.now() - started) / 1000).toFixed(1) + 's');
+    };
+    let failure;
     try {
       const source = path.join(stage, 'source'), output = path.join(stage, 'runtime');
       await fs.mkdir(source);
@@ -76,16 +89,33 @@ export async function localRuntime(root, cache, run, progress) {
       await command(process.execPath, ['apps/omnitron/scripts/freeze-backend.mjs', 'apps/omnitron', output]);
       await verify(output);
       await fs.rename(output, destination);
-      return dist;
-    } finally {
-      progress('Cleaning isolated build workspace');
-      const cleanupStarted = performance.now();
-      // Native recursive removal avoids a JavaScript filesystem walk over the
-      // dependency tree. Xec still owns the deadline and observes completion.
-      if (['darwin', 'linux'].includes(process.platform))
-        await run(root, '/bin/rm', ['-rf', '--', stage], { timeoutMs: 5 * 60_000 });
-      else await fs.rm(stage, { recursive: true, force: true });
-      progress('Build workspace cleanup: ' + ((performance.now() - cleanupStarted) / 1000).toFixed(1) + 's');
+      if (!prepareWhileCleaning) {
+        await cleanup();
+        return await use(dist);
+      }
+      // Only read-only preparation may overlap disposal of the build checkout.
+      // The published runtime is outside that checkout and has already been verified.
+      let value;
+      const failures = [];
+      const pipeline = Pipeline.create('local-runtime-preparation')
+        .step('prepare', { run: async ({ signal }) => {
+          try { value = await use(dist, signal); } catch (error) { failures.push(error); throw error; }
+        } })
+        .step('cleanup', { run: async ({ signal }) => {
+          try { await cleanup(signal); } catch (error) { failures.push(error); throw error; }
+        } });
+      const result = await pipeline.run({}, { concurrency: 2 });
+      if (!result.success) throw new AggregateError(failures, 'Local preparation or build cleanup failed; retained runtime and preparation receipts were not rolled back');
+      return value;
+    } catch (error) { failure = error; throw error; }
+    finally {
+      if (!cleanupStarted) {
+        try { await cleanup(); }
+        catch (error) {
+          if (failure) throw new AggregateError([failure, error], 'Local runtime build and cleanup failed');
+          throw error;
+        }
+      }
     }
   });
 }

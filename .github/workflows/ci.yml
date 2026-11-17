@@ -42,6 +42,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build packages and applications
         run: pnpm build
+      - name: Typecheck (all packages + apps)
+        run: pnpm -r run typecheck
       - name: Rebuild and compare two independent release archives
         working-directory: apps/omnitron
         run: node test/runtime/reproducible-bundle.mjs dist
@@ -222,8 +224,6 @@ jobs:
         run: |
           pnpm --filter @omnitron-dev/access test
           pnpm --filter @omnitron-dev/access check:bundle
-      - name: Typecheck (all packages + apps)
-        run: pnpm -r run typecheck
 
   workspace-tests:
     name: Full workspace tests

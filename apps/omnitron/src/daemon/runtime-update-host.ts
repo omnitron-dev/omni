@@ -178,7 +178,7 @@ export async function restoreRuntimeRoles(plan: RuntimeUpdatePlan, observe: () =
   if (roles.guardian !== plan.before.guardian) {
     if (pending) throw Error('Recorded guardian restoration is unconfirmed');
     if (roles.guardian !== plan.target.artifact) throw Error('Guardian changed outside the reviewed restoration');
-    const transition = await call<{ file: string }>(['backend', 'guardian', 'prepare', path.join(plan.instance, 'runtime/releases', plan.before.guardian, cliDist)]);
+    const transition = await call<{ file: string }>(['backend', 'guardian', 'prepare', path.join(plan.instance, 'runtime/releases', plan.before.guardian)]);
     const { phase, reference } = await guardianPlan(transition.file, undefined, roles);
     if (phase !== 'prepared') throw Error('A new guardian restoration must be prepared before its first effect');
     await restoration.recordGuardian(reference);
@@ -579,7 +579,7 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
       if (guardian !== backend && !plan.configuration) {
         // Service install binds the guardian to the selected backend. Restore an independently pinned guardian through its own handoff.
         await until('Waiting for the restored controller', async () => assertLocalIdle(await call<RuntimeUpdateStatusObservation>(['status'])), 10 * 60_000);
-        const transition = await call<{ file: string }>(['backend', 'guardian', 'prepare', path.join(installed(guardian), cliDist)]);
+        const transition = await call<{ file: string }>(['backend', 'guardian', 'prepare', installed(guardian)]);
         await call(['backend', 'guardian', 'apply', transition.file, '--check']);
         await call(['backend', 'guardian', 'apply', transition.file]);
       }

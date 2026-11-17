@@ -36,9 +36,11 @@ async function fixture(lost?: 'backend' | 'guardian' | 'retired' | 'configured')
   const call: RuntimeUpdateCall = async <T>(args: readonly string[]) => {
     calls.push([...args]);
     if (args[1] === 'upgrade') {
+      expect(args).toEqual(['backend', 'upgrade', path.join(instance, 'runtime/releases', previous, 'packages/0/dist')]);
       expect(accepted).toHaveBeenCalledOnce(); roles.backend = previous;
       if (fail === 'backend') { fail = undefined; throw Error('backend acknowledgement lost'); }
     } else if (args[2] === 'prepare') {
+      expect(args).toEqual(['backend', 'guardian', 'prepare', path.join(instance, 'runtime/releases', guardian)]);
       await writePrivateRecord(file, transition); return { file } as T;
     } else if (args[2] === 'apply') {
       expect(reference?.file).toBe(file);

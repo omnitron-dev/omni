@@ -105,7 +105,8 @@ export async function withLocalRuntime(root, cache, run, progress, use, { prepar
           try { await cleanup(signal); } catch (error) { failures.push(error); throw error; }
         } });
       const result = await pipeline.run({}, { concurrency: 2 });
-      if (!result.success) throw new AggregateError(failures, 'Local preparation or build cleanup failed; retained runtime and preparation receipts were not rolled back');
+      if (!result.success) throw new AggregateError(failures,
+        'Local preparation or build cleanup failed; retained runtime and preparation receipts were not rolled back', { cause: result });
       return value;
     } catch (error) { failure = error; throw error; }
     finally {

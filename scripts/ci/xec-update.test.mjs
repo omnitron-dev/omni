@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { withLocalRuntime } from '../../.xec/local-runtime.mjs';
+import { within } from '@xec-sh/core';
 import test from 'node:test';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -326,4 +327,18 @@ test('effecting consumers wait for cleanup and do not run if it fails', finaliza
   const fixture = await finalizationFixture(t, { cleanup: async () => { throw Error('cleanup failure'); } });
   await assert.rejects(withLocalRuntime(process.cwd(), fixture.cache, fixture.run, () => {}, async () => assert.fail('activation must wait')),
     /cleanup failure/);
+});
+
+test('cancellation after a callback retains the pipeline outcome even without a callback exception', finalizationOptions, async t => {
+  const fixture = await finalizationFixture(t), controller = new AbortController();
+  await assert.rejects(within({ signal: controller.signal }, () =>
+    withLocalRuntime(process.cwd(), fixture.cache, fixture.run, () => {}, async () => {
+      controller.abort(new Error('operator cancelled preparation')); return 'observed';
+    }, { prepareWhileCleaning: true })), error => {
+      assert(error instanceof AggregateError);
+      assert.equal(error.cause.status, 'cancelled');
+      assert(error.cause.steps.some(step => step.cancelled && step.error));
+      return true;
+    });
+  await verifyRuntimeArtifact(fixture.directory);
 });

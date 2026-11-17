@@ -3,7 +3,8 @@ import { Alert, Button } from '@mui/material';
 import { LoadingScreen } from '@omnitron-dev/prism/components/loading-screen';
 import { RoleBasedGuard, hasPermission, type AuthState } from '@omnitron-dev/prism/auth';
 import type { ConsoleAccess } from '@omnitron-dev/omnitron/dto/services';
-import { useLocation } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
+import { consoleRoute, type PagePermission } from 'src/routes/navigation';
 import { access, type OmnitronConsoleSchema } from 'src/netron/client';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { useAuthStore } from './store';
@@ -76,12 +77,6 @@ export function Can({ permission, children }: { permission: RpcPermission; child
   return can(permission) ? children : null;
 }
 
-type PagePermission = RpcPermission | [RpcPermission, ...RpcPermission[]];
-
-export function canOpenPage(can: AccessState['can'], permission?: PagePermission): boolean {
-  return !permission || (Array.isArray(permission) ? permission.some(can) : can(permission));
-}
-
 export function AccessBoundary({ permission, children }: { permission: PagePermission; children: ReactNode }) {
   const { error, refresh } = useAccess();
   if (error)
@@ -107,31 +102,10 @@ export function AccessBoundary({ permission, children }: { permission: PagePermi
   );
 }
 
-/** Entry-point permissions come from the actual RPC each page reads. */
-export const PAGE_PERMISSIONS: Record<string, PagePermission> = {
-  dashboard: 'OmnitronDaemon.status',
-  'dashboard-builder': ['OmnitronDaemon.status', 'OmnitronProject.getProjectApps', 'OmnitronMetrics.querySeries', 'OmnitronAlerts.getSummary'],
-  apps: 'OmnitronProject.getProjectApps',
-  nodes: 'OmnitronNodes.listNodes',
-  terminal: 'OmnitronTerminal.open',
-  files: 'OmnitronFiles.roots',
-  projects: 'OmnitronProject.listProjects',
-  system: 'OmnitronSystemInfo.getSnapshot',
-  logs: 'OmnitronLogs.queryLogs',
-  audit: 'OmnitronAudit.list',
-  access: 'OmnitronAccess.describe',
-  releases: 'OmnitronRelease.list',
-  stacks: 'OmnitronProject.listStacks',
-  metrics: 'OmnitronMetrics.getSnapshot',
-  topology: 'OmnitronNodes.listNodes',
-  containers: ['OmnitronInfra.listContainers', 'OmnitronProject.listStacks'],
-  deployments: ['OmnitronProject.getDeployProgress', 'OmnitronRelease.deployments', 'OmnitronDeploy.getHistory'],
-  alerts: 'OmnitronAlerts.getRules',
-  pipelines: 'OmnitronPipelines.listPipelines',
-  traces: 'OmnitronTraces.queryTraces',
-};
 export function PageAccess({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
-  const permission = pathname.startsWith('/apps/') ? 'OmnitronDaemon.getApp' : PAGE_PERMISSIONS[pathname.split('/')[1] || 'dashboard'];
+  const project = useProjectStore(s => s.activeProject);
+  const { permission, requiresProject } = consoleRoute(pathname);
+  if (requiresProject && !project) return <Navigate to="/" replace />;
   return permission ? <AccessBoundary permission={permission}>{children}</AccessBoundary> : children;
 }

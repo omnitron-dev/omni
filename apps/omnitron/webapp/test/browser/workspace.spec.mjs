@@ -285,3 +285,48 @@ for (const direction of ['ltr', 'rtl']) {
     }
   });
 }
+
+test('Overview separates observed health from process state and scopes expensive reads', async ({ page, url }) => {
+  let processLists = 0;
+  const app = (name, health) => ({ name, health, handleKey: 'sample/dev/' + name, status: 'online',
+    instances: 1, uptime: 3000, cpu: 1, memory: 1024, restarts: 0 });
+  await stubInventory(page, {
+    'OmnitronProject.listProjects': [{ name: 'sample', displayName: 'Sample', path: '/sample', totalStacks: 1, runningStacks: 1 }],
+    'OmnitronProject.listStacks': [{ name: 'dev', status: 'running', type: 'local', nodes: [],
+      apps: [app('search', 'healthy'), app('storage', 'unhealthy'), app('portal', undefined)] }],
+    'OmnitronDaemon.list': () => { processLists++; return []; },
+  });
+  await page.addInitScript(() => localStorage.setItem('omnitron_active_project', 'sample'));
+  await page.goto(url + '/workspace.html?view=dashboard');
+  const table = page.getByRole('table', { name: 'Applications' });
+  const rows = table.getByRole('row');
+  await expect(rows.nth(1).getByRole('rowheader')).toHaveText(/^storage/);
+  await expect(rows.nth(1)).toContainText('online');
+  await expect(rows.nth(1)).toContainText('Unhealthy');
+  await expect(table.getByRole('row', { name: /portal/ })).toContainText('Health unknown');
+  await expect(table.getByRole('link')).toHaveCount(0);
+  const attention = page.getByRole('button', { name: 'Needs attention (1)' });
+  await attention.click();
+  await expect(rows).toHaveCount(2);
+  await expect(attention).toHaveAttribute('aria-pressed', 'true');
+  await attention.click();
+  await expect(rows).toHaveCount(4);
+  const disclosure = page.getByRole('button', { name: 'Show resource distribution' });
+  await expect(page.getByRole('combobox', { name: 'Resource' })).toHaveCount(0);
+  await disclosure.focus();
+  await disclosure.press('Enter');
+  await expect(page.getByRole('combobox', { name: 'Resource' })).toBeVisible();
+  await page.getByRole('button', { name: 'Hide resource distribution' }).click();
+  await page.setViewportSize({ width: 360, height: 740 });
+  await expect(table.getByRole('rowheader', { name: /storage/ })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+  expect(processLists).toBe(0);
+});
+
+test('an unavailable initial daemon inventory never becomes an empty selection', async ({ page, url }) => {
+  await stubInventory(page, { 'OmnitronDaemon.list': new Error('Owner connection unavailable') });
+  await page.goto(url + '/workspace.html?view=dashboard');
+  await expect(page.getByText(/Application inventory is unavailable.*Owner connection unavailable/)).toBeVisible();
+  await expect(page.getByText('No applications in this selection.')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
+});

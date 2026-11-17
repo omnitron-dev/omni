@@ -75,6 +75,8 @@ export interface ShownApp {
   /** Run by a node rather than by this daemon. */
   remote: boolean;
   status: IProjectAppStatus['status'];
+  health?: IProjectAppStatus['health'];
+  instances?: number;
   pid: number | null;
   uptime: number;
   cpu: number;
@@ -128,6 +130,8 @@ export function shownApps(
     const own = isLocal(app) ? byHandle.get(app.handleKey) : undefined;
     return {
       ...facts(app),
+      ...(app.health && { health: app.health }),
+      ...(app.instances !== undefined && { instances: app.instances }),
       key: isLocal(app) ? app.handleKey : `${app.stack}/${app.name}`,
       name: app.name,
       stack: app.stack,

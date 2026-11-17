@@ -1,344 +1,246 @@
-import { stackApps as inventoryApps, stackCounts, stacksInScope } from 'src/utils/stack-inventory';
-import { Breadcrumbs } from 'src/components/page-breadcrumbs';
-/** Selected deployments, current resource readings and links to operational detail. */
-
-import { useState, useEffect, useCallback, useRef } from 'react';
-import Grid from '@mui/material/Grid';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import Typography from '@mui/material/Typography';
-import Stack from '@mui/material/Stack';
-import Box from '@mui/material/Box';
-import Chip from '@mui/material/Chip';
-import Link from '@mui/material/Link';
-import Button from '@mui/material/Button';
+import { useEffect, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
-import { statusColor } from 'src/utils/constants';
-import { formatBytes, formatCpu, resourceTotal } from 'src/utils/metric-series';
-import { ResourceBreakdown } from 'src/components/resource-breakdown';
-
+import { Button, Chip, Grid, Link, Stack, Typography } from '@mui/material';
 import { Alert } from '@omnitron-dev/prism/components/alert';
-import { StatCard } from '@omnitron-dev/prism/components/card';
-import { daemon, metrics } from 'src/netron/client';
-import { formatUptime } from 'src/utils/formatters';
-import { useRealtimeStore } from 'src/stores/realtime.store';
-import { usePollingEffect } from 'src/hooks/use-polled-resource';
-import { useActiveProjectStacks, useProjectStore } from 'src/stores/project.store';
+import { StatCard, type StatCardProps } from '@omnitron-dev/prism/components/card';
+import { Table, type TableColumn } from '@omnitron-dev/prism/components/table';
+import { healthLabel } from '@omnitron-dev/omnitron/stack-reading';
+import { useAccess } from 'src/auth/access';
+import { Breadcrumbs } from 'src/components/page-breadcrumbs';
+import { ResourceBreakdown } from 'src/components/resource-breakdown';
+import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { useStackContext } from 'src/hooks/use-stack-context';
+import { daemon, metrics } from 'src/netron/client';
+import { useProjectStore } from 'src/stores/project.store';
+import { useRealtimeStore } from 'src/stores/realtime.store';
 import { shownApps, type ShownApp } from 'src/utils/app-address';
+import { statusColor } from 'src/utils/constants';
+import { formatUptime } from 'src/utils/formatters';
+import { formatBytes, formatCpu, resourceTotal } from 'src/utils/metric-series';
+import { stackApps, stackCounts, stacksInScope } from 'src/utils/stack-inventory';
 
-import type { ProcessInfoDto, MetricsSnapshot } from '@omnitron-dev/omnitron/dto/services';
-
-// ---------------------------------------------------------------------------
-// App Status Card
-// ---------------------------------------------------------------------------
-
-function AppStatusCard({ app }: { app: ShownApp }) {
+function attention(app: ShownApp) {
   return (
-    <Card
-      variant="outlined"
-      sx={{
-        height: '100%',
-        '& h4': { fontSize: { xs: 22, sm: 26 }, overflowWrap: 'anywhere', fontVariantNumeric: 'tabular-nums' },
-      }}
-    >
-      <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-        <Stack direction="row" useFlexGap spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', mb: 1.5 }}>
-          <Typography variant="subtitle2" sx={{ minWidth: 0, flex: '1 1 100px', overflowWrap: 'anywhere' }}>
-            {app.remote ? (
-              app.name
-            ) : (
-              <Link
-                component={RouterLink}
-                to={`/apps/${encodeURIComponent(app.key)}`}
-                color="inherit"
-                underline="hover"
-              >
-                {app.name}
-              </Link>
-            )}
-          </Typography>
-          <Chip label={app.status} color={statusColor(app.status)} size="small" variant="outlined" />
-        </Stack>
-        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
-          {[
-            { label: 'CPU', value: formatCpu(app.cpu) },
-            { label: 'Resident memory', value: formatBytes(app.memory) },
-            { label: 'Uptime', value: formatUptime(app.uptime) },
-            { label: 'Restarts', value: app.restarts },
-          ].map((item) => (
-            <Box key={item.label} sx={{ minWidth: 0 }}>
-              <Typography variant="caption" color="text.secondary">
-                {item.label}
-              </Typography>
-              <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums', overflowWrap: 'anywhere' }}>
-                {item.value}
-              </Typography>
-            </Box>
-          ))}
-        </Box>
-        {!!app.processes?.length && (
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
-            {app.processes.filter((process) => process.status === 'online').length}/{app.processes.length} processes
-            online
-          </Typography>
-        )}
-      </CardContent>
-    </Card>
+    statusColor(app.status) === 'error' ||
+    app.status === 'degraded' ||
+    app.health === 'unhealthy' ||
+    app.health === 'degraded'
   );
 }
 
-// ---------------------------------------------------------------------------
-// App Status Grid — groups by stack when showing all stacks
-// ---------------------------------------------------------------------------
-
-function AppStatusGrid({
+function ApplicationInventory({
   apps,
-  activeStack,
-  activeProject,
+  project,
+  stack,
 }: {
   apps: ShownApp[];
-  activeStack: string | null;
-  activeProject: string | null;
+  project: string | null;
+  stack: string | null;
 }) {
-  // If a specific stack is selected, or no app belongs to one, show flat grid
-  if (activeStack || apps.every((a) => a.stack === null)) {
-    return (
-      <Grid container spacing={1.5}>
-        {apps.map((app) => (
-          <Grid key={app.key} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-            <AppStatusCard app={app} />
-          </Grid>
-        ))}
-      </Grid>
-    );
-  }
+  const [onlyAttention, setOnlyAttention] = useState(false);
+  const { can } = useAccess();
+  const issues = apps.filter(attention);
+  const columns: TableColumn<ShownApp>[] = [
+    {
+      id: 'name',
+      label: 'Application',
+      rowHeader: true,
+      render: (app) => {
+        const href = app.remote
+          ? app.stack && can('OmnitronProject.listStacks') && `/stacks/${encodeURIComponent(app.stack)}`
+          : can('OmnitronDaemon.getApp') && `/apps/${encodeURIComponent(app.key)}`;
+        const scope = project ? app.stack : app.key.split('/').slice(0, -1).join('/');
+        const processes = app.processes?.length
+          ? `${app.processes.filter((process) => process.status === 'online').length}/${app.processes.length} processes online`
+          : app.instances && app.instances > 1
+            ? `${app.instances} instances`
+            : '';
+        const detail = [!stack && scope, app.remote && 'Remote', processes].filter(Boolean).join(' · ');
+        return (
+          <>
+            {href ? (
+              <Link
+                component={RouterLink}
+                to={href}
+                underline="hover"
+                color="inherit"
+                aria-label={app.remote ? `Open stack ${app.stack} for ${app.name}` : undefined}
+              >
+                {app.name}
+              </Link>
+            ) : (
+              app.name
+            )}
+            {detail && (
+              <Typography component="span" variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                {detail}
+              </Typography>
+            )}
+          </>
+        );
+      },
+    },
+    {
+      id: 'status',
+      label: 'Process',
+      render: (app) => <Chip size="small" variant="outlined" label={app.status} color={statusColor(app.status)} />,
+    },
+    {
+      id: 'health',
+      label: 'Health',
+      render: (app) => (
+        <Typography
+          variant="body2"
+          color={
+            app.health === 'unhealthy' ? 'error.main' : app.health === 'degraded' ? 'warning.main' : 'text.secondary'
+          }
+        >
+          {healthLabel(app.health)}
+        </Typography>
+      ),
+    },
+    { id: 'cpu', label: 'CPU', align: 'right', render: (app) => formatCpu(app.cpu) },
+    { id: 'memory', label: 'Memory', align: 'right', render: (app) => formatBytes(app.memory) },
+    { id: 'uptime', label: 'Uptime', align: 'right', render: (app) => formatUptime(app.uptime) },
+    {
+      id: 'restarts',
+      label: 'Restarts',
+      align: 'right',
+      render: (app) => (Number.isFinite(app.restarts) && app.restarts >= 0 ? app.restarts : '—'),
+    },
+  ];
 
-  // Group apps by the stack they belong to. Not by parsing the handle: a
-  // remote stack's apps carry the node's naming, `sample/deployed/main`.
-  const groups = new Map<string, ShownApp[]>();
-  for (const app of apps) {
-    const stackLabel = activeProject
-      ? (app.stack ?? 'default')
-      : app.key.includes('/')
-        ? app.key.split('/').slice(0, 2).join('/')
-        : 'Local';
-    if (!groups.has(stackLabel)) groups.set(stackLabel, []);
-    groups.get(stackLabel)!.push(app);
-  }
-
+  const rows = (onlyAttention ? issues : [...apps]).sort(
+    (a, b) => Number(attention(b)) - Number(attention(a)) || a.name.localeCompare(b.name) || a.key.localeCompare(b.key)
+  );
   return (
-    <Stack spacing={3}>
-      {Array.from(groups.entries()).map(([stackName, stackApps]) => (
-        <Box key={stackName}>
-          <Stack
-            direction="row"
-            sx={{
-              alignItems: 'center',
-              gap: 1,
-              flexWrap: 'wrap',
-              mb: 1.5,
-            }}
+    <Stack component="section" aria-labelledby="overview-applications" spacing={1}>
+      <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
+        <Typography component="h2" variant="h6" id="overview-applications">
+          Applications
+        </Typography>
+        {(issues.length > 0 || onlyAttention) && (
+          <Button
+            size="small"
+            variant={onlyAttention ? 'contained' : 'outlined'}
+            aria-pressed={onlyAttention}
+            onClick={() => setOnlyAttention((value) => !value)}
           >
-            <Box
-              sx={{
-                width: 8,
-                height: 8,
-                borderRadius: '50%',
-                bgcolor: stackApps.every((a) => a.status === 'online') ? 'success.main' : 'warning.main',
-              }}
-            />
-            <Typography
-              variant="subtitle2"
-              sx={{
-                fontWeight: 700,
-                textTransform: 'uppercase',
-                letterSpacing: 0.5,
-                overflowWrap: 'anywhere',
-              }}
-            >
-              {stackName}
-              {stackApps.some((a) => a.remote) ? ' · remote' : ''}
-            </Typography>
-            <Typography
-              variant="caption"
-              sx={{
-                color: 'text.secondary',
-              }}
-            >
-              {stackApps.filter((a) => a.status === 'online').length}/{stackApps.length} online
-            </Typography>
-          </Stack>
-          <Grid container spacing={1.5}>
-            {stackApps.map((app) => (
-              <Grid key={app.key} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-                <AppStatusCard app={app} />
-              </Grid>
-            ))}
-          </Grid>
-        </Box>
-      ))}
+            Needs attention ({issues.length})
+          </Button>
+        )}
+      </Stack>
+      <Table
+        aria-label="Applications"
+        scrollLabel="Application inventory"
+        rowKey="key"
+        columns={columns}
+        data={rows}
+        dense
+        emptyContent={
+          onlyAttention ? 'No applications currently need attention.' : 'No applications in this selection.'
+        }
+        sx={{ '& td, & th': { whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' } }}
+      />
     </Stack>
   );
 }
 
-// ---------------------------------------------------------------------------
-// KPI Skeleton
-// ---------------------------------------------------------------------------
-
-function KpiSkeleton() {
-  return (
-    <>
-      {Array.from({ length: 4 }).map((_, i) => (
-        <Grid key={i} size={{ xs: 6, sm: 3 }}>
-          <StatCard
-            label=""
-            value=""
-            loading
-            sx={{
-              height: '100%',
-              '& h4': { fontSize: { xs: 22, sm: 26 }, overflowWrap: 'anywhere', fontVariantNumeric: 'tabular-nums' },
-            }}
-          />
-        </Grid>
-      ))}
-    </>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Dashboard Page
-// ---------------------------------------------------------------------------
-
 export default function DashboardPage() {
   const { activeProject, activeStack } = useStackContext();
-  return <DashboardReader key={JSON.stringify([activeProject, activeStack])} />;
+  const { can, snapshot } = useAccess();
+  const readProcesses = !activeProject && can('OmnitronDaemon.list');
+  const readStacks = !!activeProject && can('OmnitronProject.listStacks');
+  const readMetrics = can('OmnitronMetrics.getSnapshot');
+  return (
+    <DashboardReader
+      key={JSON.stringify([activeProject, activeStack, snapshot?.userId, readStacks, readProcesses, readMetrics])}
+      project={activeProject}
+      stack={activeStack}
+      readStacks={readStacks}
+      readProcesses={readProcesses}
+      readMetrics={readMetrics}
+    />
+  );
 }
 
-function DashboardReader() {
-  const [processes, setProcesses] = useState<ProcessInfoDto[]>([]);
-  /** The selected project's deployments, with the project they answer for. */
-  const [metricsSnapshot, setMetricsSnapshot] = useState<MetricsSnapshot | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const isFirstLoad = useRef(true);
-  const busy = useRef(false);
-  const [receivedAt, setReceivedAt] = useState<number | null>(null);
-
-  const { activeProject, activeStack } = useStackContext();
-  const allStacks = useActiveProjectStacks();
-  const stacks = stacksInScope(allStacks, activeStack);
-  const inventoryKnown = useProjectStore(s => !!activeProject && s.stacksByProject[activeProject] !== undefined);
-
-  const fetchData = useCallback(async () => {
-    if (busy.current) return;
-    busy.current = true;
-    try {
-      const [projectInventory, appList, snapshot] = await Promise.allSettled([
-        activeProject ? useProjectStore.getState().fetchStacks(activeProject) : Promise.resolve(null),
-        daemon.list(),
-        metrics.getSnapshot(),
-      ]);
-
-      if (appList.status === 'fulfilled') setProcesses(appList.value);
-      if (snapshot.status === 'fulfilled') setMetricsSnapshot(snapshot.value);
-
-      // `allSettled` never rejects, so the `catch` below cannot see a failed
-      // half — and clearing the error unconditionally turned a partial
-      // failure into a positive claim of health: the dashboard kept showing
-      // the last apps it had, with nothing to say they were stale. This
-      // panel is where an operator looks first, so "the numbers are old" has
-      // to be visible on it rather than inferred from them not moving.
-      const failed = [
-        activeProject && (projectInventory.status === 'rejected' || projectInventory.value === null) ? `${activeProject}'s apps` : null,
-        appList.status === 'rejected' ? 'the app list' : null,
-        snapshot.status === 'rejected' ? 'metrics' : null,
-      ].filter(Boolean);
-
-      if (failed.length > 0) {
-        const reason =
-          (projectInventory.status === 'rejected' ? (projectInventory.reason as Error)?.message : activeProject ? useProjectStore.getState().stackReadErrors[activeProject] : null) ??
-          (appList.status === 'rejected' ? (appList.reason as Error)?.message : null) ??
-          (snapshot.status === 'rejected' ? (snapshot.reason as Error)?.message : null) ??
-          'the daemon did not answer';
-        setError(`Could not refresh ${failed.join(' and ')} — ${reason}. Figures below are the last received.`);
-        return;
-      }
-
-      setError(null);
-      setReceivedAt(Date.now());
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to connect to daemon');
-    } finally {
-      busy.current = false;
-      if (isFirstLoad.current) {
-        setLoading(false);
-        isFirstLoad.current = false;
-      }
-    }
-  }, [activeProject]);
-
-  // Another project is another question: ask it now rather than on the next
-  // tick. The poll's own first tick covers the mount.
-  const mounted = useRef(false);
+function DashboardReader({
+  project,
+  stack,
+  readStacks,
+  readProcesses,
+  readMetrics,
+}: {
+  project: string | null;
+  stack: string | null;
+  readStacks: boolean;
+  readProcesses: boolean;
+  readMetrics: boolean;
+}) {
+  const { can } = useAccess();
+  // The shell owns the project's inventory subscription. All project counts and rows
+  // use that same observation, including a failed refresh and the last good result.
+  const inventory = useProjectStore((s) => (readStacks && project ? s.stacksByProject[project] : undefined));
+  const inventoryError = useProjectStore((s) => (readStacks && project ? s.stackReadErrors[project] : null));
+  const connected = useRealtimeStore((s) => s.connected);
+  const lastAppEvent = useRealtimeStore((s) => s.appEvents[0]);
+  const intervalMs = connected ? 15_000 : 5_000;
+  const processes = usePolledResource(() => daemon.list(), { intervalMs, enabled: readProcesses });
+  const refreshProcesses = processes.refresh;
   useEffect(() => {
-    if (!mounted.current) {
-      mounted.current = true;
-      return;
-    }
-    void fetchData();
-  }, [fetchData]);
+    if (readProcesses && lastAppEvent && document.visibilityState === 'visible') void refreshProcesses();
+  }, [readProcesses, lastAppEvent, refreshProcesses]);
 
-  // Initialize WebSocket realtime connection
-  const wsConnected = useRealtimeStore((s) => s.connected);
-  const lastEvent = useRealtimeStore((s) => s.lastEvent);
-  const initializeRealtime = useRealtimeStore((s) => s.initialize);
-
-  useEffect(() => {
-    const cleanup = initializeRealtime();
-    return cleanup;
-  }, [initializeRealtime]);
-
-  // When WS is connected, increase poll interval to 15s (WS pushes trigger refresh).
-  // When WS is not connected, poll every 5s as before.
-  // Any WS event triggers an immediate data refresh.
-  usePollingEffect(() => void fetchData(), {
-    intervalMs: wsConnected ? 15_000 : 5_000,
+  const selected = inventory && stacksInScope(inventory, stack);
+  const apps = project
+    ? selected
+      ? shownApps(project, stack, stackApps(selected), [])
+      : null
+    : processes.data && shownApps(null, null, null, processes.data);
+  const hasLocalReadings = !!apps?.some((app) => !app.remote && app.status === 'online');
+  const sample = usePolledResource(() => metrics.getSnapshot(), {
+    intervalMs,
+    enabled: readMetrics && hasLocalReadings,
   });
-
-  // Re-fetch on any WS event (app started/crashed/restarted)
-  useEffect(() => {
-    if (lastEvent) fetchData();
-  }, [lastEvent, fetchData]);
-
-  const shown = shownApps(
-    activeProject,
-    activeStack,
-    inventoryKnown ? inventoryApps(allStacks) : null,
-    processes
-  );
-  const apps = shown ?? [];
-
-  // KPI source-of-truth rule: the daemon's `apps` list defines the SET we
-  // count. The metrics snapshot is used only to enrich per-app cpu/memory
-  // (titan-metrics samples those every 5s, often fresher than the daemon's
-  // own bookkeeping). We never trust `snap.totals.*` directly because it
-  // sums across the entire ring buffer — pre-staleness filter that meant
-  // ghosts (stack-switched / renamed / dev-reloaded apps that no longer
-  // report) would inflate the count; even with the filter it bypasses the
-  // active stack filter the user has selected.
-  // The snapshot is this daemon's: it enriches local apps only, by handle.
-  const snapApps = metricsSnapshot?.apps ?? {};
-  const sampled = (a: ShownApp) => (a.remote || a.status !== 'online' ? undefined : snapApps[a.key]);
-  const totalApps = apps.length;
-  const onlineCount = apps.filter((a) => a.status === 'online').length;
-  const unknownCount = apps.filter(app => app.status === 'unknown').length;
-  const offlineCount = totalApps - onlineCount - unknownCount;
-  const readings = apps.map((a) => ({ ...a, cpu: sampled(a)?.cpu ?? a.cpu, memory: sampled(a)?.memory ?? a.memory }));
-  const totalCpu = resourceTotal(readings.map((a) => a.cpu));
-  const totalMemory = resourceTotal(readings.map((a) => a.memory));
-  const { runningStacks, unknownStacks } = stackCounts(stacks);
-  const stacksKnown = useProjectStore(s => !!activeProject && s.stacksByProject[activeProject] !== undefined);
+  const readings = apps?.map((app) => {
+    const value = !app.remote && app.status === 'online' ? sample.data?.apps?.[app.key] : undefined;
+    return value ? { ...app, cpu: value.cpu ?? app.cpu, memory: value.memory ?? app.memory } : app;
+  });
+  const online = apps?.filter((app) => app.status === 'online').length ?? 0;
+  const counts = selected && stackCounts(selected);
+  const loading = readStacks ? !inventory && !inventoryError : readProcesses && processes.loading;
+  const failure = inventoryError || processes.error;
+  const retry = () => {
+    if (project && readStacks) void useProjectStore.getState().fetchStacks(project);
+    if (readProcesses) void processes.refresh();
+  };
+  const summary: Pick<StatCardProps, 'label' | 'value' | 'subtitle'>[] = [
+    { label: 'Applications', value: apps ? `${online}/${apps.length}` : '—', subtitle: 'Applications online' },
+    {
+      label: 'Stacks',
+      value:
+        selected && counts
+          ? `${counts.runningStacks}/${selected.length}`
+          : apps
+            ? new Set(apps.map((app) => app.key.split('/').slice(0, -1).join('/') || 'local')).size
+            : '—',
+      subtitle: project
+        ? counts?.unknownStacks
+          ? `${counts.unknownStacks} unknown`
+          : 'Stacks running'
+        : 'On this daemon',
+    },
+    {
+      label: 'CPU',
+      value: formatCpu(readings && resourceTotal(readings.map((app) => app.cpu))),
+      subtitle: 'Across selected apps',
+    },
+    {
+      label: 'Memory',
+      value: formatBytes(readings && resourceTotal(readings.map((app) => app.memory))),
+      subtitle: 'Resident memory',
+    },
+  ];
 
   return (
     <Stack spacing={2} sx={{ minWidth: 0 }}>
@@ -346,131 +248,49 @@ function DashboardReader() {
         heading="Overview"
         links={[{ name: 'Overview' }]}
         action={
-          activeProject ? (
-            <Stack direction="row" spacing={1}>
-              <Button component={RouterLink} to="/metrics" size="small">
-                Metrics
-              </Button>
-              <Button component={RouterLink} to="/topology" size="small">
-                Topology
-              </Button>
-            </Stack>
+          stack && readStacks ? (
+            <Button size="small" component={RouterLink} to={`/stacks/${encodeURIComponent(stack)}`}>
+              Open stack
+            </Button>
+          ) : project && can('OmnitronMetrics.getSnapshot') ? (
+            <Button size="small" component={RouterLink} to="/metrics">
+              Metrics
+            </Button>
           ) : undefined
         }
       />
-      {error && (
-        <Alert severity="warning" variant="outlined">
-          {error}
+      {failure && (
+        <Alert severity="warning" variant="outlined" action={<Button onClick={retry}>Retry</Button>}>
+          {apps ? 'Showing the last available application inventory.' : 'Application inventory is unavailable.'}{' '}
+          {failure}
         </Alert>
       )}
-      {/* Row 1: KPI Stat Cards */}
-      <Grid container spacing={1.5}>
-        {loading || shown === null ? (
-          <KpiSkeleton />
-        ) : (
-          <>
-            <Grid size={{ xs: 6, sm: 3 }}>
-              <StatCard
-                label="Applications"
-                value={totalApps === 0 ? '0' : `${onlineCount}/${totalApps}`}
-                subtitle={totalApps === 0 ? 'No apps yet' : [offlineCount > 0 ? `${offlineCount} not online` : '', unknownCount > 0 ? `${unknownCount} unknown` : ''].filter(Boolean).join(' · ') || 'All online'}
-                color={totalApps === 0 ? 'secondary' : offlineCount + unknownCount > 0 ? 'warning' : 'success'}
-                sx={{
-                  height: '100%',
-                  '& h4': {
-                    fontSize: { xs: 22, sm: 26 },
-                    overflowWrap: 'anywhere',
-                    fontVariantNumeric: 'tabular-nums',
-                  },
-                }}
-              />
-            </Grid>
-            <Grid size={{ xs: 6, sm: 3 }}>
-              <StatCard
-                label="Stacks"
-                value={
-                  activeProject
-                    ? stacksKnown ? `${runningStacks}/${stacks.length}` : '—'
-                    : new Set(apps.map((a) => a.key.split('/').slice(0, -1).join('/') || 'local')).size
-                }
-                subtitle={activeProject ? `${runningStacks} running${unknownStacks ? ` · ${unknownStacks} unknown` : ''}` : 'On this daemon'}
-                color={runningStacks > 0 ? 'primary' : 'secondary'}
-                sx={{
-                  height: '100%',
-                  '& h4': {
-                    fontSize: { xs: 22, sm: 26 },
-                    overflowWrap: 'anywhere',
-                    fontVariantNumeric: 'tabular-nums',
-                  },
-                }}
-              />
-            </Grid>
-            <Grid size={{ xs: 6, sm: 3 }}>
-              <StatCard
-                label="CPU"
-                value={formatCpu(totalCpu)}
-                subtitle="Sum across selected apps"
-                color="primary"
-                sx={{
-                  height: '100%',
-                  '& h4': {
-                    fontSize: { xs: 22, sm: 26 },
-                    overflowWrap: 'anywhere',
-                    fontVariantNumeric: 'tabular-nums',
-                  },
-                }}
-              />
-            </Grid>
-            <Grid size={{ xs: 6, sm: 3 }}>
-              <StatCard
-                label="Memory"
-                value={formatBytes(totalMemory)}
-                subtitle="Resident bytes"
-                color="info"
-                sx={{
-                  height: '100%',
-                  '& h4': {
-                    fontSize: { xs: 22, sm: 26 },
-                    overflowWrap: 'anywhere',
-                    fontVariantNumeric: 'tabular-nums',
-                  },
-                }}
-              />
-            </Grid>
-          </>
-        )}
+      {!readStacks && !readProcesses && (
+        <Alert severity="info">Application inventory is unavailable with your current access.</Alert>
+      )}
+      {readMetrics && hasLocalReadings && sample.error && (
+        <Alert
+          severity="warning"
+          variant="outlined"
+          action={<Button onClick={() => void sample.refresh()}>Retry</Button>}
+        >
+          Resource sampling is unavailable. {sample.data ? 'Showing the last samples.' : 'Showing inventory readings.'}{' '}
+          {sample.error}
+        </Alert>
+      )}
+      <Grid container spacing={1} aria-label="Workspace summary">
+        {summary.map((stat) => (
+          <Grid key={stat.label} size={{ xs: 6, sm: 3 }}>
+            <StatCard
+              {...stat}
+              loading={loading}
+              sx={{ height: '100%', '& h4': { fontSize: { xs: 22, sm: 26 }, fontVariantNumeric: 'tabular-nums' } }}
+            />
+          </Grid>
+        ))}
       </Grid>
-      {receivedAt && (
-        <Typography variant="caption" color="text.secondary">
-          {activeProject ? 'Selected deployments' : 'This daemon’s applications'} · received{' '}
-          {new Date(receivedAt).toLocaleTimeString()}. CPU can exceed 100%; memory has no inferred capacity limit.
-        </Typography>
-      )}
-      {!loading && apps.length > 0 && (
-        <ResourceBreakdown
-          apps={readings}
-        />
-      )}
-      {!loading && shown !== null && apps.length === 0 && (
-        <Alert severity="info" variant="outlined">
-          No applications in this selection.
-        </Alert>
-      )}
-      {/* Row 2: Applications Grid — grouped by stack when showing all */}
-      {apps.length > 0 && (
-        <Box>
-          <Typography
-            variant="h6"
-            sx={{
-              fontWeight: 700,
-              mb: 2,
-            }}
-          >
-            Applications
-          </Typography>
-          <AppStatusGrid apps={readings} activeStack={activeStack} activeProject={activeProject} />
-        </Box>
-      )}
+      {readings && <ApplicationInventory apps={readings} stack={stack} project={project} />}
+      {!!readings?.length && <ResourceBreakdown apps={readings} />}
     </Stack>
   );
 }

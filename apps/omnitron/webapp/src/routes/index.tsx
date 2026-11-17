@@ -2,7 +2,6 @@ import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { LoadingScreen } from '@omnitron-dev/prism/components/loading-screen';
 import { AuthGuard, GuestGuard } from 'src/auth/guard';
-import { ProjectGuard } from 'src/auth/project-guard';
 import { ConsoleLayout } from 'src/layouts/console-layout';
 import { AuthLayout } from 'src/layouts/auth-layout';
 
@@ -89,16 +88,15 @@ export function Router() {
         <Route path="apps/:name" element={<Page><AppDetailPage /></Page>} />
 
         {/* Project-scoped — redirect to / if no active project */}
-        <Route path="apps" element={<ProjectRoute><AppsListPage /></ProjectRoute>} />
-        <Route path="stacks" element={<ProjectRoute><StacksPage /></ProjectRoute>} />
-        <Route path="stacks/:name" element={<ProjectRoute><StackDetailPage /></ProjectRoute>} />
-        <Route path="metrics" element={<ProjectRoute><MetricsPage /></ProjectRoute>} />
+        <Route path="apps" element={<Page><AppsListPage /></Page>} />
+        <Route path="stacks" element={<Page><StacksPage /></Page>} />
+        <Route path="stacks/:name" element={<Page><StackDetailPage /></Page>} />
+        <Route path="metrics" element={<Page><MetricsPage /></Page>} />
         <Route path="topology" element={<Page><TopologyPage /></Page>} />
         <Route path="containers" element={<Page><ContainersPage /></Page>} />
-        <Route path="deployments" element={<ProjectRoute><DeploymentsPage /></ProjectRoute>} />
-        <Route path="traces" element={<ProjectRoute><TracesPage /></ProjectRoute>} />
+        <Route path="deployments" element={<Page><DeploymentsPage /></Page>} />
+        <Route path="traces" element={<Page><TracesPage /></Page>} />
 
-        {/* Legacy redirects */}
       </Route>
 
       {/* Catch-all */}
@@ -110,13 +108,4 @@ export function Router() {
 /** Suspense wrapper for lazy pages */
 function Page({ children }: { children: React.ReactNode }) {
   return <Suspense fallback={<LoadingScreen />}>{children}</Suspense>;
-}
-
-/** Project-scoped route: Suspense + ProjectGuard */
-function ProjectRoute({ children }: { children: React.ReactNode }) {
-  return (
-    <Suspense fallback={<LoadingScreen />}>
-      <ProjectGuard>{children}</ProjectGuard>
-    </Suspense>
-  );
 }

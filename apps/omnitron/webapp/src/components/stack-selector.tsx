@@ -9,6 +9,7 @@ import Typography from '@mui/material/Typography';
 import { useProjectStore, useActiveProjectStacks } from '../stores/project.store';
 import { useAccess } from '../auth/access';
 import { getStatusColor } from './topology/shared-styles';
+import { consoleRoute } from '../routes/navigation';
 
 /** Store the workspace with each history entry, including entries reached by a sidebar link. */
 export function StackSelector() {
@@ -39,10 +40,8 @@ export function StackSelector() {
     });
   }, [location, navigate, navigation, project, stack, restore]);
 
-  const segments = location.pathname.split('/').filter(Boolean);
-  const page = segments[0] ?? 'dashboard';
-  const stackDetail = page === 'stacks' && segments.length === 2;
-  if (!stackDetail && (segments.length > 1 || !STACK_VIEWS.has(page))) return null;
+  const { stackFilter, stackDetail } = consoleRoute(location.pathname);
+  if (!stackFilter) return null;
   return <StackFilter onChange={chosen => {
     const state = useProjectStore.getState();
     if (state.activeStack === chosen) return;
@@ -54,8 +53,6 @@ export function StackSelector() {
     });
   }} />;
 }
-
-const STACK_VIEWS = new Set(['dashboard', 'dashboard-builder', 'stacks', 'apps', 'logs', 'metrics', 'topology', 'containers', 'deployments', 'releases']);
 
 function StackFilter({ onChange }: { onChange: (name: string | null) => void }) {
   const { can } = useAccess();

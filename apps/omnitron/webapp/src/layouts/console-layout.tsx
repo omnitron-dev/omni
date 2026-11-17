@@ -10,41 +10,17 @@ import { DashboardLayout, useLayoutConfig } from '@omnitron-dev/prism/layouts';
 import { OmnitronBrand, OmnitronMark, OmnitronSplash } from '@omnitron-dev/prism/identity';
 import { usePrismContext } from '@omnitron-dev/prism/core';
 import { ThemeModeIcon } from '@omnitron-dev/prism/icons';
-import type { LayoutNavData } from '@omnitron-dev/prism/layouts';
+import { consoleNavigation } from 'src/routes/navigation';
 import { StatusBar } from 'src/components/status-bar';
 import { DaemonOfflineBanner } from 'src/components/daemon-offline-banner';
 import { ConsoleUpdateBanner } from 'src/components/console-update-banner';
 import { isVisible } from 'src/components/keyboard-model';
 import { ConsoleKeyboard, useConsoleKeyboard } from 'src/components/console-keyboard';
 
-import {
-  DashboardIcon,
-  AppsIcon,
-  LogsIcon,
-  MetricsIcon,
-  NodesIcon,
-  ProjectIcon,
-  ContainersIcon,
-  DeployIcon,
-  AlertIcon,
-  SettingsIcon,
-  PipelineIcon,
-  TraceIcon,
-  DashboardBuilderIcon,
-  StacksIcon,
-  TerminalIcon,
-  TopologyIcon,
-  AccessIcon,
-  SystemInfoIcon,
-  AuditIcon,
-  LogoutIcon,
-  ReleaseIcon,
-  FolderIcon,
-  SearchIcon,
-} from 'src/assets/icons';
+import { LogoutIcon, SearchIcon } from 'src/assets/icons';
 
 import { useAuthStore } from 'src/auth/store';
-import { useAccess, canOpenPage, PAGE_PERMISSIONS, PageAccess, AccessBoundary } from 'src/auth/access';
+import { useAccess, PageAccess, AccessBoundary } from 'src/auth/access';
 import { ProjectSwitcher } from 'src/components/project-switcher';
 import { StackSelector } from 'src/components/stack-selector';
 import { useActiveProject } from 'src/stores/project.store';
@@ -53,138 +29,6 @@ import { useAlertNotifications } from 'src/hooks/use-alert-notifications';
 
 const TerminalPage = lazy(() => import('src/pages/terminal'));
 const FilesPage = lazy(() => import('src/pages/files'));
-
-// =============================================================================
-// Navigation — conditional on active project
-// =============================================================================
-
-/**
- * When no project is active, show minimal nav:
- *   Dashboard (standalone daemon overview)
- *   System Info
- *   Settings
- *
- * When a project is selected, show full project-scoped nav:
- *   Overview: Dashboard, Applications, Stacks
- *   Observability: Logs, Metrics, Traces, Alerts
- *   Infrastructure: Topology, Containers, Deployments, Pipelines
- *   System: Dashboard Builder, Settings, System Info
- */
-function useNavData(): LayoutNavData {
-  const activeProject = useActiveProject();
-
-  return useMemo(() => {
-    const builder = { id: 'dashboard-builder', title: 'Dashboard Builder', path: '/dashboard-builder', icon: <DashboardBuilderIcon /> };
-    const containers = { id: 'containers', title: 'Containers', path: '/containers', icon: <ContainersIcon /> };
-    const alertNav = { id: 'alerts', title: 'Alerts', path: '/alerts', icon: <AlertIcon /> };
-    if (!activeProject) {
-      // Omnitron system workspace
-      return [
-        {
-          id: 'overview',
-          subheader: 'Overview',
-          items: [{ id: 'dashboard', title: 'Dashboard', path: '/', icon: <DashboardIcon /> }],
-        },
-        {
-          id: 'observability',
-          subheader: 'Observability',
-          items: [{ id: 'logs', title: 'Logs', path: '/logs', icon: <LogsIcon /> }, alertNav],
-        },
-        {
-          id: 'infrastructure',
-          subheader: 'Infrastructure',
-          items: [
-            { id: 'projects', title: 'Projects', path: '/projects', icon: <ProjectIcon /> },
-            containers,
-            { id: 'nodes', title: 'Nodes', path: '/nodes', icon: <NodesIcon /> },
-            { id: 'topology', title: 'Topology', path: '/topology', icon: <TopologyIcon /> },
-            { id: 'terminal', title: 'SSH workspace', path: '/terminal', icon: <TerminalIcon /> },
-            { id: 'files', title: 'Files', path: '/files', icon: <FolderIcon /> },
-            {
-              id: 'pipelines',
-              title: 'Pipelines',
-              path: '/pipelines',
-              icon: <PipelineIcon />,
-              selectionPrefix: '/pipelines',
-            },
-            {
-              id: 'releases',
-              title: 'Releases',
-              path: '/releases',
-              icon: <ReleaseIcon />,
-              selectionPrefix: '/releases',
-            },
-          ],
-        },
-        {
-          id: 'system',
-          subheader: 'System',
-          items: [
-            builder,
-            { id: 'settings', title: 'Settings', path: '/settings', icon: <SettingsIcon /> },
-            { id: 'audit', title: 'Audit', path: '/audit', icon: <AuditIcon /> },
-            { id: 'access', title: 'Access', path: '/access', icon: <AccessIcon /> },
-            { id: 'system-info', title: 'System', path: '/system', icon: <SystemInfoIcon /> },
-          ],
-        },
-      ];
-    }
-
-    // Project active — full navigation
-    return [
-      {
-        id: 'overview',
-        subheader: 'Overview',
-        items: [
-          { id: 'dashboard', title: 'Dashboard', path: '/', icon: <DashboardIcon /> },
-          { id: 'apps', title: 'Applications', path: '/apps', icon: <AppsIcon />, selectionPrefix: '/apps' },
-        ],
-      },
-      {
-        id: 'observability',
-        subheader: 'Observability',
-        items: [
-          { id: 'logs', title: 'Logs', path: '/logs', icon: <LogsIcon /> },
-          { id: 'metrics', title: 'Metrics', path: '/metrics', icon: <MetricsIcon /> },
-          { id: 'traces', title: 'Traces', path: '/traces', icon: <TraceIcon /> },
-          alertNav,
-        ],
-      },
-      {
-        id: 'infrastructure',
-        subheader: 'Infrastructure',
-        items: [
-          { id: 'stacks', title: 'Stacks', path: '/stacks', icon: <StacksIcon />, selectionPrefix: '/stacks' },
-          { id: 'releases', title: 'Releases', path: '/releases', icon: <ReleaseIcon />, selectionPrefix: '/releases' },
-          { id: 'topology', title: 'Topology', path: '/topology', icon: <TopologyIcon /> },
-          { id: 'nodes', title: 'Nodes', path: '/nodes', icon: <NodesIcon /> },
-          { id: 'terminal', title: 'SSH workspace', path: '/terminal', icon: <TerminalIcon /> },
-          { id: 'files', title: 'Files', path: '/files', icon: <FolderIcon /> },
-          containers,
-          { id: 'deployments', title: 'Deployments', path: '/deployments', icon: <DeployIcon /> },
-          {
-            id: 'pipelines',
-            title: 'Pipelines',
-            path: '/pipelines',
-            icon: <PipelineIcon />,
-            selectionPrefix: '/pipelines',
-          },
-        ],
-      },
-      {
-        id: 'system',
-        subheader: 'System',
-        items: [
-          builder,
-          { id: 'settings', title: 'Settings', path: '/settings', icon: <SettingsIcon /> },
-          { id: 'audit', title: 'Audit', path: '/audit', icon: <AuditIcon /> },
-          { id: 'access', title: 'Access', path: '/access', icon: <AccessIcon /> },
-          { id: 'system-info', title: 'System', path: '/system', icon: <SystemInfoIcon /> },
-        ],
-      },
-    ];
-  }, [activeProject]);
-}
 
 // =============================================================================
 // Logo
@@ -258,17 +102,9 @@ function HeaderRight() {
 const workspaceGutter = { xs: 1, sm: 2, lg: 3 };
 
 export function ConsoleLayout() {
-  const allNavData = useNavData();
+  const activeProject = useActiveProject();
   const { can, snapshot } = useAccess();
-  const navData = allNavData
-    .map((section) => ({
-      ...section,
-      items: section.items.filter((item) => {
-        const permission = PAGE_PERMISSIONS[item.path?.split('/')[1] || 'dashboard'];
-        return canOpenPage(can, permission);
-      }),
-    }))
-    .filter((section) => section.items.length > 0);
+  const navData = useMemo(() => consoleNavigation(Boolean(activeProject), can), [activeProject, can]);
   const location = useLocation();
   const terminalVisible = location.pathname === '/terminal';
   const filesVisible = location.pathname === '/files';

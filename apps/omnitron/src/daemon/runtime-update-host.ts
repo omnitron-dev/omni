@@ -11,8 +11,9 @@ import { readRestartConfiguration, saveRestartConfiguration, restartConfiguratio
 import { privateControlClient } from './private-control-client.js';
 import { assertRuntimeUpdateHealth, RuntimeUpdateHealthRegression } from './runtime-update.js';
 import { RuntimeObservationPending, RuntimeObservationConflict, RuntimeObservationUnconfirmed,
-  observeRuntimeUntil, withRuntimeObservation, type RuntimeObservation } from './runtime-observation.js';
+  observeRuntimeUntil, observeStartingController, withRuntimeObservation, type RuntimeObservation } from './runtime-observation.js';
 import { CommandResultError } from '../shared/command-result.js';
+import { captureNativeEmptyRuntime } from './runtime-update-native.js';
 import type { BackendControlService } from './backend-control.js';
 import type { BackendRpcService } from './backend.rpc-service.js';
 import type { ExecutionHostService } from './execution-host.js';
@@ -26,7 +27,7 @@ import type { ManagedRuntime } from './managed-runtime.js';
 import type { RuntimeSelection } from './runtime-installation.js';
 import type { StackStartReview, SelectedRelease } from '../shared/dto/project.js';
 import type { RuntimeUpdateActions, RuntimeUpdateRestoration } from './runtime-update.js';
-import type { RuntimeRestartReview, RuntimeUpdateIdentity, RuntimeUpdateInfrastructure, RuntimeUpdatePlan, RuntimeUpdateProjectObservation, RuntimeUpdateStack, RuntimeUpdateStackObservation, RuntimeUpdateStatusObservation, RuntimeUpdateSelection, ReviewedRuntimeUpdateStack, VerifiedRuntimeReference } from '../shared/dto/runtime-update.js';
+import type { RuntimeRestartReview, RuntimeUpdateIdentity, RuntimeUpdateRetiringIdentity, RuntimeUpdateInfrastructure, RuntimeUpdatePlan, RuntimeUpdateProjectObservation, RuntimeUpdateStack, RuntimeUpdateStackObservation, RuntimeUpdateStatusObservation, RuntimeUpdateSelection, ReviewedRuntimeUpdateStack, VerifiedRuntimeReference } from '../shared/dto/runtime-update.js';
 
 export type RuntimeUpdateCall = <T>(argv: readonly string[], runtimeRoot?: string, options?: { timeoutMs?: number; signal?: AbortSignal }) => Promise<T>;
 interface ColdStartObservation {
@@ -363,18 +364,19 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
       ...(response.runtimeRestartProtocol === 1 && { runtimeRestartProtocol: 1 as const }), digest: infra.intentDigest, containers: infra.containers.map(({ name, id }) => ({ name, id })).sort((a, b) => a.name.localeCompare(b.name)),
       database: infra.controlPlaneDatabase?.id ?? null };
   };
-  const stopped = async (previous: RuntimeUpdateIdentity) => {
+  const stopped = async (previous: RuntimeUpdateRetiringIdentity) => {
     const config = await readManagedRuntime(home);
     if (!config || config.scope !== previous.scope) throw Error('Native service instance changed');
     assertLocalServiceTargets(config);
     assertResidentServicesStopped(config.scope);
-    await assertCleanManagedShutdown(config, { pid: previous.ownerPid, lifetime: previous.ownerLifetime }, previous.retiredPids);
+    await assertCleanManagedShutdown(config, { pid: previous.ownerPid, lifetime: previous.ownerLifetime }, previous.retiredPids,
+      previous.backendPid === null ? previous.native : undefined);
   };
   const sameOwner = (a: RuntimeUpdateIdentity, b: RuntimeUpdateIdentity) => (['scope', 'ownerId', 'ownerLifetime', 'ownerPid', 'guardianPid', 'backendPid', 'revision', 'backend', 'guardian', 'owner'] as const).every(k => a[k] === b[k]);
   const accept = async (plan: RuntimeUpdatePlan, direction: 'target' | 'previous', inspected = false, interim = false) => {
     const target = direction === 'target', expect = target || interim ? plan.target.artifact : plan.before.backend;
     const observe = async (observation?: RuntimeObservation) => {
-      const status = await observeCall<RuntimeUpdateStatusObservation>(['status'], observation);
+      const status = await observeStartingController(() => observeCall<RuntimeUpdateStatusObservation>(['status'], observation));
       const roles = await identity(status, false, observation);
       if (roles.backend !== expect || roles.guardian !== (target || interim ? expect : plan.before.guardian) ||
           roles.owner !== (target ? expect : plan.before.owner) || roles.ownerId === plan.before.ownerId)
@@ -519,6 +521,12 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
       await runtimeControl(service => service.runtimeRestartRelease({ planDigest }), plan.before.backendPid);
     },
     async validateStop(previous, plan) {
+      if (previous.backendPid === null) {
+        if (plan) throw Error('Native empty-owner evidence cannot authorize an ordinary update');
+        const observed = await captureNativeEmptyRuntime(home, { artifact: previous.backend, commit: previous.ownerCommit });
+        if (!isDeepStrictEqual(previous, observed)) throw Error('Native candidate changed before shutdown');
+        return;
+      }
       if (plan) {
         if (plan.configuration) {
           const configuration = await retainedConfiguration(plan.stacks);
@@ -542,7 +550,15 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
       } catch { return false; }
     },
     async captureForRollback(plan) {
-      const live = await identity(await call<RuntimeUpdateStatusObservation>(['status']));
+      let live: RuntimeUpdateRetiringIdentity;
+      try { live = await identity(await call<RuntimeUpdateStatusObservation>(['status'])); }
+      catch (error) {
+        // Failure of the public API never proves absence. The independent native
+        // path admits only a target-bound, unclaimed owner with no application
+        // or backend process; every unknown observation still refuses recovery.
+        try { live = await captureNativeEmptyRuntime(home, plan.target); }
+        catch (nativeError) { throw new AggregateError([error, nativeError], 'Cannot establish candidate ownership for rollback', { cause: nativeError }); }
+      }
       if (live.ownerId === plan.before.ownerId || live.backend !== plan.target.artifact || live.owner !== plan.target.artifact || live.guardian !== plan.target.artifact) throw Error('Cannot identify the candidate as the exclusive serving owner');
       return live;
     },

@@ -1,4 +1,22 @@
 import { setTimeout as delay } from 'node:timers/promises';
+import { CommandResultError } from '../shared/command-result.js';
+
+/** A reviewed native start is asynchronous. Explicit reachability evidence is
+ * pending until the shared deadline; unknown transport failures remain unknown. */
+export async function observeStartingController<T>(read: () => Promise<T>): Promise<T> {
+  try { return await read(); }
+  catch (error) {
+    if (error instanceof CommandResultError && error.code === 'DAEMON_UNAVAILABLE') {
+      const reported = error.details['reported'] as { absence?: { kind?: unknown; pid?: unknown } } | undefined;
+      const absence = reported?.absence;
+      if (absence && ['stopped', 'stale', 'silent'].includes(String(absence.kind))) {
+        throw new RuntimeObservationPending('controller', 'Waiting for the reviewed controller to answer',
+          typeof absence.pid === 'number' && Number.isSafeInteger(absence.pid) && absence.pid > 0 ? absence.pid : undefined);
+      }
+    }
+    throw error;
+  }
+}
 
 /** Only an explicitly incomplete observation is retryable. Ownership conflicts,
  * malformed evidence and unclassified failures are never converted to waiting. */

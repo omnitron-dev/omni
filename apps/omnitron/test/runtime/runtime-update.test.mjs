@@ -449,6 +449,60 @@ test('applying the same review twice verifies a new live process generation and 
   assert.deepEqual(events.filter(event => event !== 'accept'), ['stop', 'start', 'stop', 'start']);
 });
 
+test('native recovery records backend absence before stopping and resumes a lost stop acknowledgement without repeating effects', { skip: !native }, async t => {
+  const directory = await privateInstance(t);
+  const plan = planFor(directory, { pid: process.pid, generation: 'old-owner' });
+  const retired = { observation: 'native-empty-owner', backend: target, owner: target, guardian: target,
+    backendPid: null, backendCommit: null, ownerCommit: source, ownerPid: 201, guardianPid: 202,
+    ownerId: 'candidate-owner', ownerLifetime: 'candidate-life', guardianLifetime: 'guardian-life',
+    scope: 'user', revision: 2, retiredPids: [202],
+    native: { platform: 'darwin', domain: 'gui/501', bootSession: '01234567-0000-4000-8000-000000000001', processGroups: [201, 202] } };
+  let stops = 0, starts = 0, captures = 0, candidateStopped = false;
+  const actions = {
+    async prepare() { return plan; }, async admit() {}, async releaseAdmission() {},
+    async validateStop(identity) { assert.ok(identity.ownerId === plan.before.ownerId || identity.ownerId === retired.ownerId); },
+    async stop(identity) {
+      stops++;
+      if (identity.ownerId === plan.before.ownerId) return;
+      const durable = await readRuntimeUpdateReceipt(directory);
+      assert.equal(durable.phase, 'stopping-candidate');
+      assert.deepEqual(durable.rollbackOwner, retired, 'native owner evidence must reach the journal before any stop effect');
+      candidateStopped = true;
+      throw Error('stop acknowledgement lost');
+    },
+    async assertStopped() {},
+    async start(destination) {
+      starts++;
+      if (!destination.artifact) {
+        const durable = await readRuntimeUpdateReceipt(directory);
+        assert.equal(durable.restoreAttempted, true);
+        assert.equal(durable.phase, 'restoring');
+        assert.deepEqual(destination, plan.before);
+      }
+    },
+    async accept(_plan, direction) {
+      if (direction === 'target') throw new RuntimeObservationUnconfirmed('backend never became ready');
+      return { ownerId: 'restored-owner' };
+    },
+    async isPreviousServing() { return false; },
+    async canRestore(identity) { return identity.ownerId === retired.ownerId && candidateStopped; },
+    async captureForRollback() { captures++; return retired; },
+  };
+  const review = await runRuntimeUpdate({ actions, directory, operation: 'prepare' });
+  await assert.rejects(runRuntimeUpdate({ actions, directory, operation: 'apply', digest: review.digest }), /never became ready/);
+  assert.equal((await readRuntimeUpdateReceipt(directory)).phase, 'recovery-required');
+  assert.equal(captures, 0, 'an unconfirmed read cannot authorize automatic rollback');
+  await assert.rejects(runRuntimeUpdate({ actions, directory, operation: 'recover', digest: review.digest }), /acknowledgement lost/);
+  assert.deepEqual((await readRuntimeUpdateReceipt(directory)).rollbackOwner, retired);
+  const recovered = await runRuntimeUpdate({ actions, directory, operation: 'recover', digest: review.digest });
+  assert.equal(recovered.phase, 'rolled-back');
+  assert.equal(captures, 1, 'a clean native shutdown reuses its durable identity');
+  assert.equal(stops, 2, 'original and candidate each stopped once');
+  assert.equal(starts, 2, 'candidate and restoration each started once');
+  assert.deepEqual(await runRuntimeUpdate({ actions, directory, operation: 'recover', digest: review.digest }), recovered);
+  assert.equal(starts, 2);
+});
+
 test('reconciliation confirms a serving candidate after a lost result without replaying lifecycle actions', { skip: !native }, async t => {
   const directory = await privateInstance(t);
   let owner = await ownerGeneration(t, directory, previous);

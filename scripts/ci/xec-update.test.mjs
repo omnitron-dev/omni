@@ -109,6 +109,19 @@ test('activation and reconciliation delegate exactly once; local check cannot im
   await assert.rejects(runUpdate(['apply', id], failed), /connection lost/);
 });
 
+test('local staging needs no serving backend and cannot select or activate the candidate', async () => {
+  const calls = [];
+  const options = { progress() {}, run: async (_root, executable, args) => {
+    if (args[0] === '--conditions=omnitron-source') return '{}';
+    assert.equal(executable, '/private/runtime/node');
+    calls.push(args);
+    return JSON.stringify({ ok: true, data: { id: 'a'.repeat(64), directory: '/installed' } });
+  } };
+  const installed = await runUpdate(['local-stage', '/private/runtime/packages/0/dist'], options);
+  assert.equal(installed.id, 'a'.repeat(64));
+  assert.deepEqual(calls, [['/private/runtime/packages/0/dist/cli/omnitron.js', '--json', 'backend', 'install', '/private/runtime']]);
+});
+
 
 test('controller refusals preserve structured receipts, nonzero status and the actual reason', async () => {
   const id = '12345678-1234-1234-1234-123456789abc';

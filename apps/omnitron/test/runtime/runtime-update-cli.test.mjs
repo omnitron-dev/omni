@@ -47,6 +47,18 @@ async function instance(t) {
   return { home, invoke };
 }
 
+test('status reports unavailable startup as one structured error without human output', async t => {
+  const { invoke } = await instance(t);
+  await assert.rejects(invoke('status'), error => {
+    assert.equal(error.stdout, '');
+    const reply = JSON.parse(error.stderr);
+    assert.equal(reply.ok, false);
+    assert.equal(reply.code, 'DAEMON_UNAVAILABLE');
+    assert.equal(reply.details.absence.kind, 'stopped');
+    return true;
+  });
+});
+
 async function candidate(home, reply = { ok: true, data: { delegated: true } }, status = 0) {
   const stage = path.join(home, 'candidate');
   const called = path.join(home, 'called');

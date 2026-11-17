@@ -1,7 +1,34 @@
 import { describe, expect, it } from 'vitest';
-import { RuntimeObservationConflict, RuntimeObservationPending, RuntimeObservationTimeout, observeRuntimeUntil } from '../../src/daemon/runtime-observation.js';
+import { RuntimeObservationConflict, RuntimeObservationPending, RuntimeObservationTimeout, observeRuntimeUntil, observeStartingController } from '../../src/daemon/runtime-observation.js';
+import { CommandResultError } from '../../src/shared/command-result.js';
 
 describe('runtime acceptance observation', () => {
+  it.each(['stopped', 'stale', 'silent'])('waits for an asynchronously started controller reported as %s', async kind => {
+    let calls = 0;
+    const absence = new CommandResultError('status', 1, { ok: false, code: 'DAEMON_UNAVAILABLE', details: { absence: { kind, pid: 123 } } });
+    const result = await observeRuntimeUntil(() => observeStartingController(async () => {
+      if (++calls === 1) throw absence;
+      return { ready: true };
+    }), 1000, 'startup', 1);
+    expect(result).toEqual({ ready: true });
+    expect(calls).toBe(2);
+  });
+
+  it.each([
+    { ok: false, code: 'DAEMON_UNAVAILABLE', details: { absence: { kind: 'unknown' } } },
+    { ok: false, code: 'DAEMON_UNAVAILABLE', details: {} },
+    { ok: false, error: 'Daemon is not running' },
+    { ok: false, code: 'FOREIGN_OWNER', details: { absence: { kind: 'stopped' } } },
+  ])('never infers startup progress from unknown or malformed evidence %#', async reply => {
+    const error = new CommandResultError('status', 1, reply);
+    await expect(observeStartingController(async () => { throw error; })).rejects.toBe(error);
+  });
+
+  it('retains the deadline when an explicitly unavailable controller never starts', async () => {
+    const absence = new CommandResultError('status', 1, { ok: false, code: 'DAEMON_UNAVAILABLE', details: { absence: { kind: 'stopped' } } });
+    await expect(observeRuntimeUntil(() => observeStartingController(async () => { throw absence; }),
+      25, 'startup', 5)).rejects.toBeInstanceOf(RuntimeObservationTimeout);
+  });
   it('includes final infrastructure settlement in one observation before publishing acceptance', async () => {
     const events: string[] = [];
     let attempts = 0;

@@ -4,6 +4,7 @@ import type { IProjectInfo, IStackInfo, SelectedRelease } from './project.js';
 import type { StackExecutionScope } from './stack-execution.js';
 import type { OperationReceipt } from './execution-operations.js';
 import type { RuntimeRestartConfiguration } from '../../project/runtime-restart.js';
+import type { DarwinReconciliationScope } from '../../daemon/darwin-owner-evidence.js';
 
 /** Read-only next-start intent. It is not a recovery or shutdown certificate. */
 export interface RuntimeRestartReview {
@@ -81,6 +82,18 @@ export interface RuntimeUpdateIdentity extends RuntimeUpdateOwner {
   retiredPids: number[];
 }
 
+/** An empty candidate owner can outlive a backend which never became ready.
+ * Absence is explicit: no invented backend PID or serving build is recorded. */
+export interface NativeEmptyRuntimeIdentity extends Omit<RuntimeUpdateIdentity, 'backendPid' | 'backendCommit'> {
+  observation: 'native-empty-owner';
+  backendPid: null;
+  backendCommit: null;
+  guardianLifetime: string;
+  native: DarwinReconciliationScope;
+}
+
+export type RuntimeUpdateRetiringIdentity = RuntimeUpdateIdentity | NativeEmptyRuntimeIdentity;
+
 export interface RuntimeUpdateReference {
   artifact: string;
   commit: string;
@@ -153,7 +166,7 @@ export interface RuntimeUpdateAcceptance {
 export interface RuntimeUpdateReceipt extends PreparedRuntimeUpdate {
   phase: RuntimeUpdatePhase;
   updatedAt: string;
-  rollbackOwner?: RuntimeUpdateIdentity;
+  rollbackOwner?: RuntimeUpdateRetiringIdentity;
   restoreAttempted?: true;
   /** Existing guardian transaction, retained before its first effect. */
   restoreGuardian?: { file: string; intentSha256: string };

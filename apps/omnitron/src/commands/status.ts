@@ -6,14 +6,14 @@
  * Cleans up stale state from crashed daemons automatically.
  */
 
-import { box, log, prism } from '@xec-sh/kit';
+import { box, prism } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import { PidManager } from '../daemon/pid-manager.js';
 import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
 import { formatUptime, formatMemoryColored } from '../shared/format.js';
 import { expandPath } from '../shared/paths.js';
 import { reportAbsence } from './daemon-required.js';
-import { emitError, emitJson } from './output.js';
+import { emitError, emitInfo, emitJson } from './output.js';
 
 export async function statusCommand(): Promise<void> {
   const client = createDaemonClient();
@@ -33,13 +33,12 @@ export async function statusCommand(): Promise<void> {
           const dc = DEFAULT_DAEMON_CONFIG;
           const pidManager = new PidManager(expandPath(dc.pidFile));
           if (pidManager.cleanupStale(expandPath(dc.socketPath))) {
-            log.info('Cleaned up the PID file and socket it left behind');
+            emitInfo('Cleaned up the PID file and socket it left behind');
           }
         } catch { /* diagnostics only — the report above is what matters */ }
       }
       if (absence.kind === 'silent') {
-        log.info('  omnitron down          # graceful: SIGTERM, then SIGKILL after 3s');
-        log.info('  omnitron kill          # force immediately');
+        emitInfo('  omnitron down          # stop through the configured supervisor');
       }
 
       return;

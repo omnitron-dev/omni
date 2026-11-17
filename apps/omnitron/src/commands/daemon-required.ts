@@ -71,7 +71,7 @@ export function adviseAbsence(absence: DaemonAbsence): string | null {
 export function reportAbsence(absence: DaemonAbsence, context?: string): void {
   const headline = context ? `${describeAbsence(absence)} — ${context}` : describeAbsence(absence);
   if (isJsonMode()) {
-    emitError(headline);
+    emitError(headline, { code: 'DAEMON_UNAVAILABLE', details: { absence } });
     return;
   }
   // A daemon that is running is not an error condition for the operator to

@@ -55,6 +55,7 @@ async function runUpdate(operation, target, values, options) {
         throw new UserError(error.message, { exitCode: error.exitCode });
       }
     };
+    if (operation === 'local-stage') return call(['backend', 'install', runtime]);
     if (operation === 'local-sync') {
       if (!inspection) {
         const stamp = JSON.parse(await fs.readFile(path.join(candidate, 'BUILD.json'), 'utf8'));
@@ -139,6 +140,7 @@ operation inspect status; use reconciliation/recovery instead of replaying apply
   operation('status [plan-id]', 'Inspect fleet rollout state and receipts')
     .action((id, values) => runUpdate('status', id, values, options));
   for (const [name, description] of [
+    ['local-stage', 'Build and install a sealed local runtime without selecting or starting services'],
     ['local-check', 'Check admission using the sealed candidate and its own CLI'],
     ['local-apply', 'Apply the sealed backend candidate after admission'],
   ]) operation(`${name} [dist]`, description)

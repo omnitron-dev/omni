@@ -115,12 +115,12 @@ export function assertOwnerReconciliationEvidence(plan: Pick<OwnerReconciliation
 }
 
 /** An already-reviewed controller can be retired cold only after the same owner finished shutting down. */
-export async function assertCleanManagedShutdown(config: ManagedRuntime, owner: ProcessIdentity, retiredPids: number[]): Promise<void> {
+export async function assertCleanManagedShutdown(config: ManagedRuntime, owner: ProcessIdentity, retiredPids: number[], native?: DarwinReconciliationScope): Promise<void> {
   const receipt = await readPrivateRecord<{ clean: boolean; pid: number; bootId: string }>(receiptFile(config));
   if (!receipt || receipt.clean !== true || receipt.pid !== owner.pid || !isStableHostBootIdentity(receipt.bootId))
     throw new Error('Cold recovery requires the recorded owner to complete its normal shutdown on this boot');
   const processes = [owner, ...[...new Set(retiredPids)].filter(pid => pid !== owner.pid).map(pid => ({ pid, lifetime: null }))];
-  assertOwnerReconciliationEvidence({ bootId: receipt.bootId, processes }, await nativeEvidence(config, processes));
+  assertOwnerReconciliationEvidence({ bootId: receipt.bootId, processes, ...(native && { native }) }, await nativeEvidence(config, processes, native));
 }
 
 async function records(config: ManagedRuntime): Promise<{ receipt: CrashReceipt; journal: NonNullable<Awaited<ReturnType<ExecutionJournal['read']>>> }> {

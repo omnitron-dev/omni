@@ -7,8 +7,8 @@ import { readPrivateRecord, writePrivateRecord } from './execution-journal.js';
 import { RUNTIME_UPDATE_TERMINAL_PHASES } from '../shared/dto/runtime-update.js';
 import { RuntimeObservationUnconfirmed } from './runtime-observation.js';
 import type {
-  PreparedRuntimeUpdate, RuntimeUpdateAcceptance, RuntimeUpdateApplication, RuntimeUpdateIdentity, RuntimeUpdatePhase,
-  RuntimeUpdatePlan, RuntimeUpdateReceipt, RuntimeUpdateReference,
+  PreparedRuntimeUpdate, RuntimeUpdateAcceptance, RuntimeUpdateApplication, RuntimeUpdatePhase,
+  RuntimeUpdatePlan, RuntimeUpdateReceipt, RuntimeUpdateReference, RuntimeUpdateRetiringIdentity,
 } from '../shared/dto/runtime-update.js';
 
 const hash = /^[a-f0-9]{64}$/;
@@ -58,13 +58,13 @@ export interface RuntimeUpdateActions {
   admit(plan: RuntimeUpdatePlan, digest: string): Promise<void>;
   /** Release only this plan's admission; never stop or restore application processes. */
   releaseAdmission(plan: RuntimeUpdatePlan, digest: string): Promise<void>;
-  validateStop(previous: RuntimeUpdateIdentity, plan?: RuntimeUpdatePlan): Promise<void>;
-  stop(previous: RuntimeUpdateIdentity): Promise<unknown>;
-  assertStopped(previous: RuntimeUpdateIdentity): Promise<unknown>;
-  canRestore(previous: RuntimeUpdateIdentity): Promise<boolean>;
+  validateStop(previous: RuntimeUpdateRetiringIdentity, plan?: RuntimeUpdatePlan): Promise<void>;
+  stop(previous: RuntimeUpdateRetiringIdentity): Promise<unknown>;
+  assertStopped(previous: RuntimeUpdateRetiringIdentity): Promise<unknown>;
+  canRestore(previous: RuntimeUpdateRetiringIdentity): Promise<boolean>;
   /** Prove the original roles, processes and retained intent still serve after a refused stop. */
   isPreviousServing?(plan: RuntimeUpdatePlan): Promise<boolean>;
-  captureForRollback(plan: RuntimeUpdatePlan): Promise<RuntimeUpdateIdentity>;
+  captureForRollback(plan: RuntimeUpdatePlan): Promise<RuntimeUpdateRetiringIdentity>;
   start(destination: RuntimeUpdateReference | RuntimeUpdatePlan['before'], plan: RuntimeUpdatePlan, restoration?: RuntimeUpdateRestoration): Promise<void>;
   /** Finish only observed restoration stages; never starts a second owner or stack attempt. */
   completeRestore?(plan: RuntimeUpdatePlan, restoration: RuntimeUpdateRestoration): Promise<void>;

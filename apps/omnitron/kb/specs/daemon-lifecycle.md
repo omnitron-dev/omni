@@ -60,6 +60,30 @@ auth, audit and pipeline services from observing absent or partially migrated
 tables. Managed PostgreSQL recreation checks native ownership and preserves its
 data volume.
 
+### Readiness during a reviewed native update
+
+Installing native services acknowledges their launch; it does not prove that the
+backend is serving RPC yet. Runtime acceptance waits for the reviewed roles,
+Console, applications and retained infrastructure within one shared deadline.
+JSON `status` reports `DAEMON_UNAVAILABLE` with `details.absence.kind` when it
+cannot obtain a snapshot. During this bounded startup observation, `stopped`,
+`stale` and `silent` are incomplete readiness evidence, not successful startup.
+Unknown transport failures, malformed replies and ownership conflicts are not
+converted into retries. A missing response never authorizes another start.
+
+An interrupted update keeps its exact digest and recorded outcome. Inspect
+`runtime update status <digest>` before `reconcile` or `recover`; do not replay
+`apply`, edit the receipt or remove ownership records. SDK and application launch
+receipts remain separate from a transition that updates only runtime roles.
+
+`xec update local-stage` builds and installs a sealed repair runtime without
+requiring a serving backend or selecting or starting any role. Its installed CLI
+can recover an older exact receipt. On macOS, recovery independently observes an
+empty, idle, unclaimed candidate owner, the blocked guardian and their native
+process groups when the backend is absent. It records that retiring identity
+before effects and checks the saved groups after shutdown. Any application,
+worker, living backend or unknown process evidence refuses this narrow path.
+
 ### Step 2: Create Titan Application
 
 ```typescript

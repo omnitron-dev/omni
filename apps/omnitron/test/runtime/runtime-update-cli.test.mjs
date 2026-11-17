@@ -11,7 +11,7 @@ import { readCommandResult, CommandResultError } from '../../src/shared/command-
 import { tsImport } from 'tsx/esm/api';
 
 const { runtimeUpdatePlanDigest } = await tsImport('../../src/daemon/runtime-update.ts', import.meta.url);
-const { runtimeUpdateActions } = await tsImport('../../src/daemon/runtime-update-host.ts', import.meta.url);
+const { runtimeUpdateActions, verifyRuntimeUpdateTarget } = await tsImport('../../src/daemon/runtime-update-host.ts', import.meta.url);
 const execute = promisify(execFile);
 const root = fileURLToPath(new URL('../../../../', import.meta.url));
 const cli = fileURLToPath(new URL('../../src/cli/omnitron.ts', import.meta.url));
@@ -72,7 +72,7 @@ test('native lifecycle children use human output even when the parent is in JSON
   const { home } = await instance(t);
   const runtime = await candidate(home);
   let called = false;
-  const actions = await runtimeUpdateActions({ runtime: runtime.directory, instance: home,
+  const actions = await runtimeUpdateActions({ runtime: await verifyRuntimeUpdateTarget(runtime.directory), instance: home,
     call: async () => assert.fail('shutdown does not use a structured CLI call'),
     run: async (cwd, executable, argv, options) => {
       called = true;
@@ -88,6 +88,38 @@ test('native lifecycle children use human output even when the parent is in JSON
   });
   await actions.stop({ backend: runtime.artifact });
   assert.equal(called, true);
+});
+
+test('host preparation retains its live proof without rereading candidate bytes', async t => {
+  const { home } = await instance(t), fixture = await candidate(home);
+  const runtime = await verifyRuntimeUpdateTarget(fixture.directory);
+  const open = fs.open;
+  let reads = 0;
+  t.mock.method(fs, 'open', (...args) => {
+    if (String(args[0]).startsWith(fixture.directory + path.sep)) reads++;
+    return open(...args);
+  });
+  const options = { runtime, instance: home,
+    call: async () => assert.fail('proof admission must not call a running controller'),
+    run: async () => assert.fail('proof admission must not execute a command') };
+  await runtimeUpdateActions(options);
+  assert.equal(reads, 0, 'metadata freshness must not turn into another content hash');
+  assert.ok(Object.isFrozen(runtime));
+  await assert.rejects(runtimeUpdateActions({ ...options, runtime: JSON.parse(JSON.stringify(runtime)) }), /no in-process verification/);
+});
+
+test('host preparation rejects mutation and cannot revive a stale proof by restoring original bytes', async t => {
+  const { home } = await instance(t), fixture = await candidate(home);
+  const runtime = await verifyRuntimeUpdateTarget(fixture.directory);
+  const file = path.join(fixture.directory, 'packages/0/dist/BUILD.json'), bytes = await fs.readFile(file);
+  const options = { runtime, instance: home,
+    call: async () => assert.fail('changed runtime must not contact a controller'),
+    run: async () => assert.fail('changed runtime must not execute a command') };
+  await fs.appendFile(file, ' ');
+  await assert.rejects(runtimeUpdateActions(options), /changed after verification/);
+  await fs.writeFile(file, bytes);
+  await assert.rejects(runtimeUpdateActions(options), /invalidated/);
+  await runtimeUpdateActions({ ...options, runtime: await verifyRuntimeUpdateTarget(fixture.directory) });
 });
 
 test('public status is available without a daemon, a Git checkout or a receipt', async t => {

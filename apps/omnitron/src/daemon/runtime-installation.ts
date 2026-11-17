@@ -428,18 +428,27 @@ export class RuntimeInstallation {
         mode: constants.COPYFILE_FICLONE,
       });
       await verifyRuntimeArtifact(staging, candidate.runtimeHash);
-      // Flush every copied regular file before publishing the directory and its selector.
+      // Independent files may flush together; every admitted flush must settle
+      // before cleanup, and each directory follows all its descendants.
+      const sync = async (file: string, directory = false): Promise<void> => {
+        const handle = await fs.open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK |
+          (directory ? constants.O_DIRECTORY : 0));
+        try {
+          const stat = await handle.stat();
+          if (directory ? !stat.isDirectory() : !stat.isFile()) throw Error('Runtime entry changed before durability check');
+          await handle.sync();
+        } finally { await handle.close(); }
+      };
       const syncTree = async (directory: string): Promise<void> => {
-        for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
-          const file = path.join(directory, entry.name);
-          if (entry.isDirectory()) await syncTree(file);
-          else if (entry.isFile()) {
-            const handle = await fs.open(file, 'r');
-            try { await handle.sync(); } finally { await handle.close(); }
-          }
+        const entries = await fs.readdir(directory, { withFileTypes: true });
+        const files = entries.filter(entry => entry.isFile());
+        for (let offset = 0; offset < files.length; offset += 16) {
+          const results = await Promise.allSettled(files.slice(offset, offset + 16).map(entry => sync(path.join(directory, entry.name))));
+          const errors = results.flatMap(result => result.status === 'rejected' ? [result.reason] : []);
+          if (errors.length) throw new AggregateError(errors, 'Runtime files could not be made durable');
         }
-        const handle = await fs.open(directory, 'r');
-        try { await handle.sync(); } finally { await handle.close(); }
+        for (const entry of entries) if (entry.isDirectory()) await syncTree(path.join(directory, entry.name));
+        await sync(directory, true);
       };
       await syncTree(staging);
       await fs.rename(staging, destination);

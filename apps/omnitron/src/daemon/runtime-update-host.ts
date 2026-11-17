@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
-import { verifyRuntimeArtifact } from '../shared/runtime-artifact.js';
+import { inspectRuntimeArtifact, verifyRuntimeArtifact } from '../shared/runtime-artifact.js';
 import { BACKEND_ACTIVITY_COUNTERS } from '../shared/dto/backend.js';
 import { retainReviewedBackups } from '../shared/backup-admission.js';
 import { LAUNCHD_LABEL, OWNER_LAUNCHD_LABEL } from '../commands/service-units.js';
@@ -40,6 +40,7 @@ const commit = /^[a-f0-9]{40}$/;
 const cleanBuild = (stamp: Pick<BuildStamp, 'dirty' | 'commit'> | null | undefined): stamp is Pick<BuildStamp, 'dirty' | 'commit'> => stamp?.dirty === false && commit.test(stamp.commit);
 const projectKey = (stack: { project: string; stack: string }) => JSON.stringify([stack.project, stack.stack]);
 const cliDist = 'packages/0/dist';
+const runtimeInspections = new WeakMap<VerifiedRuntimeReference, Awaited<ReturnType<typeof inspectRuntimeArtifact>>>();
 
 async function runtimeBuildCommit(runtimeRoot: string, console = false): Promise<string> {
   const value = JSON.parse(await fs.readFile(path.join(runtimeRoot, 'packages/0', console ? 'webapp/dist' : 'dist', 'BUILD.json'), 'utf8')) as BuildStamp;
@@ -49,14 +50,25 @@ async function runtimeBuildCommit(runtimeRoot: string, console = false): Promise
 
 export async function verifyRuntimeUpdateTarget(runtime: string, expectedHash?: string): Promise<VerifiedRuntimeReference> {
   const directory = await fs.realpath(runtime);
-  const manifest = await verifyRuntimeArtifact(directory, expectedHash);
+  const inspection = await inspectRuntimeArtifact(directory, expectedHash), { manifest } = inspection;
   const sourceCommit = await runtimeBuildCommit(directory);
   if (await runtimeBuildCommit(directory, true) !== sourceCommit) throw Error('Runtime and Console have different source revisions');
   const node = path.join(directory, 'node');
   const cli = path.join(directory, cliDist, 'cli/omnitron.js');
   if (await fs.realpath(node) !== node || await fs.realpath(cli) !== cli) throw Error('Native runtime entry points must be regular files at their sealed locations');
-  return { artifact: manifest.sha256, commit: sourceCommit, directory, node, cli,
-    nodeVersion: manifest.nodeVersion, platform: manifest.platform, arch: manifest.arch };
+  await inspection.assertUnchanged();
+  const reference = Object.freeze({ artifact: manifest.sha256, commit: sourceCommit, directory, node, cli,
+    nodeVersion: manifest.nodeVersion, platform: manifest.platform, arch: manifest.arch });
+  runtimeInspections.set(reference, inspection);
+  return reference;
+}
+
+/** A serialized reference describes a target; only this process's live proof can admit it. */
+async function inspectedRuntime(reference: VerifiedRuntimeReference) {
+  const inspection = runtimeInspections.get(reference);
+  if (!inspection) throw Error('Runtime target has no in-process verification');
+  await inspection.assertUnchanged();
+  return inspection.manifest;
 }
 
 async function until<T>(label: string, body: () => Promise<T>, budget: number): Promise<T> {
@@ -174,15 +186,16 @@ export async function restoreRuntimeRoles(plan: RuntimeUpdatePlan, observe: () =
 }
 
 /** Native supervision and application admission share the local update authority. */
-export async function runtimeUpdateActions({ runtime, instance: home, call, run, progress = () => {} }: {
-  runtime: string; instance: string; call: RuntimeUpdateCall; run: ReleaseCommand; progress?: (message: string) => void;
+export async function runtimeUpdateActions({ runtime: reference, instance: home, call, run, progress = () => {} }: {
+  runtime: VerifiedRuntimeReference; instance: string; call: RuntimeUpdateCall; run: ReleaseCommand; progress?: (message: string) => void;
 }): Promise<RuntimeUpdateActions> {
+  const runtime = reference.directory;
   const installation = path.join(home, 'runtime');
   const installed = (id: string) => {
     if (!hash.test(id)) throw Error('The operation requires an installed runtime SHA-256');
     return path.join(installation, 'releases', id);
   };
-  const manifest = await verifyRuntimeArtifact(runtime);
+  const manifest = await inspectedRuntime(reference);
   const [{ readManagedRuntime, verifyManagedIsolation }, { assertCleanManagedShutdown }, { assertResidentServicesStopped },
     { getContainerState, listManagedContainers }, { assertConsoleOwnership, consoleContainerName }, { readProcessLifetime }, { readSavedDaemonConfig },
     { createDaemonClient }, { assertBackendMigrationsCompatible }] = await Promise.all([
@@ -442,6 +455,7 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
   };
   return {
     async prepare(reviewed?: RuntimeUpdatePlan): Promise<RuntimeUpdatePlan> {
+      await inspectedRuntime(reference);
       const live = await call<RuntimeUpdateStatusObservation>(['status']);
       assertLocalReview(live);
       const [before, stacks, web] = await Promise.all([identity(live, false), inventory(live), consoleState()]);
@@ -449,7 +463,8 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
       let candidate;
       if (existing) {
         if (existing.isSymbolicLink() || !existing.isDirectory()) throw Error('Invalid installed runtime directory');
-        await verifyRuntimeArtifact(installed(manifest.sha256), manifest.sha256);
+        if (installed(manifest.sha256) === runtime) await inspectedRuntime(reference);
+        else await verifyRuntimeArtifact(installed(manifest.sha256), manifest.sha256);
         candidate = { id: manifest.sha256, directory: installed(manifest.sha256), build: { commit: await runtimeBuildCommit(installed(manifest.sha256)), dirty: false } };
       } else candidate = await call<{ id: string; directory: string; build: BuildStamp }>(['backend', 'install', runtime]);
       if (candidate.id !== manifest.sha256 || candidate.directory !== installed(candidate.id) || !cleanBuild(candidate.build) || candidate.build.commit !== await runtimeBuildCommit(runtime, true)) throw Error('Installed candidate or Console differs from the sealed checkout');

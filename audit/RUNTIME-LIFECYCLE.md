@@ -122,6 +122,48 @@ beginning during Docker target discovery; unknown claims surviving acceptance.
 The existing schedule-cadence and artifact handoff suites continue to cover
 deadline calculation, serialization and full-pass retention ownership.
 
+## Repeated artifact work
+
+The preparation audit traced at least eight full SHA-256 content walks from a
+fresh seal through first installation, before later cold previews. The count
+includes sealing, the parent Xec verifier, CLI target admission, host action
+construction, source installation, staging and post-rename admission. Each full
+verification also walks metadata to detect a changed early file. These are I/O
+costs, not repeated test suites. Isolated checkout cleanup alone took 111.1 seconds
+in the recorded `365ce68a` preparation; other stage costs were not individually
+measured and must not be inferred from that number.
+
+The host now retains the original `inspectRuntimeArtifact` proof with its frozen
+target reference. Action construction and the installed-target branch reuse it
+only for the same physical tree in the same process. They check the complete
+inventory instead of hashing the same bytes again. A private WeakMap prevents a
+deserialized path/digest object from claiming that proof. Metadata drift
+invalidates reuse even after the original contents are restored. A distinct
+copy and another process still require independent verification.
+
+Graph materialization bounds concurrency to four packages, keeps each package's
+overlapping publication paths ordered and admits physical destinations before
+copying. An application root completes before its nested dependency packages.
+All package copies must succeed before dependency links are created. Installation
+flushes regular files in groups of at most 16, then flushes child directories
+before their parents. Both paths join admitted I/O before returning a failure,
+so cleanup cannot race unfinished copies or open file handles.
+
+Oracles: `test/runtime/runtime-update-cli.test.mjs` proves that host construction
+does not reread candidate contents and refuses forged or invalidated references.
+`test/unit/bundled-framework.test.ts` covers bounded parallel copies, failed-batch
+drain, real cyclic/peer dependency bindings and nested application closures.
+`test/unit/runtime-installation.test.ts` checks descriptor bounds, descendant-first
+durability, fsync failure, cleanup ordering and independently corrupted copies.
+The existing same-size rewrite, restored mtime, link and physical-root replacement
+tests in `runtime-artifact-snapshot.test.ts` remain applicable.
+
+This does not remove all duplicate work. The seal still hashes before and after
+writing its manifest, staging is verified again after its own rename, and checkout
+cleanup still blocks preparation. Their removal requires ownership of the exact
+manifest write/rename and of cleanup completion; a persistent "already verified"
+flag or an unjoined background process would not satisfy that contract.
+
 ## Remaining architectural gaps
 
 ### Other lifecycle waits still conflate failure and waiting

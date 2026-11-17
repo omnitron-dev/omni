@@ -152,6 +152,20 @@ Writable installation and admission modules load only when needed.
 `BackendArtifact`: install, select, service startup and handoff still require
 the full runtime digest and their applicable preflight checks.
 
+Within one host preparation, the verified target retains its process-local
+filesystem proof. Reuse checks the complete metadata inventory, including inode,
+ownership, permissions and change time, instead of reading every file's contents
+again. A changed entry invalidates that proof permanently; restoring its old bytes
+does not revive it. JSON paths and digests are descriptions, not reusable proofs.
+A new process, a distinct installed copy or another operation verifies independently.
+
+Dependency materialization copies up to four independent packages together and
+creates links only after every package copy succeeds. Application roots finish
+before their nested dependency graph. Installation flushes at most 16 regular
+files together, flushes directories after their descendants, then publishes the
+directory. Failed copies and flushes settle before cleanup; neither parallelism
+nor proof reuse changes the reviewed selection or permits a partial installation.
+
 Preparation stages the candidate alongside the running installation. The plan
 names both native process owners, the serving Console, physical container IDs,
 logical project and stack names, application generations, source watches and

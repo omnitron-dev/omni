@@ -30,7 +30,7 @@ async function fixture() {
   const store = await RuntimeInstallation.open(home);
   if (!store) throw new Error('Fixture store was not opened');
   stores.push(store);
-  const make = async (name: string, launcher = true) => {
+  const make = async (name: string, launcher = true, payloadFiles = 0) => {
     const source = path.join(root, name);
     const dist = path.join(source, 'packages/0/dist');
     const build = { commit: name === 'first' ? 'a'.repeat(40) : 'b'.repeat(40), dirty: false, builtAt: new Date().toISOString() };
@@ -41,6 +41,8 @@ async function fixture() {
     await fs.writeFile(path.join(dist, 'daemon/daemon-entry.js'), 'export {};');
     await fs.writeFile(path.join(dist, 'cli/omnitron.js'), 'export {};');
     await fs.writeFile(path.join(dist, 'dependency.js'), 'export const value = 1;');
+    for (let index = 0; index < payloadFiles; index++)
+      await fs.writeFile(path.join(dist, `payload-${index}.js`), 'export {};');
     if (launcher) await fs.writeFile(path.join(dist, 'cli/installed.js'), 'export {};');
     // Only the preflight protocol is exercised here; runtime integration tests
     // use the sealed real Node executable and actual application processes.
@@ -62,6 +64,76 @@ it('installs an independent verified copy without changing the running selection
   expect((await store.artifact(first.hash)).runtimeHash).toBe(first.hash);
   expect((await store.exclusive(() => store.install(artifact.runtimeRoot))).runtimeHash).toBe(first.hash);
   expect(await fs.readdir(store.releases)).toEqual([first.hash]);
+});
+
+it('flushes independent files concurrently and directories only after their descendants', async () => {
+  const { store, make } = await fixture(), first = await make('first', true, 40);
+  const open = fs.open.bind(fs), completed: Array<{ file: string; directory: boolean }> = [];
+  let active = 0, maximum = 0;
+  vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+    const handle = await open(...args), file = String(args[0]);
+    if (file.includes('/.install-')) {
+      const sync = handle.sync.bind(handle), stat = await handle.stat();
+      vi.spyOn(handle, 'sync').mockImplementation(async () => {
+        active++; maximum = Math.max(maximum, active);
+        try {
+          await new Promise<void>(resolve => setImmediate(resolve));
+          await sync(); completed.push({ file, directory: stat.isDirectory() });
+        } finally { active--; }
+      });
+    }
+    return handle;
+  });
+  await store.exclusive(() => store.install(first.source));
+  expect(maximum).toBeGreaterThan(1); expect(maximum).toBeLessThanOrEqual(16); expect(active).toBe(0);
+  expect(completed.filter(entry => !entry.directory).length).toBeGreaterThan(40);
+  for (const [index, entry] of completed.entries()) if (entry.directory)
+    expect(completed.slice(index + 1).some(later => later.file.startsWith(entry.file + path.sep))).toBe(false);
+  expect(completed.at(-1)?.directory).toBe(true);
+});
+
+it('settles and closes admitted flushes before cleanup after a durability failure', async () => {
+  const { store, make } = await fixture(), first = await make('first');
+  const open = fs.open.bind(fs), rm = fs.rm.bind(fs);
+  let flushing = 0, descriptors = 0, failed = false, cleanup = false;
+  vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+    const handle = await open(...args), file = String(args[0]);
+    if (file.includes('/.install-')) {
+      const sync = handle.sync.bind(handle), close = handle.close.bind(handle);
+      descriptors++;
+      vi.spyOn(handle, 'close').mockImplementation(async () => { try { await close(); } finally { descriptors--; } });
+      vi.spyOn(handle, 'sync').mockImplementation(async () => {
+        flushing++;
+        try {
+          if (!failed) { failed = true; throw Error('injected fsync failure'); }
+          await new Promise<void>(resolve => setImmediate(resolve));
+          await sync();
+        } finally { flushing--; }
+      });
+    }
+    return handle;
+  });
+  vi.spyOn(fs, 'rm').mockImplementation(async (...args) => {
+    if (String(args[0]).includes('/.install-')) {
+      cleanup = true; expect(flushing).toBe(0); expect(descriptors).toBe(0);
+    }
+    return rm(...args);
+  });
+  await expect(store.exclusive(() => store.install(first.source))).rejects.toMatchObject({
+    message: 'Runtime files could not be made durable', errors: [expect.objectContaining({ message: 'injected fsync failure' })],
+  });
+  expect(cleanup).toBe(true); expect(store.selection()).toBeNull(); expect(await fs.readdir(store.releases)).toEqual([]);
+});
+
+it('independently rejects a corrupted destination before syncing or publishing it', async () => {
+  const { store, make } = await fixture(), first = await make('first'), copy = fs.cp.bind(fs);
+  vi.spyOn(fs, 'cp').mockImplementation(async (...args) => {
+    await copy(...args);
+    if (String(args[1]).includes('/.install-'))
+      await fs.writeFile(path.join(String(args[1]), 'packages/0/dist/dependency.js'), 'export const value = 9;');
+  });
+  await expect(store.exclusive(() => store.install(first.source))).rejects.toThrow('changed after sealing');
+  expect(store.selection()).toBeNull(); expect(await fs.readdir(store.releases)).toEqual([]);
 });
 
 it('resolves an installed control client in a fresh process without loading writer or backend admission modules', async () => {

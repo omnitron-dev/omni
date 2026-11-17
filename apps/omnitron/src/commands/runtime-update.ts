@@ -78,7 +78,7 @@ export async function runtimeUpdateCommand(operation: 'prepare' | 'apply' | 'rec
     } else {
       const call: RuntimeUpdateCall = async <T>(args: readonly string[], runtimeRoot?: string, options?: { timeoutMs?: number; signal?: AbortSignal }): Promise<T> =>
         callRuntime<T>(runtimeRoot ? await verifyRuntimeUpdateTarget(runtimeRoot) : runtime, args, options?.timeoutMs, options?.signal);
-      const actions = await runtimeUpdateActions({ runtime: runtime.directory, instance: OMNITRON_HOME, call,
+      const actions = await runtimeUpdateActions({ runtime, instance: OMNITRON_HOME, call,
         run: releaseCommand, progress: emitStep });
       result = await runRuntimeUpdate({ actions, directory, operation, ...(operation !== 'prepare' && { digest: value }), progress: emitStep });
     }

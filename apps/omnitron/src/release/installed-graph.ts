@@ -72,9 +72,10 @@ export async function materializeGraph(
 ): Promise<void> {
   if (destinations.length !== packages.length || new Set(destinations).size !== packages.length)
     throw Error('Invalid package destinations');
-  for (const [id, item] of packages.entries()) {
+  // Packages are independent, but their declared files may overlap within one
+  // package. Keep those copies ordered and bound parallelism at the package level.
+  const materialize = async (item: InstalledPackage, id: number): Promise<void> => {
     const target = destinations[id]!;
-    await fs.mkdir(target, { recursive: true, mode: 0o755 });
     const registry = item.root.split(path.sep).includes('node_modules') || options.verifiedPackages?.has(item.root);
     // Select a publication surface even for a private workspace without a files list.
     const files = !registry ? new Set(['package.json', 'LICENSE', 'README.md', ...(item.metadata.files ??
@@ -124,10 +125,38 @@ export async function materializeGraph(
       }
       await fs.writeFile(path.join(target, 'package.json'), JSON.stringify(manifest, null, 2) + '\n');
     }
+  };
+  const locations: string[] = [];
+  for (const target of destinations) {
+    await fs.mkdir(target, { recursive: true, mode: 0o755 });
+    locations.push(await fs.realpath(target));
   }
-  for (const [id, item] of packages.entries()) for (const [name, child] of item.dependencies) {
-    const link = path.join(destinations[id]!, 'node_modules', name);
-    await fs.mkdir(path.dirname(link), { recursive: true });
-    await fs.symlink(path.relative(path.dirname(link), destinations[child]!), link, 'dir');
+  for (const [id, target] of locations.entries()) {
+    // Application closures own dependencies under the root package's excluded
+    // node_modules. Complete that root before writing the dependency packages.
+    if (locations.some((other, index) => index !== id && (other === target ||
+        (other.startsWith(target + path.sep) && !(options.application && id === 0 && other.startsWith(path.join(target, 'node_modules') + path.sep))))) ||
+        packages.some(item => item.root === target || item.root.startsWith(target + path.sep) || target.startsWith(item.root + path.sep)))
+      throw Error('Package destinations must be disjoint from each other and their sources');
   }
+  const phase = async (operation: (item: InstalledPackage, id: number) => Promise<void>, start = 0) => {
+    for (let offset = start; offset < packages.length; offset += 4) {
+      const results = await Promise.allSettled(packages.slice(offset, offset + 4).map((item, index) => operation(item, offset + index)));
+      const errors = results.flatMap(result => result.status === 'rejected' ? [result.reason] : []);
+      if (errors.length === 1) throw errors[0];
+      if (errors.length) throw new AggregateError(errors, 'Package graph materialization failed');
+    }
+  };
+  if (options.application && packages.length) {
+    await materialize(packages[0]!, 0);
+    await phase(materialize, 1);
+  } else await phase(materialize);
+  // No dependency link is published until all package copies have completed.
+  await phase(async (item, id) => {
+    for (const [name, child] of item.dependencies) {
+      const link = path.join(destinations[id]!, 'node_modules', name);
+      await fs.mkdir(path.dirname(link), { recursive: true });
+      await fs.symlink(path.relative(path.dirname(link), destinations[child]!), link, 'dir');
+    }
+  });
 }

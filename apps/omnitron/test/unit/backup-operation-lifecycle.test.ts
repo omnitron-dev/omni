@@ -127,6 +127,29 @@ describe('durable backup execution', () => {
     expect(backups.listOperations()).toEqual([]);
   });
 
+  it('records a recovered container identity after cancellation using the executor recovery signal', async () => {
+    const operationId = randomUUID();
+    const resource: ExecutionResource = { type: 'docker-container', operationId,
+      daemonId: 'fixture-daemon', id: 'd'.repeat(64) };
+    vi.mocked(executor.execute).mockImplementationOnce(async command => {
+      await command.onResource!({ ...resource, id: undefined }, command.signal!);
+      await new Promise<void>(resolve => command.signal!.addEventListener('abort', () => resolve(), { once: true }));
+      expect(command.signal!.aborted).toBe(true);
+      await command.onResource!(resource, AbortSignal.timeout(5000));
+      // Xec has identified and removed the unstarted helper before reporting cancellation.
+      throw new Error('Owned helper cleanup completed after cancellation');
+    });
+    const run = backups.createBackup('one/dev/ledger', { operationId }).catch(error => error);
+    await vi.waitFor(() => expect(backups.getOperation(operationId)?.execution).toMatchObject({ operationId }));
+    const receipt = backups.getOperation(operationId)!;
+    await backups.cancelOperation(operationId, receipt.revision);
+    expect(await run).toBeInstanceOf(Error);
+    expect(backups.getOperation(operationId)).toMatchObject({ state: 'cancelled', execution: resource,
+      observation: { resource, state: 'absent' } });
+    expect(store.selectBackupsSync()).toEqual([]);
+    expect(backups.listOperations()).toEqual([]);
+  });
+
   it('serializes one database while independent project allocations can execute concurrently', async () => {
     mode = 'wait';
     const first = backups.createBackup('one/dev/ledger').catch(error => error);

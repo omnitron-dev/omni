@@ -55,7 +55,7 @@ test('release prepare refuses an incompatible runtime dependency before Git, bui
   await fs.mkdir(app, { recursive: true });
   const manifest = JSON.stringify({ name: '@omnitron-dev/omnitron', version: '0.4.10', dependencies: { '@xec-sh/core': '^0.12.0' } });
   await fs.writeFile(path.join(app, 'package.json'), manifest);
-  await assert.rejects(releaseProgram({ root }).parseAsync(['release', '0.4.11', '--prepare'], { from: 'user' }), /requires @xec-sh\/core \^0\.13\.0/);
+  await assert.rejects(releaseProgram({ root }).parseAsync(['release', '0.4.11', '--prepare'], { from: 'user' }), /requires @xec-sh\/core \^0\.13\.2/);
   assert.deepEqual(await fs.readdir(root), ['apps']);
   assert.equal(await fs.readFile(path.join(app, 'package.json'), 'utf8'), manifest);
 });
@@ -252,6 +252,8 @@ fs.writeFileSync(record, 'archives, audit, runtime');`);
   await json('package.json', { name: 'fixture', private: true, type: 'module',
     devDependencies: { semver: 'file:' + path.dirname(createRequire(path.join(repo, 'package.json')).resolve('semver/package.json')) },
     scripts: { build: 'node scripts/build.mjs' } });
+  await fs.writeFile(path.join(workspace, 'CHANGELOG.md'),
+    '# Changelog\n\n## [Unreleased]\n\n### Fixed\n\n- Preserve the release receipt.\n\n## [0.1.0] - 2026-01-01\n\n- Original release.\n');
   await fs.writeFile(path.join(workspace, 'scripts/build.mjs'), `
 import assert from 'node:assert/strict';
 import { realpathSync, writeFileSync, readFileSync } from 'node:fs';
@@ -295,6 +297,9 @@ for (const name of ['base', 'client']) writeFileSync('packages/' + name + '/inde
   await assert.rejects(release('--prepare', '--registry', registry), error => error.code === 1 &&
     `${error.stdout}\n${error.stderr}`.includes('dependency-preflight') &&
     `${error.stdout}\n${error.stderr}`.includes(`peerDependencies.${first}: "^0.1.0" must be workspace:*`));
+  const versionFiles = (await git('show', '--format=', '--name-only', 'HEAD')).split('\n');
+  for (const file of ['CHANGELOG.md', 'packages/base/package.json', 'packages/client/package.json'])
+    assert.ok(versionFiles.includes(file), `${file} belongs to the same version commit`);
   assert.equal(await fs.stat(buildRecord).catch(() => null), null, 'preflight must stop before the build');
   assert.deepEqual(await fs.readdir(path.join(workspace, '.release-artifacts', version)), []);
   await assert.rejects(git('rev-parse', 'refs/tags/v' + version));
@@ -325,6 +330,11 @@ for (const name of ['base', 'client']) writeFileSync('packages/' + name + '/inde
   assert.equal(await fs.readFile(buildRecord, 'utf8'), preparedBuild, 'accepted preparation must not build again');
   const commit = await git('rev-parse', 'HEAD');
   assert.notEqual(commit, before);
+  const changelog = await fs.readFile(path.join(workspace, 'CHANGELOG.md'), 'utf8');
+  assert.ok(changelog.includes('## [' + version + '] - '));
+  assert.match(changelog, /## \[Unreleased\]\s+## \[0\.2\.0-rc\.1\] - \d{4}-\d{2}-\d{2}/);
+  assert.match(changelog, /- Preserve the release receipt\./);
+  assert.match(changelog, /## \[0\.1\.0\] - 2026-01-01\n\n- Original release\./);
   const next = path.join(temp, 'next');
   await git('worktree', 'add', '-b', 'next', next, 'HEAD');
   await run('git', ['commit', '--allow-empty', '-qm', 'Reviewed correction'], { cwd: next, env });
@@ -359,6 +369,8 @@ for (const name of ['base', 'client']) writeFileSync('packages/' + name + '/inde
   assert.ok(stagedReads >= 2);
   for (const name of [first, second]) assert.ok(downloads.get(name) > 0, `${name} must be downloaded and verified`);
   await release('--resume', '--registry', registry);
+  assert.equal(await fs.readFile(path.join(workspace, 'CHANGELOG.md'), 'utf8'), changelog,
+    'publication and resume must preserve authored release history');
   assert.deepEqual([...writes], [[first, 1], [second, 2]]);
   for (const doc of store.values()) assert.deepEqual(doc['dist-tags'], { rc: version });
   store.get(first).versions[version].dist.integrity = 'sha512-foreign';

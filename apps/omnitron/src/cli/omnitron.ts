@@ -1347,6 +1347,16 @@ pipeline.command('cancel <runId>').description('Cancel a run and wait for its ex
 
 const backup = program.command('backup').description('Database backup and restore');
 
+backup.command('acknowledge <id>')
+  .description('Keep an unknown backup outcome, allow new backups and retain the restore fence')
+  .requiredOption('--revision <number>', 'Exact revision returned by backup operations')
+  .requiredOption('--reason <text>', 'Auditable reason for accepting this unknown outcome')
+  .option('--offline', 'Use the local journal only after verified clean shutdown of owner and backend')
+  .structuredAction(async (id, options) => {
+    const { backupAcknowledgeCommand } = await import('../commands/backup.js');
+    await backupAcknowledgeCommand(id, options);
+  });
+
 backup.command('operations [id]')
   .description('Inspect unfinished backup/restore receipts, or one exact operation UUID')
   .structuredAction(async id => {

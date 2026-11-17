@@ -449,6 +449,7 @@ export class RuntimeInstallation {
     if (!this.lease) throw new Error('Runtime selection requires an exclusive operation');
     if (this.activation()?.reviewedRecovery && !reviewedRecovery) throw Error('Runtime selection is held for reviewed recovery');
     const artifact = await this.artifact(id);
+    await (await import('../execution/operation-journal.js')).assertOperationJournalCompatibility(this.home, artifact.directory);
     let hasLauncher = false;
     try { hasLauncher = (await fs.lstat(path.join(artifact.directory, 'cli/installed.js'))).isFile(); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }

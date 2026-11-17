@@ -50,7 +50,7 @@ beforeEach(() => {
   const projects = { listProjectRegistrations: () => [{ name: 'fixture' }], getRunningStacks: () => ['dev'],
     getInfraManager: () => ({ listInstances: () => [], getInstance: () => infra }) };
   backups = new BackupService({ logger } as never, store, testExecution, projects as never);
-  rpc = new BackupRpcService(backups);
+  rpc = new BackupRpcService(backups, null);
 });
 
 afterEach(async () => {

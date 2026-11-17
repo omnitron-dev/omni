@@ -162,6 +162,7 @@ export async function backendSelectCommand(id: string, checkOnly = false): Promi
       if (registry.activation()) throw new Error('An activation is unfinished; recover or abort its checkpoint before selecting another release');
       const selected = checkOnly ? registry.settledSelection({ allowEmpty: true }) : registry.selection();
       const artifact = await registry.artifact(id);
+      await (await import('../execution/operation-journal.js')).assertOperationJournalCompatibility(registry.home, artifact.directory);
       if (!selected?.bootstrap) {
         try { await fs.access(path.join(artifact.directory, 'cli/installed.js')); }
         catch { throw new Error('This release predates managed installation. Select a management-capable release first so rollback and recovery remain available.'); }

@@ -622,6 +622,7 @@ export interface IOmnitronBackupsService {
   getOperation(data: { id: string }): Promise<import('./execution-operations.js').OperationReceipt | null>;
   cancelOperation(data: { id: string; revision: number }): Promise<import('./execution-operations.js').OperationReceipt>;
   reconcileOperation(data: { id: string; revision: number }): Promise<import('./execution-operations.js').OperationReceipt>;
+  acknowledgeUnknownBackup(data: { id: string; revision: number; reason: string }): Promise<import('./execution-operations.js').OperationReceipt>;
 }
 
 /** Kubernetes workloads on the cluster this daemon is pointed at. */

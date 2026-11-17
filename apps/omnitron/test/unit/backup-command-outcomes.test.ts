@@ -113,6 +113,26 @@ describe('backup command outcomes', () => {
     expect(fixture.printed.some(line => line.text === 'Backup operation not found')).toBe(true);
   });
 
+  it('prints an acknowledged unknown outcome as a decision, never as a successful backup', async () => {
+    process.env['OMNITRON_OUTPUT'] = 'json'; resetEnvCache();
+    const receipt = { ...operation, revision: 6, review: { decision: 'allow-new-backup', reviewedRevision: 5,
+      actor: 'operator', reason: 'Retain uncertainty', at: backup.createdAt } };
+    fixture.rpc['acknowledgeUnknownBackup'] = vi.fn(() => receipt);
+    let output = '';
+    vi.spyOn(process.stdout, 'write').mockImplementation(chunk => { output += String(chunk); return true; });
+    await commands.backupAcknowledgeCommand(operation.id, { revision: '5', reason: 'Retain uncertainty' });
+    expect(fixture.rpc['acknowledgeUnknownBackup']).toHaveBeenCalledWith({ id: operation.id, revision: 5, reason: 'Retain uncertainty' });
+    expect(JSON.parse(output)).toEqual({ ok: true, data: receipt });
+    expect(process.exitCode).toBeUndefined(); expect(fixture.printed).toEqual([]);
+  });
+
+  it('refuses an unconfirmed acknowledgement without retrying', async () => {
+    fixture.rpc['acknowledgeUnknownBackup'] = () => operation;
+    await commands.backupAcknowledgeCommand(operation.id, { revision: '5', reason: 'Retain uncertainty' });
+    expect(process.exitCode).toBe(1); expect(fixture.calls).toEqual(['acknowledgeUnknownBackup']);
+    expect(fixture.printed.some(line => line.text.includes('not confirmed'))).toBe(true);
+  });
+
   it('shows the effective transfer deadline even without a schedule', async () => {
     fixture.rpc['getBackupStatus'] = () => ({ databaseTimeoutMs: 1_800_000, schedules: [], stacks: [] });
     await commands.backupSchedulesCommand();

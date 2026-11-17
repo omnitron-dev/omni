@@ -413,8 +413,18 @@ export class BackupService {
     finally { clearTimeout(timer); }
   }
 
-  listOperations(): OperationReceipt[] { return this.operations.pending().filter(receipt => ['backup', 'restore'].includes(receipt.kind)); }
+  listOperations(includeReviewed = false): OperationReceipt[] {
+    return [...this.operations.pending(), ...(includeReviewed ? this.operations.reviewed() : [])]
+      .filter(receipt => ['backup', 'restore'].includes(receipt.kind));
+  }
   getOperation(id: string): OperationReceipt | null { return this.operations.read(id); }
+
+  acknowledgeUnknownBackup(id: string, revision: number, actor: string, reason: string): OperationReceipt {
+    this.reviewedOperation(id, revision);
+    if (this.databaseOperations.has(id.toLowerCase())) throw new Error('This backend still owns the operation; await its settlement');
+    if (this.quiescing) throw new Error('Backup admission belongs to a runtime transition');
+    return this.operations.acknowledgeUnknownBackup(id, revision, actor, reason);
+  }
 
   private reviewedOperation(id: string, revision: number): OperationReceipt {
     const receipt = this.operations.read(id);
@@ -591,7 +601,7 @@ export class BackupService {
    * is still on disk without an index row. See `sweepBackupLeftovers`.
    */
   private clearLeftovers(): void {
-    const swept = sweepBackupLeftovers(this.backupDir, this.operations.pending().length > 0);
+    const swept = sweepBackupLeftovers(this.backupDir, this.listOperations(true).length > 0);
     if (swept.removed.length > 0) {
       const bytes = swept.removed.reduce((sum, r) => sum + r.bytes, 0);
       this.logger.warn(

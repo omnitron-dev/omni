@@ -179,6 +179,41 @@ describe('durable backup execution', () => {
     await expect(backups.createBackup('one/dev/ledger')).resolves.toBeTruthy();
   });
 
+  it('retains uncertainty and staging after review while admitting a new dump and a controller handoff', async () => {
+    mode = 'unknown';
+    const id = randomUUID();
+    await expect(backups.createBackup('one/dev/ledger', { operationId: id })).rejects.toThrow();
+    const prior = backups.getOperation(id)!;
+    const directory = path.join(fixture.home, 'backups');
+    const partial = fs.readdirSync(directory).filter(name => name.endsWith('.partial'));
+    const reviewed = backups.acknowledgeUnknownBackup(id, prior.revision, 'operator', 'Retain the lost acknowledgement');
+    expect(reviewed.state).toBe('unknown'); expect(backups.listOperations()).toEqual([]);
+    expect(backups.listOperations(true)).toEqual([reviewed]);
+    expect(backups.reviewHandoffOperations()).toEqual([]);
+    const reopened = new BackupService({ logger } as never, store, executor, projects as never);
+    expect(fs.readdirSync(directory).filter(name => name.endsWith('.partial'))).toEqual(partial);
+    mode = 'complete';
+    const next = await reopened.createBackup('one/dev/ledger');
+    expect(reopened.getOperation(id)).toEqual(reviewed);
+    expect(store.selectBackupsSync().map(value => value.id)).toEqual([next.id]);
+    const effects = vi.mocked(executor.execute).mock.calls.length;
+    await expect(reopened.restoreBackup(next.id)).rejects.toThrow('still blocks non-backup effects');
+    expect(executor.execute).toHaveBeenCalledTimes(effects);
+    await reopened.prepareHandoff();
+    await reopened.resumeAfterHandoff();
+    reopened.dispose();
+  });
+
+  it('does not accept a review while this backend still owns the operation', async () => {
+    mode = 'wait';
+    const id = randomUUID();
+    const running = backups.createBackup('one/dev/ledger', { operationId: id }).catch(error => error);
+    await vi.waitFor(() => expect(backups.getOperation(id)?.execution?.id).toBeTruthy());
+    expect(() => backups.acknowledgeUnknownBackup(id, backups.getOperation(id)!.revision, 'operator', 'Review'))
+      .toThrow('still owns');
+    await backups.cancelOperation(id, backups.getOperation(id)!.revision); await running;
+  });
+
   it('accepts a reviewed attempt that completed naturally without executing or cancelling it again', async () => {
     mode = 'wait';
     const run = backups.createBackup('one/dev/ledger').catch(error => error);

@@ -78,6 +78,7 @@ class BackendReplacementError extends DomainError {
 export async function spawnReplacement(artifact: BackendArtifact, file: string, record: BackendBootRecord,
   onSpawn: (child: ChildProcess) => void, beforeSpawn?: () => Promise<void>): Promise<BackendReplacementResult> {
   await verifyBackendEntry(artifact);
+  await (await import('../execution/operation-journal.js')).assertOperationJournalCompatibility(checkpointInstanceHome(record), artifact.directory);
   const log = await fs.open(path.join(executionDirectory(record.daemonConfig), `backend-${record.state.ticket.to.controllerId}.log`), 'a', 0o600);
   let child: ChildProcess;
   let execution: BackendRuntimeStatus;
@@ -218,6 +219,7 @@ export async function replaceBackend(directory: string, options: {
     // guardian or draining the current backend, and again immediately before
     // preparing the handoff. Observation never claims controller authority.
     const artifact = await checkBackendCandidate(directory, undefined, fence?.candidate);
+    await (await import('../execution/operation-journal.js')).assertOperationJournalCompatibility(previous.instanceHome, artifact.directory);
     if (managed && supervisesBackendChildren()) {
       try { await fs.access(path.join(artifact.directory, 'daemon/managed-entry.js')); }
       catch { throw Error('This candidate cannot replace an OS-managed backend'); }
@@ -352,6 +354,7 @@ export async function replaceBackend(directory: string, options: {
         // The certificate may change while requests drain. Check the exact
         // frozen checkpoint again while the existing abort path is available.
         await checkBackendAdoption(installedCandidate, record);
+        await (await import('../execution/operation-journal.js')).assertOperationJournalCompatibility(previous.instanceHome, installedCandidate.directory);
         record.previousEntry = installedRollback.entry;
         await writePrivateRecord(prepared.file, record);
         await verifyBackendEntry(installedCandidate); await verifyBackendEntry(installedRollback);

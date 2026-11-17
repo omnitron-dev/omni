@@ -185,6 +185,90 @@ describe('durable execution operations', () => {
     expect(journal.read(first.id)?.artifact?.id).toBe('archive');
   });
 
+  function unknownBackup() {
+    const first = journal.prepare(intent({ kind: 'backup', resources: [
+      { kind: 'database', project: 'one', stack: 'dev', name: 'ledger' },
+      { kind: 'database-endpoint', name: 'fixture/ledger' },
+    ] })).receipt;
+    const running = journal.transition(first.id, first.revision, 'running');
+    const { id: _id, ...unacknowledged } = execution(first.id);
+    const recorded = journal.recordExecution(first.id, running.revision, unacknowledged);
+    return journal.transition(first.id, recorded.revision, 'unknown', { code: 'BACKUP_EXECUTION_UNCONFIRMED' });
+  }
+
+  it('retains reviewed unknown outcomes across restart, allows a new backup and still fences restores', () => {
+    const prior = unknownBackup();
+    const review = journal.acknowledgeUnknownBackup(prior.id, prior.revision, 'operator', 'Lost creation acknowledgement');
+    expect(review).toMatchObject({ state: 'unknown', execution: prior.execution, code: prior.code,
+      review: { decision: 'allow-new-backup', actor: 'operator', reviewedRevision: prior.revision } });
+    expect(review.observation).toBeUndefined(); expect(review.artifact).toBeUndefined();
+    expect(recovery.token()).not.toBeNull(); expect(journal.pending()).toEqual([]);
+    const recoveredState = new RecoveryState();
+    const reopened = new OperationJournal(open(), recoveredState);
+    expect(recoveredState.token()).not.toBeNull(); expect(reopened.reviewed()).toEqual([review]);
+    const next = intent({ kind: 'backup', resources: prior.resources });
+    expect(() => reopened.prepare({ ...next, kind: 'restore' })).toThrow('still blocks non-backup effects');
+    expect(reopened.prepare(next).created).toBe(true);
+    expect(reopened.read(prior.id)).toEqual(review);
+    expect(reopened.prepare(prior).created).toBe(false);
+  });
+
+  it('reconciles a reviewed execution without releasing a newer operation claim', () => {
+    const prior = unknownBackup();
+    const reviewed = journal.acknowledgeUnknownBackup(prior.id, prior.revision, 'operator', 'Accepted uncertain read-only dump');
+    const next = journal.prepare(intent({ kind: 'backup', resources: prior.resources })).receipt;
+    expect(() => journal.recordExecution(prior.id, reviewed.revision, execution(prior.id))).toThrow('cannot start');
+    expect(() => journal.transition(prior.id, reviewed.revision, 'running')).toThrow('confirmed termination');
+    expect(() => journal.transition(prior.id, reviewed.revision, 'succeeded')).toThrow('confirmed termination');
+    const failed = journal.transition(prior.id, reviewed.revision, 'failed', {
+      observation: { resource: execution(prior.id), state: 'absent' }, code: 'BACKUP_INTERRUPTED',
+    });
+    expect(failed.review).toEqual(reviewed.review);
+    expect(journal.reviewed()).toEqual([]); expect(journal.pending()).toEqual([next]);
+    expect(recovery.token()).toBeNull();
+    journal.transition(next.id, next.revision, 'cancelled');
+    expect(journal.prepare(intent({ kind: 'restore', resources: prior.resources })).created).toBe(true);
+  });
+
+  it('commits a review and its resource fences atomically, retaining the hold on write failure', () => {
+    const prior = unknownBackup();
+    const write = store.kvSetSync.bind(store);
+    vi.spyOn(store, 'kvSetSync').mockImplementation((name, value) => {
+      expect(store.initSync().pragma('synchronous', { simple: true })).toBe(2);
+      if (name === key(prior.id)) throw Error('disk full');
+      write(name, value);
+    });
+    expect(() => journal.acknowledgeUnknownBackup(prior.id, prior.revision, 'operator', 'Accept unknown backup')).toThrow('disk full');
+    expect(journal.read(prior.id)).toEqual(prior); expect(journal.pending()).toEqual([prior]);
+    expect(journal.reviewed()).toEqual([]); expect(recovery.token()).toBeNull();
+  });
+
+  it('refuses stale, repeated and invalid reviews without granting new authority', () => {
+    const prior = unknownBackup();
+    expect(() => journal.acknowledgeUnknownBackup(prior.id, prior.revision - 1, 'operator', 'Accept unknown backup')).toThrow('changed');
+    for (const reason of ['', 'x'.repeat(1025), 'multi\nline'])
+      expect(() => journal.acknowledgeUnknownBackup(prior.id, prior.revision, 'operator', reason)).toThrow('reason');
+    const reviewed = journal.acknowledgeUnknownBackup(prior.id, prior.revision, 'operator', 'Accept unknown backup');
+    expect(() => journal.acknowledgeUnknownBackup(prior.id, prior.revision, 'operator', 'Repeat')).toThrow('changed');
+    expect(() => journal.acknowledgeUnknownBackup(prior.id, reviewed.revision, 'operator', 'Repeat')).toThrow('unreviewed');
+    expect(journal.read(prior.id)).toEqual(reviewed); expect(recovery.token()).not.toBeNull();
+  });
+
+  it.each(['backup', 'restore'])('cannot acknowledge a running %s or an unknown non-backup effect', kind => {
+    const first = journal.prepare(intent({ kind })).receipt;
+    const running = journal.transition(first.id, first.revision, 'running');
+    expect(() => journal.acknowledgeUnknownBackup(first.id, running.revision, 'operator', 'Review')).toThrow('unreviewed unknown database backup');
+    const unknown = journal.transition(first.id, running.revision, 'unknown');
+    expect(() => journal.acknowledgeUnknownBackup(first.id, unknown.revision, 'operator', 'Review')).toThrow('unreviewed unknown database backup');
+  });
+
+  it('refuses startup when a retained restore fence loses its receipt', () => {
+    const prior = unknownBackup();
+    journal.acknowledgeUnknownBackup(prior.id, prior.revision, 'operator', 'Review');
+    store.kvDeleteSync(key(prior.id));
+    expect(() => new OperationJournal(open(), new RecoveryState())).toThrow('invalid receipt');
+  });
+
   it('rejects attempts to overwrite ownership through completion fields', () => {
     const first = journal.prepare(intent()).receipt;
     expect(() => journal.transition(first.id, first.revision, 'cancelled', { execution: undefined } as never)).toThrow('Unexpected operation journal field');

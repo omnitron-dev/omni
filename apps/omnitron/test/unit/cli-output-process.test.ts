@@ -97,6 +97,7 @@ describe('actual CLI machine output boundary', () => {
     ['operations', 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'],
     ['cancel', 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', '--revision', '5'],
     ['reconcile', 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', '--revision', '5'],
+    ['acknowledge', 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', '--revision', '5', '--reason', 'Retain uncertainty'],
   ])('admits backup recovery command %s through the real CLI JSON boundary', (...args) => {
     const result = run(['--json', 'backup', ...args]);
     expect(result.error).toBeUndefined();

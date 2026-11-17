@@ -110,6 +110,7 @@ function printOperation(receipt: OperationReceipt): void {
     log.info(`  ${resource.project}/${resource.stack}/${resource.name}`);
   if (receipt.execution) log.info(`  Docker ${receipt.execution.daemonId} · container ${receipt.execution.id ?? 'not acknowledged'}`);
   if (receipt.code) log.info(`  ${receipt.code}`);
+  if (receipt.review) log.warn(`  Outcome remains unknown. New backups allowed; restores blocked. Reviewed by ${receipt.review.actor}: ${receipt.review.reason}`);
 }
 
 /** Full receipts, including unknown outcomes. Reading never retries an effect. */
@@ -145,6 +146,24 @@ export async function backupOperationActionCommand(action: 'cancel' | 'reconcile
       process.exitCode = 1;
       return;
     }
+    if (!emitJson(receipt)) printOperation(receipt);
+  } catch (error) { emitError(error); process.exitCode = 1; }
+}
+
+/** Explicit operator review is separate from executor reconciliation. */
+export async function backupAcknowledgeCommand(id: string, options: { revision: string; reason: string; offline?: boolean }): Promise<void> {
+  try {
+    assertOperationId(id);
+    if (!/^[1-9]\d*$/.test(options.revision) || !Number.isSafeInteger(Number(options.revision)))
+      throw new Error('--revision must be a positive safe integer from the inspected operation');
+    const revision = Number(options.revision);
+    const receipt = options.offline
+      ? await (await import('../daemon/backup-recovery.js')).acknowledgeStoppedBackup(id, revision, options.reason)
+      : await withBackups(service => service.acknowledgeUnknownBackup({ id, revision, reason: options.reason }));
+    if (receipt.id !== id.toLowerCase() || receipt.state !== 'unknown' || receipt.revision !== revision + 1 ||
+        receipt.review?.decision !== 'allow-new-backup' || receipt.review.reviewedRevision !== revision ||
+        receipt.review.reason !== options.reason || receipt.artifact || receipt.observation)
+      throw new Error('Backup review was not confirmed; inspect its exact receipt before acting again');
     if (!emitJson(receipt)) printOperation(receipt);
   } catch (error) { emitError(error); process.exitCode = 1; }
 }

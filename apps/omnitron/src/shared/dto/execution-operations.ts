@@ -26,6 +26,15 @@ export interface OperationArtifact {
   sha256?: string;
 }
 
+/** An explicit administrative decision, never evidence of execution completion. */
+export interface UnknownBackupReview {
+  decision: 'allow-new-backup';
+  reviewedRevision: number;
+  actor: string;
+  reason: string;
+  at: string;
+}
+
 export interface OperationReceipt extends OperationIntent {
   protocol: 1;
   revision: number;
@@ -37,4 +46,6 @@ export interface OperationReceipt extends OperationIntent {
   artifact?: OperationArtifact;
   /** Stable diagnostic code; never a raw command or an unredacted error. */
   code?: string;
+  /** The outcome stays unknown. Restores remain fenced until reconciliation. */
+  review?: UnknownBackupReview;
 }

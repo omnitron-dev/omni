@@ -11,10 +11,12 @@ import type { BackupService, BackupInfo, BackupStatus } from './backup.service.j
 import type { IOmnitronBackupsService } from '../shared/dto/services.js';
 import type { BackupArtifactRequest, BackupRecord } from '../shared/dto/backups.js';
 import type { OperationReceipt } from '../shared/dto/execution-operations.js';
+import { daemonPrincipal } from './daemon-principal.js';
+import type { AuthService } from './auth.service.js';
 
 @Service({ name: 'OmnitronBackups' })
 export class BackupRpcService implements IOmnitronBackupsService {
-  constructor(private readonly backups: BackupService) {}
+  constructor(private readonly backups: BackupService, private readonly auth: Pick<AuthService, 'validateSession'> | null) {}
 
   @Public({ auth: { roles: ADMIN_ROLES } })
   async createBackup(data: { database: string; compress?: boolean; operationId?: string }): Promise<BackupInfo> {
@@ -91,7 +93,7 @@ export class BackupRpcService implements IOmnitronBackupsService {
   }
 
   @Public({ auth: { roles: VIEWER_ROLES } })
-  async listOperations(): Promise<OperationReceipt[]> { return this.backups.listOperations(); }
+  async listOperations(): Promise<OperationReceipt[]> { return this.backups.listOperations(true); }
 
   @Public({ auth: { roles: VIEWER_ROLES } })
   async getOperation(data: { id: string }): Promise<OperationReceipt | null> { return this.backups.getOperation(data.id); }
@@ -104,5 +106,13 @@ export class BackupRpcService implements IOmnitronBackupsService {
   @Public({ auth: { roles: ADMIN_ROLES } })
   async reconcileOperation(data: { id: string; revision: number }): Promise<OperationReceipt> {
     return this.backups.reconcileOperation(data.id, data.revision);
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async acknowledgeUnknownBackup(data: { id: string; revision: number; reason: string }): Promise<OperationReceipt> {
+    // A node without a session store can admit only the existing local UDS
+    // principal; a remote human session cannot be authenticated there.
+    const actor = await daemonPrincipal(this.auth ?? { validateSession: async () => null }, 'admin');
+    return this.backups.acknowledgeUnknownBackup(data.id, data.revision, actor.context.userId!, data.reason);
   }
 }

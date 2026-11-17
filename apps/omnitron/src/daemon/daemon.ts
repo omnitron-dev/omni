@@ -1207,7 +1207,7 @@ export class OmnitronDaemon {
     const backupService = await container.resolveAsync<BackupService>(BACKUP_SERVICE_TOKEN);
     backupService.configure(this.dc.backups);
     this.backupService = backupService;
-    const backupRpcService = new BackupRpc(backupService);
+    const backupRpcService = new BackupRpc(backupService, isSlave ? null : await container.resolveAsync<AuthService>(AUTH_SERVICE_TOKEN));
     await this.app.netron.peer.exposeService(backupRpcService);
     // Re-arm any persisted backup schedules so they survive daemon restarts.
     await backupService.restoreSchedules().catch((err: unknown) =>

@@ -36,6 +36,23 @@ function styles(container: HTMLElement, selector: string) {
   return getComputedStyle(element);
 }
 describe('component style composition at the rendered MUI boundary', () => {
+  it.each(['standard', 'filled', 'outlined'] as const)('truncates long %s select values within the text line', variant => {
+    const name = 'Production deployment in eu-west';
+    const { getByRole } = render(
+      <ThemeProvider theme={createPrismTheme()}>
+        <TextField select variant={variant} size="small" label="Environment" defaultValue="prod" sx={{ width: 96 }}>
+          <MenuItem value="prod">{name}</MenuItem>
+        </TextField>
+      </ThemeProvider>
+    );
+    const value = getByRole('combobox', { name: 'Environment' });
+    const styles = getComputedStyle(value);
+    expect(value).toHaveTextContent(name);
+    expect(styles.display).toBe('block');
+    expect(styles.textOverflow).toBe('ellipsis');
+    expect(styles.overflow).toBe('hidden');
+  });
+
   it.each(['light', 'dark'] as const)('keeps the %s keyboard focus ring when ripples are disabled', (mode) => {
     const theme = createPrismTheme({ mode, cssVariables: { enabled: false } });
     const { getByRole } = render(

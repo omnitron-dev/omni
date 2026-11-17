@@ -73,6 +73,10 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
   const { density, borderRadius } = config;
   const dm = getDensityMultiplier(density);
 
+  // MUI reserves the caret lane for each variant, direction and end adornment.
+  // Keep the glyph inside that lane; the trigger owns value truncation.
+  const selectIcon = { fontSize: 18, width: '1em', height: '1em' };
+
   return {
     // =========================================================================
     // BUTTONS (Modular)
@@ -133,29 +137,14 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
     MuiFormHelperText: createFormHelperTextOverrides(config),
     MuiSelect: {
       styleOverrides: {
-        select: {
-          // Reset minHeight so Select matches TextField height exactly.
-          minHeight: 'auto',
-          display: 'flex',
-          alignItems: 'center',
-        },
-        icon: {
-          right: 10,
-          width: 18,
-          height: 18,
-          top: 'calc(50% - 9px)',
-        },
+        // Text overflow operates on a line box. Making this a flex container
+        // lets an anonymous text item paint into the trailing icon's padding.
+        select: { display: 'block', minHeight: 'auto' },
+        icon: selectIcon,
       },
     },
     MuiNativeSelect: {
-      styleOverrides: {
-        icon: {
-          right: 10,
-          width: 18,
-          height: 18,
-          top: 'calc(50% - 9px)',
-        },
-      },
+      styleOverrides: { icon: selectIcon },
     },
     MuiAutocomplete: createAutocompleteOverrides(config),
 

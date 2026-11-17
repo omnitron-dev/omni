@@ -86,12 +86,14 @@ function StackFilter({ onChange }: { onChange: (name: string | null) => void }) 
         onClose={() => setMenuOpen(false)}
         onChange={event => onChange(event.target.value || null)}
         inputProps={{ 'aria-label': 'Stack filter' }}
-        renderValue={value => value ? `Stack: ${value}` : 'All stacks'}
+        renderValue={value => value ? (
+          <><Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>Stack: </Box>{value}</>
+        ) : 'All stacks'}
         MenuProps={{ slotProps: { paper: { sx: { maxHeight: 360, maxWidth: 'calc(100vw - 24px)' } } } }}
         sx={{
           minWidth: 104, maxWidth: { xs: 112, sm: 210 }, height: 30,
           fontSize: '0.75rem', flexShrink: 1,
-          '& .MuiSelect-select': { minWidth: 0, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', py: 0.5 },
+          '& .MuiSelect-select': { py: 0.5 },
           ...(readError || unverified ? { color: 'warning.main' } : {}),
         }}
       >

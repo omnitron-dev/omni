@@ -330,3 +330,49 @@ test('an unavailable initial daemon inventory never becomes an empty selection',
   await expect(page.getByText('No applications in this selection.')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
 });
+
+for (const direction of ['ltr', 'rtl']) {
+  test('the stack name leaves a clear chevron lane in ' + direction, async ({ page, url }) => {
+    const name = 'development-integration-environment';
+    await stubInventory(page, {
+      'OmnitronProject.listStacks': [{ name, type: 'local', status: 'running', apps: [], nodes: [] }],
+    });
+    await page.addInitScript(value => {
+      localStorage.setItem('omnitron_active_project', 'example');
+      localStorage.setItem('omnitron_active_stack', value);
+    }, name);
+    await page.goto(url + '/workspace.html?dir=' + direction);
+    const field = page.getByRole('combobox', { name: 'Stack filter' });
+    await expect(field).toContainText(name);
+    await page.evaluate(() => document.fonts.ready);
+    for (const width of [320, 360, 768, 1440]) {
+      await page.setViewportSize({ width, height: 760 });
+      const geometry = await field.evaluate(el => {
+        const icon = el.parentElement.querySelector('.MuiSelect-icon').getBoundingClientRect();
+        const rect = el.getBoundingClientRect();
+        const style = getComputedStyle(el);
+        const rtl = style.direction === 'rtl';
+        const inset = rtl ? icon.left - rect.left : rect.right - icon.right;
+        return {
+          inset, space: parseFloat(style.paddingInlineEnd) - inset - icon.width,
+          clip: { x: Math.floor(icon.left - 2), y: Math.floor(icon.top),
+            width: Math.ceil(icon.width + 4), height: Math.ceil(icon.height) },
+        };
+      });
+      expect(geometry.inset).toBeGreaterThanOrEqual(0);
+      expect(geometry.space).toBeGreaterThanOrEqual(2);
+      // Compare the pixels surrounding the painted chevron with and without text.
+      // An ellipsized text node's DOM Range can extend beyond what the browser paints.
+      const visible = await page.screenshot({ clip: geometry.clip, animations: 'disabled' });
+      const hideValue = await page.addStyleTag({ content: '.MuiSelect-select { color: transparent !important; }' });
+      const withoutText = await page.screenshot({ clip: geometry.clip, animations: 'disabled' });
+      await hideValue.evaluate(el => el.remove());
+      expect(Buffer.compare(visible, withoutText), 'text painted inside the chevron lane at ' + width).toBe(0);
+    }
+    await field.focus();
+    await field.press('ArrowDown');
+    await expect(page.getByRole('option', { name: new RegExp(name) })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(field).toBeFocused();
+  });
+}

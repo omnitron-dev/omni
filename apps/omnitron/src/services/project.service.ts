@@ -1,5 +1,6 @@
 import { readColdBatch, reviewedColdStart, claimColdStart, type ColdStartPermit } from '../project/cold-stack-start.js';
-import { readRestartConfiguration, restartLaunchIntent, type RuntimeRestartConfiguration, type RuntimeRestartStack } from '../project/runtime-restart.js';
+import { readRestartConfiguration, restartLaunchIntent } from '../project/runtime-restart.js';
+import type { RuntimeRestartConfiguration, RuntimeRestartStack } from '../shared/dto/runtime-update.js';
 import { readProjectStacks, resolveProjectStacks } from '../config/project-stacks.js';
 import { assertApplicationInstances } from '../config/define-ecosystem.js';
 import { readSavedDaemonConfig } from '../config/saved.js';

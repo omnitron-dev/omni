@@ -89,12 +89,12 @@ describe('the data channel', () => {
 describe('a refused deployment names who holds the node', () => {
   const held = `printf '%s\\n' ${shellEscape(`HELD 12\t${RECORD}`)}`;
 
-  it('could not, through the masked transport', async () => {
+  it('preserves the holder identity and redacts its token in execution output', async () => {
     const answer = parseAcquire('37.27.130.185:22', (await execution.exec(held)).stdout);
-    expect(answer).toMatchObject({ kind: 'held', holder: null });
+    expect(answer).toEqual({ kind: 'held', idleSec: 12, holder: { ...JSON.parse(RECORD), token: '[REDACTED]' } });
   });
 
-  it('does, through the lease runner', async () => {
+  it('preserves the full lease record and identifies the holder in the refusal', async () => {
     // A node whose SSH is this machine's shell through the same engine: the
     // lease script's answer as the node prints it, masked or not as the
     // transport does.
@@ -107,7 +107,7 @@ describe('a refused deployment names who holds the node', () => {
 
     const answer = parseAcquire('37.27.130.185:22', await deployer.leaseRunner({ host: '37.27.130.185' })('the lease script'));
 
-    expect(answer).toMatchObject({ kind: 'held', idleSec: 12, holder: { holder: 'omnitron@laptop pid 4242', stack: 'sample/test' } });
+    expect(answer).toEqual({ kind: 'held', idleSec: 12, holder: JSON.parse(RECORD) });
     if (answer.kind !== 'held') throw new Error('Expected a held deployment lease');
     const refusal = new LeaseHeldError('37.27.130.185:22', answer.holder, 12, 300);
     expect(refusal.message).toMatch(/being deployed by omnitron@laptop pid 4242 \(deploying sample\/test, since 2026-09-23T18:04:13Z\)/);

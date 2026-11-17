@@ -27,6 +27,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import 'reflect-metadata';
+import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 
 import { AppHandle } from '../../src/orchestrator/app-handle.js';
 import { OrchestratorService } from '../../src/orchestrator/orchestrator.service.js';
@@ -38,20 +39,16 @@ const config = {
   monitoring: { healthCheck: { interval: 30_000, timeout: 5_000 } },
 } as unknown as IEcosystemConfig;
 
-/** An orchestrator with only what these paths touch — the log records the order things happened in. */
+/** Exercise normal lifecycle admission and queues with controlled process and storage effects. */
 function orchestrator() {
   const log: string[] = [];
-  const self = Object.create(OrchestratorService.prototype) as Record<string, any>;
+  const stateStore = {
+    getExecutionIntent: () => ({ phase: 'running', revision: 0 }),
+    getStackIntent: () => ({ phase: 'running', revision: 0 }),
+  };
+  const self = new OrchestratorService(createNullLogger(), {} as never, stateStore as never);
   Object.assign(self, {
-    stateStore: { getExecutionIntent: () => ({ phase: 'running', revision: 0 }), getStackIntent: () => ({ revision: 0, phase: 'running' }) },
-    handles: new Map<string, AppHandle>(),
-    coolDownTimers: new Map(),
-    appStopIntents: new Map(),
-    executionOperations: new Map(),
-    restartCoalescer: new Map(),
-    config,
-    lifecycleQueue: { enqueue: (_key: string, _op: string, fn: () => Promise<unknown>) => fn() },
-    logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+    bootReconciled: true,
     persistState: vi.fn(),
     ensureMetricsPolling: vi.fn(),
     metricsBridge: { evictApp: vi.fn() },
@@ -86,12 +83,12 @@ describe('stopping an app', () => {
     const release = vi.fn().mockRejectedValueOnce(new Error('RPC registration still advertised')).mockResolvedValue(undefined);
     handle.topology = { close: release } as never;
     self['handles'].set(handle.name, handle);
-    await expect(self['stopApp'](handle.name)).rejects.toThrow('still advertised');
+    await expect(self.stopApp(handle.name)).rejects.toThrow('still advertised');
     expect(handle.topologyPools.size).toBe(0);
     expect(handle.supervisor!.stop).toHaveBeenCalledOnce();
     expect(handle.topology).not.toBeNull();
     expect(handle.status).toBe('stopping');
-    await self['stopApp'](handle.name);
+    await self.stopApp(handle.name);
     expect(release).toHaveBeenCalledTimes(2);
     expect(handle.topology).toBeNull();
     expect(handle.status).toBe('stopped');
@@ -104,7 +101,7 @@ describe('stopping an app', () => {
     handle.topology = { close: async () => { log.push('topology closed'); } } as never;
     self['handles'].set(handle.name, handle);
 
-    await self['stopApp']('sample/deployed/quotes');
+    await self.stopApp('sample/deployed/quotes');
 
     expect(log).toEqual([
       'topology closed',
@@ -124,10 +121,10 @@ describe('stopping an app', () => {
     const destroy = vi.fn().mockRejectedValueOnce(new Error('worker remains alive')).mockResolvedValue(undefined);
     handle.topologyPools.set('transform', { destroy } as never);
     self['handles'].set(handle.name, handle);
-    await expect(self['stopApp'](handle.name)).rejects.toThrow('worker remains alive');
+    await expect(self.stopApp(handle.name)).rejects.toThrow('worker remains alive');
     expect(handle.status).toBe('stopping');
     expect([...handle.topologyPools.keys()]).toEqual(['transform']);
-    await self['stopApp'](handle.name);
+    await self.stopApp(handle.name);
     expect(destroy).toHaveBeenCalledTimes(2);
     expect(handle.status).toBe('stopped');
   });
@@ -138,7 +135,7 @@ describe('stopping an app', () => {
     handle.status = 'online';
     self['handles'].set(handle.name, handle);
 
-    await expect(self['stopApp']('sample/deployed/storage')).rejects.toThrow(/would not die/);
+    await expect(self.stopApp('sample/deployed/storage')).rejects.toThrow(/would not die/);
     expect(log).toContain('sample/deployed/storage: transform destroyed');
     expect(handle.topologyPools.size).toBe(0);
   });
@@ -149,10 +146,10 @@ describe('starting over a handle that is not online', () => {
     const { self, log } = orchestrator();
     const bare = generation('storage', log, { supervisorThrows: true });
     bare.status = 'online'; self['handles'].set('storage', bare);
-    await expect(self['startAppInternal']({ name: 'sample/deployed/storage', bootstrap: './bootstrap.ts' }, config)).rejects.toThrow('did not stop');
+    await expect(self.startApp({ name: 'sample/deployed/storage', bootstrap: './bootstrap.ts' }, config)).rejects.toThrow('did not stop');
     expect(self['handles'].get('storage')).toBe(bare);
     expect(self['handles'].has('sample/deployed/storage')).toBe(false);
-    expect(self['metricsBridge'].evictApp).not.toHaveBeenCalled();
+    expect(self['metricsBridge']?.evictApp).not.toHaveBeenCalled();
     expect(log).not.toContain('launch');
     expect(bare.status).toBe('stopping');
     expect(bare.supervisor).not.toBeNull();
@@ -163,10 +160,10 @@ describe('starting over a handle that is not online', () => {
     const bare = generation('storage', log); bare.status = 'online';
     bare.supervisor!.stop = vi.fn().mockRejectedValueOnce(new Error('unconfirmed worker')).mockResolvedValue(undefined);
     self['handles'].set('storage', bare);
-    await expect(self['startAppInternal']({ name: 'sample/deployed/storage', bootstrap: './bootstrap.ts' }, config)).rejects.toThrow();
-    await self['startAppInternal']({ name: 'sample/deployed/storage', bootstrap: './bootstrap.ts' }, config);
+    await expect(self.startApp({ name: 'sample/deployed/storage', bootstrap: './bootstrap.ts' }, config)).rejects.toThrow();
+    await self.startApp({ name: 'sample/deployed/storage', bootstrap: './bootstrap.ts' }, config);
     expect(self['handles'].has('storage')).toBe(false);
-    expect(self['handles'].get('sample/deployed/storage').status).toBe('online');
+    expect(self['handles'].get('sample/deployed/storage')?.status).toBe('online');
     expect(log.filter(item => item === 'launch')).toHaveLength(1);
   });
 
@@ -177,7 +174,7 @@ describe('starting over a handle that is not online', () => {
     old.status = 'stopped';
     self['handles'].set(old.name, old);
 
-    const next = await self['startAppInternal']({ name: 'sample/deployed/payments', bootstrap: './bootstrap.ts' }, config);
+    const next = await self.startApp({ name: 'sample/deployed/payments', bootstrap: './bootstrap.ts' }, config);
 
     expect(log).toEqual([
       'sample/deployed/payments: supervisor stopped',
@@ -199,7 +196,7 @@ describe('starting over a handle that is not online', () => {
     } } as never;
     self['handles'].set('storage', bare);
 
-    await self['startAppInternal']({ name: 'sample/deployed/storage', bootstrap: './bootstrap.ts' }, config);
+    await self.startApp({ name: 'sample/deployed/storage', bootstrap: './bootstrap.ts' }, config);
 
     expect(log.slice(0, 4)).toEqual(['topology closed', 'storage: supervisor stopped', 'storage: ohlcv-aggregator destroyed', 'storage: transform destroyed']);
     expect(log.at(-1)).toBe('launch');
@@ -212,7 +209,7 @@ describe('starting over a handle that is not online', () => {
     running.status = 'online';
     self['handles'].set(running.name, running);
 
-    expect(await self['startAppInternal']({ name: 'sample/deployed/geo', bootstrap: './bootstrap.ts' }, config)).toBe(running);
+    expect(await self.startApp({ name: 'sample/deployed/geo', bootstrap: './bootstrap.ts' }, config)).toBe(running);
     expect(log).toEqual([]);
   });
 });

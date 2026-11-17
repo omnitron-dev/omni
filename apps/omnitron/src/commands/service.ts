@@ -42,8 +42,8 @@ import {
   renderLaunchdPlist,
   renderSystemdUnit,
   decideScope,
-  type ServiceScope,
 } from './service-units.js';
+import type { ServiceScope } from '../shared/dto/runtime-update.js';
 import { managedRuntimeFile, readManagedRuntime, managedSupervisorSocket } from '../daemon/managed-runtime.js';
 import { privateControlClient } from '../daemon/private-control-client.js';
 import type { BackendSupervisorService } from '../daemon/backend-supervisor.js';

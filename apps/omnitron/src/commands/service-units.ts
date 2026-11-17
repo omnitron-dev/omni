@@ -33,8 +33,7 @@
  * "anyone on the box".
  */
 
-/** Who supervises the daemon, and from where. */
-export type ServiceScope = 'user' | 'system';
+import type { ServiceScope } from '../shared/dto/runtime-update.js';
 
 export interface ServiceIdentity {
   /** Account the daemon runs as. Never root for a system unit. */

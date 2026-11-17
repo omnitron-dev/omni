@@ -77,11 +77,14 @@ describe.each([
     expect(client.disconnect).toHaveBeenCalledOnce();
   });
 
-  it('reports an unavailable daemon as a failed read without trying to list applications', async () => {
-    client.whyUnreachable.mockResolvedValue({ kind: 'stopped' });
+  it.each([
+    { absence: { kind: 'stopped' }, message: 'Daemon is not running' },
+    { absence: { kind: 'silent', pid: 321, waitedMs: 3000 }, message: 'Daemon is running (PID 321) but did not answer within 3s' },
+  ])('reports the $absence.kind daemon without trying to list applications', async ({ absence, message }) => {
+    client.whyUnreachable.mockResolvedValue(absence);
     await invoke();
     expect(stdout).toEqual([]);
-    expect(JSON.parse(stderr.join(''))).toEqual({ ok: false, error: 'Daemon is not running' });
+    expect(JSON.parse(stderr.join(''))).toEqual({ ok: false, code: 'DAEMON_UNAVAILABLE', error: message, details: { absence } });
     expect(process.exitCode).toBe(1);
     expect(client[name]).not.toHaveBeenCalled();
     expect(client.disconnect).toHaveBeenCalledOnce();

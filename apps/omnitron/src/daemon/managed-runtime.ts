@@ -4,7 +4,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { OMNITRON_HOME } from '../config/defaults.js';
 import { readPrivateRecord } from './execution-journal.js';
-import type { ServiceScope } from '../commands/service-units.js';
+import type { ServiceScope } from '../shared/dto/runtime-update.js';
 import { checkGuardianStopEffects, guardianStopProperties } from './system-guardian-unit.js';
 import { checkGuardianStopFence, guardianControlGroup, prepareGuardianFence, verifyStoppedGuardian, type GuardianStopFence } from './system-guardian-cgroup.js';
 import { readHostBootIdentity, isStableHostBootIdentity, provesDifferentHostBoot } from '@omnitron-dev/common/process-identity';

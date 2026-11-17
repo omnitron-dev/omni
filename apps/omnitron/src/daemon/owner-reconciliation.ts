@@ -7,7 +7,8 @@ import { promisify } from 'node:util';
 import { readManagedRuntime, hostBootIdentity, type ManagedRuntime } from './managed-runtime.js';
 import { ExecutionJournal, readPrivateRecord, writePrivateRecord } from './execution-journal.js';
 import { withKernelFileLock } from '@xec-sh/ops/utils/file-lock';
-import { readDarwinOwnerEvidence, type DarwinReconciliationScope } from './darwin-owner-evidence.js';
+import { readDarwinOwnerEvidence } from './darwin-owner-evidence.js';
+import type { DarwinReconciliationScope } from '../shared/dto/runtime-update.js';
 
 interface ProcessIdentity { pid: number; lifetime: string | null }
 interface CrashReceipt { bootId: string; clean: false; pid: number }

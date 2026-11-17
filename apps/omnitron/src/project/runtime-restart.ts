@@ -1,34 +1,9 @@
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
-import type { IEcosystemAppEntry, IEcosystemConfig, IAppDefinition, IStackConfig } from '../config/types.js';
-import type { StackStartReview, SelectedRelease } from '../shared/dto/project.js';
-import type { StackExecutionScope } from '../shared/dto/stack-execution.js';
+import type { IEcosystemAppEntry, IEcosystemConfig } from '../config/types.js';
+import type { RuntimeRestartConfiguration } from '../shared/dto/runtime-update.js';
 import { readPrivateRecord, writePrivateRecord } from '../daemon/execution-journal.js';
-
-/** Private restart intent. These are the retained next-start definitions, not
- * an assertion about the original environment of already running processes. */
-export interface RuntimeRestartStack extends StackExecutionScope {
-  path: string;
-  registeredAt: string;
-  definition: IStackConfig;
-  selection: SelectedRelease | null;
-  environment: Record<string, Record<string, string>>;
-  declarations: Array<[string, IAppDefinition]>;
-  entries: IEcosystemAppEntry[];
-  launches: IEcosystemAppEntry[];
-  review: StackStartReview;
-}
-
-export interface RuntimeRestartConfiguration {
-  protocol: 1;
-  registryDigest: string;
-  ownerId: string;
-  inventoryDigest: string;
-  watchConfig: IEcosystemConfig;
-  projects: Array<[string, { config: IEcosystemConfig; loadedAt: number }]>;
-  stacks: RuntimeRestartStack[];
-}
 
 export function restartConfigurationDigest(configuration: RuntimeRestartConfiguration): string {
   return createHash('sha256').update(JSON.stringify(configuration)).digest('hex');

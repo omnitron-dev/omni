@@ -1,10 +1,40 @@
-import type { ServiceScope } from '../../commands/service-units.js';
-import type { DaemonStatusDto, ProcessInfoDto } from '../../config/types.js';
-import type { IProjectInfo, IStackInfo, SelectedRelease } from './project.js';
+import type { DaemonStatusDto, IAppDefinition, IEcosystemAppEntry, IEcosystemConfig, IStackConfig, ProcessInfoDto } from '../../config/types.js';
+import type { IProjectInfo, IStackInfo, SelectedRelease, StackStartReview } from './project.js';
 import type { StackExecutionScope } from './stack-execution.js';
 import type { OperationReceipt } from './execution-operations.js';
-import type { RuntimeRestartConfiguration } from '../../project/runtime-restart.js';
-import type { DarwinReconciliationScope } from '../../daemon/darwin-owner-evidence.js';
+
+/** Scope of the platform service supervising the runtime. */
+export type ServiceScope = 'user' | 'system';
+
+/** The definitions retained for the next start of this stack. */
+export interface RuntimeRestartStack extends StackExecutionScope {
+  path: string;
+  registeredAt: string;
+  definition: IStackConfig;
+  selection: SelectedRelease | null;
+  environment: Record<string, Record<string, string>>;
+  declarations: Array<[string, IAppDefinition]>;
+  entries: IEcosystemAppEntry[];
+  launches: IEcosystemAppEntry[];
+  review: StackStartReview;
+}
+
+export interface RuntimeRestartConfiguration {
+  protocol: 1;
+  registryDigest: string;
+  ownerId: string;
+  inventoryDigest: string;
+  watchConfig: IEcosystemConfig;
+  projects: Array<[string, { config: IEcosystemConfig; loadedAt: number }]>;
+  stacks: RuntimeRestartStack[];
+}
+
+export interface DarwinReconciliationScope {
+  platform: 'darwin';
+  domain: string;
+  bootSession: string;
+  processGroups: number[];
+}
 
 /** Read-only next-start intent. It is not a recovery or shutdown certificate. */
 export interface RuntimeRestartReview {

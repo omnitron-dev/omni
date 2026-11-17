@@ -24,8 +24,8 @@ import { fileURLToPath } from 'node:url';
 
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
-import { restartConfigurationDigest, type RuntimeRestartConfiguration } from '../project/runtime-restart.js';
-import type { RuntimeRestartReview, RuntimeRestartPrepareRequest } from '../shared/dto/runtime-update.js';
+import { restartConfigurationDigest } from '../project/runtime-restart.js';
+import type { RuntimeRestartConfiguration, RuntimeRestartReview, RuntimeRestartPrepareRequest } from '../shared/dto/runtime-update.js';
 import type { OperationReceipt } from '../shared/dto/execution-operations.js';
 import { Application, ShutdownReason, ShutdownPriority, ApplicationEvent } from '@omnitron-dev/titan';
 import { UnixSocketTransport } from '@omnitron-dev/titan/netron/transport/unix';

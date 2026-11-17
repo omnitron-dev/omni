@@ -24,7 +24,6 @@ import type { Kysely } from 'kysely';
 
 import { setEnvOverride, resetEnvCache } from '../../src/shared/env-config.js';
 import { requiresTestPostgres } from './requires-test-postgres.js';
-import { OMNITRON_MIGRATIONS } from '../../src/database/migrations/index.js';
 
 const TEST_PG_URL = TEST_POSTGRES_URL;
 
@@ -156,14 +155,19 @@ describe.skipIf(!testPg.ok)('Omnitron migrations (integration)', () => {
     const { assertOmnitronMigrationsCurrent, migrateOmnitronDb, createOmnitronMigrationRunner } = await import('../../src/database/migration-runner.js');
     await expect(assertOmnitronMigrationsCurrent(db)).rejects.toThrow('pending: 001_initial_schema');
     expect(await listTables(db)).not.toContain('migrations');
-    await migrateOmnitronDb(db);
+    // An installation just before 016 is missing the lease table.
+    const runner = createOmnitronMigrationRunner(db);
+    await runner.upTo('015_persistent_metrics');
+    const before = await runner.inspect();
+    expect(before.pending[0]).toBe('016_cluster_lease');
+    const tables = await listTables(db);
+    expect(tables).not.toContain('titan_database_leases');
+
+    await expect(assertOmnitronMigrationsCurrent(db)).rejects.toThrow(`pending: ${before.pending.join(', ')}`);
+    expect(await runner.inspect()).toEqual(before);
+    expect(await listTables(db)).toEqual(tables);
+    expect((await migrateOmnitronDb(db)).applied).toEqual(before.pending);
     await expect(assertOmnitronMigrationsCurrent(db)).resolves.toBeUndefined();
-    await createOmnitronMigrationRunner(db).down(1);
-    await expect(assertOmnitronMigrationsCurrent(db)).rejects.toThrow(`pending: ${OMNITRON_MIGRATIONS.at(-1)!.name}`);
-    expect((await createOmnitronMigrationRunner(db).inspect()).pending).toEqual([OMNITRON_MIGRATIONS.at(-1)!.name]);
-    const { sql } = await import('kysely');
-    const table = await sql<{ table: string | null }>`select to_regclass('public.titan_database_leases')::text as table`.execute(db);
-    expect(table.rows[0]?.table).toBeNull();
   });
 
   it('adopts a pre-existing Kysely migration history instead of re-applying it', async () => {

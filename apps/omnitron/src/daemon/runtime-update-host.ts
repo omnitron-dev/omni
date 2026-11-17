@@ -9,7 +9,7 @@ import { BACKEND_ACTIVITY_COUNTERS } from '../shared/dto/backend.js';
 import { retainReviewedBackups } from '../shared/backup-admission.js';
 import { LAUNCHD_LABEL, OWNER_LAUNCHD_LABEL } from '../commands/service-units.js';
 import { localStackInventory } from '../project/local-stack-inventory.js';
-import { readRestartConfiguration, saveRestartConfiguration, restartConfigurationDigest, restartIntentDigest, restartLaunchIntent, assertRestartOwnerDefaults, type RuntimeRestartConfiguration } from '../project/runtime-restart.js';
+import { readRestartConfiguration, saveRestartConfiguration, restartConfigurationDigest, restartIntentDigest, restartLaunchIntent, assertRestartOwnerDefaults } from '../project/runtime-restart.js';
 import { privateControlClient } from './private-control-client.js';
 import { assertRuntimeUpdateHealth, RuntimeUpdateHealthRegression } from './runtime-update.js';
 import { RuntimeObservationPending, RuntimeObservationConflict, RuntimeObservationUnconfirmed,
@@ -29,7 +29,7 @@ import type { ManagedRuntime } from './managed-runtime.js';
 import type { RuntimeSelection } from './runtime-installation.js';
 import type { StackStartReview, SelectedRelease } from '../shared/dto/project.js';
 import type { RuntimeUpdateActions, RuntimeUpdateRestoration } from './runtime-update.js';
-import type { RuntimeRestartReview, RuntimeUpdateIdentity, RuntimeUpdateRetiringIdentity, RuntimeUpdateInfrastructure, RuntimeUpdatePlan, RuntimeUpdateProjectObservation, RuntimeUpdateStack, RuntimeUpdateStackObservation, RuntimeUpdateStatusObservation, RuntimeUpdateSelection, ReviewedRuntimeUpdateStack, VerifiedRuntimeReference } from '../shared/dto/runtime-update.js';
+import type { RuntimeRestartConfiguration, RuntimeRestartReview, RuntimeUpdateIdentity, RuntimeUpdateRetiringIdentity, RuntimeUpdateInfrastructure, RuntimeUpdatePlan, RuntimeUpdateProjectObservation, RuntimeUpdateStack, RuntimeUpdateStackObservation, RuntimeUpdateStatusObservation, RuntimeUpdateSelection, ReviewedRuntimeUpdateStack, VerifiedRuntimeReference } from '../shared/dto/runtime-update.js';
 
 export type RuntimeUpdateCall = <T>(argv: readonly string[], options?: { timeoutMs?: number; signal?: AbortSignal }) => Promise<T>;
 interface ColdStartObservation {

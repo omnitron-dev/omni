@@ -1,12 +1,10 @@
 import { execFile } from 'node:child_process';
 import { compareProcessLifetimes, formatDarwinProcessLifetime } from '@omnitron-dev/common/process-identity';
+import type { DarwinReconciliationScope } from '../shared/dto/runtime-update.js';
 import type { ManagedRuntime } from './managed-runtime.js';
 
 export interface DarwinProcessIdentity {
   pid: number; ppid: number; pgid: number; uid: number; lifetime: string; executable: string;
-}
-export interface DarwinReconciliationScope {
-  platform: 'darwin'; domain: string; bootSession: string; processGroups: number[];
 }
 interface CommandAnswer { stdout: string; stderr: string; code: number; pid: number }
 async function command(file: string, args: string[]): Promise<CommandAnswer> {

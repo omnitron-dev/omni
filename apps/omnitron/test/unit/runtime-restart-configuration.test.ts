@@ -21,7 +21,7 @@ import { loadRelease } from '../../src/release/load.js';
 import { captureBootstrapMetadata } from '../../src/project/bootstrap-metadata.js';
 import { writePrivateRecord } from '../../src/daemon/execution-journal.js';
 import { readRestartConfiguration, saveRestartConfiguration, restartConfigurationDigest, restartIntentDigest, restartLaunchIntent, assertRestartOwnerDefaults } from '../../src/project/runtime-restart.js';
-import type { RuntimeRestartConfiguration } from '../../src/project/runtime-restart.js';
+import type { RuntimeRestartConfiguration } from '../../src/shared/dto/runtime-update.js';
 import type { IEcosystemAppEntry, IEcosystemConfig } from '../../src/config/types.js';
 
 // OS service ownership is independently exercised by cold-stack-start.test.ts.

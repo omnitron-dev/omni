@@ -63,8 +63,10 @@ describe('the transport, measured', () => {
 
     const plain = await execution.exec(`printf '%s\\n' '${accountLine({ password: PASSWORD })}'`);
     expect(plain.stdout).not.toContain(PASSWORD);
-    expect(plain.stdout).toContain('[REDACTED]');
-    expect(() => JSON.parse(plain.stdout)).toThrow();
+    expect(JSON.parse(plain.stdout)).toEqual(JSON.parse(accountLine({ password: '[REDACTED]' })));
+    expect(readAccountRun({ stdout: plain.stdout, stderr: '', code: 0 }, 'superadmin', key.open)).toMatchObject({
+      made: false, uncertain: true, because: expect.stringContaining('carries no sealed password'),
+    });
 
     const sealed = accountLine({ sealed: sealTo(key.spki, PASSWORD) });
     const back = await execution.exec(`printf '%s\\n' '${sealed}'`);

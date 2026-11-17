@@ -13,10 +13,9 @@
  * ("When unavailable: Run `omnitron up` to start the daemon").
  */
 
-import { describe, it, expect } from 'vitest';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { beforeAll, describe, it, expect, vi } from 'vitest';
+import { kbMcpCommand } from '../../src/commands/kb.js';
+import { McpBridge } from '../../src/mcp/mcp-bridge.js';
 
 import {
   createUnavailableTools,
@@ -24,21 +23,11 @@ import {
   KB_TOOL_NAMES,
 } from '../../src/mcp/unavailable-tools.js';
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const groupsDir = path.resolve(here, '../../src/mcp/tool-groups');
-
-/** Tool names the real groups register, read out of their source. */
-function realToolNames(): { kb: Set<string>; daemon: Set<string> } {
-  const kb = new Set<string>();
-  const daemon = new Set<string>();
-  for (const file of fs.readdirSync(groupsDir)) {
-    const text = fs.readFileSync(path.join(groupsDir, file), 'utf8');
-    for (const m of text.matchAll(/name: '([a-z_]+\.[a-z_]+)'/g)) {
-      (file === 'kb.tools.ts' ? kb : daemon).add(m[1]!);
-    }
-  }
-  return { kb, daemon };
-}
+vi.mock('@omnitron-dev/kb', () => ({ KnowledgeBase: class { async initialize() {} } }));
+vi.mock('@omnitron-dev/kb/surreal', () => ({ SurrealKbStore: class {} }));
+vi.mock('../../src/daemon/daemon-client.js', () => ({
+  createDaemonClient: () => ({ isReachable: async () => true }),
+}));
 
 describe('stub tools', () => {
   it('answer with the reason instead of not existing', async () => {
@@ -69,11 +58,27 @@ describe('the stub list matches the real one', () => {
   // The stub names are duplicated rather than derived, because the real
   // groups need the very client that is missing to be constructed. That
   // duplication is only safe while something compares the two.
-  const real = realToolNames();
+  const real = { kb: new Set<string>(), daemon: new Set<string>() };
+  beforeAll(async () => {
+    const registration = vi.spyOn(McpBridge.prototype, 'registerTools');
+    const stdio = vi.spyOn(McpBridge.prototype, 'start').mockResolvedValue();
+    try {
+      await kbMcpCommand();
+      for (const tool of registration.mock.calls.flatMap(([tools]) => tools)) {
+        expect(tool.description).not.toContain('UNAVAILABLE');
+        (tool.name.startsWith('kb.') ? real.kb : real.daemon).add(tool.name);
+      }
+    } finally {
+      registration.mockRestore();
+      stdio.mockRestore();
+    }
+  });
 
   it('found both sides', () => {
     expect(real.kb.size).toBeGreaterThan(5);
     expect(real.daemon.size).toBeGreaterThan(20);
+    expect(real.daemon.has('pipeline.start')).toBe(true);
+    expect(real.daemon.has('pipeline.resume')).toBe(true);
   });
 
   it('covers every KB tool', () => {

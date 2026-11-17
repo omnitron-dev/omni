@@ -35,6 +35,7 @@ import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 
 import { PipelineRpcService } from '../../src/services/pipeline.rpc-service.js';
+import type { PreparePipelineRun, StartPipelineRun } from '../../src/shared/dto/pipelines.js';
 import { createAuthContextWrapper } from '../../src/services/auth-context.js';
 import { KubernetesRpcService } from '../../src/services/kubernetes.rpc-service.js';
 import { FleetRpcService } from '../../src/services/fleet.rpc-service.js';
@@ -87,10 +88,21 @@ const pod = (name: string) => ({
 });
 
 const revision = 'a'.repeat(64);
+const reviewDigest = 'b'.repeat(64);
 function pipelineRpc(backend: any) {
   const list = backend.listPipelines;
   if (list) backend.listPipelines = async () => (await list()).map((row: object) => ({ ...row, revision }));
   return new PipelineRpcService(backend, { validateSession: async () => null }, { record: async () => {} });
+}
+
+function pipelineRuns(rows: Array<{ id: string; name: string }>) {
+  const prepare = vi.fn(async ({ runId, expectedRevision }: PreparePipelineRun, _actor: string) => ({
+    id: runId, status: 'awaiting-review',
+    review: { protocol: 1, digest: reviewDigest, definitionRevision: expectedRevision, projects: [], parameterNames: [] },
+  }));
+  const start = vi.fn(async ({ runId }: StartPipelineRun, _actor: string) => ({ id: runId, status: 'running' }));
+  const rpc = pipelineRpc({ listPipelines: async () => rows, prepareRun: prepare, startRun: start });
+  return { rpc, prepare, start };
 }
 
 const services = {
@@ -233,35 +245,37 @@ describe('omnitron pipeline run', () => {
     } finally { await client.disconnect(); }
   });
   it.each(['release', 'pipeline-id'])('resolves %s to the registered pipeline over Netron', async (name) => {
-    const execute = vi.fn(async () => ({ id: 'run-id', status: 'running' }));
-    await daemonWith(pipelineRpc({
-      listPipelines: async () => [{ id: 'pipeline-id', name: 'release' }],
-      executePipeline: execute,
-    } as never));
+    const { rpc, prepare, start } = pipelineRuns([{ id: 'pipeline-id', name: 'release' }]);
+    await daemonWith(rpc);
     await pipelineRunCommand(name);
-    expect(execute).toHaveBeenCalledExactlyOnceWith('pipeline-id', undefined, 'omnitron-local', revision);
+    const runId = prepare.mock.calls[0]?.[0].runId;
+    expect(runId).toMatch(/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
+    expect(prepare).toHaveBeenCalledExactlyOnceWith({ runId, id: 'pipeline-id', expectedRevision: revision }, 'omnitron-local');
+    expect(start).toHaveBeenCalledExactlyOnceWith({ runId, expectedDigest: reviewDigest }, 'omnitron-local');
     expect(process.exitCode).toBeUndefined();
-    expect(said()).toContain('run-id');
+    expect(said()).toContain(`Pipeline run ${runId}: running`);
   });
   it.each([
     { name: 'absent', rows: [], error: 'No pipeline' },
     { name: 'release', rows: [{ id: 'p1', name: 'release' }, { id: 'p2', name: 'release' }], error: 'ambiguous' },
   ])('refuses $name when the target is not unique', async ({ name, rows, error }) => {
-    const execute = vi.fn();
-    await daemonWith(pipelineRpc({ listPipelines: async () => rows, executePipeline: execute } as never));
+    const { rpc, prepare, start } = pipelineRuns(rows);
+    await daemonWith(rpc);
     await pipelineRunCommand(name);
-    expect(execute).not.toHaveBeenCalled();
+    expect(prepare).not.toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
     expect(said()).toContain(error);
   });
   it('gives an exact id priority over another pipeline with that name', async () => {
-    const execute = vi.fn(async () => ({ id: 'run-id', status: 'running' }));
-    await daemonWith(pipelineRpc({
-      listPipelines: async () => [{ id: 'p1', name: 'release' }, { id: 'p2', name: 'p1' }],
-      executePipeline: execute,
-    } as never));
-    await pipelineRunCommand('p1');
-    expect(execute).toHaveBeenCalledExactlyOnceWith('p1', undefined, 'omnitron-local', revision);
+    const { rpc, prepare, start } = pipelineRuns([{ id: 'p1', name: 'release' }, { id: 'p2', name: 'p1' }]);
+    await daemonWith(rpc);
+    const runId = '17a904d3-4d4f-4425-ab38-57c1dd10d8ec';
+    await pipelineRunCommand('p1', { runId, prepare: true });
+    expect(prepare).toHaveBeenCalledExactlyOnceWith({ runId, id: 'p1', expectedRevision: revision }, 'omnitron-local');
+    expect(start).not.toHaveBeenCalled();
+    expect(said()).toContain(`Pipeline run ${runId}: awaiting-review`);
+    expect(process.exitCode).toBeUndefined();
   });
 });
 

@@ -1,7 +1,7 @@
 {
   "name": "@omnitron-dev/msgpack",
   "version": "0.4.12",
-  "description": "Extandable MessagePack serializer",
+  "description": "MessagePack encoding and decoding with extensible JavaScript value types",
   "author": "LuxQuant",
   "license": "MIT",
   "type": "module",

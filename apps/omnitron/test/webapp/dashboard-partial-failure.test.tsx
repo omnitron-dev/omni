@@ -1,31 +1,25 @@
 // @vitest-environment happy-dom
 
-/**
- * The dashboard when half of it fails.
- *
- * `Promise.allSettled` never rejects, so the `try/catch` around it cannot
- * see a failed half — and the code cleared the error unconditionally
- * afterwards. A failed `daemon.list()` therefore left the last apps on
- * screen with nothing to say they were stale, and an explicit statement
- * that everything was fine.
- *
- * This is the panel an operator looks at first, so "these numbers are old"
- * has to be on it rather than inferred from them not changing.
- */
-
 import type { ReactNode } from 'react';
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render as rtlRender, screen, waitFor, within } from '@testing-library/react';
+import { render as rtlRender, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { MemoryRouter } from 'react-router-dom';
 import { SnackbarProvider } from '@omnitron-dev/prism';
 import '@testing-library/jest-dom/vitest';
+import { ConsoleAccessProvider } from '../../webapp/src/auth/access.js';
+import { useAuthStore } from '../../webapp/src/auth/store.js';
 
 const list = vi.fn();
 const getSnapshot = vi.fn();
 
 vi.mock('src/netron/client', () => ({
+  access: { describe: vi.fn(async () => ({ userId: 'reader', role: 'viewer', roles: [], capabilities: [
+    { service: 'OmnitronDaemon', method: 'list', allowed: true },
+    { service: 'OmnitronDaemon', method: 'getApp', allowed: true },
+    { service: 'OmnitronMetrics', method: 'getSnapshot', allowed: true },
+  ] })) },
   daemon: { list: (...a: unknown[]) => list(...a), status: vi.fn(async () => ({ apps: [] })) },
   metrics: { getSnapshot: (...a: unknown[]) => getSnapshot(...a) },
   logs: {},
@@ -39,7 +33,7 @@ const render = (ui: ReactNode) =>
   rtlRender(
     <ThemeProvider theme={theme}>
       <SnackbarProvider>
-        <MemoryRouter>{ui}</MemoryRouter>
+        <MemoryRouter><ConsoleAccessProvider>{ui}</ConsoleAccessProvider></MemoryRouter>
       </SnackbarProvider>
     </ThemeProvider>
   );
@@ -49,6 +43,7 @@ const app = (name: string) => ({
 });
 
 beforeEach(() => {
+  useAuthStore.setState({ user: { id: 'reader', username: 'reader', displayName: 'Reader', role: 'viewer' } });
   list.mockReset();
   getSnapshot.mockReset();
 });
@@ -64,7 +59,7 @@ describe('dashboard with a half-failed refresh', () => {
     await waitFor(() => expect(screen.getByRole('link', { name: 'main' })).toBeInTheDocument());
 
     // The second poll fails on the app list only.
-    await waitFor(() => expect(screen.getByText(/could not refresh the app list/i)).toBeInTheDocument(), {
+    await waitFor(() => expect(screen.getByText(/last available application inventory.*daemon unreachable/i)).toBeInTheDocument(), {
       timeout: 8000,
     });
     // And the last good data is still shown — blanking it would be the
@@ -79,7 +74,7 @@ describe('dashboard with a half-failed refresh', () => {
     const { default: Dashboard } = await import('../../webapp/src/pages/dashboard.js');
     render(<Dashboard />);
 
-    await waitFor(() => expect(screen.getByText(/could not refresh metrics/i)).toBeInTheDocument(), {
+    await waitFor(() => expect(screen.getByText(/resource sampling is unavailable.*collector down/i)).toBeInTheDocument(), {
       timeout: 8000,
     });
   }, 15_000);
@@ -92,7 +87,7 @@ describe('dashboard with a half-failed refresh', () => {
     render(<Dashboard />);
 
     await waitFor(() => expect(screen.getByRole('link', { name: 'main' })).toBeInTheDocument());
-    expect(screen.queryByText(/could not refresh/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
   it('uses the same current readings in the summary and application cards', async () => {
     list.mockResolvedValue([app('main')]);
@@ -100,8 +95,9 @@ describe('dashboard with a half-failed refresh', () => {
     const { default: Dashboard } = await import('../../webapp/src/pages/dashboard.js');
     render(<Dashboard />);
     await screen.findByRole('link', { name: 'main' });
-    expect(screen.getAllByText('4.0%')).toHaveLength(2);
-    expect(screen.getAllByText('1 KiB')).toHaveLength(3);
+    await waitFor(() => expect(screen.getAllByText('4.0%')).toHaveLength(2));
+    expect(screen.getAllByText('1 KiB')).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Show resource distribution' }));
     const ranking = screen.getByRole('list', { name: 'Resident memory by application' });
     expect(within(ranking).getByRole('listitem')).toHaveTextContent('main1 KiB');
   });

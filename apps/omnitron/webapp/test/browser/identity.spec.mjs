@@ -73,7 +73,9 @@ test('Console navigation uses the same brand in both modes and on a narrow scree
       const box = await drawer.boundingBox();
       return box.x >= 0 && box.x + box.width <= 320;
     }).toBe(true);
-    await expect(drawer.getByRole('link', { name: 'Dashboard', exact: true })).toBeVisible();
+    const overview = drawer.getByRole('link', { name: 'Overview', exact: true });
+    await expect(overview).toBeVisible();
+    await expect(overview).toHaveAttribute('href', '/');
     await drawer.getByRole('button', { name: 'Close menu' }).click();
     await expect(drawer).not.toBeVisible();
   }

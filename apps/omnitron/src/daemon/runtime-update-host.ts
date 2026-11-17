@@ -173,7 +173,10 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
     import('@omnitron-dev/common/process-identity'), import('../config/saved.js'),
     import('./daemon-client.js'), import('./backend-candidate.js'),
   ]);
-  const raw = (id: string, args: string[]) => run(home, path.join(installed(id), 'node'), [path.join(installed(id), cliDist, 'cli/omnitron.js'), ...args], { timeoutMs: 10 * 60_000 });
+  // Human-only lifecycle commands must not inherit the enclosing JSON RPC envelope.
+  const raw = (id: string, args: string[]) => run(home, path.join(installed(id), 'node'), [path.join(installed(id), cliDist, 'cli/omnitron.js'), ...args], {
+    timeoutMs: 10 * 60_000, env: { OMNITRON_OUTPUT: 'human' },
+  });
   const consoleState = async () => {
     const service = await call<{ running: boolean; port: number }>(['webapp', 'status']);
     const state = await getContainerState(consoleContainerName(home), { orThrow: true, fullId: true });
@@ -448,6 +451,12 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
     stop: previous => raw(previous.backend, ['down']),
     assertStopped: previous => until('Clean shutdown could not be confirmed', () => stopped(previous), 90_000),
     async canRestore(previous) { try { await stopped(previous); return true; } catch { return false; } },
+    async isPreviousServing(this: RuntimeUpdateActions, plan) {
+      try {
+        await this.validateStop(plan.before, plan);
+        return true;
+      } catch { return false; }
+    },
     async captureForRollback(plan) {
       const live = await identity(await call<RuntimeUpdateStatusObservation>(['status']));
       if (live.ownerId === plan.before.ownerId || live.backend !== plan.target.artifact || live.owner !== plan.target.artifact || live.guardian !== plan.target.artifact) throw Error('Cannot identify the candidate as the exclusive serving owner');

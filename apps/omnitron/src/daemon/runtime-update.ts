@@ -60,6 +60,8 @@ export interface RuntimeUpdateActions {
   stop(previous: RuntimeUpdateIdentity): Promise<unknown>;
   assertStopped(previous: RuntimeUpdateIdentity): Promise<unknown>;
   canRestore(previous: RuntimeUpdateIdentity): Promise<boolean>;
+  /** Prove the original roles, processes and retained intent still serve after a refused stop. */
+  isPreviousServing?(plan: RuntimeUpdatePlan): Promise<boolean>;
   captureForRollback(plan: RuntimeUpdatePlan): Promise<RuntimeUpdateIdentity>;
   start(destination: RuntimeUpdateReference | RuntimeUpdatePlan['before'], plan: RuntimeUpdatePlan, restoration?: RuntimeUpdateRestoration): Promise<void>;
   /** Finish only observed restoration stages; never starts a second owner or stack attempt. */
@@ -147,6 +149,13 @@ export async function runRuntimeUpdate({ actions, directory, operation, digest: 
       if (record.phase === 'draining') return releaseAdmission(record.error);
       const plan = record.plan;
       try {
+        if (!record.restoreAttempted && !record.rollbackOwner &&
+            ['stopping', 'failed', 'recovery-required'].includes(record.phase) && await actions.isPreviousServing?.(plan)) {
+          // The stop may have refused before any effect. Reconcile its original
+          // identity instead of attempting to retire a candidate that never ran.
+          await save('draining');
+          return await releaseAdmission(record.error);
+        }
         if (record.restoreAttempted || record.phase === 'restoring') {
           if (record.phase !== 'restoring') await save('restoring');
           await actions.completeRestore?.(plan, restoration);

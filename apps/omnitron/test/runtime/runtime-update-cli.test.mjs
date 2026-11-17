@@ -11,6 +11,7 @@ import { readCommandResult, CommandResultError } from '../../src/shared/command-
 import { tsImport } from 'tsx/esm/api';
 
 const { runtimeUpdatePlanDigest } = await tsImport('../../src/daemon/runtime-update.ts', import.meta.url);
+const { runtimeUpdateActions } = await tsImport('../../src/daemon/runtime-update-host.ts', import.meta.url);
 const execute = promisify(execFile);
 const root = fileURLToPath(new URL('../../../../', import.meta.url));
 const cli = fileURLToPath(new URL('../../src/cli/omnitron.ts', import.meta.url));
@@ -66,6 +67,28 @@ async function candidate(home, reply = { ok: true, data: { delegated: true } }, 
   await fs.rename(stage, directory);
   return { artifact, directory, called, manifest };
 }
+
+test('native lifecycle children use human output even when the parent is in JSON mode', async t => {
+  const { home } = await instance(t);
+  const runtime = await candidate(home);
+  let called = false;
+  const actions = await runtimeUpdateActions({ runtime: runtime.directory, instance: home,
+    call: async () => assert.fail('shutdown does not use a structured CLI call'),
+    run: async (cwd, executable, argv, options) => {
+      called = true;
+      assert.equal(cwd, home);
+      assert.equal(executable, path.join(runtime.directory, 'node'));
+      assert.deepEqual(argv, [path.join(runtime.directory, 'packages/0/dist/cli/omnitron.js'), 'down']);
+      const child = await execute(process.execPath, ['-e', 'process.stdout.write(process.env.OMNITRON_OUTPUT)'], {
+        env: { ...process.env, OMNITRON_OUTPUT: 'json', ...options.env },
+      });
+      assert.equal(child.stdout, 'human');
+      return '';
+    },
+  });
+  await actions.stop({ backend: runtime.artifact });
+  assert.equal(called, true);
+});
 
 test('public status is available without a daemon, a Git checkout or a receipt', async t => {
   const { invoke, home } = await instance(t);

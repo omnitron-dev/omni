@@ -61,7 +61,15 @@ export async function runtimeUpdateStatusCommand(digest?: string): Promise<void>
 /** Host authority stays in the verified candidate's local CLI and its private instance journal. */
 export async function runtimeUpdateCommand(operation: 'prepare' | 'apply' | 'recover', value: string): Promise<void> {
   try {
-    const runtime = operation === 'prepare' ? await verifyRuntimeUpdateTarget(path.resolve(value)) : (await inspect(value)).runtime;
+    let runtime = operation === 'prepare' ? await verifyRuntimeUpdateTarget(path.resolve(value)) : (await inspect(value)).runtime;
+    if (operation === 'recover') {
+      // A verified installed CLI can repair an older interrupted transaction.
+      // Its receipt still pins every role and effect; do not delegate recovery
+      // back to the old interpreter whose defect may have caused the failure.
+      const ownRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
+      if (path.dirname(ownRoot) === path.join(OMNITRON_HOME, 'runtime', 'releases'))
+        runtime = await verifyRuntimeUpdateTarget(ownRoot, path.basename(ownRoot));
+    }
     if (!runtime) throw Error('No verified candidate is available for this local update');
     let result: PreparedRuntimeUpdate | RuntimeUpdateReceipt;
     if (!(await runsTarget(runtime))) {

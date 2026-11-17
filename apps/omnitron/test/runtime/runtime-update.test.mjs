@@ -337,6 +337,38 @@ test('a lost drain acknowledgement retains durable admission intent and recovery
   assert.equal(released, 2, 'a confirmed release is not replayed');
 });
 
+test('a refused stop reconciles the unchanged original owner without restarting or restoring it', { skip: !native }, async t => {
+  const directory = await privateInstance(t);
+  const owner = await ownerGeneration(t, directory, previous);
+  const plan = planFor(directory, owner.identity);
+  let released = 0;
+  let confirmed = false;
+  const actions = {
+    async prepare() { return plan; }, async admit() {}, async validateStop() {},
+    async stop() { throw Error('child command refused before its action'); },
+    async isPreviousServing(reviewed) {
+      assert.deepEqual(reviewed, plan);
+      assert.deepEqual(await owner.observe(), owner.identity);
+      return confirmed;
+    },
+    async releaseAdmission() { released++; },
+    async canRestore() { return false; },
+    async captureForRollback() { throw Error('candidate never served'); },
+    async start() { assert.fail('the original owner must never be restarted'); },
+  };
+  const review = await runRuntimeUpdate({ actions, directory, operation: 'prepare' });
+  await assert.rejects(runRuntimeUpdate({ actions, directory, operation: 'apply', digest: review.digest }), /candidate never served/);
+  assert.equal((await readRuntimeUpdateReceipt(directory)).phase, 'recovery-required');
+  assert.equal(released, 0, 'unknown ownership cannot release admission');
+  confirmed = true;
+  const result = await runRuntimeUpdate({ actions, directory, operation: 'recover', digest: review.digest });
+  assert.equal(result.phase, 'aborted');
+  assert.equal(result.error, 'child command refused before its action');
+  assert.equal(result.recoveryError, undefined);
+  assert.equal(released, 1);
+  assert.deepEqual(await owner.observe(), owner.identity);
+});
+
 test('applying the same review twice verifies a new live process generation and starts it once', { skip: !native }, async t => {
   const directory = await privateInstance(t);
   let owner = await ownerGeneration(t, directory, previous);

@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Local runtime updates isolate human lifecycle output from their JSON parent. Recovery can confirm an unchanged original owner after a refused stop, and a verified newer CLI can repair an older transaction without changing its pinned roles.
 - Stopping a source application drains its build watchers as well as its processes. Shared source changes no longer rebuild stopped applications or block a subsequent runtime update; cleanup failures remain explicit and do not skip process shutdown.
 
 ## [0.4.8] - 2026-11-14

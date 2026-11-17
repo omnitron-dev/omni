@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Runtime acceptance verifies retained containers through one native inventory even when stopped stacks no longer appear in boot declarations; missing or replaced identities still refuse acceptance.
 - Runtime updates wait for the backend-owned Console startup instead of racing a second container creation. `runtime update reconcile` and `xec update local-sync --reconcile` can confirm the exact serving candidate after a lost result without restarting applications or bypassing rollback intent.
 - Local runtime updates isolate human lifecycle output from their JSON parent. Recovery can confirm an unchanged original owner after a refused stop, and a verified newer CLI can repair an older transaction without changing its pinned roles.
 - Stopping a source application drains its build watchers as well as its processes. Shared source changes no longer rebuild stopped applications or block a subsequent runtime update; cleanup failures remain explicit and do not skip process shutdown.

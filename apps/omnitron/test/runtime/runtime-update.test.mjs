@@ -7,7 +7,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { tsImport } from 'tsx/esm/api';
 const { runRuntimeUpdate, readRuntimeUpdateReceipt, readPreparedRuntimeUpdate } = await tsImport('../../src/daemon/runtime-update.ts', import.meta.url);
-const { assertLocalIdle, assertLocalReview, assertReviewedBoot, assertSameSavedSelection, assertLocalServiceTargets } = await tsImport('../../src/daemon/runtime-update-host.ts', import.meta.url);
+const { assertLocalIdle, assertLocalReview, assertReviewedBoot, assertSameSavedSelection, assertLocalServiceTargets, assertRetainedRuntimeInfrastructure } = await tsImport('../../src/daemon/runtime-update-host.ts', import.meta.url);
 const { retainReviewedBackups } = await tsImport('../../src/shared/backup-admission.ts', import.meta.url);
 import { BACKEND_ACTIVITY_COUNTERS } from '../../src/shared/dto/backend.ts';
 
@@ -46,6 +46,19 @@ test('acceptance checks the same complete saved release even if the effective re
   const inferred = { ...pinned, savedSelection: unreported };
   assert.doesNotThrow(() => assertSameSavedSelection(inferred, { selection: unreported }));
   assert.throws(() => assertSameSavedSelection(inferred, { selection: release }), /Saved launch selection changed/);
+});
+
+test('retained containers are verified against native identity when disabled stacks have no boot declarations', () => {
+  const expected = { database: 'control', containers: [{ name: 'retained-postgres', id: 'first' }, { name: 'retained-redis', id: 'second' }] };
+  const native = expected.containers.map(({ name, id }) => ({ name, containerId: id }));
+  const boot = { ...expected, containers: [] };
+  assert.doesNotThrow(() => assertRetainedRuntimeInfrastructure(expected, boot, native));
+  assert.doesNotThrow(() => assertRetainedRuntimeInfrastructure(expected, expected, [...native, { name: 'independent', containerId: 'third' }]));
+  assert.throws(() => assertRetainedRuntimeInfrastructure(expected, boot, native.slice(1)), /retained-postgres/);
+  assert.throws(() => assertRetainedRuntimeInfrastructure(expected, boot, [{ ...native[0], containerId: 'replaced' }, native[1]]), /retained-postgres/);
+  assert.throws(() => assertRetainedRuntimeInfrastructure(expected, { ...boot, database: 'replaced' }, native), /database identity/);
+  assert.throws(() => assertRetainedRuntimeInfrastructure(expected, { ...boot, containers: [{ name: 'unreviewed', id: 'third' }] }, native), /Unreviewed/);
+  assert.throws(() => assertRetainedRuntimeInfrastructure(expected, boot, [...native, native[0]]), /duplicate/);
 });
 
 const backup = {

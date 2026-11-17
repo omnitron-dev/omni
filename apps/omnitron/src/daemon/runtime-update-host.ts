@@ -17,6 +17,7 @@ import type { BackupRpcService } from '../services/backup.rpc-service.js';
 import type { OperationReceipt } from '../shared/dto/execution-operations.js';
 
 import type { ReleaseCommand } from '@xec-sh/ops/release';
+import type { ContainerState } from '../infrastructure/types.js';
 import type { BuildStamp } from '../shared/build-stamp.js';
 import type { ManagedRuntime } from './managed-runtime.js';
 import type { RuntimeSelection } from './runtime-installation.js';
@@ -107,6 +108,20 @@ export function assertLocalServiceTargets(config: ManagedRuntime | null): assert
     throw Error('Local service commands address only the standard Omnitron user services');
 }
 
+/** Stopped stacks can disappear from boot declarations while their containers remain retained. */
+export function assertRetainedRuntimeInfrastructure(expected: RuntimeUpdateInfrastructure, boot: RuntimeUpdateInfrastructure,
+  observed: readonly Pick<ContainerState, 'name' | 'containerId'>[]): void {
+  if (boot.database !== expected.database) throw Error('The control-plane database identity changed');
+  const reviewed = new Map(expected.containers.map(container => [container.name, container.id]));
+  const native = new Map(observed.map(container => [container.name, container.containerId]));
+  if (reviewed.size !== expected.containers.length || native.size !== observed.length)
+    throw Error('Container identity observation contains duplicate names');
+  for (const [name, id] of reviewed)
+    if (native.get(name) !== id) throw Error('Retained native container identity changed: ' + name);
+  for (const container of boot.containers)
+    if (reviewed.get(container.name) !== container.id) throw Error('Unreviewed container in boot declarations: ' + container.name);
+}
+
 /** Complete a restored owner through the existing warm role handoffs. Repeating
  * this after a lost reply observes committed roles; it never starts an owner. */
 export async function restoreRuntimeRoles(plan: RuntimeUpdatePlan, observe: () => Promise<RuntimeUpdateIdentity>,
@@ -166,7 +181,7 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
   };
   const manifest = await verifyRuntimeArtifact(runtime);
   const [{ readManagedRuntime, verifyManagedIsolation }, { assertCleanManagedShutdown }, { assertResidentServicesStopped },
-    { getContainerState }, { assertConsoleOwnership, consoleContainerName }, { readProcessLifetime }, { readSavedDaemonConfig },
+    { getContainerState, listManagedContainers }, { assertConsoleOwnership, consoleContainerName }, { readProcessLifetime }, { readSavedDaemonConfig },
     { createDaemonClient }, { assertBackendMigrationsCompatible }] = await Promise.all([
     import('./managed-runtime.js'), import('./owner-reconciliation.js'), import('../commands/service-resident.js'),
     import('../infrastructure/container-runtime.js'), import('../webapp/console-container.js'),
@@ -366,7 +381,8 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
       if (!isDeepStrictEqual(review.selection, prior.selection) || review.digest !== prior.startReview) throw Error('Launch declaration, volumes or runtime selection changed for ' + projectKey(prior));
     }
     const actual = await coldPreview(expect);
-    if (actual.database !== plan.infrastructure.database || !isDeepStrictEqual(actual.containers, plan.infrastructure.containers)) throw Error('Native container identities or the control-plane database changed');
+    const retained = await listManagedContainers({ orThrow: true, checkNames: new Set(plan.infrastructure.containers.map(container => container.name)) });
+    assertRetainedRuntimeInfrastructure(plan.infrastructure, actual, retained);
     return evidence;
   };
 

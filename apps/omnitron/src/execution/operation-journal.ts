@@ -17,7 +17,7 @@ const PREFIX = 'execution.operation.';
 const INDEX = `${PREFIX}active`;
 const REVIEWED = `${PREFIX}reviewed-backups`;
 /** Runtime capability required before selecting a controller for reviewed uncertainty. */
-export const BACKUP_REVIEW_PROTOCOL = 1;
+export const BACKUP_REVIEW_PROTOCOL = 2;
 
 export async function assertBackupReviewRuntime(directory: string): Promise<void> {
   const capability = await import(pathToFileURL(path.join(directory, 'execution/operation-journal.js')).href);
@@ -48,7 +48,7 @@ const NEXT: Record<OperationState, readonly OperationState[]> = {
   succeeded: [], failed: [], cancelled: [],
 };
 
-type ActiveIndex = { protocol: 1; claims: Record<string, string> };
+type ActiveIndex = { protocol: 1 | 2; claims: Record<string, string> };
 type Completion = { observation?: ExecutionResourceObservation; artifact?: OperationArtifact; code?: string };
 type FailureCode = 'OPERATION_CONFLICT' | 'OPERATION_REVISION_CONFLICT' |
   'OPERATION_STATE_CONFLICT' | 'OPERATION_JOURNAL_INVALID';
@@ -163,8 +163,10 @@ export class OperationJournal {
   private index(): ActiveIndex {
     const value = this.store.kvGetSync<unknown>(INDEX, { strict: true });
     if (value === null) return { protocol: 1, claims: {} };
-    if (!object(value) || value['protocol'] !== 1 || !object(value['claims'])) invalid('Invalid active operation index');
+    if (!object(value) || ![1, 2].includes(value['protocol'] as number) || !object(value['claims'])) invalid('Invalid active operation index');
     exactKeys(value, ['protocol', 'claims']);
+    if (value['protocol'] === 2 && this.store.kvGetSync(REVIEWED, { strict: true }) === null)
+      invalid('Reviewed backup index is missing');
     for (const [key, id] of Object.entries(value['claims'])) {
       if (!DIGEST.test(key)) invalid('Invalid operation claim');
       assertOperationId(id);
@@ -265,6 +267,9 @@ export class OperationJournal {
       this.hold(receipt);
       if (!receipt.review && (TERMINAL.has(result.state) || result.review)) {
         for (const resource of receipt.resources) delete index.claims[resourceKey(resource)];
+        // Older controllers reject protocol 2 at boot, even when launched
+        // directly rather than selected through current admission commands.
+        if (result.review) index.protocol = 2;
         this.store.kvSetSync(INDEX, index);
       }
       if (!receipt.review && result.review) this.store.kvSetSync(REVIEWED, [...reviewed, id]);

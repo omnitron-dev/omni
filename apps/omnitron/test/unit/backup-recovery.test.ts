@@ -35,7 +35,7 @@ beforeEach(async () => {
   native.runtime = path.join(native.home, 'candidate');
   await fs.mkdir(path.join(native.runtime, 'execution'), { recursive: true });
   await fs.writeFile(path.join(native.runtime, 'package.json'), '{"type":"module"}');
-  await fs.writeFile(path.join(native.runtime, 'execution/operation-journal.js'), 'export const BACKUP_REVIEW_PROTOCOL = 1;');
+  await fs.writeFile(path.join(native.runtime, 'execution/operation-journal.js'), 'export const BACKUP_REVIEW_PROTOCOL = 2;');
   store = new DaemonStateStore(createNullLogger(), path.join(native.home, 'data/daemon-state.db'));
   journal = new OperationJournal(store, new RecoveryState()); id = randomUUID();
   const prepared = journal.prepare({ id, kind: 'backup', inputDigest: 'b'.repeat(64), resources: [

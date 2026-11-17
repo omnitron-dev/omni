@@ -203,6 +203,7 @@ describe('durable execution operations', () => {
       review: { decision: 'allow-new-backup', actor: 'operator', reviewedRevision: prior.revision } });
     expect(review.observation).toBeUndefined(); expect(review.artifact).toBeUndefined();
     expect(recovery.token()).not.toBeNull(); expect(journal.pending()).toEqual([]);
+    expect(store.kvGetSync('execution.operation.active')).toEqual({ protocol: 2, claims: {} });
     const recoveredState = new RecoveryState();
     const reopened = new OperationJournal(open(), recoveredState);
     expect(recoveredState.token()).not.toBeNull(); expect(reopened.reviewed()).toEqual([review]);
@@ -211,6 +212,13 @@ describe('durable execution operations', () => {
     expect(reopened.prepare(next).created).toBe(true);
     expect(reopened.read(prior.id)).toEqual(review);
     expect(reopened.prepare(prior).created).toBe(false);
+  });
+
+  it('refuses startup if the retained review index disappears after format admission', () => {
+    const prior = unknownBackup();
+    journal.acknowledgeUnknownBackup(prior.id, prior.revision, 'operator', 'Retain unknown outcome');
+    store.initSync().prepare('DELETE FROM state_kv WHERE key = ?').run('execution.operation.reviewed-backups');
+    expect(() => new OperationJournal(open(), new RecoveryState())).toThrow('Reviewed backup index is missing');
   });
 
   it('reconciles a reviewed execution without releasing a newer operation claim', () => {

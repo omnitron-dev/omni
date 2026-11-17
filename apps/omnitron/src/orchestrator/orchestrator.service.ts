@@ -1534,15 +1534,26 @@ export class OrchestratorService extends EventEmitter {
     }
     return this.lifecycleQueue.enqueue(canonical, 'stop', async () => {
       const handle = this.handles.get(canonical);
-      if (!handle || (handle.status === 'stopped' && !handle.topology && !handle.supervisor && !handle.childProcess && handle.topologyPools.size === 0)) return;
-
-      handle.markStopping();
-
-      await this.tearDownApp(handle, force, timeout);
-
-      handle.markStopped();
-      this.persistState();
-      this.logger.info({ app: name }, 'App stopped');
+      const stopProcesses = async () => {
+        if (!handle || (handle.status === 'stopped' && !handle.topology && !handle.supervisor && !handle.childProcess && handle.topologyPools.size === 0)) return;
+        handle.markStopping();
+        await this.tearDownApp(handle, force, timeout);
+      };
+      // Builders own filesystem writers. Drain them as well as processes,
+      // including on repeated stops; one failure must not skip the other.
+      // Internal restarts retain their incremental contexts for the next launch.
+      const outcomes = await Promise.allSettled([
+        preserveWatch ? Promise.resolve() : this.discardSourceBuild(canonical),
+        stopProcesses(),
+      ]);
+      const failures = outcomes.flatMap(result => result.status === 'rejected' ? [result.reason] : []);
+      if (failures.length) throw new AggregateError(failures,
+        `Application '${canonical}' stop incomplete: ${failures.map(String).join('; ')}`);
+      if (handle?.status === 'stopping') {
+        handle.markStopped();
+        this.persistState();
+        this.logger.info({ app: name }, 'App stopped');
+      }
     });
   }
 

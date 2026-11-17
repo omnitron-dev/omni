@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Omnitron and its repository CLI use published Xec 0.13.2. Release admission rejects older execution and release drivers before preparation; Docker recovery retains container identity after cancellation.
 - Release preparation finalizes authored changelog entries together with package versions through Xec. Publication and resume preserve the accepted source and archives.
 
+### Fixed
+
+- Stopping a source application drains its build watchers as well as its processes. Shared source changes no longer rebuild stopped applications or block a subsequent runtime update; cleanup failures remain explicit and do not skip process shutdown.
+
 ## [0.4.8] - 2026-11-14
 
 ### Changed

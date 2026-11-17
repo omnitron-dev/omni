@@ -157,7 +157,7 @@ describe('definition ownership during an in-flight restart', () => {
 });
 
 describe('shared source edits, real esbuild and real child processes', () => {
-  it('keeps watch:false PIDs and artifacts stable, reconfigures watching and permits manual rebuilds', async () => {
+  it('preserves watch:false apps, reconfigures live builds and drains a stopped app without affecting its neighbour', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'omnitron-watch-policy-'));
     cleanups.push(async () => fs.rmSync(root, { recursive: true, force: true }));
     fs.writeFileSync(path.join(root, 'source.ts'), 'export const value = 1;');
@@ -238,6 +238,28 @@ describe('shared source edits, real esbuild and real child processes', () => {
     fs.writeFileSync(path.join(root, 'source.ts'), 'export const value = 5;');
     await vi.waitFor(() => expect(workers.get('live')!.value).toBe(5), { timeout: 10000 });
     expect(workers.get('switchable')!.child.pid).toBe(switchedPid);
+
+    await service.redefineApp('switchable', entries[2]!);
+    await service.setWatchMode(true);
+    await vi.waitFor(() => expect(workers.get('switchable')!.value).toBe(5), { timeout: 10000 });
+    // Keep the real stop intent and lifecycle queue; the harness children are
+    // stopped through their actual process exit rather than a mocked status.
+    internals.tearDownApp = (handle: AppHandle) => stop(handle.name);
+    const stoppedChild = workers.get('live')!.child;
+    await service.stopApp('live');
+    expect(stoppedChild.exitCode !== null || stoppedChild.signalCode !== null).toBe(true);
+    expect(service.getAppStatus('live')).toBe('stopped');
+    expect(service.getWatchedApps().map(app => app.name)).toEqual(['switchable']);
+    const stoppedBytes = fs.readFileSync(liveBundle, 'utf8');
+    // Global reconfiguration must not resurrect a stopped source builder.
+    await service.setWatchMode(true);
+    await service.redefineApp('live', entries[1]!);
+    fs.writeFileSync(path.join(root, 'source.ts'), 'export const value = 6;');
+    await vi.waitFor(() => expect(workers.get('switchable')!.value).toBe(6), { timeout: 10000 });
+    expect(service.getWatchedApps().map(app => app.name)).toEqual(['switchable']);
+    expect(fs.readFileSync(liveBundle, 'utf8')).toBe(stoppedBytes);
+    expect(workers.get('live')!.child).toBe(stoppedChild);
+    expect(service.getAppStatus('live')).toBe('stopped');
   }, 30000);
 
   it('arms watches after a production source build and keeps sealed entries out of automatic restarts', async () => {

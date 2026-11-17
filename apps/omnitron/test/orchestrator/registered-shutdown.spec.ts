@@ -79,7 +79,7 @@ describe('shutdown owns all registered projects', () => {
       handle.supervisor = { stop } as never; state.handles.set(name, handle);
     }
     const dispose = vi.fn(async () => { throw new Error('watcher cleanup failed'); });
-    state.buildService = { dispose };
+    state.buildService = { dispose, unwatchApp: vi.fn(async () => {}) };
     const error = await service.stopAll().catch(error => error);
     expect(error).toBeInstanceOf(AggregateError); expect(error.errors).toHaveLength(2);
     expect(String(error)).toContain('worker survived'); expect(String(error)).toContain('watcher cleanup failed');
@@ -87,6 +87,30 @@ describe('shutdown owns all registered projects', () => {
     expect(state.handles.get('healthy').status).toBe('stopped');
     expect(state.handles.get('failed').status).not.toBe('stopped');
     expect(pm.shutdown).not.toHaveBeenCalled();
+  });
+
+  it('drains source writers and processes before acknowledging stop, and retains a failed stop', async () => {
+    const { service, state } = harness();
+    const handle = new AppHandle({ name: 'worker' }, 'bootstrap');
+    handle.status = 'online';
+    const stop = vi.fn(async () => {});
+    handle.supervisor = { stop } as never;
+    state.handles.set(handle.name, handle);
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    state.buildService = { unwatchApp: async () => {
+      await gate;
+      throw new Error('source writer shutdown unconfirmed');
+    } };
+    let settled = false;
+    const outcome = service.stopApp(handle.name).then(() => { settled = true; }, error => { settled = true; return error; });
+    await vi.waitFor(() => expect(stop).toHaveBeenCalledOnce());
+    expect(settled).toBe(false);
+    release();
+    const error = await outcome;
+    expect(error).toBeInstanceOf(AggregateError);
+    expect(String(error)).toContain('source writer shutdown unconfirmed');
+    expect(handle.status).toBe('stopping');
   });
 
   it('shares concurrent stop work and permits an explicit retry after failure', async () => {

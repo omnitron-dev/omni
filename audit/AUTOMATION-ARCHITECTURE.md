@@ -196,6 +196,38 @@ targets until measured, including its 1–5 minute qualified small-release path.
 
 ## UI and extension boundaries
 
+The current [Console layout](../apps/omnitron/webapp/src/layouts/console-layout.tsx)
+duplicates its project/no-project menus and puts releases, pipelines, node tools
+and containers into one Infrastructure group. Its
+[router](../apps/omnitron/webapp/src/routes/index.tsx) combines project-required
+pages with global pages that optionally filter by project. The keyboard palette
+already consumes the authorized navigation; preserve that reuse. These source
+findings are not a completed visual review or a claim that regrouping a menu
+alone fixes the product.
+
+The next Console increment must make each level answer one question:
+
+| Level | Question and contract |
+| --- | --- |
+| Scope | Which controller, project and stack does this view cover? Global node tools must not imply that a selected project limits their effects. Filtering is not authorization. |
+| Object | Which application, host, release or run is selected? A URL identifies the object; breadcrumbs link real parent locations, not sidebar category names. |
+| State | What is known, when was it observed, and what is missing? Disconnection must preserve stale evidence visibly, not report an empty or healthy system. |
+| Action | What will change and who may request it? Review the exact affected resources; use the same typed command and revision in CLI, Console and agents. |
+| Outcome | Did the action complete, fail or remain unconfirmed? Display its durable receipt, current reconciliation and permitted recovery; do not create page-local execution truth. |
+
+Use one navigation descriptor for membership, project requirement and discovery;
+keep authorization enforced by the existing access layer and receiver. Group
+application/stack work, delivery, observation, hosts and administration by task.
+Keep dashboard customization with its dashboard instead of treating it as a
+system operation. Object detail pages share a Prism frame for summary, activity,
+configuration and evidence, with domain-specific sections through slots.
+This is a planned migration of existing pages, not a second Console shell.
+
+Acceptance must exercise a project/stack switch, a direct object URL, loss of
+connection during an action, stale approval rejection, keyboard navigation and
+a narrow viewport. Each case verifies both displayed scope and actual request
+scope. A changed sidebar without these checks is not completion of the workbench.
+
 MUI provides primitives. Prism provides coherent components, state behavior,
 layouts and reusable compositions. Lumen provides project-site and documentation
 assembly, content processing and publication. Good defaults do not justify

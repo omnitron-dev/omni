@@ -154,9 +154,10 @@ backend.command('installation').description('Inspect the cold-start selection an
   });
 backend.command('select <sha256>').description('Select an installed runtime while backend and execution owner are stopped')
   .option('--check', 'Verify runtime and migrations and preview the candidate against retained stack declarations and current Docker state')
-  .structuredAction(async (sha256: string, options: { check?: boolean }) => {
+  .option('--schema-plan <path>', 'Verify an applied expansion against this database; never apply migrations during selection')
+  .structuredAction(async (sha256: string, options: { check?: boolean; schemaPlan?: string }) => {
     const { backendSelectCommand } = await import('../commands/backend.js');
-    await backendSelectCommand(sha256, options.check);
+    await backendSelectCommand(sha256, options.check, options);
   });
 backend.command('launcher').description('Refresh the CLI launcher from the selected runtime without restarting services')
   .structuredAction(async () => {

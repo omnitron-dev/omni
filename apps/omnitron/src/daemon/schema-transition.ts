@@ -8,7 +8,7 @@ import type { BackendRpcService } from './backend.rpc-service.js';
 import type { BackendControlService } from './backend-control.js';
 import { privateControlClient } from './private-control-client.js';
 import { BackendRecoveryJournal, type BackendRecoveryRecord } from './backend-recovery-journal.js';
-import type { BackendArtifact } from './backend-candidate.js';
+import { backendMigrationDigest, assertBackendMigrationsCompatible, type BackendArtifact } from './backend-candidate.js';
 import { RuntimeInstallation } from './runtime-installation.js';
 import { readPrivateRecord, writePrivateRecord } from './execution-journal.js';
 import { masterMigrationFiles, schemaReceiptFile, schemaReceiptIndex } from '../database/schema-compatibility.js';
@@ -16,6 +16,7 @@ import { assertSchemaHistory, planSchemaAdditions, planSchemaContinuation, readS
   type SchemaSnapshot, type SchemaTransitionPlan } from '../database/schema-transition-plan.js';
 import { expandPath } from '../shared/paths.js';
 import { assertBackendHandoffReview } from './backend-handoff-types.js';
+import { readManagedRuntime } from './managed-runtime.js';
 
 const execute = promisify(execFile);
 
@@ -201,6 +202,57 @@ async function assertReady(plan: SchemaTransitionPlan, source: BackendArtifact, 
   }
 }
 
+async function assertPublishedApproval(plan: SchemaTransitionPlan): Promise<void> {
+  const home = plan.receipt.instanceHome;
+  const receiptFile = schemaReceiptFile(home, plan.receipt.id), indexFile = schemaReceiptIndex(home);
+  if ((await fs.lstat(receiptFile)).size > 512 * 1024 || (await fs.lstat(indexFile)).size > 16 * 1024)
+    throw new Error('Published schema evidence exceeds its size limit');
+  const published = await readPrivateRecord(receiptFile);
+  const index = await readPrivateRecord<{ protocol: number; receipts: string[] }>(indexFile);
+  if (JSON.stringify(published) !== JSON.stringify(plan.receipt) || !index || index.protocol !== 1 ||
+      !Array.isArray(index.receipts) || index.receipts.length > 64 ||
+      !index.receipts.every(id => typeof id === 'string' && /^[0-9a-f-]{36}$/.test(id)) ||
+      new Set(index.receipts).size !== index.receipts.length || !index.receipts.includes(plan.receipt.id))
+    throw new Error('Published schema compatibility evidence is missing or changed');
+}
+
+/** Cold admission reads the actual database using the private managed environment.
+ * It neither needs a live handoff certificate nor applies or approves migrations.
+ * A later candidate can reuse an applied expansion only with the exact same full
+ * migration tree as its sealed target. The original rollback binary stays pinned.
+ */
+export async function validateSchemaTransitionForSelection(
+  file: string, current: BackendArtifact, candidate: BackendArtifact,
+  installation: Pick<RuntimeInstallation, 'home' | 'artifact'>,
+) {
+  const plan = await readSchemaPlan(path.resolve(file));
+  if (plan.phase !== 'applied' || plan.receipt.instanceHome !== installation.home || current.runtimeHash === candidate.runtimeHash)
+    throw new Error('Cold selection requires an applied schema plan for this instance and different releases');
+  await assertPublishedApproval(plan);
+  const [source, originalTarget] = await Promise.all([
+    installation.artifact(plan.receipt.fromRuntime), installation.artifact(plan.receipt.toRuntime),
+  ]);
+  await assertArtifacts(plan, source, originalTarget);
+  await assertBackendMigrationsCompatible(source.directory, originalTarget.directory, 'node');
+  const targetDigest = await backendMigrationDigest(originalTarget.directory);
+  for (const artifact of [current, candidate]) {
+    if (artifact.runtimeHash === source.runtimeHash) continue;
+    if (artifact.schemaExpansionProtocol !== 1 || await backendMigrationDigest(artifact.directory) !== targetDigest)
+      throw new Error('Cold selection must retain the exact applied master and node migration trees');
+  }
+  const managed = await readManagedRuntime(installation.home);
+  if (!managed) throw new Error('Cold schema admission requires the private managed runtime environment');
+  const target = candidate.runtimeHash === source.runtimeHash ? current : candidate;
+  const [before, after, files] = await Promise.all([
+    worker<SchemaSnapshot>(target, managed.environment, 'inspect', source.directory),
+    worker<SchemaSnapshot>(target, managed.environment, 'inspect', target.directory),
+    masterMigrationFiles(target.directory),
+  ]);
+  planSchemaContinuation(plan, before, after, plan.receipt.baseFiles, files);
+  return { id: plan.receipt.id, database: plan.receipt.database,
+    legacyIntegrityUnverified: plan.baseline.filter(row => row.checksum === null).map(row => row.name) };
+}
+
 /** An exact applied plan replaces the digest gate only for these two artifacts and this database. */
 export async function validateSchemaTransitionForUpgrade(file: string, current: BackendArtifact, candidate: BackendArtifact, home: string): Promise<void> {
   const plan = await readSchemaPlan(path.resolve(file));
@@ -209,9 +261,7 @@ export async function validateSchemaTransitionForUpgrade(file: string, current: 
         [plan.receipt.fromRuntime, plan.receipt.toRuntime].includes(candidate.runtimeHash)) || current.runtimeHash === candidate.runtimeHash) {
     throw new Error('Backend replacement requires an applied schema plan bound to this instance and these exact releases');
   }
-  const published = await readPrivateRecord(schemaReceiptFile(home, plan.receipt.id));
-  const index = await readPrivateRecord<{ receipts?: string[] }>(schemaReceiptIndex(home));
-  if (JSON.stringify(published) !== JSON.stringify(plan.receipt) || !index?.receipts?.includes(plan.receipt.id)) throw new Error('Published schema compatibility evidence is missing or changed');
+  await assertPublishedApproval(plan);
   const live = await observe(plan.backend.socket);
   if (live.instanceHome !== home || live.record.runtimeHash !== current.runtimeHash) throw new Error('The live backend changed during schema compatibility validation');
   const source = current.runtimeHash === plan.receipt.fromRuntime ? current : candidate;

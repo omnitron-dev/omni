@@ -16,7 +16,7 @@ const ownDist = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const [mode, argument] = process.argv.slice(2);
 const db = await createOmnitronDb<unknown>({
   max: 1, connectionTimeoutMillis: 5000,
-  options: '-c lock_timeout=5000 -c statement_timeout=60000',
+  options: '-c lock_timeout=5000 -c statement_timeout=60000' + (mode === 'inspect' ? ' -c default_transaction_read_only=on' : ''),
 });
 async function snapshot(connection: Kysely<unknown>, dist = ownDist): Promise<SchemaSnapshot> {
   const source = dist === ownDist ? { createOmnitronMigrationRunner } :

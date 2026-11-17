@@ -151,7 +151,7 @@ export async function coldStartPreview(artifact: BackendArtifact, config: typeof
   } finally { await journal.close(); }
 }
 
-export async function backendSelectCommand(id: string, checkOnly = false): Promise<void> {
+export async function backendSelectCommand(id: string, checkOnly = false, options: { schemaPlan?: string } = {}): Promise<void> {
   let installation: RuntimeInstallation | null = null;
   try {
     installation = checkOnly ? await RuntimeInstallation.openReadOnly() : await RuntimeInstallation.open(undefined, { existing: true });
@@ -170,20 +170,26 @@ export async function backendSelectCommand(id: string, checkOnly = false): Promi
       // Managed cold startup reads this instance's persisted role. Other launch
       // modes may override it and must retain the conservative comparison.
       const scope = backendSchemaScope(config) === 'node' && await readManagedRuntime(registry.home) ? 'node' : 'all';
+      let schema: Awaited<ReturnType<typeof import('../daemon/schema-transition.js').validateSchemaTransitionForSelection>> | undefined;
+      if (options.schemaPlan && (!selected || config.role !== 'master'))
+        throw new Error('Applied schema selection requires an installed master runtime');
       if (selected) {
         const previous = await registry.artifact(selected.current);
-        await assertBackendMigrationsCompatible(previous.directory, artifact.directory, scope);
+        if (options.schemaPlan) {
+          const { validateSchemaTransitionForSelection } = await import('../daemon/schema-transition.js');
+          schema = await validateSchemaTransitionForSelection(options.schemaPlan, previous, artifact, registry);
+        } else await assertBackendMigrationsCompatible(previous.directory, artifact.directory, scope);
       }
-      return { selected, scope, config, artifact };
+      return { selected, scope, config, artifact, schema };
     };
     if (checkOnly) {
       await registry.inspect(async () => {
-        const { selected, scope, artifact, config } = await check();
+        const { selected, scope, artifact, config, schema } = await check();
         const infrastructure = await coldStartPreview(artifact, config, registry.home);
         const confirmed = registry.settledSelection({ allowEmpty: true });
         if (confirmed?.revision !== selected?.revision || confirmed?.current !== selected?.current) throw new Error('Runtime selection changed during the check');
         if (!emitJson({ checked: true, current: selected?.current ?? null, candidate: id, schemaScope: scope, coldStackAdmissionProtocol: artifact.coldStackAdmissionProtocol ?? null,
-          runtimeRestartProtocol: artifact.runtimeRestartProtocol ?? null, infrastructure })) {
+          runtimeRestartProtocol: artifact.runtimeRestartProtocol ?? null, infrastructure, ...(schema && { schema }) })) {
           emitInfo(`Runtime selection and ${scope} migrations verified for ${id}.`);
           if ('containers' in infrastructure) {
             emitInfo(`Cold stack preview from ${infrastructure.coverage} at ${infrastructure.capturedAt}. Startup rechecks current declarations and native containers.`);
@@ -199,14 +205,14 @@ export async function backendSelectCommand(id: string, checkOnly = false): Promi
       return;
     }
     const result = await registry.exclusive(async () => {
-      const { selected, config } = await check();
+      const { selected, config, schema } = await check();
       if (new PidManager(expandPath(config.pidFile)).isRunning() ||
           new PidManager(path.join(executionDirectory(config), 'owner.pid')).isRunning()) {
         throw new Error('A backend or execution owner is running; use backend upgrade to retain application ownership');
       }
       const selection = await registry.select(id, selected?.revision ?? 0);
       const launcher = await registry.writeLauncher();
-      return { selection, launcher };
+      return { selection, launcher, ...(schema && { schema }) };
     });
     if (!emitJson(result)) emitInfo(`Selected ${id}. Launch with ${result.launcher} up`);
   } catch (error) { emitError(error); process.exitCode = 1; }

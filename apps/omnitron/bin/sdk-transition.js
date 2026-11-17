@@ -5,6 +5,7 @@ import { constants } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
+import { pLimit } from '@omnitron-dev/common';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 const inside = (root, file) => file === root || file.startsWith(root + path.sep);
@@ -13,6 +14,18 @@ const absent = error => { if (error.code === 'ENOENT') return null; throw error;
 const stat = file => fs.lstat(file, { bigint: true }).catch(absent);
 const identity = value => ({ device: String(value.dev), inode: String(value.ino) });
 const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+const readFile = pLimit(16);
+const SMALL_FILE_BYTES = 256n * 1024n;
+
+// Drain every admitted operation before reporting a failure. The caller may
+// remove its private staging directory only after all writers have finished.
+async function settledMap(items, concurrency, operation) {
+  const limit = pLimit(concurrency);
+  const results = await Promise.allSettled(items.map((item, index) => limit(operation, item, index)));
+  const failure = results.find(result => result.status === 'rejected');
+  if (failure) throw failure.reason;
+  return results.map(result => result.value);
+}
 export const developmentCacheDirectory = override => path.resolve(override ??
   path.join(process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache'), 'omnitron', 'development'));
 
@@ -51,7 +64,12 @@ async function physical(directory) {
     throw Error('SDK transition requires a physical directory: ' + directory);
 }
 async function measure(file) {
-  const rows = []; let bytes = 0;
+  const rows = [], pending = []; let bytes = 0, failure;
+  async function drain() {
+    await Promise.all(pending.splice(0));
+    if (failure) throw failure;
+  }
+  const unchanged = (before, after) => ['dev', 'ino', 'mode', 'size', 'mtimeNs', 'ctimeNs'].every(key => before[key] === after[key]);
   async function visit(current, relative) {
     const before = await stat(current);
     if (!before) { rows.push([relative, 'absent']); return; }
@@ -61,18 +79,37 @@ async function measure(file) {
       rows.push([relative, 'directory', mode]);
       for (const name of (await fs.readdir(current)).sort()) await visit(path.join(current, name), path.join(relative, name));
     } else if (before.isFile()) {
-      const fd = await fs.open(current, constants.O_RDONLY | constants.O_NOFOLLOW);
-      try {
-        const digest = createHash('sha256');
-        for await (const chunk of fd.createReadStream({ autoClose: false })) digest.update(chunk);
-        const after = await fd.stat({ bigint: true });
-        if (['dev', 'ino', 'size', 'mtimeNs', 'ctimeNs'].some(key => before[key] !== after[key]))
-          throw Error('SDK file changed while measuring: ' + current);
-        rows.push([relative, 'file', mode, Number(before.size), digest.digest('hex')]); bytes += Number(before.size);
-      } finally { await fd.close(); }
+      // Reserve depth-first order before asynchronous reads. Existing snapshot
+      // digests remain identical regardless of filesystem completion order.
+      const index = rows.length; rows.push(null);
+      pending.push(readFile(async () => {
+        const fd = await fs.open(current, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+        try {
+          if (!unchanged(before, await fd.stat({ bigint: true }))) throw Error('SDK file changed while opening: ' + current);
+          const digest = createHash('sha256'); let length = 0;
+          if (before.size <= SMALL_FILE_BYTES) {
+            const buffer = Buffer.allocUnsafe(Number(before.size));
+            while (length < buffer.length) {
+              const { bytesRead } = await fd.read(buffer, length, buffer.length - length, null);
+              if (!bytesRead) break;
+              length += bytesRead;
+            }
+            digest.update(buffer.subarray(0, length));
+          } else {
+            for await (const chunk of fd.createReadStream({ autoClose: false, highWaterMark: 1024 * 1024,
+              end: Number(before.size) - 1 })) { digest.update(chunk); length += chunk.length; }
+          }
+          if (BigInt(length) !== before.size || !unchanged(before, await fd.stat({ bigint: true })) ||
+              !unchanged(before, await fs.lstat(current, { bigint: true })))
+            throw Error('SDK file changed while measuring: ' + current);
+          rows[index] = [relative, 'file', mode, Number(before.size), digest.digest('hex')]; bytes += Number(before.size);
+        } finally { await fd.close(); }
+      }).catch(error => { failure ??= error; }));
+      // Bound both open descriptors and queued work, including a very wide tree.
+      if (pending.length >= 32) await drain();
     } else throw Error('Unsupported SDK transition entry: ' + current);
   }
-  await visit(file, '');
+  try { await visit(file, ''); } finally { await drain(); }
   return { digest: hash(JSON.stringify(rows)), bytes, absent: rows[0][1] === 'absent' };
 }
 async function space(directory, bytes) {
@@ -96,9 +133,9 @@ async function verifyGuards(proof) {
     if (!same(await measure(item.path), item.before)) throw Error('SDK inputs changed outside the transition: ' + item.path);
 }
 async function measurements(proof) {
-  const result = [];
-  for (const item of proof.entries) { await physical(path.dirname(item.path)); result.push(await measure(item.path)); }
-  return result;
+  return settledMap(proof.entries, 4, async item => {
+    await physical(path.dirname(item.path)); return measure(item.path);
+  });
 }
 async function load(root) {
   if (!await stat(state(root))) return null;
@@ -129,7 +166,11 @@ export async function sdkTransitionStatus(root, verify = false) {
   return selected && { id: selected.journal.id, phase: selected.journal.phase, source: selected.proof.source };
 }
 
-export async function prepareSdkTransition({ root, source, paths, guards }) {
+/**
+ * @param {{ root: string, source: string, paths: string[], guards: string[],
+ * progress?: (event: { phase: 'inventory' | 'retain' | 'verify' | 'prepared', paths: number, bytes?: number }) => void }} options
+ */
+export async function prepareSdkTransition({ root, source, paths, guards, progress }) {
   const prior = await sdkTransitionStatus(root);
   if (prior && !['committed', 'restored'].includes(prior.phase)) throw Error('SDK transition is unfinished; run sdk recover before another selection');
   const cache = developmentCacheDirectory(process.env.OMNITRON_DEV_CACHE);
@@ -148,6 +189,7 @@ export async function prepareSdkTransition({ root, source, paths, guards }) {
   // Parents are never created by recovery. Reject unknown installation layouts
   // before any build or package-manager repair rather than guessing ownership.
   const unique = [...new Set(paths)].filter(file => !paths.some(parent => parent !== file && inside(parent, file)));
+  progress?.({ phase: 'inventory', paths: unique.length });
   for (const file of unique) {
     if (![root, source].some(base => inside(base, file)) || [root, source].includes(file) || file.split(path.sep).includes('.git'))
       throw Error('SDK transition path escapes its workspace: ' + file);
@@ -158,14 +200,17 @@ export async function prepareSdkTransition({ root, source, paths, guards }) {
   for (const file of [...new Set(guards)]) proof.guards.push({ path: file, before: await measure(file) });
   const directory = path.join(cache, 'sdk-transitions');
   await sdkDirectory(directory); await owned(directory, true);
-  await space(directory, entries.reduce((total, entry) => total + entry.before.bytes, 0));
+  const bytes = entries.reduce((total, entry) => total + entry.before.bytes, 0);
+  await space(directory, bytes);
   const temporary = path.join(directory, id + '.preparing'), snapshot = path.join(directory, id);
   await fs.mkdir(temporary, { mode: 0o700 });
   try {
-    for (const [index, entry] of entries.entries()) {
+    progress?.({ phase: 'retain', paths: entries.length, bytes });
+    await settledMap(entries, 4, async (entry, index) => {
       if (!entry.before.absent) await copy(entry.path, path.join(temporary, String(index)));
       if (!same(await measure(path.join(temporary, String(index))), entry.before)) throw Error('SDK before-image copy verification failed: ' + entry.path);
-    }
+    });
+    progress?.({ phase: 'verify', paths: entries.length, bytes });
     await verifyGuards(proof);
     if (!same(await measurements(proof), entries.map(entry => entry.before))) throw Error('SDK files changed while retaining the before-image');
     await atomic(path.join(temporary, 'proof.json'), proof);
@@ -173,6 +218,7 @@ export async function prepareSdkTransition({ root, source, paths, guards }) {
     const journal = { schema: 1, id, root, source, cache, snapshot, phase: 'prepared',
       proof: hash(await fs.readFile(path.join(snapshot, 'proof.json'))), restoration: {} };
     await atomic(state(root), journal);
+    progress?.({ phase: 'prepared', paths: entries.length, bytes });
     return { journal, proof };
   } catch (error) { await fs.rm(temporary, { recursive: true, force: true }); throw error; }
 }

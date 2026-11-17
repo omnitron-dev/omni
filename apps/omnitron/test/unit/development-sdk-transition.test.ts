@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { prepareSdkTransition, beginSdkTransition, finishSdkTransition, recoverSdkTransition, sdkTransitionStatus } from '../../bin/sdk-transition.js';
 import { sdkCommand, inspectSdk } from '../../bin/sdk.js';
@@ -128,6 +129,61 @@ it('does not publish a partial before-image or permit a build after failed copyi
   await expect(prepare()).rejects.toThrow('disk unavailable');
   expect(await sdkTransitionStatus(root)).toBeNull();
   expect(await fs.readFile(path.join(output, 'index.js'), 'utf8')).toBe('old executable bytes');
+});
+
+it('retains the existing depth-first digest for small, empty and streamed files', async () => {
+  const large = Buffer.alloc(300 * 1024, 0x5a);
+  await fs.chmod(output, 0o700);
+  await fs.mkdir(path.join(output, 'a'), { mode: 0o700 });
+  await fs.writeFile(path.join(output, 'a/x'), '', { mode: 0o600 });
+  await fs.writeFile(path.join(output, 'a-x'), large, { mode: 0o600 });
+  await fs.chmod(path.join(output, 'index.js'), 0o600);
+  const digest = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
+  const rows = [
+    ['', 'directory', 0o700], ['a', 'directory', 0o700],
+    [path.join('a', 'x'), 'file', 0o600, 0, digest('')],
+    ['a-x', 'file', 0o600, large.length, digest(large)],
+    ['index.js', 'file', 0o600, 20, digest('old executable bytes')],
+    ['tool', 'file', 0o755, 17, digest('#!/bin/sh\nexit 0\n')],
+  ];
+  const transition = await prepare();
+  expect(transition.proof.entries[0]?.before.digest).toBe(digest(JSON.stringify(rows)));
+});
+
+it('bounds parallel file readers and closes every descriptor before completing', async () => {
+  for (let index = 0; index < 48; index++)
+    await fs.writeFile(path.join(output, `part-${index}`), Buffer.alloc(2048, index));
+  const open = fs.open;
+  let active = 0, peak = 0;
+  vi.spyOn(fs, 'open').mockImplementation(async (...args: Parameters<typeof fs.open>) => {
+    const handle = await open(...args);
+    active++; peak = Math.max(peak, active);
+    const close = handle.close.bind(handle);
+    handle.close = async () => { try { await close(); } finally { active--; } };
+    return handle;
+  });
+  await prepare();
+  expect(peak).toBeGreaterThan(1);
+  expect(peak).toBeLessThanOrEqual(16);
+  expect(active).toBe(0);
+});
+
+it('drains concurrent copies before removing a failed staging directory', async () => {
+  const cp = fs.cp;
+  let started!: () => void;
+  const copying = new Promise<void>(resolve => { started = resolve; });
+  let active = 0, completed = false;
+  vi.spyOn(fs, 'cp').mockImplementation(async (from, to, options) => {
+    if (String(from) === output) { await copying; throw Error('synthetic copy failure'); }
+    if (String(from) !== modules) return cp(from, to, options);
+    active++; started();
+    try { await cp(from, to, options); completed = true; } finally { active--; }
+  });
+  await expect(prepare()).rejects.toThrow('synthetic copy failure');
+  expect(completed).toBe(true);
+  expect(active).toBe(0);
+  expect(await fs.readdir(path.join(cache, 'sdk-transitions'))).toEqual([]);
+  expect(await sdkTransitionStatus(root)).toBeNull();
 });
 
 it('rejects a changing source during retention and leaves the foreign contents intact', async () => {

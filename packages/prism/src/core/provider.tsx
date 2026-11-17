@@ -46,6 +46,8 @@ export interface PrismProviderProps {
   defaultMode?: ThemeMode;
   /** Default settings (overrides defaults but not persisted values) */
   defaultSettings?: Partial<SettingsValues>;
+  /** Temporary visual overrides. Removing a field restores its saved value. */
+  appearance?: Partial<Pick<SettingsValues, 'preset' | 'primaryColor' | 'contrast' | 'fontSize'>>;
   /** Disable CSS baseline */
   disableCssBaseline?: boolean;
   /** Static overrides or palettes compiled for both native modes before first paint. */
@@ -127,6 +129,7 @@ export function PrismProvider({
   modeStorageKey,
   defaultMode = 'system',
   defaultSettings,
+  appearance,
   disableCssBaseline = false,
   themeOverrides,
   dateAdapterLocale,
@@ -178,29 +181,36 @@ export function PrismProvider({
     if (useSettingsStore.getState() !== previous) setDefaultsApplied(true);
   }, [controlledMode, modeStorageKey, defaultSettings]);
 
+  const {
+    preset = storePreset,
+    primaryColor = storePrimaryColor,
+    contrast = storeContrast,
+    fontSize = storeFontSize,
+  } = appearance ?? {};
+
   // Create settings object for context (backwards compatibility)
   const settings = useMemo<PrismSettingsState>(
     () => ({
       mode,
-      preset: storePreset,
+      preset,
       direction: storeDirection,
       sidebarCollapsed: compactSidebar,
       settingsDrawerOpen: false, // Managed by SettingsProvider component
-      primaryColor: storePrimaryColor,
-      contrast: storeContrast,
-      fontSize: storeFontSize,
+      primaryColor,
+      contrast,
+      fontSize,
       fontFamily: storeFontFamily ?? 'Public Sans Variable',
       navLayout: storeNavLayout,
       navColor: storeNavColor,
     }),
     [
       mode,
-      storePreset,
+      preset,
       storeDirection,
       compactSidebar,
-      storePrimaryColor,
-      storeContrast,
-      storeFontSize,
+      primaryColor,
+      contrast,
+      fontSize,
       storeFontFamily,
       storeNavLayout,
       storeNavColor,
@@ -235,36 +245,38 @@ export function PrismProvider({
   // Set document font size (SSR-safe)
   useEffect(() => {
     if (typeof document !== 'undefined') {
-      if (storeFontSize && storeFontSize !== 16) {
-        document.documentElement.style.fontSize = `${storeFontSize}px`;
+      if (fontSize && fontSize !== 16) {
+        document.documentElement.style.fontSize = `${fontSize}px`;
       } else {
         document.documentElement.style.removeProperty('font-size');
       }
+      return () => { document.documentElement.style.removeProperty('font-size'); };
     }
-  }, [storeFontSize]);
+    return undefined;
+  }, [fontSize]);
 
   // Create theme based on current settings
   const buildTheme = useCallback(
     (themeMode: ThemeMode) =>
       createPrismTheme({
-        preset: storePreset,
+        preset,
         mode: themeMode,
         direction: storeDirection,
-        primaryColor: storePrimaryColor || config.theme.primaryColor,
+        primaryColor: primaryColor || config.theme.primaryColor,
         typography: config.theme.typography,
         cssVariables: config.theme.cssVariables,
         components: config.theme.components,
-        contrast: storeContrast,
+        contrast,
         fontFamily: storeFontFamily,
-        fontSize: storeFontSize,
+        fontSize,
         overrides: themeOverrides,
       }),
     [
-      storePreset,
+      preset,
       storeDirection,
-      storePrimaryColor,
-      storeContrast,
-      storeFontSize,
+      primaryColor,
+      contrast,
+      fontSize,
       storeFontFamily,
       config.theme,
       themeOverrides,

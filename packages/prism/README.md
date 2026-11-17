@@ -41,6 +41,8 @@ For a server-rendered site, use `PrismProvider modeStorageKey="site-theme"` and 
 
 `defaultSettings` supplies initial application preferences for the settings-store mode. Saved values take precedence, including an explicit light theme. With the built-in synchronous storage, MUI receives missing defaults before the browser paints the mounted application. A remount preserves the current selection. Controlled and MUI-persisted modes keep their own mode authority.
 
+Use the optional `appearance` prop to preview a preset, primary color, contrast or font size while editing. Omitted fields follow the saved settings, and a `null` primary color selects the preset color. Supply `mode` for a mode preview. Removing the preview restores the saved appearance. To apply a confirmed selection, the owner can call `useSettingsStore.getState().updateSettings(selection)` once.
+
 Use `theme.vars` and `theme.applyStyles()` for mode-dependent component CSS. Application `themeOverrides` callbacks compile both palettes; their typography and component definitions should not change with the callback's mode. SSR and the initial client tree share the same provider configuration.
 
 Native persisted selection requires CSS variables. An application that explicitly disables them can still use controlled or settings-store modes; its system mode resolves in JavaScript and cannot promise a system-matched first paint on the server.

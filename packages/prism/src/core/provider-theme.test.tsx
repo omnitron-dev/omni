@@ -35,6 +35,43 @@ describe('mode-aware application themes at the provider boundary', () => {
     render(tree);
     expect(state().requested).toBe(selected);
   });
+  it('previews appearance without persisting it and restores the saved theme when the preview ends', () => {
+    const saved = { preset: 'minimal', primaryColor: '#654321', contrast: 'default', fontSize: 16 } as const;
+    const preview = { preset: 'luxury', primaryColor: null, contrast: 'high', fontSize: 19 } as const;
+    useSettingsStore.getState().updateSettings(saved);
+    function PreviewProbe() {
+      const { settings } = usePrismContext();
+      return <output data-testid="appearance">{JSON.stringify(settings)}</output>;
+    }
+    const tree = (appearance?: typeof preview) => <PrismProvider {...(appearance && { appearance })}><PreviewProbe /><Probe /></PrismProvider>;
+    const { rerender, unmount } = render(tree());
+    const writes = vi.spyOn(useSettingsStore.persist.getOptions().storage!, 'setItem');
+    const displayed = () => JSON.parse(screen.getByTestId('appearance').textContent!);
+    try {
+      rerender(tree(preview));
+      expect(displayed()).toMatchObject(preview);
+      expect(state().primary).not.toBe(saved.primaryColor);
+      expect(document.documentElement.style.fontSize).toBe('19px');
+      expect(useSettingsStore.getState()).toMatchObject(saved);
+      rerender(tree());
+      expect(displayed()).toMatchObject(saved);
+      expect(state().primary).toBe(saved.primaryColor);
+      expect(document.documentElement.style.fontSize).toBe('');
+      rerender(tree(preview));
+      unmount();
+      expect(document.documentElement.style.fontSize).toBe('');
+      expect(writes).not.toHaveBeenCalled();
+      const restored = render(tree());
+      expect(displayed()).toMatchObject(saved);
+      act(() => useSettingsStore.getState().updateSettings(preview));
+      expect(displayed()).toMatchObject(preview);
+      expect(writes).toHaveBeenCalledTimes(1);
+      restored.unmount();
+    } finally {
+      writes.mockRestore();
+      act(() => useSettingsStore.getState().updateSettings(saved));
+    }
+  });
   it('changes a branded palette together with the native Prism mode in both directions', () => {
     render(<PrismProvider themeOverrides={({ mode }) => ({ palette: {
       primary: { main: mode === 'dark' ? '#C9B2FF' : '#7446A6' },

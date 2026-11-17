@@ -1,8 +1,10 @@
 # Creation, agents and automation: architecture review
 
-Status: proposed implementation decisions; no runtime activation or completed-feature claim.
-Reviewed: 16 November 2026, Omnitron `ea166e5af56e462941363729ebf381d7412adfa2`
-and Xec `b2b6aab4b4b0d321996ca26cd10f7b7fb92aff78`.
+Status: architecture decisions with separately identified implemented increments.
+Reviewed: 17 November 2026, Omnitron baseline `c50071d42e6539d03020d3355a6cda3caa316a1d`
+with lifecycle corrections `4416d4dd` / `b326741d`, and published Xec 0.13.2
+(`337065e004affae6b5fd9f6af592e4f685f2300f`).
+This document does not activate a runtime or certify the complete proposed product.
 
 The public [Studio](https://omnitron.dev/docs/omnitron/studio),
 [agent harness](https://omnitron.dev/docs/omnitron/agent-harness) and
@@ -19,19 +21,33 @@ administrator automation promises these capabilities today.
 
 | ID | Observed implementation | Consequence and required change |
 | --- | --- | --- |
-| A1 | [`PipelineService.initialize`](../apps/omnitron/src/services/pipeline.service.ts) changes unfinished runs to `interrupted`; active execution is tracked in a process-local map. | Existing run history is not durable continuation. Add persisted transitions and effect recovery before advertising restartable workflows. |
+| A1 | [`PipelineService`](../apps/omnitron/src/services/pipeline.service.ts) persists reviewed admission and step boundaries, pins the definition and supports explicit recovery through Xec. Active capacity is tracked in a process-local map. | Bounded graph continuation is implemented; leased cross-controller dispatch and durable capacity ownership are not. Preserve unknown outcomes instead of redispatching started effects. |
 | A2 | [`pipeline-definition.ts`](../apps/omnitron/src/services/pipeline-definition.ts) accepts manual triggers and scalar parameters; configured retries apply to executable steps. | Introduce explicit typed values, effect classes and trigger identities. Do not infer whether repeating shell source is safe. |
 | A3 | [`PipelineRpcService`](../apps/omnitron/src/services/pipeline.rpc-service.ts) authorizes administrators; its execution request has no restricted task grant. | This is not a restricted agent tool API. Use the existing principal and policy infrastructure with resource-scoped delegation, enforced at dispatch as well as ingress. |
 | A4 | [`OperationJournal`](../apps/omnitron/src/execution/operation-journal.ts) persists attempt receipts, revisions and logical resource claims in the daemon state store. Its [DTO](../apps/omnitron/src/shared/dto/execution-operations.ts) describes execution resources and observations. | Reuse this execution evidence. A stopped process is not proof that a remote business effect succeeded; associate attempts with a stable effect and its receiver receipt. |
 | A5 | [Pipeline history](../apps/omnitron/src/database/migrations/003_pipelines_traces.ts) and the daemon operation journal have different transaction boundaries. | A single transaction cannot cover both databases or a remote receiver. Specify an outbox/inbox protocol and reconciliation instead of promising atomic cross-store execution. |
-| A6 | Xec [Workflow](https://github.com/xec-sh/xec/blob/b2b6aab4b4b0d321996ca26cd10f7b7fb92aff78/packages/ops/src/workflow/index.ts) keeps results in maps and invokes callbacks. [Pipeline](https://github.com/xec-sh/xec/blob/b2b6aab4b4b0d321996ca26cd10f7b7fb92aff78/packages/ops/src/pipeline/index.ts) already owns graph execution, retries and event callbacks. | Reuse execution scopes and consolidate portable scheduling semantics there. An event callback is not a durable continuation; arbitrary JavaScript closures cannot be recovered by replaying a saved graph. |
+| A6 | Xec [Workflow](https://github.com/xec-sh/xec/blob/337065e004affae6b5fd9f6af592e4f685f2300f/packages/ops/src/workflow/index.ts) keeps results in maps and invokes callbacks. [Pipeline](https://github.com/xec-sh/xec/blob/337065e004affae6b5fd9f6af592e4f685f2300f/packages/ops/src/pipeline/index.ts) owns graph execution, retries and event callbacks; the shared operation scope joins its child commands. | Reuse these owners. Durable continuation belongs to persisted host transitions, not an event callback. Arbitrary JavaScript closures cannot be recovered by replaying a saved graph. |
 | A7 | [`McpBridge`](../apps/omnitron/src/mcp/mcp-bridge.ts) handles requests sequentially, advertises fixed protocol/package versions and ignores cancellation notifications. | Qualify negotiation, bounded framing, schema validation, independent cancellation and scoped identity before exposing mutating agent tools. Protocol compliance alone does not provide isolation. |
 | A8 | [`ExecutionClient.controlledOwnerSnapshot`](../apps/omnitron/src/daemon/execution-client.ts) obtains admission observations through the observation connection, configured with a 4-second timeout. | Separate the cost and scheduling of authority checks from bulk observations. This is a concrete coupling to measure under load, not proof that every observed update timeout has this cause. |
 
 The existing pipeline reserves its in-memory active-run slot before asynchronous
 admission work. This review does not claim a local oversubscription race there.
-What is missing for the proposed scheduler is durable, project-scoped admission
-and fairness across workers and controller restarts.
+Project-scoped admission and reviewed intent are implemented for one daemon.
+Capacity leases and fairness across workers and controller restarts remain open.
+
+## Delivered capabilities and remaining product boundaries
+
+These entries describe source and acceptance coverage, not equivalence to another
+product or proof of every failure mode on a production fleet.
+
+| Capability | Current evidence | Boundary still open |
+| --- | --- | --- |
+| Two independent projects through one execution path | [Pipeline release integration](../apps/omnitron/test/integration/pipeline-release.test.ts): SQL admission, Titan service over Netron, Xec execution, independent review and per-project capacity. | Multi-controller capacity leases and distributed dispatch. |
+| Interrupted graph continuation | [Recovery rules](../apps/omnitron/src/services/pipeline-recovery.ts) and [tests](../apps/omnitron/test/unit/pipeline-recovery.test.ts): preserve completed nodes, resume undispatched nodes and block unknown started steps. | Portable graph reducer, durable waits and general connector reconciliation. |
+| Deployment inspection after a lost reply | [Release integration](../apps/omnitron/test/integration/pipeline-release.test.ts): normal project release path and remote verified-launch observations. | A matching destination proves convergence, not which command caused it or exactly-once business effects. |
+| Shared operator review | [Console review tests](../apps/omnitron/test/webapp/pipeline-review.test.tsx) and administrative CLI/MCP use the same pipeline service. | Restricted agent grants, independent verifier execution and a qualified sandbox. Administrative MCP is not such a sandbox. |
+| Workflow editing | [Pipeline editor](../apps/omnitron/webapp/src/components/pipeline-editor.tsx): structured steps, JSON, definition revision and review. | Typed visual ports, graph editing and lossless source/canvas round trips. |
+| Agent project creation and mobile control | Architecture and acceptance requirements below. | No complete reference implementation or coverage claim against T3 Code, n8n or Node-RED. |
 
 ## Decisions and rejected alternatives
 
@@ -202,7 +218,7 @@ and scoped decisions; qualify device management independently for each OS.
 
 ## Reference studies and concrete conclusions
 
-Primary sources were reviewed on 16 November 2026. These are design inputs,
+Primary sources were reviewed on 16–17 November 2026. These are design inputs,
 not performance benchmarks or assertions of universal superiority.
 
 | Source | Conclusion for this design |
@@ -220,6 +236,58 @@ descriptors; selective verification backed by an evidence dependency graph; and
 delegation that transfers only the authority and private data required for a
 subtask. Each must improve measured outcomes over a simpler baseline. None is
 claimed as a novel invention or a capability already delivered by this review.
+
+### Effect study: properties to preserve, not an API to adopt
+
+The source study pins Effect to
+[`22909d564d9c1bad4881909e87b164b16fabb07d`](https://github.com/Effect-TS/effect/tree/22909d564d9c1bad4881909e87b164b16fabb07d),
+whose package declares 4.1.4. Version 3 documentation is not evidence for an
+identical version 4 API. No Effect dependency or parallel execution framework is
+introduced by this review. Architectural longevity means explicit invariants,
+replaceable adapters and verifiable evolution; it cannot be guaranteed by a
+library choice or a fixed technology stack.
+
+| Property demonstrated in the pinned source | Existing owner in our architecture | Required rule and acceptance oracle |
+| --- | --- | --- |
+| [Scope closure](https://github.com/Effect-TS/effect/blob/22909d564d9c1bad4881909e87b164b16fabb07d/packages/effect/src/internal/effect.ts): closes admission before finalizers, removes parent registration and joins finalizers. | Xec [runOperation](https://github.com/xec-sh/xec/blob/337065e004affae6b5fd9f6af592e4f685f2300f/packages/ops/src/utils/operation-scope.ts) already owns and joins child commands. Titan owns service shutdown. | No retry, dependency disposal or claim release while an admitted child effect is still unaccounted for. Test forgotten awaits, child failure during cleanup and abort during acquisition. |
+| [Exit](https://github.com/Effect-TS/effect/blob/22909d564d9c1bad4881909e87b164b16fabb07d/packages/effect/src/Exit.ts) keeps success and failure causes distinct, including interruption. | Netron error transport, Titan lifecycle results and Omnitron operation receipts. | Preserve confirmed failure, requested cancellation and unknown external outcome separately. Lost acknowledgement must not become successful cancellation or authorize a second write. |
+| [Layer](https://github.com/Effect-TS/effect/blob/22909d564d9c1bad4881909e87b164b16fabb07d/packages/effect/src/Layer.ts) combines dependency construction with a scope and shared memoization. | Titan DI and application lifecycle. | Reuse Titan's service ownership. A partial acquisition failure must release only acquired resources, once, before their owner closes. Do not add a second DI container. |
+| [Workflow identity and activity ownership](https://github.com/Effect-TS/effect/blob/22909d564d9c1bad4881909e87b164b16fabb07d/packages/effect/src/workflow/Workflow.ts) bind execution IDs to declared identity and account for pending children. | Xec graph execution plus Omnitron SQL admission and receiver receipts. | Stable effect identity and durable checkpoints precede dispatch. Test restart at each boundary; replaying a decision must not repeat an unknown external mutation. |
+
+Cancellation is cooperative at JavaScript and RPC boundaries. Xec's `within`
+provides execution context; it is not by itself a resource owner. `runOperation`
+joins the commands started through its executor, but arbitrary callback work
+must observe its signal. Netron's verified invocation frame is the canonical
+place to compose admitted identity with future deadline/cancellation metadata;
+another unrelated ambient context would fragment that contract. A local timer
+does not prove that a remote receiver stopped.
+
+The [Titan lifecycle correction](../packages/titan/src/lifecycle/lifecycle-controller.ts)
+stops later teardown after any task/phase deadline and returns failure. It joins
+admitted parallel peers within the phase budget after a critical failure.
+Application's coordinator now consumes that result directly; its second timer
+and event-based reconstruction of success were removed. The
+[controller tests](../packages/titan/test/lifecycle/lifecycle-controller.spec.ts)
+and [Application tests](../packages/titan/test/application/shutdown-timeout-reporting.spec.ts)
+distinguish a settled noncritical failure from an unfinished writer and assert
+that dependent disposal does not start. This is not cancellation of arbitrary
+JavaScript. Embedded hosts and force-stop paths still require explicit handling
+of incomplete work; provider teardown outside the task controller needs its own
+ownership audit.
+
+[Netron TaskManager](../packages/titan/src/netron/task-manager.ts) still times out
+the caller without cancelling the task and identifies asynchronous work with
+`instanceof Promise`. Its redesign must handle thenables, carry admitted
+deadlines and expose unconfirmed work. Do not imply termination or retry safety
+from a timeout rejection.
+
+The first implemented lifecycle correction is documented in
+[runtime lifecycle review](./RUNTIME-LIFECYCLE.md): one complete acceptance
+observation, a bounded deadline, typed pending/conflict/unconfirmed outcomes and
+reconciliation without another stop/start after an uncertain observation.
+Remaining backup admission and shutdown ownership work is tracked there and in
+the owners above. None of these facts establishes full structured concurrency
+across arbitrary application code or remote receivers.
 
 ## Implementation gates and first reference workload
 

@@ -46,6 +46,8 @@ export function Documentation() {
 
 React and React DOM 19 are required. The Lumen builder supplies default layout styles; embedding applications own their styles. `LumenShell` supplies Prism by default. Set `disablePrismProvider` when the host already owns that provider.
 
+Browser applications can install `@omnitron-dev/lumen-ui` and its React peers directly. The UI uses Lumen AST for island properties, code highlighting, diagrams and playground execution. Its semantic search tab accepts a host-supplied RPC client. The knowledge base and its native SurrealDB driver belong to the server integration. Install `@omnitron-dev/lumen` in the project that builds the static site.
+
 ## Current section navigation
 
 `DocSectionNav` from `/layout` renders native anchor links on the server. Mount it as an island to track the current section of an existing document:

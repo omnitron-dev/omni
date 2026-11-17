@@ -26,7 +26,6 @@ export default defineConfig({
     '@emotion/cache',
     '@mui/material',
     '@omnitron-dev/prism',
-    '@omnitron-dev/kb',
     '@omnitron-dev/lumen-ast',
     'katex',
     'zod',

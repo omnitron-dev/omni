@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { Tabs } from './tabs.js';
+import { TabPanel, Tabs } from './tabs.js';
 
 describe('Tabs', () => {
   describe('individual closure', () => {
@@ -61,8 +61,48 @@ describe('Tabs', () => {
       fireEvent.click(screen.getByRole('tab', { name: 'B' }));
       expect(onChange).toHaveBeenCalledWith('b');
     });
+
+    it('selects and focuses the next enabled tab after the caller removes the active uncontrolled tab', () => {
+      const onChange = vi.fn();
+      const tabs = ['a', 'b', 'c', 'd'].map(value => ({
+        value, label: value, content: value, disabled: value === 'c', closable: true,
+      }));
+      const draw = (items: typeof tabs) => <Tabs tabs={items} defaultValue="b" onClose={() => {}} onChange={onChange} />;
+      const { rerender } = render(draw(tabs));
+      fireEvent.keyDown(screen.getByRole('tab', { name: 'b' }), { key: 'Delete' });
+      rerender(draw(tabs.filter(tab => tab.value !== 'b')));
+      expect(screen.getByRole('tab', { name: 'd', selected: true })).toHaveFocus();
+      expect(onChange).toHaveBeenCalledExactlyOnceWith('d');
+    });
   });
   describe('panel rendering', () => {
+    it('selects the first enabled TabPanel when the caller omits a default', () => {
+      render(<Tabs aria-label="Manual">
+        <TabPanel value="future" disabled>Coming soon</TabPanel>
+        <TabPanel value="" label="Guide">Start here</TabPanel>
+        <TabPanel value="api">Reference</TabPanel>
+      </Tabs>);
+      expect(screen.getByRole('tab', { name: 'Guide', selected: true })).toHaveAttribute('tabindex', '0');
+      expect(screen.getByRole('tabpanel', { name: 'Guide' })).toHaveTextContent('Start here');
+    });
+
+    it('retains selection through reorder, then selects an available tab if the chosen one disappears', () => {
+      const onChange = vi.fn();
+      const a = { value: 'a', label: 'A', content: 'First' };
+      const b = { value: 'b', label: 'B', content: 'Second' };
+      const c = { value: 'c', label: 'C', content: 'Third' };
+      const { rerender } = render(<Tabs tabs={[]} defaultValue="b" onChange={onChange} />);
+      rerender(<Tabs tabs={[a, b, c]} onChange={onChange} />);
+      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent('B');
+      rerender(<Tabs tabs={[c, a, b]} onChange={onChange} />);
+      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent('B');
+      rerender(<Tabs tabs={[{ ...a, disabled: true }, c]} onChange={onChange} />);
+      expect(screen.getByRole('tabpanel')).toHaveTextContent('Third');
+      rerender(<Tabs tabs={[a, b, c]} onChange={onChange} />);
+      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent('C');
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
     it('renders the panel of the active tab when content is provided', () => {
       render(
         <Tabs

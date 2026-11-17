@@ -55,6 +55,8 @@ Use `ThemeModeIcon` from `@omnitron-dev/prism/icons` for the selected `light`, `
 
 `LoadingScreen` accepts a branded progress indicator through `slots.progress`. Its existing layout and motion behavior allow applications to share the loading component while supplying their own identity. Use `EmptyContent` for an empty result with a title, description and optional action.
 
+`Tabs` accepts a `tabs` array or `TabPanel` children. An uncontrolled strip starts on the first enabled tab or the supplied `defaultValue`. If its selected tab disappears or becomes disabled, the strip selects an available panel. Pass `value` and `onChange` when the surrounding application owns selection.
+
 The map entry includes its matching MapLibre worker. Consumers can use `@omnitron-dev/prism/components/map` without configuring a separate worker asset. An explicit `workerUrl` selects a consumer-managed worker when deployment policy requires one.
 
 The documentation catalog pairs rendered examples with their checked-in TypeScript modules. Examples use the public package entries and cover forms, navigation, tables, charts, maps, editors and research documents.

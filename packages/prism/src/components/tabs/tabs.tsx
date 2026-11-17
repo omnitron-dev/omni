@@ -9,7 +9,7 @@
  */
 
 import type { ReactNode, ReactElement, SyntheticEvent, ComponentProps, KeyboardEvent } from 'react';
-import { useState, useCallback, Children, isValidElement, useMemo, useId, useRef, useEffect } from 'react';
+import { useState, useCallback, Children, isValidElement, useMemo, useId, useRef, useLayoutEffect } from 'react';
 import MuiTabs from '@mui/material/Tabs';
 import MuiTab from '@mui/material/Tab';
 import Box from '@mui/material/Box';
@@ -107,23 +107,6 @@ export function Tabs({
   sx,
   ...muiProps
 }: TabsProps): ReactNode {
-  const [internalValue, setInternalValue] = useState(defaultValue ?? tabs?.[0]?.value ?? '');
-
-  const value = controlledValue ?? internalValue;
-  const id = useId();
-  const tabRefs = useRef(new Map<string, HTMLElement>());
-  const closing = useRef<{ value: string; next?: string } | null>(null);
-
-  const handleChange = useCallback(
-    (_event: SyntheticEvent, newValue: string) => {
-      if (controlledValue === undefined) {
-        setInternalValue(newValue);
-      }
-      onChange?.(newValue);
-    },
-    [controlledValue, onChange]
-  );
-
   // Extract tab items from children if using TabPanel pattern
   const tabItems = useMemo(() => {
     if (tabs) return tabs;
@@ -147,6 +130,22 @@ export function Tabs({
     return items;
   }, [tabs, children]);
 
+  const firstEnabled = tabItems.find((item) => !item.disabled)?.value;
+  const [internalValue, setInternalValue] = useState(defaultValue ?? firstEnabled);
+  const currentAvailable = tabItems.some((item) => item.value === internalValue && !item.disabled);
+  const value = controlledValue ?? (currentAvailable ? internalValue : firstEnabled);
+  const id = useId();
+  const tabRefs = useRef(new Map<string, HTMLElement>());
+  const closing = useRef<{ value: string; next?: string } | null>(null);
+
+  const handleChange = useCallback(
+    (_event: SyntheticEvent, newValue: string) => {
+      if (controlledValue === undefined) setInternalValue(newValue);
+      onChange?.(newValue);
+    },
+    [controlledValue, onChange]
+  );
+
   const requestClose = (tab: TabItem) => {
     if (!onClose || !tab.closable || tab.disabled || tab.closeDisabled) return;
     const index = tabItems.indexOf(tab);
@@ -161,16 +160,20 @@ export function Tabs({
   };
 
   // A confirmation may defer or cancel closure. Move focus only after removal.
-  useEffect(() => {
+  useLayoutEffect(() => {
     const pending = closing.current;
-    if (!pending || tabItems.some((tab) => tab.value === pending.value)) return;
-    closing.current = null;
-    if (controlledValue === undefined && value === pending.value) {
-      setInternalValue(pending.next ?? '');
-      if (pending.next) onChange?.(pending.next);
+    if (pending && !tabItems.some((tab) => tab.value === pending.value)) {
+      closing.current = null;
+      const next = tabItems.find((tab) => tab.value === pending.next && !tab.disabled)?.value ?? firstEnabled;
+      if (next !== undefined) tabRefs.current.get(next)?.focus();
+      if (controlledValue === undefined && internalValue === pending.value) {
+        setInternalValue(next);
+        if (next !== undefined) onChange?.(next);
+        return;
+      }
     }
-    if (pending.next) tabRefs.current.get(pending.next)?.focus();
-  }, [tabItems, controlledValue, value, onChange]);
+    if (controlledValue === undefined && value !== undefined && value !== internalValue) setInternalValue(value);
+  }, [tabItems, firstEnabled, controlledValue, internalValue, value, onChange]);
 
   // Flex wrapper exists only to host the optional action node to
   // the right of the tab strip — no bottom divider; MuiTabs keeps
@@ -190,7 +193,7 @@ export function Tabs({
         }}
       >
         <MuiTabs
-          value={value || false}
+          value={value ?? false}
           onChange={handleChange}
           {...muiProps}
           sx={[{ flex: 1, minWidth: 0 }, ...(Array.isArray(sx) ? sx : [sx])]}

@@ -3,13 +3,13 @@ import { createRoot } from 'react-dom/client';
 import { LumenShell } from '@omnitron-dev/lumen-ui/runtime';
 
 const ApiExplorer = lazy(() =>
-  import('@omnitron-dev/lumen-ui').then(({ ApiExplorer }) => ({ default: ApiExplorer })));
+  import('@omnitron-dev/lumen-ui').then(({ ApiExplorer: component }) => ({ default: component })));
 const NetronPlayground = lazy(() =>
-  import('@omnitron-dev/lumen-ui').then(({ NetronPlayground }) => ({ default: NetronPlayground })));
+  import('@omnitron-dev/lumen-ui').then(({ NetronPlayground: component }) => ({ default: component })));
 const MermaidDiagram = lazy(() =>
-  import('@omnitron-dev/lumen-ui').then(({ MermaidDiagram }) => ({ default: MermaidDiagram })));
+  import('@omnitron-dev/lumen-ui').then(({ MermaidDiagram: component }) => ({ default: component })));
 const DocSectionNav = lazy(() =>
-  import('@omnitron-dev/lumen-ui/layout').then(({ DocSectionNav }) => ({ default: DocSectionNav })));
+  import('@omnitron-dev/lumen-ui/layout').then(({ DocSectionNav: component }) => ({ default: component })));
 
 const host = document.createElement('div');
 host.id = 'lumen-client';

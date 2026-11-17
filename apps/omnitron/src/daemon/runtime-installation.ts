@@ -8,6 +8,7 @@ import { OMNITRON_HOME } from '../config/defaults.js';
 import { readRuntimeManifest, verifyRuntimeArtifact } from '../shared/runtime-artifact.js';
 import type { DaemonStateStore } from './daemon-state-store.service.js';
 import type { BackendArtifact } from './backend-candidate.js';
+import { RuntimeObservationPending } from './runtime-observation.js';
 
 export interface RuntimeSelection {
   protocol: 1;
@@ -328,8 +329,15 @@ export class RuntimeInstallation {
   settledSelection(options?: { allowEmpty: true }): RuntimeSelection | null {
     const db = this.inspection ?? this.store.initSync();
     const read = () => {
-      if (db.prepare("SELECT 1 FROM state_kv WHERE key IN ('runtime.lease','runtime.activation') LIMIT 1").get()) {
-        throw Error('The runtime registry has an unsettled lease or activation');
+      if (db.prepare("SELECT 1 FROM state_kv WHERE key = 'runtime.activation'").get())
+        throw Error('The runtime registry has an unsettled activation');
+      if (db.prepare("SELECT 1 FROM state_kv WHERE key = 'runtime.lease'").get()) {
+        let lease: InstallationLease | null;
+        try { lease = this.read<InstallationLease>('runtime.lease'); }
+        catch { throw Error('The runtime registry has an unsettled invalid lease'); }
+        if (!lease || !Number.isSafeInteger(lease.pid) || lease.pid <= 0 || typeof lease.token !== 'string' || !lease.token)
+          throw Error('The runtime registry has an unsettled invalid lease');
+        throw new RuntimeObservationPending('installation', 'The runtime registry has an unsettled lease', lease.pid);
       }
       const selection = this.selection();
       if (!selection && !options?.allowEmpty) throw Error('No runtime has been selected');

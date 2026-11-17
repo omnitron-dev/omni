@@ -5,10 +5,12 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { tsImport } from 'tsx/esm/api';
-const { runRuntimeUpdate, readRuntimeUpdateReceipt, readPreparedRuntimeUpdate } = await tsImport('../../src/daemon/runtime-update.ts', import.meta.url);
-const { assertLocalIdle, assertLocalReview, assertReviewedBoot, assertSameSavedSelection, assertLocalServiceTargets, assertRetainedRuntimeInfrastructure } = await tsImport('../../src/daemon/runtime-update-host.ts', import.meta.url);
-const { retainReviewedBackups } = await tsImport('../../src/shared/backup-admission.ts', import.meta.url);
+import { register } from 'tsx/esm/api';
+const loader = register({ namespace: 'runtime-update-test' });
+const { runRuntimeUpdate, readRuntimeUpdateReceipt, readPreparedRuntimeUpdate } = await loader.import('../../src/daemon/runtime-update.ts', import.meta.url);
+const { assertLocalIdle, assertLocalReview, assertReviewedBoot, assertSameSavedSelection, assertLocalServiceTargets, assertRetainedRuntimeInfrastructure } = await loader.import('../../src/daemon/runtime-update-host.ts', import.meta.url);
+const { retainReviewedBackups } = await loader.import('../../src/shared/backup-admission.ts', import.meta.url);
+const { RuntimeObservationTimeout, RuntimeObservationUnconfirmed } = await loader.import('../../src/daemon/runtime-observation.ts', import.meta.url);
 import { BACKEND_ACTIVITY_COUNTERS } from '../../src/shared/dto/backend.ts';
 
 test('only boots with the exact native admission and unchanged desired state', () => {
@@ -487,6 +489,30 @@ test('reconciliation confirms a serving candidate after a lost result without re
   await fs.writeFile(path.join(directory, 'current.json'), JSON.stringify({ ...pending, restoreAttempted: true }));
   await assert.rejects(runRuntimeUpdate({ actions, directory, operation: 'reconcile', digest: review.digest }), /entered restoration/);
   assert.equal(starts, 1); assert.equal(stops, 1);
+});
+
+for (const error of [new RuntimeObservationTimeout('acceptance pending'), new RuntimeObservationUnconfirmed('RPC result lost')])
+test(`${error.code} retains the serving candidate without starting an automatic rollback`, async t => {
+  const directory = await privateInstance(t);
+  const plan = planFor(directory, { pid: process.pid, generation: 'original' });
+  let stops = 0, starts = 0, ready = false;
+  const actions = {
+    async prepare() { return plan; }, async admit() {}, async validateStop() {},
+    async stop() { stops++; }, async assertStopped() {}, async start() { starts++; },
+    async canRestore() { assert.fail('expiry is not evidence for rollback'); },
+    async captureForRollback() { assert.fail('expiry cannot retire a serving candidate'); },
+    async accept() {
+      if (!ready) throw error;
+      return { ownerId: 'replacement' };
+    },
+  };
+  const review = await runRuntimeUpdate({ actions, directory, operation: 'prepare' });
+  await assert.rejects(runRuntimeUpdate({ actions, directory, operation: 'apply', digest: review.digest }), cause => cause === error);
+  assert.equal((await readRuntimeUpdateReceipt(directory)).phase, 'recovery-required');
+  assert.equal(stops, 1); assert.equal(starts, 1);
+  ready = true;
+  assert.equal((await runRuntimeUpdate({ actions, directory, operation: 'reconcile', digest: review.digest })).phase, 'accepted');
+  assert.equal(stops, 1); assert.equal(starts, 1);
 });
 
 test('a lost rollback acknowledgement is inspected without a second cold start', { skip: !native }, async t => {

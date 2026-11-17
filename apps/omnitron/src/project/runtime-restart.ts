@@ -34,6 +34,14 @@ export function restartConfigurationDigest(configuration: RuntimeRestartConfigur
   return createHash('sha256').update(JSON.stringify(configuration)).digest('hex');
 }
 
+/** Observation metadata is retained for diagnostics and snapshot integrity, but
+ * reloading identical declarations does not authorize a different restart. */
+export function restartIntentDigest(configuration: RuntimeRestartConfiguration): string {
+  return createHash('sha256').update(JSON.stringify({ ...configuration,
+    projects: configuration.projects.map(([name, { loadedAt: _loadedAt, ...definition }]) => [name, definition]),
+  })).digest('hex');
+}
+
 /** These defaults are constructed before an older owner exposes setConfig.
  * Its controller can restore launch definitions, but cannot replace its PM or log manager. */
 export function assertRestartOwnerDefaults(actual: IEcosystemConfig, retained: IEcosystemConfig): void {

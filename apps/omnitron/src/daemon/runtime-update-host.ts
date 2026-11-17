@@ -7,9 +7,12 @@ import { BACKEND_ACTIVITY_COUNTERS } from '../shared/dto/backend.js';
 import { retainReviewedBackups } from '../shared/backup-admission.js';
 import { LAUNCHD_LABEL, OWNER_LAUNCHD_LABEL } from '../commands/service-units.js';
 import { localStackInventory } from '../project/local-stack-inventory.js';
-import { readRestartConfiguration, saveRestartConfiguration, restartConfigurationDigest, restartLaunchIntent, assertRestartOwnerDefaults, type RuntimeRestartConfiguration } from '../project/runtime-restart.js';
+import { readRestartConfiguration, saveRestartConfiguration, restartConfigurationDigest, restartIntentDigest, restartLaunchIntent, assertRestartOwnerDefaults, type RuntimeRestartConfiguration } from '../project/runtime-restart.js';
 import { privateControlClient } from './private-control-client.js';
-import { assertRuntimeUpdateHealth } from './runtime-update.js';
+import { assertRuntimeUpdateHealth, RuntimeUpdateHealthRegression } from './runtime-update.js';
+import { RuntimeObservationPending, RuntimeObservationConflict, RuntimeObservationUnconfirmed,
+  observeRuntimeUntil, withRuntimeObservation, type RuntimeObservation } from './runtime-observation.js';
+import { CommandResultError } from '../shared/command-result.js';
 import type { BackendControlService } from './backend-control.js';
 import type { BackendRpcService } from './backend.rpc-service.js';
 import type { ExecutionHostService } from './execution-host.js';
@@ -25,7 +28,7 @@ import type { StackStartReview, SelectedRelease } from '../shared/dto/project.js
 import type { RuntimeUpdateActions, RuntimeUpdateRestoration } from './runtime-update.js';
 import type { RuntimeRestartReview, RuntimeUpdateIdentity, RuntimeUpdateInfrastructure, RuntimeUpdatePlan, RuntimeUpdateProjectObservation, RuntimeUpdateStack, RuntimeUpdateStackObservation, RuntimeUpdateStatusObservation, RuntimeUpdateSelection, ReviewedRuntimeUpdateStack, VerifiedRuntimeReference } from '../shared/dto/runtime-update.js';
 
-export type RuntimeUpdateCall = <T>(argv: readonly string[], runtimeRoot?: string) => Promise<T>;
+export type RuntimeUpdateCall = <T>(argv: readonly string[], runtimeRoot?: string, options?: { timeoutMs?: number; signal?: AbortSignal }) => Promise<T>;
 interface ColdStartObservation {
   checked: boolean; candidate: string; schemaScope: 'node' | 'all'; coldStackAdmissionProtocol?: number | null;
   runtimeRestartProtocol?: number | null;
@@ -100,7 +103,7 @@ export function assertReviewedBoot(stack: RuntimeUpdateStack, digest: string, pr
 
 export function assertSameSavedSelection(prior: ReviewedRuntimeUpdateStack, now: RuntimeUpdateStack) {
   if (!prior.savedSelection) throw Error('The local update plan has no saved launch selection for ' + projectKey(prior));
-  if (!isDeepStrictEqual(prior.savedSelection, now.selection)) throw Error('Saved launch selection changed for ' + projectKey(prior));
+  if (!isDeepStrictEqual(prior.savedSelection, now.selection)) throw new RuntimeObservationConflict('Saved launch selection changed for ' + projectKey(prior));
 }
 
 export function assertLocalServiceTargets(config: ManagedRuntime | null): asserts config is ManagedRuntime {
@@ -111,15 +114,15 @@ export function assertLocalServiceTargets(config: ManagedRuntime | null): assert
 /** Stopped stacks can disappear from boot declarations while their containers remain retained. */
 export function assertRetainedRuntimeInfrastructure(expected: RuntimeUpdateInfrastructure, boot: RuntimeUpdateInfrastructure,
   observed: readonly Pick<ContainerState, 'name' | 'containerId'>[]): void {
-  if (boot.database !== expected.database) throw Error('The control-plane database identity changed');
+  if (boot.database !== expected.database) throw new RuntimeObservationConflict('The control-plane database identity changed');
   const reviewed = new Map(expected.containers.map(container => [container.name, container.id]));
   const native = new Map(observed.map(container => [container.name, container.containerId]));
   if (reviewed.size !== expected.containers.length || native.size !== observed.length)
     throw Error('Container identity observation contains duplicate names');
   for (const [name, id] of reviewed)
-    if (native.get(name) !== id) throw Error('Retained native container identity changed: ' + name);
+    if (native.get(name) !== id) throw new RuntimeObservationConflict('Retained native container identity changed: ' + name);
   for (const container of boot.containers)
-    if (reviewed.get(container.name) !== container.id) throw Error('Unreviewed container in boot declarations: ' + container.name);
+    if (reviewed.get(container.name) !== container.id) throw new RuntimeObservationConflict('Unreviewed container in boot declarations: ' + container.name);
 }
 
 /** Complete a restored owner through the existing warm role handoffs. Repeating
@@ -192,8 +195,10 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
   const raw = (id: string, args: string[]) => run(home, path.join(installed(id), 'node'), [path.join(installed(id), cliDist, 'cli/omnitron.js'), ...args], {
     timeoutMs: 10 * 60_000, env: { OMNITRON_OUTPUT: 'human' },
   });
-  const consoleState = async () => {
-    const service = await call<{ running: boolean; port: number }>(['webapp', 'status']);
+  const observeCall = <T>(args: readonly string[], observation?: RuntimeObservation): Promise<T> =>
+    call<T>(args, undefined, observation ? { timeoutMs: observation.remaining(), signal: observation.signal } : undefined);
+  const consoleState = async (observation?: RuntimeObservation) => {
+    const service = await observeCall<{ running: boolean; port: number }>(['webapp', 'status'], observation);
     const state = await getContainerState(consoleContainerName(home), { orThrow: true, fullId: true });
     if (Boolean(readSavedDaemonConfig()?.webapp) !== service.running) throw Error('Serving Console disagrees with its saved boot policy');
     if (!service.running && (!state || state.status === 'exited')) return { artifact: null, commit: null };
@@ -202,17 +207,19 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
     const mount = state.mounts?.find(volume => volume.target === '/usr/share/nginx/html');
     const id = mount && path.relative(path.join(installation, 'releases'), mount.source).split(path.sep)[0];
     if (!mount || !id || !hash.test(id) || mount.source !== path.join(installed(id), 'packages/0/webapp/dist')) throw Error('Serving Console does not have a verified installed rollback artifact');
-    const response = await fetch(`http://127.0.0.1:${service.port}/BUILD.json`, { redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(5000) });
+    const timeout = AbortSignal.timeout(observation?.remaining(5000) ?? 5000);
+    const response = await fetch(`http://127.0.0.1:${service.port}/BUILD.json`, { redirect: 'error', cache: 'no-store',
+      signal: observation ? AbortSignal.any([observation.signal, timeout]) : timeout });
     const actual = response.ok ? await response.json() as BuildStamp : null;
     if (!cleanBuild(actual) || actual.commit !== await runtimeBuildCommit(installed(id), true)) throw Error('Console HTTP build disagrees with its mounted release');
     return { artifact: id, commit: actual.commit };
   };
-  const installationState = async () => {
-    const state = await call<{ directory: string; selection: RuntimeSelection | null; activation: unknown }>(['backend', 'installation']);
+  const installationState = async (observation?: RuntimeObservation) => {
+    const state = await observeCall<{ directory: string; selection: RuntimeSelection | null; activation: unknown }>(['backend', 'installation'], observation);
     if (state.directory !== installation || (!state.selection || !hash.test(state.selection.current)) || state.activation) throw Error('Local native installation is unsettled or belongs to another instance');
     return state.selection;
   };
-  const identity = async (status: RuntimeUpdateStatusObservation, idle = true): Promise<RuntimeUpdateIdentity> => {
+  const identity = async (status: RuntimeUpdateStatusObservation, idle = true, observation?: RuntimeObservation): Promise<RuntimeUpdateIdentity> => {
     if (idle) assertLocalIdle(status);
     const execution = status.execution;
     const config = await readManagedRuntime(home);
@@ -220,10 +227,12 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
         !Array.isArray(status.apps) || !execution.owner?.id || !Number.isSafeInteger(execution.supervision?.guardianPid)) throw Error('Live native execution identity is incomplete');
     if (process.platform !== 'darwin' || config.scope !== 'user') throw Error('This development rollout requires a macOS user installation. Use the managed fleet workflow for servers');
     assertLocalServiceTargets(config);
-    const selection = await installationState();
+    const selection = await installationState(observation);
     const ownerPid = execution.owner.pid, guardianPid = execution.supervision!.guardianPid;
     await verifyManagedIsolation(config, ownerPid, guardianPid, status.pid);
-    const parent = await run(home, '/bin/ps', ['-p', String(status.pid), '-o', 'ppid='], { timeoutMs: 5000 });
+    const parent = await run(home, '/bin/ps', ['-p', String(status.pid), '-o', 'ppid='], {
+      timeoutMs: observation?.remaining(5000) ?? 5000, ...(observation && { signal: observation.signal }),
+    });
     if (Number(parent.trim()) !== guardianPid) throw Error('Serving backend is not a child of the reviewed native guardian');
     const life = readProcessLifetime(ownerPid);
     if (life.state !== 'alive') throw Error('Cannot establish execution owner process lifetime');
@@ -236,13 +245,13 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
       ownerPid, ownerLifetime: life.identity, guardianPid, backendPid: status.pid, revision: selection.revision,
       retiredPids: [...new Set([status.pid, guardianPid, ...retired])].sort((a, b) => a - b) };
   };
-  const inventory = async (status: RuntimeUpdateStatusObservation) => {
-    const projects = await call<RuntimeUpdateProjectObservation>(['project', 'list']);
+  const inventory = async (status: RuntimeUpdateStatusObservation, observation?: RuntimeObservation) => {
+    const projects = await observeCall<RuntimeUpdateProjectObservation>(['project', 'list'], observation);
     if (projects?.online !== true) throw Error('A live project catalogue is required');
-    return localStackInventory(projects, projects.projects.length ? await call<RuntimeUpdateStackObservation[]>(['stack', 'list']) : [], status);
+    return localStackInventory(projects, projects.projects.length ? await observeCall<RuntimeUpdateStackObservation[]>(['stack', 'list'], observation) : [], status);
   };
-  const watches = async (stacks: RuntimeUpdateStack[]) => {
-    const client = createDaemonClient();
+  const watches = async (stacks: RuntimeUpdateStack[], observation?: RuntimeObservation) => {
+    const client = createDaemonClient(undefined, observation?.remaining());
     try {
       const all = new Map(stacks.flatMap(s => s.apps.map(a => [a.handleKey, a])));
       const view = await client.getWatchStatus();
@@ -274,6 +283,11 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
     runtimeControl(service => service.runtimeRestart({ stacks: stacks.map(stack => stack.runtimeScope) }));
   const retainedReview = async (stacks: RuntimeUpdateStack[]): Promise<RuntimeRestartReview> =>
     runtimeControl(service => service.runtimeRestartReview({ stacks: stacks.map(stack => stack.runtimeScope) }));
+  const sameRetainedIntent = async (plan: RuntimeUpdatePlan, current: RuntimeRestartConfiguration): Promise<boolean> => {
+    if (!plan.configuration) return false;
+    const retained = await readRestartConfiguration(home, plan.configuration.sha256);
+    return restartIntentDigest(retained) === restartIntentDigest(current);
+  };
   const backupReview = async (current: OperationReceipt[], reviewed?: OperationReceipt[]) => {
     if (!reviewed) return retainReviewedBackups(current, reviewed, async () => null);
     const client = createDaemonClient();
@@ -288,25 +302,27 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
     const { loadRegisteredStartupEcosystem } = await import('./startup-config.js');
     assertRestartOwnerDefaults(await loadRegisteredStartupEcosystem(managed.cwd), configuration.watchConfig);
   };
-  const verifyRetainedLaunches = async (plan: RuntimeUpdatePlan) => {
+  const verifyRetainedLaunches = async (plan: RuntimeUpdatePlan, ownerId: string, observation?: RuntimeObservation) => {
     if (!plan.configuration) return;
     const configuration = await readRestartConfiguration(home, plan.configuration.sha256);
     const managed = await readManagedRuntime(home);
     if (!managed) throw Error('Retained launch verification requires managed execution');
-    const owner = await privateControlClient<ExecutionHostService>(path.join(managed.directory, 'owner.sock'), 'OmnitronExecution');
+    const owner = await privateControlClient<ExecutionHostService>(path.join(managed.directory, 'owner.sock'), 'OmnitronExecution', observation?.remaining());
     try {
       const snapshot = await owner.service.snapshot();
-      if (snapshot.status.phase !== 'active' || snapshot.status.inFlight !== 0) throw Error('Replacement owner has unsettled applications');
+      if (snapshot.status.owner.id !== ownerId) throw new RuntimeObservationConflict('Replacement owner changed during application observation');
+      if (snapshot.status.phase !== 'active') throw new RuntimeObservationConflict('Replacement owner is no longer active');
+      if (snapshot.status.inFlight !== 0) throw new RuntimeObservationPending('applications', 'Replacement owner has unsettled applications');
       for (const stack of configuration.stacks) for (const expected of stack.launches) {
         const actual = snapshot.apps.find(app => app.info.name === expected.name)?.entry;
         if (!actual || !isDeepStrictEqual(restartLaunchIntent(actual), restartLaunchIntent(expected)))
-          throw Error('Application differs from the retained next-start intent: ' + expected.name);
+          throw new RuntimeObservationConflict('Application differs from the retained next-start intent: ' + expected.name);
       }
     } finally { await owner.close(); }
   };
-  const startReview = async (stack: RuntimeUpdateStack): Promise<{ digest: string; selection: RuntimeUpdateSelection }> => {
+  const startReview = async (stack: RuntimeUpdateStack, observation?: RuntimeObservation): Promise<{ digest: string; selection: RuntimeUpdateSelection }> => {
     const args = ['stack', 'start', stack.project, stack.stack, '--infrastructure', 'preserve'];
-    const review = await call<StackStartReview>([...args, '--dry-run']);
+    const review = await observeCall<StackStartReview>([...args, '--dry-run'], observation);
     const inspected = review.targets?.[0]?.infrastructure;
     if (!(typeof review.digest === 'string' && hash.test(review.digest)) || review.project !== stack.project || review.stack !== stack.stack || review.targets?.length !== 1 ||
         review.targets[0]!.node !== 'local' || !Array.isArray(inspected?.containers)) throw Error('Cannot establish launch and infrastructure for ' + projectKey(stack) + ': ' + (review.targets?.find(v => v.reason)?.reason || 'incomplete preservation review'));
@@ -316,7 +332,7 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
         if (stack.selection.id !== review.selection.release) throw Error('Saved and reviewed releases disagree for ' + projectKey(stack));
         selection = stack.selection;
       } else {
-        const release = await call<SelectedRelease>(['release', 'show', review.selection.release]);
+        const release = await observeCall<SelectedRelease>(['release', 'show', review.selection.release], observation);
         if (release.id !== review.selection.release || !hash.test(release.manifestSha256)) throw Error('Release identity is incomplete for ' + projectKey(stack));
         selection = { kind: 'release', id: release.id, manifestSha256: release.manifestSha256 };
       }
@@ -324,8 +340,8 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
     else throw Error('Saved launch and reviewed release disagree for ' + projectKey(stack));
     return { digest: review.digest, selection };
   };
-  const coldPreview = async (artifact: string): Promise<RuntimeUpdateInfrastructure> => {
-    const response = await call<ColdStartObservation>(['backend', 'select', artifact, '--check']);
+  const coldPreview = async (artifact: string, observation?: RuntimeObservation): Promise<RuntimeUpdateInfrastructure> => {
+    const response = await observeCall<ColdStartObservation>(['backend', 'select', artifact, '--check'], observation);
     const infra = response.infrastructure;
     if (!response.checked || response.candidate !== artifact || !['certified-declarations', 'reviewed-declarations'].includes(infra?.coverage ?? '') || !Array.isArray(infra?.containers) ||
         !hash.test(infra.intentDigest) || infra.containers.some(v => v.action !== 'retain' || !hash.test(v.id)) ||
@@ -344,46 +360,79 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
   const sameOwner = (a: RuntimeUpdateIdentity, b: RuntimeUpdateIdentity) => (['scope', 'ownerId', 'ownerLifetime', 'ownerPid', 'guardianPid', 'backendPid', 'revision', 'backend', 'guardian', 'owner'] as const).every(k => a[k] === b[k]);
   const accept = async (plan: RuntimeUpdatePlan, direction: 'target' | 'previous', inspected = false, interim = false) => {
     const target = direction === 'target', expect = target || interim ? plan.target.artifact : plan.before.backend;
-    const observe = async () => {
-      const status = await call<RuntimeUpdateStatusObservation>(['status']);
-      const roles = await identity(status, false);
+    const observe = async (observation?: RuntimeObservation) => {
+      const status = await observeCall<RuntimeUpdateStatusObservation>(['status'], observation);
+      const roles = await identity(status, false, observation);
       if (roles.backend !== expect || roles.guardian !== (target || interim ? expect : plan.before.guardian) ||
-          roles.owner !== (target ? expect : plan.before.owner) || roles.ownerId === plan.before.ownerId) throw Error('The reviewed roles have not taken ownership');
-      const [web, stacks] = await Promise.all([consoleState(), inventory(status)]);
-      if (web.artifact !== (target && plan.before.console ? expect : plan.before.console)) throw Error('The serving Console has not reached its reviewed version');
-      if (stacks.targets.length !== plan.stacks.length || !isDeepStrictEqual(stacks.excluded, plan.excluded)) throw Error('Local stack membership differs from the plan');
+          roles.owner !== (target ? expect : plan.before.owner) || roles.ownerId === plan.before.ownerId)
+        throw new RuntimeObservationConflict('The reviewed roles have not taken ownership');
+      if (status.execution?.recovery?.status === 'pending')
+        throw new RuntimeObservationPending('controller', status.execution.recovery.reason ?? 'Controller startup observation is pending', status.pid);
+      if (status.execution?.recovery?.status !== 'ready') throw Error('The serving controller has no recovery readiness evidence');
+      const [web, stacks] = await Promise.all([consoleState(observation), inventory(status, observation)]);
+      if (web.artifact !== (target && plan.before.console ? expect : plan.before.console))
+        throw new RuntimeObservationConflict('The serving Console has not reached its reviewed version');
+      if (stacks.targets.length !== plan.stacks.length || !isDeepStrictEqual(stacks.excluded, plan.excluded))
+        throw new RuntimeObservationConflict('Local stack membership differs from the plan');
       const observed = new Map(stacks.targets.map(stack => [projectKey(stack), stack]));
       const results = plan.stacks.map(prior => {
         const now = observed.get(projectKey(prior));
-        if (!now || now.enabled !== prior.enabled || now.infrastructureMode !== prior.infrastructureMode || now.infrastructureReview !== prior.infrastructureReview || now.status !== 'running' || now.path !== prior.path || !isDeepStrictEqual(now.runtimeScope, prior.runtimeScope) ||
-            now.apps.length !== prior.apps.length) throw Error('Waiting for ' + projectKey(prior));
+        if (!now || now.enabled !== prior.enabled || now.infrastructureMode !== prior.infrastructureMode || now.infrastructureReview !== prior.infrastructureReview || now.path !== prior.path || !isDeepStrictEqual(now.runtimeScope, prior.runtimeScope) ||
+            now.apps.length !== prior.apps.length) throw new RuntimeObservationConflict('Stack intent differs from the plan: ' + projectKey(prior));
+        if (now.status !== 'running') throw new RuntimeObservationPending('applications', 'Waiting for ' + projectKey(prior));
         assertSameSavedSelection(prior, now);
         for (const app of prior.apps) {
           const current = now.apps.find(v => v.handleKey === app.handleKey);
-          if (current?.status !== 'online' || !current.generation || current.generation === app.generation) throw Error('Waiting for a verified new generation of ' + app.handleKey);
-          assertRuntimeUpdateHealth(app, current);
+          if (current?.status !== 'online' || !current.generation || current.generation === app.generation)
+            throw new RuntimeObservationPending('applications', 'Waiting for a verified new generation of ' + app.handleKey);
+          try { assertRuntimeUpdateHealth(app, current); }
+          catch (error) {
+            if (error instanceof RuntimeUpdateHealthRegression) throw new RuntimeObservationPending('health', error.message);
+            throw error;
+          }
           if ((app.release && !isDeepStrictEqual(current.release, app.release)) || (prior.selection.kind === 'release' &&
-              (current.release?.id !== prior.selection.id || current.release?.manifestSha256 !== prior.selection.manifestSha256))) throw Error('Waiting for the running release receipt of ' + app.handleKey);
+              (current.release?.id !== prior.selection.id || current.release?.manifestSha256 !== prior.selection.manifestSha256)))
+            throw new RuntimeObservationConflict('Running release differs from the plan: ' + app.handleKey);
         }
         return { project: now.project, stack: now.stack, selection: prior.selection, apps: now.apps.map(({ handleKey, generation, health, release }) => ({ handleKey, generation, health, release })) };
       });
-      const watching = await watches(stacks.targets);
-      if (!isDeepStrictEqual(watching, plan.watches)) throw Error('The development stack has not restored its original source watches');
-      return { backend: roles.backend, owner: roles.owner, guardian: roles.guardian, ownerId: roles.ownerId, console: web, stacks: results, watches: watching, observed };
+      const watching = await watches(stacks.targets, observation);
+      if (!isDeepStrictEqual(watching, plan.watches)) throw new RuntimeObservationConflict('The development stack has not restored its original source watches');
+      await verifyRetainedLaunches(plan, roles.ownerId, observation);
+      for (const prior of plan.configuration ? [] : plan.stacks) {
+        const current = observed.get(projectKey(prior));
+        if (!current) throw new RuntimeObservationConflict('Stack disappeared from the accepted inventory');
+        const review = await startReview(current, observation);
+        if (!isDeepStrictEqual(review.selection, prior.selection) || review.digest !== prior.startReview)
+          throw new RuntimeObservationConflict('Launch declaration, volumes or runtime selection changed for ' + projectKey(prior));
+      }
+      let actual: RuntimeUpdateInfrastructure;
+      try { actual = await coldPreview(expect, observation); }
+      catch (error) {
+        // JSON carries an explicit pending code from the serving process. A
+        // foreign lease or an unclassified transport error is not startup work.
+        const reported = error instanceof CommandResultError ? error.details['reported'] as { stage?: string; pid?: number } | undefined : undefined;
+        if (error instanceof CommandResultError && error.code === 'RUNTIME_OBSERVATION_PENDING' &&
+            reported?.pid === status.pid && ['installation', 'controller'].includes(reported.stage ?? ''))
+          throw new RuntimeObservationPending(reported!.stage!, error.message, status.pid);
+        throw error;
+      }
+      observation?.remaining();
+      const retained = await listManagedContainers({ orThrow: true, checkNames: new Set(plan.infrastructure.containers.map(container => container.name)) });
+      assertRetainedRuntimeInfrastructure(plan.infrastructure, actual, retained);
+      observation?.remaining();
+      return { backend: roles.backend, owner: roles.owner, guardian: roles.guardian, ownerId: roles.ownerId, console: web, stacks: results, watches: watching };
+    };
+    const verify = async (observation: RuntimeObservation) => {
+      try { return await observe(observation); }
+      catch (error) {
+        if (error instanceof RuntimeObservationPending || error instanceof RuntimeObservationConflict || error instanceof RuntimeObservationUnconfirmed) throw error;
+        throw new RuntimeObservationUnconfirmed('Local batch acceptance is unconfirmed: ' + (error instanceof Error ? error.message : String(error)), error);
+      }
     };
     if (!inspected) progress('Waiting for the serving Console and independently observed application generations');
-    const { observed, ...evidence } = await (inspected ? observe() : until('Local batch acceptance failed', observe, 15 * 60_000));
-    await verifyRetainedLaunches(plan);
-    for (const prior of plan.configuration ? [] : plan.stacks) {
-      const current = observed.get(projectKey(prior));
-      if (!current) throw Error('Stack disappeared from the accepted inventory');
-      const review = await startReview(current);
-      if (!isDeepStrictEqual(review.selection, prior.selection) || review.digest !== prior.startReview) throw Error('Launch declaration, volumes or runtime selection changed for ' + projectKey(prior));
-    }
-    const actual = await coldPreview(expect);
-    const retained = await listManagedContainers({ orThrow: true, checkNames: new Set(plan.infrastructure.containers.map(container => container.name)) });
-    assertRetainedRuntimeInfrastructure(plan.infrastructure, actual, retained);
-    return evidence;
+    return inspected ? withRuntimeObservation(verify, 15 * 60_000, 'Local batch inspection remains unconfirmed')
+      : observeRuntimeUntil(verify, 15 * 60_000, 'Local batch acceptance remains unconfirmed', 2000, progress);
   };
 
   const completeRestore = async (plan: RuntimeUpdatePlan, restoration: RuntimeUpdateRestoration) => {
@@ -435,16 +484,20 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
       assertLocalReview(finalStatus);
       const after = await identity(finalStatus, false);
       if (!isDeepStrictEqual(before, after)) throw Error('Local execution changed during preparation. Inspect the current plan');
-      const sha256 = await saveRestartConfiguration(home, configuration);
+      const sha256 = reviewed && await sameRetainedIntent(reviewed, configuration)
+        ? reviewed.configuration!.sha256 : await saveRestartConfiguration(home, configuration);
       return { protocol: 1, stackAdmissionProtocol: protocol, configuration: { sha256, basis: 'retained-next-start' }, backupOperations, instance: home, target: { artifact: candidate.id, commit: candidate.build.commit },
         before: { ...before, console: web.artifact, consoleCommit: web.commit }, stacks: targets, excluded: stacks.excluded, watches: watching, infrastructure };
     },
     async admit(plan, planDigest) {
       if (!plan.configuration) throw Error('Runtime update admission requires retained next-start intent');
+      const reviewed = await retainedReview(plan.stacks);
+      if (!await sameRetainedIntent(plan, reviewed.configuration)) throw Error('Retained next-start intent changed before backup admission');
+      await backupReview(reviewed.backups, plan.backupOperations);
       const configuration = await runtimeControl(service => service.runtimeRestartPrepare({ planDigest,
-        stacks: plan.stacks.map(stack => stack.runtimeScope), configurationSha256: plan.configuration!.sha256,
+        stacks: plan.stacks.map(stack => stack.runtimeScope), configurationSha256: restartConfigurationDigest(reviewed.configuration),
         backups: plan.backupOperations }), plan.before.backendPid);
-      if (restartConfigurationDigest(configuration) !== plan.configuration.sha256)
+      if (!await sameRetainedIntent(plan, configuration))
         throw Error('Retained next-start intent changed during backup admission');
     },
     async releaseAdmission(plan, planDigest) {
@@ -454,7 +507,7 @@ export async function runtimeUpdateActions({ runtime, instance: home, call, run,
       if (plan) {
         if (plan.configuration) {
           const configuration = await retainedConfiguration(plan.stacks);
-          if (restartConfigurationDigest(configuration) !== plan.configuration.sha256)
+          if (!await sameRetainedIntent(plan, configuration))
             throw Error('Retained next-start intent changed before shutdown');
           await verifyPreviousOwnerDefaults(configuration);
         }

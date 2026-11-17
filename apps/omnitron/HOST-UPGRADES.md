@@ -131,13 +131,16 @@ omnitron runtime verify <runtime-root>
 omnitron runtime update prepare <runtime-root>
 omnitron runtime update apply <plan-sha256>
 omnitron runtime update status [plan-sha256]
+omnitron runtime update reconcile <plan-sha256>
 omnitron runtime update recover <plan-sha256>
 ```
 
 `verify` checks the artifact without executing it. Preparation and application
 run through the verified candidate's own Node and CLI. `status` returns the
 prepared plan, current or requested receipt, and verified candidate paths. It
-remains available while the daemon is stopped. Xec status and recovery accept
+remains available while the daemon is stopped. `reconcile` checks a candidate
+which has already started; it cannot stop or start services or repeat an effect.
+Xec status and recovery accept
 `--cli <executable>` when selecting an installed operator. Mutation authority
 for this host operation comes from the local private instance and native user
 services. The HTTP API exposes no host-update mutation.
@@ -181,7 +184,12 @@ Runtime-only preparation captures the serving controller's effective project
 definitions and resolved next-start environments in a private file; the public
 plan records its digest and `basis: retained-next-start`. It compares those
 definitions with the owner's current restart entries, without claiming the
-original environment of a running process. The serving and target controllers
+original environment of a running process. Snapshot integrity covers the entire
+file, including project `loadedAt` timestamps. The restart-intent comparison
+excludes only that observation timestamp: reloading identical definitions does
+not change restart authority. Owner and inventory identity, registry digest,
+definitions, launch order, environment and selected releases remain bound.
+The serving and target controllers
 must advertise `runtimeRestartProtocol: 1`; an older serving controller first
 needs a verified warm backend upgrade. The serving controller also advertises
 `runtimeRestartAdmissionProtocol: 1` for read-only review and scoped backup
@@ -194,7 +202,7 @@ and cancels only its reviewed backup attempts through the operation journal.
 A backup that already finished keeps its terminal receipt and is not replayed.
 A new attempt or changed active revision requires a new review. Before any
 process is stopped, the controller must publish a fresh recovery certificate
-and capture the exact reviewed configuration digest again. Scheduled and manual
+and confirm the reviewed restart intent against a fresh, fully verified snapshot. Scheduled and manual
 backups remain paused until the old controller stops. If admission fails,
 Omnitron releases only this plan's pause and records `aborted`; applications
 continue without a rollback restart. A lost release acknowledgement remains
@@ -226,16 +234,37 @@ owner restores enabled local stacks from the private reviewed definitions and
 their saved launch selections. The existing release installer verifies and
 stages the same payload for the replacement owner's runtime, preserving
 operational working directories, environment and readiness policy.
-Acceptance checks new generations, release receipts, the served Console
-`BUILD.json` and retained infrastructure. An accepted digest can be checked
-again without restarting a stack. The instance keeps the previous receipt when
-a new reviewed batch begins.
+Acceptance checks roles, new generations and health, release receipts, source
+watches, retained launch definitions, the served Console `BUILD.json` and retained
+infrastructure as one observation. Its 15-minute deadline covers the complete
+check, including the remaining budgets passed to CLI and RPC reads. Only an
+explicit pending observation is retried: for example, the serving controller's
+own startup lease, an unsettled recovery certificate or application readiness.
+A foreign lease, changed intent or invalid evidence cannot become a retry by
+matching an error message. An accepted digest can be checked again without
+restarting a stack. The instance keeps the previous receipt when a new reviewed
+batch begins.
 
-A failed transition attempts to restore the recorded roles and Console from the
+If acceptance times out or a read loses its result, the receipt becomes
+`recovery-required`; this is not evidence that the candidate failed. The update
+does not stop that candidate automatically. Inspect status, then choose the
+operation whose evidence is available:
+
+| Observation | Command | Effect |
+| --- | --- | --- |
+| Candidate roles and applications are serving the reviewed state | `runtime update reconcile <plan-sha256>` | Record full acceptance without a restart |
+| Candidate cannot be accepted and restoration is required | `runtime update recover <plan-sha256>` | Prove retirement and restore the recorded roles, or retain an unconfirmed outcome |
+| Admission stopped before process retirement | `runtime update recover <plan-sha256>` | Release only this plan's admission |
+
+The Xec equivalents are `update local-sync --review <plan-sha256> --reconcile`
+and `update local-sync --review <plan-sha256> --rollback`. Neither path rebuilds
+the runtime. A deadline ends observation, not the underlying operation's durable
+ownership; a late reply cannot publish acceptance.
+
+A confirmed transition failure attempts to restore the recorded roles and Console from the
 installed artifacts once clean process retirement is established. For an
-interrupted operation, inspect `omnitron runtime update status` and recover the
-exact receipt with `omnitron runtime update recover <plan-sha256>`. The Xec
-equivalent is `pnpm exec xec update local-sync --review <plan-sha256> --rollback`.
+interrupted operation, inspect `omnitron runtime update status` before choosing
+reconciliation or recovery for its exact receipt.
 The receipt records the original error and any recovery failure. Once a
 restoration start has been attempted, another recovery invocation inspects
 that result and cannot launch the previous runtime again. For retained

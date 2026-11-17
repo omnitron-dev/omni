@@ -5,6 +5,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { withKernelFileLock } from '@xec-sh/ops/utils/file-lock';
 import { readPrivateRecord, writePrivateRecord } from './execution-journal.js';
 import { RUNTIME_UPDATE_TERMINAL_PHASES } from '../shared/dto/runtime-update.js';
+import { RuntimeObservationUnconfirmed } from './runtime-observation.js';
 import type {
   PreparedRuntimeUpdate, RuntimeUpdateAcceptance, RuntimeUpdateApplication, RuntimeUpdateIdentity, RuntimeUpdatePhase,
   RuntimeUpdatePlan, RuntimeUpdateReceipt, RuntimeUpdateReference,
@@ -16,6 +17,7 @@ const phases = new Set<RuntimeUpdatePhase>(['draining', 'aborted', 'stopping', '
   'stopping-candidate', 'restoring', 'rolled-back', 'recovery-required']);
 
 const healthRank = { unknown: 0, unhealthy: 1, degraded: 2, healthy: 3, absent: 0 };
+export class RuntimeUpdateHealthRegression extends Error {}
 
 /** The reviewed baseline remains the acceptance floor throughout the transition. */
 export function assertRuntimeUpdateHealth(previous: Pick<RuntimeUpdateApplication, 'handleKey' | 'health'>,
@@ -23,7 +25,7 @@ export function assertRuntimeUpdateHealth(previous: Pick<RuntimeUpdateApplicatio
   if (current.handleKey !== previous.handleKey || !Object.hasOwn(healthRank, previous.health) || !Object.hasOwn(healthRank, current.health))
     throw Error('Invalid application health observation for ' + previous.handleKey);
   if (healthRank[current.health] < healthRank[previous.health])
-    throw Error('Application health regressed for ' + previous.handleKey + ': ' + previous.health + ' -> ' + current.health);
+    throw new RuntimeUpdateHealthRegression('Application health regressed for ' + previous.handleKey + ': ' + previous.health + ' -> ' + current.health);
 }
 
 function retainReviewedHealth(observed: RuntimeUpdatePlan, reviewed: RuntimeUpdatePlan): RuntimeUpdatePlan {
@@ -254,6 +256,10 @@ export async function runRuntimeUpdate({ actions, directory, operation, digest: 
       return await save('accepted', { acceptance });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      if (error instanceof RuntimeObservationUnconfirmed) {
+        await save('recovery-required', { error: message });
+        throw error;
+      }
       await save('failed', { error: message });
       const result = await recover();
       throw Error('Local update failed and was ' + result.phase + ': ' + message, { cause: error });

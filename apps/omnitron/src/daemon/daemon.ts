@@ -57,6 +57,7 @@ import { SystemInfoService } from '../services/system-info.service.js';
 import { SystemInfoRpcService } from '../services/system-info.rpc-service.js';
 import { PidManager } from './pid-manager.js';
 import { readColdBatch } from '../project/cold-stack-start.js';
+import { RuntimeObservationPending } from './runtime-observation.js';
 import { prepareDaemonDatabase } from './database-startup.js';
 import type { OrchestratorControl as OrchestratorService } from '../orchestrator/execution-contract.js';
 import type { WatchedApplication } from '../shared/dto/services.js';
@@ -445,6 +446,9 @@ export class OmnitronDaemon {
     const reviewToken = () => recoveryState.reviewToken(new Map(activeBackups ? [['Backup or restore in progress', activeBackups]] : []),
       new Set(backups.map(receipt => `execution.operation.${receipt.id}`)));
     const token = review ? reviewToken() : recoveryState.token(), status = this.backendRuntimeStatus();
+    if (this.execution && this.app && this.watchConfig && !this.isShuttingDown && !this.preparingBackend && !this.handingOffBackend &&
+        status.phase === 'active' && status.recovery?.status === 'pending' && (token === null || !review))
+      throw new RuntimeObservationPending('controller', 'Runtime ownership observation is pending', process.pid);
     if (token === null || !this.execution || !this.app || !this.watchConfig || this.isShuttingDown || this.preparingBackend || this.handingOffBackend ||
         (review ? !status.recovery || status.recovery.status === 'unavailable' : status.recovery?.status !== 'ready') ||
         status.phase !== 'active' || Object.entries(status.blockers).some(([name, count]) => count !== 0 && !(review && name === 'backupOperations' && count === activeBackups)))

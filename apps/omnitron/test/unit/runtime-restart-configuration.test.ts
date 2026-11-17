@@ -20,7 +20,7 @@ import { targetRuntime } from '../../src/release/target-runtime.js';
 import { loadRelease } from '../../src/release/load.js';
 import { captureBootstrapMetadata } from '../../src/project/bootstrap-metadata.js';
 import { writePrivateRecord } from '../../src/daemon/execution-journal.js';
-import { readRestartConfiguration, saveRestartConfiguration, restartLaunchIntent, assertRestartOwnerDefaults } from '../../src/project/runtime-restart.js';
+import { readRestartConfiguration, saveRestartConfiguration, restartConfigurationDigest, restartIntentDigest, restartLaunchIntent, assertRestartOwnerDefaults } from '../../src/project/runtime-restart.js';
 import type { RuntimeRestartConfiguration } from '../../src/project/runtime-restart.js';
 import type { IEcosystemAppEntry, IEcosystemConfig } from '../../src/config/types.js';
 
@@ -139,6 +139,28 @@ it('verifies installed payloads once per restart capture and refuses changes on 
   await fs.writeFile(f.entry.script!, 'throw Error("modified executable");');
   await expect(f.capture()).rejects.toThrow();
   expect(f.owner.startApp).not.toHaveBeenCalled();
+});
+
+it('distinguishes observation timestamps from restart authority without weakening snapshot integrity', async () => {
+  const f = await fixture();
+  const first = await f.capture();
+  const reloaded = structuredClone(first);
+  reloaded.projects[0]![1].loadedAt++;
+  expect(restartIntentDigest(reloaded)).toBe(restartIntentDigest(first));
+  expect(restartConfigurationDigest(reloaded)).not.toBe(restartConfigurationDigest(first));
+  const digest = await saveRestartConfiguration(f.home, first);
+  await fs.writeFile(path.join(f.home, 'runtime/local-updates', `configuration-${digest}.json`), JSON.stringify(reloaded));
+  await expect(readRestartConfiguration(f.home, digest)).rejects.toThrow('configuration changed');
+  for (const mutate of [
+    (value: RuntimeRestartConfiguration) => { value.ownerId += '-foreign'; },
+    (value: RuntimeRestartConfiguration) => { value.registryDigest = '0'.repeat(64); },
+    (value: RuntimeRestartConfiguration) => { value.inventoryDigest = '0'.repeat(64); },
+    (value: RuntimeRestartConfiguration) => { value.projects[0]![1].config.apps[0]!.name += '-changed'; },
+    (value: RuntimeRestartConfiguration) => { value.stacks[0]!.launches[0]!.name += '-changed'; },
+  ]) {
+    const changed = structuredClone(first); mutate(changed);
+    expect(restartIntentDigest(changed)).not.toBe(restartIntentDigest(first));
+  }
 });
 
 it('settles an overlapping final health observation without re-verifying installed payloads', async () => {

@@ -11,6 +11,7 @@ import { runtimeArtifactDigest } from '../../src/shared/runtime-artifact.js';
 import { assertBackendArtifactUnchanged } from '../../src/daemon/backend-candidate.js';
 import * as candidates from '../../src/daemon/backend-candidate.js';
 import { runRuntimeEntry } from '../../src/daemon/runtime-launcher.js';
+import { RuntimeObservationPending } from '../../src/daemon/runtime-observation.js';
 import { DaemonStateStore } from '../../src/daemon/daemon-state-store.service.js';
 import { openSqliteDatabase } from '@omnitron-dev/titan-database/sqlite';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
@@ -430,6 +431,11 @@ it('reads a startup selection only inside the verified sealed executable and its
   try {
     const during = async () => {
       expect(() => observer.settledSelection()).toThrow('unsettled');
+      try { observer.settledSelection(); }
+      catch (error) {
+        expect(error).toBeInstanceOf(RuntimeObservationPending);
+        expect(error).toMatchObject({ code: 'RUNTIME_OBSERVATION_PENDING', details: { stage: 'installation', pid: process.pid } });
+      }
       expect(observer.startupSelection().current).toBe(source.hash);
     };
     expect(observer.startupSelection().current).toBe(source.hash);

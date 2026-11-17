@@ -14,11 +14,11 @@ import type { PreparedRuntimeUpdate, RuntimeUpdateReceipt, RuntimeUpdateStatus, 
 const directory = path.join(OMNITRON_HOME, 'runtime', 'local-updates');
 
 /** A CLI response is admitted once. A missing acknowledgement never repeats a host action. */
-async function callRuntime<T>(runtime: VerifiedRuntimeReference, args: readonly string[], timeoutMs = 30 * 60_000): Promise<T> {
+async function callRuntime<T>(runtime: VerifiedRuntimeReference, args: readonly string[], timeoutMs = 30 * 60_000, signal?: AbortSignal): Promise<T> {
   let output: string;
   let failure: ReleaseCommandError | undefined;
   try {
-    output = await releaseCommand(OMNITRON_HOME, runtime.node, [runtime.cli, '--json', ...args], { timeoutMs });
+    output = await releaseCommand(OMNITRON_HOME, runtime.node, [runtime.cli, '--json', ...args], { timeoutMs, ...(signal && { signal }) });
   } catch (error) {
     if (!(error instanceof ReleaseCommandError)) throw error;
     failure = error;
@@ -76,8 +76,8 @@ export async function runtimeUpdateCommand(operation: 'prepare' | 'apply' | 'rec
       // A complete transition includes its possible restoration. Its caller must outlive both bounded phases.
       result = await callRuntime(runtime, ['runtime', 'update', operation, operation === 'prepare' ? runtime.directory : value], 60 * 60_000);
     } else {
-      const call: RuntimeUpdateCall = async <T>(args: readonly string[], runtimeRoot?: string): Promise<T> =>
-        callRuntime<T>(runtimeRoot ? await verifyRuntimeUpdateTarget(runtimeRoot) : runtime, args);
+      const call: RuntimeUpdateCall = async <T>(args: readonly string[], runtimeRoot?: string, options?: { timeoutMs?: number; signal?: AbortSignal }): Promise<T> =>
+        callRuntime<T>(runtimeRoot ? await verifyRuntimeUpdateTarget(runtimeRoot) : runtime, args, options?.timeoutMs, options?.signal);
       const actions = await runtimeUpdateActions({ runtime: runtime.directory, instance: OMNITRON_HOME, call,
         run: releaseCommand, progress: emitStep });
       result = await runRuntimeUpdate({ actions, directory, operation, ...(operation !== 'prepare' && { digest: value }), progress: emitStep });

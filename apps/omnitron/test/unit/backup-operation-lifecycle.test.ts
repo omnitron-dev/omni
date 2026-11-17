@@ -132,7 +132,8 @@ describe('durable backup execution', () => {
     const resource: ExecutionResource = { type: 'docker-container', operationId,
       daemonId: 'fixture-daemon', id: 'd'.repeat(64) };
     vi.mocked(executor.execute).mockImplementationOnce(async command => {
-      await command.onResource!({ ...resource, id: undefined }, command.signal!);
+      const pending = { ...resource }; delete pending.id;
+      await command.onResource!(pending, command.signal!);
       await new Promise<void>(resolve => command.signal!.addEventListener('abort', () => resolve(), { once: true }));
       expect(command.signal!.aborted).toBe(true);
       await command.onResource!(resource, AbortSignal.timeout(5000));
@@ -317,7 +318,8 @@ describe('durable backup execution', () => {
     const review = await daemon.reviewRuntimeRestart([]);
     expect(review.backups).toHaveLength(1);
     expect(certificate).not.toHaveBeenCalled();
-    await expect(daemon.captureRuntimeRestart([])).rejects.toThrow('idle recovery certificate');
+    await expect(daemon.captureRuntimeRestart([])).rejects.toMatchObject({ code: 'RUNTIME_OBSERVATION_PENDING',
+      details: { stage: 'controller', pid: process.pid } });
     const request = { planDigest: 'f'.repeat(64), configurationSha256: restartConfigurationDigest(review.configuration),
       stacks: [], backups: review.backups };
     expect(await daemon.prepareRuntimeRestart(request)).toEqual(review.configuration);

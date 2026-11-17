@@ -9,7 +9,7 @@
 
 'use client';
 
-import { type ReactNode, createContext, useContext, useMemo, useCallback } from 'react';
+import { type ReactNode, createContext, useContext, useMemo, useCallback, useId } from 'react';
 import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
@@ -92,9 +92,10 @@ const sizeConfig = {
 /**
  * Dashboard block header component.
  */
-export function DashboardBlockHeader({ title, subtitle, icon, actions, sx }: DashboardBlockHeaderProps): ReactNode {
-  const { collapsible, collapsed, toggleCollapse, size, labels } = useDashboardBlockContext();
+export function DashboardBlockHeader({ title, subtitle, icon, actions, headingComponent = 'h3', sx }: DashboardBlockHeaderProps): ReactNode {
+  const { collapsible, collapsed, toggleCollapse, size, labels, contentId } = useDashboardBlockContext();
   const config = sizeConfig[size];
+  const headingId = useId();
 
   return (
     <Box
@@ -134,7 +135,8 @@ export function DashboardBlockHeader({ title, subtitle, icon, actions, sx }: Das
            */}
           <Typography
             variant={config.titleVariant}
-            component="h3"
+            id={headingId}
+            component={headingComponent}
             sx={{
               fontWeight: 600,
               lineHeight: 1.4,
@@ -166,6 +168,8 @@ export function DashboardBlockHeader({ title, subtitle, icon, actions, sx }: Das
             size="small"
             onClick={toggleCollapse}
             aria-expanded={!collapsed}
+            aria-controls={contentId}
+            aria-describedby={headingId}
             aria-label={collapsed ? (labels.expand ?? 'Expand block') : (labels.collapse ?? 'Collapse block')}
             data-testid="prism-dashboard-block-collapse"
           >
@@ -355,6 +359,7 @@ export function DashboardBlock({
   catchErrors = true,
   collapsible = false,
   defaultCollapsed = false,
+  mountOnEnter = false,
   collapsed: controlledCollapsed,
   onCollapseChange,
   disablePadding = false,
@@ -363,6 +368,7 @@ export function DashboardBlock({
   slotProps,
 }: DashboardBlockProps): ReactNode {
   // Collapse state (controlled or uncontrolled)
+  const contentId = useId();
   const uncontrolledCollapse = useBoolean(defaultCollapsed);
   const isControlled = controlledCollapsed !== undefined;
   const collapsed = isControlled ? controlledCollapsed : uncontrolledCollapse.value;
@@ -380,6 +386,7 @@ export function DashboardBlock({
   // Context value
   const contextValue = useMemo<DashboardBlockContextValue>(
     () => ({
+      contentId,
       collapsible,
       collapsed: collapsible ? collapsed : false,
       toggleCollapse: collapsible ? handleToggleCollapse : collapseNoop,
@@ -390,7 +397,7 @@ export function DashboardBlock({
       size,
       labels,
     }),
-    [collapsed, collapsible, handleToggleCollapse, handleSetCollapsed, loading, error, variant, size, labels]
+    [contentId, collapsed, collapsible, handleToggleCollapse, handleSetCollapsed, loading, error, variant, size, labels]
   );
 
   const errorMessage = errorConfig?.message ?? labels.error;
@@ -441,41 +448,40 @@ export function DashboardBlock({
           />
         )}
 
-        {/* Divider after header */}
-        {title && <Divider />}
+        <Box id={contentId} inert={contextValue.collapsed || undefined}>
+          <Collapse in={!contextValue.collapsed} timeout="auto" mountOnEnter={mountOnEnter}>
+            {title && <Divider />}
+            <Box aria-live={loading || error || empty ? 'polite' : 'off'} aria-busy={loading}>
+              {catchErrors ? (
+                <ErrorBoundary
+                  resetKeys={[loading, error, empty]}
+                  fallback={({ resetErrorBoundary }) => (
+                    <ErrorState
+                      message={labels.error}
+                      retryLabel={labels.retry}
+                      onRetry={() => {
+                        resetErrorBoundary();
+                        errorConfig?.onRetry?.();
+                      }}
+                      size={size}
+                    />
+                  )}
+                >
+                  {body}
+                </ErrorBoundary>
+              ) : (
+                body
+              )}
+            </Box>
+          </Collapse>
 
-        {/* Content */}
-        <Collapse in={!contextValue.collapsed} timeout="auto">
-          <Box aria-live="polite" aria-busy={loading}>
-            {catchErrors ? (
-              <ErrorBoundary
-                resetKeys={[loading, error, empty]}
-                fallback={({ resetErrorBoundary }) => (
-                  <ErrorState
-                    message={labels.error}
-                    retryLabel={labels.retry}
-                    onRetry={() => {
-                      resetErrorBoundary();
-                      errorConfig?.onRetry?.();
-                    }}
-                    size={size}
-                  />
-                )}
-              >
-                {body}
-              </ErrorBoundary>
-            ) : (
-              body
-            )}
-          </Box>
-        </Collapse>
-
-        {/* Footer */}
-        {footer && !loading && !error && (
-          <DashboardBlockFooter divider={footerDivider} {...slotProps?.footer}>
-            {footer}
-          </DashboardBlockFooter>
-        )}
+          {/* Footer */}
+          {footer && !contextValue.collapsed && !loading && !error && (
+            <DashboardBlockFooter divider={footerDivider} {...slotProps?.footer}>
+              {footer}
+            </DashboardBlockFooter>
+          )}
+        </Box>
       </Paper>
     </DashboardBlockContext.Provider>
   );

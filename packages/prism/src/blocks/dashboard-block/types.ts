@@ -47,6 +47,8 @@ export interface ErrorConfig {
  * Dashboard block header props.
  */
 export interface DashboardBlockHeaderProps {
+  /** Semantic heading for this level in the page. Styling follows the block size. */
+  headingComponent?: 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
   /** Block title */
   title: string;
   /** Optional subtitle */
@@ -150,6 +152,8 @@ export interface DashboardBlockProps {
   catchErrors?: boolean;
   /** Enable collapse controls and state. Defaults to false; disabled blocks remain expanded. */
   collapsible?: boolean;
+  /** Defer rendering the body until first expanded, then retain its local state. */
+  mountOnEnter?: boolean;
   /** Initial collapsed state */
   defaultCollapsed?: boolean;
   /** Controlled collapsed state */
@@ -174,6 +178,8 @@ export interface DashboardBlockProps {
  * Dashboard block context value.
  */
 export interface DashboardBlockContextValue {
+  /** Stable id of the body controlled by the disclosure button. */
+  contentId: string;
   /** Whether this block allows collapse; independent of its current state. */
   collapsible: boolean;
   /** Current collapsed state */

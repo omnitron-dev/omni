@@ -84,3 +84,10 @@ it('uses a native non-submitting sort button that respects an enclosing disabled
   expect(sort).toHaveBeenCalledExactlyOnceWith('latency', 'desc');
   expect(submit).not.toHaveBeenCalled();
 });
+
+it('identifies the nominated row heading independently of its position', () => {
+  render(<Table columns={[{ id: 'state', label: 'State' }, { id: 'name', label: 'Name', rowHeader: true }]}
+    data={[{ id: '1', name: 'Storage', state: 'online' }]} />);
+  expect(screen.getByRole('rowheader', { name: 'Storage' })).toHaveAttribute('scope', 'row');
+  expect(screen.getByRole('cell', { name: 'online' })).toBeVisible();
+});

@@ -38,6 +38,8 @@ export interface TableColumn<T> {
   id: keyof T | string;
   /** Column header label */
   label: string;
+  /** Use this cell to identify its row to assistive technology. */
+  rowHeader?: boolean;
   /** Column width */
   width?: number | string;
   /** Minimum width */
@@ -352,7 +354,8 @@ export function Table<T>({
                     </TableCell>
                   )}
                   {columns.map((column) => (
-                    <TableCell key={String(column.id)} align={column.align || 'left'}>
+                    <TableCell key={String(column.id)} align={column.align || 'left'}
+                          component={column.rowHeader ? 'th' : 'td'} scope={column.rowHeader ? 'row' : undefined}>
                       <Skeleton variant="text" width={column.width ?? '80%'} />
                     </TableCell>
                   ))}
@@ -389,7 +392,8 @@ export function Table<T>({
                       const value = row[column.id as keyof T];
 
                       return (
-                        <TableCell key={String(column.id)} align={column.align || 'left'}>
+                        <TableCell key={String(column.id)} align={column.align || 'left'}
+                          component={column.rowHeader ? 'th' : 'td'} scope={column.rowHeader ? 'row' : undefined}>
                           {column.render
                             ? column.render(row, index)
                             : column.format

@@ -54,6 +54,25 @@ describe('DashboardBlock', () => {
     else expect(screen.queryByText('Footer')).toBeNull();
   });
 
+  it('links the disclosure to a stable body, defers its first mount and retains edits on collapse', () => {
+    themed(<DashboardBlock title="Resource readings" collapsible defaultCollapsed mountOnEnter
+      slotProps={{ header: { headingComponent: 'h2' } }}>
+      <input aria-label="Query" defaultValue="initial" />
+    </DashboardBlock>);
+    const toggle = screen.getByRole('button', { description: 'Resource readings' });
+    const body = document.getElementById(toggle.getAttribute('aria-controls')!)!;
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Resource readings');
+    expect(body).toHaveAttribute('inert');
+    expect(screen.queryByLabelText('Query')).toBeNull();
+    fireEvent.click(toggle);
+    expect(body).not.toHaveAttribute('inert');
+    fireEvent.change(screen.getByLabelText('Query'), { target: { value: 'memory' } });
+    fireEvent.click(toggle);
+    expect(body).toHaveAttribute('inert');
+    fireEvent.click(toggle);
+    expect(screen.getByRole('textbox')).toHaveValue('memory');
+  });
+
   it('leaves controlled state with the caller and requests the next value once', () => {
     const onChange = vi.fn();
     const view = themed(<DashboardBlock title="Controlled" collapsible collapsed={false} onCollapseChange={onChange}>Body</DashboardBlock>);

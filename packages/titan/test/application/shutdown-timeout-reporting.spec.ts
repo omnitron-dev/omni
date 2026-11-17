@@ -1,22 +1,5 @@
-/**
- * A shutdown that ran out of budget must say so, and not by a coin toss.
- *
- * `shutdown()` raced two promises: the LifecycleController running the tasks,
- * and a `setTimeout` rejecting after `gracefulShutdownTimeout`. When the
- * budget runs out the controller stops starting work — it skips the remaining
- * phases, logs a line, and RESOLVES. So whether the caller saw a timeout
- * depended on which of two same-duration timers settled first: with
- * `gracefulShutdownTimeout: 100`, the controller gives each task a 100 ms
- * deadline too, and both fire at once.
- *
- * On an idle machine the outer rejection usually won, which is why the test
- * covering this passed alone and failed inside the full 290-file suite.
- *
- * The contract these cases pin, and the distinction that matters:
- *   - a NON-CRITICAL task missing its own deadline is not fatal — siblings
- *     still run, and shutdown succeeds;
- *   - the shutdown BUDGET running out is fatal, because work was abandoned.
- */
+/** A timeout is unknown completion, regardless of a hook's criticality.
+ * Application and the standalone controller must report the same failure. */
 import 'reflect-metadata';
 import { describe, it, expect } from 'vitest';
 
@@ -36,7 +19,7 @@ async function appWith(options: Record<string, unknown>, task: Record<string, un
 }
 
 describe('shutdown budget reporting', () => {
-  it('rejects when the budget runs out, whichever timer fires first', async () => {
+  it('rejects when the shared shutdown budget runs out', async () => {
     const app = await appWith(
       { gracefulShutdownTimeout: 100 },
       {
@@ -59,15 +42,13 @@ describe('shutdown budget reporting', () => {
       },
     );
 
-    // "budget exhausted" is the fact; the phase names say where it ran out.
-    await expect(app.shutdown(ShutdownReason.Manual)).rejects.toThrow(/budget exhausted|Shutdown/i);
+    await expect(app.shutdown(ShutdownReason.Manual)).rejects.toThrow(/shutdown is incomplete/i);
   });
 
-  it('does NOT reject when a non-critical task misses its own deadline inside the budget', async () => {
-    // The distinction the fix must preserve: this task fails, its failure is
-    // reported as an event, and the shutdown still succeeds because there was
-    // budget left to finish everything else.
+  it('rejects an unfinished non-critical task without closing its dependencies', async () => {
     const errors: string[] = [];
+    const completed: unknown[] = [];
+    let cleaned = false;
     const app = await appWith(
       { gracefulShutdownTimeout: 5_000 },
       {
@@ -78,8 +59,12 @@ describe('shutdown budget reporting', () => {
       },
     );
     app.on(ApplicationEvent.ShutdownTaskError, (d: { task: string }) => errors.push(d.task));
+    app.on(ApplicationEvent.ShutdownComplete, data => completed.push(data));
+    app.registerCleanup(() => { cleaned = true; });
 
-    await expect(app.shutdown(ShutdownReason.Manual)).resolves.toBeUndefined();
+    await expect(app.shutdown(ShutdownReason.Manual)).rejects.toThrow(/shutdown is incomplete/i);
     expect(errors).toContain('Slow Task');
+    expect(completed).toEqual([]);
+    expect(cleaned).toBe(false);
   });
 });

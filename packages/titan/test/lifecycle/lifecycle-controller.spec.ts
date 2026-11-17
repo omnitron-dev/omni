@@ -182,19 +182,26 @@ describe('LifecycleController', () => {
   });
 
   describe('timeouts', () => {
-    it('per-task timeout abandons a hung task', async () => {
+    it('a timed-out hook prevents disposal of resources it may still use', async () => {
       controller = makeController({ bucketTimeoutMs: 500 });
+      const dispose = vi.fn();
+      const next = vi.fn();
       controller.register({
         name: 'hangs',
         priority: ShutdownPriority.Normal,
         timeout: 50,
         handler: () => new Promise(() => undefined), // never resolves
       });
+      controller.register({ name: 'next', priority: ShutdownPriority.Normal, parallel: false, handler: next });
+      controller.register({ name: 'dispose', priority: ShutdownPriority.Last, handler: dispose });
       const start = Date.now();
-      await controller.shutdown(ShutdownReason.Manual);
+      await expect(controller.shutdown(ShutdownReason.Manual)).rejects.toBeInstanceOf(LifecycleTimeoutError);
       expect(Date.now() - start).toBeLessThan(200);
       expect(events.some((e) => e.kind === 'task-error' && e.error instanceof LifecycleTimeoutError)).toBe(true);
-      expect(exitedWith).toBe(0); // non-critical, shutdown succeeded
+      expect(exitedWith).toBe(1);
+      expect(next).not.toHaveBeenCalled();
+      expect(dispose).not.toHaveBeenCalled();
+      expect(events.some(e => e.phase === 'stop-runtime' && e.kind === 'phase-finish')).toBe(false);
     });
 
     it('phase deadline aborts the bucket', async () => {
@@ -206,8 +213,10 @@ describe('LifecycleController', () => {
         handler: () => new Promise(() => undefined),
       });
       const start = Date.now();
-      await controller.shutdown(ShutdownReason.Manual);
+      await expect(controller.shutdown(ShutdownReason.Manual)).rejects.toBeInstanceOf(LifecycleTimeoutError);
       expect(Date.now() - start).toBeLessThan(300);
+      expect(exitedWith).toBe(1);
+      expect(events.some(e => e.phase === 'stop-runtime' && e.kind === 'phase-timeout')).toBe(true);
     });
 
     it('total deadline shrinks the remaining phase budget', async () => {
@@ -234,13 +243,35 @@ describe('LifecycleController', () => {
           seen.push('dispose');
         },
       });
-      await controller.shutdown(ShutdownReason.Manual);
+      await expect(controller.shutdown(ShutdownReason.Manual)).rejects.toBeInstanceOf(LifecycleTimeoutError);
       expect(seen).toContain('pre-stop');
       expect(seen).not.toContain('dispose');
+      expect(exitedWith).toBe(1);
     });
   });
 
   describe('error handling', () => {
+    it('joins admitted peers before reporting a critical failure and skips dependent work', async () => {
+      controller = makeController();
+      let release!: () => void;
+      const pending = new Promise<void>(resolve => { release = resolve; });
+      const settled: string[] = [];
+      const dispose = vi.fn();
+      controller.register({ name: 'fails', priority: ShutdownPriority.Normal, critical: true,
+        handler: () => { throw new Error('failure'); } });
+      controller.register({ name: 'owned-peer', priority: ShutdownPriority.Normal,
+        handler: async () => { await pending; settled.push('peer'); } });
+      controller.register({ name: 'dispose', priority: ShutdownPriority.Last, handler: dispose });
+      const result = controller.shutdown(ShutdownReason.Manual).catch(error => error);
+      await Promise.resolve();
+      expect(exitedWith).toBeNull();
+      release();
+      expect(await result).toMatchObject({ message: 'Critical shutdown task failed: fails' });
+      expect(settled).toEqual(['peer']);
+      expect(dispose).not.toHaveBeenCalled();
+      expect(exitedWith).toBe(1);
+    });
+
     it('non-critical failure does not propagate', async () => {
       controller = makeController();
       controller.register({

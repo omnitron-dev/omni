@@ -44,6 +44,8 @@ Service and method transport restrictions intersect. Protected calls require a c
 
 Logger destinations may be asynchronous. Await their flush during shutdown; network delivery and an application's own buffered output are not durable merely because a logging call returned.
 
+Shutdown tasks share one phased controller and deadline policy. A task timeout leaves its completion unknown: later teardown stops and shutdown reports failure instead of closing resources the task may still use. A settled, noncritical error is reported while other cleanup continues. Embedded hosts must handle incomplete shutdown explicitly; a JavaScript timeout cannot terminate arbitrary work or undo a remote effect.
+
 ## Documentation
 
 [Public API](src/index.ts) · [Netron implementation](src/netron) · [Package exports](package.json) · [Omni package guide](../../README.md)

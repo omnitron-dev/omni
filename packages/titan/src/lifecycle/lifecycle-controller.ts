@@ -29,8 +29,8 @@
  * Exit guarantees:
  *
  *   1. Each bucket has its own deadline (`bucketTimeoutMs`, default 10s).
- *      A bucket whose tasks haven't finished is abandoned — any in-flight
- *      promises are left running but the controller moves on.
+ *      Unfinished work aborts shutdown with a non-zero exit. Later phases
+ *      must not dispose resources that a timed-out hook may still be using.
  *
  *   2. The total shutdown has a global deadline (`totalTimeoutMs`,
  *      default 30s). If hit, controller force-exits immediately.
@@ -49,7 +49,7 @@
  * Telemetry:
  *
  *   Each phase emits start/finish/timeout events to the optional
- *   `onPhaseEvent` hook — Prometheus exporters or structured loggers
+ *   `onPhaseEvent` hook — metrics exporters or structured loggers
  *   consume that without coupling to the controller.
  */
 
@@ -70,7 +70,7 @@ export type LifecyclePhase = 'pre-stop' | 'stop-runtime' | 'dispose';
 export interface LifecycleControllerOptions {
   /** Default per-task timeout when the task itself doesn't specify one. */
   readonly defaultTaskTimeoutMs?: number;
-  /** Per-bucket budget. Tasks not finishing inside the budget are abandoned. */
+  /** Per-bucket budget. Unfinished tasks abort further teardown. */
   readonly bucketTimeoutMs?: number;
   /**
    * Total shutdown budget. After this elapses the controller force-exits
@@ -344,13 +344,8 @@ export class LifecycleController {
         const remaining = this.opts.totalTimeoutMs - elapsed;
         if (remaining <= 0) {
           this.opts.logger?.warn?.({ phase, elapsed }, 'total shutdown deadline reached — skipping remaining phases');
-          // Skipping phases is the loudest thing that happens in a shutdown
-          // that ran out of budget, and until now it happened silently as far
-          // as any consumer could tell: only a log line, while `shutdown()`
-          // resolved normally. Callers deciding whether the shutdown was
-          // clean need this as an event, not as text.
           this.emitPhaseEvent({ phase, kind: 'phase-timeout' });
-          break;
+          throw new LifecycleTimeoutError(phase, undefined, this.opts.totalTimeoutMs);
         }
         const phaseDeadline = Math.min(this.opts.bucketTimeoutMs, remaining);
         await this.runPhase(phase, reason, details, phaseDeadline);
@@ -365,7 +360,7 @@ export class LifecycleController {
       }
     }
 
-    // Final exit. If a critical task failed, surface non-zero.
+    // A deadline is incomplete shutdown even for a non-critical task.
     const finalCode = aggregateError ? 1 : exitCode;
     this.exit(finalCode);
 
@@ -376,8 +371,8 @@ export class LifecycleController {
    * Drive every task in `phase`. Tasks marked `parallel !== false`
    * (default true) within the phase race together; sequential tasks
    * (`parallel: false`) run after the parallel batch in registration
-   * order. Critical-task failure aborts the phase but does not cancel
-   * already-running peers.
+   * order. Already admitted peers are joined within the phase deadline.
+   * A critical failure or unfinished task prevents further teardown.
    */
   private async runPhase(
     phase: LifecyclePhase,
@@ -403,22 +398,17 @@ export class LifecycleController {
     const parallelBatch = phaseTasks.filter((t) => t.parallel !== false);
     const sequentialBatch = phaseTasks.filter((t) => t.parallel === false);
 
-    let phaseError: unknown = null;
-
-    // Run the parallel batch under a single phase-deadline race. If
-    // the batch overruns, we abandon outstanding tasks and continue.
+    // Join admitted peers after a failure, bounded by this same deadline.
+    // Promise.all would leave those hooks unaccounted for on first rejection.
     if (parallelBatch.length > 0) {
-      try {
-        await this.raceWithDeadline(
-          Promise.all(parallelBatch.map((task) => this.runTask(task, reason, details))),
-          phaseDeadlineMs,
-          phase,
-        );
-      } catch (err) {
-        if (isCritical(err)) {
-          phaseError = err;
-        }
-      }
+      const settled = await this.raceWithDeadline(
+        Promise.allSettled(parallelBatch.map((task) => this.runTask(task, reason, details))),
+        phaseDeadlineMs,
+        phase,
+      );
+      const failures = settled.filter(result => result.status === 'rejected').map(result => result.reason);
+      if (failures.length === 1) throw failures[0];
+      if (failures.length > 1) throw new AggregateError(failures, `Lifecycle phase "${phase}" failed`);
     }
 
     // Sequential tasks fire only if we still have budget; each gets
@@ -428,23 +418,14 @@ export class LifecycleController {
       const remaining = phaseDeadlineMs - used;
       if (remaining <= 0) {
         this.emitPhaseEvent({ phase, kind: 'phase-timeout', taskName: task.name });
-        break;
+        throw new LifecycleTimeoutError(phase, task.name, phaseDeadlineMs);
       }
-      try {
-        await this.raceWithDeadline(this.runTask(task, reason, details), remaining, phase);
-      } catch (err) {
-        if (isCritical(err)) {
-          phaseError = err;
-          break;
-        }
-      }
+      await this.raceWithDeadline(this.runTask(task, reason, details), remaining, phase);
     }
 
     const durationMs = Date.now() - phaseStart;
     this.emitPhaseEvent({ phase, kind: 'phase-finish', durationMs });
     this.opts.logger?.info?.({ phase, durationMs }, 'lifecycle: phase finished');
-
-    if (phaseError) throw phaseError;
   }
 
   /**
@@ -469,8 +450,11 @@ export class LifecycleController {
       const durationMs = Date.now() - taskStart;
       this.emitPhaseEvent({ phase: task.phase, kind: 'task-error', taskName: task.name, durationMs, error: err });
       this.opts.logger?.error?.({ err, taskName: task.name, phase: task.phase }, 'lifecycle: task failed');
+      // A rejected hook has settled; a timed-out hook may still own resources.
+      // Criticality cannot make unknown completion safe for later disposal.
+      if (err instanceof LifecycleTimeoutError) throw err;
       if (task.critical) {
-        throw makeCritical(`Critical shutdown task failed: ${task.name}`, err);
+        throw new Error(`Critical shutdown task failed: ${task.name}`, { cause: err });
       }
       // Non-critical failures don't propagate — sibling tasks should
       // still get their chance.
@@ -478,22 +462,23 @@ export class LifecycleController {
   }
 
   /**
-   * Promise.race against a deadline. Resolved as void so the caller
-   * doesn't need to know the original return type.
+   * Bound observation of a hook. Expiry cannot cancel arbitrary JavaScript;
+   * callers must abort further teardown rather than infer completion.
    */
   private raceWithDeadline<T>(
     promise: Promise<T>,
     timeoutMs: number,
     phase: LifecyclePhase,
     taskName?: string,
-  ): Promise<void> {
+  ): Promise<T> {
     let timer: NodeJS.Timeout | null = null;
     const timeoutPromise = new Promise<never>((_, reject) => {
       timer = setTimeout(() => {
+        this.emitPhaseEvent({ phase, kind: 'phase-timeout', ...(taskName ? { taskName } : {}) });
         reject(new LifecycleTimeoutError(phase, taskName, timeoutMs));
       }, timeoutMs);
     });
-    return Promise.race([promise.then(() => undefined), timeoutPromise]).finally(() => {
+    return Promise.race([promise, timeoutPromise]).finally(() => {
       if (timer) clearTimeout(timer);
     });
   }
@@ -533,24 +518,6 @@ export class LifecycleController {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const CRITICAL_SIGIL = Symbol('lifecycle.critical');
-
-interface CriticalError extends Error {
-  readonly [CRITICAL_SIGIL]: true;
-  readonly cause: unknown;
-}
-
-function makeCritical(message: string, cause: unknown): CriticalError {
-  const e = new Error(message) as CriticalError;
-  (e as { cause: unknown }).cause = cause;
-  Object.defineProperty(e, CRITICAL_SIGIL, { value: true, enumerable: false });
-  return e;
-}
-
-function isCritical(err: unknown): err is CriticalError {
-  return typeof err === 'object' && err !== null && (err as Record<symbol, unknown>)[CRITICAL_SIGIL] === true;
-}
-
 export class LifecycleTimeoutError extends Error {
   constructor(
     public readonly phase: LifecyclePhase,
@@ -559,8 +526,8 @@ export class LifecycleTimeoutError extends Error {
   ) {
     super(
       taskName
-        ? `Lifecycle task "${taskName}" exceeded ${timeoutMs}ms in phase "${phase}"`
-        : `Lifecycle phase "${phase}" exceeded ${timeoutMs}ms`,
+        ? `Lifecycle task "${taskName}" timed out after ${timeoutMs}ms in phase "${phase}"; shutdown is incomplete`
+        : `Lifecycle phase "${phase}" timed out after ${timeoutMs}ms; shutdown is incomplete`,
     );
     this.name = 'LifecycleTimeoutError';
   }

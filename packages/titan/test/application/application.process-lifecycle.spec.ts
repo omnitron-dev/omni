@@ -225,8 +225,8 @@ describe('Application Process Lifecycle Management', () => {
 
       await app.start();
 
-      // Should not throw for non-critical task
-      await app.shutdown(ShutdownReason.Manual);
+      // Criticality does not prove that a timed-out writer has stopped.
+      await expect(app.shutdown(ShutdownReason.Manual)).rejects.toThrow(/shutdown is incomplete/i);
 
       expect(events).toContain('error:Slow Timeout Task');
     });

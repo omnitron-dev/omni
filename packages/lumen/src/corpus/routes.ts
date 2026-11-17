@@ -4,6 +4,10 @@ export function markdownMirrorPath(route: string): string {
   return (route === '/' ? '/index' : route) + '.md';
 }
 
+export function canonicalRoutePath(route: string, trailingSlash = false): string {
+  return trailingSlash && !route.endsWith('/') && !route.endsWith('.html') ? `${route}/` : route;
+}
+
 /** A route is an absolute URL path, not a filesystem path or external URL. */
 export function normalizeRoute(route: string): string {
   if (

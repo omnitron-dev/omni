@@ -55,6 +55,8 @@ Initialization is file-based; there is no `lumen init` command. `lumen dev` watc
 
 Set `trailingSlash: true` for directory output (`docs/api/index.html`). Both local servers redirect `/docs/api` to `/docs/api/`, preserving the query and configured `baseUrl`, only when that page exists. Unknown routes remain 404s.
 
+Under a deployment prefix such as `/manual/`, pass `pagefindUrl="/manual/pagefind/pagefind.js"` to a custom `LumenSearchDialog`. Pagefind resolves results relative to that deployed index. The public URLs returned by `buildSearchIndex` include the configured prefix and follow the page's trailing-slash policy.
+
 ## Build and publication
 
 The builder validates a staged generation before publishing it. Failed rebuilds retain the last verified generation; the publisher owns output consistency and durability. Serve or deploy the resulting directory through your hosting system. `lumen serve` is a local preview server.
@@ -76,6 +78,8 @@ Use `lumen pdf --outDir pdf` for PDF files, `lumen types --outDir generated` for
 `srcDir` (default `docs`) must exist and be a directory. An empty source directory is valid, including a site whose content comes only from `pagesDir`; explicitly configured `pagesDir` must also exist. `lumen build` always publishes its output. `lumen types` writes `never` unions for an empty public corpus. `lumen pdf` rejects an empty public selection and unknown `pdf.paperSections` entries, which select document IDs or source paths. Exported PDF names follow document IDs within the output directory; absolute paths and traversal are rejected. Parsing errors fail all exports.
 
 ## Server-rendered islands
+
+Document tabs (`:::tabs`), diagrams and widgets activate through the default client. The shell loads the modules for its registered widgets when an island activates. With the default layout, plain Markdown pages in the same build omit the client script. A custom `clientEntry` runs on every page so it can activate shared navigation and search.
 
 Export a registry of trusted React components from a module shared by the site configuration and client entry:
 

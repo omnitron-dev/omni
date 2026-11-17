@@ -12,7 +12,7 @@ import { renderDocumentHtml, type RenderDocumentHtmlOptions } from './render-htm
 import { generateLlmsTxt } from '../ai/llms-txt.js';
 import { generateLlmsFullTxt } from '../ai/llms-full.js';
 import { generateRouteMirrors } from '../ai/route-mirrors.js';
-import { markdownMirrorPath } from '../corpus/routes.js';
+import { canonicalRoutePath, markdownMirrorPath } from '../corpus/routes.js';
 import { buildSearchIndex } from '../search/index-builder.js';
 import { generateAssetManifest } from '../manifest/generator.js';
 import { computeContentHash, computeSriHash } from '../manifest/hashing.js';
@@ -103,9 +103,10 @@ export async function buildStaticSite(
   const documents = projectedCorpus.getAllDocuments();
 
   const hasIslands = (nodes: LumenNode[]): boolean =>
-    nodes.some((node) => node.type === 'jsxWidget' || node.type === 'diagram' ||
+    nodes.some((node) => node.type === 'jsxWidget' || node.type === 'diagram' || node.type === 'tabs' ||
       (Array.isArray(node.children) && hasIslands(node.children)));
-  const needsClient = Boolean(config.clientEntry) || documents.some((doc) => hasIslands(doc.ast?.children ?? []));
+  const islandPages = new Set(documents.filter(doc => hasIslands(doc.ast?.children ?? [])));
+  const needsClient = Boolean(config.clientEntry) || islandPages.size > 0;
   const client =
     !options?.clientAssets && needsClient
       ? await buildClientAssets(options?.rootDir ?? process.cwd(), config)
@@ -191,7 +192,10 @@ export async function buildStaticSite(
   const renderPromises = documents.map(async (doc) => {
     const rawRoute = (doc.routePath ?? doc.path.replace(/\\/g, '/')).replace(/\.(pdx|md)$/, '');
     const route = rawRoute.startsWith('/') ? rawRoute : `/${rawRoute}`;
-    const canonicalRoute = config.trailingSlash && route !== '/' && !route.endsWith('.html') ? `${route}/` : route;
+    const canonicalRoute = canonicalRoutePath(route, config.trailingSlash);
+    // Site layouts and explicitly supplied scripts can own controls outside the document AST.
+    const pageScripts = config.clientEntry || config.theme.layout || options?.clientScripts || islandPages.has(doc)
+      ? client.scripts : undefined;
 
     const html = doc.ast
       ? await renderDocumentHtml(doc.ast, {
@@ -213,7 +217,7 @@ export async function buildStaticSite(
               : []),
           ],
           bodyScripts: [
-            ...(client.scripts ?? []).map(
+            ...(pageScripts ?? []).map(
               (path) => `<script type="module" src="${escapeHtml(assetUrl(path))}"></script>`
             ),
           ],

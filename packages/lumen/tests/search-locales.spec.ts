@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { gunzipSync } from 'node:zlib';
 import { parseDocumentSync } from '@omnitron-dev/lumen-ast';
 import { CorpusGraph } from '../src/corpus/graph.js';
 import { defineLumenConfig } from '../src/config/define.js';
@@ -28,4 +29,19 @@ describe('Pagefind language indexes', () => {
   it.each(['en" data-pagefind-ignore="all', '', 'en_US'])('rejects invalid document language %j', async locale => {
     await expect(buildSearchIndex(corpus([locale]))).rejects.toThrow();
   });
+});
+
+it.each([false, true])('publishes relocatable Pagefind routes and public result URLs with trailingSlash=%s', async trailingSlash => {
+  const graph = corpus(['en', 'en', 'en', 'en']);
+  const routes = ['/', '/intro', '/manual/nested', '/standalone.html'];
+  for (const [index, doc] of graph.getAllDocuments().entries()) doc.routePath = routes[index]!;
+  const config = defineLumenConfig({ title: 'Manual', baseUrl: '/manual/', trailingSlash });
+  const result = await buildSearchIndex(graph, config);
+  const canonical = ['/', trailingSlash ? '/intro/' : '/intro', trailingSlash ? '/manual/nested/' : '/manual/nested', '/standalone.html'];
+  expect(result.entries.map(entry => entry.url).sort()).toEqual(canonical.map(route => '/manual' + route).sort());
+  const paths = Object.entries(result.files).filter(([name]) => name.endsWith('.pf_fragment')).map(([, bytes]) => {
+    const fragment = gunzipSync(bytes).toString();
+    return JSON.parse(fragment.slice('pagefind_dcd'.length)).url;
+  });
+  expect(paths.sort()).toEqual(canonical.sort());
 });

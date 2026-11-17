@@ -111,3 +111,21 @@ it('builds the real default client for a diagram-only document', async () => {
   expect(files.some(file => /mermaid.*\.js$/.test(file))).toBe(true);
   expect(files.some(file => /playground-worker.*\.js$/.test(file))).toBe(true);
 }, 60_000);
+
+it('activates document tabs with the default client and keeps plain pages script-free', async () => {
+  const root = fixture('{ title: "Manual" }', [
+    '# Guide', '', ':::tabs{label="Installation"}',
+    ':::tab{label="Binary"}', 'Download the binary.', ':::',
+    ':::tab{label="Source"}', 'Build from source.', ':::', ':::',
+  ].join('\n'));
+  writeFileSync(join(root, 'docs/plain.md'), '# Plain page');
+  await runLumenCli(['build', '--root', root]);
+  const guide = readFileSync(join(root, 'dist/docs/guide.html'), 'utf8');
+  expect(guide).toContain('data-widget="LumenDocumentTabs"');
+  expect(guide).toContain('Download the binary.');
+  expect(guide).toContain('Build from source.');
+  const script = guide.match(/<script type="module" src="\/(assets\/client\.[^"]+\.js)"/);
+  expect(script).not.toBeNull();
+  expect(existsSync(join(root, 'dist', script![1]!))).toBe(true);
+  expect(readFileSync(join(root, 'dist/docs/plain.html'), 'utf8')).not.toContain('<script type="module"');
+}, 60_000);

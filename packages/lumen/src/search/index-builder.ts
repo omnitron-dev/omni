@@ -1,6 +1,7 @@
 import * as pagefind from 'pagefind';
 import { toHtmlSsr } from '@omnitron-dev/lumen-ast';
 import type { CorpusGraph } from '../corpus/graph.js';
+import { canonicalRoutePath } from '../corpus/routes.js';
 import { extractAstPlainText, projectCorpus, type CorpusProjectionOptions } from '../corpus/projection.js';
 import type { LumenConfig } from '../config/schema.js';
 import { tokenizeMultilingual } from './tokenizer.js';
@@ -39,8 +40,7 @@ export async function buildSearchIndex(
   const docs = projectedCorpus.getAllDocuments();
   const entries: SearchIndexEntry[] = [];
 
-  let basePrefix = (config?.baseUrl ?? '/').replace(/\/+$/, '');
-  if (basePrefix === '/') basePrefix = '';
+  const basePrefix = (config?.baseUrl ?? '/').replace(/\/+$/, '');
 
   for (const doc of docs) {
     const textParts: string[] = [];
@@ -68,8 +68,7 @@ export async function buildSearchIndex(
 
     const rawRoute = doc.routePath ?? `/${doc.path.replace(/\.(pdx|md)$/, '')}`;
     const normalizedPath = rawRoute.startsWith('/') ? rawRoute : `/${rawRoute}`;
-    const resolvedUrl =
-      basePrefix && !normalizedPath.startsWith(`${basePrefix}/`) ? `${basePrefix}${normalizedPath}` : normalizedPath;
+    const resolvedUrl = basePrefix + canonicalRoutePath(normalizedPath, config?.trailingSlash);
     const safeTitle = typeof doc.title === 'string' ? doc.title : '';
 
     const tokens = tokenizeMultilingual(textParts.join(' '));
@@ -103,7 +102,8 @@ export async function buildSearchIndex(
       const locale = Intl.getCanonicalLocales(doc.locale ?? config?.defaultLocale ?? 'en')[0];
       if (!locale) throw new Error(`Search document ${doc.path} has no valid locale`);
       const result = await index.addHTMLFile({
-        url: entries[i]!.url!,
+        // Pagefind prefixes raw fragment paths with its deployment base in the browser.
+        url: canonicalRoutePath(entries[i]!.path, config?.trailingSlash),
         content: `<html lang="${locale}"><body>${body}</body></html>`,
       });
       if (result.errors.length)

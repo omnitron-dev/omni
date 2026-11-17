@@ -86,6 +86,7 @@ export const LumenUserConfigSchema = z.object({
   url: z.string().optional(),
   baseUrl: z.string().optional(),
   trailingSlash: z.boolean().optional(),
+  renderConcurrency: z.number().int().positive().optional(),
   onBrokenLinks: z.enum(['throw', 'warn', 'ignore', 'log']).optional(),
   onBrokenAnchors: z.enum(['throw', 'warn', 'ignore', 'log']).optional(),
   srcDir: z.string().optional(),
@@ -116,6 +117,8 @@ export interface LumenConfig {
   url?: string;
   baseUrl: string;
   trailingSlash?: boolean;
+  /** Maximum number of static documents rendering at once. Defaults to four. */
+  renderConcurrency?: number;
   onBrokenLinks?: 'throw' | 'warn' | 'ignore' | 'log';
   onBrokenAnchors?: 'throw' | 'warn' | 'ignore' | 'log';
   /** Existing corpus directory, relative to the project root. Empty directories are valid. */

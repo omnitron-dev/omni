@@ -35,6 +35,7 @@ export function defineLumenConfig(input: LumenUserConfig): LumenConfig {
     url: userConfig.url ?? 'http://localhost:3000',
     baseUrl,
     trailingSlash: userConfig.trailingSlash ?? false,
+    renderConcurrency: userConfig.renderConcurrency,
     onBrokenLinks: userConfig.onBrokenLinks ?? 'throw',
     onBrokenAnchors: userConfig.onBrokenAnchors ?? 'throw',
     srcDir: userConfig.srcDir ?? 'docs',

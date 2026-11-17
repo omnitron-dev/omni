@@ -231,11 +231,43 @@ describe('complete static React rendering', () => {
     expect(await completed).toContain('SECOND DOCUMENT');
   });
 
-  it('cancels sibling renders and keeps the previous generation when one page fails', async () => {
+  it('limits active pages and preserves corpus order when later pages finish first', async () => {
+    const graph = new CorpusGraph();
+    const layouts = new Map(['first', 'second', 'third'].map(id => [id, suspendedLayout()]));
+    for (const id of layouts.keys()) {
+      graph.addDocument({ id, path: `${id}.md`, title: id, hash: id,
+        anchors: [], mathObjects: [], backlinks: [], ast: await parseDocument(`# ${id}`) });
+    }
+    const entered = new Set<string>();
+    const config = defineLumenConfig({ title: 'Schedules', renderConcurrency: 2, theme: {
+      layout: ({ document, children }) => {
+        entered.add(document.id);
+        return layouts.get(document.id)!.render(children);
+      },
+    } });
+    const build = buildStaticSite(graph, config, { clientAssets: new Map() });
+    await Promise.all([layouts.get('first')!.started, layouts.get('second')!.started]);
+    expect([...entered]).toEqual(['first', 'second']);
+    layouts.get('second')!.finish({ default: () => null });
+    await layouts.get('third')!.started;
+    layouts.get('third')!.finish({ default: () => null });
+    layouts.get('first')!.finish({ default: () => null });
+    const { pages, manifest } = await build;
+    expect([...pages.keys()]).toEqual(['/first', '/second', '/third']);
+    expect(Object.keys(manifest).filter(key => key.startsWith('routes/'))).toEqual([
+      'routes/first.html', 'routes/second.html', 'routes/third.html',
+    ]);
+  });
+
+  it.each([0, 1.5, Infinity])('rejects invalid render concurrency %s in site configuration', value => {
+    expect(() => defineLumenConfig({ title: 'Limits', renderConcurrency: value })).toThrow('renderConcurrency');
+  });
+
+  it('cancels sibling renders, skips queued pages and keeps the previous generation when one page fails', async () => {
     const root = mkdtempSync(join(tmpdir(), 'lumen-static-failure-'));
     writeFileSync(join(root, 'index.html'), 'PREVIOUS VERIFIED GENERATION');
     const graph = new CorpusGraph();
-    for (const id of ['slow', 'broken']) {
+    for (const id of ['slow', 'broken', 'queued']) {
       graph.addDocument({ id, path: `${id}.md`, title: id, hash: id,
         anchors: [], mathObjects: [], backlinks: [], ast: await parseDocument(`# ${id}`) });
     }
@@ -244,15 +276,20 @@ describe('complete static React rendering', () => {
       await deferred.started;
       throw new Error('Invalid page');
     });
-    const config = defineLumenConfig({ title: 'Atomic generation', theme: {
-      layout: ({ document, children }) => document.id === 'slow' ? deferred.render(children)
-        : React.createElement(Suspense, { fallback: 'Incomplete' }, React.createElement(Broken)),
+    const queued = vi.fn(() => null);
+    const config = defineLumenConfig({ title: 'Atomic generation', renderConcurrency: 2, theme: {
+      layout: ({ document, children }) => {
+        if (document.id === 'queued') return queued();
+        return document.id === 'slow' ? deferred.render(children)
+          : React.createElement(Suspense, { fallback: 'Incomplete' }, React.createElement(Broken));
+      },
     } });
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
       await expect(buildStaticSite(graph, config, {
         clientAssets: new Map(), writeToDisk: true, outDir: root,
       })).rejects.toMatchObject({ cause: new Error('Invalid page') });
+      expect(queued).not.toHaveBeenCalled();
       expect(vi.getTimerCount()).toBe(0);
       expect(readdirSync(root)).toEqual(['index.html']);
       expect(readFileSync(join(root, 'index.html'), 'utf8')).toBe('PREVIOUS VERIFIED GENERATION');

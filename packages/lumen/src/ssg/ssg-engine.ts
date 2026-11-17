@@ -1,5 +1,6 @@
 import { publishGeneration, type StaticFile } from './publish-generation.js';
 import React from 'react';
+import { pLimit } from '@omnitron-dev/common';
 import { resolveExampleSources } from '../corpus/examples.js';
 import { buildClientAssets } from './client-build.js';
 import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
@@ -18,6 +19,7 @@ import { generateAssetManifest } from '../manifest/generator.js';
 import { computeContentHash, computeSriHash } from '../manifest/hashing.js';
 import { projectCorpus, type CorpusProjectionOptions } from '../corpus/projection.js';
 import type { CorpusGraph } from '../corpus/graph.js';
+import type { CorpusDocument } from '../corpus/types.js';
 import type { LumenConfig } from '../config/schema.js';
 import type { AssetManifest } from '../manifest/types.js';
 
@@ -94,6 +96,11 @@ export async function buildStaticSite(
   options?: SsgBuildOptions
 ): Promise<SsgBuildResult> {
   options?.signal?.throwIfAborted();
+  const renderConcurrency = config.renderConcurrency ?? 4;
+  if (!Number.isSafeInteger(renderConcurrency) || renderConcurrency < 1) {
+    throw new RangeError('renderConcurrency must be a positive safe integer');
+  }
+  const limitRender = pLimit(renderConcurrency);
   const audience: CorpusProjectionOptions = {
     roles: options?.roles ?? ['anonymous'],
     accessFilter: options?.accessFilter,
@@ -184,12 +191,12 @@ export async function buildStaticSite(
   };
   const stylesheetLinkTag = `<link rel="stylesheet" href="${normalizedBase}${stylesRelPath}" />`;
 
-  // 2. Concurrently render all projected HTML pages without cross-document state leakage (TC-B20-03)
+  // Acquire a slot before starting a page's renderer and deadline.
   const renderController = new AbortController();
   const renderSignal = options?.signal
     ? AbortSignal.any([options.signal, renderController.signal])
     : renderController.signal;
-  const renderPromises = documents.map(async (doc) => {
+  const renderPage = async (doc: CorpusDocument) => {
     const rawRoute = (doc.routePath ?? doc.path.replace(/\\/g, '/')).replace(/\.(pdx|md)$/, '');
     const route = rawRoute.startsWith('/') ? rawRoute : `/${rawRoute}`;
     const canonicalRoute = canonicalRoutePath(route, config.trailingSlash);
@@ -228,21 +235,19 @@ export async function buildStaticSite(
         })
       : `<!DOCTYPE html><html><head>${stylesheetLinkTag}</head><body><h1>${escapeHtml(doc.title || doc.id)}</h1></body></html>`;
 
-    const hash = computeContentHash(html);
-    const sri = computeSriHash(html);
-
-    currentAssets[`routes${route}.html`] = {
-      path: htmlOutputPath(route, config.trailingSlash),
-      sri,
-      sizeBytes: Buffer.byteLength(html, 'utf8'),
-      hash,
-    };
-
     return { route, html };
-  });
+  };
+  const renderPromises = documents.map(doc => limitRender(async () => {
+    renderSignal.throwIfAborted();
+    try {
+      return await renderPage(doc);
+    } catch (error) {
+      renderController.abort(error);
+      throw error;
+    }
+  }));
 
   const rendered = await Promise.all(renderPromises).catch(async error => {
-    renderController.abort(error);
     await Promise.allSettled(renderPromises);
     throw error;
   });
@@ -250,6 +255,12 @@ export async function buildStaticSite(
   for (const { route, html } of rendered) {
     if (pages.has(route)) throw new Error(`Duplicate output route: ${route}`);
     pages.set(route, html);
+    currentAssets[`routes${route}.html`] = {
+      path: htmlOutputPath(route, config.trailingSlash),
+      sri: computeSriHash(html),
+      sizeBytes: Buffer.byteLength(html, 'utf8'),
+      hash: computeContentHash(html),
+    };
   }
 
   // 3. Generate AI Agent endpoints strictly from projected public corpus

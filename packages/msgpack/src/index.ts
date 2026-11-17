@@ -1,6 +1,6 @@
 import Long from 'long';
 
-import { BufferType } from './types.js';
+import type { BufferType } from './types.js';
 import Serializer from './serializer.js';
 import { createError, getStdErrorId } from './errors.js';
 
@@ -167,20 +167,22 @@ export const encode = (obj: any) => {
 };
 
 export const decode = (buf: BufferType) => {
-  // Handle SmartBuffer for backward compatibility
-  if (buf && typeof (buf as any).toBuffer === 'function') {
-    return serializer.decode((buf as any).toBuffer());
+  // The top-level helpers peek at the current cursor. Serializer.decode advances it.
+  if ('getRemainingBuffer' in buf) {
+    return serializer.decode(buf.getRemainingBuffer());
   }
-  return serializer.decode(buf as any);
+  if ('toBuffer' in buf && typeof buf.toBuffer === 'function') {
+    const bytes = buf.toBuffer();
+    return serializer.decode('roffset' in buf && typeof buf.roffset === 'number' ? bytes.subarray(buf.roffset) : bytes);
+  }
+  return serializer.decode(buf);
 };
 
 export const tryDecode = (buf: any) => {
-  // For backward compatibility with SmartBuffer
   try {
-    const buffer = buf.toBuffer ? buf.toBuffer() : buf;
-    const value = decode(buffer);
-    return { value, bytesConsumed: buffer.length };
-  } catch (_e) {
+    const value = decode(buf);
+    return { value, bytesConsumed: serializer.decoder.getLastBytesConsumed() };
+  } catch {
     return null;
   }
 };

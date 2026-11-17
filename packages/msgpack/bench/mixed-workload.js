@@ -58,20 +58,24 @@ for (const testCase of testCases) {
   console.log(`Test: ${testCase.name}`);
   console.log('-'.repeat(40));
 
+  const omniBytes = encode(testCase.data);
+  const referenceBytes = msgpackr.pack(testCase.data);
   // Warmup
   for (let i = 0; i < 100; i++) {
     encode(testCase.data);
     msgpackr.pack(testCase.data);
+    decode(omniBytes);
+    msgpackr.unpack(referenceBytes);
   }
 
   const iterations = testCase.name.includes('Large') ? 5000 : 10000;
 
   const omniSer = measurePerformance('Omnitron Serialize', () => encode(testCase.data), iterations);
   const msgpackrSer = measurePerformance('MessagePackR Serialize', () => msgpackr.pack(testCase.data), iterations);
-  const omniDeser = measurePerformance('Omnitron Deserialize', () => decode(encode(testCase.data)), iterations);
+  const omniDeser = measurePerformance('Omnitron Deserialize', () => decode(omniBytes), iterations);
   const msgpackrDeser = measurePerformance(
     'MessagePackR Deserialize',
-    () => msgpackr.unpack(msgpackr.pack(testCase.data)),
+    () => msgpackr.unpack(referenceBytes),
     iterations
   );
 
@@ -85,14 +89,8 @@ for (const testCase of testCases) {
   console.log(`    MessagePackR: ${msgpackrDeser.opsPerSec.toFixed(0)} ops/sec`);
   console.log(`    Ratio: ${(omniDeser.opsPerSec / msgpackrDeser.opsPerSec).toFixed(2)}x`);
 
-  const omniSize = encode(testCase.data).length;
-  const msgpackrSize = msgpackr.pack(testCase.data).length;
+  const omniSize = omniBytes.length;
+  const msgpackrSize = referenceBytes.length;
   console.log(`  Size: Omnitron ${omniSize} bytes vs MessagePackR ${msgpackrSize} bytes`);
   console.log();
 }
-
-console.log('\nSummary:');
-console.log('========');
-console.log('The optimizations show significant improvements with larger data structures.');
-console.log('Buffer pooling, bitwise operations, and DataView caching are most effective');
-console.log('when processing large arrays and nested objects.');

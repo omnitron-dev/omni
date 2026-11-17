@@ -1232,7 +1232,8 @@ describe('Serializer', () => {
     expect(serializer.decode(serializer.encode(null))).toEqual(null);
   });
 
-  it('custom type registeration assertions', () => {
+  it('custom type registration assertions', () => {
+    const customSerializer = new Serializer();
     class Type0 {
       value: string;
 
@@ -1269,13 +1270,13 @@ describe('Serializer', () => {
       return new TypeNeg(str);
     };
 
-    expect(() => serializer.register(0, Type0, type0Encode, type0Decode)).not.toThrow();
-    expect(() => serializer.register(-1, TypeNeg, typeNegEncode, typeNegDecode)).toThrow();
+    expect(() => customSerializer.register(0, Type0, type0Encode, type0Decode)).not.toThrow();
+    expect(() => customSerializer.register(-1, TypeNeg, typeNegEncode, typeNegDecode)).toThrow();
 
-    const encoded = serializer.encode(new Type0('hi'));
+    const encoded = customSerializer.encode(new Type0('hi'));
     let decoded: unknown;
     expect(encoded.readUInt8(1)).toEqual(0x0);
-    expect(() => (decoded = serializer.decode(encoded))).not.toThrow();
+    expect(() => (decoded = customSerializer.decode(encoded))).not.toThrow();
     expect(decoded).toBeInstanceOf(Type0);
   });
 

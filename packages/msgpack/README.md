@@ -6,7 +6,7 @@ MessagePack serialization with JavaScript value extensions. Netron uses it for b
 
 - Encode and decode values, including registered Date, Map, Set, RegExp and BigInt extensions.
 - Create isolated `Serializer` instances and register application codecs.
-- Read partial buffers with `tryDecode`; access buffer utilities through `./smart-buffer`.
+- Read concatenated or partial values with `tryDecode`. It returns the first value and its exact `bytesConsumed`, or `null` if it cannot decode that value.
 
 ## Quick start
 
@@ -23,6 +23,10 @@ console.log(value.created instanceof Date); // true
 ```
 
 Custom extension IDs and codecs must agree at both ends. Decoding reconstructs values; application payload validation and authorization belong to the caller.
+
+Plain objects encode their own enumerable string keys as standard MessagePack maps. Up to 15 pairs use fixmap, 16 through 65,535 use map16, and larger objects use map32. The decoder accepts all three headers for any count they can represent. JavaScript `Map` uses the registered extension to preserve key types. [MessagePack map format](https://github.com/msgpack/msgpack/blob/master/spec.md#map-format-family)
+
+`decode` and `tryDecode` accept a `Buffer`, a `Uint8Array` view, or a `SmartBuffer` from `@omnitron-dev/msgpack/smart-buffer`. Both helpers read from the current `SmartBuffer` cursor and leave it in place. Use `serializer.decode(buffer)` to advance past a value. With chunked input, keep the unread bytes when `tryDecode` returns `null` and retry after appending the next chunk.
 
 ## Documentation
 

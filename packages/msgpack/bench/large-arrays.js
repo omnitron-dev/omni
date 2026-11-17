@@ -19,10 +19,14 @@ const testData = {
 
 console.log('Testing with large arrays (65577 elements each)...\n');
 
+const omniBytes = encode(testData);
+const referenceBytes = msgpackr.pack(testData);
 // Warmup
 for (let i = 0; i < 10; i++) {
   encode(testData);
   msgpackr.pack(testData);
+  decode(omniBytes);
+  msgpackr.unpack(referenceBytes);
 }
 
 // Function to measure performance
@@ -43,8 +47,8 @@ function measurePerformance(name, operation, iterations = 1000) {
 const results = [
   measurePerformance('Omnitron Serialize', () => encode(testData), 1000),
   measurePerformance('MessagePackR Serialize', () => msgpackr.pack(testData), 1000),
-  measurePerformance('Omnitron Deserialize', () => decode(encode(testData)), 1000),
-  measurePerformance('MessagePackR Deserialize', () => msgpackr.unpack(msgpackr.pack(testData)), 1000),
+  measurePerformance('Omnitron Deserialize', () => decode(omniBytes), 1000),
+  measurePerformance('MessagePackR Deserialize', () => msgpackr.unpack(referenceBytes), 1000),
 ];
 
 // Output results
@@ -70,8 +74,8 @@ console.log(`Serialize: Omnitron is ${(msgpackrSerTime / omniSerTime).toFixed(2)
 console.log(`Deserialize: Omnitron is ${(msgpackrDeserTime / omniDeserTime).toFixed(2)}x vs MessagePackR`);
 
 // Compare sizes
-const omniSize = encode(testData).length;
-const msgpackrSize = msgpackr.pack(testData).length;
+const omniSize = omniBytes.length;
+const msgpackrSize = referenceBytes.length;
 
 console.log('\nSize Comparison:');
 console.log('================');

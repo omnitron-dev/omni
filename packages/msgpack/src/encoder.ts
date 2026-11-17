@@ -8,19 +8,6 @@ interface OptimizedEncoderInfo {
   encode: OptimizedEncodeFunction;
 }
 
-/**
- * Ultra-high-performance MessagePack Encoder
- *
- * Key optimizations inspired by msgpackr:
- * 1. Buffer pool with reuse (eliminates 40-50% overhead)
- * 2. Local variables instead of property access (20-30% faster)
- * 3. DataView caching for multi-byte operations
- * 4. Word alignment for better memory access
- * 5. Bitwise operations for type detection (10x faster)
- * 6. Direct buffer indexing instead of method calls
- * 7. Pre-allocated large buffers to minimize reallocations
- */
-
 const INITIAL_BUFFER_SIZE = 8192; // 8KB like msgpackr
 const MAX_BUFFER_SIZE = 0x7fffffff;
 const MAX_POOL_SIZE = 16; // Max buffers in pool
@@ -40,43 +27,21 @@ const getType = (value: any): string => {
   return match ? match[1].toLowerCase() : 'object';
 };
 
-/**
- * Buffer pool for reusing buffers across encode() calls
- * This eliminates allocation overhead which accounts for 40-50% performance gain
- */
+/** Reuse temporary buffers across nested extension encodes. */
 class BufferPool {
   private static buffers: Buffer[] = [];
-  private static positions: number[] = [];
 
   /** Acquire a buffer from pool or allocate new one */
   static acquire(): Buffer {
-    if (this.buffers.length > 0) {
-      const buffer = this.buffers.pop()!;
-      const position = this.positions.pop()!;
-      // Word align position for better memory access (like msgpackr)
-      const alignedPosition = (position + 7) & 0xfffffff8;
-      // If alignment would overflow, reset to 0
-      if (alignedPosition >= buffer.length - 1024) {
-        return buffer; // Position will be set to 0 by encoder
-      }
-      return buffer;
-    }
-    return Buffer.allocUnsafe(INITIAL_BUFFER_SIZE);
+    return this.buffers.pop() ?? Buffer.allocUnsafe(INITIAL_BUFFER_SIZE);
   }
 
   /** Release buffer back to pool */
-  static release(buffer: Buffer, position: number): void {
+  static release(buffer: Buffer): void {
     // Only pool buffers that aren't too large and we haven't hit pool limit
     if (buffer.length <= MAX_POOLED_BUFFER_SIZE && this.buffers.length < MAX_POOL_SIZE) {
       this.buffers.push(buffer);
-      this.positions.push(position);
     }
-  }
-
-  /** Clear the pool (for testing) */
-  static clear(): void {
-    this.buffers = [];
-    this.positions = [];
   }
 }
 
@@ -88,18 +53,16 @@ class EncoderState {
   public buffer: Buffer;
   public position: number;
   public view: DataView; // Cached DataView for multi-byte operations
-  public start: number; // Start position for word-aligned encoding
 
   constructor() {
     this.buffer = BufferPool.acquire();
     this.position = 0;
-    this.start = 0;
     this.view = new DataView(this.buffer.buffer, this.buffer.byteOffset, this.buffer.byteLength);
   }
 
   /** Release buffer back to pool */
   release(): void {
-    BufferPool.release(this.buffer, this.position);
+    BufferPool.release(this.buffer);
   }
 }
 
@@ -107,6 +70,7 @@ class EncoderState {
 function ensureBuffer(state: EncoderState, size: number): void {
   const needed = state.position + size;
   if (needed > state.buffer.length) {
+    if (needed > MAX_BUFFER_SIZE) throw new RangeError('Encoded value exceeds maximum buffer size');
     const newSize = Math.min(Math.max(state.buffer.length * 2, needed), MAX_BUFFER_SIZE);
     const newBuffer = Buffer.allocUnsafe(newSize);
     state.buffer.copy(newBuffer, 0, 0, state.position);
@@ -125,48 +89,25 @@ export default class Encoder {
   }
 
   encode(value: any): Buffer {
-    // Check if this is a nested call (from custom encoder)
-    const isNestedCall = this.encodeDepth > 0;
+    // A custom extension can re-enter this encoder while its parent is still writing.
+    const parent = this.encodeDepth > 0 ? this.state : undefined;
+    if (parent) this.state = new EncoderState();
+    const state = this.state;
+    state.position = 0;
     this.encodeDepth++;
-
-    if (isNestedCall) {
-      // For nested calls, use a temporary state to avoid corrupting parent encoding
-      const savedState = this.state;
-      this.state = new EncoderState();
-
-      // Encode to the temporary state
+    try {
       this._encode(value);
-
-      // Extract result
-      const result = this.state.buffer.subarray(0, this.state.position);
-      const copy = Buffer.allocUnsafe(result.length);
-      result.copy(copy);
-
-      // Release temporary state and restore parent state
-      this.state.release();
-      this.state = savedState;
-
+      const result = Buffer.allocUnsafe(state.position);
+      state.buffer.copy(result, 0, 0, state.position);
+      return result;
+    } finally {
       this.encodeDepth--;
-      return copy;
-    } else {
-      // Top-level call: use existing state
-      this.state.position = 0;
-      this.state.start = 0;
-
-      // Encode the value
-      this._encode(value);
-
-      // Extract result
-      const result = this.state.buffer.subarray(0, this.state.position);
-      const copy = Buffer.allocUnsafe(result.length);
-      result.copy(copy);
-
-      // Release and create new state for next encode
-      this.state.release();
-      this.state = new EncoderState();
-
-      this.encodeDepth--;
-      return copy;
+      if (parent) {
+        state.release();
+        this.state = parent;
+      } else if (state.buffer.length > MAX_POOLED_BUFFER_SIZE) {
+        this.state = new EncoderState();
+      }
     }
   }
 
@@ -213,10 +154,10 @@ export default class Encoder {
       // Inline null encoding
       ensureBuffer(state, 1);
       state.buffer[state.position++] = 0xc0;
-    } else if (isBuffer(value)) {
-      this.encodeBuffer(value);
     } else if (Array.isArray(value)) {
       this.encodeArray(value);
+    } else if (ArrayBuffer.isView(value) && isBuffer(value)) {
+      this.encodeBuffer(value as Buffer);
     } else if (isPlainObject(value)) {
       this.encodeObject(value);
     } else {
@@ -500,12 +441,18 @@ export default class Encoder {
       ensureBuffer(state, 1);
       state.buffer[pos++] = 0x80 | len;
       state.position = pos;
-    } else {
+    } else if (len < 0x10000) {
       // map16
       ensureBuffer(state, 3);
       state.buffer[pos++] = 0xde;
       state.view.setUint16(pos, len, false);
       state.position = pos + 2;
+    } else {
+      // map32
+      ensureBuffer(state, 5);
+      state.buffer[pos++] = 0xdf;
+      state.view.setUint32(pos, len, false);
+      state.position = pos + 4;
     }
 
     // Encode each key-value pair
@@ -539,11 +486,7 @@ export default class Encoder {
   private encodeCustom(value: any): void {
     for (const [type, info] of this.encodingTypes.entries()) {
       if (info.check(value)) {
-        // Custom encoder writes to its own SmartBuffer, then returns a Buffer
-        // We don't need to save/restore position because:
-        // 1. Custom encoder creates its own SmartBuffer for encoding
-        // 2. encoder.encode() creates a new state anyway, resetting position
-        // 3. We just need to write the extension at the CURRENT position
+        // Nested encode calls restore this state before the extension is appended.
         const encoded = info.encode(value);
 
         this.encodeExtension(type, encoded);

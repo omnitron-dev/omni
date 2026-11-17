@@ -2,142 +2,48 @@ import { Buffer } from 'buffer';
 import { DecodeFunction } from './types.js';
 import { SmartBuffer } from './smart-buffer.js';
 
-/**
- * Ultra-high-performance MessagePack Decoder
- *
- * Key optimizations inspired by msgpackr:
- * 1. Nested if statements for hot paths (20-25% faster than switch)
- * 2. No object allocation for DecodeResult (eliminates 30-50 cycles overhead)
- * 3. DataView caching for multi-byte reads
- * 4. Direct buffer indexing instead of readXXX methods
- * 5. Inline fast paths for fixint, fixstr, fixarray, fixmap
- * 6. Local variables instead of repeated property access
- */
+const INCOMPLETE = Symbol('incomplete MessagePack value');
 
 export default class Decoder {
   private lastBytesConsumed: number = 0;
-  private view: DataView | null = null; // Cached DataView
 
   constructor(private decodingTypes: Map<number, DecodeFunction>) {}
 
-  decode(buf: Buffer): any {
+  decode(input: Buffer | Uint8Array): any {
+    const buf = Buffer.isBuffer(input) ? input : Buffer.from(input.buffer, input.byteOffset, input.byteLength);
     if (buf.length === 0) {
       this.lastBytesConsumed = 0;
       throw new Error('Incomplete buffer');
     }
 
-    // Save previous view to support nested decode calls from custom type decoders.
-    // When a custom decoder (e.g., TitanError) calls serializer.decode() multiple times,
-    // each nested call would otherwise corrupt this.view, causing "Offset is outside
-    // the bounds of the DataView" errors when control returns to the outer decode.
-    const savedView = this.view;
-
-    // Cache DataView for multi-byte operations
-    this.view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
-
+    let value;
     try {
-      // Try decode - stores bytesConsumed in this.lastBytesConsumed
-      const value = this.tryDecode(buf, 0);
-
-      if (value === undefined && this.lastBytesConsumed === 0) {
-        // Incomplete buffer - calculate minimum bytes needed
-        this.lastBytesConsumed = this.getMinHeaderSize(buf[0]!);
-        if (this.lastBytesConsumed > buf.length) {
-          this.lastBytesConsumed = buf.length;
-        }
-        throw new Error('Incomplete buffer');
-      }
-
-      return value;
-    } finally {
-      // Restore previous view for nested call support
-      this.view = savedView;
+      value = this.tryDecode(buf, 0);
+    } catch (error) {
+      this.lastBytesConsumed = 0;
+      throw error;
     }
+
+    if (value === INCOMPLETE) {
+      this.lastBytesConsumed = Math.min(this.lastBytesConsumed, buf.length);
+      throw new Error('Incomplete buffer');
+    }
+    return value;
   }
 
-  getLastBytesConsumed(buf?: Buffer): number {
+  getLastBytesConsumed(_buf?: Buffer): number {
     return this.lastBytesConsumed;
   }
 
-  /** Get minimum header size for a given marker byte */
-  private getMinHeaderSize(marker: number): number {
-    // Fixint, fixstr, fixarray, fixmap, nil, bool - 1 byte
-    if (
-      marker < 0x80 ||
-      marker >= 0xe0 || // fixint
-      (marker >= 0xa0 && marker <= 0xbf) || // fixstr
-      (marker >= 0x90 && marker <= 0x9f) || // fixarray
-      (marker >= 0x80 && marker <= 0x8f) || // fixmap
-      marker === 0xc0 ||
-      marker === 0xc2 ||
-      marker === 0xc3
-    ) {
-      // nil, false, true
-      return 1;
-    }
-
-    // Types with 2-byte headers (marker + 1 byte)
-    if (marker === 0xc4 || marker === 0xc7 || marker === 0xcc || marker === 0xd0 || marker === 0xd4) {
-      return 2;
-    }
-
-    // Types with 3-byte headers (marker + 2 bytes)
-    if (
-      marker === 0xc5 ||
-      marker === 0xc8 ||
-      marker === 0xcd ||
-      marker === 0xd1 ||
-      marker === 0xd5 ||
-      marker === 0xd9
-    ) {
-      return 3;
-    }
-
-    // Types with 4-byte headers (marker + 3 bytes)
-    if (marker === 0xd2) {
-      return 4;
-    }
-
-    // Types with 5-byte headers (marker + 4 bytes)
-    if (
-      marker === 0xca ||
-      marker === 0xc6 ||
-      marker === 0xc9 ||
-      marker === 0xce ||
-      marker === 0xd6 ||
-      marker === 0xda ||
-      marker === 0xdc
-    ) {
-      return 5;
-    }
-
-    // Types with 6-byte headers (marker + 5 bytes)
-    if (marker === 0xd3) {
-      return 6;
-    }
-
-    // Types with 9-byte headers (marker + 8 bytes)
-    if (marker === 0xcb || marker === 0xd7 || marker === 0xdb || marker === 0xdd) {
-      return 9;
-    }
-
-    // Types with 10-byte headers (marker + 9 bytes)
-    if (marker === 0xd8) {
-      return 10;
-    }
-
-    // Types with 18-byte headers (marker + 17 bytes)
-    if (marker === 0xd9) {
-      return 18;
-    }
-
-    // Default to 1
-    return 1;
+  // On incomplete input the consuming SmartBuffer API advances over the available header.
+  private incomplete(headerLength: number): typeof INCOMPLETE {
+    this.lastBytesConsumed = headerLength;
+    return INCOMPLETE;
   }
 
   /**
    * Try to decode from buffer starting at offset
-   * Returns value on success, undefined on incomplete buffer
+   * Returns the value on success, including undefined, or INCOMPLETE on partial input
    * Stores bytesConsumed in this.lastBytesConsumed
    *
    * Uses nested if statements like msgpackr (20-25% faster than switch)
@@ -145,12 +51,10 @@ export default class Decoder {
   private tryDecode(buf: Buffer, offset: number): any {
     const bufLength = buf.length;
     if (offset >= bufLength) {
-      this.lastBytesConsumed = 0;
-      return undefined;
+      return this.incomplete(0);
     }
 
     const marker = buf[offset]!;
-    const view = this.view!;
 
     // Nested if for hot paths - faster than switch due to branch prediction
     // Fast path for common cases: fixint, fixstr, fixarray, fixmap
@@ -172,8 +76,7 @@ export default class Decoder {
       // fixstr (0xa0 - 0xbf) - SECOND MOST COMMON
       const len = marker & 0x1f;
       if (offset + 1 + len > bufLength) {
-        this.lastBytesConsumed = 0;
-        return undefined;
+        return this.incomplete(1);
       }
       this.lastBytesConsumed = 1 + len;
       return buf.toString('utf8', offset + 1, offset + 1 + len);
@@ -207,35 +110,31 @@ export default class Decoder {
       if (marker === 0xcc) {
         // uint8
         if (offset + 2 > bufLength) {
-          this.lastBytesConsumed = 0;
-          return undefined;
+          return this.incomplete(2);
         }
         this.lastBytesConsumed = 2;
         return buf[offset + 1]!;
       } else if (marker === 0xcd) {
         // uint16
         if (offset + 3 > bufLength) {
-          this.lastBytesConsumed = 0;
-          return undefined;
+          return this.incomplete(3);
         }
         this.lastBytesConsumed = 3;
-        return view.getUint16(offset + 1, false);
+        return buf.readUInt16BE(offset + 1);
       } else if (marker === 0xce) {
         // uint32
         if (offset + 5 > bufLength) {
-          this.lastBytesConsumed = 0;
-          return undefined;
+          return this.incomplete(5);
         }
         this.lastBytesConsumed = 5;
-        return view.getUint32(offset + 1, false);
+        return buf.readUInt32BE(offset + 1);
       } else {
         // uint64 (0xcf)
         if (offset + 9 > bufLength) {
-          this.lastBytesConsumed = 0;
-          return undefined;
+          return this.incomplete(9);
         }
         this.lastBytesConsumed = 9;
-        return view.getUint32(offset + 1, false) * 0x100000000 + view.getUint32(offset + 5, false);
+        return buf.readUInt32BE(offset + 1) * 0x100000000 + buf.readUInt32BE(offset + 5);
       }
     }
 
@@ -244,68 +143,60 @@ export default class Decoder {
       if (marker === 0xd0) {
         // int8
         if (offset + 2 > bufLength) {
-          this.lastBytesConsumed = 0;
-          return undefined;
+          return this.incomplete(2);
         }
         this.lastBytesConsumed = 2;
-        return view.getInt8(offset + 1);
+        return buf.readInt8(offset + 1);
       } else if (marker === 0xd1) {
         // int16
         if (offset + 3 > bufLength) {
-          this.lastBytesConsumed = 0;
-          return undefined;
+          return this.incomplete(3);
         }
         this.lastBytesConsumed = 3;
-        return view.getInt16(offset + 1, false);
+        return buf.readInt16BE(offset + 1);
       } else if (marker === 0xd2) {
         // int32
         if (offset + 5 > bufLength) {
-          this.lastBytesConsumed = 0;
-          return undefined;
+          return this.incomplete(5);
         }
         this.lastBytesConsumed = 5;
-        return view.getInt32(offset + 1, false);
+        return buf.readInt32BE(offset + 1);
       } else {
         // int64 (0xd3)
         if (offset + 9 > bufLength) {
-          this.lastBytesConsumed = 0;
-          return undefined;
+          return this.incomplete(9);
         }
         this.lastBytesConsumed = 9;
-        return view.getInt32(offset + 1, false) * 0x100000000 + view.getUint32(offset + 5, false);
+        return buf.readInt32BE(offset + 1) * 0x100000000 + buf.readUInt32BE(offset + 5);
       }
     }
 
     // float32/float64
     if (marker === 0xca) {
       if (offset + 5 > bufLength) {
-        this.lastBytesConsumed = 0;
-        return undefined;
+        return this.incomplete(5);
       }
       this.lastBytesConsumed = 5;
-      return view.getFloat32(offset + 1, false);
+      return buf.readFloatBE(offset + 1);
     }
 
     if (marker === 0xcb) {
       if (offset + 9 > bufLength) {
-        this.lastBytesConsumed = 0;
-        return undefined;
+        return this.incomplete(9);
       }
       this.lastBytesConsumed = 9;
-      return view.getFloat64(offset + 1, false);
+      return buf.readDoubleBE(offset + 1);
     }
 
     // strings
     if (marker === 0xd9) {
       // str8
       if (offset + 2 > bufLength) {
-        this.lastBytesConsumed = 0;
-        return undefined;
+        return this.incomplete(2);
       }
       const len = buf[offset + 1]!;
       if (offset + 2 + len > bufLength) {
-        this.lastBytesConsumed = 0;
-        return undefined;
+        return this.incomplete(2);
       }
       this.lastBytesConsumed = 2 + len;
       return buf.toString('utf8', offset + 2, offset + 2 + len);
@@ -314,13 +205,11 @@ export default class Decoder {
     if (marker === 0xda) {
       // str16
       if (offset + 3 > bufLength) {
-        this.lastBytesConsumed = 0;
-        return undefined;
+        return this.incomplete(3);
       }
-      const len = view.getUint16(offset + 1, false);
+      const len = buf.readUInt16BE(offset + 1);
       if (offset + 3 + len > bufLength) {
-        this.lastBytesConsumed = 0;
-        return undefined;
+        return this.incomplete(3);
       }
       this.lastBytesConsumed = 3 + len;
       return buf.toString('utf8', offset + 3, offset + 3 + len);
@@ -329,13 +218,11 @@ export default class Decoder {
     if (marker === 0xdb) {
       // str32
       if (offset + 5 > bufLength) {
-        this.lastBytesConsumed = 0;
-        return undefined;
+        return this.incomplete(5);
       }
-      const len = view.getUint32(offset + 1, false);
+      const len = buf.readUInt32BE(offset + 1);
       if (offset + 5 + len > bufLength) {
-        this.lastBytesConsumed = 0;
-        return undefined;
+        return this.incomplete(5);
       }
       this.lastBytesConsumed = 5 + len;
       return buf.toString('utf8', offset + 5, offset + 5 + len);
@@ -347,69 +234,64 @@ export default class Decoder {
     switch (marker) {
       case 0xc4: // bin8
         if (offset + 2 > bufLength) {
-          this.lastBytesConsumed = 0;
-          return undefined;
+          return this.incomplete(2);
         }
         len = buf[offset + 1]!;
         if (offset + 2 + len > bufLength) {
-          this.lastBytesConsumed = 0;
-          return undefined;
+          return this.incomplete(2);
         }
         this.lastBytesConsumed = 2 + len;
         return buf.slice(offset + 2, offset + 2 + len);
 
       case 0xc5: // bin16
         if (offset + 3 > bufLength) {
-          this.lastBytesConsumed = 0;
-          return undefined;
+          return this.incomplete(3);
         }
-        len = view.getUint16(offset + 1, false);
+        len = buf.readUInt16BE(offset + 1);
         if (offset + 3 + len > bufLength) {
-          this.lastBytesConsumed = 0;
-          return undefined;
+          return this.incomplete(3);
         }
         this.lastBytesConsumed = 3 + len;
         return buf.slice(offset + 3, offset + 3 + len);
 
       case 0xc6: // bin32
         if (offset + 5 > bufLength) {
-          this.lastBytesConsumed = 0;
-          return undefined;
+          return this.incomplete(5);
         }
-        len = view.getUint32(offset + 1, false);
+        len = buf.readUInt32BE(offset + 1);
         if (offset + 5 + len > bufLength) {
-          this.lastBytesConsumed = 0;
-          return undefined;
+          return this.incomplete(5);
         }
         this.lastBytesConsumed = 5 + len;
         return buf.slice(offset + 5, offset + 5 + len);
 
       case 0xdc: // array16
         if (offset + 3 > bufLength) {
-          this.lastBytesConsumed = 0;
-          return undefined;
+          return this.incomplete(3);
         }
-        len = view.getUint16(offset + 1, false);
+        len = buf.readUInt16BE(offset + 1);
         return this.decodeArray(buf, offset + 3, len, 3);
 
       case 0xdd: // array32
         if (offset + 5 > bufLength) {
-          this.lastBytesConsumed = 0;
-          return undefined;
+          return this.incomplete(5);
         }
-        len = view.getUint32(offset + 1, false);
+        len = buf.readUInt32BE(offset + 1);
         return this.decodeArray(buf, offset + 5, len, 5);
 
       case 0xde: // map16
         if (offset + 3 > bufLength) {
-          this.lastBytesConsumed = 0;
-          return undefined;
+          return this.incomplete(3);
         }
-        len = view.getUint16(offset + 1, false);
+        len = buf.readUInt16BE(offset + 1);
         return this.decodeMap(buf, offset + 3, len, 3);
 
       case 0xdf: // map32
-        throw new Error('map too big to decode in JS');
+        if (offset + 5 > bufLength) {
+          return this.incomplete(5);
+        }
+        len = buf.readUInt32BE(offset + 1);
+        return this.decodeMap(buf, offset + 5, len, 5);
 
       case 0xd4: // fixext1
         return this.decodeFixExt(buf, offset, 1, 3);
@@ -428,26 +310,23 @@ export default class Decoder {
 
       case 0xc7: // ext8
         if (offset + 3 > bufLength) {
-          this.lastBytesConsumed = 0;
-          return undefined;
+          return this.incomplete(3);
         }
         len = buf[offset + 1]!;
         return this.decodeExt(buf, offset, len, 3);
 
       case 0xc8: // ext16
         if (offset + 4 > bufLength) {
-          this.lastBytesConsumed = 0;
-          return undefined;
+          return this.incomplete(4);
         }
-        len = view.getUint16(offset + 1, false);
+        len = buf.readUInt16BE(offset + 1);
         return this.decodeExt(buf, offset, len, 4);
 
       case 0xc9: // ext32
         if (offset + 6 > bufLength) {
-          this.lastBytesConsumed = 0;
-          return undefined;
+          return this.incomplete(6);
         }
-        len = view.getUint32(offset + 1, false);
+        len = buf.readUInt32BE(offset + 1);
         return this.decodeExt(buf, offset, len, 6);
 
       default:
@@ -455,16 +334,15 @@ export default class Decoder {
     }
   }
 
-  /** Decode array - no object allocation */
   private decodeArray(buf: Buffer, offset: number, length: number, headerLength: number): any {
+    if (length > buf.length - offset) return this.incomplete(headerLength);
     const result: any[] = [];
     let totalConsumed = 0;
 
     for (let i = 0; i < length; i++) {
       const item = this.tryDecode(buf, offset + totalConsumed);
-      if (item === undefined && this.lastBytesConsumed === 0) {
-        this.lastBytesConsumed = 0;
-        return undefined;
+      if (item === INCOMPLETE) {
+        return this.incomplete(headerLength);
       }
       result.push(item);
       totalConsumed += this.lastBytesConsumed;
@@ -474,46 +352,34 @@ export default class Decoder {
     return result;
   }
 
-  /** Decode map - no object allocation */
   private decodeMap(buf: Buffer, offset: number, length: number, headerLength: number): any {
+    // Even an empty key and a nil value need one marker each.
+    if (length * 2 > buf.length - offset) return this.incomplete(headerLength);
     const result: Record<string, any> = {};
     let totalConsumed = 0;
 
     for (let i = 0; i < length; i++) {
       // Decode key
       const key = this.tryDecode(buf, offset + totalConsumed);
-      if (key === undefined && this.lastBytesConsumed === 0) {
-        this.lastBytesConsumed = 0;
-        return undefined;
+      if (key === INCOMPLETE) {
+        return this.incomplete(headerLength);
       }
       totalConsumed += this.lastBytesConsumed;
 
       // Decode value
       const value = this.tryDecode(buf, offset + totalConsumed);
-      if (value === undefined && this.lastBytesConsumed === 0) {
-        this.lastBytesConsumed = 0;
-        return undefined;
+      if (value === INCOMPLETE) {
+        return this.incomplete(headerLength);
       }
       totalConsumed += this.lastBytesConsumed;
 
-      // `result[key] = value` is an assignment, and three keys are not
-      // ordinary property names when you assign them.
-      //
-      // Measured 2026-09-20: a sender that puts `__proto__` in a map replaces
-      // the DECODED OBJECT'S PROTOTYPE. The probe encoded
-      // `{ __proto__: { polluted: 'yes', isAdmin: true }, ok: 1 }` and the
-      // decoded value answered `got.isAdmin === true` while `Object.keys(got)`
-      // was `['ok']` — so any `if (data.isAdmin)` sees it and every log line
-      // that prints the keys or JSON.stringifies the object does not.
-      // `constructor` behaves the same way: `got.constructor.name` came back
-      // 'hijacked'.
-      //
-      // The value is KEPT, as an own property. Dropping it would lose data a
-      // legitimate payload may carry — a user's JSON object is allowed a field
-      // called "constructor" — and rejecting the frame would turn a data shape
-      // into a protocol error. `defineProperty` stores exactly what arrived
-      // and changes nothing about the object it arrived in.
-      if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+      // Coercible keys and special names must become own data properties.
+      if (
+        (typeof key !== 'string' && typeof key !== 'number') ||
+        key === '__proto__' ||
+        key === 'constructor' ||
+        key === 'prototype'
+      ) {
         Object.defineProperty(result, key, {
           value,
           enumerable: true,
@@ -532,8 +398,7 @@ export default class Decoder {
   /** Decode fixed-size extension */
   private decodeFixExt(buf: Buffer, offset: number, size: number, totalSize: number): any {
     if (offset + totalSize > buf.length) {
-      this.lastBytesConsumed = 0;
-      return undefined;
+      return this.incomplete(2);
     }
 
     const type = buf[offset + 1]!;
@@ -543,8 +408,7 @@ export default class Decoder {
   /** Decode variable-size extension */
   private decodeExt(buf: Buffer, offset: number, size: number, headerSize: number): any {
     if (offset + headerSize + size > buf.length) {
-      this.lastBytesConsumed = 0;
-      return undefined;
+      return this.incomplete(headerSize);
     }
 
     const type = buf[offset + headerSize - 1]!;
@@ -560,8 +424,6 @@ export default class Decoder {
       // Wrap in SmartBuffer for custom decoders that need read methods
       const smartBuf = SmartBuffer.fromBuffer(dataBuf);
 
-      // Call custom decoder (may make nested decoder.decode() calls).
-      // Nested calls are now safe because decode() saves/restores this.view.
       const value = decode(smartBuf as any);
 
       // Set the correct bytesConsumed for this extension type.

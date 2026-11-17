@@ -8,11 +8,12 @@ const policy = {
   repository: 'omnitron-dev/omni',
   branch: 'main',
   buildDependencies: [
-    // Durable backup ownership uses the inspection/termination contract added
-    // after Xec 0.12. Do not qualify a candidate against an older installed SDK.
-    { workspace: 'apps/omnitron', name: '@xec-sh/core', range: '^0.13.0' },
-    { workspace: 'apps/omnitron', name: '@xec-sh/ssh', range: '^0.13.0' },
-    { workspace: '.', section: 'devDependencies', name: '@xec-sh/ops', range: '^0.13.0' },
+    // Require durable Docker identity registration after cancellation and the
+    // release driver's atomic version/changelog preparation contract.
+    { workspace: 'apps/omnitron', name: '@xec-sh/core', range: '^0.13.2' },
+    { workspace: 'apps/omnitron', name: '@xec-sh/ssh', range: '^0.13.2' },
+    { workspace: '.', section: 'devDependencies', name: '@xec-sh/cli', range: '^0.13.2' },
+    { workspace: '.', section: 'devDependencies', name: '@xec-sh/ops', range: '^0.13.2' },
   ],
   preparation: {
     consumerTimeoutMs: 60 * 60_000,

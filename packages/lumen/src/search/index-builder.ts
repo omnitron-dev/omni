@@ -98,9 +98,13 @@ export async function buildSearchIndex(
   try {
     for (const [i, doc] of docs.entries()) {
       const body = doc.ast ? toHtmlSsr(doc.ast, { macros: config?.katexMacros }) : `<p>${String(doc.title).replace(/[<>&]/g, '')}</p>`;
+      // Pagefind chooses its language index from HTML, not corpus metadata.
+      // Canonicalization also rejects attributes masquerading as language tags.
+      const locale = Intl.getCanonicalLocales(doc.locale ?? config?.defaultLocale ?? 'en')[0];
+      if (!locale) throw new Error(`Search document ${doc.path} has no valid locale`);
       const result = await index.addHTMLFile({
         url: entries[i]!.url!,
-        content: `<html lang="${config?.defaultLocale ?? 'en'}"><body>${body}</body></html>`,
+        content: `<html lang="${locale}"><body>${body}</body></html>`,
       });
       if (result.errors.length)
         throw new Error(`Pagefind indexing failed for ${doc.path}: ${result.errors.join('; ')}`);

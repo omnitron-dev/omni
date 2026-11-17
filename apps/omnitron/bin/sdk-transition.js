@@ -14,7 +14,8 @@ const absent = error => { if (error.code === 'ENOENT') return null; throw error;
 const stat = file => fs.lstat(file, { bigint: true }).catch(absent);
 const identity = value => ({ device: String(value.dev), inode: String(value.ino) });
 const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
-const readFile = pLimit(16);
+const FILE_CONCURRENCY = 16;
+const readFile = pLimit(FILE_CONCURRENCY);
 const SMALL_FILE_BYTES = 256n * 1024n;
 
 // Drain every admitted operation before reporting a failure. The caller may
@@ -129,8 +130,9 @@ async function verifyGuards(proof) {
     const parent = path.dirname(entry.path); await physical(parent);
     if (!same(identity(await stat(parent)), entry.parent)) throw Error('SDK destination parent was replaced: ' + parent);
   }
-  for (const item of proof.guards)
+  await settledMap(proof.guards, FILE_CONCURRENCY, async item => {
     if (!same(await measure(item.path), item.before)) throw Error('SDK inputs changed outside the transition: ' + item.path);
+  });
 }
 async function measurements(proof) {
   return settledMap(proof.entries, 4, async item => {
@@ -196,8 +198,9 @@ export async function prepareSdkTransition({ root, source, paths, guards, progre
     await physical(path.dirname(file));
     entries.push({ path: file, parent: identity(await stat(path.dirname(file))), before: await measure(file) });
   }
-  const proof = { schema: 1, id, root, source, roots, entries, guards: [] };
-  for (const file of [...new Set(guards)]) proof.guards.push({ path: file, before: await measure(file) });
+  const measuredGuards = await settledMap([...new Set(guards)], FILE_CONCURRENCY, async file =>
+    ({ path: file, before: await measure(file) }));
+  const proof = { schema: 1, id, root, source, roots, entries, guards: measuredGuards };
   const directory = path.join(cache, 'sdk-transitions');
   await sdkDirectory(directory); await owned(directory, true);
   const bytes = entries.reduce((total, entry) => total + entry.before.bytes, 0);

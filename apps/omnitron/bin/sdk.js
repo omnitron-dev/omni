@@ -780,11 +780,16 @@ async function changeSelection(root, source, stack, names, signal, operation) {
     await assertSourceAvailable(source);
     await requireSourceStopped(root, source, stack);
     const retentionStarted = performance.now();
+    let phaseStarted = retentionStarted, previousPhase = 'discovery';
     const selection = await prepareSdkTransition({ root, source, ...await selectionInventory(root, source, names, signal),
       progress: ({ phase, paths, bytes }) => {
-        const elapsed = ((performance.now() - retentionStarted) / 1000).toFixed(1);
+        const now = performance.now();
+        const elapsed = ((now - retentionStarted) / 1000).toFixed(1);
+        const duration = ((now - phaseStarted) / 1000).toFixed(1);
         const size = bytes === undefined ? '' : `, ${(bytes / 1024 ** 2).toFixed(1)} MiB`;
-        console.log(`SDK recovery snapshot: ${phase} (${paths} paths${size}, ${elapsed}s)`);
+        console.log(`SDK recovery snapshot: ${phase} (${paths} paths${size}, ${previousPhase} took ${duration}s, ${elapsed}s total)`);
+        phaseStarted = now;
+        previousPhase = phase;
       },
     });
     let ownedDistribution = await distributionLock(root);

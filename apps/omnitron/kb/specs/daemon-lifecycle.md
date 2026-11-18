@@ -71,6 +71,25 @@ cannot obtain a snapshot. During this bounded startup observation, `stopped`,
 Unknown transport failures, malformed replies and ownership conflicts are not
 converted into retries. A missing response never authorizes another start.
 
+Recovery readiness and Console publication are separate observations. During a
+reviewed cold start or restoration, `status.execution.consoleStartup` reports
+`pending`, `ready` or `unconfirmed`, together with the update digest and direction.
+If publication fails after an independently supervised backend has acquired its
+owner grant, the backend keeps its RPC and private control endpoints and finishes
+the ownership checkpoint. It does not launch applications, the stack reconciler
+or further background work. `health` reports `runtime.console-startup`, including
+the sanitized cause; a ready recovery checkpoint does not make the delivery
+successful.
+
+Acceptance checks both the Console startup observation and its actual owned
+container, installed assets and HTTP build. An unconfirmed publication ends
+acceptance without retrying it or automatically stopping the candidate. Inspect
+the exact receipt and use its explicit `recover` operation after checking
+ownership. This restores the reviewed previous Console, which can differ from
+the backend used to perform restoration. A missing verified recovery path still
+fails startup, and shutdown during publication always takes precedence over
+readiness. Ordinary backend handoffs retain the already serving Console.
+
 An interrupted update keeps its exact digest and recorded outcome. Inspect
 `runtime update status <digest>` before `reconcile` or `recover`; do not replay
 `apply`, edit the receipt or remove ownership records. SDK and application launch

@@ -118,6 +118,31 @@ it.each(['starting', 'restoring'])('preserves OFF during %s without Docker mutat
   expect(readSavedDaemonConfig()?.webapp).toBe(false);
 });
 
+it.each(['starting', 'restoring'])('refuses a foreign Console during %s without removing or replacing it', async phase => {
+  const retained = await installed('b'.repeat(40)), candidate = await installed(target.commit);
+  const batch = await hold(phase, retained, candidate);
+  await config(true);
+  docker.state = { name: 'foreign-console', containerId: id, image: 'nginx', status: 'running',
+    labels: { 'omnitron.instance-home': '/different-instance' } };
+  await expect(service().startOnBoot(batch)).rejects.toThrow('does not belong');
+  expect(docker.create).not.toHaveBeenCalled();
+  expect(docker.remove).not.toHaveBeenCalled();
+  expect(docker.stop).not.toHaveBeenCalled();
+  expect(readSavedDaemonConfig()?.webapp).toBe(true);
+});
+
+it.each(['starting', 'restoring'])('does not accept or repeat a %s publication whose HTTP build is unconfirmed', async phase => {
+  const retained = await installed('b'.repeat(40)), candidate = await installed(target.commit);
+  const batch = await hold(phase, retained, candidate);
+  await config(true);
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json(stamp('c'.repeat(40)))));
+  await expect(service().startOnBoot(batch)).rejects.toThrow('HTTP build');
+  expect(docker.create).toHaveBeenCalledOnce();
+  expect(docker.remove).not.toHaveBeenCalled();
+  expect(docker.stop).not.toHaveBeenCalled();
+  expect(readSavedDaemonConfig()?.webapp).toBe(true);
+});
+
 it.each(['missing', 'wrong-commit', 'damaged'] as const)('refuses a %s retained artifact before altering a container or boot policy', async failure => {
   const retained = failure === 'missing' ? original : await installed('b'.repeat(40));
   if (failure === 'damaged') await fs.appendFile(path.join(home, 'runtime/releases', retained.artifact, 'packages/0/webapp/dist/index.html'), 'modified');

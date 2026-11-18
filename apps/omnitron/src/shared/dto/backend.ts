@@ -24,6 +24,14 @@ export interface BackendRuntimeStatus {
     error: string | null;
   };
   recovery?: { status: 'pending' | 'ready' | 'unavailable'; at: string | null; reason: string | null };
+  /** Control-plane recovery readiness is independent of a Console boot attempt.
+   * An unconfirmed attempt never grants permission to repeat publication. */
+  consoleStartup?: {
+    state: 'pending' | 'ready' | 'unconfirmed';
+    required: boolean;
+    review?: { digest: string; direction: 'target' | 'previous' };
+    reason: string | null;
+  };
   supervision?: { type: 'independent'; guardianPid: number; ownerUnit: string; backendUnit: string };
   blockers: Record<typeof BACKEND_ACTIVITY_COUNTERS[number], number> & { kernelRollouts?: number; backupOperations?: number };
 }

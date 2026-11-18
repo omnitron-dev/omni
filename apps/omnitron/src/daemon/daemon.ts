@@ -28,6 +28,7 @@ import { restartConfigurationDigest } from '../project/runtime-restart.js';
 import type { RuntimeRestartConfiguration, RuntimeRestartReview, RuntimeRestartPrepareRequest } from '../shared/dto/runtime-update.js';
 import type { OperationReceipt } from '../shared/dto/execution-operations.js';
 import { Application, ShutdownReason, ShutdownPriority, ApplicationEvent } from '@omnitron-dev/titan';
+import { describeError } from '@omnitron-dev/titan/diagnostics';
 import { UnixSocketTransport } from '@omnitron-dev/titan/netron/transport/unix';
 import { TcpTransport } from '@omnitron-dev/titan/netron/transport/tcp';
 import { TransportRequestLimiter } from '@omnitron-dev/titan/netron';
@@ -335,6 +336,7 @@ export class OmnitronDaemon {
   private stopApplicationsOnExit = false;
   private backendControl: Awaited<ReturnType<typeof startBackendControl>> | null = null;
   private recoveryMonitor: BackendRecoveryMonitor | null = null;
+  private consoleStartup: BackendRuntimeStatus['consoleStartup'];
   private runtimeRestartAdmission: { digest: string; request: RuntimeRestartPrepareRequest; ready: Promise<RuntimeRestartConfiguration> } | null = null;
   private supervision: BackendRuntimeStatus['supervision'];
 
@@ -344,7 +346,10 @@ export class OmnitronDaemon {
   async startConsole(options: { force?: boolean; temporary?: boolean }) {
     if (!this.webapp || this.isShuttingDown || this.preparingBackend || this.handingOffBackend)
       throw Error('The serving daemon is unavailable for Console publication');
-    return this.webapp.start(options);
+    const result = await this.webapp.start(options);
+    if (this.consoleStartup) this.consoleStartup = { ...this.consoleStartup, state: 'ready', reason: null };
+    runtimeDiagnostics.resolve('runtime.console-startup');
+    return result;
   }
 
   private assertBackendReady(): void {
@@ -363,6 +368,7 @@ export class OmnitronDaemon {
       ...(!this.execution ? { reason: 'This daemon owns application forks and threads directly. Installing the resident owner requires one controlled application restart; hot adoption is unavailable.' } : {}),
       ...(owner ?? {}),
       ...(this.recoveryMonitor ? { recovery: this.recoveryMonitor.status() } : {}),
+      ...(this.consoleStartup ? { consoleStartup: structuredClone(this.consoleStartup) } : {}),
       ...(this.supervision ? { supervision: this.supervision } : {}),
       blockers: {
         ...(this.kernelRollouts?.activeCount() ? { kernelRollouts: this.kernelRollouts.activeCount() } : {}),
@@ -803,48 +809,72 @@ export class OmnitronDaemon {
     this.startupAbort.signal.throwIfAborted();
 
     // Warm backend transfers retain the serving Console. Cold startup consumes its own reviewed artifact.
+    let managementOnly = false;
     if (!options?.backendHandoff && (coldBatch || readSavedDaemonConfig()?.webapp)) {
-      try { await this.webapp.startOnBoot(coldBatch); }
+      this.consoleStartup = { state: 'pending', required: !!coldBatch, reason: null,
+        ...(coldBatch && { review: { digest: coldBatch.digest, direction: coldBatch.direction } }) };
+      try {
+        await this.webapp.startOnBoot(coldBatch);
+        this.startupAbort.signal.throwIfAborted();
+        this.consoleStartup = { ...this.consoleStartup, state: 'ready' };
+        runtimeDiagnostics.resolve('runtime.console-startup');
+      }
       catch (error) {
-        if (coldBatch) throw error;
-        logger.warn({ error: (error as Error).message }, 'Webapp failed to start');
+        // Shutdown owns all resources it has joined; it must not turn into a
+        // successful recovery-only startup when publication settles late.
+        this.startupAbort.signal.throwIfAborted();
+        const reason = describeError(error);
+        this.consoleStartup = { ...this.consoleStartup, state: 'unconfirmed', reason };
+        runtimeDiagnostics.failure('runtime.console-startup', 'Console startup is unconfirmed', error,
+          coldBatch ? 'Inspect runtime update status and health. The reviewed Console was not accepted; application boot is held. Recover the exact update through its serving controller after checking ownership. Do not repeat publication or edit its receipt.'
+            : 'Inspect Console ownership and its serving build before requesting another publication. Backend control remains available.');
+        if (coldBatch) {
+          // A grant already belongs to this controller. Preserve the verified
+          // private control/recovery path, rather than leaving an owner which
+          // neither the update nor its rollback can safely retire. Unknown
+          // publication outcomes must not trigger more launches or retries.
+          if (!this.execution || this.supervision?.type !== 'independent' || !this.backendControl || !this.recoveryMonitor) throw error;
+          managementOnly = true;
+        }
       }
     }
     this.startupAbort.signal.throwIfAborted();
 
-    // 8.9. Fleet monitoring. Started BEFORE managed apps and not awaited.
-    //
-    // It used to be step 11.5, after `startApps`, `startScheduledTasks` and
-    // `startBackgroundServices`. Fleet monitoring is about MACHINES; it has
-    // nothing to do with whether this daemon's managed applications start, and
-    // gating it behind them means one application that fails its startup
-    // leaves the whole fleet unwatched for as long as the supervisor keeps
-    // retrying it. Measured on this host: ten minutes after a daemon start,
-    // with two applications still cycling through failed starts, not a single
-    // node had been checked and nothing had said so.
-    //
-    // Not awaited, for the same reason in the other direction: spawning the
-    // worker has a 30-second startup timeout, and the applications should not
-    // wait behind it. The function handles and logs its own failures, and arms
-    // the in-daemon fallback checks when the worker cannot run.
-    this.healthMonitorStartup = this.startHealthMonitorWorker(logger).catch((err: Error) => {
-      // It handles its own failures; this is the last resort, because an
-      // unhandled rejection is a crash of the daemon rather than a lost
-      // subsystem.
-      logger.error({ error: err.message }, 'Health monitor startup threw');
-    });
+    if (!managementOnly) {
+      // 8.9. Fleet monitoring. Started BEFORE managed apps and not awaited.
+      //
+      // It used to be step 11.5, after `startApps`, `startScheduledTasks` and
+      // `startBackgroundServices`. Fleet monitoring is about MACHINES; it has
+      // nothing to do with whether this daemon's managed applications start, and
+      // gating it behind them means one application that fails its startup
+      // leaves the whole fleet unwatched for as long as the supervisor keeps
+      // retrying it. Measured on this host: ten minutes after a daemon start,
+      // with two applications still cycling through failed starts, not a single
+      // node had been checked and nothing had said so.
+      //
+      // Not awaited, for the same reason in the other direction: spawning the
+      // worker has a 30-second startup timeout, and the applications should not
+      // wait behind it. The function handles and logs its own failures, and arms
+      // the in-daemon fallback checks when the worker cannot run.
+      this.healthMonitorStartup = this.startHealthMonitorWorker(logger).catch((err: Error) => {
+        // It handles its own failures; this is the last resort, because an
+        // unhandled rejection is a crash of the daemon rather than a lost
+        // subsystem.
+        logger.error({ error: err.message }, 'Health monitor startup threw');
+      });
 
-    // 9. Start managed apps (waits for infra gate if apps have `requires`)
-    if (!options?.backendHandoff) await this.startApps(config, logger);
-    this.startupAbort.signal.throwIfAborted();
+      // 9. Start managed apps (waits for infra gate if apps have `requires`)
+      if (!options?.backendHandoff) await this.startApps(config, logger);
+      this.startupAbort.signal.throwIfAborted();
 
-    // 10. Start background tasks via titan-scheduler (replaces bare setInterval)
-    await this.startScheduledTasks(config, logger);
-    this.startupAbort.signal.throwIfAborted();
+      // 10. Start background tasks via titan-scheduler (replaces bare setInterval)
+      await this.startScheduledTasks(config, logger);
+      this.startupAbort.signal.throwIfAborted();
 
-    // 11. Start remaining background services (telemetry, traces, leader election)
-    await this.startBackgroundServices(config, logger);
-    this.startupAbort.signal.throwIfAborted();
+      // 11. Start remaining background services (telemetry, traces, leader election)
+      await this.startBackgroundServices(config, logger);
+      this.startupAbort.signal.throwIfAborted();
+    }
 
     // (Fleet monitoring is started at 8.5, above — before managed apps.)
 
@@ -868,7 +898,7 @@ export class OmnitronDaemon {
 
     logger.info({ socketPath: this.dc.socketPath, port: this.dc.port,
       httpPort: this.dc.httpPort, wsPort: (this.dc.httpPort ?? 9800) + 2,
-      host: this.dc.host, pid: process.pid, version: CLI_VERSION }, 'Omnitron daemon started');
+      host: this.dc.host, pid: process.pid, version: CLI_VERSION, ...(managementOnly && { startup: 'management-only' }) }, 'Omnitron daemon started');
 
     // 15. Broadcast daemon.started event
     this.eventBroadcaster?.broadcast(DAEMON_EVENTS.STARTED, {

@@ -11,7 +11,7 @@ import { LAUNCHD_LABEL, OWNER_LAUNCHD_LABEL } from '../commands/service-units.js
 import { localStackInventory } from '../project/local-stack-inventory.js';
 import { readRestartConfiguration, saveRestartConfiguration, restartConfigurationDigest, restartIntentDigest, restartLaunchIntent, assertRestartOwnerDefaults } from '../project/runtime-restart.js';
 import { privateControlClient } from './private-control-client.js';
-import { assertRuntimeUpdateHealth, RuntimeUpdateHealthRegression } from './runtime-update.js';
+import { assertRuntimeUpdateHealth, RuntimeUpdateHealthRegression, runtimeUpdatePlanDigest } from './runtime-update.js';
 import { RuntimeObservationPending, RuntimeObservationConflict, RuntimeObservationUnconfirmed,
   observeRuntimeUntil, observeStartingController, withRuntimeObservation, type RuntimeObservation } from './runtime-observation.js';
 import { CommandResultError } from '../shared/command-result.js';
@@ -104,6 +104,18 @@ export function assertLocalIdle(status: RuntimeUpdateStatusObservation) {
   const backups = execution.blockers.backupOperations!;
   if (backups > 0) throw Error('Local update deferred while work is active: backupOperations=' + backups);
   if (execution.recovery?.status !== 'ready') throw Error(execution.recovery?.reason || 'Waiting for the current recovery certificate');
+}
+
+/** A ready ownership checkpoint permits inspection/recovery, not acceptance of
+ * a failed Console publication. Unknown side effects never authorize retry or
+ * automatic rollback. Older controllers still require the native checks. */
+export function assertRuntimeConsoleStartup(status: RuntimeUpdateStatusObservation, plan: RuntimeUpdatePlan, direction: 'target' | 'previous'): void {
+  const startup = status.execution?.consoleStartup;
+  if (!startup) return;
+  if (startup.required && (startup.review?.digest !== runtimeUpdatePlanDigest(plan) || startup.review.direction !== direction))
+    throw new RuntimeObservationUnconfirmed('Console startup belongs to another reviewed update or direction');
+  if (startup.state === 'pending') throw new RuntimeObservationPending('console', 'Waiting for the reviewed Console startup observation', status.pid);
+  if (startup.state !== 'ready') throw new RuntimeObservationUnconfirmed('Console startup is unconfirmed: ' + (startup.reason || 'No successful publication observation'));
 }
 
 // The controller which restores both directions must admit the exact review.
@@ -397,6 +409,7 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
       if (status.execution?.recovery?.status === 'pending')
         throw new RuntimeObservationPending('controller', status.execution.recovery.reason ?? 'Controller startup observation is pending', status.pid);
       if (status.execution?.recovery?.status !== 'ready') throw Error('The serving controller has no recovery readiness evidence');
+      assertRuntimeConsoleStartup(status, plan, direction);
       const [web, stacks] = await Promise.all([consoleState(observation), inventory(status, observation)]);
       const reviewedConsole = reviewedRuntimeConsole(plan, direction);
       if (web.artifact !== (reviewedConsole?.artifact ?? null) || web.commit !== (reviewedConsole?.commit ?? null))

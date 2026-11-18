@@ -2,13 +2,13 @@
 module: prism
 title: 'Prism Design System'
 tags: [ui, design-system, mui, components, forms, theme, react]
-summary: 'MUI v7-based design system with layouts, blocks, forms, Netron integration, and CLI'
+summary: 'MUI-based design system with layouts, blocks, forms, Netron integration, and CLI'
 depends_on: [netron-browser, netron-react]
 ---
 
 ## Architecture
 
-Prism is a high-level design system built on MUI v7. It provides:
+Prism is a high-level design system built on MUI. It provides:
 
 - **Theme** — Dark/light themes, color palettes, typography
 - **Core** — Base components, hooks, accessibility
@@ -51,3 +51,29 @@ Do not add empty-center spacing or `leftArea.minWidth` workarounds in callers.
 Inside a slot, long names need their own truncation or wrapping and flexible
 children need `minWidth: 0`. A fixed-height toolbar or unbreakable group wider
 than the viewport defeats this contract.
+
+
+## Scrollable tabs and dependency ownership
+
+Both the `ui` export of MUI Tabs and the higher-level Prism Tabs delegate scrolling
+to `@mui/material`. A tab count belongs inside the label's flow; an absolutely
+positioned badge does not reserve tab width. Use scrollable tabs for long labels
+and preserve keyboard access to every tab instead of clipping the tab strip.
+
+The installed MUI 9.5.0 scroll owner is corrected by
+`patches/mui-material@9.5.0.patch`, declared in `pnpm-workspace.yaml` and the lock.
+It retains the animation cancellation handle, cancels old animation before a new
+animated or direct scroll, cancels when native focus has already revealed the
+new selection, and cleans up on unmount. Both MUI CommonJS and ESM entries are
+patched. `tests/e2e/tabs-scroll.spec.ts` checks selected-tab visibility after rapid
+End/Enter/Home/Enter, ordinary horizontal/vertical keyboard movement, direct
+reduced-motion scrolling and unmount.
+
+MUI is external in the published Prism output. A consumer that installs or
+deduplicates its own MUI must declare the same exact versioned patch in its
+workspace; linked SDK selection alone does not inherit source workspace patches.
+After installation, verify the effective dependency and the development lock,
+not only the source lock. Do not add a consumer scroll workaround or a second
+Tabs implementation. When upgrading MUI, rerun these regressions against the
+unpatched dependency and remove the patch and its declarations together only
+when the upstream version passes them.

@@ -9,6 +9,8 @@ import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import MuiTabs from '@mui/material/Tabs';
 import Tab from '@mui/material/Tab';
+import Button from '@mui/material/Button';
+import { ThemeProvider, useTheme } from '@mui/material/styles';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -48,6 +50,8 @@ export function TabsTestPage() {
   const handleVerticalChange = (_event: React.SyntheticEvent, newValue: number) => {
     setVerticalValue(newValue);
   };
+
+  if (new URLSearchParams(window.location.search).has('scroll')) return <ScrollingTabsCase />;
 
   return (
     <Box sx={{ p: 3 }}>
@@ -133,5 +137,56 @@ export function TabsTestPage() {
         </MuiTabs>
       </Box>
     </Box>
+  );
+}
+
+/** Long labels exercise the real scroll owner without application-specific layout. */
+function ScrollingTabsCase() {
+  const theme = useTheme();
+  const params = new URLSearchParams(window.location.search);
+  const vertical = params.get('orientation') === 'vertical';
+  const [selected, setSelected] = useState(0);
+  const [mounted, setMounted] = useState(true);
+  const [reduceMotion, setReduceMotion] = useState(false);
+  const labels = ['Overview', 'Pending reviews', 'Access rules', 'Preferences', 'Activity log'];
+  return (
+    <ThemeProvider
+      theme={{
+        ...theme,
+        motion: { ...theme.motion, reducedMotion: reduceMotion ? 'always' : 'never' },
+      }}
+    >
+      <Box sx={{ p: 1 }}>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+          <Button onClick={() => setSelected(labels.length - 1)}>Select last</Button>
+          <Button onClick={() => setSelected(0)}>Select first</Button>
+          <Button
+            onClick={() => {
+              setReduceMotion(true);
+              setSelected(0);
+            }}
+          >
+            Reduce motion and select first
+          </Button>
+          <Button onClick={() => setMounted(false)}>Unmount tabs</Button>
+        </Box>
+        {mounted && (
+          <MuiTabs
+            value={selected}
+            onChange={(_, next: number) => setSelected(next)}
+            orientation={vertical ? 'vertical' : 'horizontal'}
+            variant="scrollable"
+            scrollButtons="auto"
+            allowScrollButtonsMobile
+            aria-label="Scrollable workspace sections"
+            sx={{ maxWidth: 320, ...(vertical && { height: 160 }), border: 1, borderColor: 'divider' }}
+          >
+            {labels.map((label, index) => (
+              <Tab key={label} value={index} label={label} />
+            ))}
+          </MuiTabs>
+        )}
+      </Box>
+    </ThemeProvider>
   );
 }

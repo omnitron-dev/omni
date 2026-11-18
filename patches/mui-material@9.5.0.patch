@@ -1,0 +1,74 @@
+diff --git a/Tabs/Tabs.js b/Tabs/Tabs.js
+--- a/Tabs/Tabs.js
++++ b/Tabs/Tabs.js
+@@ -326,6 +326,12 @@
+   const valueToIndex = new Map();
+   const tabsRef = React.useRef(null);
+   const tabListRef = React.useRef(null);
++  const scrollAnimationRef = React.useRef(null);
++  const cancelScrollAnimation = React.useCallback(() => {
++    scrollAnimationRef.current?.();
++    scrollAnimationRef.current = null;
++  }, []);
++  React.useEffect(() => cancelScrollAnimation, [cancelScrollAnimation]);
+   const mounted = indicatorStyle !== defaultIndicatorStyle;
+   const externalForwardedProps = {
+     slots,
+@@ -414,8 +420,9 @@
+   const scroll = (scrollValue, {
+     animation = true
+   } = {}) => {
++    cancelScrollAnimation();
+     if (animation && !reducedMotion.shouldReduceMotion) {
+-      (0, _animate.default)(scrollStart, tabsRef.current, scrollValue, {
++      scrollAnimationRef.current = (0, _animate.default)(scrollStart, tabsRef.current, scrollValue, {
+         duration: theme.transitions.duration.standard
+       });
+     } else {
+@@ -515,6 +522,9 @@
+     return conditionalElements;
+   };
+   const scrollSelectedIntoView = (0, _useEventCallback.default)(animation => {
++    // Native focus may already reveal the newly selected tab. Stop the previous
++    // selection's animation even when no further scroll is needed.
++    cancelScrollAnimation();
+     const {
+       tabsMeta,
+       tabMeta
+diff --git a/Tabs/Tabs.mjs b/Tabs/Tabs.mjs
+--- a/Tabs/Tabs.mjs
++++ b/Tabs/Tabs.mjs
+@@ -319,6 +319,12 @@
+   const valueToIndex = new Map();
+   const tabsRef = React.useRef(null);
+   const tabListRef = React.useRef(null);
++  const scrollAnimationRef = React.useRef(null);
++  const cancelScrollAnimation = React.useCallback(() => {
++    scrollAnimationRef.current?.();
++    scrollAnimationRef.current = null;
++  }, []);
++  React.useEffect(() => cancelScrollAnimation, [cancelScrollAnimation]);
+   const mounted = indicatorStyle !== defaultIndicatorStyle;
+   const externalForwardedProps = {
+     slots,
+@@ -407,8 +413,9 @@
+   const scroll = (scrollValue, {
+     animation = true
+   } = {}) => {
++    cancelScrollAnimation();
+     if (animation && !reducedMotion.shouldReduceMotion) {
+-      animate(scrollStart, tabsRef.current, scrollValue, {
++      scrollAnimationRef.current = animate(scrollStart, tabsRef.current, scrollValue, {
+         duration: theme.transitions.duration.standard
+       });
+     } else {
+@@ -508,6 +515,9 @@
+     return conditionalElements;
+   };
+   const scrollSelectedIntoView = useEventCallback(animation => {
++    // Native focus may already reveal the newly selected tab. Stop the previous
++    // selection's animation even when no further scroll is needed.
++    cancelScrollAnimation();
+     const {
+       tabsMeta,
+       tabMeta

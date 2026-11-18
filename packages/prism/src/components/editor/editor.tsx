@@ -46,7 +46,6 @@ export function Editor({
   onChange,
   slotProps,
   helperText,
-  resetValue,
   className,
   toolbar: toolbarConfig,
   bubbleMenu: bubbleMenuProp,
@@ -184,6 +183,10 @@ export function Editor({
     ...other,
   });
 
+  useEffect(() => {
+    if (editor && !editor.isDestroyed) editor.setEditable(editable, false);
+  }, [editor, editable]);
+
   // Fullscreen handlers
   const handleToggleFullscreen = useCallback(() => {
     editor?.unmount();
@@ -202,22 +205,17 @@ export function Editor({
     [editor]
   );
 
-  // Sync content from outside
+  // External values replace the whole document, including a non-empty one.
+  // An echoed onChange value already describes this document; do not replace
+  // it again or move the selection on each keystroke. Prop synchronization is
+  // not an edit and must not notify the host or mark its form dirty.
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (!editor?.isDestroyed && editor?.isEmpty && parsedContent && parsedContent !== '<p></p>') {
-        editor?.commands.setContent(parsedContent);
-      }
-    }, 200);
-    return () => clearTimeout(timer);
-  }, [parsedContent, editor]);
-
-  // Reset support
-  useEffect(() => {
-    if (resetValue && !initialContent) {
-      editor?.commands.clearContent();
-    }
-  }, [initialContent, resetValue, editor]);
+    if (!editor || editor.isDestroyed) return;
+    const current = format === 'json' ? JSON.stringify(editor.getJSON()) : editor.getHTML();
+    const incoming = typeof parsedContent === 'string' ? parsedContent : JSON.stringify(parsedContent);
+    if (current === incoming || (!incoming && editor.isEmpty)) return;
+    editor.commands.setContent(parsedContent, { emitUpdate: false });
+  }, [parsedContent, editor, format]);
 
   // Fullscreen ESC listener
   useEffect(() => {

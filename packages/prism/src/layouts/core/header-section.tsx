@@ -143,6 +143,8 @@ const StyledAppBar = styled(AppBar, {
 
 const StyledToolbar = styled(Toolbar)(({ theme }) => ({
   minHeight: HEADER_HEIGHTS.mobile,
+  flexWrap: 'wrap',
+  gap: theme.spacing(1),
   [theme.breakpoints.up('md')]: {
     minHeight: HEADER_HEIGHTS.desktop,
     paddingLeft: theme.spacing(4),
@@ -153,6 +155,8 @@ const StyledToolbar = styled(Toolbar)(({ theme }) => ({
 const SlotContainer = styled(Box)({
   display: 'flex',
   alignItems: 'center',
+  minWidth: 0,
+  maxWidth: '100%',
 });
 
 // =============================================================================
@@ -188,6 +192,11 @@ export interface HeaderSectionProps {
 
 /**
  * Header Section - Slot-based header with scroll effects.
+ *
+ * Slot groups wrap when their preferred widths exceed the toolbar. The header
+ * keeps its minimum height and grows in normal flow; top/bottom notices remain
+ * inside the same sticky surface. Inner content must support shrinking or its
+ * own wrapping when a single group is wider than the viewport.
  *
  * Slots:
  * - `topArea`: Content above the main toolbar row
@@ -233,24 +242,30 @@ export function HeaderSection({
     <>
       {/* Left area */}
       {slots?.leftArea && (
-        <SlotContainer sx={{ gap: 1, ...(slotProps?.leftArea as object) }}>{slots.leftArea}</SlotContainer>
+        <SlotContainer sx={{ gap: 1, flexShrink: 0, ...(slotProps?.leftArea as object) }}>
+          {slots.leftArea}
+        </SlotContainer>
       )}
 
-      {/* Center area - flex to push right area to the end */}
-      <SlotContainer
-        sx={{
-          flex: 1,
-          justifyContent: 'center',
-          mx: 2,
-          ...(slotProps?.centerArea as object),
-        }}
-      >
-        {slots?.centerArea}
-      </SlotContainer>
+      {/* Center content may shrink; absent content must not reserve a spacer. */}
+      {slots?.centerArea && (
+        <SlotContainer
+          sx={{
+            flex: '1 1 auto',
+            justifyContent: 'center',
+            mx: { xs: 0, sm: 1 },
+            ...(slotProps?.centerArea as object),
+          }}
+        >
+          {slots.centerArea}
+        </SlotContainer>
+      )}
 
       {/* Right area */}
       {slots?.rightArea && (
-        <SlotContainer sx={{ gap: 1, ...(slotProps?.rightArea as object) }}>{slots.rightArea}</SlotContainer>
+        <SlotContainer sx={{ gap: 1, flexShrink: 0, marginInlineStart: 'auto', ...(slotProps?.rightArea as object) }}>
+          {slots.rightArea}
+        </SlotContainer>
       )}
     </>
   );
@@ -275,6 +290,9 @@ export function HeaderSection({
             sx={{
               display: 'flex',
               alignItems: 'center',
+              flexWrap: 'wrap',
+              minWidth: 0,
+              gap: 1,
               ...(slotProps?.container as object),
             }}
           >

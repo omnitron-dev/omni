@@ -39,10 +39,16 @@ describe('SponsoredSlot', () => {
     expect(screen.getByLabelText('Потому что вы в разделе «Туризм»')).toBeInTheDocument();
   });
 
-  it('leads where it is linked, and reports the opening; without a link it is not a control', () => {
+  it.each(['tile', 'banner', 'compact'] as const)('%s preserves advertising identity and link behavior', (variant) => {
     const onOpen = vi.fn();
     const { unmount } = themed(
-      <SponsoredSlot content={content} link={{ component: 'a', props: { href: '/shops/river' } }} onOpen={onOpen} id="b-1" />
+      <SponsoredSlot
+        variant={variant}
+        content={content}
+        link={{ component: 'a', props: { href: '/shops/river' } }}
+        onOpen={onOpen}
+        id="b-1"
+      />
     );
     const link = screen.getByRole('link');
     expect(link).toHaveAttribute('href', '/shops/river');

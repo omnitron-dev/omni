@@ -64,7 +64,7 @@ export interface ResolvedToolbar {
 export type EditorOutputFormat = 'html' | 'json';
 
 export type EditorProps = Omit<UseEditorOptions, 'extensions' | 'content'> & {
-  /** HTML string or TipTap JSON document */
+  /** Current HTML or serialized TipTap JSON document. External changes replace content without firing onChange. */
   value?: string;
   /** Controlled onChange — receives HTML string or JSON string depending on `format` */
   onChange?: (value: string) => void;
@@ -86,8 +86,6 @@ export type EditorProps = Omit<UseEditorOptions, 'extensions' | 'content'> & {
   maxHeight?: number;
   /** Whether content is editable. @default true */
   editable?: boolean;
-  /** Reset content when value becomes empty. @default false */
-  resetValue?: boolean;
   /** Additional TipTap extensions to merge with preset */
   extraExtensions?: UseEditorOptions['extensions'];
   /** CSS class name */

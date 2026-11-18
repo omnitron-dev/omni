@@ -159,7 +159,7 @@ export function ConsoleLayout() {
         }}
         slotProps={{
           header: {
-            slotProps: { toolbar: { px: workspaceGutter }, leftArea: { minWidth: 0 }, centerArea: { mx: { xs: 0, sm: 2 } } },
+            slotProps: { toolbar: { px: workspaceGutter } },
           },
           main: {
             sx:

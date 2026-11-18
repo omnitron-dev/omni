@@ -28,8 +28,8 @@ export interface SponsoredSlotContent {
 export interface SponsoredSlotProps {
   /** Nothing to show collapses the slot: no frame, no gap, no «empty ad». */
   content: SponsoredSlotContent | null | undefined;
-  /** `tile` sits in a row of cards; `banner` takes a column's width. */
-  variant?: 'tile' | 'banner';
+  /** `tile` displays a cover; `banner` is a wide placement; `compact` fits a dense entity grid. */
+  variant?: 'tile' | 'banner' | 'compact';
   /**
    * The placement is still being asked for: the slot keeps its box so the page
    * does not jump when it arrives — and collapses if nothing does.

@@ -25,12 +25,14 @@ import { ColorsTestPage } from './pages/colors';
 import { AnimationsTestPage } from './pages/animations';
 import { ButtonsTestPage } from './pages/buttons';
 import { ResearchTestPage } from './pages/research';
+import { HeaderLayoutTestPage } from './pages/header-layout';
 import { KnowledgeGraphTestPage } from './pages/knowledge-graph';
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="/test/header-layout" element={<HeaderLayoutTestPage />} />
         <Route path="/test/dialog" element={<DialogTestPage />} />
         <Route path="/test/dashboard-block" element={<DashboardBlockTestPage />} />
         <Route path="/test/form" element={<FormTestPage />} />
@@ -95,9 +97,7 @@ function Root() {
     const content = <main>Application ready</main>;
     return (
       <PrismProvider defaultSettings={{ mode: 'dark', preset: 'midnight' }}>
-        {new URLSearchParams(window.location.search).has('nested')
-          ? <PrismProvider>{content}</PrismProvider>
-          : content}
+        {new URLSearchParams(window.location.search).has('nested') ? <PrismProvider>{content}</PrismProvider> : content}
       </PrismProvider>
     );
   }

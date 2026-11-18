@@ -65,6 +65,10 @@ The documentation catalog pairs rendered examples with their checked-in TypeScri
 
 `CursorPagination` in `@omnitron-dev/prism/components/table` provides controlled first, previous and next actions for opaque server cursors. The application supplies available actions, pending state, localized labels and observed item counts. Keyboard focus survives a pending request and the final page. Applications can use the same control for page replacement or appending results.
 
+## Rich text fields
+
+`@omnitron-dev/prism/components/editor` uses `value` as the current HTML or stringified TipTap JSON document. A changed external value replaces the document, including clearing it. Echo the value returned by `onChange` to retain the current selection and undo history. External replacements do not emit `onChange`. Changing `editable` updates the live editor, so an inherited read-only field can become editable without remounting it.
+
 ## Research documents and authoring
 
 `@omnitron-dev/prism/components/research` exports `ResearchDocument`, `parseResearchMarkdown` and validated widget definitions. Import `@omnitron-dev/prism/components/research/styles.css` once. The renderer supports GFM, heading anchors, admonitions, tabs, KaTeX and strict Mermaid diagrams.

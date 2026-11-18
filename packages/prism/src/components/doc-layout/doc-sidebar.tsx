@@ -87,7 +87,7 @@ export function DocSidebar({ items, activeId, onItemClick, title, compact = fals
     const root = rootRef.current;
     const landmark = root && scrollableNavigation(root);
     setHasScrollOwner(!!landmark);
-    if (!root || !landmark) return;
+    if (!root || !landmark) return undefined;
 
     const scope = 'prism:doc-sidebar:' + JSON.stringify([document.documentElement.lang, title, firstItem]);
     const pageKey = scope + ':' + location.pathname + location.search;

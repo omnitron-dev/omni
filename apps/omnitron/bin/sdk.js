@@ -521,6 +521,25 @@ async function verifyInputs(profile, inputs, signal) {
     throw Error('SDK build inputs changed for ' + changed.join(', ') + '; run sdk dev to rebuild before confirming readiness');
 }
 
+async function currentSourceInstallation(source, signal) {
+  try {
+    // A parent pnpm script exports a recursion guard; this probe owns the
+    // check, but never repairs dependencies before retaining their before-image.
+    await exec('pnpm', ['--reporter=ndjson', 'exec', process.execPath, '--version'], {
+      cwd: source, env: { ...nodeEnvironment(), pnpm_config_verify_deps_before_run: 'error' }, signal,
+    });
+    return true;
+  } catch (error) {
+    if (error.code === 1 && error.stderr?.split('\n').some(line => {
+      try {
+        const event = JSON.parse(line);
+        return event.name === 'pnpm' && event.code === 'ERR_PNPM_VERIFY_DEPS_BEFORE_RUN';
+      } catch { return false; }
+    })) return false;
+    throw error;
+  }
+}
+
 async function build(profile, names, signal, locked = false) {
   if (!names.length) throw Error('No development SDK packages selected for building');
   const source = profile.source;
@@ -533,19 +552,7 @@ async function build(profile, names, signal, locked = false) {
     }
     // pnpm's implicit pre-script install only warns on failure. Ask pnpm to
     // check its installation first, then require a successful frozen repair.
-    try {
-      // A parent pnpm script exports a recursion guard that overrides CLI
-      // options. This probe checks a different workspace and owns its repair.
-      await exec('pnpm', ['--reporter=ndjson', 'exec', process.execPath, '--version'], {
-        cwd: source, env: { ...nodeEnvironment(), pnpm_config_verify_deps_before_run: 'error' }, signal,
-      });
-    } catch (error) {
-      if (error.code !== 1 || !error.stderr?.split('\n').some(line => {
-        try {
-          const event = JSON.parse(line);
-          return event.name === 'pnpm' && event.code === 'ERR_PNPM_VERIFY_DEPS_BEFORE_RUN';
-        } catch { return false; }
-      })) throw error;
+    if (!await currentSourceInstallation(source, signal)) {
       await command('pnpm', ['install', '--frozen-lockfile'], source, false, signal);
     }
     const inputs = await buildInputs(source, names, signal);
@@ -1131,6 +1138,8 @@ async function startStoppedStack(profile, stack, review, checkpoint, packages, p
     await verifyLaunchReview(service, target, digest);
     if (!isDeepStrictEqual(stoppedLaunch(await service.getStack({ project, stack }), stack), launch))
       throw Error('The stopped stack changed before starting ' + scope);
+    await verifyInputs(profile, checkpoint.inputs, signal);
+    await verifyOutputs(profile, checkpoint.hashes);
     signal?.throwIfAborted();
     // One request per durable stop, even after a crashed CLI or lost RPC reply.
     await atomic(attemptFile, JSON.stringify({ ...attempts, [scope]: launch.stop }) + '\n');
@@ -1325,13 +1334,36 @@ export async function watchSdk(profile, stack, signal) {
   }
 }
 
+function completeBuildCheckpoint(profile, checkpoint) {
+  return checkpoint?.schema === 3 && checkpoint.source === profile.source && checkpoint.hashes && checkpoint.inputs &&
+    isDeepStrictEqual(Object.keys(checkpoint.hashes).sort(), Object.keys(profile.links).sort()) &&
+    isDeepStrictEqual(Object.keys(checkpoint.inputs).sort(), Object.keys(profile.links).sort()) &&
+    checkpoint.applications && typeof checkpoint.applications === 'object' && !Array.isArray(checkpoint.applications);
+}
+
+/** Consumer and source locks are held. A stale proof takes the ordinary
+ * retained build path; errors or concurrent changes do not authorize writes. */
+async function reusableBuild(profile, signal) {
+  const file = path.join(statePath(profile.root), 'built.json');
+  const checkpoint = await optionalJson(file);
+  if (!completeBuildCheckpoint(profile, checkpoint) || !await currentSourceInstallation(profile.source, signal)) return null;
+  if (!isDeepStrictEqual(await buildInputs(profile.source, Object.keys(profile.links), signal), checkpoint.inputs)) return null;
+  for (const [name, directory] of Object.entries(profile.links)) {
+    let digest;
+    try { digest = await buildDigest(directory); }
+    catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+    if (digest !== checkpoint.hashes[name]) return null;
+  }
+  await verifyInputs(profile, checkpoint.inputs, signal);
+  if (!isDeepStrictEqual(await optionalJson(file), checkpoint)) throw Error('SDK checkpoint changed while verifying reuse');
+  signal?.throwIfAborted();
+  return { inputs: checkpoint.inputs, hashes: checkpoint.hashes };
+}
+
 async function inspectBuild(active, stack) {
   const file = path.join(statePath(active.root), 'built.json');
   const checkpoint = await optionalJson(file);
-  if (checkpoint?.schema !== 3 || checkpoint.source !== active.source || !checkpoint.hashes || !checkpoint.inputs ||
-      !isDeepStrictEqual(Object.keys(checkpoint.hashes).sort(), Object.keys(active.links).sort()) ||
-      !isDeepStrictEqual(Object.keys(checkpoint.inputs).sort(), Object.keys(active.links).sort()) ||
-      !checkpoint.applications || typeof checkpoint.applications !== 'object')
+  if (!completeBuildCheckpoint(active, checkpoint))
     throw Error('No source-verified build checkpoint for the selected development SDK; run sdk dev');
   async function verifyOutput() {
     for (const [name, directory] of Object.entries(active.links))
@@ -1516,9 +1548,21 @@ export async function sdkCommand(argv) {
             const { client } = await localStack(root, values.stack);
             await client.disconnect();
           }
+          const reused = launch && await exclusively(await prepareState(source), async () => {
+            await assertSourceAvailable(root);
+            await assertSourceAvailable(source);
+            await requireSourceStopped(root, source, values.stack);
+            await verifySelectedProfile(desired);
+            const current = await reusableBuild(desired, controller.signal);
+            if (!current) return false;
+            await verifySelectedProfile(desired);
+            console.log('Reusing verified development SDK build; no snapshot or rebuild is required');
+            await checkpointSdkBuild(desired, current, values.stack, controller.signal, undefined, launch, true);
+            return true;
+          }, controller.signal);
           // An explicit one-shot rebuild can overwrite a working SDK even
           // without a profile change. It needs the same before-image/recovery.
-          await changeSelection(root, source, values.stack, Object.keys(desired.links), controller.signal, async () => {
+          if (!reused) await changeSelection(root, source, values.stack, Object.keys(desired.links), controller.signal, async () => {
             built = await build(desired, Object.keys(desired.links), controller.signal, true);
             if (!isDeepStrictEqual(await desiredProfile(root, source, distribution), desired))
               throw Error('Consumer or SDK inputs changed while building; run sdk dev again');

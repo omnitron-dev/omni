@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
+import * as childProcess from 'node:child_process';
 import { createRequire } from 'node:module';
 import { setTimeout as delay } from 'node:timers/promises';
 import { promisify } from 'node:util';
@@ -10,6 +11,10 @@ import { beforeAll, expect, it, vi } from 'vitest';
 
 const rpc = vi.hoisted(() => ({ projects: vi.fn(), stacks: vi.fn(), stack: vi.fn(), status: vi.fn(), watch: vi.fn(), review: vi.fn(), start: vi.fn(),
   automatic: vi.fn(), manual: vi.fn(), disconnect: vi.fn(), mutable: vi.fn() }));
+vi.mock('node:child_process', async importOriginal => {
+  const actual = await importOriginal<typeof childProcess>();
+  return { ...actual, spawn: vi.fn(actual.spawn) };
+});
 vi.mock('@omnitron-dev/omnitron/operations', async () => ({
   assertExecutionCapabilities: (await import('../../src/daemon/execution-capabilities.js')).assertExecutionCapabilities,
   LONG_REQUEST_TIMEOUT: 1000,
@@ -20,6 +25,7 @@ vi.mock('@omnitron-dev/omnitron/operations', async () => ({
 }));
 const { inspectSdk, sdkCommand, watchSdk } = await import('../../bin/sdk.js');
 import { exclusively, prepareSdkState } from '../../bin/sdk-operation.js';
+import * as transitions from '../../bin/sdk-transition.js';
 const require = createRequire(import.meta.url);
 let packageManager: string;
 
@@ -191,6 +197,114 @@ async function coldFixture() {
   };
   return { ...f, apps, state, stop, target, digest, start, halt, command };
 }
+
+it('reuses a verified build for its reviewed first start without another recovery snapshot, install or Turbo build', async () => {
+  const f = await coldFixture();
+  const snapshots = vi.spyOn(transitions, 'prepareSdkTransition'), commands = vi.mocked(childProcess.spawn);
+  const writes = () => commands.mock.calls.filter(([, args]) => Array.isArray(args) &&
+    (args.includes('install') || args.includes('build') && !args.includes('--dry=json')));
+  try {
+    await sdkCommand(['dev', f.source, '--project-dir', f.consumer, '--no-watch']);
+    expect(snapshots).toHaveBeenCalledOnce();
+    expect(writes().length).toBeGreaterThan(0);
+    const transition = path.join(path.dirname(f.checkpoint), 'transition.json');
+    const retained = await fs.readFile(transition, 'utf8');
+    const built = JSON.parse(await fs.readFile(f.checkpoint, 'utf8'));
+    snapshots.mockClear(); commands.mockClear();
+    rpc.start.mockImplementationOnce(async () => {
+      for (const root of [f.consumer, f.source])
+        await expect(exclusively(path.join(root, '.omnitron/dev-sdk'), async () => undefined))
+          .rejects.toThrow('Another development SDK operation is active');
+      return f.start();
+    });
+    await f.command();
+    expect(snapshots).not.toHaveBeenCalled();
+    expect(writes()).toEqual([]);
+    expect(await fs.readFile(transition, 'utf8')).toBe(retained);
+    expect(f.messages.mock.calls.some(call => String(call[0]).startsWith('Reusing verified development SDK build'))).toBe(true);
+    expect(rpc.start).toHaveBeenCalledExactlyOnceWith({ ...f.target, review: f.digest });
+    expect(rpc.automatic).not.toHaveBeenCalled();
+    const confirmed = JSON.parse(await fs.readFile(f.checkpoint, 'utf8'));
+    expect(confirmed.inputs).toEqual(built.inputs); expect(confirmed.hashes).toEqual(built.hashes);
+    for (const app of f.apps) expect(confirmed.applications['project/dev'][app.handleKey].generation).toBe(app.generation);
+    await expect(f.command()).rejects.toThrow('fully stopped');
+    expect(rpc.start).toHaveBeenCalledTimes(1);
+  } finally { snapshots.mockRestore(); commands.mockClear(); await f.close(); }
+}, 120_000);
+
+it.each(['authority-revoked', 'lost-reply', 'changed-generation'] as const)(
+  'retains a reused build without certifying or repeating a start after %s', async fault => {
+    const f = await coldFixture();
+    const snapshots = vi.spyOn(transitions, 'prepareSdkTransition'), commands = vi.mocked(childProcess.spawn);
+    try {
+      await sdkCommand(['dev', f.source, '--project-dir', f.consumer, '--no-watch']);
+      const built = JSON.parse(await fs.readFile(f.checkpoint, 'utf8'));
+      snapshots.mockClear(); commands.mockClear();
+      if (fault === 'authority-revoked') rpc.mutable.mockRejectedValue(Error('SDK authority revoked'));
+      else rpc.start.mockImplementationOnce(async () => {
+        if (fault === 'lost-reply') throw Error('RPC reply lost');
+        const result = f.start(); f.app.generation = randomUUID();
+        return result;
+      });
+      await expect(f.command()).rejects.toThrow({
+        'authority-revoked': /SDK authority revoked/, 'lost-reply': /Current stack: stopped.*RPC reply lost/,
+        'changed-generation': /generation/,
+      }[fault]);
+      expect(snapshots).not.toHaveBeenCalled();
+      expect(commands.mock.calls.some(([, args]) => Array.isArray(args) &&
+        (args.includes('install') || args.includes('build') && !args.includes('--dry=json')))).toBe(false);
+      expect(JSON.parse(await fs.readFile(f.checkpoint, 'utf8'))).toEqual(built);
+      expect(rpc.automatic).not.toHaveBeenCalled();
+      if (fault === 'authority-revoked') expect(rpc.start).not.toHaveBeenCalled();
+      else {
+        await expect(f.command()).rejects.toThrow(fault === 'lost-reply' ? 'already had a start request' : 'fully stopped');
+        expect(rpc.start).toHaveBeenCalledTimes(1);
+      }
+    } finally { snapshots.mockRestore(); commands.mockClear(); await f.close(); }
+  }, 120_000);
+
+it.each(['missing-checkpoint', 'changed-input', 'changed-output', 'missing-output', 'changed-runtime'] as const)(
+  'retains the ordinary snapshot and rebuild when reviewed-start reuse has %s', async fault => {
+    const f = await coldFixture();
+    const snapshots = vi.spyOn(transitions, 'prepareSdkTransition'), commands = vi.mocked(childProcess.spawn);
+    try {
+      await sdkCommand(['dev', f.source, '--project-dir', f.consumer, '--no-watch']);
+      if (fault === 'missing-checkpoint') await fs.rm(f.checkpoint);
+      if (fault === 'changed-input') await fs.writeFile(path.join(f.pkg, 'src/index.js'), 'export const version = 2;\n');
+      if (fault === 'changed-output') await fs.writeFile(path.join(f.pkg, 'dist/index.js'), 'unverified bytes');
+      if (fault === 'missing-output') await fs.rm(path.join(f.pkg, 'dist'), { recursive: true });
+      if (fault === 'changed-runtime') {
+        const checkpoint = JSON.parse(await fs.readFile(f.checkpoint, 'utf8'));
+        checkpoint.inputs['@omnitron-dev/probe'].node = 'v0.0.0';
+        await fs.writeFile(f.checkpoint, JSON.stringify(checkpoint));
+      }
+      snapshots.mockClear(); commands.mockClear();
+      await f.command();
+      expect(snapshots).toHaveBeenCalledOnce();
+      expect(commands.mock.calls.some(([, args]) => Array.isArray(args) && args.includes('build') && !args.includes('--dry=json'))).toBe(true);
+      expect(rpc.start).toHaveBeenCalledOnce();
+      expect((await inspectSdk(f.consumer, 'dev')).refresh?.confirmed).toEqual(f.apps.map(app => app.handleKey));
+    } finally { snapshots.mockRestore(); commands.mockClear(); await f.close(); }
+  }, 120_000);
+
+it('does not rebuild or send a start after inputs change during a reused build admission', async () => {
+  const f = await coldFixture();
+  const snapshots = vi.spyOn(transitions, 'prepareSdkTransition');
+  try {
+    await sdkCommand(['dev', f.source, '--project-dir', f.consumer, '--no-watch']);
+    snapshots.mockClear();
+    const review = { ...f.target, protocol: 1, selection: { workingTree: true }, digest: f.digest };
+    rpc.review.mockResolvedValueOnce(review).mockImplementationOnce(async () => {
+      await fs.writeFile(path.join(f.pkg, 'src/index.js'), 'export const changedDuringReview = true;\n');
+      return review;
+    });
+    await expect(f.command()).rejects.toThrow('SDK build inputs changed');
+    expect(snapshots).not.toHaveBeenCalled();
+    expect(rpc.start).not.toHaveBeenCalled();
+    expect(rpc.automatic).not.toHaveBeenCalled();
+    expect(JSON.parse(await fs.readFile(f.checkpoint, 'utf8')).applications).toEqual({});
+  } finally { snapshots.mockRestore(); await f.close(); }
+}, 120_000);
 
 it('starts a stopped working tree once, records the acknowledged generations and resumes watching without another refresh', async () => {
   const f = await coldFixture();

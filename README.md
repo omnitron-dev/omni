@@ -44,7 +44,7 @@ To use a source checkout from another application, follow the [Omnitron SDK work
 
 The repository driver is the pinned published Xec CLI. Its native project commands own release/update arguments, generated help and validation; `pnpm exec xec release --help` and `pnpm exec xec update --help` describe the supported operations. Turbo supplies the build graph and cache.
 
-The current unreleased runtime requires Xec 0.13: Core supplies execution ownership and Ops supplies retained release producers. Preparation refuses incompatible declared or installed dependencies before changing versions or building. This does not prevent inspection or publication of already sealed archives; see the [build policy](.xec/release-policy.mjs).
+Release preparation checks the declared and installed versions of Xec Core, SSH, CLI and Ops against the [build policy](.xec/release-policy.mjs) before changing package versions. The minimum supported 0.13 release is 0.13.2.
 
 ```sh
 pnpm exec xec release <version> --dry-run
@@ -54,7 +54,7 @@ pnpm exec xec release <version> --finish
 
 Preparation builds and packs once against the exact source commit. Xec retains those archives before checking three independent npm consumers: the minimal runtime, all public packages together and Lumen on its own. Rejected acceptance can retry the same producer without rebuilding or repacking. Changed source, build environment, driver or archive bytes cause refusal. The final release record appears only after acceptance and cleanup succeed.
 
-`xec release-build`, `xec check-packages` and `xec reproduce` are the native project commands behind this workflow. Each consumer checks the installed archive identities and runs an audit; the runtime uses ordinary `npm install`, while the other profiles verify fresh lockfiles through `npm ci`. Lumen also runs its installed-package SSR, MCP and browser checks.
+`xec release-build`, `xec check-packages` and `xec reproduce` implement these checks. The runtime and Lumen each use an ordinary `npm install`. The complete SDK generates a fresh lockfile and installs it with `npm ci`. Each consumer verifies the installed archives and audits its dependencies. Lumen also runs SSR, MCP and browser checks against its installation.
 
 Finish verifies the accepted archive inventory, canonical producer/acceptance receipts and recorded source, recipe, policy and dependency lockfile. It publishes those exact bytes without repeating builds, consumer checks or runtime-tree hashing. The publisher may use a different Node version or environment from the recorded producer. Missing acceptance, failed cleanup or changed evidence prevents publication.
 

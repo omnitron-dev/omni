@@ -7,10 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Pipeline runs retain the reviewed definition, targets and command receipt. Operators can inspect a failed run in Console, reconcile a remote deployment with its target, then continue the remaining steps. Independent projects use the same Titan service over Netron and the same Xec executor. A step whose external outcome is unknown stays blocked pending evidence.
+- Backup operators can inspect and reconcile attempt receipts from the CLI. A reviewed runtime update pauses new backup admission across backend replacement and preserves the outcome of each previously admitted attempt.
+
 ### Changed
 
 - Omnitron and its repository CLI use published Xec 0.13.2. Release admission rejects older execution and release drivers before preparation; Docker recovery retains container identity after cancellation.
 - Release preparation finalizes authored changelog entries together with package versions through Xec. Publication and resume preserve the accepted source and archives.
+- Console follows the selected project and stack across navigation, browser history, logs, deployment actions and pipeline recovery. Stack details show application readiness, health and retained receipts. The Resource distribution panel has a keyboard-operable heading and keeps its title and controls vertically aligned when collapsed or expanded.
+- Prism applies saved appearance before the first frame and previews theme changes until they are saved or dismissed. Narrow select controls leave room for the current value and chevron. Documentation sidebars retain their scroll position across navigation and reveal a newly selected row when needed.
+- Lumen builds a search index for each document locale, resolves results under the site's mount path and activates document controls in the default client. Static rendering bounds parallel work while preserving document order.
+- The source SDK verifies independent recovery inputs concurrently and reports elapsed time for retaining and verifying its before-image. Standalone database migrations resolve their owner from the project's stack declarations.
 
 ### Fixed
 
@@ -18,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Runtime updates wait for the backend-owned Console startup instead of racing a second container creation. `runtime update reconcile` and `xec update local-sync --reconcile` can confirm the exact serving candidate after a lost result without restarting applications or bypassing rollback intent.
 - Local runtime updates isolate human lifecycle output from their JSON parent. Recovery can confirm an unchanged original owner after a refused stop, and a verified newer CLI can repair an older transaction without changing its pinned roles.
 - Stopping a source application drains its build watchers as well as its processes. Shared source changes no longer rebuild stopped applications or block a subsequent runtime update; cleanup failures remain explicit and do not skip process shutdown.
+- Titan keeps dependencies available when a dependent service fails to stop. Native update recovery can restore the guardian from its sealed runtime and report a pending acceptance when the serving state still needs confirmation.
+- MessagePack encodes and decodes standard map32 objects with 65,536 or more pairs, reads concatenated values at the correct byte boundary and respects input views and buffer cursors. Netron uses the same codec for binary RPC. [Issue #1](https://github.com/omnitron-dev/omni/issues/1)
+- Ordinary npm installations of KB and Lumen receive the reviewed picomatch parser backport. Workspace CI and packed-consumer checks verify each installed copy and the dependency paths reported by the audit. The browser-only Lumen UI package no longer pulls in the server knowledge-base package.
+- Controlled Prism editors accept external value changes, retain pending equation edits on blur and follow the native caret in equation previews. The shared header keeps its controls centered, including in compact layouts.
 
 ## [0.4.8] - 2026-11-14
 
@@ -1472,9 +1485,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - refactor(prism): MUI v9 + React 19 modernisation pass
 - chore: normalise project-agnostic phrasing in code comments
 
-
-## [Unreleased]
-
 ### ✨ Features
 
 - feat(netron+auth): T#176 pluggable token transport — Bearer (default, unchanged) /
@@ -1662,9 +1672,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - docs(omnitron): use generic project names in infra examples
 - test(omnitron,titan-pm): cover reliability fixes + extend JSON mode
 - Add Projects page and updateProject backend support
-
-
-## [Unreleased]
 
 ### 🚨 Reliability — diagnose-the-real-cause-first
 

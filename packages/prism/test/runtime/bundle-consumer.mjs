@@ -53,6 +53,16 @@ try {
     assert.equal(result.css.length, 0, 'Card must not load optional component styles');
     results.push({ entry, bytes: result.bytes });
   }
+  for (const entry of ['./ui', './components/tabs']) {
+    const tabs = await bundle(`export { Tabs } from ${target(entry)};`);
+    assert.ok(!tabs.imports.includes('@mui/material/Tabs'), `${entry} must include the corrected scroll implementation`);
+    for (const peer of [
+      '@mui/material/zero-styled', '@mui/material/DefaultPropsProvider', '@mui/utils/useRovingTabIndex',
+      '@mui/system/RtlProvider', 'react-is', 'prop-types',
+    ]) {
+      assert.ok(tabs.imports.includes(peer), `${entry} must use the consumer's shared ${peer}`);
+    }
+  }
   const calendar = await bundle(`export { PrismDatePicker } from ${target('./ui')};`);
   assert.ok(calendar.imports.includes('dayjs/locale/ru.js'), 'Calendar locale registration was removed');
   assert.ok(calendar.imports.includes('dayjs/plugin/utc.js'), 'Calendar wall-clock support was removed');

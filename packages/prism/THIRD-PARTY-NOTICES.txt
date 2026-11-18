@@ -1,10 +1,12 @@
 Prism bundles the Markdown math tokenizer from micromark-extension-math
 and the tokenizer helpers from micromark-factory-space and micromark-util-character.
+Prism also includes the MUI Tabs implementation with a scroll animation fix.
 
 (The MIT License)
 
 Copyright (c) 2020 Titus Wormer <tituswormer@gmail.com> (micromark-extension-math)
 Copyright (c) Titus Wormer <tituswormer@gmail.com> (tokenizer helpers)
+Copyright (c) 2014 Call-Em-All (MUI)
 
 Permission is hereby granted, free of charge, to any person obtaining
 a copy of this software and associated documentation files (the

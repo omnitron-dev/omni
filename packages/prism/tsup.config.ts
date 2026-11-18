@@ -1,4 +1,6 @@
 import { copyFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'tsup';
 import { reactClientEntries } from '../../scripts/react-client-entries.mjs';
 import manifest from './package.json';
@@ -85,7 +87,21 @@ export default defineConfig([
     minify: false,
     // Ship just the Markdown math tokenizer. Its unused HTML renderer pins
     // an older KaTeX; Prism renders equations with its own declared KaTeX.
-    noExternal: manifest.tsup.noExternal,
+    noExternal: [...manifest.tsup.noExternal, '@mui/material/Tabs'],
+    // Publish the scroll fix with both Prism Tabs exports. Reuse the consumer's
+    // MUI theme, defaults and scroll buttons through their normal public entries.
+    esbuildPlugins: [{
+      name: 'mui-tabs-shared-imports',
+      setup(build) {
+        const tabsDirectory = dirname(fileURLToPath(import.meta.resolve('@mui/material/Tabs')));
+        const shared = /^\.\.\/(zero-styled|DefaultPropsProvider|TabScrollButton)\/index\.mjs$/;
+        build.onResolve({ filter: shared }, ({ path, importer }) => {
+          if (dirname(importer) === tabsDirectory) {
+            return { path: `@mui/material/${path.split('/')[1]}`, external: true };
+          }
+        });
+      },
+    }],
     external: [
       'react',
       'react-dom',

@@ -69,11 +69,11 @@ patched. `tests/e2e/tabs-scroll.spec.ts` checks selected-tab visibility after ra
 End/Enter/Home/Enter, ordinary horizontal/vertical keyboard movement, direct
 reduced-motion scrolling and unmount.
 
-MUI is external in the published Prism output. A consumer that installs or
-deduplicates its own MUI must declare the same exact versioned patch in its
-workspace; linked SDK selection alone does not inherit source workspace patches.
-After installation, verify the effective dependency and the development lock,
-not only the source lock. Do not add a consumer scroll workaround or a second
-Tabs implementation. When upgrading MUI, rerun these regressions against the
-unpatched dependency and remove the patch and its declarations together only
-when the upstream version passes them.
+The published `@omnitron-dev/prism/ui` and `@omnitron-dev/prism/components/tabs`
+entries both include the corrected MUI Tabs. They share the installed MUI theme,
+default props, keyboard navigation context and scroll buttons. Projects using
+either Prism entry get the fix through an ordinary npm installation.
+
+Direct imports from `@mui/material/Tabs` use the application's MUI version.
+When updating MUI, run the scroll regressions against the upstream package.
+Once it passes, remove the workspace patch and the targeted bundling rule together.

@@ -54,11 +54,11 @@ export {
   TableHead,
   TableRow,
   Tab,
-  Tabs,
   TextField,
   Tooltip,
   Typography,
 } from '@mui/material';
+export { default as Tabs } from '@mui/material/Tabs';
 export type { ButtonProps, TextFieldProps, SliderProps, SxProps, Theme } from '@mui/material';
 export { ThemeProvider as PrismThemeProvider, useTheme } from '@mui/material/styles';
 export { default as useMediaQuery } from '@mui/material/useMediaQuery';

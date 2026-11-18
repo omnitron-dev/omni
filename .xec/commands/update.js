@@ -26,39 +26,35 @@ async function runUpdate(operation, target, values, options) {
   if (operation === 'local-sync' && target) throw new UserError('local-sync finalizes the current clean checkout');
   if ((values.rollback || values.reconcile) && values.cacheDir) throw new UserError('Recovery uses the reviewed installed runtime; inspect local-sync --status');
   const cache = values.cacheDir ?? process.env.OMNITRON_DEV_CACHE;
+  const invoke = async (executable, prefix, argv, signal) => {
+    let response, failure;
+    const observe = operation === 'local-sync' && argv[2] !== 'status';
+    const executeCommand = observe ? withRuntimeUpdateProgress(run, progress) : run;
+    try { response = await executeCommand(root, executable, [...prefix, '--json', ...argv], {
+      timeoutMs: observe ? 60 * 60_000 : 30 * 60_000, ...(signal && { signal }),
+    }); }
+    catch (error) {
+      if (!(error instanceof ReleaseCommandError)) throw error;
+      response = error.stdout.trim() ? error.stdout : error.stderr;
+      failure = error;
+    }
+    try { return readCommandResult(response, argv.join(' '), failure ? failure.status || 1 : 0, failure); }
+    catch (error) {
+      if (!(error instanceof CommandResultError)) throw error;
+      const reply = error.reply;
+      if (reply?.ok === true) output(JSON.stringify(reply.data, null, 2));
+      else if (reply && Object.keys(reply).some(key => !['ok', 'error'].includes(key))) output(JSON.stringify(reply, null, 2));
+      throw new UserError(error.message, { exitCode: error.exitCode });
+    }
+  };
   const execute = async (candidate, signal) => {
     const runtime = candidate ? path.resolve(candidate, '../../..') : null;
     if (candidate && candidate !== path.join(runtime, 'packages/0/dist'))
       throw new UserError('Local updates require the sealed candidate packages/0/dist and its own CLI');
-    // localRuntime already verifies its selected cache/build before returning.
-    // An explicit artifact needs the same trusted check, exactly once.
     if (runtime && target) await verifyLocalRuntime(root, runtime, run);
-    // Admission runs in the sealed candidate after the trusted source verifier checks its bytes.
     const executable = runtime ? path.join(runtime, 'node') : values.cli ?? 'omnitron';
     const prefix = candidate ? [path.join(candidate, 'cli/omnitron.js')] : [];
-    const call = async argv => {
-      let response, failure;
-      const executeCommand = operation === 'local-sync' && !values.status
-        ? withRuntimeUpdateProgress(run, progress) : run;
-      try { response = await executeCommand(root, executable, [...prefix, '--json', ...argv], {
-        timeoutMs: operation === 'local-sync' && !values.status ? 60 * 60_000 : 30 * 60_000,
-        ...(signal && { signal }),
-      }); }
-      catch (error) {
-        if (!(error instanceof ReleaseCommandError)) throw error;
-        // Omnitron emits successful receipts on stdout and refusals on stderr.
-        response = error.stdout.trim() ? error.stdout : error.stderr;
-        failure = error;
-      }
-      try { return readCommandResult(response, argv.join(' '), failure ? failure.status || 1 : 0, failure); }
-      catch (error) {
-        if (!(error instanceof CommandResultError)) throw error;
-        const reply = error.reply;
-        if (reply?.ok === true) output(JSON.stringify(reply.data, null, 2));
-        else if (reply && Object.keys(reply).some(key => !['ok', 'error'].includes(key))) output(JSON.stringify(reply, null, 2));
-        throw new UserError(error.message, { exitCode: error.exitCode });
-      }
-    };
+    const call = argv => invoke(executable, prefix, argv, signal);
     if (operation === 'local-stage') return call(['backend', 'install', runtime]);
     if (operation === 'local-sync') {
       if (!inspection) {
@@ -109,10 +105,24 @@ async function runUpdate(operation, target, values, options) {
     const result = await call(argv);
     return result;
   };
-  const result = local && !inspection && !target
-    ? await withLocalRuntime(root, cache && path.resolve(root, cache), run, progress, execute,
-      { prepareWhileCleaning: operation === 'local-sync' && !values.review })
-    : await execute(local && !inspection ? path.resolve(root, target) : null);
+  let result;
+  if (operation === 'local-sync' && values.review && !inspection) {
+    // The native status command verifies the seal and both build stamps before returning the installed path.
+    // Resolve through trusted source, even if the operator's global CLI or build cache is out of date.
+    const status = await invoke(process.execPath, ['--conditions=omnitron-source', '--import=tsx/esm',
+      path.join(root, 'apps/omnitron/src/cli/omnitron.ts')], ['runtime', 'update', 'status', values.review]);
+    const plan = [status?.receipt, status?.prepared].find(record => record?.digest === values.review)?.plan;
+    const runtime = status?.runtime;
+    if (!plan?.target || !runtime?.directory || !path.isAbsolute(runtime.directory) ||
+        plan.target.commit !== runtime.commit || plan.target.artifact !== runtime.artifact)
+      throw new UserError('The reviewed update has no matching verified installation');
+    result = await execute(path.join(runtime.directory, 'packages/0/dist'));
+  } else if (local && !inspection && !target) {
+    result = await withLocalRuntime(root, cache && path.resolve(root, cache), run, progress, execute,
+      { prepareWhileCleaning: operation === 'local-sync' });
+  } else {
+    result = await execute(local && !inspection ? path.resolve(root, target) : null);
+  }
   output(JSON.stringify(result, null, 2));
   return result;
 }

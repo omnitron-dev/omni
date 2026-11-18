@@ -112,9 +112,12 @@ separate maintenance operations.
 Finish a reviewed batch on a macOS development machine from its clean main
 checkout. The build uses local Git, frozen pnpm dependencies and the Turbo
 cache. `OMNITRON_DEV_CACHE` selects a private build cache on the development
-volume. Xec reuses the sealed runtime for the same commit, platform and Node
-version. The build-cache lock uses the public Xec operations API.
-Omnitron owns the local plan, process transitions and durable receipt.
+volume. During preparation, Xec reuses the sealed runtime for the same commit,
+platform and Node version. Omnitron installs that runtime and records its identity
+in the plan. Applying a reviewed plan resolves the installed runtime by digest
+and uses its bundled Node, even if the shell now runs another Node version or
+the build cache has been cleared. The checkout must still match the reviewed
+commit and have a clean working tree.
 
 ```sh
 pnpm exec xec update local-sync
@@ -141,9 +144,8 @@ operator authorizes and performs a stack start with the reviewed digest, run
 refusal, `--status` can still show an earlier plan. Check its target commit
 before reviewing a plan for application.
 
-These Xec commands build and verify the committed runtime, then invoke its
-public CLI. An installed operator can use the same workflow with a sealed
-runtime and no source checkout.
+An installed operator can use the same workflow with a sealed runtime and no
+source checkout.
 
 ```sh
 omnitron runtime verify <runtime-root>

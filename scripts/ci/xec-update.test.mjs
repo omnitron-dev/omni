@@ -186,6 +186,13 @@ test('check builds one isolated local revision and apply consumes the same verif
   const options = { progress() {}, run: async (_root, executable, args) => {
     events.push([executable, ...args]);
     if (executable === '/bin/rm') return releaseCommand(_root, executable, args);
+    if (args[0] === '--conditions=omnitron-source' && args.includes('status')) {
+      const directory = path.resolve(dist, '../../..');
+      const { sha256: artifact } = await verifyRuntimeArtifact(directory);
+      const target = { artifact, commit };
+      return JSON.stringify({ ok: true, data: { prepared: { digest: args.at(-1), plan: { target } },
+        receipt: null, runtime: { ...target, directory } } });
+    }
     if (args[0] === '--conditions=omnitron-source') return JSON.stringify(await verifyRuntimeArtifact(args.at(-1)));
     if (args[0] === 'rev-parse') return commit;
     if (args[0] === 'status') return dirty ? ' M pkg.ts' : '';
@@ -212,7 +219,8 @@ test('check builds one isolated local revision and apply consumes the same verif
   await runUpdate(['local-sync', '--cache-dir', cache], options);
   await runUpdate(['local-sync', '--cache-dir', cache, '--review', 'a'.repeat(64)], options);
   assert.deepEqual(events.filter(call => call.includes('update')).map(call => call.slice(-4)), [
-    ['runtime', 'update', 'prepare', path.resolve(dist, '../../..')], ['runtime', 'update', 'apply', 'a'.repeat(64)],
+    ['runtime', 'update', 'prepare', path.resolve(dist, '../../..')], ['runtime', 'update', 'status', 'a'.repeat(64)],
+    ['runtime', 'update', 'apply', 'a'.repeat(64)],
   ]);
   assert.equal(events.filter(([command, arg]) => command === 'pnpm' && arg === 'install').length, 1);
   dirty = true;
@@ -221,6 +229,43 @@ test('check builds one isolated local revision and apply consumes the same verif
   await fs.appendFile(path.join(dist, 'BUILD.json'), ' ');
   await assert.rejects(runUpdate(['local-apply', '--cache-dir', cache], options), /changed after sealing/);
   assert.equal(events.filter(call => call.includes('upgrade')).length, 2);
+});
+
+test('a reviewed update uses its installed producer with an empty cache and refuses a changed checkout or receipt', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'xec-reviewed-installation-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const digest = 'd'.repeat(64), target = { artifact: 'b'.repeat(64), commit: 'a'.repeat(40) };
+  const directory = path.join(root, 'releases', target.artifact);
+  const dist = path.join(directory, 'packages/0/dist'), cache = path.join(root, 'empty-cache');
+  await fs.mkdir(dist, { recursive: true });
+  await fs.writeFile(path.join(dist, 'BUILD.json'), JSON.stringify({ commit: target.commit, dirty: false }));
+  const status = { receipt: null, prepared: { digest, plan: { target } }, runtime: { ...target, directory, nodeVersion: 'v22.0.0' } };
+  let head = target.commit, dirty = false, applies = 0;
+  const options = { root, run: async (_root, executable, args) => {
+    if (args[0] === 'rev-parse') return head;
+    if (args[0] === 'status') return dirty ? ' M src/index.ts' : '';
+    if (args.includes('status')) {
+      assert.equal(executable, process.execPath);
+      assert.deepEqual(args.slice(-5), ['--json', 'runtime', 'update', 'status', digest]);
+      return JSON.stringify({ ok: true, data: status });
+    }
+    assert.equal(executable, path.join(directory, 'node'));
+    assert.deepEqual(args, [path.join(dist, 'cli/omnitron.js'), '--json', 'runtime', 'update', 'apply', digest]);
+    applies++;
+    return JSON.stringify({ ok: true, data: { digest, phase: 'accepted' } });
+  } };
+  const apply = () => runUpdate(['local-sync', '--cache-dir', cache, '--review', digest], options);
+  assert.equal((await apply()).phase, 'accepted');
+  await assert.rejects(fs.stat(cache), { code: 'ENOENT' });
+  head = 'c'.repeat(40);
+  await assert.rejects(apply(), /checkout changed/);
+  head = target.commit; dirty = true;
+  await assert.rejects(apply(), /checkout changed/);
+  dirty = false; status.prepared.digest = 'e'.repeat(64);
+  await assert.rejects(apply(), /no matching verified installation/);
+  status.prepared.digest = digest; status.runtime.artifact = 'f'.repeat(64);
+  await assert.rejects(apply(), /no matching verified installation/);
+  assert.equal(applies, 1);
 });
 
 test('local sync consumes the completed native release build without another build, copy or CI lookup',

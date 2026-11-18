@@ -53,8 +53,8 @@ const activeVisible = page => rail(page).evaluate(owner => {
   const row = owner.querySelector('[aria-current="page"]');
   if (!row) return false;
   const active = row.getBoundingClientRect(), top = owner.getBoundingClientRect().top + owner.clientTop;
-  return active.height > 0 && active.top >= Math.max(0, top) - 1 &&
-    active.bottom <= Math.min(innerHeight, top + owner.clientHeight) + 1;
+  return active.height > 0 && active.top >= Math.max(0, top) &&
+    active.bottom <= Math.min(innerHeight, top + owner.clientHeight);
 });
 const interactive = page => expect(page.locator('html')).toHaveAttribute('data-interactive', 'true');
 
@@ -116,6 +116,20 @@ test('reveals the last nested row in the viewport when the responsive rail appea
   await expect(rail(page)).toBeVisible();
   expect(await rail(page).evaluate(el => el.getBoundingClientRect().bottom)).toBeGreaterThan(600);
   await expect.poll(() => activeVisible(page)).toBe(true);
+  expect(await page.evaluate(() => scrollY)).toBe(0);
+});
+
+test('reveals an entire row when its layout falls between scroll pixels', async ({ page, url }) => {
+  await page.goto(url);
+  await interactive(page);
+  const row = rail(page).getByRole('link', { name: 'Topic 50', exact: true });
+  await row.evaluate(el => {
+    const bottom = el.getBoundingClientRect().bottom;
+    el.style.transform = `translateY(${Math.floor(bottom) + 0.25 - bottom}px)`;
+    document.dispatchEvent(new CustomEvent('select-document', { detail: 'topic-50' }));
+  });
+  await expect(row).toHaveAttribute('aria-current', 'page');
+  await expect(row).toBeInViewport({ ratio: 1 });
   expect(await page.evaluate(() => scrollY)).toBe(0);
 });
 

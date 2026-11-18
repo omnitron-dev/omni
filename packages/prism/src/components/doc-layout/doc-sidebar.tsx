@@ -73,7 +73,8 @@ function revealCurrentRow(root: HTMLElement, owner: HTMLElement, savedPosition?:
     const distance = rect.top < top ? rect.top - top : rect.bottom - bottom;
     if (Math.abs(distance) < Math.abs(nearest)) nearest = distance;
   }
-  if (Number.isFinite(nearest)) owner.scrollTop += nearest;
+  // Some engines quantize scrollTop even when row coordinates are fractional.
+  if (Number.isFinite(nearest)) owner.scrollTop += nearest < 0 ? Math.floor(nearest) : Math.ceil(nearest);
 }
 
 export function DocSidebar({ items, activeId, onItemClick, title, compact = false }: DocSidebarProps) {

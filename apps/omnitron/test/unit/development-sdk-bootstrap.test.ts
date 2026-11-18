@@ -9,7 +9,7 @@ import { promisify } from 'node:util';
 import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { parseAllDocuments } from 'yaml';
 import { create } from 'tar';
-import { sdkCommand, inspectSdk } from '../../bin/sdk.js';
+import { sdkCommand, inspectSdk, inspectMigrationSdk } from '../../bin/sdk.js';
 
 const exec = promisify(execFile), require = createRequire(import.meta.url);
 const turbo = path.dirname(require.resolve('turbo/package.json'));
@@ -462,6 +462,10 @@ it('retains the last successful build checkpoint when a repeated SDK build fails
 it('reports edited SDK inputs as stale without building, installing or changing checkpoints', async () => {
   await initialize();
   await select(source);
+  const migration = await inspectMigrationSdk(consumer);
+  expect(migration).toMatchObject({ root: consumer, source });
+  expect(migration.workspaces.map(item => item.root)).toEqual([consumer, source]);
+  expect(await inspectMigrationSdk(consumer)).toEqual(migration);
   expect((await inspectSdk(consumer)).build).toMatchObject({ status: 'current' });
   const manifest = await json(path.join(source, 'packages/lumen-ast/package.json'));
   const edits: [string, string][] = [

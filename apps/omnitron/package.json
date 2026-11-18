@@ -179,6 +179,8 @@
   "files": [
     "bin/sdk.js",
     "bin/sdk-transition.js",
+    "bin/sdk-operation.js",
+    "bin/sdk-operation.d.ts",
     "bin/sdk.d.ts",
     "bin/pnpmfile-sdk.js",
     "src/shared/runtime-artifact.ts",

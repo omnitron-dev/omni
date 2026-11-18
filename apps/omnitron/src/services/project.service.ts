@@ -6,6 +6,12 @@ import { assertApplicationInstances } from '../config/define-ecosystem.js';
 import { readSavedDaemonConfig } from '../config/saved.js';
 import { observeStackHealth, type HealthAnswers } from '../project/stack-health.js';
 import { LocalReleaseSelection } from '../project/local-release-selection.js';
+import { StackMigrations, migrationReviewDigest, type PreparedStackMigrations } from '../project/stack-migrations.js';
+import type { StackMigrationReview, StackMigrationRequest } from '../shared/dto/project.js';
+import { planLocalMigrations, executeMigrationPlan, inspectMigrationDependencies } from './migration-execution.js';
+import { inspectMigrationSdk } from '../../bin/sdk.js';
+import { assertExecutionCapabilities } from '../daemon/execution-capabilities.js';
+import { findWorkspaceRoot } from './bundle-builder.js';
 import type { Command } from '@xec-sh/core';
 import type { PipelineReleaseTarget, PipelineReleaseExecution } from '../shared/dto/pipelines.js';
 import { assertResidentApplicationRuntime, assertSameApplicationRuntime, type ApplicationRuntime } from './host-upgrade.js';
@@ -108,7 +114,6 @@ import type {
 import { summariseSync } from './sync-summary.js';
 import { StackInfrastructureManager } from '../infrastructure/stack-infra-manager.js';
 import { describeProvisioning, summariseProvisioning, stackServiceObservation } from '../infrastructure/provisioning-outcome.js';
-import { waitForPostgres } from './wait-for-postgres.js';
 import { resolveStack, resolvedConfigToEnv } from '../project/config-resolver.js';
 import { resolveStartupOrder } from '../orchestrator/dependency-resolver.js';
 import { SlaveConnector } from '../cluster/slave-connector.js';
@@ -139,7 +144,6 @@ const MAINTENANCE_PROBE_PATHS = ['/', '/api/main/health'] as const;
 import { migrationOutput } from './migration-output.js';
 import { redactDiagnosticText } from '@omnitron-dev/titan/diagnostics';
 import { COMPILED_MIGRATION_ENTRY, localMigrationTargets, requestedMigrations, migrationDatabaseEnvironment, validateMigrationDestinations, validateMigrationOwners, orderMigrationPlacements, type MigrationRequiredFiles, type VerifyMigrationEntries } from './migration-target.js';
-import { executeLocalMigration } from './migration-process.js';
 import { expandServiceDeclarations, normalizeInfraConfig } from '../infrastructure/config-normalizer.js';
 import { createDefaultRegistry } from '../infrastructure/presets/index.js';
 import type { LoadedRelease } from '../release/load.js';
@@ -301,6 +305,7 @@ export class ProjectService extends EventEmitter {
   recoveryRegistryDigest(): string { return this.registry.recoveryDigest(); }
   /** Read-only bookkeeping; no timers are stopped and no Docker call runs. */
   captureRecoveryState(): Awaited<ReturnType<ProjectService['prepareHandoff']>> {
+    try { this.migrations.assertIdle(); } catch { throw new RecoveryBusyError('Stack migrations are not settled'); }
     if (this.incomingReleases?.size || this.rereading?.size || this.ownershipFrozen || this.resumingInstalled || this.startsInFlight.size || this.stopsInFlight.size || this.nodeStackStop.busy || this.reconcilingStacks ||
         [...this.stackStates.values()].some(state => state.status === 'starting' || state.status === 'stopping')) {
       throw new RecoveryBusyError('Project ownership is changing; a recovery snapshot is not ready');
@@ -330,6 +335,7 @@ export class ProjectService extends EventEmitter {
     resumeBackoff: Array<[string, { nextAt: number; delayMs: number }]>;
     reconciling: boolean;
   }> {
+    this.migrations.assertIdle();
     if (this.incomingReleases?.size || this.rereading?.size || this.ownershipFrozen || this.resumingInstalled || this.startsInFlight.size || this.stopsInFlight.size || this.nodeStackStop.busy || this.reconcilingStacks || [...this.stackStates.values()].some(state => state.status === 'starting' || state.status === 'stopping')) {
       throw new Error('A stack lifecycle operation is active; finish it before transferring the backend');
     }
@@ -388,6 +394,8 @@ export class ProjectService extends EventEmitter {
   private hostedInfrastructure: () => InfrastructureService | undefined = () => undefined;
   private drainHostedProvisioning: (scope: StackExecutionScope) => Promise<void> = async () => {};
   private readonly stopsInFlight = new Map<string, { keepInfrastructure: boolean; promise: Promise<IStackInfo> }>();
+  private migrationState?: StackMigrations;
+  private get migrations(): StackMigrations { return this.migrationState ??= new StackMigrations(this.daemonStateStore); }
   private slaveConnector: SlaveConnector | null = null;
   private readonly deployer: RemoteDeployer;
   // Enabled-stacks reconciler state (see startEnabledStacksReconciler)
@@ -489,6 +497,7 @@ export class ProjectService extends EventEmitter {
   }
 
   assertInfrastructureMutable(scope?: StackExecutionScope): void {
+    this.migrations.assertIdle(scope);
     if (this.clusterStop) throw new Error('Direct cluster lifecycle changes require recipient-fenced authority. Use a reviewed stack stop or resume the installed applications.');
     this.nodeStackStop.assertMutable(scope);
   }
@@ -784,6 +793,7 @@ export class ProjectService extends EventEmitter {
 
   @RecoveryMutation()
   async importProjectConfiguration(input: ConfigurationImport): Promise<IProjectInfo> {
+    this.migrations.assertIdle();
     validateConfigurationNames(input?.name, input?.stacks);
     if (typeof input.project !== 'string' || typeof input.path !== 'string' || typeof input.expectedRevision !== 'string')
       throw new Error('Project, configuration path and catalogue revision are required');
@@ -817,6 +827,7 @@ export class ProjectService extends EventEmitter {
 
   @RecoveryMutation()
   async detachProjectConfiguration(data: { project: string; name: string; expectedRevision: string }): Promise<void> {
+    this.migrations.assertIdle();
     this.registry.detachConfiguration(data.project, data.name, data.expectedRevision);
     await this.audit?.record({ action: 'project.configuration.detach', resourceType: 'project', resourceId: data.project,
       details: { configuration: data.name } });
@@ -831,6 +842,7 @@ export class ProjectService extends EventEmitter {
 
   @RecoveryMutation()
   async addProject(name: string, projectPath: string): Promise<IProjectInfo & { reread?: { redefined: number } }> {
+    this.migrations.assertIdle();
     // Already registered AT THIS PATH: read it again rather than refuse.
     //
     // A deployment registers a node's project after writing its config, on
@@ -864,6 +876,7 @@ export class ProjectService extends EventEmitter {
    */
   @RecoveryMutation()
   async rereadProject(name: string): Promise<number> {
+    this.migrations.assertIdle();
     if (this.ownershipFrozen || this.rereading?.has(name) || [...this.startsInFlight.keys()].some(key => key.startsWith(name + '/')))
       throw new Error('Project launch definitions are changing; retry after the current operation');
     (this.rereading ??= new Set()).add(name);
@@ -905,6 +918,7 @@ export class ProjectService extends EventEmitter {
   /** Refresh only local container monitoring from the current validated project config. */
   @RecoveryMutation()
   async refreshInfrastructureOwnership(projectName: string, stackName: string): Promise<{ released: string[]; adopted: string[] }> {
+    this.migrations.assertIdle();
     if (this.ownershipFrozen || this.resumingInstalled || this.startsInFlight.size || this.stopsInFlight.size || this.reconcilingStacks)
       throw new Error('Project lifecycle ownership is changing; retry the infrastructure refresh after it settles');
     this.ownershipFrozen = true;
@@ -936,6 +950,7 @@ export class ProjectService extends EventEmitter {
 
   @RecoveryMutation()
   updateProject(name: string, data: { path?: string }): IProjectInfo {
+    this.migrations.assertIdle();
     const project = this.registry.get(name);
     if (!project) throw new Error(`Project '${name}' not found`);
 
@@ -960,6 +975,7 @@ export class ProjectService extends EventEmitter {
 
   @RecoveryMutation()
   removeProject(name: string): void {
+    this.migrations.assertIdle();
     // Stop all running stacks for this project first
     const runningStacks = this.getRunningStacks(name, true);
     if (runningStacks.length > 0) {
@@ -1015,6 +1031,7 @@ export class ProjectService extends EventEmitter {
     nodeIds?: string[];
   }): Promise<IStackInfo> {
     // Validate stack name
+    this.migrations.assertIdle();
     if (!/^[a-z][a-z0-9-]*$/.test(input.name)) {
       throw new Error('Stack name must start with a letter and contain only lowercase alphanumeric characters and hyphens');
     }
@@ -1135,6 +1152,7 @@ export class ProjectService extends EventEmitter {
 
   @RecoveryMutation()
   async deleteStack(project: string, stackName: string): Promise<void> {
+    this.migrations.assertIdle();
     await this.requireNoColdBatch();
     // Cannot delete config-defined stacks
     const config = await this.loadProjectConfig(project);
@@ -1243,6 +1261,7 @@ export class ProjectService extends EventEmitter {
 
   @RecoveryMutation()
   async applyTopologyPlan(data: TopologyScope & { plan: string }): Promise<TopologyPlan> {
+    this.migrations.assertIdle();
     const result = await this.topologyControl.apply(data, currentActor());
     if (result.changed) {
       // The local FULL commit already contains intent and its receipt; this is a searchable audit copy.
@@ -1480,6 +1499,7 @@ export class ProjectService extends EventEmitter {
   /** Explicit administrative discovery. Imports trusted declarations in bounded child processes, never starts a stack. */
   @RecoveryMutation()
   async refreshTopologyMetadata(scope: { project: string; stack?: string; release?: string }, deadline = Date.now() + TOPOLOGY_REFRESH_TIMEOUT_MS): Promise<import('../shared/dto/project.js').TopologyMetadataRefresh> {
+    this.migrations.assertIdle();
     if (scope.release !== undefined && !scope.stack) throw Error('A candidate release requires an exact stack');
     const config = await this.ensureConfig(scope.project);
     const directory = this.registry.get(scope.project)?.path;
@@ -1779,6 +1799,7 @@ export class ProjectService extends EventEmitter {
     stackName: string,
     opts?: StackStartOptions & { source?: StackStartSource },
   ): Promise<IStackInfo> {
+    this.migrations.assertIdle({ project: projectName, stack: stackName });
     if (this.resumingInstalled) throw new Error('An installed allocation is resuming');
     if (this.ownershipFrozen) throw new Error('Project ownership is frozen for backend transfer');
     const inFlightKey = `${projectName}/${stackName}`;
@@ -1819,6 +1840,7 @@ export class ProjectService extends EventEmitter {
       return running.promise;
     }
 
+    this.migrations.assertIdle({ project: projectName, stack: stackName });
     const started = this.startStackOnce(
       projectName,
       stackName,
@@ -2329,7 +2351,9 @@ export class ProjectService extends EventEmitter {
 
   @RecoveryMutation()
   async stopStack(projectName: string, stackName: string, review?: string, keepInfrastructure = false): Promise<IStackInfo> {
+    this.migrations.assertIdle({ project: projectName, stack: stackName });
     await this.requireNoColdBatch();
+    this.migrations.assertIdle({ project: projectName, stack: stackName });
     if (typeof keepInfrastructure !== 'boolean') throw new Error('Invalid infrastructure retention mode');
     const key = stackExecutionKey({ project: projectName, stack: stackName });
     if (this.resumingInstalled) throw new Error('An installed allocation is resuming');
@@ -3714,6 +3738,7 @@ export class ProjectService extends EventEmitter {
     if (!registration || registration.path !== project.path || registration.registeredAt !== project.registeredAt)
       throw new Error('Project registration changed while loading configuration');
     const current = this.configRegistry.get(projectName);
+    this.migrations.assertIdle();
     // An explicit reload is the boundary back to mutable project declarations.
     delete this.retainedConfiguration;
     if (current && isDeepStrictEqual(current.config, config)) return current.config;
@@ -3933,7 +3958,9 @@ export class ProjectService extends EventEmitter {
       throw new Error(`${data.project}/${data.stack} runs on no node of its own — its host is this machine`);
     }
 
-    const services = await this.collectDeclaredServices(data.project, stackConfig, config, { external: true });
+    const entries = (await this.inspectLaunch(data.project, data.stack, stackConfig, config)).entries;
+    const definitions = this.preservationDefinitions(data.project, data.stack, entries);
+    const services = await this.collectDeclaredServices(data.project, stackConfig, config, { external: true, definitions });
     const overrides = await this.resolveOverrideSecrets(data.project, stackConfig.serviceOverrides);
     const { project: _project, stack: _stack, ...asked } = data;
     const connector = this.getSlaveConnector();
@@ -5319,6 +5346,125 @@ export class ProjectService extends EventEmitter {
    * retains the conventional script. Both receive the owner's resolved environment.
    * Normalized presets are the authority for opt-in, including legacy sugar.
    */
+  async reviewStackMigrations(scope: StackExecutionScope & { app?: string }): Promise<StackMigrationReview> {
+    this.migrations.assertIdle(scope);
+    return (await this.prepareStackMigrations(scope)).review;
+  }
+
+  /** SDK writers share their filesystem lock with migrations. This owner-side
+   * admission also preserves uncertainty after a backend restart. */
+  assertSdkMutable(): void { this.migrations.assertIdle(); }
+
+  getStackMigration(scope: StackExecutionScope & { operationId: string }) {
+    return this.migrations.read(scope, scope.operationId);
+  }
+
+  @RecoveryMutation()
+  async migrateStack(request: StackMigrationRequest) {
+    const prior = this.migrations.read(request, request.operationId);
+    if (prior) {
+      if (prior.inputDigest !== request.review) throw Error('Migration request ID already belongs to another review');
+      return this.migrations.complete(prior);
+    }
+    await this.requireNoColdBatch();
+    const receipt = await this.migrations.execute(request, () => this.prepareStackMigrations(request), (target, stdout) => {
+      for (const line of migrationOutput(stdout)) this.logger.info({ database: target.database, line: redactDiagnosticText(line) }, 'Migration said');
+    }, async () => {
+      // Earlier admitted infrastructure operations may still be awaiting Docker.
+      // Reserve first, drain those effects, then capture the exact review again.
+      await this.drainHostedProvisioning(request);
+      const hosted = this.hostedInfrastructure();
+      if (hosted?.representsStack(request)) await hosted.holdForPreservation();
+      await this.infraManager.getInstance(request.project, request.stack)?.holdForPreservation();
+    });
+    await this.audit?.record({ action: 'stack.migrate', resourceType: 'stack', resourceId: `${request.project}/${request.stack}`,
+      details: { operationId: receipt.id, state: receipt.state, review: receipt.inputDigest, ...(receipt.code && { code: receipt.code }) } });
+    return receipt;
+  }
+
+  /** Reads admitted declarations and owner bindings; never imports a bootstrap,
+   * provisions infrastructure, selects a release or connects to a database. */
+  private async prepareStackMigrations(scope: StackExecutionScope & { app?: string }): Promise<PreparedStackMigrations> {
+    if (scope.app !== undefined && (typeof scope.app !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/.test(scope.app)))
+      throw Error('Select one declared migration application');
+    const scopeKey = stackExecutionKey(scope);
+    // These writers already retain RecoveryMutation admission across awaits.
+    // Their entry guards reject a new write during a migration; this check
+    // rejects migration admission while an earlier write is still settling.
+    const writers = new Set(['importProjectConfiguration', 'detachProjectConfiguration', 'addProject',
+      'updateProject', 'removeProject', 'createStack', 'deleteStack', 'rereadProject',
+      'refreshInfrastructureOwnership', 'applyTopologyPlan', 'refreshTopologyMetadata']);
+    if (recoveryState.pendingOperations().some(operation => writers.has(operation.reason)))
+      throw Error('Project configuration is changing; inspect migrations after it settles');
+    if (this.ownershipFrozen || this.resumingInstalled || this.startsInFlight.has(scopeKey) || this.stopsInFlight.has(scopeKey) ||
+        this.rereading?.has(scope.project) || this.reconcilingStacks)
+      throw Error('Project lifecycle ownership is changing; inspect migrations after it settles');
+    if (this.clusterStop) throw Error('Stack migrations require the elected infrastructure controller');
+    this.nodeStackStop.assertMutable(scope);
+    const registration = this.registry.get(scope.project), config = this.getLoadedConfig(scope.project);
+    if (!registration || !config) throw Error('Migrations require a registered, loaded project');
+    const stack = this.resolveStacks(config, scope.project)[scope.stack];
+    if (!stack || stack.type !== 'local' || stack.managedOrigin || !ownsStackInfrastructure(stack))
+      throw Error('Migrations require an independently owned local infrastructure stack');
+    const configuration = migrationReviewDigest({ registration, config, stack });
+    const selection = this.localSelection(scope.project, scope.stack).read();
+    const owner = await this.orchestrator.getExecutionOwnerRuntime?.();
+    assertResidentApplicationRuntime(owner);
+    assertExecutionCapabilities(this.orchestrator.getExecutionCapabilities?.(), { applicationRuntimeResolution: 2 }, 'Stack migrations');
+    const execution = await this.orchestrator.inspectStackExecution(scope);
+    const entries = (await this.inspectLaunch(scope.project, scope.stack, stack, config)).entries;
+    const definitions = this.preservationDefinitions(scope.project, scope.stack, entries);
+    const environment = await this.stackEnvFor(scope.project, scope.stack, stack, entries.map(entry => entry.name));
+    const effective = mergeInferredInfrastructure(buildInfraFromRequirements(requirementsFromDefinitions(definitions)), mergeInfrastructure(config, stack));
+    const requests = requestedMigrations(expandServiceDeclarations(effective ?? {}, createDefaultRegistry()));
+    const selected = requests.filter(request => !scope.app || request.app === scope.app);
+    if (!selected.length) throw Error('No selected application declares migration ownership');
+    const bindings = await this.infraManager.inspectPreservedBindings(scope.project, scope.stack, stack, effective ?? {}, definitions, registration.path);
+    const resolve = this.stackEntryBuilder(scope.project, scope.stack, stack, config, definitions, environment, bindings);
+    const plan = await planLocalMigrations(selected, entries, registration.path, resolve,
+      async (names, files) => (await this.inspectLaunch(scope.project, scope.stack, stack, config, names, files)).entries);
+    const sdk = await inspectMigrationSdk(findWorkspaceRoot(registration.path) ?? registration.path);
+    if (plan.some(({ target }) => !target.sealed && target.cwd !== sdk.root && !target.cwd.startsWith(sdk.root + path.sep)))
+      throw Error('Source migration belongs to another consumer workspace; register its owning configuration');
+    const dependencies = await inspectMigrationDependencies(plan, sdk);
+    const endpoints: string[] = [];
+    for (const { target, database } of plan) {
+      // The final owner environment may deliberately override the native
+      // service address. Always claim the actual SQL destination as well.
+      endpoints.push(JSON.stringify([`${database.host}:${database.port}`, database.database]));
+      const container = bindings.definition.containers.find(value => value.labels['omnitron.service'] === target.service)?.name;
+      if (container) {
+        const actual = bindings.review.containers.find(value => value.name === container);
+        if (!actual || !/^[a-f0-9]{64}$/.test(actual.id)) throw Error('The owned migration database container is not currently verified');
+        endpoints.push(JSON.stringify([actual.id, database.database]));
+      }
+    }
+    const stop = this.daemonStateStore.kvGetSync<StackStopProgress>(`stack:${scopeKey}:last-stop`, { strict: true });
+    const declaredNames = new Set(entries.map(entry => ProjectService.handleKey(scope.project, scope.stack, entry.name)));
+    // A native owner restart retains the durable stopped intent, but no process
+    // handles. Absence is safe only with that intent and a completed stop;
+    // every handle actually retained by the current owner must still be stopped.
+    const stopped = !!stop?.id && stop.phase === 'stopped' && stop.keepInfrastructure === true && stop.intentCommitted === true && !stop.supersededAt &&
+      execution.phase === 'stopped' && !(registration.enabledStacks ?? []).includes(scope.stack) &&
+      execution.apps.every(({ name }) => {
+        const app = this.orchestrator.getApp(name);
+        return declaredNames.has(name) && app?.status === 'stopped' && !app.pid;
+      });
+    const currentOwner = await this.orchestrator.getExecutionOwnerRuntime?.();
+    assertSameApplicationRuntime(owner, currentOwner);
+    if (!isDeepStrictEqual(execution, await this.orchestrator.inspectStackExecution(scope)) ||
+        configuration !== migrationReviewDigest({ registration: this.registry.get(scope.project), config: this.getLoadedConfig(scope.project),
+          stack: this.resolveStacks(this.getLoadedConfig(scope.project)!, scope.project)[scope.stack] }) ||
+        !isDeepStrictEqual(selection, this.localSelection(scope.project, scope.stack).read()))
+      throw Error('Stack ownership or declarations changed during migration review');
+    const targets = plan.map(({ target, program }) => ({ app: target.app, service: target.service, database: target.database,
+      mode: target.mode, program: target.sealed ? target.release : target.source, sourceSha256: program }));
+    const digest = stopped ? migrationReviewDigest({ scope: { project: scope.project, stack: scope.stack, app: scope.app }, configuration, selection, owner, execution, stop, plan, endpoints, sdk, dependencies, infrastructure: bindings.review.digest }) : null;
+    return { review: { protocol: 1, project: scope.project, stack: scope.stack, ...(scope.app && { app: scope.app }),
+      digest, stopped, ...(!stopped && { reason: 'Stop every application with --keep-infrastructure before applying migrations' }), targets },
+    plan, endpoints: [...new Set(endpoints)], sdk };
+  }
+
   private async runStackMigrations(
     projectName: string,
     stackName: string,
@@ -5328,43 +5474,15 @@ export class ProjectService extends EventEmitter {
     resolveEntry: (entry: IEcosystemAppEntry) => IEcosystemAppEntry,
     verifyMigrations?: VerifyMigrationEntries,
   ): Promise<void> {
-    const names = requestedMigrations(services);
-    const planned = await localMigrationTargets(names, appEntries, projectPath, verifyMigrations);
-    // Validate every resolved destination before the first DB probe. No missing source fallback.
-    const targets = planned.map(target => {
-      const env = resolveEntry(appEntries.find(entry => entry.name === target.app)!).env;
-      const database = migrationDatabaseEnvironment(target.environmentApp, env?.['DATABASE_URL'] ?? '', target.database, target.mode);
-      return { target, env, database };
-    });
-    validateMigrationDestinations(targets.map(({ target, database }) => ({ app: target.app, database })));
-    // Import every config and resolve its definitions before the first connection.
-    // Runtime connect()/SQL are intentionally not executed by this preflight.
-    for (const { target, env, database } of targets) if (target.mode === 'config') {
-      try { await executeLocalMigration(target, { ...env, ...database.env }, { validate: true }); }
-      catch (error) {
-        const failed = error as Error & { stderr?: string };
-        throw new Error(`Migration config refused for ${target.service}/${target.database} (${target.app}); no migrations executed: ${describeFailure(failed.stderr?.trim() || failed)}`, { cause: error });
-      }
-    }
-    for (const { target, env, database } of targets) {
-      const { host, port, user, password, connectionString } = database;
-      this.logger.info({ project: projectName, stack: stackName, database: target.database, host, port }, 'Waiting for migration database');
-      await waitForPostgres(host, port, user, password, 180_000, connectionString);
-      // Database readiness may take minutes. Recheck the canonical payload and owner immediately before execution.
-      const [current] = await localMigrationTargets([target], appEntries, projectPath, verifyMigrations);
-      if (!current || !isDeepStrictEqual(current, target)) throw Error('Migration target changed during database readiness');
-      this.logger.info({ project: projectName, stack: stackName, database: target.database }, 'Running database migrations');
-      try {
-        const { stdout } = await executeLocalMigration(target, { ...env, ...database.env });
+    const inspect = () => planLocalMigrations(requestedMigrations(services), appEntries, projectPath, resolveEntry, verifyMigrations);
+    const plan = await inspect();
+    try {
+      await executeMigrationPlan(plan, { inspect, output: (target, stdout) => {
         for (const line of migrationOutput(stdout)) this.logger.info({ database: target.database, line: redactDiagnosticText(line) }, 'Migration said');
         this.logger.info({ database: target.database, attempts: 1 }, 'Migrations applied');
-      } catch (error) {
-        const failed = error as Error & { stderr?: string };
-        this.logger.error({ database: target.database, error: redactDiagnosticText(failed.message), stderr: redactDiagnosticText(failed.stderr?.trim() ?? '') },
-          'Migration failed — stack startup refused');
-        const reason = describeFailure(failed.stderr?.trim() || failed);
-        throw new Error(`Migration failed for ${projectName}/${stackName}/${target.service}/${target.database} (${target.app}); stack startup refused: ${reason}. Inspect the migration ledger before retrying.`, { cause: error });
-      }
+      } });
+    } catch (error) {
+      throw new Error(`Migration failed for ${projectName}/${stackName}; inspect the migration ledger before retrying: ${describeFailure(error)}`, { cause: error });
     }
   }
 
@@ -5421,10 +5539,11 @@ export class ProjectService extends EventEmitter {
     ecosystemConfig: IEcosystemConfig,
     appDefinitions: Map<string, IAppDefinition>,
     stackEnv: Readonly<Record<string, Readonly<Record<string, string>>>>,
+    bindings?: Awaited<ReturnType<StackInfrastructureManager['inspectPreservedBindings']>>,
   ): (entry: IEcosystemAppEntry) => IEcosystemAppEntry {
     const project = this.registry.get(projectName);
-    const portAllocation = this.infraManager.getPortAllocation(projectName, stackName);
-    const normalizedSvcs = this.infraManager.getNormalizedServices(projectName, stackName);
+    const portAllocation = bindings?.allocation ?? this.infraManager.getPortAllocation(projectName, stackName);
+    const normalizedSvcs = bindings?.definition.normalizedServices ?? this.infraManager.getNormalizedServices(projectName, stackName);
     const resolvedStack = ownsStackInfrastructure(stackConfig) ? resolveStack(
       ecosystemConfig,
       projectName,

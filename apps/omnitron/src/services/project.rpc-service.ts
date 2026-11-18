@@ -295,6 +295,28 @@ export class ProjectRpcService {
   // Stacks — Operator
   // ===========================================================================
 
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  assertSdkMutable(): void { this.projectService.assertSdkMutable(); }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async reviewStackMigrations(data: { project: string; stack: string; app?: string }) {
+    const scope = await this.projectService.resolveProjectStack(data, { readOnly: true });
+    const report = await this.projectService.reviewStackMigrations(scope);
+    return { ...report, project: data.project, stack: data.stack };
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async migrateStack(data: import('../shared/dto/project.js').StackMigrationRequest) {
+    const scope = await this.projectService.resolveProjectStack(data, { readOnly: true });
+    return this.projectService.migrateStack(scope);
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async getStackMigration(data: { project: string; stack: string; operationId: string }) {
+    const scope = await this.projectService.resolveProjectStack(data, { readOnly: true });
+    return this.projectService.getStackMigration(scope);
+  }
+
   @Public({ auth: { roles: VIEWER_ROLES } })
   async diagnoseStack(data: { project: string; stack: string }): Promise<import('../shared/dto/stack-diagnosis.js').StackDiagnosis> {
     const scope = await this.projectService.resolveProjectStack(data, { readOnly: true });

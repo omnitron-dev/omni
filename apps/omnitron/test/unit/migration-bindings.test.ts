@@ -7,7 +7,7 @@ import { normalizeInfraConfig } from '../../src/infrastructure/config-normalizer
 import { createDefaultRegistry } from '../../src/infrastructure/presets/index.js';
 import { requestedMigrations, localMigrationTargets, migrationDatabaseEnvironment, validateMigrationDestinations, orderMigrationPlacements, requiredMigrationFiles } from '../../src/services/migration-target.js';
 import { executeLocalMigration, prepareRemoteMigration } from '../../src/services/migration-process.js';
-import { planDeclaredWorkspaceMigrations } from '../../src/migration/workspace.js';
+import { assertLegacyMigrationWorkspace } from '../../src/migration/workspace.js';
 import { execFileSync } from 'node:child_process';
 import type { MigrationBinding } from '../../src/infrastructure/types.js';
 import { linkFixtureDependencies } from '../helpers/installed-dependencies.js';
@@ -92,7 +92,7 @@ describe('explicit migration ownership', () => {
     const other = requestedMigrations(services({ ...binding('second'), app: 'second-api' }, 'second'));
     expect(() => orderMigrationPlacements([...requests, ...other], [owner, { apps: [{ name: 'second-api' }] }])).toThrow('global migration barrier');
   });
-  it('uses the same declaration for standalone CLI and preserves explicit false', async () => {
+  it('refuses standalone script fallback for declared ownership, including explicit false', async () => {
     const f = await workspace();
     const config = { apps: [...f.entries, { name: 'site', enabled: false }], infrastructure: {
       artifactVolumes: { site: { service: 'gateway', app: 'site', directory: 'dist/public', target: '/srv/site' } },
@@ -101,13 +101,12 @@ describe('explicit migration ownership', () => {
         gateway: { ports: {}, env: {}, docker: { image: 'gateway' } },
       },
     } };
-    const plan = await planDeclaredWorkspaceMigrations(f.root, config as never);
-    expect(plan?.[0]?.target).toMatchObject({ app: 'owner-api', database: 'api', cwd: f.cwd, mode: 'config' });
+    await expect(assertLegacyMigrationWorkspace(f.root, config as never)).rejects.toThrow('requires --stack');
     config.infrastructure.services.primary.config.databases.api.migrate = false as never;
-    await expect(planDeclaredWorkspaceMigrations(f.root, config as never)).resolves.toEqual([]);
+    await expect(assertLegacyMigrationWorkspace(f.root, config as never)).rejects.toThrow('requires --stack');
   });
 
-  it('resolves a standalone migration owner from the same stack file as startup', async () => {
+  it('recognizes stack-file ownership before admitting a standalone script', async () => {
     const f = await workspace();
     const config = { apps: f.entries };
     const infrastructure = { services: {
@@ -117,15 +116,9 @@ describe('explicit migration ownership', () => {
       dev: { type: 'local', apps: ['owner-api'], infrastructure },
     }));
 
-    const plan = await planDeclaredWorkspaceMigrations(f.root, config, { stack: 'dev' });
-    expect(plan?.map(({ target }) => [target.service, target.database, target.app])).toEqual([
-      ['primary', 'api', 'owner-api'],
-    ]);
-    await expect(planDeclaredWorkspaceMigrations(f.root, config, { stack: 'missing' }))
-      .rejects.toThrow('Unknown migration stack');
+    await expect(assertLegacyMigrationWorkspace(f.root, config)).rejects.toThrow('requires --stack');
     const remote = { ...config, stacks: { dev: { type: 'remote' as const, infrastructure } } };
-    await expect(planDeclaredWorkspaceMigrations(f.root, remote, { stack: 'dev' }))
-      .rejects.toThrow('local infrastructure-owning stack');
+    await expect(assertLegacyMigrationWorkspace(f.root, remote)).rejects.toThrow('requires --stack');
   });
 });
 

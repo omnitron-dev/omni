@@ -598,44 +598,66 @@ export async function infraRedisCliCommand(options: { stack?: string; db?: strin
   ]);
 }
 
-export async function infraMigrateCommand(app?: string, options: { dryRun?: boolean; stack?: string } = {}): Promise<void> {
-  assertStandaloneInfrastructure();
-  const { planWorkspaceMigrations, planDeclaredWorkspaceMigrations } = await import('../migration/workspace.js');
-  const config = await loadEcosystemConfig();
-  const declared = await planDeclaredWorkspaceMigrations(process.cwd(), config, { ...(app ? { app } : {}), ...(options.stack ? { stack: options.stack } : {}) });
-  if (declared !== null) {
-    const summary = declared.map(({ target }) => ({ app: target.app, service: target.service, database: target.database,
-      mode: target.mode, file: target.script, directory: target.cwd }));
-    if (options.dryRun) {
-      if (!emitJson({ migrations: summary })) for (const target of summary) log.info(`${target.service}/${target.database} · ${target.app} · ${target.file}`);
-      return;
+export interface InfraMigrationOptions { dryRun?: boolean; stack?: string; review?: string; requestId?: string; status?: string }
+
+async function registeredMigrationScope(service: import('../shared/dto/services.js').IProjectRpcService, value: string) {
+  if (value.includes('/')) {
+    const scope = parseStack(value);
+    if (typeof scope === 'string') throw Error(scope);
+    return scope;
+  }
+  if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(value)) throw Error('Use --stack <project>/<stack> or an unambiguous stack name in its registered checkout');
+  const { realpath } = await import('node:fs/promises');
+  const cwd = await realpath(process.cwd());
+  const matches: Array<{ project: string; stack: string }> = [];
+  for (const project of await service.listProjects()) {
+    const configurations: Array<{ name: string; path: string; stacks: Record<string, string> }> =
+      project.configurations ?? [{ name: 'default', path: project.path, stacks: {} }];
+    for (const configuration of configurations) {
+      const physical = await realpath(configuration.path).catch(error => {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+        throw error;
+      });
+      if (physical !== cwd) continue;
+      const stack = configuration.name === 'default' ? value : configuration.stacks?.[value];
+      if (stack) matches.push({ project: project.name, stack });
     }
-    const { executeLocalMigration } = await import('../services/migration-process.js');
-    const { waitForPostgres } = await import('../services/wait-for-postgres.js');
-    const { migrationOutput } = await import('../services/migration-output.js');
-    const { localMigrationTargets } = await import('../services/migration-target.js');
-    const { redactDiagnosticText } = await import('@omnitron-dev/titan/diagnostics');
-    for (const { target, env } of declared) if (target.mode === 'config') {
-      assertStandaloneInfrastructure();
-      try { await executeLocalMigration(target, env, { validate: true }); }
-      catch (error) {
-        const detail = error as { stderr?: string; message?: string };
-        throw Error(`Migration configuration preflight failed for ${target.app}: ${redactDiagnosticText(detail.stderr || detail.message || String(error))}. No migrations executed.`, { cause: error });
+  }
+  if (matches.length !== 1) throw Error('No unique registered configuration matches this directory; use --stack <project>/<stack>');
+  return matches[0]!;
+}
+
+export async function infraMigrateCommand(app?: string, options: InfraMigrationOptions = {}): Promise<void> {
+  if (options.stack) {
+    if (options.dryRun && (options.review || options.requestId || options.status) || options.status && (options.review || options.requestId || app))
+      throw Error('Choose migration review, execution, or operation status');
+    if (!options.dryRun && !options.status && (!options.review || !options.requestId))
+      throw Error('Inspect --dry-run, then use its --review digest and a new --request-id UUID');
+    const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
+    try {
+      const service = await client.service<import('../shared/dto/services.js').IProjectRpcService>('OmnitronProject');
+      const scope = await registeredMigrationScope(service, options.stack);
+      if (options.status) {
+        const receipt = await service.getStackMigration({ ...scope, operationId: options.status });
+        if (!receipt) throw Error('Migration operation not found in this stack');
+        if (!emitJson(receipt)) log.info(JSON.stringify(receipt, null, 2));
+        if (receipt.state !== 'succeeded') process.exitCode = 1;
+      } else if (options.dryRun) {
+        const review = await service.reviewStackMigrations({ ...scope, ...(app && { app }) });
+        if (!emitJson(review)) log.info(JSON.stringify(review, null, 2));
+      } else {
+        const receipt = await service.migrateStack({ ...scope, ...(app && { app }), review: options.review!, operationId: options.requestId! });
+        if (!emitJson(receipt)) log.info(JSON.stringify(receipt, null, 2));
+        if (receipt.state !== 'succeeded') process.exitCode = 1;
       }
-    }
-    for (const { target, env, database } of declared) {
-      assertStandaloneInfrastructure();
-      await waitForPostgres(database.host, database.port, database.user, database.password, 180_000, database.connectionString);
-      assertStandaloneInfrastructure();
-      const [checked] = await localMigrationTargets([target], config.apps, process.cwd());
-      if (checked?.script !== target.script || checked.cwd !== target.cwd)
-        throw Error(`Migration source changed for ${target.app}; inspect the plan before retrying`);
-      const result = await executeLocalMigration(target, env);
-      if (!isJsonMode()) for (const line of migrationOutput(result.stdout)) log.info(redactDiagnosticText(line));
-    }
-    emitJson({ migrated: summary });
+    } finally { await client.disconnect(); }
     return;
   }
+  if (options.review || options.requestId || options.status) throw Error('Migration review and operation IDs require a registered --stack');
+  assertStandaloneInfrastructure();
+  const { planWorkspaceMigrations, assertLegacyMigrationWorkspace } = await import('../migration/workspace.js');
+  const config = await loadEcosystemConfig();
+  await assertLegacyMigrationWorkspace(process.cwd(), config);
   const plan = await planWorkspaceMigrations(process.cwd(), config.apps, app);
   if (options.dryRun) {
     if (!emitJson({ applications: plan })) {

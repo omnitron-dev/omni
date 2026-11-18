@@ -139,7 +139,7 @@ describe('admission, against the release running on the stack', () => {
     put(running, ran);
     put(next, candidate);
 
-    const svc: any = Object.create(ProjectService.prototype);
+    const svc: any = Object.assign(Object.create(ProjectService.prototype), { daemonStateStore: { kvGetSync: () => null } });
     Object.assign(svc, {
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
       audit: {

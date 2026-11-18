@@ -11,7 +11,7 @@ const delegated = (): IStackConfig => ({
   managedOrigin: { project: 'sample', stack: 'test' },
 });
 function harness(stack: IStackConfig) {
-  const service = Object.create(ProjectService.prototype) as any;
+  const service = Object.assign(Object.create(ProjectService.prototype), { daemonStateStore: { kvGetSync: () => null } }) as any;
   const config = {
     name: 'sample',
     apps: [

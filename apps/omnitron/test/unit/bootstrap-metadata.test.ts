@@ -36,7 +36,7 @@ function fixture() {
   cleanup.push(async () => { await db.dispose(); fs.rmSync(directory, { recursive: true, force: true }); });
   const entries = [{ name: 'api', bootstrap: 'app/src/bootstrap.js' }];
   const metadata = () => new BootstrapMetadataStore(db);
-  const service = Object.assign(Object.create(ProjectService.prototype), {
+  const service = Object.assign(Object.assign(Object.create(ProjectService.prototype), { daemonStateStore: { kvGetSync: (key: string) => db.kvGetSync(key) } }), {
     logger, localSelection: () => ({ read: () => ({ revision: 0, release: null }) }),
     registry: { get: () => ({ path: directory }) }, bootstrapTopology: new Map(),
     get bootstrapMetadata() { return metadata(); },

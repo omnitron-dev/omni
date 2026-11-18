@@ -172,6 +172,24 @@ export class StackInfrastructureManager {
     return reviewExistingContainers(await this.planStack(project, stack, config, infrastructure, definitions, directory), undefined, { project, stack });
   }
 
+  /** Connection evidence without adopting ownership. A cold backend has no
+   * in-memory allocation for disabled stacks; the canonical resolver is usable
+   * only after its complete definition matches the still-running containers. */
+  async inspectPreservedBindings(
+    project: string, stack: string, config: IStackConfig, infrastructure: InfrastructureConfig,
+    definitions?: Map<string, import('../config/types.js').IAppDefinition>, directory?: string,
+  ) {
+    if (!ownsStackInfrastructure(config)) throw Error('This stack does not own its infrastructure');
+    const retained = this.getInstance(project, stack), allocated = this.getPortAllocation(project, stack);
+    if (!!retained !== !!allocated) throw Error('Incomplete retained infrastructure ownership');
+    const allocation = structuredClone(allocated ?? this.computePortAllocation(project, stack, config.settings, infrastructure));
+    const definition = retained?.getDefinition() ?? await withInfrastructureScope(project, stack,
+      () => this.resolveStackDefinition(project, stack, config, infrastructure, allocation, definitions, directory));
+    const review = await reviewExistingContainers([...definition.containers], undefined, { project, stack });
+    if (!review.digest) throw Error('Preserved stack connection bindings could not be verified; no migration was executed');
+    return { allocation, definition, review };
+  }
+
   /** The same resolver as plan/provision. Only the native effect authority differs. */
   @RecoveryMutation()
   async preserveStack(

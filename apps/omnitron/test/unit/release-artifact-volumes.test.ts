@@ -192,7 +192,7 @@ it('checkRelease prepare verifies the disabled payload but never adds it to exec
   const config = { ...DEFAULT_ECOSYSTEM, apps: [...apps, f.entry], stacks: { production: definition } };
   const execution = vi.spyOn(installation, 'inspectLocalReleaseInstallation').mockResolvedValue(apps);
   const stop = vi.fn(), provision = vi.fn();
-  const service = Object.create(ProjectService.prototype) as ProjectService;
+  const service = Object.assign(Object.create(ProjectService.prototype), { daemonStateStore: { kvGetSync: () => null } }) as ProjectService;
   Object.assign(service, {
     registry: { get: () => ({ path: f.tmp }) }, loadProjectConfig: async () => config,
     resolveStacks: () => config.stacks, assertStartAuthority: vi.fn(), admitRelease: async () => f.release,
@@ -234,7 +234,7 @@ it('refuses a static release switch before provisioning unless the owner has dur
   const infrastructure = infra(), entries = ['core', 'api', 'mail'].map(name => ({ name, script: name + '.js' }));
   const definition = { type: 'local' as const, apps: entries.map(entry => entry.name), infrastructure };
   const config = { ...DEFAULT_ECOSYSTEM, apps: [...entries, { name: 'web', enabled: false, script: 'never.js' }] };
-  const stop = vi.fn(), start = vi.fn(), service = Object.create(ProjectService.prototype) as ProjectService;
+  const stop = vi.fn(), start = vi.fn(), service = Object.assign(Object.create(ProjectService.prototype), { daemonStateStore: { kvGetSync: () => null } }) as ProjectService;
   Object.assign(service, {
     loadProjectConfig: async () => config, resolveStacks: () => ({ production: definition }), assertStartAuthority: vi.fn(),
     localSelection: () => ({ read: () => ({ revision: 0, release: null }) }), registry: { get: () => undefined },
@@ -251,7 +251,7 @@ it('refuses a static release switch before provisioning unless the owner has dur
 
 it('actual admission rejects remote artifact mounts before definitions, owner requests or provisioning', async () => {
   const f = await fixture(), nodes = vi.fn(), definitions = vi.fn(), provision = vi.fn();
-  const service = Object.create(ProjectService.prototype) as ProjectService;
+  const service = Object.assign(Object.create(ProjectService.prototype), { daemonStateStore: { kvGetSync: () => null } }) as ProjectService;
   const config = { ...DEFAULT_ECOSYSTEM, apps: [f.entry], infrastructure: infra() };
   Object.assign(service, { releaseStore: async () => f.store, askReleaseOwners: nodes,
     loadAppDefinitions: definitions, infraManager: { provisionStack: provision } });
@@ -272,7 +272,7 @@ it('ordinary loader and real admission bind imported public pins before a stoppe
   await fs.writeFile(path.join(f.release.root, 'manifest.json'), JSON.stringify(consumer));
   const loaded = await loadEcosystemConfig(repo, 'release');
   expect(loaded.stacks!['production']!.infrastructure!.artifactVolumes).toEqual(infra().artifactVolumes);
-  const stop = vi.fn(), provision = vi.fn(), start = vi.fn(), service = Object.create(ProjectService.prototype) as ProjectService;
+  const stop = vi.fn(), provision = vi.fn(), start = vi.fn(), service = Object.assign(Object.create(ProjectService.prototype), { daemonStateStore: { kvGetSync: () => null } }) as ProjectService;
   Object.assign(service, {
     loadProjectConfig: async () => loaded, resolveStacks: () => loaded.stacks!, assertStartAuthority: vi.fn(),
     registry: { get: () => ({ path: repo }) }, releaseStore: async () => f.store, releaseRunningOn: async () => null,
@@ -294,7 +294,7 @@ it('diagnoses the verified selected mount and refuses changed bytes without fall
   const f = await fixture(), roots = await inspectLocalReleasePayloads(f.release, [f.entry], true);
   const definition = { type: 'local' as const, apps: [] as string[], infrastructure: infra() };
   const config = { ...DEFAULT_ECOSYSTEM, apps: [f.entry], stacks: { production: definition } };
-  const plan = vi.fn(async () => []), service = Object.create(ProjectService.prototype) as ProjectService;
+  const plan = vi.fn(async () => []), service = Object.assign(Object.create(ProjectService.prototype), { daemonStateStore: { kvGetSync: () => null } }) as ProjectService;
   Object.assign(service, {
     registry: { get: () => ({ path: f.tmp }) }, configRegistry: new Map([['consumer', { config, loadedAt: Date.now() }]]),
     resolveStacks: () => config.stacks, assertStartAuthority: vi.fn(), stackStates: new Map(),

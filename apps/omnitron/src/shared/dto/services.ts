@@ -378,6 +378,10 @@ export interface IProjectRpcService {
   getStackStatus(data: { project: string; stack: string }): Promise<StackRuntime>;
 
   // --- Stacks (Operator) ---
+  reviewStackMigrations(data: { project: string; stack: string; app?: string }): Promise<import('./project.js').StackMigrationReview>;
+  assertSdkMutable(): Promise<void>;
+  migrateStack(data: import('./project.js').StackMigrationRequest): Promise<import('./execution-operations.js').OperationReceipt>;
+  getStackMigration(data: { project: string; stack: string; operationId: string }): Promise<import('./execution-operations.js').OperationReceipt | null>;
   resumeInstalledStack(data: { project: string; stack: string }): Promise<import('./project.js').InstalledStackResumeResult>;
   reviewStackStart(data: { project: string; stack: string } & import('./project.js').StackStartOptions): Promise<import('./project.js').StackStartReview>;
   startStack(data: { project: string; stack: string } & import('./project.js').StackStartOptions): Promise<IStackInfo>;

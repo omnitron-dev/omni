@@ -39,45 +39,14 @@ export async function planWorkspaceMigrations(rootPath: string, apps: IEcosystem
   return [...planned.values()];
 }
 
-/** Standalone CLI uses the same explicit stack bindings as managed startup.
- * null retains the older, explicitly invoked package-script command only when no
- * database migration policy exists. It is never a missing-config fallback. */
-export async function planDeclaredWorkspaceMigrations(
-  root: string,
-  config: Pick<IEcosystemConfig, 'project' | 'apps' | 'stacks' | 'infrastructure'>,
-  options: { app?: string; stack?: string } = {},
-) {
+/** A stack or explicit database policy must be executed by its registered
+ * owner. Absence of such a declaration is the only legacy script admission. */
+export async function assertLegacyMigrationWorkspace(root: string,
+  config: Pick<IEcosystemConfig, 'project' | 'apps' | 'stacks' | 'infrastructure'>) {
   const { expandServiceDeclarations } = await import('../infrastructure/config-normalizer.js');
   const { createDefaultRegistry } = await import('../infrastructure/presets/index.js');
-  const { mergeInfrastructure } = await import('../infrastructure/merge-config.js');
-  const { ownsStackInfrastructure } = await import('../project/infrastructure-ownership.js');
-  const { resolveStackEnv } = await import('../project/stack-env.js');
-  const { hasMigrationDeclarations, requestedMigrations, localMigrationTargets, migrationDatabaseEnvironment, validateMigrationDestinations } = await import('../services/migration-target.js');
-  const stacks = Object.entries(resolveProjectStacks(config, root, config.project));
-  const policies = stacks.map(([name, stack]) => ({ name, stack,
-    services: expandServiceDeclarations(mergeInfrastructure(config, stack) ?? {}, createDefaultRegistry()) }));
-  const declared = policies.filter(policy => hasMigrationDeclarations(policy.services));
-  const rootServices = expandServiceDeclarations(config.infrastructure ?? {}, createDefaultRegistry());
-  if (!options.stack && !declared.length && !hasMigrationDeclarations(rootServices)) return null;
-  if (!options.stack && declared.length > 1) throw Error('Choose --stack: multiple stacks declare migration ownership');
-  const policy = options.stack ? policies.find(candidate => candidate.name === options.stack) : declared[0];
-  if (options.stack && !policy) throw Error(`Unknown migration stack ${options.stack}`);
-  if (policy && (policy.stack.type !== 'local' || !ownsStackInfrastructure(policy.stack)))
-    throw Error('Standalone migrations require a local infrastructure-owning stack; use the elected controller for remote or delegated stacks');
-  const apps = config.apps.filter(app => app.enabled !== false &&
-    (!Array.isArray(policy?.stack.apps) || policy.stack.apps.includes(app.name)));
-  const requests = requestedMigrations(policy?.services ?? rootServices);
-  if (options.app && !apps.some(app => app.name === options.app)) throw Error(`No unique declared application '${options.app}'`);
-  const targets = await localMigrationTargets(requests.filter(request => !options.app || request.app === options.app), apps, root);
-  if (options.app && !targets.length) throw Error(`Application '${options.app}' has no declared migration ownership`);
-  const stackEnv = await resolveStackEnv({ settings: policy?.stack.settings, apps: apps.map(app => app.name),
-    getSecret: undefined, where: `standalone/${policy?.name ?? 'project'}` });
-  const plan = targets.map(target => {
-    const entry = apps.find(app => app.name === target.app)!;
-    const env = { ...process.env, ...entry.env, ...stackEnv[target.app] };
-    const database = migrationDatabaseEnvironment(target.environmentApp, env['DATABASE_URL'] ?? '', target.database, target.mode);
-    return { target, env: { ...env, ...database.env }, database };
-  });
-  validateMigrationDestinations(plan.map(({ target, database }) => ({ app: target.app, database })));
-  return plan;
+  const { hasMigrationDeclarations } = await import('../services/migration-target.js');
+  if (Object.keys(resolveProjectStacks(config, root, config.project)).length ||
+      hasMigrationDeclarations(expandServiceDeclarations(config.infrastructure ?? {}, createDefaultRegistry())))
+    throw Error('Declared stack/database migration ownership requires --stack <project>/<stack>; no local package script was run');
 }

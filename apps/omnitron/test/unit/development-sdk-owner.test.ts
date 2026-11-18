@@ -5,13 +5,13 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { assertExecutionCapabilities } from '../../src/daemon/execution-capabilities.js';
 
 const rpc = vi.hoisted(() => ({
-  projects: vi.fn(), stacks: vi.fn(), stack: vi.fn(), status: vi.fn(), disconnect: vi.fn(),
+  projects: vi.fn(), stacks: vi.fn(), stack: vi.fn(), status: vi.fn(), disconnect: vi.fn(), mutable: vi.fn(),
 }));
 vi.mock('@omnitron-dev/omnitron/operations', async () => ({
   assertExecutionCapabilities: (await import('../../src/daemon/execution-capabilities.js')).assertExecutionCapabilities,
   LONG_REQUEST_TIMEOUT: 1000,
   createDaemonClient: () => ({
-    service: async () => ({ listProjects: rpc.projects, listStacks: rpc.stacks, getStack: rpc.stack }),
+    service: async () => ({ listProjects: rpc.projects, listStacks: rpc.stacks, getStack: rpc.stack, assertSdkMutable: rpc.mutable }),
     status: rpc.status, disconnect: rpc.disconnect,
   }),
 }));
@@ -21,6 +21,7 @@ const { sdkCommand, watchSdk } = await import('../../bin/sdk.js');
 let root: string, state: string, profile: string;
 beforeEach(async () => {
   vi.clearAllMocks();
+  rpc.mutable.mockReset();
   root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'sdk-owner-')));
   state = path.join(root, '.omnitron/dev-sdk');
   await fs.mkdir(state, { recursive: true });
@@ -36,11 +37,11 @@ beforeEach(async () => {
 });
 afterEach(async () => { await fs.rm(root, { recursive: true, force: true }); });
 
-it.each([undefined, {}, { applicationRuntimeResolution: 2 }])(
+it.each([undefined, {}, { applicationRuntimeResolution: 1 }])(
   'preserves installed dependencies when the owner cannot resolve the new SDK: %j', async capabilities => {
     rpc.status.mockResolvedValue({ execution: { ownerCapabilities: capabilities } });
     await expect(sdkCommand(['registry', '--project-dir', root, '--stack', 'dev']))
-      .rejects.toThrow(/applicationRuntimeResolution@1.*Development SDK activation.*owner transition/);
+      .rejects.toThrow(/applicationRuntimeResolution@2.*Development SDK activation.*owner transition/);
     expect(await fs.readFile(path.join(state, 'install.json'), 'utf8')).toBe(profile);
     expect(await fs.readFile(path.join(state, 'active.json'), 'utf8')).toBe(profile);
     expect(rpc.disconnect).toHaveBeenCalledOnce();
@@ -57,7 +58,7 @@ it('does not assume compatibility when the owner status request fails', async ()
 
 it('refuses to resume the SDK watcher on an incompatible owner before building', async () => {
   await expect(watchSdk(JSON.parse(profile), 'dev', new AbortController().signal))
-    .rejects.toThrow('applicationRuntimeResolution@1');
+    .rejects.toThrow('applicationRuntimeResolution@2');
   expect(await fs.readFile(path.join(state, 'install.json'), 'utf8')).toBe(profile);
   expect(rpc.disconnect).toHaveBeenCalledOnce();
 });
@@ -71,7 +72,7 @@ it.each([
   [{ ...runtime, arch: 'another-architecture' }, /is incompatible with owner Node/],
 ] as const)('refuses an unknown or incompatible owner runtime before changing dependencies: %j', async (ownerRuntime, reason) => {
   rpc.status.mockResolvedValue({ execution: {
-    ownerCapabilities: { applicationRuntimeResolution: 1, sourceRefresh: 1 }, connection: { status: 'connected' }, ownerRuntime,
+    ownerCapabilities: { applicationRuntimeResolution: 2, sourceRefresh: 1 }, connection: { status: 'connected' }, ownerRuntime,
   } });
   await expect(sdkCommand(['registry', '--project-dir', root, '--stack', 'dev'])).rejects.toThrow(reason);
   await expect(watchSdk(JSON.parse(profile), 'dev', new AbortController().signal)).rejects.toThrow(reason);
@@ -82,7 +83,7 @@ it.each([
 
 it('refuses SDK refresh on an owner that cannot fence source observations', async () => {
   rpc.status.mockResolvedValue({ execution: {
-    ownerCapabilities: { applicationRuntimeResolution: 1 }, connection: { status: 'connected' }, ownerRuntime: runtime,
+    ownerCapabilities: { applicationRuntimeResolution: 2 }, connection: { status: 'connected' }, ownerRuntime: runtime,
   } });
   await expect(watchSdk(JSON.parse(profile), 'dev', new AbortController().signal)).rejects.toThrow('sourceRefresh@1');
   expect(await fs.readFile(path.join(state, 'install.json'), 'utf8')).toBe(profile);
@@ -91,7 +92,7 @@ it('refuses SDK refresh on an owner that cannot fence source observations', asyn
 });
 
 it.each([undefined, 'unavailable', 'owner-changed'])('refuses stale owner runtime observations: %s', async connection => {
-  rpc.status.mockResolvedValue({ execution: { ownerCapabilities: { applicationRuntimeResolution: 1 },
+  rpc.status.mockResolvedValue({ execution: { ownerCapabilities: { applicationRuntimeResolution: 2 },
     connection: connection && { status: connection }, ownerRuntime: runtime } });
   await expect(sdkCommand(['registry', '--project-dir', root, '--stack', 'dev']))
     .rejects.toThrow('requires a current execution owner observation');
@@ -100,7 +101,7 @@ it.each([undefined, 'unavailable', 'owner-changed'])('refuses stale owner runtim
 
 it('still refuses a running source stack even when the owner supports SDK changes', async () => {
   rpc.stacks.mockResolvedValue([{ name: 'dev', type: 'local', apps: [{ status: 'online' }] }]);
-  rpc.status.mockResolvedValue({ execution: { ownerCapabilities: { applicationRuntimeResolution: 1 } } });
+  rpc.status.mockResolvedValue({ execution: { ownerCapabilities: { applicationRuntimeResolution: 2 } } });
   await expect(sdkCommand(['registry', '--project-dir', root, '--stack', 'dev']))
     .rejects.toThrow('Stop project/dev');
   expect(await fs.readFile(path.join(state, 'install.json'), 'utf8')).toBe(profile);
@@ -109,7 +110,17 @@ it('still refuses a running source stack even when the owner supports SDK change
 
 it('accepts the exact application runtime contract independently of the backend version', () => {
   expect(() => assertExecutionCapabilities(
-    { applicationRuntimeResolution: 1, stackControl: 1 },
-    { applicationRuntimeResolution: 1 }, 'Development SDK activation',
+    { applicationRuntimeResolution: 2, stackControl: 1 },
+    { applicationRuntimeResolution: 2 }, 'Development SDK activation',
   )).not.toThrow();
+});
+
+it('honours canonical migration admission even when every application is stopped', async () => {
+  rpc.status.mockResolvedValue({ execution: { ownerCapabilities: { applicationRuntimeResolution: 2, sourceRefresh: 1 },
+    connection: { status: 'connected' }, ownerRuntime: runtime } });
+  rpc.mutable.mockRejectedValue(Error('Stack migrations are in progress'));
+  await expect(sdkCommand(['registry', '--project-dir', root, '--stack', 'dev'])).rejects.toThrow('Stack migrations are in progress');
+  expect(rpc.mutable).toHaveBeenCalledOnce();
+  expect(await fs.readFile(path.join(state, 'install.json'), 'utf8')).toBe(profile);
+  expect(await fs.readFile(path.join(state, 'active.json'), 'utf8')).toBe(profile);
 });

@@ -33,6 +33,7 @@ describe('live session authority across HTTP cache and persistent WebSocket', ()
     digest: null, targets: [], ...(keepInfrastructure && { keepInfrastructure: true }),
   }));
   const stopStack = vi.fn(() => ({ status: 'stopped', config: {}, apps: [], nodes: [] }));
+  const reviewStackMigrations = vi.fn(() => ({ digest: null })), migrateStack = vi.fn(() => ({ state: 'succeeded' })), getStackMigration = vi.fn(() => null);
   let role: string | null = 'admin', unavailable = false;
   const store = { validateSessionAuthority: async (userId: string, sessionId: string) => {
     if (unavailable) throw Object.assign(new Error('Session store is unavailable'), { code: 'SESSION_STORE_UNAVAILABLE', statusCode: 503 });
@@ -58,7 +59,7 @@ describe('live session authority across HTTP cache and persistent WebSocket', ()
     await netron.peer.exposeService(new TelemetryRpcService({ receive, stats: () => ({ totalReceived: 0 }) } as never));
     await netron.peer.exposeService(new ClusterRpcService({ isLeader: false, getClusterState: () => ({ state: 'follower' }) } as never));
     await netron.peer.exposeService(new ProjectRpcService({
-      resolveProjectStack: (scope: unknown) => scope, reviewStackStop, stopStack,
+      resolveProjectStack: (scope: unknown) => scope, reviewStackStop, stopStack, reviewStackMigrations, migrateStack, getStackMigration, assertSdkMutable: migrateStack,
       inspectNodeStackStop: () => 'observed', prepareNodeStackStop: () => 'prepared', executeNodeStackStop: () => 'executed',
       resumeInstalledStack: () => ({ outcome: 'running' }), prepareNodeInstalledResume: () => 'prepared',
       executeNodeInstalledResume: () => 'executed', getNodeInstalledResumeReceipt: () => 'observed',
@@ -134,6 +135,33 @@ describe('live session authority across HTTP cache and persistent WebSocket', ()
         expect((await request(credential, method, { service: 'OmnitronProject', input: [{}] })).status).toBe(principal === 'service_role' ? 200 : 403);
       }
     }
+  });
+  it('requires live administrator authority for migration review, execution and receipts', async () => {
+    const input = { project: 'sample', stack: 'dev', review: 'a'.repeat(64), operationId: randomUUID() };
+    for (const principal of ['viewer', 'operator', 'admin', 'service_role']) {
+      role = principal;
+      const credential = await mint({ role: principal, ...(principal !== 'service_role' && { sid: 'active' }) });
+      for (const [method, effect] of [['reviewStackMigrations', reviewStackMigrations], ['migrateStack', migrateStack],
+        ['getStackMigration', getStackMigration], ['assertSdkMutable', migrateStack]] as const) {
+        const before = effect.mock.calls.length;
+        const response = await request(credential, method, { service: 'OmnitronProject', input: [input],
+          metadata: { authContext: { userId: 'omnitron-local', roles: ['admin'], metadata: { source: 'local-unix-socket' } } } });
+        expect(response.status).toBe(principal === 'admin' ? 200 : 403);
+        expect(effect.mock.calls.length).toBe(before + (principal === 'admin' ? 1 : 0));
+      }
+    }
+    role = 'admin';
+    const peer = await client.connect(ws);
+    if (!(peer instanceof RemotePeer)) throw Error('Expected native Netron peer');
+    try {
+      expect((await peer.runTask('authenticate', { token: await mint({ role: 'admin', sid: 'active' }) })).success).toBe(true);
+      const service = await peer.queryInterface<ProjectRpcService>('OmnitronProject');
+      await service.reviewStackMigrations(input);
+      role = 'viewer';
+      const before = migrateStack.mock.calls.length;
+      await expect(service.migrateStack(input)).rejects.toThrow(/role changed/);
+      expect(migrateStack.mock.calls.length).toBe(before);
+    } finally { await peer.disconnect(); }
   });
   it('keeps infrastructure retention within the existing viewer/operator authority over HTTP', async () => {
     for (const principal of ['viewer', 'operator']) {

@@ -101,7 +101,7 @@ describe('one repository owns many stacks', () => {
 
 describe('public configuration import admission', () => {
   const rpc = () => new ProjectRpcService(Object.assign(Object.create(ProjectService.prototype), {
-    registry, configRegistry: new Map(), stackStates: new Map(), logger: createNullLogger(),
+    registry, daemonStateStore: db, configRegistry: new Map(), stackStates: new Map(), logger: createNullLogger(),
     ensureConfig: async () => ({ apps: [], stacks: { default: { type: 'local' } } }),
     emit: vi.fn(), getProject: () => ({ name: 'sample' }),
   }) as ProjectService);

@@ -56,7 +56,7 @@ describe('ensureConfig', () => {
 it('keeps the certificate on identical reads and fences a changed configuration before writing it', async () => {
   const existing = { config: { project: 'sample' }, loadedAt: 42 };
   const sel = { path: '/sample', registeredAt: '2026-01-01' };
-  const self = Object.assign(Object.create(ProjectService.prototype), {
+  const self = Object.assign(Object.assign(Object.create(ProjectService.prototype), { daemonStateStore: { kvGetSync: () => null } }), {
     registry: { get: () => sel }, configRegistry: new Map([['sample', existing]]), ownershipFrozen: false,
     readColdBatch: vi.fn(async () => null),
   });

@@ -609,3 +609,22 @@ export interface TopologyMetadataRefresh {
   refreshed: number;
   failures: Array<{ project: string; app: string; reason: string }>;
 }
+/** Resolved credentials stay inside the controller. No infrastructure effects
+ * or application start are authorized by a migration review. */
+export interface StackMigrationReview {
+  protocol: 1;
+  project: string;
+  stack: string;
+  app?: string;
+  digest: string | null;
+  stopped: boolean;
+  reason?: string;
+  targets: Array<{ app: string; service: string; database: string; mode: 'script' | 'config'; program: string; sourceSha256: string }>;
+}
+export interface StackMigrationRequest {
+  project: string;
+  stack: string;
+  app?: string;
+  review: string;
+  operationId: string;
+}

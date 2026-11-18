@@ -1263,9 +1263,12 @@ infra
 
 infra
   .command('migrate [app]')
-  .description('Run explicit database migration owners, or legacy workspace package scripts')
-  .option('--stack <name>', 'Select the local infrastructure-owning stack')
-  .option('--dry-run', 'Inspect migration ownership and programs without connecting to the database')
+  .description('Review or run migrations through the registered stack owner')
+  .option('--stack <project/stack>', 'Registered scope; a bare stack name requires its unique registered checkout')
+  .option('--dry-run', 'Read owner bindings and migration programs without database effects')
+  .option('--review <sha256>', 'Exact reviewed migration digest, after an infrastructure-preserving application stop')
+  .option('--request-id <uuid>', 'One execution identity; an existing request is never replayed')
+  .option('--status <uuid>', 'Inspect an existing migration operation without executing or releasing it')
   .structuredAction(async (app, options) => {
     const { infraMigrateCommand } = await import('../commands/infra.js');
     await infraMigrateCommand(app, options);

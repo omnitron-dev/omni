@@ -470,7 +470,10 @@ export class BackupService {
     return [...this.operations.pending(), ...(includeReviewed ? this.operations.reviewed() : [])]
       .filter(receipt => ['backup', 'restore'].includes(receipt.kind));
   }
-  getOperation(id: string): OperationReceipt | null { return this.operations.read(id); }
+  getOperation(id: string): OperationReceipt | null {
+    const receipt = this.operations.read(id);
+    return receipt && ['backup', 'restore'].includes(receipt.kind) ? receipt : null;
+  }
 
   acknowledgeUnknownBackup(id: string, revision: number, actor: string, reason: string): OperationReceipt {
     this.reviewedOperation(id, revision);

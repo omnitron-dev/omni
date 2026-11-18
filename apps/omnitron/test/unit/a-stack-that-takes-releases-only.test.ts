@@ -192,7 +192,7 @@ describe('the directory the definition is read from is the release commit', () =
 
 describe('a stack that says so takes nothing else', () => {
   function service(release?: object) {
-    const svc: any = Object.create(ProjectService.prototype);
+    const svc: any = Object.assign(Object.create(ProjectService.prototype), { daemonStateStore: { kvGetSync: () => null } });
     Object.assign(svc, {
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
       audit: { record: vi.fn(async () => {}) },
@@ -268,7 +268,7 @@ describe('a release is admitted only onto its own commit', () => {
       ),
     );
 
-    const svc: any = Object.create(ProjectService.prototype);
+    const svc: any = Object.assign(Object.create(ProjectService.prototype), { daemonStateStore: { kvGetSync: () => null } });
     Object.assign(svc, {
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
       audit: { record: vi.fn(async () => {}) },

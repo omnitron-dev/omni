@@ -9,16 +9,17 @@ import { promisify } from 'node:util';
 import { beforeAll, expect, it, vi } from 'vitest';
 
 const rpc = vi.hoisted(() => ({ projects: vi.fn(), stacks: vi.fn(), stack: vi.fn(), status: vi.fn(), watch: vi.fn(), review: vi.fn(), start: vi.fn(),
-  automatic: vi.fn(), manual: vi.fn(), disconnect: vi.fn() }));
+  automatic: vi.fn(), manual: vi.fn(), disconnect: vi.fn(), mutable: vi.fn() }));
 vi.mock('@omnitron-dev/omnitron/operations', async () => ({
   assertExecutionCapabilities: (await import('../../src/daemon/execution-capabilities.js')).assertExecutionCapabilities,
   LONG_REQUEST_TIMEOUT: 1000,
   createDaemonClient: () => ({ service: async () => ({ listProjects: rpc.projects, listStacks: rpc.stacks,
-    getStack: rpc.stack, reviewStackStart: rpc.review, startStack: rpc.start }),
+    getStack: rpc.stack, reviewStackStart: rpc.review, startStack: rpc.start, assertSdkMutable: rpc.mutable }),
     status: rpc.status, getWatchStatus: rpc.watch, restartAfterChange: rpc.automatic,
     restartApp: rpc.manual, disconnect: rpc.disconnect }),
 }));
 const { inspectSdk, sdkCommand, watchSdk } = await import('../../bin/sdk.js');
+import { exclusively, prepareSdkState } from '../../bin/sdk-operation.js';
 const require = createRequire(import.meta.url);
 let packageManager: string;
 
@@ -82,7 +83,7 @@ async function fixture() {
       configurations: [{ name: 'default', runtimeProject: 'project', path: consumer, stacks: {} }] }]);
     rpc.stack.mockImplementation(async ({ stack }: { stack: string }) => ({ type: 'local', config: { watch: true },
       runtimeScope: { project: 'project', stack }, apps: structuredClone(stacks.get(stack) ?? []) }));
-    rpc.status.mockResolvedValue({ execution: { ownerCapabilities: { applicationRuntimeResolution: 1, sourceRefresh: 1 },
+    rpc.status.mockResolvedValue({ execution: { ownerCapabilities: { applicationRuntimeResolution: 2, sourceRefresh: 1 },
       connection: { status: 'connected' }, ownerRuntime: { node: process.version, abi: process.versions.modules, platform: process.platform, arch: process.arch } } });
     rpc.watch.mockImplementation(async () => {
       const apps = [...stacks.values()].flat().filter(item => item.status === 'online').map(binding);
@@ -122,7 +123,7 @@ async function fixture() {
       messages: messages.mock.calls.map(call => call.map(String).join(' ')),
       checkpoint: JSON.parse(await fs.readFile(checkpoint, 'utf8').catch(() => 'null')) };
   }
-  return { app, add, binding, observations, run, source, consumer, pkg, checkpoint, profile,
+  return { app, add, binding, observations, run, source, consumer, pkg, checkpoint, profile, errors, messages,
     close: async () => {
       errors.mockRestore(); messages.mockRestore();
       if (previousCache === undefined) delete process.env['OMNITRON_DEV_CACHE'];
@@ -130,6 +131,29 @@ async function fixture() {
       await fs.rm(root, { recursive: true, force: true });
     } };
 }
+
+it('an already-running watcher refuses a retained migration source hold before replacing outputs or checkpoints', async () => {
+  const f = await fixture(), controller = new AbortController();
+  const watching = watchSdk(f.profile, undefined, controller.signal);
+  const until = async (ready: () => boolean) => {
+    const deadline = Date.now() + 30_000;
+    while (!ready() && Date.now() < deadline) await delay(25);
+    expect(ready()).toBe(true);
+  };
+  try {
+    await until(() => f.messages.mock.calls.some(call => String(call[0]).includes('Development SDK rebuild complete')));
+    const checkpoint = await fs.readFile(f.checkpoint, 'utf8');
+    const output = await fs.readFile(path.join(f.pkg, 'dist/index.js'), 'utf8');
+    const state = await prepareSdkState(f.source);
+    await exclusively(state, () => fs.writeFile(path.join(state, 'pending-selection'), JSON.stringify({ kind: 'migration',
+      root: f.consumer, id: randomUUID(), review: 'a'.repeat(64), journal: path.join(f.consumer, 'owner.db') }), { mode: 0o600 }));
+    await fs.writeFile(path.join(f.pkg, 'src/index.js'), 'export const version = 2;\n');
+    await until(() => f.errors.mock.calls.some(call => call.some(value => String(value).includes('held by a stack migration'))));
+    expect(await fs.readFile(f.checkpoint, 'utf8')).toBe(checkpoint);
+    expect(await fs.readFile(path.join(f.pkg, 'dist/index.js'), 'utf8')).toBe(output);
+    expect(rpc.automatic).not.toHaveBeenCalled();
+  } finally { controller.abort(); await watching; await f.close(); }
+}, 90_000);
 
 async function coldFixture() {
   const f = await fixture();
@@ -187,6 +211,34 @@ it('starts a stopped working tree once, records the acknowledged generations and
     f.halt(); await f.command();
     expect(rpc.start).toHaveBeenCalledTimes(2);
     expect(rpc.automatic).not.toHaveBeenCalled();
+  } finally { await f.close(); }
+}, 120_000);
+
+it('prepares a cold owner without retained generations, then records only its reviewed first start', async () => {
+  const f = await coldFixture();
+  try {
+    for (const app of f.apps) Reflect.deleteProperty(app, 'generation');
+    const observeWatch = rpc.watch.getMockImplementation()!;
+    rpc.watch.mockImplementation(async () => {
+      const observed = await observeWatch();
+      return { ...observed, enabled: observed.apps.length > 0 };
+    });
+    await sdkCommand(['dev', f.source, '--project-dir', f.consumer, '--stack', 'dev', '--no-watch']);
+    expect(rpc.start).not.toHaveBeenCalled();
+    expect(rpc.automatic).not.toHaveBeenCalled();
+    expect(f.apps.every(app => app.status === 'stopped' && app.generation === undefined)).toBe(true);
+    const prepared = JSON.parse(await fs.readFile(f.checkpoint, 'utf8'));
+    expect(prepared.applications).toEqual({});
+    await f.command();
+    expect(rpc.start).toHaveBeenCalledExactlyOnceWith({ ...f.target, review: f.digest });
+    expect(rpc.automatic).not.toHaveBeenCalled();
+    const started = JSON.parse(await fs.readFile(f.checkpoint, 'utf8'));
+    for (const app of f.apps) {
+      expect(app.status).toBe('online');
+      expect(app.generation).toEqual(expect.any(String));
+      expect(started.applications['project/dev'][app.handleKey].generation).toBe(app.generation);
+    }
+    expect((await inspectSdk(f.consumer, 'dev')).refresh?.confirmed).toEqual(f.apps.map(app => app.handleKey));
   } finally { await f.close(); }
 }, 120_000);
 

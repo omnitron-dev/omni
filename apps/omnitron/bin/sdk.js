@@ -6,12 +6,15 @@ import { FileWatcher } from '@xec-sh/loader/watch';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { setTimeout as delay } from 'node:timers/promises';
 import { isDeepStrictEqual, parseArgs, promisify } from 'node:util';
 import { parseAllDocuments } from 'yaml';
 import { getWantedPackageManager } from '@pnpm/config.reader';
 import { frameworkPackage } from './pnpmfile-sdk.js';
-import { sdkDirectory, sdkTransitionStatus, prepareSdkTransition, beginSdkTransition, finishSdkTransition, recoverSdkTransition } from './sdk-transition.js';
+import { sdkTransitionStatus, prepareSdkTransition, beginSdkTransition, finishSdkTransition, recoverSdkTransition } from './sdk-transition.js';
+import { sdkStatePath as statePath, prepareSdkState as prepareState, exclusively,
+  assertSdkAvailable as assertSourceAvailable, clearSdkSelection as clearSourceSelection,
+  sdkWorkspaceIdentity, withMigrationSdkLocks } from './sdk-operation.js';
+export { releaseTerminalMigrationSdk } from './sdk-operation.js';
 
 const help = `omnitron sdk init [--project-dir PATH]
 omnitron sdk dev [SDK_CHECKOUT] [--project-dir PATH] [--stack NAME [--start-stopped --review DIGEST]] [--no-watch]
@@ -42,7 +45,6 @@ const previousBridgeHashes = new Set([
   '28220745dd5d0643c4ac64ef75e7c466a9863741bd23473bbbfccee5c5f7858b',
   '5d68d3ac4deb8f9d525b1db2e020dc1610d2ea49f3892232d982db20341c1735',
 ]);
-const statePath = (root) => path.join(root, '.omnitron', 'dev-sdk');
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const inside = (parent, child) => {
   const rel = path.relative(parent, child);
@@ -219,39 +221,6 @@ async function desiredProfile(root, source, distribution) {
   const names = Object.keys(links).sort();
   return { schema: 1, root, source, lockSha256: lockIdentity(distribution), inputSha256: sha256(JSON.stringify({ manifests, settings, installation })),
     links: Object.fromEntries(names.map(name => [name, links[name]])), versions: Object.fromEntries(names.map(name => [name, versions[name]])) };
-}
-
-async function prepareState(root) {
-  const dir = statePath(root);
-  await sdkDirectory(dir);
-  if ((await fs.realpath(dir)) !== dir) throw Error('SDK state directory must be local to this project');
-  const info = await fs.stat(dir);
-  if (typeof process.getuid === 'function' && (info.uid !== process.getuid() || info.mode & 0o022))
-    throw Error('SDK state directory must be owned by this user and not writable by other users');
-  await fs.writeFile(path.join(dir, '.gitignore'), '*\n', { mode: 0o600 });
-  return dir;
-}
-
-// The OS releases the SQLite writer lock if the process dies, including on Windows.
-async function exclusively(dir, body, waitSignal) {
-  const { DatabaseSync } = await import('node:sqlite');
-  const db = new DatabaseSync(path.join(dir, 'operation.sqlite'));
-  try {
-    for (;;) {
-      waitSignal?.throwIfAborted();
-      try {
-        db.exec('BEGIN IMMEDIATE');
-        break;
-      } catch (error) {
-        if (error.errcode !== 5) throw error;
-        if (!waitSignal) throw Error('Another development SDK operation is active in ' + dir);
-        await delay(200, undefined, { signal: waitSignal });
-      }
-    }
-    return await body();
-  } finally {
-    db.close();
-  }
 }
 
 async function seedLock(root, dir, distribution) {
@@ -552,26 +521,16 @@ async function verifyInputs(profile, inputs, signal) {
     throw Error('SDK build inputs changed for ' + changed.join(', ') + '; run sdk dev to rebuild before confirming readiness');
 }
 
-async function assertSourceAvailable(source) {
-  const owner = await optionalJson(path.join(statePath(source), 'pending-selection'));
-  if (!owner) return;
-  const selection = typeof owner.root === 'string' && path.isAbsolute(owner.root) && await sdkTransitionStatus(owner.root);
-  if (!selection || selection.id !== owner.id || selection.source !== source ||
-      !['committed', 'restored'].includes(selection.phase))
-    throw Error('Shared SDK source has an unfinished selection; recover its consumer before another build: ' + owner.root);
-}
-async function clearSourceSelection(root, source, id) {
-  const file = path.join(statePath(source), 'pending-selection');
-  const owner = await optionalJson(file);
-  if (owner?.root === root && owner.id === id) await fs.rm(file);
-}
-
 async function build(profile, names, signal, locked = false) {
   if (!names.length) throw Error('No development SDK packages selected for building');
   const source = profile.source;
   const dir = await prepareState(source);
   const execute = async () => {
-    if (!locked) await assertSourceAvailable(source);
+    if (!locked) {
+      await assertSourceAvailable(source);
+      await assertSourceAvailable(profile.root);
+      await requireSdkMutationAuthority();
+    }
     // pnpm's implicit pre-script install only warns on failure. Ask pnpm to
     // check its installation first, then require a successful frozen repair.
     try {
@@ -608,11 +567,53 @@ async function profileStatus(root) {
   return active;
 }
 
+/** Read real inputs without importing an application, installing, building or
+ * creating SDK state. Holds/SQLite files are operational and never change this
+ * evidence, so the owner can re-inspect while holding its own migration. */
+export async function inspectMigrationSdk(projectDirectory) {
+  const root = await fs.realpath(projectDirectory);
+  const profile = await profileStatus(root);
+  if (!isDeepStrictEqual(profile, await optionalJson(path.join(statePath(root), 'install.json'))))
+    throw Error('An SDK selection is interrupted; resolve it before reviewing migrations');
+  const source = profile ? await fs.realpath(profile.source) : null;
+  if (source && (source !== profile.source || inside(root, source) || inside(source, root)))
+    throw Error('Migration SDK bindings require separate physical project and source workspaces');
+  const workspaces = await Promise.all([root, ...(source ? [source] : [])].map(sdkWorkspaceIdentity));
+  const inputs = [];
+  for (const directory of workspaces.map(item => item.root)) {
+    // Development profiles use the same canonical importer discovery as SDK
+    // selection. Registry imports are verified by the owner's installed graph.
+    const consumers = profile ? await inventory(directory) : new Map();
+    const files = {};
+    for (const file of ['package.json', 'pnpm-lock.yaml', '.pnpmfile.mjs', '.omnitron/dev-sdk/active.json',
+      '.omnitron/dev-sdk/install.json', '.omnitron/dev-sdk/built.json']) {
+      const bytes = await fs.readFile(path.join(directory, file)).catch(error => {
+        if (error.code === 'ENOENT') return null; throw error;
+      });
+      files[file] = bytes === null ? null : sha256(bytes);
+    }
+    inputs.push({ root: directory, files, inputs: await consumerInputs(directory, consumers) });
+  }
+  if (profile && !isDeepStrictEqual(profile, await desiredProfile(root, source, await distributionLock(root))))
+    throw Error('Development SDK inputs differ from the selected profile; resolve the selection before migrations');
+  return { root, source, workspaces, inputsSha256: sha256(JSON.stringify({ profile, inputs })) };
+}
+
+export async function withMigrationSdk(projectDirectory, reference, body) {
+  const inspected = await inspectMigrationSdk(projectDirectory);
+  return withMigrationSdkLocks(inspected.workspaces, reference, async hold => {
+    const current = await profileStatus(inspected.root);
+    if ((current?.source ?? null) !== inspected.source)
+      throw Error('SDK source selection changed before migration admission');
+    return body(hold);
+  });
+}
+
 async function requireApplicationRuntime(client, refresh = false) {
   const { assertExecutionCapabilities } = await import('@omnitron-dev/omnitron/operations');
   const status = await client.status();
   assertExecutionCapabilities(status.execution?.ownerCapabilities,
-    { applicationRuntimeResolution: 1, ...(refresh && { sourceRefresh: 1 }) }, 'Development SDK activation');
+    { applicationRuntimeResolution: 2, ...(refresh && { sourceRefresh: 1 }) }, 'Development SDK activation');
   if (status.execution.connection?.status !== 'connected')
     throw Error('Development SDK activation requires a current execution owner observation; restore the owner connection first');
   const runtime = status.execution.ownerRuntime;
@@ -622,6 +623,15 @@ async function requireApplicationRuntime(client, refresh = false) {
     throw Error(`Development SDK Node ${process.version} (ABI ${process.versions.modules}, ${process.platform}/${process.arch}) ` +
       `is incompatible with owner Node ${runtime.node} (ABI ${runtime.abi}, ${runtime.platform}/${runtime.arch}). ` +
       'Run omnitron sdk with the owner-compatible Node before installing or building native dependencies');
+  await (await client.service('OmnitronProject')).assertSdkMutable();
+}
+
+async function requireSdkMutationAuthority() {
+  const socket = process.env.OMNITRON_SOCKET ?? path.join(process.env.OMNITRON_HOME ?? path.join(os.homedir(), '.omnitron'), 'daemon.sock');
+  if (!await fs.lstat(socket).catch(error => { if (error.code === 'ENOENT') return null; throw error; })) return;
+  const { createDaemonClient, LONG_REQUEST_TIMEOUT } = await import('@omnitron-dev/omnitron/operations');
+  const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
+  try { await requireApplicationRuntime(client); } finally { await client.disconnect(); }
 }
 
 async function localStack(root, stack) {
@@ -777,6 +787,7 @@ async function selectionInventory(root, source, names, signal) {
 async function changeSelection(root, source, stack, names, signal, operation) {
   const sourceState = await prepareState(source);
   return exclusively(sourceState, async () => {
+    await assertSourceAvailable(root);
     await assertSourceAvailable(source);
     await requireSourceStopped(root, source, stack);
     const retentionStarted = performance.now();
@@ -1188,6 +1199,11 @@ async function checkpointSdkBuild(profile, built, stack, signal, packages, revie
   }
   const sourceState = await prepareState(profile.source);
   const persist = async (confirmLaunch) => {
+    if (!locked) {
+      await assertSourceAvailable(profile.source);
+      await assertSourceAvailable(profile.root);
+      await requireSdkMutationAuthority();
+    }
     await verifyOutputs(profile, next);
     await verifyInputs(profile, inputs, signal);
     if (confirmLaunch) {
@@ -1340,6 +1356,7 @@ async function inspectBuild(active, stack) {
 
 export async function inspectSdk(projectDirectory = process.cwd(), stack) {
   const root = await fs.realpath(projectDirectory);
+  await assertSourceAvailable(root);
   const dir = statePath(root);
   const transition = await sdkTransitionStatus(root);
   if (transition && !['committed', 'restored'].includes(transition.phase))
@@ -1393,31 +1410,24 @@ export async function sdkCommand(argv) {
   const bridge = path.join(root, '.pnpmfile.mjs');
   const template = await fs.readFile(new URL('./pnpmfile-sdk.js', import.meta.url), 'utf8');
   if (action === 'init') {
-    for (const existing of ['.pnpmfile.cjs', '.pnpmfile.js']) {
-      if (
-        await fs.stat(path.join(root, existing)).then(
-          () => true,
-          (error) => {
-            if (error.code === 'ENOENT') return false;
-            throw error;
-          }
-        )
-      )
-        throw Error('An existing pnpm hook owns ' + existing + ' in ' + root);
-    }
-    try {
-      await fs.writeFile(bridge, template, { flag: 'wx' });
-    } catch (error) {
-      if (error.code !== 'EEXIST') throw error;
-      const current = await fs.readFile(bridge, 'utf8');
-      if (previousBridgeHashes.has(sha256(current))) await atomic(bridge, template);
-      else if (current !== template)
-        throw Error(
-          'An existing pnpm hook owns ' +
-            bridge +
-            '. Preserve that hook and integrate the SDK selection before enabling development.'
-        );
-    }
+    await exclusively(await prepareState(root), async () => {
+      await assertSourceAvailable(root);
+      await requireSdkMutationAuthority();
+      for (const existing of ['.pnpmfile.cjs', '.pnpmfile.js']) {
+        if (await fs.stat(path.join(root, existing)).then(() => true, error => {
+          if (error.code === 'ENOENT') return false; throw error;
+        })) throw Error('An existing pnpm hook owns ' + existing + ' in ' + root);
+      }
+      try { await fs.writeFile(bridge, template, { flag: 'wx' }); }
+      catch (error) {
+        if (error.code !== 'EEXIST') throw error;
+        const current = await fs.readFile(bridge, 'utf8');
+        if (previousBridgeHashes.has(sha256(current))) await atomic(bridge, template);
+        else if (current !== template)
+          throw Error('An existing pnpm hook owns ' + bridge +
+            '. Preserve that hook and integrate the SDK selection before enabling development.');
+      }
+    });
     console.log('Commit the pnpm hook. Select a local SDK with omnitron sdk dev, or install published dependencies with pnpm install.');
     console.log('Include .omnitron/dev-sdk/*.json in build cache inputs (Turbo: globalDependencies).');
     return;
@@ -1431,11 +1441,13 @@ export async function sdkCommand(argv) {
     throw Error('Run omnitron sdk init to install or upgrade the project bridge, then commit the hook');
   await prepareState(root);
   await exclusively(dir, async () => {
+    await assertSourceAvailable(root);
     const transition = await sdkTransitionStatus(root);
     if (action === 'recover') {
       if (!transition) throw Error('No retained SDK transition is available');
       await sdkTransitionStatus(root, true);
       await exclusively(await prepareState(transition.source), async () => {
+        await assertSourceAvailable(transition.source, { root, id: transition.id });
         await requireSourceStopped(root, transition.source, values.stack);
         await recoverSdkTransition(root);
         await clearSourceSelection(root, transition.source, transition.id);

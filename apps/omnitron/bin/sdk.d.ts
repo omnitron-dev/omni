@@ -17,6 +17,17 @@ export interface DevelopmentSdkProfile {
   versions?: Record<string, string>;
   inputSha256?: string;
 }
+export interface MigrationSdkInspection {
+  root: string;
+  source: string | null;
+  workspaces: import('./sdk-operation.js').SdkWorkspaceIdentity[];
+  inputsSha256: string;
+}
+export type { MigrationSdkReference, MigrationSdkHold, SdkWorkspaceIdentity } from './sdk-operation.js';
+export { releaseTerminalMigrationSdk } from './sdk-operation.js';
+export function inspectMigrationSdk(projectDirectory: string): Promise<MigrationSdkInspection>;
+export function withMigrationSdk<T>(projectDirectory: string, reference: import('./sdk-operation.js').MigrationSdkReference,
+  body: (hold: import('./sdk-operation.js').MigrationSdkHold) => Promise<T>): Promise<T>;
 export function sdkCommand(args: string[]): Promise<void>;
 export function inspectSdk(projectDirectory?: string, stack?: string): Promise<DevelopmentSdkStatus>;
 export function watchSdk(profile: DevelopmentSdkProfile, stack: string | undefined, signal: AbortSignal): Promise<void>;

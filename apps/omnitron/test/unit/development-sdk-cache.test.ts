@@ -5,7 +5,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createRequire } from 'node:module';
 import { setTimeout as delay } from 'node:timers/promises';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { inspectSdk, watchSdk, type DevelopmentSdkProfile } from '../../bin/sdk.js';
 
 const exec = promisify(execFile);
@@ -14,6 +14,8 @@ const turbo = path.join(path.dirname(require.resolve('turbo/package.json')), 'bi
 
 it('invalidates real Turbo tasks when linked SDK declarations change, even inside gitignored state', async () => {
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'sdk-cache-')));
+  vi.stubEnv('OMNITRON_HOME', path.join(root, 'no-owner'));
+  vi.stubEnv('OMNITRON_SOCKET', path.join(root, 'absent.sock'));
   const source = path.join(root, 'sdk'), consumer = path.join(root, 'consumer');
   const pkg = path.join(source, 'packages/probe'), state = path.join(consumer, '.omnitron/dev-sdk');
   const controller = new AbortController();
@@ -94,5 +96,6 @@ await fs.writeFile('dist/index.js','export const value=1;\\n');\n`);
     controller.abort();
     await watcher;
     await fs.rm(root, { recursive: true, force: true });
+    vi.unstubAllEnvs();
   }
 }, 90_000);

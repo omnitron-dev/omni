@@ -6,11 +6,11 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { prepareSdkTransition, beginSdkTransition, finishSdkTransition, recoverSdkTransition, sdkTransitionStatus } from '../../bin/sdk-transition.js';
 import { sdkCommand, inspectSdk } from '../../bin/sdk.js';
 
-const rpc = vi.hoisted(() => ({ projects: vi.fn(), stacks: vi.fn(), status: vi.fn(), disconnect: vi.fn() }));
+const rpc = vi.hoisted(() => ({ projects: vi.fn(), stacks: vi.fn(), status: vi.fn(), disconnect: vi.fn(), mutable: vi.fn() }));
 vi.mock('@omnitron-dev/omnitron/operations', async () => ({
   assertExecutionCapabilities: (await import('../../src/daemon/execution-capabilities.js')).assertExecutionCapabilities,
   LONG_REQUEST_TIMEOUT: 1000,
-  createDaemonClient: () => ({ service: async () => ({ listProjects: rpc.projects, listStacks: rpc.stacks }),
+  createDaemonClient: () => ({ service: async () => ({ listProjects: rpc.projects, listStacks: rpc.stacks, assertSdkMutable: rpc.mutable }),
     status: rpc.status, disconnect: rpc.disconnect }),
 }));
 
@@ -241,7 +241,7 @@ it.each(['shared-source', 'unknown-binding'])('requires stopped or proven indepe
   rpc.projects.mockResolvedValue([{ name: 'consumer', path: root }, { name: 'other', path: binding === 'shared-source' ? source : other }]);
   rpc.stacks.mockImplementation(async ({ project }: { project: string }) => [{ name: 'dev', type: 'local',
     apps: [{ name: 'app', status: project === 'consumer' ? 'stopped' : 'online' }] }]);
-  rpc.status.mockResolvedValue({ execution: { ownerCapabilities: { applicationRuntimeResolution: 1 },
+  rpc.status.mockResolvedValue({ execution: { ownerCapabilities: { applicationRuntimeResolution: 2 },
     connection: { status: 'connected' }, ownerRuntime: { node: process.version, abi: process.versions.modules, platform: process.platform, arch: process.arch } } });
   await expect(sdkCommand(['recover', '--project-dir', root, '--stack', 'dev']))
     .rejects.toThrow(binding === 'shared-source' ? 'before changing shared SDK outputs' : 'Cannot prove SDK isolation');

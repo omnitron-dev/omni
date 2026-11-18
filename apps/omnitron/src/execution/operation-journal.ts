@@ -18,6 +18,12 @@ const INDEX = `${PREFIX}active`;
 const REVIEWED = `${PREFIX}reviewed-backups`;
 /** Runtime capability required before selecting a controller for reviewed uncertainty. */
 export const BACKUP_REVIEW_PROTOCOL = 2;
+export const MIGRATION_OPERATION_PROTOCOL = 1;
+
+/** Avoid opening a write-capable store merely to inspect an absent journal. */
+export function hasOperationJournal(store: Pick<DaemonStateStore, 'kvGetSync'>): boolean {
+  return store.kvGetSync(INDEX, { strict: true }) !== null;
+}
 
 export async function assertBackupReviewRuntime(directory: string): Promise<void> {
   const capability = await import(pathToFileURL(path.join(directory, 'execution/operation-journal.js')).href);
@@ -32,10 +38,18 @@ export async function assertOperationJournalCompatibility(home: string, director
   try { fs.lstatSync(filename); }
   catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw error; }
   const database = openSqliteDatabase(filename, { readonly: true, fileMustExist: true });
-  let reviewed: unknown;
-  try { reviewed = database.prepare('SELECT value FROM state_kv WHERE key = ?').get(REVIEWED); }
+  let reviewed: unknown, active: { value: string } | undefined;
+  try {
+    reviewed = database.prepare('SELECT value FROM state_kv WHERE key = ?').get(REVIEWED);
+    active = database.prepare('SELECT value FROM state_kv WHERE key = ?').get(INDEX) as { value: string } | undefined;
+  }
   finally { database.close(); }
   if (reviewed !== undefined) await assertBackupReviewRuntime(directory);
+  if (active && JSON.parse(active.value).protocol === 3) {
+    const capability = await import(pathToFileURL(path.join(directory, 'execution/operation-journal.js')).href);
+    if (capability.MIGRATION_OPERATION_PROTOCOL !== MIGRATION_OPERATION_PROTOCOL)
+      throw Error('The selected backend cannot preserve pending stack migration authority');
+  }
 }
 const DIGEST = /^[a-f0-9]{64}$/;
 const KIND = /^[a-z][a-z0-9.-]{0,63}$/;
@@ -48,7 +62,7 @@ const NEXT: Record<OperationState, readonly OperationState[]> = {
   succeeded: [], failed: [], cancelled: [],
 };
 
-type ActiveIndex = { protocol: 1 | 2; claims: Record<string, string> };
+type ActiveIndex = { protocol: 1 | 2 | 3; claims: Record<string, string> };
 type Completion = { observation?: ExecutionResourceObservation; artifact?: OperationArtifact; code?: string };
 type FailureCode = 'OPERATION_CONFLICT' | 'OPERATION_REVISION_CONFLICT' |
   'OPERATION_STATE_CONFLICT' | 'OPERATION_JOURNAL_INVALID';
@@ -163,7 +177,7 @@ export class OperationJournal {
   private index(): ActiveIndex {
     const value = this.store.kvGetSync<unknown>(INDEX, { strict: true });
     if (value === null) return { protocol: 1, claims: {} };
-    if (!object(value) || ![1, 2].includes(value['protocol'] as number) || !object(value['claims'])) invalid('Invalid active operation index');
+    if (!object(value) || ![1, 2, 3].includes(value['protocol'] as number) || !object(value['claims'])) invalid('Invalid active operation index');
     exactKeys(value, ['protocol', 'claims']);
     if (value['protocol'] === 2 && this.store.kvGetSync(REVIEWED, { strict: true }) === null)
       invalid('Reviewed backup index is missing');
@@ -243,6 +257,9 @@ export class OperationJournal {
       const now = new Date().toISOString();
       const next: OperationReceipt = { ...intent, protocol: 1, revision: 1, state: 'prepared', createdAt: now, updatedAt: now };
       for (const resource of intent.resources) index.claims[resourceKey(resource)] = intent.id;
+      // Older controllers must fail closed even on direct boot, before they
+      // can reopen the durable application stop while migrations are pending.
+      if (intent.kind === 'migration') index.protocol = 3;
       this.store.kvSetSync(INDEX, index);
       created = true;
       return next;
@@ -269,7 +286,9 @@ export class OperationJournal {
         for (const resource of receipt.resources) delete index.claims[resourceKey(resource)];
         // Older controllers reject protocol 2 at boot, even when launched
         // directly rather than selected through current admission commands.
-        if (result.review) index.protocol = 2;
+        if (result.review && index.protocol !== 3) index.protocol = 2;
+        if (index.protocol === 3 && ![...new Set(Object.values(index.claims))].some(owner => this.read(owner)?.kind === 'migration'))
+          index.protocol = this.store.kvGetSync(REVIEWED, { strict: true }) !== null || result.review ? 2 : 1;
         this.store.kvSetSync(INDEX, index);
       }
       if (!receipt.review && result.review) this.store.kvSetSync(REVIEWED, [...reviewed, id]);

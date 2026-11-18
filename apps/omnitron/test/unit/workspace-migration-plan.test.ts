@@ -55,44 +55,14 @@ describe('workspace migration admission', () => {
     expect(execute).toHaveBeenCalledOnce();
     expect(execute).toHaveBeenCalledWith('pnpm', ['run', 'migrate'], expect.objectContaining({ cwd: first.cwd }));
   });
-  it('preflights every declared config before connecting and never falls back to a package script', async () => {
+  it('refuses local execution for declared ownership, even when a package script exists', async () => {
     const owner = pkg('api');
-    writeFileSync(path.join(owner.cwd, 'portal.mjs'), 'export default {};');
-    writeFileSync(path.join(owner.cwd, 'market.mjs'), 'export default {};');
-    load.mockResolvedValue({ apps: [{ ...owner, env: { DATABASE_URL: 'postgres://u:p@localhost/api' } }],
-      infrastructure: { services: { pg: { preset: 'postgres', config: { databases: { api: { migrate:
-        ['portal', 'market'].map(name => ({ app: owner.name, config: name + '.mjs', releaseConfig: 'dist/' + name + '.js' })),
-      } } } } } } });
+    load.mockResolvedValue({ apps: [owner], stacks: { dev: { type: 'local' } } });
     vi.spyOn(process, 'cwd').mockReturnValue(root);
-    migration.mockImplementation(async (_target, _env, options) => {
-      if (options?.validate) throw Object.assign(Error('invalid config'), { stderr: 'missing connect()' });
-      return { stdout: '', stderr: '' };
-    });
-    await infraMigrateCommand(undefined, { dryRun: true });
+    for (const dryRun of [false, true])
+      await expect(infraMigrateCommand(undefined, { dryRun })).rejects.toThrow('requires --stack');
+    expect(execute).not.toHaveBeenCalled();
     expect(migration).not.toHaveBeenCalled();
-    await expect(infraMigrateCommand()).rejects.toThrow('No migrations executed');
     expect(database).not.toHaveBeenCalled();
-    expect(execute).not.toHaveBeenCalled();
-    migration.mockResolvedValue({ stdout: '', stderr: '' });
-    migration.mockClear();
-    await infraMigrateCommand();
-    expect(migration.mock.calls.map(call => Boolean(call[2]?.validate))).toEqual([true, true, false, false]);
-    expect(database).toHaveBeenCalledTimes(2);
-    expect(execute).not.toHaveBeenCalled();
-  });
-  it('rechecks the source boundary after readiness and before execution', async () => {
-    const owner = pkg('api');
-    const file = path.join(owner.cwd, 'portal.mjs');
-    writeFileSync(file, 'export default {};');
-    load.mockResolvedValue({ apps: [{ ...owner, env: { DATABASE_URL: 'postgres://u:p@localhost/api' } }],
-      infrastructure: { services: { pg: { preset: 'postgres', config: { databases: { api: { migrate:
-        { app: owner.name, config: 'portal.mjs', releaseConfig: 'dist/portal.js' },
-      } } } } } } });
-    vi.spyOn(process, 'cwd').mockReturnValue(root);
-    migration.mockResolvedValue({ stdout: '', stderr: '' });
-    database.mockImplementation(async () => { rmSync(file); symlinkSync(process.execPath, file); });
-    await expect(infraMigrateCommand()).rejects.toThrow('within its package');
-    expect(migration).toHaveBeenCalledOnce();
-    expect(migration.mock.calls[0]?.[2]).toEqual({ validate: true });
   });
 });

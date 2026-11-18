@@ -19,7 +19,7 @@ function fixture() {
   const metadata = { readState: vi.fn(() => ({ metadata: record })) };
   const config = { apps: entries, stacks: { dev: { type: 'local', apps: 'all' } } };
   const plan = vi.fn(async () => []);
-  const service = Object.assign(Object.create(ProjectService.prototype), {
+  const service = Object.assign(Object.assign(Object.create(ProjectService.prototype), { daemonStateStore: { kvGetSync: () => null } }), {
     nodeStackStop: { assertMutable: vi.fn() },
     localSelection: () => ({ read: () => ({ revision: 0, release: null }) }),
     registry: { get: () => ({ path: directory }) }, configRegistry: new Map([['sample', { config, loadedAt: Date.now() }]]),

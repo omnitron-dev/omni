@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Document navigation</title>
+<style>
+  body { margin: 0; }
+  body::before { content: ''; display: block; height: 131px; }
+  .lumen-doc-layout { display: grid; grid-template-columns: 250px 1fr; align-items: start; }
+  .lumen-doc-sidebar { position: sticky; top: 76px; height: calc(100vh - 76px); overflow: auto; border: 2px solid; }
+  .lumen-doc-sidebar > nav { overflow: auto; }
+  main { min-height: 2400px; }
+  dialog { position: fixed; inset: 0 0 auto auto; margin: 0; }
+  dialog nav { width: 220px; height: 200px; overflow: auto; }
+  @media (max-width: 600px) { .lumen-doc-sidebar { display: none; } }
+</style></head><body>SSR_DOC_NAVIGATION<div id="root"></div><script type="module" src="./doc-sidebar.tsx"></script></body></html>

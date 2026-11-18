@@ -43,7 +43,107 @@ const MAX_LABEL_LINES = 2;
 // consumers rendering the sidebar in a server bundle aren't noisy.
 const useIsoLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
+function scrollableNavigation(root: HTMLElement) {
+  if (root.closest('dialog, [role="dialog"], [aria-modal="true"]')) return null;
+  const landmarks = 'nav, aside, [role="navigation"], [role="complementary"]';
+  let candidate: HTMLElement | null = null;
+  for (let node = root.parentElement; node && node !== document.body; node = node.parentElement) {
+    if (!node.matches(landmarks) || !['auto', 'scroll', 'overlay'].includes(getComputedStyle(node).overflowY)) continue;
+    if (node.scrollHeight > node.clientHeight) return node;
+    candidate ??= node;
+  }
+  return candidate;
+}
+
+function revealCurrentRow(root: HTMLElement, owner: HTMLElement, savedPosition?: number) {
+  const railTop = owner.getBoundingClientRect().top + owner.clientTop;
+  const railBottom = railTop + owner.clientHeight;
+  const top = Math.max(0, railTop);
+  const bottom = Math.min(document.documentElement.clientHeight, railBottom);
+  if (bottom <= top) return;
+  // A header above a sticky rail can leave its lower edge outside the viewport.
+  // Keep the last document reachable by scrolling this rail alone.
+  root.style.paddingBottom = railBottom > bottom ? `${railBottom - bottom}px` : '';
+  if (savedPosition !== undefined) owner.scrollTop = savedPosition;
+  let nearest = Infinity;
+  for (const row of root.querySelectorAll<HTMLElement>('[aria-current="page"]')) {
+    const rect = row.getBoundingClientRect();
+    if (!rect.width || !rect.height) continue;
+    if ((rect.top >= top && rect.bottom <= bottom) || (rect.top <= top && rect.bottom >= bottom)) return;
+    const distance = rect.top < top ? rect.top - top : rect.bottom - bottom;
+    if (Math.abs(distance) < Math.abs(nearest)) nearest = distance;
+  }
+  if (Number.isFinite(nearest)) owner.scrollTop += nearest;
+}
+
 export function DocSidebar({ items, activeId, onItemClick, title, compact = false }: DocSidebarProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const restoredOwner = useRef<HTMLElement | null>(null);
+  const scheduleReveal = useRef<(() => void) | undefined>(undefined);
+  const [hasScrollOwner, setHasScrollOwner] = useState(false);
+  const firstItem = items[0]?.id;
+  const hasActivePage = activeId !== undefined && containsPage(items, activeId);
+  useIsoLayoutEffect(() => {
+    const root = rootRef.current;
+    const landmark = root && scrollableNavigation(root);
+    setHasScrollOwner(!!landmark);
+    if (!root || !landmark) return;
+
+    const scope = 'prism:doc-sidebar:' + JSON.stringify([document.documentElement.lang, title, firstItem]);
+    const pageKey = scope + ':' + location.pathname + location.search;
+    let frame = 0;
+    let observer: ResizeObserver | undefined;
+    const update = () => {
+      const owner = scrollableNavigation(root);
+      if (!owner?.clientHeight) return;
+      observer?.disconnect();
+      let savedPosition: number | undefined;
+      if (restoredOwner.current !== owner) {
+        restoredOwner.current = owner;
+        try {
+          const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+          const key = navigation?.type === 'reload' || navigation?.type === 'back_forward' ? pageKey : scope;
+          const saved = sessionStorage.getItem(key);
+          if (saved !== null && Number.isFinite(Number(saved))) savedPosition = Number(saved);
+        } catch {
+          // The current row is still revealed when tab storage is unavailable.
+        }
+      }
+      revealCurrentRow(root, owner, savedPosition);
+    };
+    const schedule = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(update);
+    };
+    const save = () => {
+      const owner = restoredOwner.current;
+      if (!owner?.clientHeight || !owner.contains(root)) return;
+      try {
+        const position = String(owner.scrollTop);
+        sessionStorage.setItem(scope, position);
+        sessionStorage.setItem(pageKey, position);
+      } catch {
+        // A blocked or full storage area must not interrupt navigation.
+      }
+    };
+    // Portal hydration replaces the server tree in a parent layout effect.
+    // Measure after that handoff, or when a responsive rail first becomes visible.
+    if (!landmark.clientHeight && typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(schedule);
+      observer.observe(landmark);
+    }
+    scheduleReveal.current = schedule;
+    schedule();
+    window.addEventListener('pagehide', save);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer?.disconnect();
+      window.removeEventListener('pagehide', save);
+      scheduleReveal.current = undefined;
+    };
+  }, [activeId, compact, firstItem, hasActivePage, title]);
+
+  const revealAfterExpansion = hasScrollOwner ? () => scheduleReveal.current?.() : undefined;
   const compactIndex = () => {
     const leaves = (nodes: DocSidebarItem[], path: string[] = []): { item: DocSidebarItem; path: string }[] =>
       nodes.flatMap((item) => [
@@ -89,7 +189,7 @@ export function DocSidebar({ items, activeId, onItemClick, title, compact = fals
     );
   };
   return (
-    <Box>
+    <Box ref={rootRef}>
       {compact && compactIndex()}
       <Box hidden={compact}>
         {title && (
@@ -110,7 +210,14 @@ export function DocSidebar({ items, activeId, onItemClick, title, compact = fals
         )}
         <List dense disablePadding>
           {items.map((item) => (
-            <SidebarNode key={item.id} item={item} activeId={activeId} onItemClick={onItemClick} depth={0} />
+            <SidebarNode
+              key={item.id}
+              item={item}
+              activeId={activeId}
+              onItemClick={onItemClick}
+              onReveal={revealAfterExpansion}
+              depth={0}
+            />
           ))}
         </List>
       </Box>
@@ -118,21 +225,32 @@ export function DocSidebar({ items, activeId, onItemClick, title, compact = fals
   );
 }
 
+function containsPage(items: DocSidebarItem[], activeId: string): boolean {
+  return items.some((item) => item.id === activeId || (item.children && containsPage(item.children, activeId)));
+}
+
 function SidebarNode({
   item,
   activeId,
   onItemClick,
+  onReveal,
   depth,
 }: {
   item: DocSidebarItem;
   activeId?: string;
   onItemClick?: (item: DocSidebarItem) => void;
+  onReveal?: () => void;
   depth: number;
 }) {
   const hasChildren = !!item.children?.length;
   const childrenId = useId();
   const isActive = activeId === item.id;
-  const [open, setOpen] = useState(true);
+  const [collapsedAt, setCollapsedAt] = useState<{ activeId?: string } | null>(null);
+  const revealChild = !!(
+    onReveal && collapsedAt && activeId && collapsedAt.activeId !== activeId &&
+    item.children && containsPage(item.children, activeId)
+  );
+  const open = !collapsedAt || revealChild;
   const isCategory = hasChildren && !item.href;
 
   return (
@@ -149,7 +267,7 @@ function SidebarNode({
           if (item.href && (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0))
             return;
           if (item.href && onItemClick) event.preventDefault();
-          if (hasChildren) setOpen(!open);
+          if (hasChildren) setCollapsedAt(open ? { activeId } : null);
           onItemClick?.(item);
         }}
         sx={{
@@ -200,7 +318,7 @@ function SidebarNode({
         />
       </ListItemButton>
       {hasChildren && (
-        <Collapse in={open} id={childrenId} unmountOnExit>
+        <Collapse in={open} id={childrenId} unmountOnExit onEntered={revealChild ? onReveal : undefined}>
           <List dense disablePadding>
             {item.children!.map((child) => (
               <SidebarNode
@@ -208,6 +326,7 @@ function SidebarNode({
                 item={child}
                 activeId={activeId}
                 onItemClick={onItemClick}
+                onReveal={onReveal}
                 depth={depth + 1}
               />
             ))}

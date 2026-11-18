@@ -8,17 +8,18 @@ import { readPreparedRuntimeUpdate, readRuntimeUpdateReceipt, runRuntimeUpdate }
 import { runtimeUpdateActions, verifyRuntimeUpdateTarget } from '../daemon/runtime-update-host.js';
 import { emitError, emitInfo, emitJson, emitStep } from './output.js';
 import { readCommandResult } from '../shared/command-result.js';
+import { UPDATE_PROGRESS_ENV, withRuntimeUpdateProgress, writeRuntimeProgress } from '../shared/runtime-update-progress.js';
 import type { RuntimeUpdateCall } from '../daemon/runtime-update-host.js';
 import type { PreparedRuntimeUpdate, RuntimeUpdateReceipt, RuntimeUpdateStatus, VerifiedRuntimeReference } from '../shared/dto/runtime-update.js';
 
 const directory = path.join(OMNITRON_HOME, 'runtime', 'local-updates');
 
 /** A CLI response is admitted once. A missing acknowledgement never repeats a host action. */
-async function callRuntime<T>(runtime: VerifiedRuntimeReference, args: readonly string[], timeoutMs = 30 * 60_000, signal?: AbortSignal): Promise<T> {
+async function callRuntime<T>(runtime: VerifiedRuntimeReference, args: readonly string[], timeoutMs = 30 * 60_000, signal?: AbortSignal, run = releaseCommand): Promise<T> {
   let output: string;
   let failure: ReleaseCommandError | undefined;
   try {
-    output = await releaseCommand(OMNITRON_HOME, runtime.node, [runtime.cli, '--json', ...args], { timeoutMs, ...(signal && { signal }) });
+    output = await run(OMNITRON_HOME, runtime.node, [runtime.cli, '--json', ...args], { timeoutMs, ...(signal && { signal }) });
   } catch (error) {
     if (!(error instanceof ReleaseCommandError)) throw error;
     failure = error;
@@ -71,15 +72,17 @@ export async function runtimeUpdateCommand(operation: 'prepare' | 'apply' | 'rec
         runtime = await verifyRuntimeUpdateTarget(ownRoot, path.basename(ownRoot));
     }
     if (!runtime) throw Error('No verified candidate is available for this local update');
+    const progress = process.env[UPDATE_PROGRESS_ENV] === '1' ? writeRuntimeProgress : emitStep;
     let result: PreparedRuntimeUpdate | RuntimeUpdateReceipt;
     if (!(await runsTarget(runtime))) {
       // A complete transition includes its possible restoration. Its caller must outlive both bounded phases.
-      result = await callRuntime(runtime, ['runtime', 'update', operation, operation === 'prepare' ? runtime.directory : value], 60 * 60_000);
+      result = await callRuntime(runtime, ['runtime', 'update', operation, operation === 'prepare' ? runtime.directory : value],
+        60 * 60_000, undefined, withRuntimeUpdateProgress(releaseCommand, progress));
     } else {
       const call: RuntimeUpdateCall = (args, options) => callRuntime(runtime, args, options?.timeoutMs, options?.signal);
       const actions = await runtimeUpdateActions({ runtime, instance: OMNITRON_HOME, call,
-        run: releaseCommand, progress: emitStep });
-      result = await runRuntimeUpdate({ actions, directory, operation, ...(operation !== 'prepare' && { digest: value }), progress: emitStep });
+        run: releaseCommand, progress });
+      result = await runRuntimeUpdate({ actions, directory, operation, ...(operation !== 'prepare' && { digest: value }), progress });
     }
     if (!emitJson(result)) {
       emitInfo(JSON.stringify(result, null, 2));

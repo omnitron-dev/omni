@@ -63,6 +63,26 @@ test('local status and recovery use the public CLI without a build or private in
   assert.equal(calls.length, 3);
 });
 
+test('local recovery streams native progress before completion and preserves a structured refusal', async () => {
+  const progress = [];
+  const chunks = ['{"event":"runtime.update.progress","message":"checking', ' ownership"}\n',
+    '{"event":"runtime.update.progress","message":"restoring"}\n'];
+  const reason = 'controller ownership changed';
+  const terminal = JSON.stringify({ ok: false, code: 'RUNTIME_OBSERVATION_CONFLICT', error: reason });
+  const run = async (_root, exe, _args, options) => {
+    assert.equal(options.env.OMNITRON_UPDATE_PROGRESS, '1');
+    const output = (stream, text) => options.onEvent({ type: 'command-output', executable: exe, at: 0, stream, text });
+    // A successful JSON reply may contain a field that happens to look like a progress frame.
+    await output('stdout', '{"event":"runtime.update.progress","message":"not progress"}\n');
+    for (const chunk of chunks) await output('stderr', chunk);
+    assert.deepEqual(progress, ['checking ownership', 'restoring']);
+    throw new ReleaseCommandError(exe, 1, '', chunks.join('') + terminal + '\n');
+  };
+  await assert.rejects(runUpdate(['local-sync', '--review', 'e'.repeat(64), '--rollback', '--cli', '/operator/omnitron'],
+    { run, onProgress: message => progress.push(message) }), error => error.message === reason);
+  assert.deepEqual(progress, ['checking ownership', 'restoring']);
+});
+
 test('Xec stages a reviewed candidate through Omnitron without activating or using SSH', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'xec-managed-update-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));

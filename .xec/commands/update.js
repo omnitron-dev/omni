@@ -7,6 +7,7 @@ import { releaseCommand, ReleaseCommandError } from '@xec-sh/ops/release';
 import { qualifiedRuntimes } from '../qualification.mjs';
 import { withLocalRuntime, verifyLocalRuntime } from '../local-runtime.mjs';
 import { CommandResultError, readCommandResult } from '../../apps/omnitron/src/shared/command-result.ts';
+import { withRuntimeUpdateProgress } from '../../apps/omnitron/src/shared/runtime-update-progress.ts';
 
 /** Xec orchestrates; the daemon remains the authority for pins, roles, locks and recovery. */
 async function runUpdate(operation, target, values, options) {
@@ -17,7 +18,8 @@ async function runUpdate(operation, target, values, options) {
     throw new UserError('--review requires the exact 64-character SHA-256 digest');
   const root = options.root ?? process.cwd();
   const run = options.run ?? releaseCommand;
-  const progress = options.progress ?? console.log;
+  const output = options.progress ?? console.log;
+  const progress = options.onProgress ?? options.progress ?? console.error;
   if (values.cacheDir && (!local || target)) throw Error('--cache-dir applies only when building the current local revision');
   const inspection = operation === 'local-sync' && (values.status || values.rollback || values.reconcile);
   if (local && values.cli && !inspection) throw new UserError('Local updates require the candidate and its own CLI');
@@ -35,23 +37,25 @@ async function runUpdate(operation, target, values, options) {
     const executable = runtime ? path.join(runtime, 'node') : values.cli ?? 'omnitron';
     const prefix = candidate ? [path.join(candidate, 'cli/omnitron.js')] : [];
     const call = async argv => {
-      let output, failure;
-      try { output = await run(root, executable, [...prefix, '--json', ...argv], {
+      let response, failure;
+      const executeCommand = operation === 'local-sync' && !values.status
+        ? withRuntimeUpdateProgress(run, progress) : run;
+      try { response = await executeCommand(root, executable, [...prefix, '--json', ...argv], {
         timeoutMs: operation === 'local-sync' && !values.status ? 60 * 60_000 : 30 * 60_000,
         ...(signal && { signal }),
       }); }
       catch (error) {
         if (!(error instanceof ReleaseCommandError)) throw error;
         // Omnitron emits successful receipts on stdout and refusals on stderr.
-        output = error.stdout.trim() ? error.stdout : error.stderr;
+        response = error.stdout.trim() ? error.stdout : error.stderr;
         failure = error;
       }
-      try { return readCommandResult(output, argv.join(' '), failure ? failure.status || 1 : 0, failure); }
+      try { return readCommandResult(response, argv.join(' '), failure ? failure.status || 1 : 0, failure); }
       catch (error) {
         if (!(error instanceof CommandResultError)) throw error;
         const reply = error.reply;
-        if (reply?.ok === true) progress(JSON.stringify(reply.data, null, 2));
-        else if (reply && Object.keys(reply).some(key => !['ok', 'error'].includes(key))) progress(JSON.stringify(reply, null, 2));
+        if (reply?.ok === true) output(JSON.stringify(reply.data, null, 2));
+        else if (reply && Object.keys(reply).some(key => !['ok', 'error'].includes(key))) output(JSON.stringify(reply, null, 2));
         throw new UserError(error.message, { exitCode: error.exitCode });
       }
     };
@@ -109,7 +113,7 @@ async function runUpdate(operation, target, values, options) {
     ? await withLocalRuntime(root, cache && path.resolve(root, cache), run, progress, execute,
       { prepareWhileCleaning: operation === 'local-sync' && !values.review })
     : await execute(local && !inspection ? path.resolve(root, target) : null);
-  progress(JSON.stringify(result, null, 2));
+  output(JSON.stringify(result, null, 2));
   return result;
 }
 

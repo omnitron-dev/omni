@@ -154,6 +154,12 @@ omnitron runtime update reconcile <plan-sha256>
 omnitron runtime update recover <plan-sha256>
 ```
 
+During `xec update local-sync`, the native updater reports each change of phase and
+the reason it is waiting on stderr. The final receipt remains available on stdout.
+`omnitron --json runtime update` keeps its usual single-result format. A caller can
+opt into newline-delimited progress events on stderr with `OMNITRON_UPDATE_PROGRESS=1`.
+An older installed operator may report only the final result.
+
 `verify` checks the artifact without executing it. Preparation and application
 run through the verified candidate's own Node and CLI. `status` returns the
 prepared plan, current or requested receipt, and verified candidate paths. It

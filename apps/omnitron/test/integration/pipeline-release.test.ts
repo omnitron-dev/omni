@@ -428,7 +428,8 @@ it('does not route a release step over SSH, accept shell source, or relax review
 
 it('recovers two independent projects through the same Titan/Netron/Xec path without repeating a lost acknowledgement', async () => {
   const a = await fixture(undefined, 'project-a'), b = await fixture(undefined, 'project-b');
-  const resolver = { resolvePipelineRelease: (target: Parameters<ProjectService['resolvePipelineRelease']>[0],
+  const resolver = { projectConfigurations: (project: string) => [{ name: project, path: project === 'project-a' ? a.repo : b.repo,
+    registeredAt: '2026-01-01T00:00:00Z' }], resolvePipelineRelease: (target: Parameters<ProjectService['resolvePipelineRelease']>[0],
     options: Parameters<ProjectService['resolvePipelineRelease']>[1]) =>
     (target.project === 'project-a' ? a.projects : b.projects).resolvePipelineRelease(target, options) };
   const configure = (service: PipelineService) => service.configure({ getNode: () => null,
@@ -487,6 +488,12 @@ it('recovers two independent projects through the same Titan/Netron/Xec path wit
   expect((await a.terminal(runningB.id)).status).toBe('success');
   expect(await b.witness()).toHaveLength(1);
   await a.noEffects();
+  const aScope = { project: 'project-a', stack: 'publication', limit: 1 };
+  expect(await rpc.listWorkspace(aScope)).toMatchObject({ definitions: [{ id: pa.id }],
+    runs: [{ id: prepared.id, pipelineName: 'delivery-a', status: 'awaiting-review' }] });
+  expect(await rpc.listWorkspace({ ...aScope, project: 'project-b' })).toMatchObject({ definitions: [{ id: pb.id }],
+    runs: [{ id: runningB.id, pipelineName: 'delivery-b', status: 'success' }] });
+  expect(await rpc.listWorkspace({ ...aScope, stack: 'staging' })).toEqual({ definitions: [], runs: [] });
   loseReplyFor = prepared.id;
   const start = { runId: prepared.id, expectedDigest: prepared.review!.digest, params: requestA.params };
   await expect(rpc.startRun(start)).rejects.toThrow();
@@ -511,6 +518,7 @@ it('recovers two independent projects through the same Titan/Netron/Xec path wit
   expect(recovered.steps[0]!.executions).toHaveLength(1);
   expect(await a.witness()).toHaveLength(1);
   expect((await rpc.prepareRun(requestA)).id).toBe(prepared.id);
+  expect((await rpc.listWorkspace(aScope)).runs).toMatchObject([{ id: prepared.id, status: 'success' }]);
   await expect(rpc.prepareRun({ ...requestA, id: pb.id })).rejects.toThrow(/another pipeline command/);
   await expect(rpc.startRun({ ...start, params: { token: 'changed' } })).rejects.toThrow(/Parameters differ/);
 });

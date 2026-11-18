@@ -1,9 +1,10 @@
 import { admitPipeline, assertParameters, readAdmission, readPrepareRun, readStartRun, type PipelineAdmission } from './pipeline-admission.js';
 import { completedStep, recoverableStep, recoveryReview } from './pipeline-recovery.js';
+import { pipelineWorkspaceQueries } from './pipeline-workspace.js';
 import { RecoveryMutation } from '../daemon/recovery-state.js';
 /** Durable control-plane state over Xec's execution, graph and cancellation contracts. */
 import { randomUUID, createHash } from 'node:crypto';
-import { sql, type Kysely, type Selectable } from 'kysely';
+import { sql, type Kysely, type RawBuilder, type Selectable } from 'kysely';
 import type { Command, SSHAdapterOptions } from '@xec-sh/core';
 import type { PipelineEvent, PreparedScript } from '@xec-sh/ops';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
@@ -25,6 +26,7 @@ import type {
   PipelineRunStepResult,
   PipelineRun,
   PipelineRunSummary,
+  PipelineWorkspace,
   PipelineReleaseExecution,
   PreparePipelineRun,
   StartPipelineRun,
@@ -47,7 +49,7 @@ interface ActiveRun {
 type Nodes = Pick<NodeManagerService, 'getNode' | 'nodeToSshTarget'>;
 interface DeploymentBinding { operation: Awaited<ReturnType<ProjectService['resolvePipelineDeployment']>>; run(): Promise<void> }
 type ReleaseOperation = Awaited<ReturnType<ProjectService['resolvePipelineRelease']>>;
-type PipelineProjects = Pick<ProjectService, 'resolvePipelineRelease'> & Partial<Pick<ProjectService, 'resolvePipelineDeployment' | 'inspectPipelineDeployment'>>;
+type PipelineProjects = Pick<ProjectService, 'resolvePipelineRelease'> & Partial<Pick<ProjectService, 'resolvePipelineDeployment' | 'inspectPipelineDeployment' | 'projectConfigurations'>>;
 interface ReleaseCommand {
   name: string;
   operation: ReleaseOperation;
@@ -218,10 +220,21 @@ export class PipelineService {
     const row = await this.db.selectFrom('pipelines').selectAll().where('id', '=', id).executeTakeFirst();
     return row ? this.mapPipeline(row) : null;
   }
-  async listPipelines(): Promise<Pipeline[]> {
-    return (await this.db.selectFrom('pipelines').selectAll().orderBy('createdAt', 'desc').execute()).map((row) =>
-      this.mapPipeline(row)
-    );
+  async listPipelines(filter?: RawBuilder<boolean>): Promise<Pipeline[]> {
+    let query = this.db.selectFrom('pipelines').selectAll().orderBy('createdAt', 'desc');
+    if (filter) query = query.where(filter);
+    return (await query.execute()).map(row => this.mapPipeline(row));
+  }
+  async listWorkspace(workspace: PipelineWorkspace & { limit?: number }) {
+    if (typeof workspace?.project !== 'string' || !workspace.project ||
+      (workspace.stack !== undefined && (typeof workspace.stack !== 'string' || !workspace.stack)))
+      throw Error('Select a project and an optional stack for pipeline history');
+    if (!this.projects?.projectConfigurations) throw Error('Project inventory is unavailable');
+    const filters = pipelineWorkspaceQueries(this.db, workspace, this.projects.projectConfigurations(workspace.project));
+    const [definitions, runs] = await Promise.all([
+      this.listPipelines(filters.definitions), this.listRuns(undefined, workspace.limit, filters),
+    ]);
+    return { definitions, runs };
   }
   async deletePipeline(id: string): Promise<void> {
     if ([...this.activeRuns.values()].some((run) => run.pipelineId === id))
@@ -683,16 +696,21 @@ export class PipelineService {
     const row = await this.db.selectFrom('pipeline_runs').selectAll().where('id', '=', runId).executeTakeFirst();
     return row ? this.mapRun(row) : null;
   }
-  async listRuns(pipelineId?: string, limit = 50): Promise<PipelineRunSummary[]> {
+  async listRuns(pipelineId?: string, limit = 50, workspace?: Pick<ReturnType<typeof pipelineWorkspaceQueries>, 'runs' | 'name'>): Promise<PipelineRunSummary[]> {
     if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new Error('Run limit must be between 1 and 200');
+    const name = workspace?.name ?? sql<null>`NULL`;
     let query = this.db
       .selectFrom('pipeline_runs')
       .select(['id', 'pipelineId', 'status', 'startedAt', 'completedAt', 'triggeredBy'])
+      .select(name.as('pipelineName'))
       .orderBy('startedAt', 'desc')
+      .orderBy('id', 'desc')
       .limit(limit);
     if (pipelineId) query = query.where('pipelineId', '=', pipelineId);
-    return (await query.execute()).map((row) => ({
+    if (workspace) query = query.where(workspace.runs);
+    return (await query.execute()).map(({ pipelineName, ...row }) => ({
       ...row,
+      ...(pipelineName ? { pipelineName } : {}),
       status: row.status as PipelineRun['status'],
       startedAt: new Date(row.startedAt).toISOString(),
       completedAt: row.completedAt ? new Date(row.completedAt).toISOString() : null,

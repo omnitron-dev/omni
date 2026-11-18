@@ -79,7 +79,7 @@ const sections: { title: string; items: Destination[] }[] = [
         requiresProject: true,
         stackFilter: true,
       },
-      { path: '/pipelines', title: 'Pipelines', icon: <PipelineIcon />, permission: 'OmnitronPipelines.listPipelines' },
+      { path: '/pipelines', title: 'Pipelines', icon: <PipelineIcon />, permission: 'OmnitronPipelines.listPipelines', stackFilter: true },
     ],
   },
   {

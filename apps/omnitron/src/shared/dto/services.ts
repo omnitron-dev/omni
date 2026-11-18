@@ -131,7 +131,7 @@ import type { AlertRule, AlertEvent, AlertSummary, ActiveAlert, CreateAlertRuleI
 import type { DeployResult, DeploymentRecord } from './deploy.js';
 import type { ContainerState, InfrastructureState } from '../../infrastructure/types.js';
 import type { FleetNode, FleetSummary, NodeRegistration, NodeRole } from './fleet.js';
-import type { Pipeline, PipelineDef, PipelineRun, PipelineRunSummary, PreparePipelineRun, StartPipelineRun } from './pipelines.js';
+import type { Pipeline, PipelineDef, PipelineRun, PipelineRunSummary, PipelineWorkspace, PreparePipelineRun, StartPipelineRun } from './pipelines.js';
 import type { Trace, TraceSpan, TraceFilter, ServiceMapEntry } from './traces.js';
 import type { SystemSnapshot } from './system-info.js';
 import type { BackupInfo } from './backups.js';
@@ -158,7 +158,7 @@ export type { K8sPod, K8sDeployment, K8sService } from './kubernetes.js';
 export type { HealthCheckResult, HealthReport, PlatformHealthReport } from './health.js';
 export type { OmnitronDiscoveredTarget, DiscoveryScanResult } from './discovery.js';
 
-export type { PipelineRecoveryReview, PipelineDeploymentTarget, PipelineDeploymentEvidence, PreparePipelineRun, StartPipelineRun, PipelineRunReview, Pipeline, PipelineDef, PipelineStep, PipelineReleaseTarget, PipelineReleaseExecution, PipelineRun, PipelineRunStepResult, PipelineRunSummary } from './pipelines.js';
+export type { PipelineRecoveryReview, PipelineDeploymentTarget, PipelineDeploymentEvidence, PreparePipelineRun, StartPipelineRun, PipelineRunReview, Pipeline, PipelineDef, PipelineStep, PipelineReleaseTarget, PipelineReleaseExecution, PipelineRun, PipelineRunStepResult, PipelineRunSummary, PipelineWorkspace } from './pipelines.js';
 export type { Trace, TraceSpan, TraceFilter, ServiceMapEntry } from './traces.js';
 export { readSystemSnapshot, type SystemSnapshot } from './system-info.js';
 
@@ -571,6 +571,7 @@ export interface IOmnitronPipelinesService {
   updatePipeline(data: { id: string; definition: PipelineDef; expectedRevision: string }): Promise<Pipeline>;
   getPipeline(data: { id: string }): Promise<Pipeline | null>;
   listPipelines(): Promise<Pipeline[]>;
+  listWorkspace(data: PipelineWorkspace & { limit?: number }): Promise<{ definitions: Pipeline[]; runs: PipelineRunSummary[] }>;
   deletePipeline(data: { id: string }): Promise<{ success: boolean }>;
   prepareRun(data: PreparePipelineRun): Promise<PipelineRun>;
   startRun(data: StartPipelineRun): Promise<PipelineRun>;

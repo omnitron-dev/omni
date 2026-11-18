@@ -15,6 +15,11 @@ export interface PipelineDef {
   triggers?: PipelineTrigger[];
 }
 
+export interface PipelineWorkspace {
+  project: string;
+  stack?: string;
+}
+
 /** A review binds a durable command to one definition and parameter set. */
 export interface PipelineRunReview {
   protocol: 1;
@@ -179,4 +184,7 @@ export interface PipelineRun {
 }
 
 /** History rows exclude potentially large step output; retrieve details only for the selected run. */
-export type PipelineRunSummary = Omit<PipelineRun, 'steps' | 'params'>;
+export type PipelineRunSummary = Omit<PipelineRun, 'steps' | 'params'> & {
+  /** Name from the admitted graph, when recorded by the controller. */
+  pipelineName?: string;
+};

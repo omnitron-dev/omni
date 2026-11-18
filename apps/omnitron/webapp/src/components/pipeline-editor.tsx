@@ -13,17 +13,19 @@ import Typography from '@mui/material/Typography';
 import { Tabs } from '@omnitron-dev/prism/components/tabs';
 import { Alert } from '@omnitron-dev/prism/components/alert';
 import { ConfirmDialog } from '@omnitron-dev/prism/components/confirm-dialog';
-import type { Pipeline, PipelineStep } from '@omnitron-dev/omnitron/dto/services';
+import type { Pipeline, PipelineStep, PipelineWorkspace } from '@omnitron-dev/omnitron/dto/services';
 import { pipelines, nodes } from 'src/netron/client';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 
 const example = 'const result = await $target`uname -s`;\nconsole.log(result.stdout);\n';
 export function PipelineEditor({
   definition,
+  workspace,
   onClose,
   onSaved,
 }: {
   definition?: Pipeline;
+  workspace?: PipelineWorkspace | null;
   onClose(): void;
   onSaved(): void;
 }) {
@@ -87,6 +89,10 @@ export function PipelineEditor({
         <DialogContent dividers sx={{ minWidth: 0 }}>
           <OperationStatus active={saving} label="Saving automation definition" />
           <Stack spacing={2}>
+            {!definition && workspace && <Typography variant="body2" color="text.secondary">
+              Include a release or deployment step targeting <strong>{[workspace.project, workspace.stack].filter(Boolean).join('/')}</strong> to list this automation here.
+              Shell-only and Xec-only automations appear in the Omnitron workspace.
+            </Typography>}
             {error && (
               <Alert severity="error" variant="outlined">
                 {error}

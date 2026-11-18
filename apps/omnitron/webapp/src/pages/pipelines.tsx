@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
@@ -16,14 +16,15 @@ import { Tabs } from '@omnitron-dev/prism/components/tabs';
 import { AdminDataTable, type ColumnDef } from '@omnitron-dev/prism/components/admin-filters';
 import { Alert } from '@omnitron-dev/prism/components/alert';
 import { ConfirmDialog } from '@omnitron-dev/prism/components/confirm-dialog';
-import type { Pipeline, PipelineRun, PipelineRunSummary } from '@omnitron-dev/omnitron/dto/services';
-import { Can } from 'src/auth/access';
+import type { Pipeline, PipelineRun, PipelineRunSummary, PipelineWorkspace } from '@omnitron-dev/omnitron/dto/services';
+import { Can, useAccess } from 'src/auth/access';
 import { PlayIcon, RefreshIcon, PlusIcon, CloseIcon } from 'src/assets/icons';
 import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import { PipelineEditor } from 'src/components/pipeline-editor';
 import { pipelines, nodes } from 'src/netron/client';
 import { formatDate, formatDuration } from 'src/utils/formatters';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
+import { useProjectStore } from 'src/stores/project.store';
 import { settledPair } from 'src/utils/settled-pair';
 
 const colors: Record<string, 'success' | 'error' | 'info' | 'warning' | 'default'> = {
@@ -55,9 +56,11 @@ const codeSx = {
 export function PipelineRunDetail({
   run,
   targetLabel = (id) => id ?? 'Local daemon host',
+  children,
 }: {
   run: PipelineRun;
   targetLabel?: (id?: string) => string;
+  children?: ReactNode;
 }) {
   return (
     <Stack spacing={2} sx={{ minWidth: 0 }}>
@@ -74,13 +77,14 @@ export function PipelineRunDetail({
       {active(run) && <LinearProgress aria-label="Automation in progress" />}
       {run.status === 'interrupted' && (
         <Alert severity="warning" variant="outlined">
-          The executor stopped before recording completion. Inspect effects before starting another run.
+          The executor stopped before recording completion.
         </Alert>
       )}
-      {run.recovery && <Alert severity={run.recovery.blocked.length ? 'warning' : 'info'} variant="outlined">
-        {run.recovery.completed.length} confirmed steps will be retained; {run.recovery.pending.length} steps have not been dispatched.
-        {run.recovery.blocked.length > 0 && ` Unresolved steps: ${run.recovery.blocked.join(', ')}. Inspect remote receipts before continuing.`}
+      {run.recovery && <Alert severity={run.recovery.blocked.length ? 'warning' : 'info'} variant="outlined" sx={{ overflowWrap: 'anywhere' }}>
+        {run.recovery.completed.length} confirmed · {run.recovery.pending.length} awaiting dispatch.
+        {run.recovery.blocked.length > 0 && ` Continuation blocked by ${run.recovery.blocked.join(', ')}. Inspect the recorded effects.`}
       </Alert>}
+      {children}
       {run.steps.map((step) => (
         <Box key={step.name} sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 1.5, minWidth: 0 }}>
           <Stack direction="row" sx={{ flexWrap: 'wrap', alignItems: 'center', gap: 1, mb: 1 }}>
@@ -99,7 +103,9 @@ export function PipelineRunDetail({
             color="text.secondary"
             sx={{ display: 'block', mb: 1, overflowWrap: 'anywhere' }}
           >
-            {step.kind ?? 'shell'} · {targetLabel(step.nodeId)}
+            {step.kind === 'deploy'
+              ? (step.deployment ? `Deployment · ${step.deployment.target.project}/${step.deployment.target.stack}` : 'Deployment')
+              : `${step.kind ?? 'shell'} · ${targetLabel(step.nodeId)}`}
           </Typography>
           {step.error && (
             <Alert severity="error" variant="outlined" sx={{ mb: 1, overflowWrap: 'anywhere' }}>
@@ -137,13 +143,19 @@ export function PipelineRunDetail({
                   Attempt {execution.attempt} has unconfirmed effects. Automatic retries were refused; inspect the recorded process before running again.
                 </Alert>
               )}
-              <Box component="pre" aria-label={`${step.name} release attempt ${execution.attempt}`} sx={codeSx}>
-                {JSON.stringify(execution, null, 2)}
+              <Box component="details" sx={{ typography: 'body2' }}>
+                <summary>Release attempt {execution.attempt} · {execution.state}</summary>
+                <Box component="pre" aria-label={`${step.name} release attempt ${execution.attempt}`} tabIndex={0} sx={codeSx}>
+                  {JSON.stringify(execution, null, 2)}
+                </Box>
               </Box>
             </Box>
           ))}
-          {step.deployment && <Box component="pre" aria-label={`${step.name} deployment evidence`} sx={codeSx}>
-            {JSON.stringify(step.deployment, null, 2)}
+          {step.deployment && <Box component="details" sx={{ typography: 'body2' }}>
+            <summary>Deployment receipt · {step.deployment.state}</summary>
+            <Box component="pre" aria-label={`${step.name} deployment evidence`} tabIndex={0} sx={codeSx}>
+              {JSON.stringify(step.deployment, null, 2)}
+            </Box>
           </Box>}
         </Box>
       ))}
@@ -152,8 +164,24 @@ export function PipelineRunDetail({
 }
 
 export default function PipelinesPage() {
-  const [editor, setEditor] = useState<Pipeline | 'new' | null>(null);
+  const project = useProjectStore(state => state.activeProject);
+  const stack = useProjectStore(state => state.activeStack);
+  const { can } = useAccess();
   const [section, setSection] = useState('definitions');
+  const workspace = project ? { project, ...(stack && { stack }) } : null;
+  if (workspace && !can('OmnitronPipelines.listWorkspace')) return <Stack spacing={2}>
+    <Breadcrumbs links={[{ name: 'Pipelines' }]} />
+    <Alert severity="warning">Workspace pipeline history is unavailable on this controller for this account.</Alert>
+  </Stack>;
+  return <PipelineInventory key={JSON.stringify(workspace)} workspace={workspace} section={section} setSection={setSection} />;
+}
+
+function PipelineInventory({ workspace, section, setSection }: {
+  workspace: PipelineWorkspace | null;
+  section: string;
+  setSection: (section: string) => void;
+}) {
+  const [editor, setEditor] = useState<Pipeline | 'new' | null>(null);
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
   const [runDefinition, setRunDefinition] = useState<Pipeline | null>(null);
   const [params, setParams] = useState('{}');
@@ -172,6 +200,9 @@ export default function PipelinesPage() {
     !id || id === 'local' ? 'Local daemon host' : (targets.data?.find((node) => node.id === id)?.name ?? id);
   const { data, loading, error, refresh } = usePolledResource(
     async () => {
+      if (workspace) {
+        return { ...await pipelines.listWorkspace({ ...workspace, limit: 100 }), partialFailure: null };
+      }
       const pair = await settledPair([pipelines.listPipelines(), pipelines.listRuns({ limit: 100 })], [[], []]);
       return { definitions: pair.first, runs: pair.second, partialFailure: pair.partialFailure };
     },
@@ -185,6 +216,9 @@ export default function PipelinesPage() {
     resourceKey: selectedRun,
   });
   const run = detail.data?.id === selectedRun ? detail.data : null;
+  const runLabel = (item: PipelineRunSummary) =>
+    item.pipelineName ?? definitions.find(def => def.id === item.pipelineId)?.name ?? item.pipelineId.slice(0, 8);
+  const selected = runs.find(item => item.id === selectedRun);
   const act = async (operation: () => Promise<unknown>) => {
     setPending(true);
     setActionError(null);
@@ -245,8 +279,8 @@ export default function PipelinesPage() {
       key: 'name',
       header: 'Automation',
       render: (item) => (
-        <Button size="small" onClick={() => setSelectedRun(item.id)}>
-          {definitions.find((def) => def.id === item.pipelineId)?.name ?? item.pipelineId.slice(0, 8)}
+        <Button size="small" onClick={() => { setParams('{}'); setActionError(null); setSelectedRun(item.id); }}>
+          {runLabel(item)}
         </Button>
       ),
     },
@@ -313,7 +347,7 @@ export default function PipelinesPage() {
           }}
           loading={loading}
           loadError={error ?? data?.partialFailure}
-          emptyMessage="Create an automation to run Xec scripts and shell steps."
+          emptyMessage={workspace ? 'No automations target this workspace.' : 'Create an automation to run Xec scripts and shell steps.'}
           minWidth={560}
           scrollLabel="Automation definitions"
           dense
@@ -333,7 +367,7 @@ export default function PipelinesPage() {
           }}
           loading={loading}
           loadError={error ?? data?.partialFailure}
-          emptyMessage="No automation runs yet."
+          emptyMessage={workspace ? 'No recorded runs target this workspace.' : 'No automation runs yet.'}
           minWidth={620}
           scrollLabel="Automation run history"
           dense
@@ -342,6 +376,7 @@ export default function PipelinesPage() {
       {editor && (
         <PipelineEditor
           {...(editor === 'new' ? {} : { definition: editor })}
+          workspace={workspace}
           onClose={() => setEditor(null)}
           onSaved={() => {
             void refresh();
@@ -372,20 +407,23 @@ export default function PipelinesPage() {
             {runDefinition?.steps.map((step) => (
               <Box key={step.name} component="details">
                 <Box component="summary" sx={{ cursor: 'pointer', fontSize: 13 }}>
-                  {step.name} · {step.kind ?? 'shell'} · {targetLabel(step.nodeId)} · {(step.timeout ?? 300000) / 1000}s
+                  {step.name} · {step.kind ?? 'shell'} · {step.target ? `${step.target.project}/${step.target.stack}` : targetLabel(step.nodeId)}
+                  {step.kind !== 'deploy' && ` · ${(step.timeout ?? 300000) / 1000}s`}
                 </Box>
                 <Box component="pre" sx={{ ...codeSx, mt: 1 }}>
-                  {step.kind === 'release' ? JSON.stringify({ target: step.target, args: step.args ?? [] }, null, 2) : step.run}
+                  {step.target ? JSON.stringify({ target: step.target, ...(step.kind === 'release' && { args: step.args ?? [] }) }, null, 2) : step.run}
                 </Box>
                 <Box component="pre" aria-label={`${step.name} execution settings`} sx={{ ...codeSx, mt: 1 }}>
                   {JSON.stringify(
                     {
-                      targetId: step.nodeId ?? 'local',
-                      cwd: step.cwd ?? 'Daemon working directory',
+                      ...(step.kind !== 'deploy' && {
+                        targetId: step.nodeId ?? 'local',
+                        cwd: step.cwd ?? 'Daemon working directory',
+                        retries: step.retries ?? 0,
+                        env: step.env ?? {},
+                      }),
                       dependsOn: step.dependsOn ?? [],
-                      retries: step.retries ?? 0,
                       condition: step.condition ?? null,
-                      env: step.env ?? {},
                     },
                     null,
                     2
@@ -431,12 +469,12 @@ export default function PipelinesPage() {
                   return;
                 }
                 setSelectedRun(preparedRun.id);
+                setSection('runs');
+                setPage(0);
                 const result = await pipelines.startRun({
                   runId: preparedRun.id, expectedDigest: preparedRun.review!.digest, params: JSON.parse(params),
                 });
                 setSelectedRun(result.id);
-                setSection('runs');
-                setPage(0);
                 setRunDefinition(null);
               })
             }
@@ -450,11 +488,15 @@ export default function PipelinesPage() {
         open={Boolean(selectedRun)}
         onClose={() => setSelectedRun(null)}
         slotProps={{
-          paper: { sx: { width: { xs: '100%', sm: 640 }, maxWidth: '100vw', p: 2, boxSizing: 'border-box' } },
+          paper: { role: 'dialog', 'aria-labelledby': 'pipeline-run-title',
+            sx: { width: { xs: '100%', sm: 640 }, maxWidth: '100vw', p: 2, boxSizing: 'border-box' } },
         }}
       >
         <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-          <Typography variant="subtitle2">Run details</Typography>
+          <Box sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+            <Typography id="pipeline-run-title" component="h2" variant="subtitle1">{selected ? runLabel(selected) : 'Run details'}</Typography>
+            {workspace && <Typography variant="caption" color="text.secondary">{[workspace.project, workspace.stack].filter(Boolean).join(' / ')}</Typography>}
+          </Box>
           <IconButton title="Close run details" onClick={() => setSelectedRun(null)}>
             <CloseIcon />
           </IconButton>
@@ -470,16 +512,16 @@ export default function PipelinesPage() {
           </Alert>
         )}
         {run ? (
-          <>
-            <PipelineRunDetail run={run} targetLabel={targetLabel} />
-            {run.recovery && <Stack spacing={1} sx={{ mt: 2 }}>
-              <Can permission="OmnitronPipelines.reconcileRun">
+          <PipelineRunDetail run={run} targetLabel={targetLabel}>
+            {run.recovery && <Stack spacing={1}>
+              {run.steps.some(step => step.deployment && run.recovery!.blocked.includes(step.name)) && <Can permission="OmnitronPipelines.reconcileRun">
                 <Button variant="outlined" disabled={pending} onClick={() => act(async () => {
                   await pipelines.reconcileRun({ runId: run.id }); await detail.refresh();
                 })}>Inspect remote receipts</Button>
-              </Can>
+              </Can>}
               <Can permission="OmnitronPipelines.resumeRun">
-                <TextField label="Original parameters (JSON)" multiline value={params} onChange={event => setParams(event.target.value)} />
+                {Boolean(run.review?.parameterNames.length) && <TextField label="Original parameters (JSON)" multiline value={params}
+                  helperText={run.review!.parameterNames.join(', ')} disabled={pending} onChange={event => setParams(event.target.value)} />}
                 <Button variant="contained" disabled={pending || run.recovery.blocked.length > 0 || Boolean(detail.error)} onClick={() => act(async () => {
                   await pipelines.resumeRun({ runId: run.id, expectedDigest: run.recovery!.digest, params: JSON.parse(params) });
                   await detail.refresh();
@@ -515,7 +557,7 @@ export default function PipelinesPage() {
                 </Button>
               )}
             </Can>
-          </>
+          </PipelineRunDetail>
         ) : (
           <Alert severity="info" variant="outlined">
             {detail.loading ? 'Loading run state…' : 'Run state is unavailable.'}

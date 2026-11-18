@@ -9,6 +9,7 @@ import { FleetRollout } from '../../src/components/fleet-rollout';
 import AuditPage from '../../src/pages/audit';
 import DashboardPage from '../../src/pages/dashboard';
 import LogsPage from '../../src/pages/logs';
+import PipelinesPage from '../../src/pages/pipelines';
 import StacksPage from '../../src/pages/stacks/index';
 import StackDetailPage from '../../src/pages/stacks/detail';
 import '@fontsource/inter/400.css';
@@ -27,6 +28,7 @@ const workspace = (
             <Route path="files" element={null} />
             <Route path="audit" element={<AuditPage />} />
             <Route path="logs" element={<LogsPage />} />
+            <Route path="pipelines" element={<PipelinesPage />} />
             <Route path="stacks" element={<StacksPage />} />
             <Route path="stacks/:name" element={<StackDetailPage />} />
             <Route index element={view === 'dashboard' ? <DashboardPage /> : view === 'rollout'

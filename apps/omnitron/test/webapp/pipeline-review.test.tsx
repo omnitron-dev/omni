@@ -39,7 +39,8 @@ vi.mock('src/netron/client', () => ({
   },
   nodes: { listNodes: async () => [{ id: 'node-id', name: 'edge-a' }] },
 }));
-vi.mock('src/auth/access', () => ({ Can: ({ children }: { children: React.ReactNode }) => children }));
+vi.mock('src/auth/access', () => ({ Can: ({ children }: { children: React.ReactNode }) => children,
+  useAccess: () => ({ can: () => true }) }));
 import PipelinesPage, { PipelineRunDetail } from '../../webapp/src/pages/pipelines.js';
 
 describe('automation review', () => {
@@ -67,7 +68,7 @@ describe('automation review', () => {
       startedAt: '2026-11-17T00:00:00Z', completedAt: null, triggeredBy: 'operator', params: {}, steps: [],
       recovery: { digest: 'd'.repeat(64), completed: ['build'], pending: ['verify'], blocked: ['deploy'] },
     }} />);
-    expect(screen.getByText(/1 confirmed steps will be retained/)).toHaveTextContent('Unresolved steps: deploy');
+    expect(screen.getByText(/1 confirmed · 1 awaiting dispatch/)).toHaveTextContent('Continuation blocked by deploy');
   });
   it('shows the target and execution settings and submits the reviewed revision', async () => {
     render(

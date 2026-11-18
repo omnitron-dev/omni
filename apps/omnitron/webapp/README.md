@@ -13,6 +13,10 @@ The management UI for Omnitron. This private workspace application uses React, V
 
 Choose a project in the header, then choose **All stacks** or an individual stack. The stack inventory, applications, logs, metrics, topology, containers and deployment views follow that selection. The Releases page keeps the project's artifact catalog available and narrows deployment observations and the proposed deployment target to the selected stack.
 
+**Pipelines** shows automations with a release or deployment step targeting the selected project or stack. A graph with several targets appears in each relevant workspace. **Runs** uses the targets and name saved when each request was prepared, including runs of a definition that has since moved. The **Omnitron** workspace also includes shell-only automations and older runs with no recorded targets. Older receipts with just a project name appear under **All stacks** for that project.
+
+Open a failed or interrupted run to see which steps block continuation. **Inspect remote receipts** reads fresh deployment evidence where available. **Continue remaining steps** uses the reviewed checkpoint and any original parameters.
+
 On a stack detail page, selecting another stack opens its details. Selecting **All stacks** opens the inventory. Browser Back, Forward and reload restore the workspace for that history entry. Controller-wide pages such as Audit and System omit the stack filter.
 
 Logs lists the selected stack's local and remote applications, including those awaiting their first log. For an older worker that reports `project/deployed/app`, select its registry node and application. Console includes those records when the observed placement identifies one stack on that node.

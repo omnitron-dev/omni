@@ -171,6 +171,12 @@ share a separate two-slot budget. These are admission limits, not tenant isolati
 or a distributed fair scheduler. A capacity rejection leaves the same request
 available for later admission. Cancel waiting requests without starting them.
 
+`OmnitronPipelines.listWorkspace({ project, stack?, limit? })` returns matching
+definitions and recent run summaries for Console and SDK clients. It resolves
+imported stack names through the project catalogue and applies the run limit
+after matching the admitted graph. Controller-wide listings also include
+unscoped scripts and receipts from before project attribution was recorded.
+
 If a reply is lost, inspect the same run ID or repeat `start` with the same
 digest and parameters. A durable completed receipt is recoverable across daemon
 restart. `resume` continues the saved definition's remaining graph: confirmed

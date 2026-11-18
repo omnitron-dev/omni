@@ -35,6 +35,39 @@ describe.skipIf(!postgres.ok)('durable Xec automation lifecycle', () => {
     }
     throw Error('Run did not reach a terminal state');
   };
+  it('keeps historical targets and names when the current graph moves to another project', async () => {
+    service.configure({} as never, undefined, { assertLifecycle() {}, projects: {
+      resolvePipelineRelease: async () => { throw Error('No execution during history inspection'); },
+      projectConfigurations: project => project === 'alpha' ? [{ name: 'imported', path: '/imported', registeredAt: 'fixture',
+        configuration: { project, name: 'imported', stacks: { edge: 'test' } } }] : [],
+    } });
+    const step = (project: string, stack: string) => ({ name: 'deploy', kind: 'deploy' as const, target: {
+      project, stack, releaseId: 'sealed', manifestSha256: 'a'.repeat(64), review: 'b'.repeat(64),
+    } });
+    const def = await service.createPipeline({ name: 'first delivery', steps: [step('imported', 'edge')] });
+    const prepare = (graph: typeof def) => service.prepareRun({ id: graph.id, runId: randomUUID(), expectedRevision: graph.revision }, 'reader');
+    const first = await prepare(def);
+    const older = await prepare(def);
+    const updated = await service.updatePipeline(def.id, { name: 'second delivery', steps: [step('beta', 'test')] }, def.revision);
+    const second = await prepare(updated);
+    const shared = await service.createPipeline({ name: 'shared delivery', steps: [
+      step('alpha', 'qa'), { ...step('beta', 'test'), name: 'other' },
+    ] });
+    await prepare(await service.createPipeline({ name: 'host inspection', steps: [{ name: 'host', run: 'echo ready' }] }));
+    const { admission } = await own.db.selectFrom('pipeline_runs').select('admission').where('id', '=', older.id).executeTakeFirstOrThrow();
+    delete admission!['definition'];
+    await own.db.updateTable('pipeline_runs').set({ admission: JSON.stringify(admission) }).where('id', '=', older.id).execute();
+    expect(await service.listWorkspace({ project: 'alpha', stack: 'test', limit: 1 })).toMatchObject({
+      definitions: [], runs: [{ id: first.id, pipelineName: 'first delivery' }],
+    });
+    expect((await service.listWorkspace({ project: 'alpha' })).runs.map(run => run.id).sort()).toEqual([first.id, older.id].sort());
+    expect((await service.listWorkspace({ project: 'alpha', stack: 'qa' })).definitions.map(item => item.id)).toEqual([shared.id]);
+    const beta = await service.listWorkspace({ project: 'beta', stack: 'test' });
+    expect(beta.definitions.map(item => item.id).sort()).toEqual([updated.id, shared.id].sort());
+    expect(beta.runs).toMatchObject([{ id: second.id, pipelineName: 'second delivery' }]);
+    expect(beta.runs[0]).not.toHaveProperty('admission');
+    expect((await service.listWorkspace({ project: 'beta' })).runs.map(run => run.id)).toEqual([second.id]);
+  });
   it('claims one stable command through concurrent PostgreSQL transactions', async () => {
     const witness = join(dir, 'deduplicated.txt');
     const def = await service.createPipeline({ name: 'stable-command', steps: [{ name: 'effect', kind: 'xec', cwd: dir,

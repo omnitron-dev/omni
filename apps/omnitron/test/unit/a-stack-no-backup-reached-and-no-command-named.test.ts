@@ -246,6 +246,18 @@ describe('host exclusions apply to scheduled stack database dumps', () => {
     }
     expect((await service.getStatus()).scheduledDatabaseExclusions).toEqual(['shop/dev/main']);
   });
+
+  it('bases the next all pass on an eligible database even after a recent manual dump of an excluded one', async () => {
+    const service = new BackupService(fakeLogger().module, store, testExecution, fakeProjects(TWO_MAINS));
+    try {
+      service.configure({ scheduledDatabaseExclusions: ['shop/dev'] });
+      await service.createBackup('shop/dev/main');
+      await service.setSchedule('all', 'hourly');
+      expect((await service.getStatus()).schedules[0]?.lastBackupAt).toBeNull();
+      await service.createBackup('sample/dev/main');
+      expect((await service.getStatus()).schedules[0]?.lastBackupAt).toEqual(expect.any(String));
+    } finally { service.dispose(); }
+  });
 });
 
 describe('a stack whose databases are not here is named, not skipped', () => {
@@ -365,6 +377,25 @@ describe('retention keeps each stack its own history', () => {
   }
   const prune = (service: InstanceType<typeof BackupService>): Promise<void> =>
     (service as unknown as { pruneOldBackups(t: string): Promise<void> }).pruneOldBackups('all');
+
+  it.each([['all', 'shop/dev/main'], ['full', 'shop/dev']])('preserves excluded and unattributed archives during a mixed %s scheduled pass', async (target, exclusion) => {
+    const service = new BackupService(fakeLogger().module, store, testExecution, fakeProjects(TWO_MAINS));
+    rows(50, { type: 'postgres', project: 'shop', stack: 'dev' }, 'shop');
+    rows(50, { type: 'postgres', project: 'sample', stack: 'dev' }, 'sample');
+    rows(50, {}, 'legacy');
+    service.configure({ scheduledDatabaseExclusions: [exclusion] });
+    const protectedRows = (await service.listBackups('main')).filter(row => row.project !== 'sample');
+    const run = service as unknown as { runScheduledBackup(target: string): Promise<string> };
+    await run.runScheduledBackup(target);
+
+    const remaining = await service.listBackups('main');
+    expect(dumpedFrom()).toContain('sample-dev-postgres:main');
+    expect(dumpedFrom()).not.toContain('shop-dev-postgres:main');
+    expect(remaining.filter(row => row.project === 'sample')).toHaveLength(48);
+    expect(remaining.filter(row => row.project !== 'sample')).toEqual(protectedRows);
+    expect(protectedRows).toHaveLength(100);
+    for (const archive of protectedRows) expect(fs.readFileSync(path.join(backups, archive.filename), 'utf8')).toBe('dump');
+  });
 
   it('48 per stack, not 48 shared between two stacks', async () => {
     const service = new BackupService(fakeLogger().module, store, testExecution, fakeProjects(TWO_MAINS));

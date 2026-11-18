@@ -373,6 +373,20 @@ export class BackupService {
       this.scheduledDatabaseExclusions.has(`${parts[0]}/${parts[1]}`));
   }
 
+  private excludesArchivedDatabase(database: string, meta: BackupMetadata): boolean {
+    if (!this.scheduledDatabaseExclusions.size || meta.scope === 'control-plane' ||
+        (meta.type !== undefined && meta.type !== 'postgres')) return false;
+    if (meta.project && meta.stack) return this.excludesScheduledDatabase(`${meta.project}/${meta.stack}/${database}`);
+    // Older archives can lack their origin. Destructive retention needs enough
+    // evidence to rule out every excluded owner, even if a stack is now offline.
+    for (const selector of this.scheduledDatabaseExclusions) {
+      const [project, stack, name] = selector.split('/');
+      if ((!meta.project || meta.project === project) && (!meta.stack || meta.stack === stack) &&
+          (name === undefined || database === name)) return true;
+    }
+    return false;
+  }
+
   activeOperationCount(): number { return this.activeOperations; }
 
   /** Read-only cancellation authority for a plan; it grants no recovery certificate. */
@@ -1639,6 +1653,7 @@ export class BackupService {
         target === 'full' ? fullOnly.has(row.app)
         : target === 'all'
           ? (meta.type === undefined || meta.type === 'postgres') && meta.scope !== 'control-plane' &&
+            !this.excludesArchivedDatabase(row.app, meta) &&
             !fullOnly.has(row.app) && row.app !== CONTROL_PLANE_DB
         : row.app === name &&
           (!stackOf || !meta.project || (meta.project === stackOf.project && meta.stack === stackOf.stack));
@@ -1709,7 +1724,9 @@ export class BackupService {
     this.migrateLegacyMetaIfPresent();
     // Include incomplete deletions whose archive is already absent. Their
     // index remains the authority for retrying sidecar cleanup by exact ID.
-    const rows = this.store.selectBackupsSync().map(describeBackup);
+    const rows = this.store.selectBackupsSync()
+      .filter(row => !this.excludesArchivedDatabase(row.app, metadataOf(row.metadata)))
+      .map(describeBackup);
     const failures: Error[] = [];
     let dbs: string[];
     if (database === 'all' || database === 'full') {

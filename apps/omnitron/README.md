@@ -215,7 +215,7 @@ The daemon loads `backups.scheduledDatabaseExclusions` from its `config.json` at
 
 An omitted or empty list includes all eligible databases. The policy applies to scheduled `all`, `full` and individual database passes, including older schedules saved under a bare database name. A bare name shared by multiple stacks still requires an explicit target. `omnitron backup schedules --json` reports the loaded policy, affected databases and the last pass's exclusions. The schedule keeps its configured interval even when every database is excluded.
 
-Run `omnitron backup create catalog/dev/cache` for a manual dump or `omnitron backup restore <id>` to restore an archive to its recorded origin. The existing archive retention policy applies to the inventory. Scheduled full passes still capture the control plane, daemon state and declared non-database resources. Runtime handoff and recovery retain their own admission checks.
+Run `omnitron backup create catalog/dev/cache` for a manual dump or `omnitron backup restore <id>` to restore an archive to its recorded origin. Scheduled retention preserves existing archives of excluded databases, including legacy archives whose recorded origin could match an exclusion. Other databases retain their normal rotation. Scheduled full passes still capture the control plane, daemon state and declared non-database resources. Runtime handoff and recovery retain their own admission checks.
 
 ## Logs and operations
 

@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Pipeline runs retain the reviewed definition, targets and command receipt. Operators can inspect a failed run in Console, reconcile a remote deployment with its target, then continue the remaining steps. Independent projects use the same Titan service over Netron and the same Xec executor. A step whose external outcome is unknown stays blocked pending evidence.
 - Backup operators can inspect and reconcile attempt receipts from the CLI. A reviewed runtime update pauses new backup admission across backend replacement and preserves the outcome of each previously admitted attempt.
-- Hosts can exclude a specific stack or database from scheduled PostgreSQL dumps through `backups.scheduledDatabaseExclusions`. The CLI reports exclusions and manual backups remain available.
+- Hosts can exclude a specific stack or database from scheduled PostgreSQL dumps through `backups.scheduledDatabaseExclusions`. The CLI reports exclusions, existing archives are retained and manual backups remain available.
 
 ### Changed
 
@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MessagePack encodes and decodes standard map32 objects with 65,536 or more pairs, reads concatenated values at the correct byte boundary and respects input views and buffer cursors. Netron uses the same codec for binary RPC. [Issue #1](https://github.com/omnitron-dev/omni/issues/1)
 - Ordinary npm installations of KB and Lumen receive the reviewed picomatch parser backport. Workspace CI and packed-consumer checks verify each installed copy and the dependency paths reported by the audit. The browser-only Lumen UI package no longer pulls in the server knowledge-base package.
 - Controlled Prism editors accept external value changes, retain pending equation edits on blur and follow the native caret in equation previews. The shared header keeps its controls centered, including in compact layouts.
+- Prism cancels an earlier tab scroll when a new selection takes focus. Both tab exports ship this behavior to npm consumers using the application's MUI theme, including vertical and right-to-left layouts.
 
 ## [0.4.8] - 2026-11-14
 

@@ -242,7 +242,7 @@ The CLI is organized into command groups:
 - `omnitron infra logs [service]` -- Container logs
 - `omnitron infra psql [db]` -- Open psql shell
 - `omnitron infra redis-cli` -- Open redis-cli
-- `omnitron infra migrate [app] [--dry-run]` -- Plan or run declared workspace migration scripts in dependency order
+- `omnitron infra migrate [app] --stack <name> --dry-run` lists the migration owners and databases for a local stack in the current project. The CLI reads `omnitron.stacks.json` and the ecosystem configuration using the same precedence as startup. Omit `--dry-run` to apply the listed migrations.
 - `omnitron infra reset --yes` -- Recreate this standalone ecosystem’s declared containers using existing volumes
 
 ### Fleet & Remote

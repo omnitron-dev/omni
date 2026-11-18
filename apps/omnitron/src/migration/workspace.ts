@@ -1,6 +1,7 @@
 import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
-import type { IEcosystemAppEntry } from '../config/types.js';
+import { resolveProjectStacks } from '../config/project-stacks.js';
+import type { IEcosystemAppEntry, IEcosystemConfig } from '../config/types.js';
 import { resolveStartupOrder } from '../orchestrator/dependency-resolver.js';
 
 /** Plan every target before the first package script can change a database. */
@@ -41,15 +42,18 @@ export async function planWorkspaceMigrations(rootPath: string, apps: IEcosystem
 /** Standalone CLI uses the same explicit stack bindings as managed startup.
  * null retains the older, explicitly invoked package-script command only when no
  * database migration policy exists. It is never a missing-config fallback. */
-export async function planDeclaredWorkspaceMigrations(root: string, config: import('../config/types.js').IEcosystemConfig,
-  options: { app?: string; stack?: string } = {}) {
+export async function planDeclaredWorkspaceMigrations(
+  root: string,
+  config: Pick<IEcosystemConfig, 'project' | 'apps' | 'stacks' | 'infrastructure'>,
+  options: { app?: string; stack?: string } = {},
+) {
   const { expandServiceDeclarations } = await import('../infrastructure/config-normalizer.js');
   const { createDefaultRegistry } = await import('../infrastructure/presets/index.js');
   const { mergeInfrastructure } = await import('../infrastructure/merge-config.js');
   const { ownsStackInfrastructure } = await import('../project/infrastructure-ownership.js');
   const { resolveStackEnv } = await import('../project/stack-env.js');
   const { hasMigrationDeclarations, requestedMigrations, localMigrationTargets, migrationDatabaseEnvironment, validateMigrationDestinations } = await import('../services/migration-target.js');
-  const stacks = Object.entries(config.stacks ?? {});
+  const stacks = Object.entries(resolveProjectStacks(config, root, config.project));
   const policies = stacks.map(([name, stack]) => ({ name, stack,
     services: expandServiceDeclarations(mergeInfrastructure(config, stack) ?? {}, createDefaultRegistry()) }));
   const declared = policies.filter(policy => hasMigrationDeclarations(policy.services));

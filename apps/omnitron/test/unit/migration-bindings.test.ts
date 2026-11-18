@@ -106,6 +106,27 @@ describe('explicit migration ownership', () => {
     config.infrastructure.services.primary.config.databases.api.migrate = false as never;
     await expect(planDeclaredWorkspaceMigrations(f.root, config as never)).resolves.toEqual([]);
   });
+
+  it('resolves a standalone migration owner from the same stack file as startup', async () => {
+    const f = await workspace();
+    const config = { apps: f.entries };
+    const infrastructure = { services: {
+      primary: { preset: 'postgres', config: { databases: { api: { migrate: binding() } } } },
+    } };
+    await fs.writeFile(path.join(f.root, 'omnitron.stacks.json'), JSON.stringify({
+      dev: { type: 'local', apps: ['owner-api'], infrastructure },
+    }));
+
+    const plan = await planDeclaredWorkspaceMigrations(f.root, config, { stack: 'dev' });
+    expect(plan?.map(({ target }) => [target.service, target.database, target.app])).toEqual([
+      ['primary', 'api', 'owner-api'],
+    ]);
+    await expect(planDeclaredWorkspaceMigrations(f.root, config, { stack: 'missing' }))
+      .rejects.toThrow('Unknown migration stack');
+    const remote = { ...config, stacks: { dev: { type: 'remote' as const, infrastructure } } };
+    await expect(planDeclaredWorkspaceMigrations(f.root, remote, { stack: 'dev' }))
+      .rejects.toThrow('local infrastructure-owning stack');
+  });
 });
 
 async function applicationDependencies(cwd: string) {

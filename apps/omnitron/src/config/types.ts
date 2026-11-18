@@ -758,6 +758,8 @@ export interface IDaemonConfig {
   backups?: {
     /** Per PostgreSQL transfer, including compression and publication. Default: 30 min; maximum: 24 h. */
     databaseTimeoutMs?: number;
+    /** Exact project/stack or project/stack/database targets to omit from scheduled PostgreSQL dumps on this host. */
+    scheduledDatabaseExclusions?: string[];
   };
 
   /**

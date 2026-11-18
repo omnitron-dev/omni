@@ -120,12 +120,20 @@ function reasonOf(err: unknown): string {
  * The outcome of a pass, from its entries. No entries is `empty`, never `ok`:
  * «0 of 0 backed up» is a pass that protected nothing.
  */
-export function passOutcome(entries: Array<{ ok: boolean; skipped?: boolean }>): BackupPassOutcome {
-  const attempted = entries.filter((e) => !e.skipped);
+export function passOutcome(entries: Pick<BackupPassEntry, 'ok' | 'skipped' | 'excludedByPolicy'>[]): BackupPassOutcome {
+  if (entries.length && entries.every(entry => entry.excludedByPolicy)) return 'excluded';
+  const attempted = entries.filter((e) => !e.skipped && !e.excludedByPolicy);
   if (attempted.length === 0) return 'empty';
   const ok = attempted.filter((e) => e.ok).length;
   if (ok === attempted.length) return 'ok';
   return ok === 0 ? 'failed' : 'partial';
+}
+
+function isScheduledDatabaseExclusion(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const parts = value.split('/');
+  return (parts.length === 2 || parts.length === 3) && parts.every(part =>
+    part.length > 0 && part.trim() === part && part !== '.' && part !== '..' && !/[\p{Cc}*?]/u.test(part));
 }
 
 /** What an index row's metadata column holds; every field is absent on some rows. */
@@ -342,6 +350,7 @@ export class BackupService {
   private handoffOwner: string | null = null;
   private scheduleObservation: ScheduleObservation | null = null;
   private databaseTimeoutMs = 30 * 60_000;
+  private scheduledDatabaseExclusions = new Set<string>();
   private readonly operations: OperationJournal;
   private readonly databaseOperations = new Map<string, { controller: AbortController; done: Promise<void> }>();
   private readonly inFlight = new Set<Promise<unknown>>();
@@ -351,7 +360,17 @@ export class BackupService {
     if (this.activeOperations || this.schedules.size) throw new Error('Configure backups before starting transfers or schedules');
     if (options !== undefined && (!options || typeof options !== 'object' || Array.isArray(options)))
       throw new Error('backups must be a configuration object');
+    const exclusions = options?.scheduledDatabaseExclusions === undefined ? [] : options.scheduledDatabaseExclusions;
+    if (!Array.isArray(exclusions) || !exclusions.every(isScheduledDatabaseExclusion))
+      throw new Error('backups.scheduledDatabaseExclusions requires exact project/stack or project/stack/database names');
     this.databaseTimeoutMs = resolveBackupTimeout(options?.databaseTimeoutMs === undefined ? 30 * 60_000 : options.databaseTimeoutMs);
+    this.scheduledDatabaseExclusions = new Set(exclusions);
+  }
+
+  private excludesScheduledDatabase(target: string): boolean {
+    const parts = target.split('/');
+    return parts.length === 3 && (this.scheduledDatabaseExclusions.has(target) ||
+      this.scheduledDatabaseExclusions.has(`${parts[0]}/${parts[1]}`));
   }
 
   activeOperationCount(): number { return this.activeOperations; }
@@ -1089,7 +1108,7 @@ export class BackupService {
   ): Promise<Array<{ target: string; ok: boolean; id?: string; size?: number; error?: string }>> {
     const startedAt = new Date();
     const results: Array<BackupPassEntry & { project?: string; stack?: string }> = [];
-    for (const r of await this.backUpStackDatabases()) {
+    for (const r of await this.backUpStackDatabases(trigger)) {
       const { database, ...rest } = r;
       results.push({ target: database, ...rest });
     }
@@ -1143,11 +1162,12 @@ export class BackupService {
     startedAt: Date,
     entries: BackupPassEntry[],
   ): BackupPassRecord {
-    const attempted = entries.filter((e) => !e.skipped);
+    const attempted = entries.filter((e) => !e.skipped && !e.excludedByPolicy);
     const failures = attempted
       .filter((e) => !e.ok)
       .map((e) => ({ target: e.target, error: (e.error ?? 'failed').slice(0, 500) }));
     const notBackedUp = entries.filter((e) => e.skipped).map((e) => ({ stack: e.target, reason: e.error ?? 'not backed up' }));
+    const excludedDatabases = entries.filter(entry => entry.excludedByPolicy).map(entry => entry.target);
     const record: BackupPassRecord = {
       target,
       trigger,
@@ -1158,8 +1178,10 @@ export class BackupService {
       total: attempted.length,
       failures,
       ...(notBackedUp.length > 0 ? { notBackedUp } : {}),
+      ...(excludedDatabases.length > 0 ? { excludedDatabases } : {}),
     };
-    const summary = { target, trigger, total: record.total, ok: record.ok, outcome: record.outcome };
+    const summary = { target, trigger, total: record.total, ok: record.ok, outcome: record.outcome,
+      ...(record.excludedDatabases && { excludedDatabases }) };
     const msg = target === 'full' ? 'createFullBackup complete' : target === 'all' ? 'createAllBackups complete' : 'Backup pass complete';
     // Every pass says which running stacks it could not reach. «all» reading
     // as «every stack» is how the test stack went unbacked-up with nothing
@@ -1170,7 +1192,7 @@ export class BackupService {
         `Running stacks this pass could not back up: ${notBackedUp.map((n) => `${n.stack} (${n.reason})`).join('; ')}`,
       );
     }
-    if (record.outcome === 'ok') {
+    if (record.outcome === 'ok' || record.outcome === 'excluded') {
       this.logger.info(summary, msg);
     } else if (record.outcome === 'empty') {
       this.logger.warn(summary, `${msg} — nothing was backed up: no database or artefact was found`);
@@ -1232,7 +1254,13 @@ export class BackupService {
         nextRunAt: this.schedules.get(target)?.nextRunAt ?? null,
       };
     });
-    return { databaseTimeoutMs: this.databaseTimeoutMs, ...(admission && { admission }), schedules, stacks: this.surveyStacks().stacks };
+    const { stacks } = this.surveyStacks();
+    for (const stack of stacks) {
+      const excluded = stack.databases.filter(db => this.excludesScheduledDatabase(`${stack.project}/${stack.stack}/${db}`));
+      if (excluded.length) stack.excludedFromSchedules = excluded;
+    }
+    return { databaseTimeoutMs: this.databaseTimeoutMs, scheduledDatabaseExclusions: [...this.scheduledDatabaseExclusions],
+      ...(admission && { admission }), schedules, stacks };
   }
 
   // ===========================================================================
@@ -1548,8 +1576,8 @@ export class BackupService {
           return 'empty' as BackupPassOutcome;
         }).then((outcome) => {
           if (plan.kind === 'interval') {
-            const backedUpSomething = outcome === 'ok' || outcome === 'partial';
-            const wait = backedUpSomething ? plan.intervalMs : Math.min(plan.intervalMs, RETRY_AFTER_NOTHING_MS);
+            const retrySoon = outcome === 'empty' || outcome === 'failed';
+            const wait = retrySoon ? Math.min(plan.intervalMs, RETRY_AFTER_NOTHING_MS) : plan.intervalMs;
             arm(Math.max(0, startedAt + wait - Date.now()));
           } else {
             // Cron occurrences are not evenly spaced — "0 3 * * *" is 23 or
@@ -1642,15 +1670,23 @@ export class BackupService {
         const startedAt = new Date();
         let entry: BackupPassEntry;
         try {
-          const info = await this.createBackup(database, { compress: true });
-          entry = { target: database, ok: true, id: info.id, size: info.size };
+          let target = database;
+          if (this.scheduledDatabaseExclusions.size && !database.includes('/') && database !== 'omnitron-pg') {
+            const { origin, dbConfig } = this.resolveDbTarget(database);
+            target = origin === 'control-plane' ? 'omnitron-pg' : `${origin.project}/${origin.stack}/${dbConfig.database}`;
+          }
+          if (this.excludesScheduledDatabase(target)) entry = { target, ok: false, excludedByPolicy: true };
+          else {
+            const info = await this.createBackup(target, { compress: true });
+            entry = { target: database, ok: true, id: info.id, size: info.size };
+          }
         } catch (err) {
           entry = { target: database, ok: false, error: (err as Error).message };
           this.logger.error({ database, error: reasonOf(err) }, 'Backup failed');
         }
         outcome = this.finishPass(database, 'schedule', startedAt, [entry]).outcome;
       }
-      await this.pruneOldBackups(database).catch(error => {
+      if (outcome !== 'excluded') await this.pruneOldBackups(database).catch(error => {
         this.logger.error({ database, error: reasonOf(error) }, 'Backup retention failed');
       });
     } catch (err) {
@@ -1992,7 +2028,7 @@ export class BackupService {
     trigger: BackupPassRecord['trigger'] = 'manual',
   ): Promise<Array<{ database: string; ok: boolean; id?: string; size?: number; error?: string }>> {
     const startedAt = new Date();
-    const results = await this.backUpStackDatabases();
+    const results = await this.backUpStackDatabases(trigger);
     this.finishPass('all', trigger, startedAt, results.map(({ database, ...rest }) => qualifiedEntry({ target: database, ...rest })));
     return results;
   }
@@ -2006,17 +2042,18 @@ export class BackupService {
    * Every database of every stack, by its `<project>/<stack>/<db>` key: by
    * bare name, a second stack's `main` was never dumped at all.
    */
-  private async backUpStackDatabases(): Promise<
-    Array<{ database: string; project?: string; stack?: string; ok: boolean; skipped?: boolean; id?: string; size?: number; error?: string }>
-  > {
+  private async backUpStackDatabases(trigger: BackupPassRecord['trigger']): Promise<StackDatabasePassEntry[]> {
     const { databases, stacks } = this.surveyStacks();
-    const results: Array<{
-      database: string; project?: string; stack?: string; ok: boolean; skipped?: boolean; id?: string; size?: number; error?: string;
-    }> = [];
+    const results: StackDatabasePassEntry[] = [];
     for (const d of databases) {
       const where = { project: d.project, stack: d.stack };
+      const target = `${d.project}/${d.stack}/${d.database}`;
+      if (trigger === 'schedule' && this.excludesScheduledDatabase(target)) {
+        results.push({ database: d.database, ...where, ok: false, excludedByPolicy: true });
+        continue;
+      }
       try {
-        const info = await this.createBackup(`${d.project}/${d.stack}/${d.database}`, { compress: true });
+        const info = await this.createBackup(target, { compress: true });
         results.push({ database: d.database, ...where, ok: true, id: info.id, size: info.size });
       } catch (err) {
         results.push({ database: d.database, ...where, ok: false, error: (err as Error).message });
@@ -2040,6 +2077,8 @@ export class BackupService {
   }
 
 }
+
+type StackDatabasePassEntry = Omit<BackupPassEntry, 'target'> & { database: string; project?: string; stack?: string };
 
 /** A database a backup target resolved to, and where a row of it will say it came from. */
 interface ResolvedDb {

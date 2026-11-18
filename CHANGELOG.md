@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Pipeline runs retain the reviewed definition, targets and command receipt. Operators can inspect a failed run in Console, reconcile a remote deployment with its target, then continue the remaining steps. Independent projects use the same Titan service over Netron and the same Xec executor. A step whose external outcome is unknown stays blocked pending evidence.
 - Backup operators can inspect and reconcile attempt receipts from the CLI. A reviewed runtime update pauses new backup admission across backend replacement and preserves the outcome of each previously admitted attempt.
+- Hosts can exclude a specific stack or database from scheduled PostgreSQL dumps through `backups.scheduledDatabaseExclusions`. The CLI reports exclusions and manual backups remain available.
 
 ### Changed
 

@@ -201,6 +201,22 @@ settle; it does not claim to reverse or abort that remote deployment.
 
 Xec owns output, retries, timeouts and cancellation. If effects may have started but execution or durable completion cannot be confirmed, the attempt becomes `unconfirmed` and automatic replay is refused. Restart recovery marks unfinished attempts conservatively and does not promise exactly-once execution. Existing callers that compare physical executable paths need an explicitly reviewed definition update to use this contract.
 
+## Scheduled database backups
+
+The daemon loads `backups.scheduledDatabaseExclusions` from its `config.json` at startup. Each entry names one `project/stack/database` or all PostgreSQL databases in one `project/stack`. For example, the following policy keeps the development cache database available for manual backup while other databases continue to follow their schedules.
+
+```json
+{
+  "backups": {
+    "scheduledDatabaseExclusions": ["catalog/dev/cache"]
+  }
+}
+```
+
+An omitted or empty list includes all eligible databases. The policy applies to scheduled `all`, `full` and individual database passes, including older schedules saved under a bare database name. A bare name shared by multiple stacks still requires an explicit target. `omnitron backup schedules --json` reports the loaded policy, affected databases and the last pass's exclusions. The schedule keeps its configured interval even when every database is excluded.
+
+Run `omnitron backup create catalog/dev/cache` for a manual dump or `omnitron backup restore <id>` to restore an archive to its recorded origin. The existing archive retention policy applies to the inventory. Scheduled full passes still capture the control plane, daemon state and declared non-database resources. Runtime handoff and recovery retain their own admission checks.
+
 ## Logs and operations
 
 CLI ranked log levels are minimum severities; `--level unknown` selects records without a recognized level. Console's level filters select exact values. Capture, storage and remote delivery are separate states: a live log line does not prove durable delivery.

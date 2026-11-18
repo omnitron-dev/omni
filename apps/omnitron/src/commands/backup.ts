@@ -58,6 +58,7 @@ function formatAge(ms: number): string {
 function describePass(pass: any): string {
   if (!pass) return 'none recorded yet';
   const when = formatUtc(pass.startedAt);
+  if (pass.outcome === 'excluded') return `${when}  EXCLUDED — ${pass.excludedDatabases.join(', ')}`;
   if (pass.outcome === 'empty') return `${when}  EMPTY — nothing was found to back up`;
   const took = Math.max(0, Math.round((Date.parse(pass.finishedAt) - Date.parse(pass.startedAt)) / 1000));
   const head = `${when}  ${String(pass.outcome).toUpperCase()} — ${pass.ok} of ${pass.total} in ${took} s`;
@@ -242,6 +243,11 @@ function reportCoverage(stacks: any[] | undefined): void {
   for (const s of list) {
     const name = `${s.project}/${s.stack}`;
     if (s.notBackedUp) log.warn(`  ${name}: not backed up — ${s.notBackedUp}`);
+    else if (s.excludedFromSchedules?.length) {
+      const included = s.databases.filter((db: string) => !s.excludedFromSchedules.includes(db));
+      if (included.length) log.info(`  ${name}: eligible for scheduled backup — ${included.join(', ')}`);
+      log.info(`  ${name}: manual backup only — ${s.excludedFromSchedules.join(', ')}`);
+    }
     else if (s.databases?.length) log.info(`  ${name}: backed up — ${s.databases.join(', ')}`);
     else log.info(`  ${name}: no databases`);
   }
@@ -314,6 +320,8 @@ export async function backupSchedulesCommand(): Promise<void> {
     if (isJsonMode()) { emitJson(status); return; }
     if (Number.isFinite(status.databaseTimeoutMs))
       log.info(`Database transfer deadline: ${status.databaseTimeoutMs < 1000 ? `${status.databaseTimeoutMs} ms` : formatAge(status.databaseTimeoutMs)}`);
+    if (status.scheduledDatabaseExclusions?.length)
+      log.info(`Scheduled database exclusions: ${status.scheduledDatabaseExclusions.join(', ')}`);
     if (status.admission) log.warn(`Backup admission ${status.admission.status}: ${status.admission.reason}`);
     const schedules: any[] = status.schedules ?? [];
     if (schedules.length === 0) {
@@ -334,7 +342,9 @@ export async function backupSchedulesCommand(): Promise<void> {
       if (!s.lastPass && s.lastBackupAt) {
         line += ` — newest backup ${formatUtc(s.lastBackupAt)}, ${formatAge(Date.now() - Date.parse(s.lastBackupAt))} ago`;
       }
-      if (s.lastPass && s.lastPass.outcome !== 'ok') log.warn(line);
+      if (s.lastPass?.excludedDatabases?.length && s.lastPass.outcome !== 'excluded')
+        line += ` — excluded by policy: ${s.lastPass.excludedDatabases.join(', ')}`;
+      if (s.lastPass && s.lastPass.outcome !== 'ok' && s.lastPass.outcome !== 'excluded') log.warn(line);
       else log.info(line);
       if (s.nextRunAt) {
         log.info(`      next run   ${formatUtc(s.nextRunAt)} (in ${formatAge(Date.parse(s.nextRunAt) - Date.now())})`);

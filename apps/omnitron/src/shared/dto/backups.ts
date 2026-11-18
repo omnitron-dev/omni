@@ -26,7 +26,7 @@ export type BackupArtifactRequest = { project: string; stack: string } & (
  * How one pass ended. `empty` is its own word: a pass that found nothing to
  * back up did not succeed, and must not read as if it had.
  */
-export type BackupPassOutcome = 'ok' | 'partial' | 'failed' | 'empty';
+export type BackupPassOutcome = 'ok' | 'partial' | 'failed' | 'empty' | 'excluded';
 
 /** One entry of a pass: a database, or a `full`-only artefact. */
 export interface BackupPassEntry {
@@ -41,6 +41,8 @@ export interface BackupPassEntry {
    * a gap in what the master can do, not a dump that failed.
    */
   skipped?: boolean;
+  /** The host's schedule policy explicitly excluded this stack database. */
+  excludedByPolicy?: true;
 }
 
 /**
@@ -68,6 +70,8 @@ export interface BackupStackCoverage {
   databases: string[];
   /** Why its databases are not backed up from here; absent when they are. */
   notBackedUp?: string;
+  /** Locally reachable databases explicitly excluded from scheduled passes. */
+  excludedFromSchedules?: string[];
 }
 
 /** What the last pass of one target did — persisted, so it outlives a restart. */
@@ -82,6 +86,8 @@ export interface BackupPassRecord {
   failures: Array<{ target: string; error: string }>;
   /** Running stacks the pass could not reach, and why. */
   notBackedUp?: Array<{ stack: string; reason: string }>;
+  /** Qualified databases deliberately omitted from this scheduled pass. */
+  excludedDatabases?: string[];
 }
 
 /** A configured schedule, and what it last did. */
@@ -106,6 +112,8 @@ export interface BackupScheduleStatus {
 export interface BackupStatus {
   /** Effective deadline for each PostgreSQL dump or restore, in milliseconds. */
   databaseTimeoutMs: number;
+  /** Exact host schedule exclusions, including targets that are currently offline. */
+  scheduledDatabaseExclusions?: string[];
   /** Live admission observation; persisted schedules and archives are retained. */
   admission?: {
     status: 'paused' | 'unconfirmed';

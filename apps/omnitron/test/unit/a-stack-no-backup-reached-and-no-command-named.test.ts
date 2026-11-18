@@ -187,6 +187,67 @@ afterEach(async () => {
 
 const dumpedFrom = (): string[] => calls.dumps.map((d) => `${d.target}:${d.args[d.args.length - 1]}`);
 
+describe('host exclusions apply to scheduled stack database dumps', () => {
+  it('scopes all and full passes while keeping earlier archives restorable and manual dumps available', async () => {
+    const service = new BackupService(fakeLogger().module, store, testExecution, fakeProjects(TWO_MAINS));
+    const previous = await service.createBackup('shop/dev/main');
+    const exclusions = ['shop/dev', 'sample/dev/geo'];
+    service.configure({ scheduledDatabaseExclusions: exclusions });
+    calls.dumps.length = 0;
+
+    const pass = await service.createAllBackups('schedule');
+    expect(dumpedFrom()).toEqual(['sample-dev-postgres:main']);
+    expect(pass).toContainEqual({ database: 'main', project: 'shop', stack: 'dev', ok: false, excludedByPolicy: true });
+    expect(store.kvGetSync<Record<string, unknown>>('backup:last-pass')?.['all']).toMatchObject({
+      outcome: 'ok', total: 1, ok: 1, failures: [], excludedDatabases: ['shop/dev/main', 'sample/dev/geo'],
+    });
+
+    calls.dumps.length = 0;
+    await service.createFullBackup('schedule');
+    expect(dumpedFrom()).toEqual(['sample-dev-postgres:main', 'omnitron-pg:omnitron']);
+    await service.restoreBackup(previous.id);
+    expect(calls.restores.map(r => r.target)).toEqual(['shop-dev-postgres']);
+    calls.dumps.length = 0;
+    await service.createAllBackups();
+    expect(dumpedFrom()).toEqual(['shop-dev-postgres:main', 'sample-dev-postgres:main', 'sample-dev-postgres:geo']);
+
+    const status = await service.getStatus();
+    expect(status.scheduledDatabaseExclusions).toEqual(exclusions);
+    expect(status.stacks).toContainEqual({ project: 'sample', stack: 'dev', databases: ['main', 'geo'], excludedFromSchedules: ['geo'] });
+    rpc['getBackupStatus'] = () => service.getStatus();
+    await backupSchedulesCommand();
+    expect(printed.map(line => line.text).join('\n')).toContain('sample/dev: manual backup only — geo');
+  });
+
+  it('observes the saved schedule for a bare database name, skips the dump and keeps the operator’s interval', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const service = new BackupService(fakeLogger().module, store, testExecution, fakeProjects(TWO_MAINS));
+    try {
+      service.configure({ scheduledDatabaseExclusions: ['sample/dev/geo'] });
+      await service.setSchedule('geo', 'hourly');
+      const [before] = (await service.getStatus()).schedules;
+      await vi.advanceTimersByTimeAsync(Date.parse(before!.nextRunAt!) - Date.now());
+      await vi.waitFor(async () => expect((await service.getStatus()).schedules[0]?.lastPass).toMatchObject({
+        trigger: 'schedule', outcome: 'excluded', ok: 0, total: 0, failures: [], excludedDatabases: ['sample/dev/geo'],
+      }));
+      const [after] = (await service.getStatus()).schedules;
+      expect(Date.parse(after!.nextRunAt!) - Date.parse(before!.nextRunAt!)).toBe(3_600_000);
+      expect(await service.listSchedules()).toEqual({ geo: 'hourly' });
+      expect(calls.dumps).toEqual([]);
+    } finally { service.dispose(); vi.useRealTimers(); }
+  });
+
+  it('requires exact scopes and retains the previous valid configuration on error', async () => {
+    const service = new BackupService(fakeLogger().module, store, testExecution, fakeProjects(TWO_MAINS));
+    expect((await service.getStatus()).scheduledDatabaseExclusions).toEqual([]);
+    service.configure({ scheduledDatabaseExclusions: ['shop/dev/main'] });
+    for (const invalid of [null, 'main', ['main'], ['all'], ['shop/*'], ['shop/dev/'], ['shop/dev/../main']]) {
+      expect(() => service.configure({ scheduledDatabaseExclusions: invalid as string[] })).toThrow(/exact project\/stack/);
+    }
+    expect((await service.getStatus()).scheduledDatabaseExclusions).toEqual(['shop/dev/main']);
+  });
+});
+
 describe('a stack whose databases are not here is named, not skipped', () => {
   it('the status says sample/test is not backed up, and where its databases are', async () => {
     const service = new BackupService(fakeLogger().module, store, testExecution, fakeProjects(MASTER));

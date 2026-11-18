@@ -119,13 +119,14 @@ function pnpmReport(report, status, { root, workspaces, copies }) {
   assert.deepEqual(Object.keys(report).sort(), ['advisories', 'metadata']);
   const issues = Object.values(report.advisories);
   assert.deepEqual(report.metadata.vulnerabilities, levels(issues.length));
-  const total = ['dependencies', 'devDependencies', 'optionalDependencies'].reduce((sum, key) => {
+  // pnpm counts a dependency once in the total even when multiple workspaces
+  // use it in different dependency categories.
+  const total = report.metadata.totalDependencies;
+  assert.ok(Number.isSafeInteger(total) && total > 0);
+  for (const key of ['dependencies', 'devDependencies', 'optionalDependencies']) {
     const count = report.metadata[key];
-    assert.ok(Number.isSafeInteger(count) && count >= 0);
-    return sum + count;
-  }, 0);
-  assert.ok(total > 0);
-  assert.equal(report.metadata.totalDependencies, total);
+    assert.ok(Number.isSafeInteger(count) && count >= 0 && count <= total);
+  }
   if (!issues.length) { assert.equal(status, 0); return; }
   assert.equal(status, 1);
   assert.deepEqual(Object.keys(report.advisories), [String(source)]);
@@ -134,6 +135,13 @@ function pnpmReport(report, status, { root, workspaces, copies }) {
     url: advisory, vulnerable_versions: '<=4.0.7', patched_versions: null, patched_versions_unpublished: true,
     severity: 'high', cwe: 'CWE-1333' });
   assert.ok(findings.length);
+  // pnpm uses double underscores between the segments of each importer ID.
+  // Bind these IDs to the actual workspace inventory and reject ambiguous IDs.
+  const importers = new Map(workspaces.map(directory => [
+    path.relative(root, directory).split(path.sep).join('__') || '.', directory,
+  ]));
+  assert.equal(importers.size, workspaces.length, 'Ambiguous pnpm advisory importer');
+  const reported = new Set();
   for (const finding of findings) {
     assert.deepEqual(Object.keys(finding).sort(), ['bundled', 'dev', 'optional', 'paths', 'version']);
     assert.equal(finding.version, '4.0.7');
@@ -141,8 +149,8 @@ function pnpmReport(report, status, { root, workspaces, copies }) {
     assert.ok(finding.paths.length);
     for (const location of finding.paths) {
       const [importer, ...names] = location.split('>');
-      let directory = path.resolve(root, importer);
-      assert.ok(workspaces.includes(directory), 'Unknown advisory workspace: ' + importer);
+      let directory = importers.get(importer);
+      assert.ok(directory, 'Unknown advisory workspace: ' + importer);
       assert.equal(names.at(-1), 'picomatch');
       assert.ok(['vite', 'vitest', 'tinyglobby', 'fdir'].includes(names.at(-2)), 'Unknown matcher importer: ' + location);
       for (const [index, name] of names.entries()) {
@@ -152,8 +160,10 @@ function pnpmReport(report, status, { root, workspaces, copies }) {
         directory = dependency(directory, name);
       }
       assert.ok(copies.has(directory), 'Unverified advisory path: ' + location);
+      reported.add(directory);
     }
   }
+  assert.deepEqual(reported, copies, 'pnpm advisory paths differ from installed matchers');
 }
 
 function npmReport(report, status, { root, copies }) {

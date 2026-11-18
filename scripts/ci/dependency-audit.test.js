@@ -67,14 +67,18 @@ function audit(root, manager, report, status = 1) {
 
 test('pnpm workspace findings resolve through declared graph edges to the reviewed files', async t => {
   const root = fixture(t);
-  await audit(root, 'pnpm', pnpmReport());
+  const report = pnpmReport();
+  report.advisories[source].findings[0].paths.push(owner.split('/').join('__') + '>vite>picomatch');
+  report.metadata.devDependencies = 3;
+  report.metadata.optionalDependencies = 2;
+  await audit(root, 'pnpm', report);
   t.mock.method(console, 'error', () => {});
   for (const mutate of [
     report => { report.advisories.other = report.advisories[source]; },
     report => { report.advisories[source].findings[0].version = '4.0.6'; },
     report => { report.advisories[source].findings[0].paths = ['.>unrelated>picomatch']; },
     report => { report.advisories[source].findings[0].paths = ['elsewhere>vite>picomatch']; },
-    report => { report.metadata.totalDependencies++; },
+    report => { report.metadata.totalDependencies = 1; },
   ]) {
     const report = pnpmReport(); mutate(report); await assert.rejects(audit(root, 'pnpm', report));
   }

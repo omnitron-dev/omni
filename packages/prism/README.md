@@ -73,7 +73,7 @@ Documents cannot import code or grant permissions. Host applications register wi
 
 `@omnitron-dev/prism/components/research-editor` accepts the original document through `initialSource`. Save the resulting snapshot's `getSource()` through the host's revision and authorization checks. An unchanged snapshot preserves the original source bytes. A projected or cleaned Markdown export is not a lossless replacement for that source.
 
-In the research editor, press the arrow key toward an adjacent inline equation to edit it from that side. Escape returns the caret to the text following the equation. Editable previews use the rendered symbols in their accessible names and expose the original TeX as their accessible descriptions.
+In the research editor, press the arrow key toward an adjacent inline equation to edit it from that side. Escape commits the latest formula edit and returns the caret to the text following the equation. Opening and closing a formula without an edit preserves its original TeX spelling. Editable previews use the rendered symbols in their accessible names and expose the original TeX as their accessible descriptions.
 
 ## Documentation
 

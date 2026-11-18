@@ -109,7 +109,11 @@ export function MathNodeView({ node, editor, getPos, selected }: NodeViewProps) 
           }}
         >
           {editable && <span id={labelId} hidden>{`${fieldLabel}:`}</span>}
-          {editable && <span id={sourceId} hidden>{latex}</span>}
+          {editable && (
+            <span id={sourceId} hidden>
+              {latex}
+            </span>
+          )}
           <span ref={preview} />
         </span>
       )}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import TextField from '@mui/material/TextField';
@@ -65,6 +65,7 @@ export function MathInput(props: MathInputProps) {
   const theme = useTheme();
   const host = useRef<HTMLSpanElement>(null),
     field = useRef<MathfieldElement | undefined>(undefined);
+  const observedValue = useRef('');
   const editingSource = useRef(false);
   const latest = useRef(props);
   latest.current = props;
@@ -80,6 +81,26 @@ export function MathInput(props: MathInputProps) {
     }
     return true;
   }
+  const publishField = useCallback(() => {
+    const mf = field.current;
+    if (!mf) return;
+    const value = mf.value;
+    if (value === observedValue.current) return;
+    observedValue.current = value;
+    if (accept(value)) setIssue(mf.errors.length ? 'syntax' : undefined);
+    else {
+      mf.setValue(latest.current.value, { silenceNotifications: true });
+      observedValue.current = mf.value;
+    }
+  }, []);
+  const leave = useCallback(
+    (direction: MathExit) => {
+      // MathLive schedules its input notification and can be unmounted before it fires.
+      publishField();
+      latest.current.onExit?.(direction);
+    },
+    [publishField]
+  );
   useEffect(() => {
     let cancelled = false;
     let dispose: (() => void) | undefined;
@@ -105,36 +126,41 @@ export function MathInput(props: MathInputProps) {
         mf.addEventListener('focusin', claimKeyboard, true);
         const input = (event: Event) => {
           event.stopPropagation();
-          const accepted = accept(mf.value);
-          if (!accepted) mf.setValue(latest.current.value, { silenceNotifications: true });
-          else setIssue(mf.errors.length ? 'syntax' : undefined);
+          publishField();
         };
         const move = (event: CustomEvent<MoveOutEvent>) => {
           if (!latest.current.onExit) return;
           event.preventDefault();
-          latest.current.onExit(event.detail.direction);
+          leave(event.detail.direction);
         };
         const key = (event: KeyboardEvent) => {
           if (event.isComposing) return;
           const currentProps = latest.current;
-          if (currentProps.onHistory && (event.metaKey || event.ctrlKey) && ['z', 'y'].includes(event.key.toLowerCase())) {
+          if (
+            currentProps.onHistory &&
+            (event.metaKey || event.ctrlKey) &&
+            ['z', 'y'].includes(event.key.toLowerCase())
+          ) {
             event.preventDefault();
             event.stopImmediatePropagation();
+            publishField();
             currentProps.onHistory(event.shiftKey || event.key.toLowerCase() === 'y');
           } else if (currentProps.onExit && (event.key === 'Escape' || (event.key === 'Enter' && !event.shiftKey))) {
             // Let MathLive complete a command or navigate a matrix with Enter first.
             if (event.key === 'Enter' && mf.mode === 'latex') return;
             event.preventDefault();
             event.stopImmediatePropagation();
-            currentProps.onExit('forward');
+            leave('forward');
           }
         };
         const stop = (event: Event) => {
           event.stopPropagation();
+          if (event.type === 'keyup' && !(event as KeyboardEvent).isComposing) publishField();
           if (event.type === 'beforeinput' && latest.current.onHistory) {
             const type = (event as InputEvent).inputType;
             if (type === 'historyUndo' || type === 'historyRedo') {
               event.preventDefault();
+              publishField();
               latest.current.onHistory(type === 'historyRedo');
             }
           }
@@ -142,6 +168,7 @@ export function MathInput(props: MathInputProps) {
         for (const name of ['keydown', 'keyup', 'keypress', 'beforeinput', 'paste', 'cut', 'copy'])
           mf.addEventListener(name, stop);
         mf.addEventListener('input', input);
+        mf.addEventListener('focusout', publishField);
         mf.addEventListener('move-out', move);
         mf.addEventListener('keydown', key, true);
         dispose = () => {
@@ -153,18 +180,25 @@ export function MathInput(props: MathInputProps) {
           for (const name of ['keydown', 'keyup', 'keypress', 'beforeinput', 'paste', 'cut', 'copy'])
             mf.removeEventListener(name, stop);
           mf.removeEventListener('input', input);
+          mf.removeEventListener('focusout', publishField);
           mf.removeEventListener('move-out', move);
           mf.removeEventListener('keydown', key, true);
           mf.remove();
           field.current = undefined;
         };
         host.current.replaceChildren(mf);
+        // Preserve the host's exact TeX when MathLive normalizes it on mount.
+        observedValue.current = mf.value;
         mf.menuItems = [];
         setReady(true);
         if (mf.errors.length) {
           setIssue('syntax');
           editingSource.current = true;
           setSource(true);
+        } else if (p.autoFocus && !p.readOnly && !editingSource.current) {
+          keyboardOwner = mf;
+          mf.focus();
+          mf.position = p.entry === 'start' ? 0 : -1;
         }
       })
       .catch(() => {
@@ -178,23 +212,19 @@ export function MathInput(props: MathInputProps) {
       cancelled = true;
       dispose?.();
     };
-  }, []);
-  useEffect(() => {
-    const p = latest.current,
-      mf = field.current;
-    if (ready && mf && p.autoFocus && !p.readOnly && !editingSource.current) {
-      keyboardOwner = mf;
-      mf.focus();
-      mf.position = p.entry === 'start' ? 0 : -1;
-    }
-  }, [ready]);
+  }, [leave, publishField]);
   useEffect(() => {
     const mf = field.current;
     if (!mf) return;
     mf.readOnly = !!props.readOnly;
     mf.setAttribute('aria-label', labels.field);
+  }, [props.readOnly, labels.field]);
+  useEffect(() => {
+    const mf = field.current;
+    if (!mf || props.value === observedValue.current) return;
     if (mf.value !== props.value) mf.setValue(props.value, { silenceNotifications: true });
-  }, [props.value, props.readOnly, labels.field, ready]);
+    observedValue.current = mf.value;
+  }, [props.value]);
   useEffect(() => {
     if (props.locale && ready)
       void loadMathLive().then(({ MathfieldElement }) => {
@@ -271,7 +301,7 @@ export function MathInput(props: MathInputProps) {
         </Tooltip>
         {props.onExit && (
           <Tooltip title={labels.done}>
-            <IconButton type="button" size="small" aria-label={labels.done} onClick={() => props.onExit?.('forward')}>
+            <IconButton type="button" size="small" aria-label={labels.done} onClick={() => leave('forward')}>
               <Check fontSize="small" />
             </IconButton>
           </Tooltip>
@@ -295,7 +325,7 @@ export function MathInput(props: MathInputProps) {
           onKeyDown={(event) => {
             if (event.key === 'Escape') {
               event.stopPropagation();
-              props.onExit?.('forward');
+              leave('forward');
             }
             if (props.onHistory && (event.ctrlKey || event.metaKey) && ['z', 'y'].includes(event.key.toLowerCase())) {
               event.preventDefault();

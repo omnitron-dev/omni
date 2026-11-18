@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import type { MathfieldElement } from 'mathlive';
 test.use({ video: 'off' });
 const source = 'First statement.\r\n\r\n$$\nx^2+y^2=z^2\n$$\n\nThird statement.\n';
 test.beforeEach(async ({ page }) => {
@@ -168,13 +169,45 @@ test('rapid backward movement enters an inline equation from its right edge', as
   for (let i = 0; i <= ' after.'.length; i++) await page.keyboard.press('ArrowLeft');
   const field = page.locator('math-field');
   await expect(field).toBeVisible();
-  await expect.poll(() => field.evaluate((node) => {
-    const math = node as HTMLElement & { position: number; lastOffset: number };
-    return math.position === math.lastOffset;
-  })).toBe(true);
+  await expect
+    .poll(() =>
+      field.evaluate((node) => {
+        const math = node as HTMLElement & { position: number; lastOffset: number };
+        return math.position === math.lastOffset;
+      })
+    )
+    .toBe(true);
   await field.press('Escape');
   await page.getByRole('button', { name: 'Capture source' }).click();
   expect(await page.getByTestId('captured-json').textContent()).toBe(JSON.stringify('Before $x^2$ after.'));
+});
+
+test('closing an equation retains edits before MathLive delivers its input event', async ({ page }) => {
+  const initial = 'Before $x^{2}$ after.';
+  await page.getByRole('button', { name: 'Document source', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Document source', exact: true }).fill(initial);
+  await page.getByRole('button', { name: 'Apply', exact: true }).click();
+  const equation = page.getByRole('button', { name: /^Equation:/ });
+  const field = page.locator('math-field');
+  const capture = page.getByRole('button', { name: 'Capture source' });
+  const captured = page.getByTestId('captured-json');
+  await equation.click();
+  await field.press('Escape');
+  await capture.click();
+  await expect(captured).toHaveText(JSON.stringify(initial));
+
+  await equation.click();
+  await field.evaluate((element) => {
+    const math = element as MathfieldElement;
+    math.position = 0;
+    math.executeCommand(['insert', '23']);
+    math.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  });
+  await capture.click();
+  await expect(captured).toHaveText(JSON.stringify('Before $23x^2$ after.'));
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await capture.click();
+  await expect(captured).toHaveText(JSON.stringify(initial));
 });
 
 test('leaving equation editing closes its document-wide virtual keyboard', async ({ page }) => {

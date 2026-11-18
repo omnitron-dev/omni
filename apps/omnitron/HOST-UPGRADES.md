@@ -122,6 +122,25 @@ pnpm exec xec update local-sync --review <plan-sha256>
 pnpm exec xec update local-sync --status
 ```
 
+For a stack in `preserve` mode, preparation compares its saved review with
+the retained launch and infrastructure for its next start. Inspect both with
+the following read-only commands.
+
+```sh
+omnitron --json stack status <project> <stack>
+omnitron --json stack start <project> <stack> --dry-run --infrastructure preserve
+```
+
+Compare `data.infrastructureReview` in the status with `data.digest` in the
+start review. The latter includes launch selection, local bootstrap bytes,
+declarations, environment and the infrastructure review from each placement.
+A bootstrap edit can change this digest even when every native container passes
+its checks. Verify the intended changes with the stack operator. Once the
+operator authorizes and performs a stack start with the reviewed digest, run
+`pnpm exec xec update local-sync` again to prepare the host plan. After a
+refusal, `--status` can still show an earlier plan. Check its target commit
+before reviewing a plan for application.
+
 These Xec commands build and verify the committed runtime, then invoke its
 public CLI. An installed operator can use the same workflow with a sealed
 runtime and no source checkout.

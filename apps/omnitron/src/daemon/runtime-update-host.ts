@@ -108,13 +108,19 @@ export function assertLocalIdle(status: RuntimeUpdateStatusObservation) {
 
 // The controller which restores both directions must admit the exact review.
 export function assertReviewedBoot(stack: RuntimeUpdateStack, digest: string, protocol: 1 | undefined) {
-  const preserved = stack.infrastructureMode === 'preserve' && stack.infrastructureReview === digest;
-  const once = protocol === 1 && stack.infrastructureMode === 'reconcile' && stack.infrastructureReview === null;
-  if (!stack.enabled || !hash.test(digest) || (!preserved && !once)) {
-    const reason = !stack.enabled ? 'The saved stack is disabled.' : !hash.test(digest) ? 'The infrastructure review digest is invalid.' :
-      'The restoring controller must support coldStackAdmissionProtocol@1, or the saved stack must already preserve this exact infrastructure review.';
-    throw Error('Local restart cannot prove reviewed boot for ' + stack.project + '/' + stack.stack + '. ' + reason);
+  const refusal = (reason: string) => Error('Local restart cannot prove reviewed boot for ' + stack.project + '/' + stack.stack + '. ' + reason);
+  if (!stack.enabled) throw refusal('The saved stack is disabled.');
+  if (!hash.test(digest)) throw refusal('The retained launch and infrastructure review digest is invalid.');
+  if (stack.infrastructureMode === 'preserve') {
+    if (stack.infrastructureReview === digest) return;
+    const saved = stack.infrastructureReview && hash.test(stack.infrastructureReview)
+      ? 'Saved preserve review ' + stack.infrastructureReview + '.' : 'The stack has no valid saved preserve review.';
+    throw refusal(saved + ' Current retained launch and infrastructure review ' + digest +
+      '. Compare omnitron stack status <project> <stack> with omnitron stack start <project> <stack> --dry-run --infrastructure preserve.');
   }
+  if (stack.infrastructureMode !== 'reconcile' || stack.infrastructureReview !== null)
+    throw refusal('One-time admission requires saved reconcile mode with an empty review.');
+  if (protocol !== 1) throw refusal('One-time admission requires coldStackAdmissionProtocol@1 on the restoring controller.');
 }
 
 export function assertSameSavedSelection(prior: ReviewedRuntimeUpdateStack, now: RuntimeUpdateStack) {

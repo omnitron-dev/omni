@@ -22,6 +22,18 @@ test('only boots with the exact native admission and unchanged desired state', (
   }
 });
 
+test('a stale saved preserve review identifies both digests even with a capable restoring controller', () => {
+  const saved = 'a'.repeat(64), current = 'b'.repeat(64);
+  const stack = { project: 'example', stack: 'dev', enabled: true, infrastructureMode: 'preserve', infrastructureReview: saved };
+  assert.throws(() => assertReviewedBoot(stack, current, 1), (error) => {
+    assert.match(error.message, new RegExp('Saved preserve review ' + saved));
+    assert.match(error.message, new RegExp('Current retained launch and infrastructure review ' + current));
+    assert.match(error.message, /--dry-run --infrastructure preserve/);
+    return true;
+  });
+  assert.doesNotThrow(() => assertReviewedBoot(stack, saved, 1));
+});
+
 test('one-shot admission requires a capable restoring controller and preserves native service and boot policy scope', () => {
   const digest = 'a'.repeat(64);
   const stack = { project: 'example', stack: 'dev', enabled: true, infrastructureMode: 'reconcile', infrastructureReview: null };

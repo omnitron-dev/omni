@@ -5,6 +5,13 @@ import { createHash, randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ExecutionOutcomeUnknownError, type ExecutionResource } from '@xec-sh/core';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
+import { Netron } from '@omnitron-dev/titan/netron';
+import { UnixSocketTransport } from '@omnitron-dev/titan/netron/transport/unix';
+import { Public, Service } from '@omnitron-dev/titan/decorators';
+import * as daemonClient from '../../src/daemon/daemon-client.js';
+import { backupCreateCommand } from '../../src/commands/backup.js';
+import { BackupRpcService } from '../../src/services/backup.rpc-service.js';
+import { createAuthContextWrapper } from '../../src/services/auth-context.js';
 import { testExecution } from '../fixtures/execution.js';
 import { ExecutionService } from '../../src/execution/execution.service.js';
 import { recoveryState } from '../../src/daemon/recovery-state.js';
@@ -227,6 +234,54 @@ describe('backup admission follows the native runtime receipt', () => {
 });
 
 describe('durable backup execution', () => {
+  it('finishes a single CLI backup across a real Netron timeout using the archived operation', async () => {
+    @Service({ name: 'OmnitronDaemon' })
+    class Daemon {
+      @Public() async ping(): Promise<boolean> { return true; }
+    }
+    const socket = path.join(os.tmpdir(), `backup-${randomUUID().slice(0, 8)}.sock`);
+    const server = new Netron(logger, { id: 'backup-fixture' });
+    server.registerTransport('unix', () => new UnixSocketTransport());
+    server.registerTransportServer('unix', { name: 'unix', options: { path: socket, invocationWrapper: createAuthContextWrapper() } });
+    server.setTransportAuthContext('unix', {
+      userId: 'omnitron-local', roles: ['admin'], permissions: [], metadata: { source: 'local-unix-socket' },
+    });
+    vi.spyOn(daemonClient, 'createDaemonClient').mockImplementation(() => new daemonClient.DaemonClient(socket, 1_000));
+
+    const gate = Promise.withResolvers<void>();
+    const execute = vi.mocked(executor.execute).getMockImplementation()!;
+    vi.mocked(executor.execute).mockImplementationOnce(async command => { await gate.promise; return execute(command); });
+    const create = vi.spyOn(backups, 'createBackup');
+    const read = backups.getOperation.bind(backups);
+    const observed: Array<{ id: string; state?: string }> = [];
+    vi.spyOn(backups, 'getOperation').mockImplementation(id => {
+      const receipt = read(id);
+      observed.push({ id, ...(receipt && { state: receipt.state }) });
+      if (receipt?.state === 'running') gate.resolve();
+      return receipt;
+    });
+    const exitCode = process.exitCode;
+    process.exitCode = undefined;
+    try {
+      await server.start();
+      await server.peer.exposeService(new Daemon());
+      await server.peer.exposeService(new BackupRpcService(backups, null));
+      await backupCreateCommand('one/dev/ledger');
+      const id = create.mock.calls[0]?.[1]?.operationId;
+      expect(id).toEqual(expect.any(String));
+      expect(create).toHaveBeenCalledOnce();
+      expect(submitted).toHaveLength(1);
+      expect(observed[0]).toEqual({ id, state: 'running' });
+      expect(observed.at(-1)).toEqual({ id, state: 'succeeded' });
+      expect(store.selectBackupsSync().map(row => row.id)).toEqual([id]);
+      expect(process.exitCode).toBeUndefined();
+    } finally {
+      gate.resolve();
+      process.exitCode = exitCode;
+      await server.stop();
+    }
+  });
+
   it('persists ownership before execution and success only after archive/index completion', async () => {
     const operationId = randomUUID();
     const record = await backups.createBackup('one/dev/ledger', { operationId });

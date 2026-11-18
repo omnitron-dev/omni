@@ -217,6 +217,8 @@ An omitted or empty list includes all eligible databases. The policy applies to 
 
 Run `omnitron backup create catalog/dev/cache` for a manual dump or `omnitron backup restore <id>` to restore an archive to its recorded origin. Scheduled retention preserves existing archives of excluded databases, including legacy archives whose recorded origin could match an exclusion. Other databases retain their normal rotation. Scheduled full passes still capture the control plane, daemon state and declared non-database resources. Runtime handoff and recovery retain their own admission checks.
 
+For a single database, `omnitron backup create <project>/<stack>/<database>` prints the operation UUID before submitting the dump. If the RPC reply is lost, the CLI reads that same backup operation. It follows an in-progress receipt for up to the configured database transfer timeout. A successful receipt reports the archive UUID and size. If the outcome is still unconfirmed or you interrupt the CLI, inspect it with `omnitron --json backup operations <uuid>` before requesting another dump.
+
 ## Logs and operations
 
 CLI ranked log levels are minimum severities; `--level unknown` selects records without a recognized level. Console's level filters select exact values. Capture, storage and remote delivery are separate states: a live log line does not prove durable delivery.

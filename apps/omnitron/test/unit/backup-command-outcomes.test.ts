@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Errors, NetronErrors } from '@omnitron-dev/titan/errors';
 
 const fixture = vi.hoisted(() => ({
   rpc: {} as Record<string, (arg?: unknown) => unknown>,
@@ -7,18 +8,21 @@ const fixture = vi.hoisted(() => ({
 }));
 vi.mock('@xec-sh/kit', () => ({ log: Object.fromEntries(['info', 'success', 'warn', 'error'].map(level =>
   [level, (text: string) => fixture.printed.push({ level, text })])) }));
-vi.mock('../../src/daemon/daemon-client.js', () => ({ createDaemonClient: () => ({
-  isReachable: async () => true,
-  disconnect: async () => undefined,
-  service: async () => new Proxy({}, { get: (_, name: string) => {
-    if (name === 'then') return undefined;
-    return (arg?: unknown) => {
-      fixture.calls.push(name);
-      if (!fixture.rpc[name]) throw new Error(`Unknown member: '${name}' is not defined in the service interface`);
-      return fixture.rpc[name](arg);
-    };
-  } }),
-}) }));
+vi.mock('../../src/daemon/daemon-client.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../../src/daemon/daemon-client.js')>(),
+  createDaemonClient: () => ({
+    isReachable: async () => true,
+    disconnect: async () => undefined,
+    service: async () => new Proxy({}, { get: (_, name: string) => {
+      if (name === 'then') return undefined;
+      return (arg?: unknown) => {
+        fixture.calls.push(name);
+        if (!fixture.rpc[name]) throw new Error(`Unknown member: '${name}' is not defined in the service interface`);
+        return fixture.rpc[name](arg);
+      };
+    } }),
+  }),
+}));
 
 const commands = await import('../../src/commands/backup.js');
 const { resetEnvCache } = await import('../../src/shared/env-config.js');
@@ -36,6 +40,7 @@ beforeEach(() => {
   fixture.calls.length = 0;
 });
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   process.exitCode = previousExitCode;
   if (previousMode === undefined) delete process.env['OMNITRON_OUTPUT'];
@@ -49,6 +54,122 @@ describe('backup command outcomes', () => {
     createdAt: backup.createdAt, updatedAt: backup.createdAt,
     execution: { type: 'docker-container', operationId: backup.id, daemonId: 'example-daemon' },
     code: 'BACKUP_EXECUTION_UNCONFIRMED' };
+
+  describe('single database create', () => {
+    const target = 'catalog/dev/main';
+    const lost = () => NetronErrors.transportLost('unix', 'backup-fixture', 7);
+    const submitted = (input: unknown): string => {
+      expect(input).toEqual({ database: target, compress: true, operationId: expect.any(String) });
+      const { operationId } = input as { operationId: string };
+      expect(operationId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+      expect(fixture.printed.some(line => line.text.includes(operationId))).toBe(true);
+      return operationId;
+    };
+
+    it('preserves the ordinary archive result using the UUID printed before submission', async () => {
+      fixture.rpc['createBackup'] = input => ({ ...backup, id: submitted(input) });
+      await commands.backupCreateCommand(target);
+      expect(fixture.calls).toEqual(['createBackup']);
+      expect(fixture.printed.some(line => line.level === 'success' && line.text.includes(backup.filename))).toBe(true);
+      expect(process.exitCode).toBeUndefined();
+    });
+
+    it('waits for the same dump that commits at 82 seconds after its 60-second RPC timeout', async () => {
+      vi.useFakeTimers();
+      let id = '', committed = false;
+      fixture.rpc['createBackup'] = input => {
+        id = submitted(input);
+        setTimeout(() => { committed = true; }, 82_000);
+        return new Promise((_, reject) => setTimeout(() => reject(Errors.timeout('RPC request', 60_000)), 60_000));
+      };
+      fixture.rpc['getOperation'] = input => {
+        expect(input).toEqual({ id });
+        return { ...operation, id, state: committed ? 'succeeded' : 'running',
+          ...(committed && { artifact: { id, sizeBytes: 100 } }) };
+      };
+      fixture.rpc['getBackupStatus'] = () => ({ databaseTimeoutMs: 1_800_000 });
+      const work = commands.backupCreateCommand(target);
+      await vi.advanceTimersByTimeAsync(81_999);
+      expect(fixture.calls).toContain('getOperation');
+      expect(fixture.printed.some(line => line.level === 'error' || line.level === 'success')).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await work;
+      expect(fixture.calls.filter(name => name === 'createBackup')).toHaveLength(1);
+      expect(new Set(fixture.calls)).toEqual(new Set(['createBackup', 'getOperation', 'getBackupStatus']));
+      expect(fixture.printed.some(line => line.level === 'success' && line.text.includes(id))).toBe(true);
+      expect(process.exitCode).toBeUndefined();
+    });
+
+    it.each([
+      ['failed', 'BACKUP_FAILED'], ['cancelled', 'BACKUP_CANCELLED'], ['unknown', 'BACKUP_EXECUTION_UNCONFIRMED'],
+    ] as const)('retains the journal state %s on a lost reply', async (state, code) => {
+      let id = '';
+      fixture.rpc['createBackup'] = input => { id = submitted(input); throw lost(); };
+      fixture.rpc['getOperation'] = input => {
+        expect(input).toEqual({ id });
+        return { ...operation, id, state, code };
+      };
+      await commands.backupCreateCommand(target);
+      expect(fixture.calls).toEqual(['createBackup', 'getOperation']);
+      const message = fixture.printed.find(line => line.level === 'error')?.text;
+      expect(message).toContain(code);
+      if (state === 'unknown') expect(message).toContain(`omnitron backup operations ${id}`);
+      else expect(message).toContain(`Backup ${id} ${state}`);
+      expect(fixture.printed.some(line => line.level === 'success')).toBe(false);
+      expect(process.exitCode).toBe(1);
+    });
+
+    it.each(['missing', 'unreachable', 'wrong-operation', 'wrong-artifact'] as const)('keeps %s evidence unconfirmed and inspectable', async evidence => {
+      let id = '';
+      fixture.rpc['createBackup'] = input => { id = submitted(input); throw lost(); };
+      fixture.rpc['getOperation'] = input => {
+        expect(input).toEqual({ id });
+        if (evidence === 'missing') return null;
+        if (evidence === 'unreachable') throw lost();
+        return { ...operation, id: evidence === 'wrong-operation' ? backup.id : id, state: 'succeeded',
+          artifact: { id: backup.id, sizeBytes: 100 } };
+      };
+      await commands.backupCreateCommand(target);
+      expect(fixture.calls).toEqual(['createBackup', 'getOperation']);
+      const message = fixture.printed.find(line => line.level === 'error')?.text;
+      expect(message).toContain('outcome unconfirmed');
+      expect(message).toContain(`omnitron backup operations ${id}`);
+      expect(process.exitCode).toBe(1);
+    });
+
+    it('returns the inspectable operation when the read-only wait expires', async () => {
+      vi.useFakeTimers();
+      let id = '';
+      fixture.rpc['createBackup'] = input => { id = submitted(input); throw lost(); };
+      fixture.rpc['getOperation'] = () => ({ ...operation, id, state: 'running' });
+      fixture.rpc['getBackupStatus'] = () => ({ databaseTimeoutMs: 20 });
+      const work = commands.backupCreateCommand(target);
+      await vi.advanceTimersByTimeAsync(20);
+      await work;
+      expect(fixture.calls).toEqual(['createBackup', 'getOperation', 'getBackupStatus', 'getOperation']);
+      const message = fixture.printed.find(line => line.level === 'error')?.text;
+      expect(message).toContain(`omnitron backup operations ${id}`);
+      expect(message).toContain('Last state was running');
+      expect(process.exitCode).toBe(1);
+    });
+
+    it('preserves an authorization denial when the caller cannot read the journal', async () => {
+      fixture.rpc['createBackup'] = () => { throw Errors.forbidden('Forbidden'); };
+      await commands.backupCreateCommand(target);
+      expect(fixture.calls).toEqual(['createBackup']);
+      expect(fixture.printed.filter(line => line.level === 'error')).toEqual([{ level: 'error', text: 'Forbidden' }]);
+      expect(process.exitCode).toBe(1);
+    });
+
+    it('preserves an explicit refusal issued before a backup operation was admitted', async () => {
+      fixture.rpc['createBackup'] = () => { throw new Error('Backup admission denied'); };
+      fixture.rpc['getOperation'] = () => null;
+      await commands.backupCreateCommand(target);
+      expect(fixture.calls).toEqual(['createBackup', 'getOperation']);
+      expect(fixture.printed.filter(line => line.level === 'error')).toEqual([{ level: 'error', text: 'Backup admission denied' }]);
+      expect(process.exitCode).toBe(1);
+    });
+  });
 
   it.each([undefined, backup.id])('reads the exact operation receipt without replay (id=%s)', async id => {
     process.env['OMNITRON_OUTPUT'] = 'json'; resetEnvCache();

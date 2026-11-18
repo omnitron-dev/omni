@@ -4,6 +4,7 @@
  * omnitron backup restore <id> — Restore from backup
  */
 
+import { randomUUID } from 'node:crypto';
 import { log } from '@xec-sh/kit';
 import { assertOperationId } from '@xec-sh/core';
 import {
@@ -12,11 +13,11 @@ import {
   resolveBackupId,
   uniqueIdPrefixLength,
 } from '../services/backup-pipeline.js';
-import { createDaemonClient } from '../daemon/daemon-client.js';
+import { createDaemonClient, isRequestTimeout } from '../daemon/daemon-client.js';
 import { emitError, emitJson, isJsonMode } from './output.js';
 import type { BackupArtifactRequest, BackupRecord } from '../shared/dto/backups.js';
-import type { IOmnitronBackupsService } from '../shared/dto/services.js';
-import type { OperationReceipt } from '../shared/dto/execution-operations.js';
+import { isLostRpcAcknowledgement, type IOmnitronBackupsService } from '../shared/dto/services.js';
+import type { OperationArtifact, OperationReceipt } from '../shared/dto/execution-operations.js';
 
 async function withBackups<T>(invoke: (service: IOmnitronBackupsService) => Promise<T>): Promise<T> {
   const client = createDaemonClient();
@@ -66,6 +67,55 @@ function describePass(pass: any): string {
   return failures.length === 0 ? head : `${head}; failed: ${failures.map((f) => `${f.target} (${f.error})`).join('; ')}`;
 }
 
+/** After submission only read the original operation. Losing the reply does not cancel the dump. */
+async function readSubmittedBackup(service: IOmnitronBackupsService, id: string, requestError: unknown): Promise<OperationArtifact> {
+  // Netron rejects unauthenticated or unauthorized calls before invoking the service.
+  const code = (requestError as { code?: unknown } | null)?.code;
+  if (code === 401 || code === 403) throw requestError;
+  const inspect = `omnitron backup operations ${id}`;
+  const reason = (requestError as Error)?.message ?? String(requestError);
+  const unconfirmed = (detail: string) => new Error(`Backup outcome unconfirmed for ${id}. ${detail}. Inspect with \`${inspect}\` before retrying.`);
+  const read = async () => {
+    let receipt: OperationReceipt | null;
+    try { receipt = await service.getOperation({ id }); }
+    catch (error) { throw unconfirmed(`Request reported ${reason}. Could not read its receipt (${(error as Error).message})`); }
+    if (receipt && (receipt.id !== id || receipt.kind !== 'backup'))
+      throw unconfirmed('The daemon returned a different operation');
+    return receipt;
+  };
+
+  const lostReply = isRequestTimeout(requestError) || isLostRpcAcknowledgement(requestError);
+  let receipt = await read();
+  // Admission can reject the request before it creates any journal entry.
+  if (!receipt && !lostReply) throw requestError;
+  let deadline: number | undefined;
+  while (receipt && ['prepared', 'running', 'cancelling'].includes(receipt.state)) {
+    if (deadline === undefined) {
+      log.info(`Backup ${id} is ${receipt.state}. Waiting for its receipt...`);
+      try {
+        const { databaseTimeoutMs } = await service.getBackupStatus();
+        if (!Number.isSafeInteger(databaseTimeoutMs) || databaseTimeoutMs <= 0) throw new Error('Invalid database transfer deadline');
+        deadline = performance.now() + databaseTimeoutMs;
+      } catch (error) { throw unconfirmed(`Last state was ${receipt.state}. ${(error as Error).message}`); }
+    }
+    const remaining = deadline - performance.now();
+    if (remaining <= 0) throw unconfirmed(`Last state was ${receipt.state}`);
+    await new Promise(resolve => setTimeout(resolve, Math.min(2_000, remaining)));
+    receipt = await read();
+  }
+  if (receipt?.state === 'failed' || receipt?.state === 'cancelled') {
+    const detail = [receipt.code, !lostReply && reason].filter(Boolean).join('. ');
+    throw new Error(`Backup ${id} ${receipt.state}. ${detail}`.trim());
+  }
+  if (receipt?.state === 'succeeded') {
+    const artifact = receipt.artifact;
+    if (artifact?.id !== id || !Number.isSafeInteger(artifact.sizeBytes) || artifact.sizeBytes < 0)
+      throw unconfirmed('The succeeded receipt has no matching archive and size');
+    return artifact;
+  }
+  throw unconfirmed(receipt ? `Receipt state is ${receipt.state}${receipt.code ? ' (' + receipt.code + ')' : ''}` : 'No receipt was found');
+}
+
 export async function backupCreateCommand(database?: string): Promise<void> {
   try {
     // No target ⇒ back up every database of every running stack (the safe
@@ -82,9 +132,20 @@ export async function backupCreateCommand(database?: string): Promise<void> {
       return;
     }
 
-    log.info(`Creating backup for '${database}'...`);
-    const backup = await withBackups(service => service.createBackup({ database, compress: true }));
-    log.success(`Backup created: ${backup.filename} (${formatBackupSize(backup.size)})`);
+    const operationId = randomUUID();
+    log.info(`Creating backup for '${database}' (operation ${operationId})...`);
+    const backup = await withBackups(async service => {
+      try {
+        const record = await service.createBackup({ database, compress: true, operationId });
+        if (record?.id !== operationId)
+          throw Object.assign(new Error('The daemon acknowledged a different backup ID'), { code: 'INVALID_RESPONSE' });
+        return record;
+      } catch (error) {
+        const artifact = await readSubmittedBackup(service, operationId, error);
+        return { id: artifact.id, database, size: artifact.sizeBytes };
+      }
+    });
+    log.success(`Backup created: ${'filename' in backup ? backup.filename : backup.id} (${formatBackupSize(backup.size)})`);
     log.info(`  ID: ${backup.id}`);
     log.info(`  Database: ${backup.database}`);
   } catch (err) {

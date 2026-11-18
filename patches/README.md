@@ -8,3 +8,9 @@ These patches are applied through [pnpm-workspace.yaml](../pnpm-workspace.yaml).
 The worker-budget regression is [vitest-worker-budget.test.ts](../apps/omnitron/test/unit/vitest-worker-budget.test.ts). Temporary-directory lifecycle is checked by [a-temp-dir-the-test-runner-never-removed.mjs](../scripts/a-temp-dir-the-test-runner-never-removed.mjs).
 
 Remove a patch when the installed upstream version passes the corresponding checks and the package-consumer gate.
+
+## Why does npm audit report picomatch in the SDK?
+
+The registry identifies picomatch by version. The workspace applies a reviewed parser backport to 4.0.7 for GHSA-fc5q-39xc-vjpf. KB ships this distribution with ts-morph, and Lumen ships it with Vite. npm installs Vite's native build dependencies for the consumer's operating system. A separate Vite installation added by the consuming application needs its own dependency review. [Registry advisory](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) · [Parser backport](picomatch@4.0.7.patch) · [Vite dependency manifest](vite@8.3.5.patch)
+
+The backport restricts repeated extglob syntax affected by the advisory. Package acceptance exercises normal globstar, brace alternatives, dotfile handling, a Vite build and KB source extraction. The workspace and archive audit gates check the advisory origin, its resolved paths and the full contents of every installed matcher. An unexpected advisory or copy fails qualification.

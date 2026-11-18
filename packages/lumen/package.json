@@ -43,12 +43,20 @@
     "commander": "^15.0.0",
     "import-meta-resolve": "4.2.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "vite": "^8.3.5",
+    "lightningcss": "^1.33.0",
+    "rolldown": "~1.2.14",
+    "vite": "8.3.5",
     "zod": "^4.6.7",
     "pagefind": "1.6.0",
     "@omnitron-dev/common": "workspace:*",
     "@modelcontextprotocol/server": "^2.4.0"
   },
+  "optionalDependencies": {
+    "fsevents": "~2.3.3"
+  },
+  "bundledDependencies": [
+    "vite"
+  ],
   "peerDependencies": {
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

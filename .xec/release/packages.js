@@ -7,6 +7,7 @@ import { Pipeline } from '@xec-sh/ops/pipeline';
 import { releaseCommand, verifyReleaseArtifact, validatePackedPackage } from '@xec-sh/ops/release';
 import semver from 'semver';
 import { assertConsumerArchives, inlinedDevDependencies, retainedBuildImports, workspaceReferenceFindings } from '../../scripts/lib/package-imports.mjs';
+import { auditDependencies } from './dependency-audit.js';
 import { assertPipelineSucceeded } from '../../scripts/lib/pipeline-result.mjs';
 
 /** Consumer acceptance never builds or packs: it consumes this exact immutable batch. */
@@ -57,24 +58,26 @@ export async function checkPackageArchives(root, artifacts, { consumer, run = re
     for (const { name, cwd, roots } of profiles) {
       prepareConsumer(cwd, roots);
       const npm = (args) => ({ command: 'npm', args: [...args, '--omit=dev', '--registry=https://registry.npmjs.org/'], cwd, shell: false, env: env ?? process.env, envMode: 'replace' });
-      // Exercise ordinary installation on the minimal runtime. The other profiles
-      // resolve fresh locks, then install and run their scripts once through npm ci.
-      const install = name === 'runtime' ? ['install'] : ['install', '--package-lock-only', '--ignore-scripts'];
+      // Exercise ordinary npm install for both the CLI and Lumen. The complete
+      // public SDK also has to reproduce from its freshly generated lock.
+      const locked = name === 'all-public';
+      const install = locked ? ['install', '--package-lock-only', '--ignore-scripts'] : ['install'];
       pipeline.step(name + '-resolve', { run: npm([...install, '--no-audit', '--no-fund']), timeout: 20 * 60_000 });
-      if (name !== 'runtime') pipeline.step(name + '-install', {
+      if (locked) pipeline.step(name + '-install', {
         dependsOn: [name + '-resolve'], run: npm(['ci', '--no-audit', '--no-fund']), timeout: 30 * 60_000,
       });
-      pipeline.step(name + '-integrity', { dependsOn: [name + (name === 'runtime' ? '-resolve' : '-install')], run: async () => {
+      pipeline.step(name + '-integrity', { dependsOn: [name + (locked ? '-install' : '-resolve')], run: async () => {
           const verified = assertConsumerArchives(cwd, archives);
           console.log(`npm consumer ${name}: ${verified} installed SDK archives verified`);
         } })
-        .step(name + '-audit', { dependsOn: [name + '-integrity'], run: npm(['audit', '--audit-level=low']), timeout: 5 * 60_000 });
+        .step(name + '-audit', { dependsOn: [name + '-integrity'], run: ctx => auditDependencies(cwd, 'npm', { run, signal: ctx.signal, env }), timeout: 5 * 60_000 });
     }
     const result = await pipeline.run({}, { signal, concurrency: 2, onEvent(event) {
       if (event.type === 'step-start') console.log('npm consumer ' + event.step);
       if (event.type === 'step-output') process[event.stream].write(event.text);
     } });
     assertPipelineSucceeded(result);
+    await execute(root, process.execPath, [path.join(root, 'packages/lumen/tests/npm-glob-consumer.js'), lumen, runtime]);
     return lumen;
   }
 
@@ -103,6 +106,11 @@ export async function checkPackageArchives(root, artifacts, { consumer, run = re
       // Read the selected archive, never another workspace pack.
       const files = new Set((await execute(root, 'tar', ['-tzf', packed.filename])).split(/\r?\n/)
         .filter(file => file && !file.endsWith('/')).map(file => file.replace(/^package\//, '')));
+      if (manifest.name === '@omnitron-dev/lumen') {
+        const native = [...files].filter(file => file.startsWith('node_modules/') &&
+          (file.endsWith('.node') || /node_modules\/(?:@rolldown\/|rolldown\/|lightningcss(?:-|\/)|fsevents\/)/.test(file)));
+        if (native.length) throw Error('Platform-specific dependencies in the Lumen archive: ' + native.join(', '));
+      }
       const inlined = inlinedDevDependencies(workspace);
       const prism = manifest.name === '@omnitron-dev/prism';
       if (inlined.size || prism) {

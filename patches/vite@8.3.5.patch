@@ -1,0 +1,46 @@
+diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -56,10 +56,8 @@
+     "./package.json": "./package.json"
+   },
+   "dependencies": {
+-    "lightningcss": "^1.33.0",
+     "picomatch": "^4.0.7",
+     "postcss": "^8.5.30",
+-    "rolldown": "~1.2.14",
+     "tinyglobby": "^0.2.17"
+   },
+   "devDependencies": {
+@@ -124,8 +122,11 @@
+     "@types/node": "^20.19.0 || >=22.12.0",
+     "@vitejs/devtools": "^0.7.1 || ^0.8.0",
+     "esbuild": "^0.27.0 || ^0.28.0",
++    "fsevents": "~2.3.3",
+     "jiti": ">=1.21.0",
+     "less": "^4.0.0",
++    "lightningcss": "^1.33.0",
++    "rolldown": "~1.2.14",
+     "sass": "^1.70.0",
+     "sass-embedded": "^1.70.0",
+     "stylus": ">=0.54.8",
+@@ -142,6 +143,9 @@
+       "optional": true
+     },
+     "esbuild": {
++      "optional": true
++    },
++    "fsevents": {
+       "optional": true
+     },
+     "jiti": {
+@@ -172,9 +176,6 @@
+       "optional": true
+     }
+   },
+-  "optionalDependencies": {
+-    "fsevents": "~2.3.3"
+-  },
+   "engines": {
+     "node": "^20.19.0 || >=22.12.0"
+   },

@@ -36,6 +36,8 @@ overrides:
   "@xec-sh/ssh": 0.13.2
 patchedDependencies:
   "@ts-morph/common@0.29.0": patches/ts-morph-common@0.29.0.patch
+  picomatch@4.0.7: patches/picomatch@4.0.7.patch
+  vite@8.3.5: patches/vite@8.3.5.patch
   vitest@5.0.5: patches/vitest@5.0.5.patch
 packages:
   - apps/*

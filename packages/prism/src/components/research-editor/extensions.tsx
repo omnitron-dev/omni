@@ -160,8 +160,19 @@ export function researchExtensions(
         }),
       addKeyboardShortcuts() {
         const enter = (backward: boolean) => {
-          if (!this.editor.isEditable || !this.editor.state.selection.empty) return false;
-          const { $from } = this.editor.state.selection;
+          if (!this.editor.isEditable) return false;
+          const { view, state } = this.editor;
+          const root = view.root;
+          const caret: Selection | null =
+            'getSelection' in root && typeof root.getSelection === 'function'
+              ? root.getSelection()
+              : view.dom.ownerDocument.getSelection();
+          let { $from } = state.selection;
+          if (caret?.anchorNode && view.dom.contains(caret.anchorNode)) {
+            // Native arrow movement can precede ProseMirror's selectionchange.
+            if (!caret.isCollapsed) return false;
+            $from = state.doc.resolve(view.posAtDOM(caret.anchorNode, caret.anchorOffset));
+          } else if (!state.selection.empty) return false;
           const next = backward ? $from.nodeBefore : $from.nodeAfter;
           if (next?.type.name !== 'mathInline') return false;
           const pos = backward ? $from.pos - next.nodeSize : $from.pos;

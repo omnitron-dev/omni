@@ -65,14 +65,15 @@ describe('Editor transaction delivery', () => {
       </TestWrapper>
     );
     const { rerender } = render(view(false));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Equation: x_1' })).toBeInTheDocument());
+    const inline = { name: /^Equation:/, description: 'x_1' };
+    await waitFor(() => expect(screen.getByRole('button', inline)).toBeInTheDocument());
     for (let cycle = 0; cycle < 3; cycle++) {
       rerender(view(true));
       await waitFor(() => expect(screen.getAllByRole('math')).toHaveLength(2));
-      expect(screen.queryByRole('button', { name: 'Equation: x_1' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', inline)).not.toBeInTheDocument();
       rerender(view(false));
-      await waitFor(() => expect(screen.getByRole('button', { name: 'Equation: x_1' })).toBeInTheDocument());
-      expect(screen.getByRole('button', { name: 'Equation: y^2' })).toBeInTheDocument();
+      await waitFor(() => expect(screen.getByRole('button', inline)).toBeInTheDocument());
+      expect(screen.getByRole('button', { name: /^Equation:/, description: 'y^2' })).toBeInTheDocument();
       expect(ref.current!.getSnapshot().getSource()).toBe(source);
     }
   });

@@ -120,7 +120,9 @@ test.describe('large-document measurement', () => {
 });
 
 test('in-place equation typing, immediate snapshot, document undo and read-only handover', async ({ page }) => {
-  await page.getByRole('button', { name: 'Equation: x^2+y^2=z^2', exact: true }).click();
+  const equation = page.getByRole('button', { name: /^Equation: x\s*2\s*\+\s*y\s*2\s*=\s*z\s*2$/ });
+  await expect(equation).toHaveAccessibleDescription('x^2+y^2=z^2');
+  await equation.click();
   const field = page.locator('math-field');
   await expect(field).toBeVisible();
   await field.press('2');
@@ -157,8 +159,26 @@ test('inline navigation does not replace the equation or insert spurious paragra
   await expect(page.locator('[data-research-block]')).toHaveCount(1);
 });
 
+test('rapid backward movement enters an inline equation from its right edge', async ({ page }) => {
+  await page.getByRole('button', { name: 'Document source', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Document source', exact: true }).fill('Before $x^2$ after.');
+  await page.getByRole('button', { name: 'Apply', exact: true }).click();
+  await page.locator('[data-research-block] p').click();
+  await page.keyboard.press('End');
+  for (let i = 0; i <= ' after.'.length; i++) await page.keyboard.press('ArrowLeft');
+  const field = page.locator('math-field');
+  await expect(field).toBeVisible();
+  await expect.poll(() => field.evaluate((node) => {
+    const math = node as HTMLElement & { position: number; lastOffset: number };
+    return math.position === math.lastOffset;
+  })).toBe(true);
+  await field.press('Escape');
+  await page.getByRole('button', { name: 'Capture source' }).click();
+  expect(await page.getByTestId('captured-json').textContent()).toBe(JSON.stringify('Before $x^2$ after.'));
+});
+
 test('leaving equation editing closes its document-wide virtual keyboard', async ({ page }) => {
-  await page.getByRole('button', { name: 'Equation: x^2+y^2=z^2', exact: true }).click();
+  await page.getByRole('button', { name: /^Equation:/ }).click();
   await page.getByRole('button', { name: 'Math keyboard', exact: true }).click();
   await expect(page.locator('.ML__keyboard')).toHaveClass(/is-visible/);
   await page.getByRole('button', { name: 'Return to document', exact: true }).click();

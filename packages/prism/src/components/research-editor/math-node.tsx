@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef } from 'react';
+import { createContext, useContext, useEffect, useId, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
 import { PluginKey } from '@tiptap/pm/state';
@@ -19,11 +19,17 @@ export function MathNodeView({ node, editor, getPos, selected }: NodeViewProps) 
   // the previous value while the host's setEditable effect is running.
   const editable = config.readOnly === undefined ? editor.isEditable : !config.readOnly;
   const active = selected && editable;
+  const fieldLabel = config.labels?.field ?? 'Equation';
+  const labelId = useId();
+  const formulaId = `${labelId}-formula`;
+  const sourceId = `${labelId}-source`;
   const preview = useRef<HTMLSpanElement>(null);
   useEffect(() => {
-    if (!preview.current) return;
+    const target = preview.current;
+    if (!target) return;
+    target.removeAttribute('id');
     try {
-      katex.render(latex === '\\placeholder{}' ? '\\square' : latex, preview.current, {
+      katex.render(latex === '\\placeholder{}' ? '\\square' : latex, target, {
         displayMode: display,
         trust: false,
         strict: 'error',
@@ -32,9 +38,11 @@ export function MathNodeView({ node, editor, getPos, selected }: NodeViewProps) 
         maxSize: 20,
       });
     } catch {
-      preview.current.textContent = latex || config.labels?.field || 'Equation';
+      target.textContent = latex || fieldLabel;
     }
-  }, [latex, display, active, config.labels?.field]);
+    // Use the same typeset symbols that a reader sees to name the control.
+    (target.querySelector('.katex-html') ?? target).id = formulaId;
+  }, [latex, display, active, fieldLabel, formulaId]);
   useEffect(() => {
     if (active) editor.view.dispatch(closeHistory(editor.state.tr));
     return () => {
@@ -83,10 +91,11 @@ export function MathNodeView({ node, editor, getPos, selected }: NodeViewProps) 
         />
       ) : (
         <span
-          ref={preview}
           role={editable ? 'button' : 'math'}
           tabIndex={editable ? 0 : undefined}
-          aria-label={`${config.labels?.field ?? 'Equation'}: ${latex}`}
+          aria-labelledby={editable ? `${labelId} ${formulaId}` : undefined}
+          aria-label={editable ? undefined : `${fieldLabel}: ${latex}`}
+          aria-describedby={editable ? sourceId : undefined}
           className="prism-science__math-preview"
           onClick={() => {
             const pos = getPos();
@@ -98,7 +107,11 @@ export function MathNodeView({ node, editor, getPos, selected }: NodeViewProps) 
               event.currentTarget.click();
             }
           }}
-        />
+        >
+          {editable && <span id={labelId} hidden>{`${fieldLabel}:`}</span>}
+          {editable && <span id={sourceId} hidden>{latex}</span>}
+          <span ref={preview} />
+        </span>
       )}
     </NodeViewWrapper>
   );

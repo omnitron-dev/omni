@@ -20,6 +20,7 @@ export interface DevelopmentSdkProfile {
 export interface MigrationSdkInspection {
   root: string;
   source: string | null;
+  bindings: Readonly<Record<string, string>>;
   workspaces: import('./sdk-operation.js').SdkWorkspaceIdentity[];
   inputsSha256: string;
 }

@@ -596,7 +596,7 @@ export async function inspectMigrationSdk(projectDirectory) {
   }
   if (profile && !isDeepStrictEqual(profile, await desiredProfile(root, source, await distributionLock(root))))
     throw Error('Development SDK inputs differ from the selected profile; resolve the selection before migrations');
-  return { root, source, workspaces, inputsSha256: sha256(JSON.stringify({ profile, inputs })) };
+  return { root, source, workspaces, bindings: profile?.links ?? {}, inputsSha256: sha256(JSON.stringify({ profile, inputs })) };
 }
 
 export async function withMigrationSdk(projectDirectory, reference, body) {

@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from 'node:util';
 import { createHash } from 'node:crypto';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { IEcosystemAppEntry } from '../config/types.js';
 import { releaseTreeDigest } from '../release/runtime-provenance.js';
@@ -9,6 +10,7 @@ import { localMigrationTargets, migrationDatabaseEnvironment, validateMigrationD
   type MigrationRequest, type VerifyMigrationEntries } from './migration-target.js';
 import { executeLocalMigration } from './migration-process.js';
 import { waitForPostgres } from './wait-for-postgres.js';
+import type { MigrationSdkInspection } from '../../bin/sdk.js';
 
 /** Startup and management consume the same owner-resolved entries. Source
  * fingerprints include untracked migration files, not just their thin CLI entry. */
@@ -32,8 +34,27 @@ export type LocalMigrationPlan = Awaited<ReturnType<typeof planLocalMigrations>>
 
 /** Fingerprint the actual production dependency graph, including the loader
  * and operation adapter resolved from the same cwd as the migration child. */
-export async function inspectMigrationDependencies(plan: LocalMigrationPlan, sdk: { root: string; source: string | null }): Promise<string> {
+export async function inspectMigrationDependencies(plan: LocalMigrationPlan, sdk: Pick<MigrationSdkInspection, 'root' | 'source' | 'bindings'>): Promise<string> {
   const roots = new Set(plan.map(item => item.target.cwd));
+  const bindings = new Map(Object.entries(sdk.bindings).map(([name, directory]) => [directory, name]));
+  // A nested workspace can have a separate pnpm importer inside a framework package.
+  // Admit only its declared, selected package edge, and inspect that package's full graph.
+  const inspectWorkspaceBinding = async (link: string, target: string): Promise<boolean> => {
+    const name = bindings.get(target);
+    if (!sdk.source || !name || !target.startsWith(sdk.source + path.sep) ||
+        ![sdk.root, sdk.source].some(directory => link.startsWith(directory + path.sep))) return false;
+    const suffix = path.sep + path.join('node_modules', name);
+    if (!link.endsWith(suffix)) return false;
+    const manifest = await fs.readFile(path.join(link.slice(0, -suffix.length), 'package.json'), 'utf8').catch(error => {
+      if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return null;
+      throw error;
+    });
+    if (!manifest) return false;
+    const importer = JSON.parse(manifest);
+    if (!['dependencies', 'optionalDependencies', 'peerDependencies', 'devDependencies'].some(key => Object.hasOwn(importer[key] ?? {}, name))) return false;
+    roots.add(target);
+    return true;
+  };
   const content = new Map<string, Promise<string>>();
   for (const { target, program } of plan) {
     // This inspection's source plan already measured this physical package
@@ -50,14 +71,16 @@ export async function inspectMigrationDependencies(plan: LocalMigrationPlan, sdk
   for (const root of roots) {
     const graph = await installedGraph(root);
     const packages = await Promise.all(graph.map(async item => {
-      if (item.metadata.name.startsWith('@omnitron-dev/') && !frameworkRoots.some(root => item.root === root || item.root.startsWith(root + path.sep)))
+      if (item.metadata.name.startsWith('@omnitron-dev/') && !frameworkRoots.some(directory => item.root === directory || item.root.startsWith(directory + path.sep)))
         throw Error('Migration framework dependency has no declared SDK workspace owner: ' + item.metadata.name);
-      if (!content.has(item.root)) content.set(item.root, releaseTreeDigest(item.root, true, true, ['.git', '.omnitron']));
+      if (!content.has(item.root)) content.set(item.root, releaseTreeDigest(item.root, true, true, ['.git', '.omnitron'], inspectWorkspaceBinding));
       return { root: item.root, name: item.metadata.name, version: item.metadata.version,
         dependencies: [...item.dependencies], sha256: await content.get(item.root)! };
     }));
-    evidence.push(packages);
+    evidence.push({ root, packages });
   }
+  // Package digests run concurrently, so discovery of additional graph roots can finish in any order.
+  evidence.sort((a, b) => a.root < b.root ? -1 : a.root > b.root ? 1 : 0);
   return createHash('sha256').update(JSON.stringify(evidence)).digest('hex');
 }
 

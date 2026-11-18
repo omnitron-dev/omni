@@ -12,7 +12,8 @@ import type { IEcosystemAppEntry, RuntimeReleaseEvidence } from '../config/types
 export const RELEASE_RECEIPT = '.omnitron-release.json';
 
 /** Self-contained so exactly this implementation also seals the remote candidate. */
-export async function releaseTreeDigest(directory: string, portable = false, skipDependencies = false, excludedRootEntries: readonly string[] = []): Promise<string> {
+export async function releaseTreeDigest(directory: string, portable = false, skipDependencies = false, excludedRootEntries: readonly string[] = [],
+  inspectWorkspaceBinding?: (link: string, target: string) => Promise<boolean>): Promise<string> {
   const io = await import('node:fs/promises');
   const paths = await import('node:path');
   const { createHash } = await import('node:crypto');
@@ -26,10 +27,16 @@ export async function releaseTreeDigest(directory: string, portable = false, ski
     if (process.getuid && before.uid !== BigInt(process.getuid())) throw new Error('Release tree belongs to another user');
     if (before.isSymbolicLink()) {
       const target = await io.realpath(absolute);
-      if (portable && target !== root && !target.startsWith(root + paths.sep)) throw Error('Release payload links outside its packed boundary');
-      if (!portable) digest.update(`link\0${label}\0${await io.readlink(absolute)}\0${target}\0`);
-      // Follow dependency links, including an externally bound framework, once.
-      await walk(target, portable ? label : `resolved:${target}`);
+      if (portable && target !== root && !target.startsWith(root + paths.sep)) {
+        // Only a working-tree graph can claim a package and fingerprint its contents separately.
+        // Archive callers never supply such a graph. Their payload remains self-contained.
+        if (!await inspectWorkspaceBinding?.(absolute, target))
+          throw Error('Release payload links outside its packed boundary: ' + label);
+        digest.update(`workspace-package\0${label}\0${await io.readlink(absolute)}\0${target}\0`);
+      } else {
+        if (!portable) digest.update(`link\0${label}\0${await io.readlink(absolute)}\0${target}\0`);
+        await walk(target, portable ? label : `resolved:${target}`);
+      }
       const after = await io.lstat(absolute, { bigint: true });
       if (before.dev !== after.dev || before.ino !== after.ino || before.ctimeNs !== after.ctimeNs)
         throw new Error('Release dependency binding changed during verification');

@@ -15,6 +15,7 @@ import { recoveryState, RecoveryState } from '../../src/daemon/recovery-state.js
 import { OperationJournal, assertOperationJournalCompatibility } from '../../src/execution/operation-journal.js';
 import { StackMigrations } from '../../src/project/stack-migrations.js';
 import * as provenance from '../../src/release/runtime-provenance.js';
+import { inspectMigrationDependencies } from '../../src/services/migration-execution.js';
 import { normalizeInfraConfig } from '../../src/infrastructure/config-normalizer.js';
 import { createDefaultRegistry } from '../../src/infrastructure/presets/index.js';
 import { BackupService } from '../../src/services/backup.service.js';
@@ -297,4 +298,33 @@ it('refuses an external source framework without a declared SDK binding', async 
   await fs.rename(target, path.join(outside, 'package')); await fs.symlink(path.join(outside, 'package'), target);
   await expect(f.service.reviewStackMigrations(scope)).rejects.toThrow('no declared SDK workspace owner');
   expect(sql).not.toHaveBeenCalled();
+});
+
+it('reviews a nested SDK importer and binds its linked package and transitive contents to the decision', async () => {
+  const f = await fixture();
+  const { plan } = await f.internals.prepareStackMigrations(scope);
+  const source = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'nested-sdk-')));
+  cleanups.push(() => fs.rm(source, { recursive: true, force: true }));
+  const framework = path.join(source, 'framework'), importer = path.join(framework, 'web');
+  const selected = path.join(source, 'ui'), name = '@omnitron-dev/prism';
+  const appLink = path.join(f.cwd, 'node_modules/@omnitron-dev/omnitron');
+  await fs.rename(appLink, framework);
+  await fs.symlink(framework, appLink, 'dir');
+  const link = path.join(importer, 'node_modules', name), leaf = path.join(selected, 'node_modules/leaf');
+  await fs.mkdir(path.dirname(link), { recursive: true });
+  await fs.mkdir(leaf, { recursive: true });
+  await fs.writeFile(path.join(importer, 'package.json'), JSON.stringify({ name: 'web', dependencies: { [name]: 'workspace:*' } }));
+  await fs.writeFile(path.join(selected, 'package.json'), JSON.stringify({ name, version: '1.0.0', dependencies: { leaf: '1.0.0' } }));
+  await fs.writeFile(path.join(leaf, 'package.json'), '{"name":"leaf","version":"1.0.0"}');
+  await fs.writeFile(path.join(leaf, 'index.js'), 'export default 1;');
+  await fs.symlink(selected, link, 'dir');
+  const sdk = { root: f.root, source, bindings: { [name]: selected } };
+  const before = await inspectMigrationDependencies(plan, sdk);
+  expect(await inspectMigrationDependencies(plan, sdk)).toBe(before);
+  await fs.writeFile(path.join(leaf, 'index.js'), 'export default 2;');
+  expect(await inspectMigrationDependencies(plan, sdk)).not.toBe(before);
+  await expect(provenance.releaseTreeDigest(framework, true, true)).rejects.toThrow('packed boundary');
+  await expect(inspectMigrationDependencies(plan, { ...sdk, bindings: {} })).rejects.toThrow('packed boundary');
+  await fs.writeFile(path.join(importer, 'package.json'), '{"name":"web"}');
+  await expect(inspectMigrationDependencies(plan, sdk)).rejects.toThrow('packed boundary');
 });

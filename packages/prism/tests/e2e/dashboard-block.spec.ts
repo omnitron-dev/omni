@@ -34,14 +34,12 @@ test.describe('DashboardBlock', () => {
     // Content should be visible initially
     await expect(content).toBeVisible();
 
-    // Click collapse button
-    await collapseButton.click();
+    await block.getByText('Revenue Overview', { exact: true }).click();
 
     // Content should be hidden
     await expect(content).toBeHidden();
 
-    // Click again to expand
-    await collapseButton.click();
+    await collapseButton.locator('svg').click();
 
     // Content should be visible again
     await expect(content).toBeVisible();
@@ -123,6 +121,39 @@ test.describe('DashboardBlock', () => {
     await expect(collapseButton).toHaveAttribute('aria-expanded', 'true');
   });
 });
+
+for (const dir of ['ltr', 'rtl']) {
+  test(`dashboard and card header alignment and actions in ${dir}`, async ({ page }) => {
+    for (const [width, size] of [[360, 'small'], [768, 'medium'], [1440, 'large']] as const) {
+      await page.setViewportSize({ width, height: 820 });
+      const mode = dir === 'rtl' ? 'dark' : 'light';
+      await page.goto(`/test/dashboard-block?headers&dir=${dir}&size=${size}&mode=${mode}`);
+      const header = page.getByTestId('prism-dashboard-block-header');
+      const toggle = header.getByRole('button', { name: 'Application resource distribution over time' });
+      const refresh = header.getByRole('button', { name: 'Refresh' });
+      const card = page.locator('.MuiCardHeader-root');
+      await expect(toggle).toBeVisible();
+      const [row, text, icon, action, cardLabel, cardAction] = await Promise.all([
+        header, toggle.getByText('Last hour').locator('..'), toggle.locator('svg'), refresh,
+        card.locator('.MuiCardHeader-content'), card.getByRole('button'),
+      ].map(locator => locator.boundingBox()));
+      for (const [a, b] of [[text, row], [icon, row], [action, row], [cardLabel, cardAction]]) {
+        expect(Math.abs(a!.y + a!.height / 2 - b!.y - b!.height / 2)).toBeLessThanOrEqual(1);
+      }
+      if (dir === 'ltr') expect(text!.x + text!.width).toBeLessThanOrEqual(icon!.x);
+      else expect(icon!.x + icon!.width).toBeLessThanOrEqual(text!.x);
+      await toggle.focus();
+      await page.keyboard.press('Space');
+      await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      await page.keyboard.press('Tab');
+      await expect(refresh).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(page.getByRole('status', { name: 'Refresh count' })).toHaveText('1');
+      await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    }
+  });
+}
 
 test.describe('DashboardBlock Variants', () => {
   test('should render outlined variant', async ({ page }) => {

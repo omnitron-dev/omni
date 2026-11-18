@@ -312,12 +312,26 @@ test('Overview separates observed health from process state and scopes expensive
   await attention.click();
   await expect(rows).toHaveCount(4);
   const disclosure = page.getByRole('button', { name: 'Show resource distribution' });
+  const title = page.getByText('Resource distribution', { exact: true });
+  const header = page.getByTestId('prism-dashboard-block-header').filter({ has: title });
   await expect(page.getByRole('combobox', { name: 'Resource' })).toHaveCount(0);
+  for (const width of [1440, 360]) {
+    await page.setViewportSize({ width, height: 740 });
+    const [row, text, icon] = await Promise.all([header, title, disclosure.locator('svg')].map(el => el.boundingBox()));
+    const center = box => box.y + box.height / 2;
+    expect(Math.abs(center(text) - center(row))).toBeLessThanOrEqual(1);
+    expect(Math.abs(center(icon) - center(row))).toBeLessThanOrEqual(1);
+    expect((await disclosure.boundingBox()).height).toBeGreaterThanOrEqual(44);
+    await title.click();
+    await expect(page.getByRole('combobox', { name: 'Resource' })).toBeVisible();
+    await page.getByRole('button', { name: 'Hide resource distribution' }).locator('svg').click();
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+  }
   await disclosure.focus();
   await disclosure.press('Enter');
   await expect(page.getByRole('combobox', { name: 'Resource' })).toBeVisible();
-  await page.getByRole('button', { name: 'Hide resource distribution' }).click();
-  await page.setViewportSize({ width: 360, height: 740 });
+  await page.keyboard.press('Space');
+  await expect(disclosure).toBeFocused();
   await expect(table.getByRole('rowheader', { name: /storage/ })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
   expect(processLists).toBe(0);

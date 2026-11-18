@@ -4,10 +4,13 @@
  * Renders DashboardBlock in various states for E2E testing.
  */
 
+import { useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
+import Card from '@mui/material/Card';
+import CardHeader from '@mui/material/CardHeader';
 
 import { DashboardBlock, useDashboardBlock } from '../../../src/blocks';
 
@@ -71,6 +74,7 @@ function DashboardBlockWithHook() {
 export function DashboardBlockTestPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const [refreshCount, setRefreshCount] = useState(0);
 
   const loading = searchParams.get('loading') === 'true';
   const error = searchParams.get('error') === 'true';
@@ -79,6 +83,22 @@ export function DashboardBlockTestPage() {
   const footer = searchParams.get('footer') === 'true';
   const useHook = searchParams.get('useHook') === 'true';
   const retryCount = parseInt(searchParams.get('retry') || '0', 10);
+
+  if (searchParams.has('headers')) {
+    const title = 'Application resource distribution over time';
+    const action = <Button onClick={() => setRefreshCount(n => n + 1)}>Refresh</Button>;
+    return (
+      <Box dir={searchParams.get('dir') === 'rtl' ? 'rtl' : 'ltr'} sx={{ m: 2, maxWidth: 520 }}>
+        <DashboardBlock title={title} subtitle="Last hour" actions={action} size={size} collapsible>
+          Activity
+        </DashboardBlock>
+        <Card sx={{ mt: 2 }}>
+          <CardHeader title={title} subheader="Last hour" action={action} />
+        </Card>
+        <output aria-label="Refresh count">{refreshCount}</output>
+      </Box>
+    );
+  }
 
   const handleRetry = () => {
     const newParams = new URLSearchParams(searchParams);

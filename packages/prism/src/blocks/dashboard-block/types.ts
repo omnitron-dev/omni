@@ -55,7 +55,7 @@ export interface DashboardBlockHeaderProps {
   subtitle?: string;
   /** Icon element */
   icon?: ReactNode;
-  /** Actions slot (buttons, menu, etc.) */
+  /** Independent controls beside the title. Activating them preserves the block's disclosure state. */
   actions?: ReactNode;
   /** MUI sx prop */
   sx?: SxProps<Theme>;
@@ -107,6 +107,7 @@ export interface DashboardBlockLabels {
   /** Shown when the block fails and `errorConfig.message` says nothing more specific; also after a render crash inside it */
   error?: string;
   retry?: string;
+  /** Optional accessible action name. Include the visible title when overriding the default title-based name. */
   expand?: string;
   collapse?: string;
 }

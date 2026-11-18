@@ -101,7 +101,11 @@ function Root() {
       </PrismProvider>
     );
   }
-  const theme = createPrismTheme({ mode: 'light' });
+  const params = new URLSearchParams(window.location.search);
+  const theme = createPrismTheme({
+    mode: params.get('mode') === 'dark' ? 'dark' : 'light',
+    direction: params.get('dir') === 'rtl' ? 'rtl' : 'ltr',
+  });
 
   return (
     <StrictMode>

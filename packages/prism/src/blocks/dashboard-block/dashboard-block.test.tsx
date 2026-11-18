@@ -59,7 +59,7 @@ describe('DashboardBlock', () => {
       slotProps={{ header: { headingComponent: 'h2' } }}>
       <input aria-label="Query" defaultValue="initial" />
     </DashboardBlock>);
-    const toggle = screen.getByRole('button', { description: 'Resource readings' });
+    const toggle = screen.getByRole('button', { name: 'Resource readings' });
     const body = document.getElementById(toggle.getAttribute('aria-controls')!)!;
     expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Resource readings');
     expect(body).toHaveAttribute('inert');
@@ -71,6 +71,28 @@ describe('DashboardBlock', () => {
     expect(body).toHaveAttribute('inert');
     fireEvent.click(toggle);
     expect(screen.getByRole('textbox')).toHaveValue('memory');
+  });
+
+  it('toggles from the visible title and leaves header actions independent', () => {
+    const onChange = vi.fn();
+    const onRefresh = vi.fn();
+    themed(
+      <DashboardBlock title="Requests" subtitle="Last hour" collapsible defaultCollapsed
+        actions={<button onClick={onRefresh}>Refresh</button>} onCollapseChange={onChange}>
+        Chart
+      </DashboardBlock>
+    );
+    const heading = screen.getByRole('heading', { name: 'Requests' });
+    const toggle = screen.getByRole('button', { name: 'Requests', description: 'Last hour' });
+    const refresh = screen.getByRole('button', { name: 'Refresh' });
+    expect(heading).toContainElement(toggle);
+    expect(heading).not.toContainElement(refresh);
+    expect(screen.getAllByRole('button')).toHaveLength(2);
+    fireEvent.click(screen.getByText('Requests'));
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(refresh);
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(false);
   });
 
   it('leaves controlled state with the caller and requests the next value once', () => {

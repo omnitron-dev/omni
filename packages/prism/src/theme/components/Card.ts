@@ -50,6 +50,17 @@ export function createCardOverrides(config: ComponentsConfig): {
         root: {
           padding: `${16 * dm}px ${20 * dm}px`,
         },
+        content: {
+          minWidth: 0,
+          overflowWrap: 'anywhere',
+        },
+        action: {
+          display: 'flex',
+          alignItems: 'center',
+          alignSelf: 'center',
+          margin: 0,
+          marginInlineStart: 12 * dm,
+        },
         title: ({ theme }) => ({
           fontSize: theme.typography.pxToRem(16),
           fontWeight: 600,

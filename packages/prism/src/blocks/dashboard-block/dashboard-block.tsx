@@ -13,7 +13,7 @@ import { type ReactNode, createContext, useContext, useMemo, useCallback, useId 
 import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
-import IconButton from '@mui/material/IconButton';
+import ButtonBase from '@mui/material/ButtonBase';
 import Collapse from '@mui/material/Collapse';
 import Divider from '@mui/material/Divider';
 import Skeleton from '@mui/material/Skeleton';
@@ -21,6 +21,7 @@ import Button from '@mui/material/Button';
 import { useBoolean } from '../../core/hooks/use-boolean.js';
 import { ErrorBoundary } from '../../components/error-boundary/index.js';
 import { EmptyContent } from '../../components/empty-content/index.js';
+import { ChevronDownIcon } from '../../icons/controls.js';
 import type {
   DashboardBlockProps,
   DashboardBlockContextValue,
@@ -92,91 +93,130 @@ const sizeConfig = {
 /**
  * Dashboard block header component.
  */
-export function DashboardBlockHeader({ title, subtitle, icon, actions, headingComponent = 'h3', sx }: DashboardBlockHeaderProps): ReactNode {
+export function DashboardBlockHeader({
+  title,
+  subtitle,
+  icon,
+  actions,
+  headingComponent = 'h3',
+  sx,
+}: DashboardBlockHeaderProps): ReactNode {
   const { collapsible, collapsed, toggleCollapse, size, labels, contentId } = useDashboardBlockContext();
   const config = sizeConfig[size];
-  const headingId = useId();
+  const titleId = useId();
+  const subtitleId = useId();
+  const toggleLabel = collapsed ? labels.expand : labels.collapse;
+
+  const row = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 1.5,
+    minWidth: 0,
+    px: config.headerPx,
+    py: config.headerPy,
+  } as const;
+  const label = (
+    <>
+      {icon && (
+        <Box component="span" aria-hidden="true" sx={{ display: 'inline-flex', flexShrink: 0, color: 'primary.main' }}>
+          {icon}
+        </Box>
+      )}
+      <Box component={collapsible ? 'span' : 'div'} sx={{ flex: 1, minWidth: 0 }}>
+        <Typography
+          component={collapsible ? 'span' : headingComponent}
+          id={titleId}
+          variant={config.titleVariant}
+          sx={{
+            fontWeight: 600,
+            lineHeight: 1.4,
+            display: '-webkit-box',
+            WebkitBoxOrient: 'vertical',
+            WebkitLineClamp: 2,
+            overflow: 'hidden',
+            overflowWrap: 'anywhere',
+          }}
+        >
+          {title}
+        </Typography>
+        {subtitle && (
+          <Typography
+            component="span"
+            id={subtitleId}
+            variant={config.subtitleVariant}
+            sx={{ display: 'block', color: 'text.secondary', mt: 0.25, overflowWrap: 'anywhere' }}
+          >
+            {subtitle}
+          </Typography>
+        )}
+      </Box>
+    </>
+  );
 
   return (
     <Box
       data-testid="prism-dashboard-block-header"
-      sx={[
-        {
-          display: 'flex',
-          alignItems: 'flex-start',
-          justifyContent: 'space-between',
-          gap: 2,
-          px: config.headerPx,
-          py: config.headerPy,
-        },
-        ...(Array.isArray(sx) ? sx : [sx]),
-      ]}
+      sx={[{ display: 'flex', flexWrap: 'wrap', alignItems: 'center' }, ...(Array.isArray(sx) ? sx : [sx])]}
     >
-      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, flex: 1, minWidth: 0 }}>
-        {icon && (
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              mt: 0.25,
-              color: 'primary.main',
-            }}
-          >
-            {icon}
-          </Box>
-        )}
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          {/*
-           * Two lines, then an ellipsis — not one. On a phone the header
-           * shares its row with the block's actions, and «Лента сообществ»
-           * beside «Вся лента →» was cut to «Лента сообще…» with the second
-           * line empty below it.
-           */}
-          <Typography
-            variant={config.titleVariant}
-            id={headingId}
-            component={headingComponent}
-            sx={{
-              fontWeight: 600,
-              lineHeight: 1.4,
-              display: '-webkit-box',
-              WebkitBoxOrient: 'vertical',
-              WebkitLineClamp: 2,
-              overflow: 'hidden',
-              overflowWrap: 'anywhere',
-            }}
-          >
-            {title}
-          </Typography>
-          {subtitle && (
-            <Typography
-              variant={config.subtitleVariant}
-              sx={{
-                color: "text.secondary",
-                mt: 0.25
-              }}>
-              {subtitle}
-            </Typography>
-          )}
-        </Box>
-      </Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
-        {actions}
-        {collapsible && (
-          <IconButton
-            size="small"
+      {collapsible ? (
+        <Box
+          component={headingComponent}
+          aria-labelledby={titleId}
+          sx={{ display: 'flex', flex: '1 1 min(100%, 10rem)', alignSelf: 'stretch', minWidth: 0, m: 0 }}
+        >
+          <ButtonBase
+            type="button"
             onClick={toggleCollapse}
             aria-expanded={!collapsed}
             aria-controls={contentId}
-            aria-describedby={headingId}
-            aria-label={collapsed ? (labels.expand ?? 'Expand block') : (labels.collapse ?? 'Collapse block')}
+            aria-label={toggleLabel}
+            aria-labelledby={toggleLabel ? undefined : titleId}
+            aria-describedby={subtitle ? subtitleId : undefined}
             data-testid="prism-dashboard-block-collapse"
+            sx={{
+              ...row,
+              width: '100%',
+              minHeight: 44,
+              textAlign: 'start',
+              '@media (hover: hover)': { '&:hover': { bgcolor: 'action.hover' } },
+              '&:focus-visible, &.Mui-focusVisible': { outlineOffset: -2 },
+            }}
           >
-            <ChevronIcon direction={collapsed ? 'down' : 'up'} />
-          </IconButton>
-        )}
-      </Box>
+            {label}
+            <ChevronDownIcon
+              aria-hidden="true"
+              fontSize="small"
+              sx={{
+                flexShrink: 0,
+                color: 'text.secondary',
+                transform: collapsed ? 'none' : 'rotate(180deg)',
+                transition: (theme) =>
+                  theme.transitions.create('transform', { duration: theme.transitions.duration.shortest }),
+                '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
+              }}
+            />
+          </ButtonBase>
+        </Box>
+      ) : (
+        <Box sx={{ ...row, flex: '1 1 min(100%, 10rem)' }}>{label}</Box>
+      )}
+      {actions && (
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            flexWrap: 'wrap',
+            gap: 0.5,
+            maxWidth: '100%',
+            marginInlineStart: 'auto',
+            px: config.headerPx,
+            py: 0.5,
+          }}
+        >
+          {actions}
+        </Box>
+      )}
     </Box>
   );
 }
@@ -484,35 +524,5 @@ export function DashboardBlock({
         </Box>
       </Paper>
     </DashboardBlockContext.Provider>
-  );
-}
-
-// =============================================================================
-// CHEVRON ICON
-// =============================================================================
-
-interface ChevronIconProps {
-  direction: 'up' | 'down';
-}
-
-function ChevronIcon({ direction }: ChevronIconProps): ReactNode {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      style={{
-        transform: direction === 'up' ? 'rotate(180deg)' : undefined,
-        transition: 'transform 0.2s ease',
-      }}
-    >
-      <polyline points="6 9 12 15 18 9" />
-    </svg>
   );
 }

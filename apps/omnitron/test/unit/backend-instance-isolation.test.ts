@@ -436,6 +436,39 @@ it.each(['revision', 'inventory'])('refuses stale %s under the native selection 
   expect(install).not.toHaveBeenCalled(); expect(target.prepare).not.toHaveBeenCalled();
 });
 
+it.each(['already-changed', 'changed-under-lease'])('reaches the selection fence with a valid current admission (%s)', async change => {
+  const target = await fixture(true);
+  const previous = 'a'.repeat(64), candidate = 'b'.repeat(64);
+  mocks.ambientHome = target.home; mocks.supervised.mockReturnValue(true);
+  const selection = { current: previous, revision: 4 };
+  const fence = { current: previous, candidate, selectionRevision: 4, backendPid: target.status.pid,
+    ownerId: target.snapshot.status.owner.id, ownerPid: target.snapshot.status.owner.pid,
+    appsDigest: target.snapshot.inventoryDigest, admission: target.admission };
+  let advanceUnderLease = false;
+  const install = vi.fn(() => { throw Error('Qualified installation boundary'); });
+  const exclusive = vi.fn(async (work: () => Promise<void>) => {
+    if (advanceUnderLease) selection.revision++;
+    return work();
+  });
+  mocks.candidate.mockImplementation(async directory => ({ directory, runtimeHash: directory === '/candidate' ? candidate : previous }));
+  mocks.installation.mockResolvedValue({ close: vi.fn(), activation: () => null, selection: () => selection, install, exclusive });
+  const managedEntry = vi.spyOn(fs, 'access').mockResolvedValue(undefined);
+  try {
+    // The unchanged receipt reaches installation; admission and every earlier
+    // guard must already be valid, otherwise the stale assertion proves nothing.
+    await expect(replaceBackend('/candidate', { socket: target.socket, fence })).rejects.toThrow('Qualified installation boundary');
+    expect(install).toHaveBeenCalledOnce(); expect(exclusive).toHaveBeenCalledOnce();
+    install.mockClear(); exclusive.mockClear();
+    if (change === 'already-changed') selection.revision++;
+    else advanceUnderLease = true;
+    await expect(replaceBackend('/candidate', { socket: target.socket, fence }))
+      .rejects.toThrow('Native kernel selection changed since rollout planning');
+    expect(exclusive).toHaveBeenCalledOnce();
+    expect(install).not.toHaveBeenCalled(); expect(target.prepare).not.toHaveBeenCalled();
+    expect(fence.admission).toEqual(target.admission);
+  } finally { managedEntry.mockRestore(); }
+});
+
 
 const pendingBackup = (): OperationReceipt => ({ protocol: 1, id: 'reviewed-backup', kind: 'backup', revision: 3, state: 'running',
   resources: [{ kind: 'database', project: 'one', stack: 'dev', name: 'ledger' }], inputDigest: 'f'.repeat(64),

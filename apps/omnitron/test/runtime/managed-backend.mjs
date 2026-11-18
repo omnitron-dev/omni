@@ -593,15 +593,34 @@ if (process.argv[2] === '--backend-handoff' && path.dirname(target) === ${JSON.s
         assert.equal(build.dirty, false);
         await assert.rejects(candidate.attestApplicationOwner({ ...observation, epoch: observation.epoch + 1 }));
       } finally { await candidate.disconnect(); }
-      const stale = await privateControlClient(path.join(execution, 'supervisor.sock'), 'OmnitronSupervisor', 150_000);
-      try {
-        await assert.rejects(stale.service.upgradeIfCurrent({ current: next.previous, candidate: next.candidate,
-          selectionRevision: next.selectionRevision, backendPid: next.backendPid, ownerId: next.ownerId,
-          ownerPid, appsDigest: next.appsDigest }), /selection changed since rollout planning/);
-      } finally { await stale.close(); }
       await waitCertificate();
       const previous = await planManagedRollout(invoke, initialBackend.build.commit);
       assert.equal(previous.previous, next.candidate); assert.equal(previous.candidate, next.previous);
+      assert.equal(previous.selectionRevision, next.selectionRevision + 1);
+      const { assertKernelHandoffFence } = await import(pathToFileURL(path.join(managementDist, 'daemon/backend-upgrade.js')).href);
+      const stale = await privateControlClient(path.join(execution, 'supervisor.sock'), 'OmnitronSupervisor', 150_000);
+      try {
+        const oldAdmission = { current: next.previous, candidate: next.candidate,
+          selectionRevision: next.selectionRevision, backendPid: next.backendPid, ownerId: next.ownerId,
+          ownerPid: next.ownerPid, appsDigest: next.appsDigest, admission: next.admission };
+        assertKernelHandoffFence(oldAdmission);
+        await assert.rejects(stale.service.upgradeIfCurrent(oldAdmission), /Reviewed backend identity or configuration changed before handoff/);
+        assert.equal(await reconcileManagedTarget(invoke, previous), 'unchanged');
+
+        // Use the current backend's real review so only the stale selection
+        // revision can reject this request, after admission and under the lease.
+        const oldSelection = { current: previous.previous, candidate: previous.candidate,
+          selectionRevision: next.selectionRevision, backendPid: previous.backendPid, ownerId: previous.ownerId,
+          ownerPid: previous.ownerPid, appsDigest: previous.appsDigest, admission: previous.admission };
+        assertKernelHandoffFence(oldSelection);
+        await assert.rejects(stale.service.upgradeIfCurrent(oldSelection), /Native kernel selection changed since rollout planning/);
+        assert.equal(await reconcileManagedTarget(invoke, previous), 'unchanged');
+        assert.equal((await probe()).pid, applicationPid, 'Rejected stale fences changed the application');
+        assertHistoryPreserved('stale-managed-selection');
+        mark({ stage: 'stale-managed-selection-refused', backendPid: previous.backendPid, ownerPid, applicationPid,
+          previousRevision: next.selectionRevision, currentRevision: previous.selectionRevision });
+      } finally { await stale.close(); }
+      await waitCertificate();
       await activateManagedTarget(invoke, previous);
       assert.equal(await reconcileManagedTarget(invoke, previous), 'candidate');
       mark({ stage: 'fenced-managed-kernel-returned', ownerPid, applicationPid, candidate: next.candidate });

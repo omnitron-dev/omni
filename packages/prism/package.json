@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/prism",
-  "version": "0.4.12",
+  "version": "0.4.13",
   "description": "Design System Constructor - High-level UI building blocks for complex frontends",
   "type": "module",
   "tsup": {

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.13] - 2026-11-18
+
 ### Added
 
 - Pipeline runs retain the reviewed definition, targets and command receipt. Operators can inspect a failed run in Console, reconcile a remote deployment with its target, then continue the remaining steps. Independent projects use the same Titan service over Netron and the same Xec executor. A step whose external outcome is unknown stays blocked pending evidence.

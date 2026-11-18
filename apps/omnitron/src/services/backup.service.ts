@@ -1754,7 +1754,9 @@ export class BackupService {
       for (const r of ofName) {
         const origin = r.project && r.stack ? `${r.project}/${r.stack}` : r.scope === 'control-plane' ? 'control-plane' : '';
         const resource = origin && r.database === 'storage-objects' ? `${origin}/${r.bucket ?? 'storage'}` : origin;
-        byOrigin.set(resource, [...(byOrigin.get(resource) ?? []), r]);
+        const group = byOrigin.get(resource);
+        if (group) group.push(r);
+        else byOrigin.set(resource, [r]);
       }
       const doomed: BackupRecord[] = [];
       for (const [origin, group] of byOrigin) {

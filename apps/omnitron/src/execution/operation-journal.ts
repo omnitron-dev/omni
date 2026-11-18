@@ -166,6 +166,44 @@ function checkReceipt(value: unknown, expectedId: string): OperationReceipt {
 
 /** One FULL-WAL receipt per attempt and a small index of unfinished claims.
  * This is persistence for the existing executor, not a second executor. */
+/** Read the whole ledger in the catalogue's read-only transaction. An unindexed
+ * unfinished effect is just as unsafe as an active claim. Previously reviewed
+ * unknown backups retain their original receipt and restore fence. */
+export function certifiedIdleOperationDigest(rows: Iterable<{ key: string; value: string }>, certifiedAt: string): string {
+  const at = Date.parse(certifiedAt);
+  if (!Number.isFinite(at)) invalid('Missing prior operation certificate time');
+  const digest = createHash('sha256');
+  let index: unknown, reviewed: unknown;
+  const unknown: string[] = [];
+  let receipts = 0;
+  for (const { key, value } of rows) {
+    digest.update(JSON.stringify([key, value]));
+    const data: unknown = JSON.parse(value);
+    if (key === INDEX) { index = data; continue; }
+    if (key === REVIEWED) { reviewed = data; continue; }
+    const receipt = checkReceipt(data, key.slice(PREFIX.length));
+    if (!key.startsWith(PREFIX) || Date.parse(receipt.createdAt) > at || Date.parse(receipt.updatedAt) > at ||
+        Date.parse(receipt.createdAt) > Date.parse(receipt.updatedAt) || receipt.review && Date.parse(receipt.review.at) > at)
+      invalid('Operation changed after the previous recovery certificate');
+    if (!TERMINAL.has(receipt.state)) {
+      if (receipt.state !== 'unknown' || !receipt.review) invalid('Unresolved operation at cold startup');
+      unknown.push(receipt.id);
+    }
+    receipts++;
+  }
+  if (index !== undefined || reviewed !== undefined || receipts) {
+    if (!object(index) || (index['protocol'] !== 1 && index['protocol'] !== 2) || !object(index['claims']) || Object.keys(index['claims']).length)
+      invalid('Missing or active operation claims at cold startup');
+    exactKeys(index, ['protocol', 'claims']);
+    if (index['protocol'] === 2 ? !Array.isArray(reviewed) : reviewed !== undefined || unknown.length > 0)
+      invalid('Incomplete reviewed operation index at cold startup');
+    if (Array.isArray(reviewed) && (reviewed.some(id => typeof id !== 'string') ||
+        JSON.stringify([...reviewed].sort()) !== JSON.stringify(unknown.sort())))
+      invalid('Reviewed operation index does not match its historical receipts');
+  }
+  return digest.digest('hex');
+}
+
 export class OperationJournal {
   constructor(private readonly store: DaemonStateStore, private readonly recovery: RecoveryState) {
     // Restore fences before the backend can certify its startup state.

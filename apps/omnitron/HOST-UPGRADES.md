@@ -339,6 +339,8 @@ operation whose evidence is available:
 | Candidate cannot be accepted and restoration is required | `runtime update recover <plan-sha256>` | Prove retirement and restore the recorded roles, or retain an unconfirmed outcome |
 | Admission stopped before process retirement | `runtime update recover <plan-sha256>` | Release only this plan's admission |
 
+On macOS a cold candidate can lose its first backend before that backend publishes a recovery snapshot. For a reviewed plan with empty application, watch and backup lists, `runtime update recover` can retire this owner after proving the backend exited, the first controller grant completed, the owner has no activity or application history, and the previous certificate still matches the catalogue. The recovery receipt retains a digest of the native and journal evidence. The command rechecks it immediately before shutdown and on a retry. An earlier operator-reviewed unknown backup keeps its restore fence. Later operations, missing journal history or changed evidence require inspection.
+
 The Xec equivalents are `update local-sync --review <plan-sha256> --reconcile`
 and `update local-sync --review <plan-sha256> --rollback`. Neither path rebuilds
 the runtime. A deadline ends observation, not the underlying operation's durable

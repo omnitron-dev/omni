@@ -550,10 +550,10 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
     async releaseAdmission(plan, planDigest) {
       await runtimeControl(service => service.runtimeRestartRelease({ planDigest }), plan.before.backendPid);
     },
-    async validateStop(previous, plan) {
+    async validateStop(previous, plan, rollbackPlan) {
       if (previous.backendPid === null) {
         if (plan) throw Error('Native empty-owner evidence cannot authorize an ordinary update');
-        const observed = await captureNativeEmptyRuntime(home, { artifact: previous.backend, commit: previous.ownerCommit });
+        const observed = await captureNativeEmptyRuntime(home, { artifact: previous.backend, commit: previous.ownerCommit }, undefined, rollbackPlan);
         if (!isDeepStrictEqual(previous, observed)) throw Error('Native candidate changed before shutdown');
         return;
       }
@@ -596,9 +596,9 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
       try { live = await identity(await call<RuntimeUpdateStatusObservation>(['status'])); }
       catch (error) {
         // Failure of the public API never proves absence. The independent native
-        // path admits only a target-bound, unclaimed owner with no application
-        // or backend process; every unknown observation still refuses recovery.
-        try { live = await captureNativeEmptyRuntime(home, plan.target); }
+        // path verifies the empty owner and, when already claimed, independently
+        // certifies the failed first controller before admitting retirement.
+        try { live = await captureNativeEmptyRuntime(home, plan.target, undefined, plan); }
         catch (nativeError) { throw new AggregateError([error, nativeError], 'Cannot establish candidate ownership for rollback', { cause: nativeError }); }
       }
       if (live.ownerId === plan.before.ownerId || live.backend !== plan.target.artifact || live.owner !== plan.target.artifact || live.guardian !== plan.target.artifact) throw Error('Cannot identify the candidate as the exclusive serving owner');

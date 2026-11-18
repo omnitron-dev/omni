@@ -27,6 +27,7 @@ import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
 import { openSqliteDatabase } from '@omnitron-dev/titan-database/sqlite';
 import type { ISeedProject, IProjectRegistry } from '../config/types.js';
+import { certifiedIdleOperationDigest } from '../execution/operation-journal.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import { CONFIG_FILE_NAMES } from '../config/loader.js';
 import { validateConfigurationNames, type ConfigurationImport, type RuntimeStackScope } from './configuration-catalog.js';
@@ -107,8 +108,8 @@ export class ProjectRegistry {
   }
 
   /** Synchronous callback keeps the catalogue stable while recording a cold recovery decision. */
-  static withRecoveryCatalogue<Result>(file: string, options: { lifecycle?: boolean; lockWriters?: boolean },
-    observe: (value: { registryDigest: string; lifecycleDigest?: string }) => Result): Result {
+  static withRecoveryCatalogue<Result>(file: string, options: { lifecycle?: boolean; lockWriters?: boolean; operationsCertifiedAt?: string },
+    observe: (value: { registryDigest: string; lifecycleDigest?: string; operationDigest?: string }) => Result): Result {
     for (const suffix of ['', '-wal', '-shm', '-journal']) {
       try {
         const stat = fs.lstatSync(file + suffix);
@@ -127,9 +128,13 @@ export class ProjectRegistry {
           },
         };
         const registryDigest = createHash('sha256').update(normalizedRecoveryRegistrations(recoveryRegistrations(reader))).digest('hex');
-        if (!options.lifecycle) return observe({ registryDigest });
+        const operations = options.operationsCertifiedAt === undefined ? {} : { operationDigest: certifiedIdleOperationDigest(
+          db.prepare("SELECT key, value FROM state_kv WHERE key GLOB 'execution.operation.*' ORDER BY key").iterate() as Iterable<{ key: string; value: string }>,
+          options.operationsCertifiedAt,
+        ) };
+        if (!options.lifecycle) return observe({ registryDigest, ...operations });
         const intent = db.prepare("SELECT key, value FROM state_kv WHERE key GLOB 'lifecycle:*' ORDER BY key").all();
-        return observe({ registryDigest, lifecycleDigest: createHash('sha256').update(JSON.stringify(intent)).digest('hex') });
+        return observe({ registryDigest, ...operations, lifecycleDigest: createHash('sha256').update(JSON.stringify(intent)).digest('hex') });
       });
       return options.lockWriters ? observation.immediate() : observation.deferred();
     } finally { db.close(); }

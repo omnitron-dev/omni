@@ -59,7 +59,7 @@ export interface RuntimeUpdateActions {
   admit(plan: RuntimeUpdatePlan, digest: string): Promise<void>;
   /** Release only this plan's admission; never stop or restore application processes. */
   releaseAdmission(plan: RuntimeUpdatePlan, digest: string): Promise<void>;
-  validateStop(previous: RuntimeUpdateRetiringIdentity, plan?: RuntimeUpdatePlan): Promise<void>;
+  validateStop(previous: RuntimeUpdateRetiringIdentity, plan?: RuntimeUpdatePlan, rollbackPlan?: RuntimeUpdatePlan): Promise<void>;
   stop(previous: RuntimeUpdateRetiringIdentity): Promise<unknown>;
   assertStopped(previous: RuntimeUpdateRetiringIdentity): Promise<unknown>;
   canRestore(previous: RuntimeUpdateRetiringIdentity): Promise<boolean>;
@@ -169,9 +169,13 @@ export async function runRuntimeUpdate({ actions, directory, operation, digest: 
         }
         await actions.validateRestore(plan);
         if (!(await actions.canRestore(record.rollbackOwner ?? plan.before))) {
-          const live = await actions.captureForRollback(plan);
-          await actions.validateStop(live);
+          const live = record.rollbackOwner ?? await actions.captureForRollback(plan);
+          const claimedStartup = live.backendPid === null && live.startupEvidence !== undefined;
+          if (!claimedStartup) await actions.validateStop(live);
           await save('stopping-candidate', { rollbackOwner: live });
+          // A retry must retain the original evidence, even if the prior stop
+          // failed. Recheck it after the durable receipt and before any signal.
+          if (claimedStartup) await actions.validateStop(live, undefined, plan);
           await actions.stop(live);
           await actions.assertStopped(live);
         }

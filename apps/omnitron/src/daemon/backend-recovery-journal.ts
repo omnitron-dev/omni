@@ -23,6 +23,17 @@ export type BackendRecoveryState =
   | { status: 'invalid'; reason: string; at: string; reasons?: string[]; additionalReasons?: true; previous?: BackendRecoveryRecord; previousCertifiedAt?: string }
   | { status: 'ready'; record: BackendRecoveryRecord; at: string };
 
+export function assertCertifiedBackendRecord(record: BackendRecoveryRecord | undefined): asserts record is BackendRecoveryRecord {
+  if (record?.protocol !== 1 || record.state?.protocol !== 1 ||
+        !/^[a-f0-9]{64}$/.test(record.runtimeHash) || !/^[a-f0-9]{64}$/.test(record.registryDigest) ||
+        !/^[a-f0-9]{64}$/.test(record.state.executionInventory) || !record.controller?.ownerId ||
+        !record.controller.controllerId || !Number.isSafeInteger(record.controller.epoch) || record.controller.epoch < 1 ||
+        !Number.isSafeInteger(record.previousPid) || record.previousPid < 1 ||
+        !path.isAbsolute(record.previousEntry) || !path.isAbsolute(record.cwd) ||
+        !record.daemonConfig?.executionHost?.enabled || !record.environment ||
+        Object.values(record.environment).some(value => typeof value !== 'string')) throw new Error('Invalid backend recovery journal');
+}
+
 /** Small, private FULL-synchronous journal, using the daemon's SQLite store. */
 export class BackendRecoveryJournal {
   private readonly store: DaemonStateStore | null;
@@ -88,14 +99,8 @@ export class BackendRecoveryJournal {
         (state.additionalReasons === undefined || state.additionalReasons === true) &&
         (state.previousCertifiedAt === undefined || typeof state.previousCertifiedAt === 'string' && !!state.previous &&
           Number.isFinite(Date.parse(state.previousCertifiedAt)))) return state;
-    if (state.status !== 'ready' || state.record?.protocol !== 1 || state.record.state?.protocol !== 1 ||
-        !/^[a-f0-9]{64}$/.test(state.record.runtimeHash) || !/^[a-f0-9]{64}$/.test(state.record.registryDigest) ||
-        !/^[a-f0-9]{64}$/.test(state.record.state.executionInventory) || !state.record.controller?.ownerId ||
-        !state.record.controller.controllerId || !Number.isSafeInteger(state.record.controller.epoch) || state.record.controller.epoch < 1 ||
-        !Number.isSafeInteger(state.record.previousPid) || state.record.previousPid < 1 ||
-        !path.isAbsolute(state.record.previousEntry) || !path.isAbsolute(state.record.cwd) ||
-        !state.record.daemonConfig?.executionHost?.enabled || !state.record.environment ||
-        Object.values(state.record.environment).some(value => typeof value !== 'string')) throw new Error('Invalid backend recovery journal');
+    if (state.status !== 'ready') throw new Error('Invalid backend recovery journal');
+    assertCertifiedBackendRecord(state.record);
     return state;
   }
 

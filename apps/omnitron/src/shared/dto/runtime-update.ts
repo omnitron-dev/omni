@@ -116,6 +116,8 @@ export interface RuntimeUpdateIdentity extends RuntimeUpdateOwner {
  * Absence is explicit: no invented backend PID or serving build is recorded. */
 export interface NativeEmptyRuntimeIdentity extends Omit<RuntimeUpdateIdentity, 'backendPid' | 'backendCommit'> {
   observation: 'native-empty-owner';
+  /** Immutable evidence for the first candidate controller that exited before certifying recovery. */
+  startupEvidence?: string;
   backendPid: null;
   backendCommit: null;
   guardianLifetime: string;

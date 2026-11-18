@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { compareProcessLifetimes } from '@omnitron-dev/common/process-identity';
+import { coldControllerEvidenceDigest, readColdControllerEvidence, type ColdControllerEvidence } from './runtime-update-cold-controller.js';
 import { RuntimeInstallation, type RuntimeSelection } from './runtime-installation.js';
 import { readManagedRuntime, managedSupervisorSocket, hostBootIdentity, type ManagedRuntime } from './managed-runtime.js';
 import { readDarwinOwnerEvidence } from './darwin-owner-evidence.js';
@@ -11,20 +12,22 @@ import { expandPath } from '../shared/paths.js';
 import { readSavedDaemonConfig, savedDaemonOverrides } from '../config/saved.js';
 import type { ExecutionHostService, ExecutionSnapshot } from './execution-host.js';
 import type { BackendSupervisorService, SupervisorStatus } from './backend-supervisor.js';
-import type { NativeEmptyRuntimeIdentity, RuntimeUpdateReference } from '../shared/dto/runtime-update.js';
+import type { NativeEmptyRuntimeIdentity, RuntimeUpdatePlan, RuntimeUpdateReference } from '../shared/dto/runtime-update.js';
 
 export interface NativeEmptyRuntimeObservation {
   config: ManagedRuntime;
   selection: RuntimeSelection;
-  owner: Pick<ExecutionSnapshot, 'protocol' | 'ownerBuild' | 'status' | 'apps' | 'workers' | 'watchedApps'>;
+  owner: Pick<ExecutionSnapshot, 'protocol' | 'ownerBuild' | 'status' | 'apps' | 'workers' | 'watchedApps'> &
+    Partial<Pick<ExecutionSnapshot, 'inventoryDigest' | 'lastEvent' | 'events' | 'acknowledgedEvent' | 'droppedEvents' | 'devMode' | 'watchEnabled'>>;
+  startupEvidence?: ColdControllerEvidence;
   guardian: SupervisorStatus;
   native: Awaited<ReturnType<typeof readDarwinOwnerEvidence>>;
   markerPid: number | null;
 }
 
-/** An unavailable public API is not evidence. Only an empty, unclaimed owner
- * and a complete native process inventory can admit this narrow cold rollback. */
-export function nativeEmptyRuntimeIdentity(home: string, target: RuntimeUpdateReference, observation: NativeEmptyRuntimeObservation): NativeEmptyRuntimeIdentity {
+/** An unavailable public API is not evidence. Native retirement requires an empty owner
+ * and proof of either an unclaimed grant or the reviewed failed first controller. */
+export function nativeEmptyRuntimeIdentity(home: string, target: RuntimeUpdateReference, observation: NativeEmptyRuntimeObservation, plan?: RuntimeUpdatePlan): NativeEmptyRuntimeIdentity {
   const { config, selection, owner, guardian, native, markerPid } = observation;
   const fail = (message: string): never => { throw Error('Cannot retire an unavailable backend: ' + message); };
   if (config.instanceHome !== home || config.scope !== 'user' || config.owner.label !== 'dev.omnitron.owner' ||
@@ -32,11 +35,14 @@ export function nativeEmptyRuntimeIdentity(home: string, target: RuntimeUpdateRe
       selection.current !== target.artifact || !Number.isSafeInteger(selection.revision) || selection.revision < 1)
     fail('native roles or selected artifact differ from the reviewed candidate');
   const status = owner.status;
-  if (owner.protocol !== 1 || !status?.owner?.id || status.phase !== 'active' || status.inFlight !== 0 || status.pending !== null ||
-      status.controller?.controllerId !== 'unclaimed' || status.controller.ownerId !== status.owner.id ||
+  if (owner.protocol !== 1 || !status?.owner?.id || status.phase !== 'active' || status.inFlight !== 0 ||
+      !status.controller || status.controller.ownerId !== status.owner.id ||
       !Array.isArray(owner.apps) || owner.apps.length || !Array.isArray(owner.workers) || owner.workers.length ||
       !Array.isArray(owner.watchedApps) || owner.watchedApps.length)
-    fail('the owner is not empty, idle and unclaimed');
+    fail('the owner is not empty and idle');
+  const claimed = status.controller.controllerId !== 'unclaimed';
+  if (!claimed && status.pending !== null) fail('an unclaimed owner has a pending handoff');
+  const startupEvidence = claimed ? coldControllerEvidenceDigest(home, plan, observation) : undefined;
   if (owner.ownerBuild?.commit !== target.commit || owner.ownerBuild.dirty !== false)
     fail('the private owner build differs from the reviewed candidate');
   const ownerPid = status.owner.pid, guardianPid = guardian.pid;
@@ -62,13 +68,13 @@ export function nativeEmptyRuntimeIdentity(home: string, target: RuntimeUpdateRe
     if (!observed || observed.unknown || observed.lifetime !== null) fail('a recorded backend has not been proven absent');
     retired.push(pid);
   }
-  return { observation: 'native-empty-owner', backend: target.artifact, owner: target.artifact, guardian: target.artifact,
+  return { observation: 'native-empty-owner', ...(startupEvidence && { startupEvidence }), backend: target.artifact, owner: target.artifact, guardian: target.artifact,
     backendCommit: null, ownerCommit: owner.ownerBuild!.commit, scope: config.scope,
     ownerId: status.owner.id, ownerPid, ownerLifetime: lifetime(ownerPid), guardianPid, guardianLifetime: lifetime(guardianPid),
     backendPid: null, revision: selection.revision, retiredPids: [...new Set(retired)].sort((a, b) => a - b), native: native.native };
 }
 
-async function observe(home: string): Promise<NativeEmptyRuntimeObservation> {
+async function observe(home: string, plan?: RuntimeUpdatePlan): Promise<NativeEmptyRuntimeObservation> {
   if (process.platform !== 'darwin') throw Error('Native empty-owner rollback requires macOS service evidence');
   const config = await readManagedRuntime(home);
   if (!config) throw Error('Native runtime configuration is unavailable');
@@ -89,11 +95,14 @@ async function observe(home: string): Promise<NativeEmptyRuntimeObservation> {
         const first = marker?.split('\n')[0];
         if (first !== undefined && !/^[1-9]\d*$/.test(first)) throw Error('Invalid backend PID marker');
         const markerPid = first === undefined ? null : Number(first);
-        const pids = [ownerState.status.owner.pid, guardianState.pid, markerPid, guardianState.backendPid].filter((pid): pid is number => pid !== null);
+        const claimed = ownerState.status.controller?.controllerId !== 'unclaimed';
+        const startupEvidence = claimed && plan ? await readColdControllerEvidence(home, config.directory, plan) : undefined;
+        const old = claimed && plan ? [plan.before.ownerPid, plan.before.guardianPid, plan.before.backendPid] : [];
+        const pids = [...old, ownerState.status.owner.pid, guardianState.pid, markerPid, guardianState.backendPid].filter((pid): pid is number => pid !== null);
         const native = await readDarwinOwnerEvidence(config, [...new Set(pids)].map(pid => ({ pid })), await hostBootIdentity());
         if (!isDeepStrictEqual(selection, registry.settledSelection()) || !isDeepStrictEqual(config, await readManagedRuntime(home)))
           throw Error('Native runtime bindings changed during observation');
-        return { config, selection, owner: ownerState, guardian: guardianState, native, markerPid };
+        return { config, selection, owner: ownerState, guardian: guardianState, native, markerPid, ...(startupEvidence && { startupEvidence }) };
       } finally { await owner.close(); }
     } finally { await guardian.close(); }
   } finally { await registry.close(); }
@@ -101,9 +110,10 @@ async function observe(home: string): Promise<NativeEmptyRuntimeObservation> {
 
 /** Repeat all independent observations; revisions and RPC timestamps are not identities. */
 export async function captureNativeEmptyRuntime(home: string, target: RuntimeUpdateReference,
-  read: () => Promise<NativeEmptyRuntimeObservation> = () => observe(home)): Promise<NativeEmptyRuntimeIdentity> {
-  const first = nativeEmptyRuntimeIdentity(home, target, await read());
-  const last = nativeEmptyRuntimeIdentity(home, target, await read());
+  reader?: () => Promise<NativeEmptyRuntimeObservation>, plan?: RuntimeUpdatePlan): Promise<NativeEmptyRuntimeIdentity> {
+  const read = reader ?? (() => observe(home, plan));
+  const first = nativeEmptyRuntimeIdentity(home, target, await read(), plan);
+  const last = nativeEmptyRuntimeIdentity(home, target, await read(), plan);
   if (!isDeepStrictEqual(first, last)) throw Error('Native candidate changed during rollback observation');
   return last;
 }

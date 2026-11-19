@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.14] - 2026-11-19
+
 ### Added
 
 - Operators can preview a registered local stack's migrations while it is serving. After the stack stops, its execution owner binds the reviewed migration programs, installed dependencies and database destinations to a single request. The CLI can retrieve its recorded outcome after a lost connection.

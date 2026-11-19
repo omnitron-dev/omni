@@ -993,8 +993,8 @@ function applicationBuildIdentity(manifest, hashes, packages) {
   return dependencies.length ? sha256(JSON.stringify(dependencies)) : null;
 }
 
-// The owner's watch inventory contains registrations, not reasons for their absence.
-// Only an explicit opt-out in this stack's registered development checkout exempts an app.
+// The stack configuration owns permanent opt-outs. Temporary suspensions have
+// their own owner receipt tied to an exact source binding.
 async function declaredWatchOptOuts(root, state, configurations) {
   const scope = state.runtimeScope;
   const sources = configurations?.filter(source => source.runtimeProject === scope?.project) ?? [];
@@ -1005,6 +1005,14 @@ async function declaredWatchOptOuts(root, state, configurations) {
   const config = await loadEcosystemConfig(directory);
   return new Set(config.apps.filter(app => app.enabled !== false && app.watch === false)
     .map(app => scope.project + '/' + scope.stack + '/' + app.name));
+}
+
+async function observedSuspension(client, app) {
+  const observation = await client.inspectSourceWatch({ name: app.handleKey });
+  const receipt = observation.receipt;
+  return observation.name === app.handleKey && observation.online === true && observation.registration === null &&
+    observation.sameBinding === true && receipt?.phase === 'suspended' && typeof receipt.id === 'string' && receipt.id.length > 0 &&
+    receipt.source?.name === app.handleKey && receipt.source.generation === app.generation ? receipt : null;
 }
 
 async function refresh(root, stack, checkpoint, packages, save, signal, launch) {
@@ -1038,14 +1046,20 @@ async function refresh(root, stack, checkpoint, packages, save, signal, launch) 
     const unbound = [...activeNames].filter(name => !watched.apps.some(source => source.name === name));
     const optOuts = unbound.length ? await declaredWatchOptOuts(root, state, configurations) : new Set();
     const excluded = new Map();
+    const suspended = new Map();
     for (const name of unbound) {
-      if (!optOuts.has(name)) throw Error(`SDK refresh was not applied to ${name}: the application has no active watcher. Check its watch policy and owner diagnostics`);
       const app = state.apps.find(item => item.handleKey === name);
       if (!app.generation) throw Error('Execution owner did not identify the running generation for ' + name);
+      if (!optOuts.has(name)) {
+        const receipt = !save && !launch ? await observedSuspension(client, app) : null;
+        if (!receipt) throw Error(`SDK refresh was not applied to ${name}: the application has no active watcher. Check its watch policy and owner diagnostics`);
+        suspended.set(name, receipt);
+        continue;
+      }
       excluded.set(name, app.generation);
       delete applied[name];
     }
-    if (activeNames.size > excluded.size && !watched.watching)
+    if (activeNames.size > excluded.size + suspended.size && !watched.watching)
       throw Error('SDK refresh was not applied: application watching is unavailable');
     if (excluded.size) await save?.();
     const confirmed = [], stopped = [], unaffected = [];
@@ -1060,7 +1074,8 @@ async function refresh(root, stack, checkpoint, packages, save, signal, launch) 
         report(`Application declares watch: false for ${app.handleKey}; no owner refresh receipt`);
         continue;
       }
-      const info = watched.apps.find((entry) => entry.name === app.handleKey);
+      const held = suspended.get(app.handleKey);
+      const info = held?.source ?? watched.apps.find((entry) => entry.name === app.handleKey);
       if (typeof info.generation !== 'string' || !info.generation || !Number.isSafeInteger(info.definitionRevision) || info.definitionRevision < 0)
         throw Error(`Execution owner did not report a source binding for ${app.handleKey}`);
       const directory = await fs.realpath(info.directory).catch(() => null);
@@ -1070,6 +1085,13 @@ async function refresh(root, stack, checkpoint, packages, save, signal, launch) 
         .sort((a, b) => b.directory.length - a.directory.length)[0];
       if (!pkg) throw Error(`No workspace package owns the watched source of ${app.handleKey}`);
       const buildIdentity = applicationBuildIdentity(pkg.manifest, checkpoint.hashes, packages);
+      const receipt = applied[app.handleKey];
+      const matchesBuild = receipt?.generation === info.generation && receipt.definitionRevision === info.definitionRevision &&
+        receipt.directory === directory && receipt.buildIdentity === buildIdentity;
+      if (held) {
+        if (buildIdentity && !matchesBuild) throw Error('No current SDK refresh receipt for suspended application ' + app.handleKey);
+        continue;
+      }
       if (!buildIdentity) {
         delete applied[app.handleKey];
         await save?.();
@@ -1094,7 +1116,6 @@ async function refresh(root, stack, checkpoint, packages, save, signal, launch) 
         !current.apps.some((a) => a.handleKey === app.handleKey && a.status === 'online' && a.generation === info.generation)
       )
         throw Error(`Stack changed before refreshing ${app.handleKey}; SDK readiness is not confirmed`);
-      const receipt = applied[app.handleKey];
       if (launch) {
         if (launch.generations.get(app.handleKey) !== info.generation)
           throw Error('Source watcher generation differs from the start reply for ' + app.handleKey);
@@ -1104,8 +1125,7 @@ async function refresh(root, stack, checkpoint, packages, save, signal, launch) 
         confirmed.push(app.handleKey);
         continue;
       }
-      if (receipt?.generation === info.generation && receipt.definitionRevision === info.definitionRevision &&
-          receipt.directory === directory && receipt.buildIdentity === buildIdentity) {
+      if (matchesBuild) {
         confirmedSources.set(app.handleKey, info);
         confirmed.push(app.handleKey);
         continue;
@@ -1147,6 +1167,11 @@ async function refresh(root, stack, checkpoint, packages, save, signal, launch) 
           throw Error(`Watch policy or generation changed while confirming ${name}; SDK readiness is not confirmed`);
       }
     }
+    for (const [name, held] of suspended) {
+      const app = finalState.apps.find(item => item.handleKey === name);
+      if (finalWatch.apps.some(source => source.name === name) || !app || !isDeepStrictEqual(await observedSuspension(client, app), held))
+        throw Error('Source suspension changed while confirming ' + name + '; SDK readiness is not confirmed');
+    }
     for (const [name, source] of confirmedSources) {
       if (!finalWatch.enabled || !finalWatch.watching ||
           !finalState.apps.some(app => app.handleKey === name && app.status === 'online' && app.generation === source.generation) ||
@@ -1156,7 +1181,8 @@ async function refresh(root, stack, checkpoint, packages, save, signal, launch) 
     }
     await save?.();
     report(`Development SDK refresh confirmed for ${scopeName}: ${confirmed.length} applications, ${stopped.length} inactive, ${excluded.size} opted out of owner refresh`);
-    return { stack: scopeName, confirmed, inactive: stopped, optedOut: [...excluded.keys()], unaffected };
+    return { stack: scopeName, confirmed, inactive: stopped, optedOut: [...excluded.keys()], unaffected,
+      ...(suspended.size ? { suspended: [...suspended.keys()] } : {}) };
   } finally {
     await client.disconnect();
   }

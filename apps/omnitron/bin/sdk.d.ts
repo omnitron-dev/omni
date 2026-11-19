@@ -7,7 +7,7 @@ export interface DevelopmentSdkStatus {
   transition?: { id: string; phase: 'committed' | 'restored' | 'superseded'; source: string;
     adoption?: { review: string; launch: 'unconfirmed'; history: string } };
   build?: { status: 'current'; packages: string[] };
-  refresh?: { stack: string; confirmed: string[]; inactive: string[]; optedOut: string[]; unaffected: string[] };
+  refresh?: { stack: string; confirmed: string[]; inactive: string[]; optedOut: string[]; unaffected: string[]; suspended?: string[] };
 }
 export interface DevelopmentSdkProfile {
   schema: 1;

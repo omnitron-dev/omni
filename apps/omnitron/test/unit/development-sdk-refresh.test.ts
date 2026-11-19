@@ -10,7 +10,7 @@ import { promisify } from 'node:util';
 import { beforeAll, expect, it, vi } from 'vitest';
 
 const rpc = vi.hoisted(() => ({ projects: vi.fn(), stacks: vi.fn(), stack: vi.fn(), status: vi.fn(), watch: vi.fn(), review: vi.fn(), start: vi.fn(),
-  automatic: vi.fn(), manual: vi.fn(), disconnect: vi.fn(), mutable: vi.fn() }));
+  automatic: vi.fn(), manual: vi.fn(), suspension: vi.fn(), disconnect: vi.fn(), mutable: vi.fn() }));
 vi.mock('node:child_process', async importOriginal => {
   const actual = await importOriginal<typeof childProcess>();
   return { ...actual, spawn: vi.fn(actual.spawn) };
@@ -20,7 +20,7 @@ vi.mock('@omnitron-dev/omnitron/operations', async () => ({
   LONG_REQUEST_TIMEOUT: 1000,
   createDaemonClient: () => ({ service: async () => ({ listProjects: rpc.projects, listStacks: rpc.stacks,
     getStack: rpc.stack, reviewStackStart: rpc.review, startStack: rpc.start, assertSdkMutable: rpc.mutable }),
-    status: rpc.status, getWatchStatus: rpc.watch, restartAfterChange: rpc.automatic,
+    status: rpc.status, getWatchStatus: rpc.watch, inspectSourceWatch: rpc.suspension, restartAfterChange: rpc.automatic,
     restartApp: rpc.manual, disconnect: rpc.disconnect }),
 }));
 const { inspectSdk, inspectSdkLaunch, reconcileSdkLaunch, inspectSdkAdoption, inspectDevelopmentSdkSelection, adoptSdk, sdkCommand, watchSdk } = await import('../../bin/sdk.js');
@@ -85,6 +85,7 @@ async function fixture() {
     generation: item.generation, definitionRevision: item.definitionRevision });
   function observations() {
     for (const method of Object.values(rpc)) method.mockReset();
+    rpc.suspension.mockResolvedValue({ receipt: null });
     rpc.projects.mockResolvedValue([{ name: 'project', path: consumer,
       configurations: [{ name: 'default', runtimeProject: 'project', path: consumer, stacks: {} }] }]);
     rpc.stack.mockImplementation(async ({ stack }: { stack: string }) => ({ type: 'local', config: { watch: true },
@@ -706,6 +707,41 @@ it('refreshes the watched backend alongside a self-watching portal, and rejects 
     expect(changed.errors[0]).toContain('Watch policy or generation changed while confirming');
     expect(changed.messages.some(message => message.includes('refresh confirmed'))).toBe(false);
     expect((await f.run('dev')).errors[0]).toContain('has no active watcher');
+  } finally { await f.close(); }
+}, 120_000);
+
+it('inspects the same suspended source and its build without allowing a refresh on that binding', async () => {
+  const f = await fixture();
+  try {
+    await fs.writeFile(path.join(f.consumer, 'omnitron.config.js'), "module.exports = { apps: [{ name: 'site', script: './server.js' }] };");
+    expect((await f.run('dev')).errors).toEqual([]);
+    for (const name of ['active.json', 'install.json'])
+      await fs.writeFile(path.join(path.dirname(f.checkpoint), name), JSON.stringify(f.profile));
+    const saved = await fs.readFile(f.checkpoint, 'utf8');
+    const source = f.binding(f.app);
+    const receipt = { phase: 'suspended', id: randomUUID(), source, mechanism: 'esbuild' };
+    const held = { name: f.app.handleKey, online: true, sameBinding: true, registration: null, receipt };
+    rpc.watch.mockResolvedValue({ enabled: true, watching: false, apps: [] });
+    rpc.suspension.mockResolvedValue(held);
+    rpc.automatic.mockClear();
+    const status = () => inspectSdk(f.consumer, 'dev');
+    expect((await status()).refresh).toMatchObject({ confirmed: [], optedOut: [], suspended: [f.app.handleKey] });
+    expect(rpc.suspension.mock.calls).toEqual([[{ name: f.app.handleKey }], [{ name: f.app.handleKey }]]);
+    rpc.suspension.mockResolvedValueOnce({ ...held, receipt: { ...receipt, source: { ...source, definitionRevision: 1 } } });
+    await expect(status()).rejects.toThrow('No current SDK refresh receipt for suspended application');
+    rpc.suspension.mockResolvedValueOnce(held).mockResolvedValueOnce({ ...held, receipt: { ...receipt, id: randomUUID() } });
+    await expect(status()).rejects.toThrow('Source suspension changed');
+    rpc.suspension.mockResolvedValueOnce({ ...held, sameBinding: false });
+    await expect(status()).rejects.toThrow('has no active watcher');
+    rpc.suspension.mockResolvedValueOnce({ ...held, receipt: { ...receipt, source: { ...source, generation: randomUUID() } } });
+    await expect(status()).rejects.toThrow('has no active watcher');
+    expect(await fs.readFile(f.checkpoint, 'utf8')).toBe(saved);
+    expect(rpc.start).not.toHaveBeenCalled();
+    expect(rpc.automatic).not.toHaveBeenCalled();
+    rpc.suspension.mockClear();
+    expect((await f.run('dev')).errors[0]).toContain('has no active watcher');
+    expect(rpc.suspension).not.toHaveBeenCalled();
+    expect(rpc.automatic).not.toHaveBeenCalled();
   } finally { await f.close(); }
 }, 120_000);
 

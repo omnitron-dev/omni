@@ -280,6 +280,8 @@ Each completed SDK build binds its output hashes to Turbo's declared input graph
 
 Run `omnitron sdk status --project-dir /path/to/project --stack dev` to compare those inputs, current outputs and owner generations with the last build. Without `--stack`, status still verifies build freshness. Inspection runs Turbo's dry plan only: it never builds, installs dependencies or restarts applications. Changed inputs or a checkpoint without input proof fail explicitly and require `sdk dev`. A successful `build.status: "current"` describes the installed build. With `--stack`, status also identifies each confirmed application, explicit opt-out, inactive and unaffected application. Use `sdk prepare [SDK_CHECKOUT] --check` to determine whether the next selection needs a snapshot.
 
+If an operator suspends a source watcher, stack status lists the application under `suspended` after verifying the owner's suspension receipt, current generation and matching SDK build receipt. Source refresh requires the watcher to be active again.
+
 Titan bootstrap workers can inject `RUNTIME_CONTEXT` from `@omnitron-dev/omnitron/runtime`.
 For a working-tree bundle produced by Omnitron, `development` records the generated worker's
 project-relative filename, SHA-256 and observation time. The adapter observes the file across

@@ -98,6 +98,7 @@ sdk.command('status').description('Verify the currently installed SDK and its wo
         const { confirmed, inactive, optedOut, unaffected } = status.refresh;
         emitInfo(`${status.refresh.stack} · ${confirmed.length} owner receipts · ${inactive.length} inactive · ${unaffected.length} unaffected`);
         if (optedOut.length) emitInfo('Owner refresh disabled (watch: false) · ' + optedOut.join(', '));
+        if (status.refresh.suspended?.length) emitInfo('Source watch suspended · ' + status.refresh.suspended.join(', '));
       }
     }
   });

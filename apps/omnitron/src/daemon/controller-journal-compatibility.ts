@@ -51,24 +51,34 @@ function statIfPresent(file: string) {
   }
 }
 
+export async function readControllerJournalFormats(directory: string): Promise<Record<string, number> | null> {
+  const file = path.join(directory, 'shared/controller-journal-formats.json');
+  const stat = statIfPresent(file);
+  if (!stat) return null;
+  if (!stat.isFile() || stat.size > 4096) throw Error('Invalid controller journal format declaration');
+  const target: unknown = JSON.parse(await readFile(file, 'utf8'));
+  if (
+    !target ||
+    typeof target !== 'object' ||
+    Array.isArray(target) ||
+    Object.values(target).some((value) => !Number.isSafeInteger(value) || value < 1)
+  )
+    throw Error('Invalid controller journal format declaration');
+  return target as Record<string, number>;
+}
+
 export async function assertControllerJournals(needs: Needs, directory: string) {
   if (!needed(needs)) return;
-  const file = path.join(directory, 'shared/controller-journal-formats.json');
-  let target: Partial<typeof formats> | null = null;
-  const stat = statIfPresent(file);
-  if (stat) {
-    if (!stat.isFile() || stat.size > 4096) throw Error('Invalid controller journal format declaration');
-    target = JSON.parse(await readFile(file, 'utf8'));
-  }
-  if ((needs.teamRooms || needs.concurrentTurns) && target?.studioTeams !== formats.studioTeams)
+  const target = await readControllerJournalFormats(directory);
+  if ((needs.teamRooms || needs.concurrentTurns) && target?.['studioTeams'] !== formats.studioTeams)
     throw Error(
       'The selected runtime cannot preserve Studio team conversations or concurrent turns. Select a team-compatible runtime.'
     );
-  if (needs.customStudioProviders && target?.studioProviders !== formats.studioProviders)
+  if (needs.customStudioProviders && target?.['studioProviders'] !== formats.studioProviders)
     throw Error(
       'The selected runtime cannot preserve custom Studio providers. Select a runtime that supports registered connector IDs.'
     );
-  if ((needs.activeFlows || needs.pendingDeliveries) && target?.hostFlows !== formats.hostFlows)
+  if ((needs.activeFlows || needs.pendingDeliveries) && target?.['hostFlows'] !== formats.hostFlows)
     throw Error(
       'The selected runtime cannot drive active flows or pending deliveries. Settle outstanding work and pause its flow, or select a flow-compatible runtime.'
     );

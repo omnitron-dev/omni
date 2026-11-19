@@ -39,6 +39,7 @@ export class FlowRuntime {
   private pendingStackEvents = 0;
   private droppedStackEvents = 0;
   private closed = false;
+  private paused = false;
   private subscription?: { broadcaster: EventBroadcasterService; id: string };
   constructor(
     readonly ledger: FlowLedger,
@@ -59,7 +60,7 @@ export class FlowRuntime {
     this.wake();
   }
   private observe(event: DaemonEvent) {
-    if (this.closed || !['stack.started', 'stack.stopped'].includes(event.channel)) return;
+    if (this.closed || this.paused || !['stack.started', 'stack.stopped'].includes(event.channel)) return;
     const data = event.data as Record<string, unknown> | undefined;
     if (typeof data?.['project'] !== 'string' || typeof data['stack'] !== 'string') return;
     const targets = this.ledger.stackSources(event.channel, data['project'], data['stack']);
@@ -104,7 +105,7 @@ export class FlowRuntime {
       });
   }
   wake(delay = 0) {
-    if (this.closed) return;
+    if (this.closed || this.paused) return;
     if (this.running) {
       if (delay === 0) void this.flushDeliveries().catch((error) => this.deps.report(error));
       return;
@@ -126,6 +127,7 @@ export class FlowRuntime {
     this.timer.unref();
   }
   tick(): Promise<void> {
+    if (this.paused) return Promise.resolve();
     this.running ??= this.runDue().finally(() => {
       this.running = undefined;
     });
@@ -134,7 +136,7 @@ export class FlowRuntime {
   private async runDue() {
     if (this.closed) return;
     await this.deps.admit();
-    if (this.closed) return;
+    if (this.closed || this.paused) return;
     const due = this.ledger.due();
     // A slow peer must not hold up the other disks. Bound concurrent work and reuse its snapshot for every mount.
     const snapshots = new Map<string, ReturnType<FlowMesh['snapshot']>>();
@@ -177,17 +179,21 @@ export class FlowRuntime {
     };
     let next = 0;
     const workers = Array.from({ length: Math.min(4, due.length) }, async () => {
-      while (!this.closed && next < due.length) await sampleOne(due[next++]!);
+      while (!this.closed && !this.paused && next < due.length) await sampleOne(due[next++]!);
     });
-    await Promise.all([this.flushDeliveries(), ...workers]);
+    // Keep ownership of every admitted sample even if another worker fails first.
+    const results = await Promise.allSettled([this.flushDeliveries(), ...workers]);
+    const failure = results.find((item) => item.status === 'rejected');
+    if (failure) throw failure.reason;
     await this.flushDeliveries();
   }
   /** Persisted commands can make progress while a peer is still answering an unrelated sample. */
   private flushDeliveries(): Promise<void> {
+    if (this.closed || this.paused) return Promise.resolve();
     this.deliveryRequested = true;
     this.delivering ??= Promise.resolve()
       .then(async () => {
-        while (!this.closed && this.deliveryRequested) {
+        while (!this.closed && !this.paused && this.deliveryRequested) {
           this.deliveryRequested = false;
           await this.deliverBatch();
         }
@@ -203,12 +209,13 @@ export class FlowRuntime {
     if (!pending.length) return;
     await this.deps.admit();
     for (const { id } of pending) {
-      if (this.closed) return;
+      if (this.closed || this.paused) return;
       const entry = this.ledger.delivery(id);
       const check = (dispatch = false) => {
         const current = this.ledger.delivery(id);
         if (
           this.closed ||
+          this.paused ||
           current.active?.id !== entry.row.activation ||
           current.row.attempt !== entry.row.attempt ||
           current.session !== entry.session ||
@@ -223,6 +230,8 @@ export class FlowRuntime {
         await this.checkWorkspace(entry.row.flow_id, entry.row.activation);
         result = await this.deps.deliver(entry, check);
       } catch (error) {
+        // A reversible controller hold leaves an unsent delivery eligible for the next tick. Preserve a receiver's confirmed or uncertain outcome.
+        if (this.paused && this.ledger.delivery(id).row.status === 'pending') return;
         const unknown = error instanceof UnconfirmedDelivery;
         this.ledger.finish(
           entry.row,
@@ -235,6 +244,16 @@ export class FlowRuntime {
       this.ledger.finish(entry.row, result, null);
     }
     if (pending.length === 32) this.deliveryRequested = true;
+  }
+  async pauseAndDrain() {
+    this.paused = true;
+    clearTimeout(this.timer);
+    await Promise.allSettled([this.running, this.delivering, this.received]);
+  }
+  resume() {
+    if (!this.paused) return;
+    this.paused = false;
+    this.wake();
   }
   async dispose() {
     this.closed = true;

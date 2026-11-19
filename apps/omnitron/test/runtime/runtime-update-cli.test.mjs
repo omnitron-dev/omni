@@ -9,6 +9,7 @@ import { promisify } from 'node:util';
 import { runtimeArtifactDigest } from '../../src/shared/runtime-artifact.ts';
 import { readCommandResult, CommandResultError } from '../../src/shared/command-result.ts';
 import { tsImport } from 'tsx/esm/api';
+import { openSqliteDatabase } from '@omnitron-dev/titan-database/sqlite';
 
 const { runtimeUpdatePlanDigest } = await tsImport('../../src/daemon/runtime-update.ts', import.meta.url);
 const { runtimeUpdateActions, verifyRuntimeUpdateTarget } = await tsImport('../../src/daemon/runtime-update-host.ts', import.meta.url);
@@ -59,11 +60,15 @@ test('status reports unavailable startup as one structured error without human o
   });
 });
 
-async function candidate(home, reply = { ok: true, data: { delegated: true } }, status = 0) {
+async function candidate(home, reply = { ok: true, data: { delegated: true } }, status = 0, journalFormats) {
   const stage = path.join(home, 'candidate');
   const called = path.join(home, 'called');
   await fs.mkdir(path.join(stage, 'packages/0/dist/cli'), { recursive: true, mode: 0o700 });
   await fs.mkdir(path.join(stage, 'packages/0/dist/daemon'), { recursive: true, mode: 0o700 });
+  if (journalFormats) {
+    await fs.mkdir(path.join(stage, 'packages/0/dist/shared'));
+    await fs.writeFile(path.join(stage, 'packages/0/dist/shared/controller-journal-formats.json'), JSON.stringify(journalFormats));
+  }
   await fs.mkdir(path.join(stage, 'packages/0/webapp/dist'), { recursive: true, mode: 0o700 });
   await fs.writeFile(path.join(stage, 'packages/0/webapp/dist/index.html'), '<html>Console fixture</html>');
   for (const output of ['dist', 'webapp/dist']) {
@@ -82,6 +87,32 @@ async function candidate(home, reply = { ok: true, data: { delegated: true } }, 
   await fs.rename(stage, directory);
   return { artifact, directory, called, manifest };
 }
+
+test('offline cold recovery checks both the final backend and interim starter against the same physical controller journal', async t => {
+  const { home } = await instance(t);
+  const { RuntimeInstallation } = await tsImport('../../src/daemon/runtime-installation.ts', import.meta.url);
+  const registry = await RuntimeInstallation.open(home); await registry.close();
+  const legacy = await candidate(home), current = await candidate(home, undefined, 0, { studioTeams: 1, hostFlows: 1 });
+  const actions = await runtimeUpdateActions({ instance: home, runtime: await verifyRuntimeUpdateTarget(current.directory),
+    call: () => assert.fail('offline admission may not depend on a serving controller'),
+    run: () => assert.fail('must not touch services') });
+  const plan = { configuration: { basis: 'retained-next-start' }, before: { backend: legacy.artifact, console: null, consoleCommit: null },
+    target: { artifact: current.artifact } };
+  await fs.mkdir(path.join(home, 'data'));
+  const db = openSqliteDatabase(path.join(home, 'data/daemon-state.db')); t.after(() => db.close());
+  db.exec('CREATE TABLE flow_definitions(active TEXT); CREATE TABLE flow_deliveries(status TEXT);');
+  await actions.validateRestore(plan);
+  db.exec("INSERT INTO flow_definitions VALUES('fixture-activation')");
+  await assert.rejects(actions.validateRestore(plan), /active flows/);
+  await assert.rejects(actions.validateRestore({ ...plan, before: { ...plan.before, backend: current.artifact },
+    target: { artifact: legacy.artifact } }), /active flows/);
+  await actions.validateRestore({ ...plan, before: { ...plan.before, backend: current.artifact } });
+  db.exec("UPDATE flow_definitions SET active=NULL; INSERT INTO flow_deliveries VALUES('dispatching')");
+  await assert.rejects(actions.validateRestore(plan), /pending deliveries/);
+  db.exec("UPDATE flow_deliveries SET status='delivered'");
+  await actions.validateRestore(plan);
+  await assert.rejects(fs.access(current.called));
+});
 
 for (const capable of [false, true]) test('offline recovery checks the sealed cold starter for an independent Console (capable=' + capable + ')', async t => {
   const { home } = await instance(t);

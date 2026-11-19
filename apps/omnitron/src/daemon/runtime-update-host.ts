@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -9,6 +10,8 @@ import { BACKEND_ACTIVITY_COUNTERS } from '../shared/dto/backend.js';
 import { assertReviewableBackendActivity, retainReviewedBackups } from '../shared/backup-admission.js';
 import { LAUNCHD_LABEL, OWNER_LAUNCHD_LABEL } from '../commands/service-units.js';
 import { localStackInventory } from '../project/local-stack-inventory.js';
+import { sourceControllerJournalCheck } from './controller-journal-compatibility.js';
+import type { LocalRuntimeInventory } from '../shared/dto/runtime-update.js';
 import { readRestartConfiguration, saveRestartConfiguration, restartConfigurationDigest, restartIntentDigest, restartLaunchIntent, assertRestartOwnerDefaults } from '../project/runtime-restart.js';
 import { privateControlClient } from './private-control-client.js';
 import { assertRuntimeUpdateHealth, RuntimeUpdateHealthRegression, runtimeUpdatePlanDigest } from './runtime-update.js';
@@ -136,6 +139,39 @@ export function assertSameSavedSelection(prior: ReviewedRuntimeUpdateStack, now:
   if (!isDeepStrictEqual(prior.savedSelection, now.selection)) throw new RuntimeObservationConflict('Saved launch selection changed for ' + projectKey(prior));
 }
 
+/** A failed boot may have started only some reviewed applications. It cannot authorize a different stack or application. */
+export function assertRollbackStackScope(plan: RuntimeUpdatePlan, current: LocalRuntimeInventory) {
+  const reviewed = new Map(plan.stacks.map(stack => [projectKey(stack), stack]));
+  if (reviewed.size !== current.targets.length) throw Error('Local stack membership changed since the reviewed update');
+  for (const stack of current.targets) {
+    const before = reviewed.get(projectKey(stack));
+    if (!before || before.enabled !== stack.enabled || before.path !== stack.path || !isDeepStrictEqual(before.runtimeScope, stack.runtimeScope))
+      throw Error('Local stack scope changed since the reviewed update: ' + projectKey(stack));
+    if (before.savedSelection) assertSameSavedSelection(before, stack);
+    const handles = new Set(before.apps.map(app => app.handleKey));
+    if (stack.apps.some(app => !handles.has(app.handleKey))) throw Error('An application is outside the reviewed rollback scope: ' + projectKey(stack));
+  }
+}
+
+export async function withServingRollbackAdmission(
+  service: Pick<BackendControlService, 'runtimeRollbackHold' | 'runtimeRollbackRelease'>,
+  protocol: unknown,
+  digest: string,
+  stop: () => Promise<unknown>,
+) {
+  if (protocol !== 1)
+    throw Error('The serving controller cannot hold the reviewed application inventory during cold rollback. Use a compatible managed backend handoff or a new forward plan.');
+  const attempt = randomUUID();
+  try {
+    await service.runtimeRollbackHold({ digest, callerPid: process.pid, attempt });
+    return await stop();
+  } catch (error) {
+    try { await service.runtimeRollbackRelease({ digest, attempt }); }
+    catch (release) { throw new AggregateError([error, release], 'Cold rollback admission release is unconfirmed', { cause: release }); }
+    throw error;
+  }
+}
+
 export function assertLocalServiceTargets(config: ManagedRuntime | null): asserts config is ManagedRuntime {
   if (config?.scope !== 'user' || config.owner.label !== OWNER_LAUNCHD_LABEL || config.backend.label !== LAUNCHD_LABEL)
     throw Error('Local service commands address only the standard Omnitron user services');
@@ -219,6 +255,16 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
     return path.join(installation, 'releases', id);
   };
   const manifest = await inspectedRuntime(reference);
+  const journalChecks = new Map<string, () => Promise<void>>();
+  const checkJournals = async (artifact: string) => {
+    const check = journalChecks.get(artifact) ?? sourceControllerJournalCheck(home, artifact);
+    journalChecks.set(artifact, check);
+    await check();
+  };
+  const checkRestorationJournals = async (plan: RuntimeUpdatePlan) => {
+    await checkJournals(plan.before.backend);
+    if (plan.configuration && plan.before.backend !== plan.target.artifact) await checkJournals(plan.target.artifact);
+  };
   const [{ readManagedRuntime, verifyManagedIsolation }, { assertCleanManagedShutdown }, { assertResidentServicesStopped },
     { getContainerState, listManagedContainers }, { assertConsoleOwnership, consoleContainerName, assertConsoleBuild, inspectInstalledConsole }, { readProcessLifetime }, { readSavedDaemonConfig },
     { createDaemonClient }, { assertBackendMigrationsCompatible }] = await Promise.all([
@@ -303,7 +349,7 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
       }).sort((a, b) => a.name.localeCompare(b.name));
     } finally { await client.disconnect(); }
   };
-  const runtimeControl = async <T>(body: (service: BackendControlService) => Promise<T>, expectedPid?: number): Promise<T> => {
+  const runtimeControl = async <T>(body: (service: BackendControlService, status: Awaited<ReturnType<BackendControlService['status']>>) => Promise<T>, expectedPid?: number): Promise<T> => {
     const client = createDaemonClient();
     let address: { socket: string };
     try { address = await (await client.service<BackendRpcService>('OmnitronBackend')).controlAddress(); }
@@ -314,7 +360,7 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
       if (status.instanceHome !== home || status.runtimeRestartProtocol !== 1 || status.runtimeRestartAdmissionProtocol !== 1 ||
           expectedPid !== undefined && status.pid !== expectedPid)
         throw Error('The serving controller cannot admit the reviewed local update; update the backend through its managed handoff before preparing an owner update');
-      return await body(control.service);
+      return await body(control.service, status);
     } finally { await control.close(); }
   };
   const retainedConfiguration = async (stacks: RuntimeUpdateStack[]): Promise<RuntimeRestartConfiguration> =>
@@ -557,6 +603,7 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
         if (plan) throw Error('Native empty-owner evidence cannot authorize an ordinary update');
         const observed = await captureNativeEmptyRuntime(home, { artifact: previous.backend, commit: previous.ownerCommit }, undefined, rollbackPlan);
         if (!isDeepStrictEqual(previous, observed)) throw Error('Native candidate changed before shutdown');
+        if (rollbackPlan) await checkRestorationJournals(rollbackPlan);
         return;
       }
       if (plan) {
@@ -569,14 +616,29 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
         const infra = await coldPreview(plan.target.artifact);
         if (!isDeepStrictEqual(infra, plan.infrastructure)) throw Error('Cold-start infrastructure changed before shutdown');
       }
-      const observed = await identity(await call<RuntimeUpdateStatusObservation>(['status']));
+      const status = await call<RuntimeUpdateStatusObservation>(['status']);
+      if (rollbackPlan) {
+        const stacks = await inventory(status);
+        assertRollbackStackScope(rollbackPlan, stacks);
+        const actualWatches = await watches(stacks.targets);
+        if (actualWatches.some(watch => !rollbackPlan.watches.some(prior => isDeepStrictEqual(watch, prior))))
+          throw Error('A development source watch is outside the reviewed rollback scope');
+      }
+      const observed = await identity(status);
       if (!sameOwner(previous, observed) || !isDeepStrictEqual(previous.retiredPids, observed.retiredPids)) throw Error('Native ownership or worker set changed before shutdown');
+      if (rollbackPlan) await checkRestorationJournals(rollbackPlan);
     },
     stop: previous => raw(previous.backend, ['down']),
+    async withRollbackAdmission(plan, live, stop) {
+      if (live.backendPid === null) return stop(); // Native absence and an empty owner were independently observed after the receipt.
+      return runtimeControl((service, status) =>
+        withServingRollbackAdmission(service, status.runtimeRollbackAdmissionProtocol, runtimeUpdatePlanDigest(plan), stop), live.backendPid);
+    },
     assertStopped: previous => until('Clean shutdown could not be confirmed', () => stopped(previous), 90_000),
     async canRestore(previous) { try { await stopped(previous); return true; } catch { return false; } },
     async validateRestore(plan) {
       const starter = plan.configuration ? plan.target.artifact : plan.before.backend;
+      await checkRestorationJournals(plan);
       const retained = reviewedRuntimeConsole(plan, 'previous');
       if (!retained) return;
       await inspectInstalledConsole(home, retained);

@@ -35,6 +35,7 @@ export class BackendControlService {
     return { pid: process.pid, runtime: this.daemon.backendRuntimeStatus(), retired: this.retired,
       runtimeRestartProtocol: 1,
       runtimeRestartAdmissionProtocol: 1,
+      runtimeRollbackAdmissionProtocol: 1,
       backupHandoffProtocol: 1,
       backendHandoffReviewProtocol: 1,
       daemonSocket: expandPath(this.daemon.daemonConfig.socketPath),
@@ -65,6 +66,17 @@ export class BackendControlService {
   @Public({ auth: { roles: ADMIN_ROLES } })
   async runtimeRestartRelease(data: RuntimeRestartReleaseRequest): Promise<void> {
     await this.daemon.releaseRuntimeRestart(data.planDigest);
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async runtimeRollbackHold(data: { digest: string; callerPid: number; attempt: string }): Promise<void> {
+    this.assertRestartReview([]);
+    await this.daemon.holdRuntimeRollback(data.digest, data.callerPid, data.attempt);
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async runtimeRollbackRelease(data: { digest: string; attempt: string }): Promise<void> {
+    this.daemon.releaseRuntimeRollback(data.digest, data.attempt);
   }
 
   private assertRestartReview(stacks: unknown): void {

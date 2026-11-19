@@ -66,6 +66,7 @@ it('keeps an uncertain candidate available and restores only through an explicit
   const actions: RuntimeUpdateActions = {
     prepare: async () => plan, admit: async () => {}, releaseAdmission: async () => {},
     validateStop: vi.fn(async () => {}),
+    withRollbackAdmission: async (_review, identity, stop) => { expect(identity).toEqual(candidate); return stop(); },
     stop: vi.fn(async identity => { effects.push('stop:' + identity.ownerId); }), assertStopped: async () => {},
     start: vi.fn(async destination => { serving = 'artifact' in destination ? 'target' : 'previous'; effects.push('start:' + serving); }),
     canRestore: vi.fn(async () => false), validateRestore: vi.fn(async () => {}),

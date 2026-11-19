@@ -339,6 +339,7 @@ export class OmnitronDaemon {
   private recoveryMonitor: BackendRecoveryMonitor | null = null;
   private consoleStartup: BackendRuntimeStatus['consoleStartup'];
   private runtimeRestartAdmission: { digest: string; request: RuntimeRestartPrepareRequest; ready: Promise<RuntimeRestartConfiguration> } | null = null;
+  private rollbackHold: { digest: string; attempt: string; timer: NodeJS.Timeout } | null = null;
   private supervision: BackendRuntimeStatus['supervision'];
 
   /** Daemon config accessor for external use (e.g., DaemonRpcService) */
@@ -488,6 +489,7 @@ export class OmnitronDaemon {
 
   /** Apply the reviewed cancellation inside the existing runtime-update transaction. */
   async prepareRuntimeRestart(request: RuntimeRestartPrepareRequest): Promise<RuntimeRestartConfiguration> {
+    if (this.rollbackHold) throw Error('Cold rollback admission is held by another transition');
     if (!/^[a-f0-9]{64}$/.test(request.planDigest) || !/^[a-f0-9]{64}$/.test(request.configurationSha256) ||
         !Array.isArray(request.backups) || request.backups.length > 1000)
       throw Error('Invalid runtime restart admission');
@@ -537,6 +539,83 @@ export class OmnitronDaemon {
     if (this.runtimeRestartAdmission === admission) this.runtimeRestartAdmission = null;
   }
 
+  private async drainControllerWriters(): Promise<void> {
+    const gate = this.app!.netron!.inbound;
+    const [requests] = await withControlDeadline(Promise.all([gate.drain(30_000), this.flowRuntime?.pauseAndDrain()]), 35_000,
+      'Incoming requests or background Flow operations have not drained');
+    if (!requests.drained) throw Error(`${requests.left} inbound request(s) have not drained`);
+  }
+
+  /** Only the current private update receipt can drain public writers for a native rollback. */
+  async holdRuntimeRollback(digest: string, callerPid: number, attempt: string): Promise<void> {
+    if (!/^[a-f0-9]{64}$/.test(digest) || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(attempt) || !Number.isSafeInteger(callerPid) || callerPid < 1 || callerPid === process.pid)
+      throw Error('Invalid cold rollback admission');
+    const { readRuntimeUpdateReceipt } = await import('./runtime-update.js');
+    const { readProcessLifetime, compareProcessLifetimes } = await import('@omnitron-dev/common/process-identity');
+    const directory = path.join(OMNITRON_HOME, 'runtime/local-updates');
+    const receipt = await readRuntimeUpdateReceipt(directory);
+    const live = receipt?.rollbackOwner;
+    if (receipt?.phase !== 'stopping-candidate' || receipt.digest !== digest || receipt.plan.instance !== OMNITRON_HOME ||
+        !live || live.backendPid !== process.pid || live.backend !== receipt.plan.target.artifact)
+      throw Error('No current rollback intent owns this serving controller');
+    const caller = readProcessLifetime(callerPid);
+    const gate = this.app?.netron?.inbound, execution = this.execution;
+    if (caller.state !== 'alive' || !gate || !execution || this.isShuttingDown || this.preparingBackend || this.handingOffBackend || this.runtimeRestartAdmission)
+      throw Error('The serving controller cannot hold this rollback');
+    this.preparingBackend = true;
+    let observing = false;
+    const timer = setInterval(() => {
+      const current = readProcessLifetime(callerPid);
+      if (current.state === 'dead' || current.state === 'alive' && compareProcessLifetimes(caller.identity, current.identity) === 'different') {
+        this.releaseRuntimeRollback(digest, attempt);
+        return;
+      }
+      if (!observing) {
+        observing = true;
+        void readRuntimeUpdateReceipt(directory).then(now => {
+          if (now?.digest !== digest || now.phase !== 'stopping-candidate') this.releaseRuntimeRollback(digest, attempt);
+        }, () => { /* Unreadable authority does not release a live hold. */ }).finally(() => { observing = false; });
+      }
+    }, 1000);
+    timer.unref();
+    this.rollbackHold = { digest, attempt, timer };
+    try {
+      await this.drainControllerWriters();
+      const { sourceControllerJournalCheck } = await import('./controller-journal-compatibility.js');
+      const plan = receipt.plan;
+      for (const id of new Set([plan.before.backend, ...(plan.configuration ? [plan.target.artifact] : [])]))
+        await sourceControllerJournalCheck(OMNITRON_HOME, id)();
+      if (plan.configuration) {
+        const { readRestartConfiguration } = await import('../project/runtime-restart.js');
+        const retained = await readRestartConfiguration(OMNITRON_HOME, plan.configuration.sha256);
+        const projects = await this.app!.container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
+        if (projects.recoveryRegistryDigest() !== retained.registryDigest) throw Error('Project registration changed since the reviewed rollback');
+      }
+      const snapshot = await execution.controlledOwnerSnapshot();
+      const handles = new Set(plan.stacks.flatMap(stack => stack.apps.map(app => app.handleKey)));
+      const latest = await readRuntimeUpdateReceipt(directory);
+      if (this.rollbackHold?.attempt !== attempt || latest?.digest !== digest || latest.phase !== 'stopping-candidate' ||
+          !isDeepStrictEqual(latest.rollbackOwner, live) || snapshot.status.owner.id !== live.ownerId || snapshot.status.owner.pid !== live.ownerPid ||
+          Object.values(this.backendRuntimeStatus().blockers).some(count => count > 0) ||
+          snapshot.status.inFlight !== 0 || snapshot.apps.some(app => app.info.status !== 'stopped' && !handles.has(app.info.name)) ||
+          snapshot.watchedApps.some(watch => !plan.watches.some(prior => prior.name === watch.name && prior.directory === watch.directory)) ||
+          snapshot.workers.some(worker => !worker.pid || !live.retiredPids.includes(worker.pid)) ||
+          snapshot.apps.some(app => app.info.pid && !live.retiredPids.includes(app.info.pid)))
+        throw Error('Application ownership changed during cold rollback admission');
+    } catch (error) { this.releaseRuntimeRollback(digest, attempt); throw error; }
+  }
+
+  releaseRuntimeRollback(digest: string, attempt: string): void {
+    if (this.rollbackHold?.digest !== digest || this.rollbackHold.attempt !== attempt) return;
+    clearInterval(this.rollbackHold.timer);
+    this.rollbackHold = null;
+    this.preparingBackend = false;
+    if (!this.isShuttingDown) {
+      this.app?.netron?.inbound.reopen();
+      this.flowRuntime?.resume();
+    }
+  }
+
   /** Called after the initiating RPC has returned, so it is not waiting for itself. */
   async prepareBackendHandoff(candidateId: string, backups?: readonly OperationReceipt[], admission?: BackendHandoffAdmission): Promise<BackendHandoffState> {
     if (!this.execution || !this.app?.netron || !this.watchConfig) throw new Error(this.backendRuntimeStatus().reason ?? 'Backend is not ready');
@@ -565,8 +644,7 @@ export class OmnitronDaemon {
     try {
       await this.backupService?.prepareHandoff(backups);
       projects = await this.app.container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
-      const drained = await gate.drain(30_000);
-      if (!drained.drained) throw new Error(`${drained.left} inbound request(s) have not drained; backend transfer was refused`);
+      await this.drainControllerWriters();
       await checkJournals();
       assertIdle();
       const projectState = await projects.prepareHandoff();
@@ -587,6 +665,7 @@ export class OmnitronDaemon {
       this.infraService?.resumeAfterHandoff();
       gate.reopen();
       this.preparingBackend = false;
+      this.flowRuntime?.resume();
       await (await this.initializeRecoveryMonitor())?.start();
       throw error;
     }
@@ -602,6 +681,7 @@ export class OmnitronDaemon {
     this.infraService?.resumeAfterHandoff();
     this.app.netron?.inbound.reopen();
     this.preparingBackend = false;
+    this.flowRuntime?.resume();
     await (await this.initializeRecoveryMonitor())?.start();
   }
 

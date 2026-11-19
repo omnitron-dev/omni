@@ -9,7 +9,7 @@ import { runInNewContext } from 'node:vm';
 import { register } from 'tsx/esm/api';
 const loader = register({ namespace: 'runtime-update-test' });
 const { runRuntimeUpdate, readRuntimeUpdateReceipt, readPreparedRuntimeUpdate } = await loader.import('../../src/daemon/runtime-update.ts', import.meta.url);
-const { assertLocalIdle, assertLocalReview, assertReviewedBoot, assertSameSavedSelection, assertLocalServiceTargets, assertRetainedRuntimeInfrastructure } = await loader.import('../../src/daemon/runtime-update-host.ts', import.meta.url);
+const { assertLocalIdle, assertLocalReview, assertReviewedBoot, assertSameSavedSelection, assertLocalServiceTargets, assertRetainedRuntimeInfrastructure, assertRollbackStackScope, withServingRollbackAdmission } = await loader.import('../../src/daemon/runtime-update-host.ts', import.meta.url);
 const { assertReviewableBackendActivity, retainReviewedBackups } = await loader.import('../../src/shared/backup-admission.ts', import.meta.url);
 const { RuntimeObservationTimeout, RuntimeObservationUnconfirmed } = await loader.import('../../src/daemon/runtime-observation.ts', import.meta.url);
 import { BACKEND_ACTIVITY_COUNTERS } from '../../src/shared/dto/backend.ts';
@@ -32,6 +32,38 @@ test('only boots with the exact native admission and unchanged desired state', (
   for (const change of [{ enabled: false }, { infrastructureMode: 'reconcile' }, { infrastructureReview: null }, { infrastructureReview: 'b'.repeat(64) }]) {
     assert.throws(() => assertReviewedBoot({ ...stack, ...change }, reviewed), /cannot prove/);
   }
+});
+
+test('rollback scope admits partial startup and refuses a new stack, application, binding or changed release', () => {
+  const scope = { project: 'library', stack: 'dev' };
+  const selection = { kind: 'release', id: 'v1', manifestSha256: 'a'.repeat(64) };
+  const app = name => ({ handleKey: 'library/dev/' + name });
+  const stack = { ...scope, enabled: true, path: '/fixture/library', runtimeScope: scope, selection,
+    apps: [app('one'), app('two')], status: 'running' };
+  const plan = { stacks: [{ ...stack, savedSelection: selection }] };
+  const partial = { targets: [{ ...stack, apps: [app('one')], status: 'degraded' }], excluded: [] };
+  assert.doesNotThrow(() => assertRollbackStackScope(plan, partial));
+  assert.doesNotThrow(() => assertRollbackStackScope({ stacks: [] }, { targets: [], excluded: [{ ...scope, reason: 'disabled' }] }));
+  assert.throws(() => assertRollbackStackScope({ stacks: [] }, partial), /membership changed/);
+  for (const change of [{ path: '/other' }, { runtimeScope: { project: 'other', stack: 'dev' } },
+    { apps: [app('new')] }, { selection: { ...selection, id: 'v2' } }])
+    assert.throws(() => assertRollbackStackScope(plan, { targets: [{ ...partial.targets[0], ...change }], excluded: [] }));
+});
+
+test('live rollback needs a private hold even with an empty plan and releases its exact attempt if native stop fails', async () => {
+  const calls = [];
+  const service = {
+    runtimeRollbackHold: async input => { calls.push(['hold', input]); },
+    runtimeRollbackRelease: async input => { calls.push(['release', input]); },
+  };
+  const stop = async () => { calls.push(['stop']); throw Error('Native stop failed'); };
+  const digest = 'a'.repeat(64);
+  await assert.rejects(withServingRollbackAdmission(service, undefined, digest, stop), /cannot hold the reviewed application inventory/);
+  assert.deepEqual(calls, []);
+  await assert.rejects(withServingRollbackAdmission(service, 1, digest, stop), /Native stop failed/);
+  assert.deepEqual(calls.map(([name]) => name), ['hold', 'stop', 'release']);
+  assert.equal(calls[0][1].callerPid, process.pid);
+  assert.deepEqual(calls[2][1], { digest, attempt: calls[0][1].attempt });
 });
 
 test('a stale saved preserve review identifies both digests even with a capable restoring controller', () => {
@@ -220,6 +252,26 @@ test('recovery checks an older cold controller before any candidate retirement o
   assert.equal(receipt.phase, 'recovery-required');
   assert.deepEqual(receipt.plan, plan);
   assert.equal(receipt.restoreAttempted, undefined);
+});
+
+test('an accepted host stays available for a fresh plan when the rollback footprint changes before shutdown', { skip: !native }, async t => {
+  const directory = await privateInstance(t), plan = planFor(directory, { pid: process.pid, generation: 'old' });
+  const candidate = { ...plan.before, backend: plan.target.artifact, ownerId: 'candidate' };
+  let validates = 0, changed = false;
+  const actions = { async prepare() { return plan; }, validateRestore: validateFixtureRestore,
+    async canRestore() { return false; }, async captureForRollback() { return candidate; },
+    async validateStop(owner, _forward, rollback) {
+      assert.deepEqual(rollback, plan); assert.deepEqual(owner, candidate); validates++;
+      if (changed) throw Error('A previously excluded stack acquired a generation');
+    }, async stop() { assert.fail('must preserve the running owner'); } };
+  const preview = await runRuntimeUpdate({ actions, directory, operation: 'prepare' });
+  await fs.writeFile(path.join(directory, 'current.json'), JSON.stringify({ ...preview, phase: 'accepted', updatedAt: new Date().toISOString() }), { mode: 0o600 });
+  await assert.rejects(runRuntimeUpdate({ actions, directory, operation:'recover', digest:preview.digest,
+    progress: phase => { if (phase === 'stopping-candidate') changed = true; } }), /refused before retirement/);
+  const receipt = await readRuntimeUpdateReceipt(directory);
+  assert.equal(validates, 2); assert.equal(receipt.phase, 'accepted'); assert.equal(receipt.rollbackOwner, undefined);
+  assert.equal(receipt.restoreAttempted, undefined); assert.match(receipt.recoveryError, /excluded stack/);
+  assert.equal((await runRuntimeUpdate({ actions, directory, operation:'prepare' })).digest, preview.digest);
 });
 
 test('a pending review holds the native instance lock and a concurrent operation exits before preparation', { skip: !native }, async t => {
@@ -473,6 +525,7 @@ test('applying the same review twice verifies a new live process generation and 
       assert.equal(identity.artifact, target);
       return planFor(directory, identity).before;
     },
+    async withRollbackAdmission(_plan, identity, stop) { assert.equal(identity.ownerId, owner.identity.generation); return stop(); },
   };
   const config = { actions, directory, progress() {} };
   const preview = await runRuntimeUpdate({ ...config, operation: 'prepare' });
@@ -537,6 +590,7 @@ test('native recovery records backend absence before stopping and resumes a lost
     validateRestore: validateFixtureRestore,
     async canRestore(identity) { return identity.ownerId === retired.ownerId && candidateStopped; },
     async captureForRollback() { captures++; return retired; },
+    async withRollbackAdmission(_plan, identity, stop) { assert.equal(identity.observation, 'native-empty-owner'); return stop(); },
   };
   const review = await runRuntimeUpdate({ actions, directory, operation: 'prepare' });
   await assert.rejects(runRuntimeUpdate({ actions, directory, operation: 'apply', digest: review.digest }), /never became ready/);

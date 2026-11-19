@@ -61,6 +61,8 @@ export interface RuntimeUpdateActions {
   releaseAdmission(plan: RuntimeUpdatePlan, digest: string): Promise<void>;
   validateStop(previous: RuntimeUpdateRetiringIdentity, plan?: RuntimeUpdatePlan, rollbackPlan?: RuntimeUpdatePlan): Promise<void>;
   stop(previous: RuntimeUpdateRetiringIdentity): Promise<unknown>;
+  /** Hold the checked inventory and journal writers until native retirement is issued. */
+  withRollbackAdmission(plan: RuntimeUpdatePlan, retiring: RuntimeUpdateRetiringIdentity, stop: () => Promise<unknown>): Promise<unknown>;
   assertStopped(previous: RuntimeUpdateRetiringIdentity): Promise<unknown>;
   canRestore(previous: RuntimeUpdateRetiringIdentity): Promise<boolean>;
   /** Verify the reviewed cold starter before retiring a candidate that may still be serving. */
@@ -153,6 +155,8 @@ export async function runRuntimeUpdate({ actions, directory, operation, digest: 
       if (record.phase === 'aborted') return record;
       if (record.phase === 'draining') return releaseAdmission(record.error);
       const plan = record.plan;
+      const accepted = record.phase === 'accepted' ? record : null;
+      let retirementIssued = false;
       try {
         if (!record.restoreAttempted && !record.rollbackOwner &&
             ['stopping', 'failed', 'recovery-required'].includes(record.phase) && await actions.isPreviousServing?.(plan)) {
@@ -171,12 +175,13 @@ export async function runRuntimeUpdate({ actions, directory, operation, digest: 
         if (!(await actions.canRestore(record.rollbackOwner ?? plan.before))) {
           const live = record.rollbackOwner ?? await actions.captureForRollback(plan);
           const claimedStartup = live.backendPid === null && live.startupEvidence !== undefined;
-          if (!claimedStartup) await actions.validateStop(live);
+          if (!claimedStartup) await actions.validateStop(live, undefined, plan);
           await save('stopping-candidate', { rollbackOwner: live });
           // A retry must retain the original evidence, even if the prior stop
           // failed. Recheck it after the durable receipt and before any signal.
-          if (claimedStartup) await actions.validateStop(live, undefined, plan);
-          await actions.stop(live);
+          await actions.validateStop(live, undefined, plan);
+          const stop = () => { retirementIssued = true; return actions.stop(live); };
+          await actions.withRollbackAdmission(plan, live, stop);
           await actions.assertStopped(live);
         }
         await save('restoring', { restoreAttempted: true });
@@ -185,6 +190,11 @@ export async function runRuntimeUpdate({ actions, directory, operation, digest: 
         return await save('rolled-back', { acceptance });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        if (accepted && !retirementIssued && !record.restoreAttempted) {
+          record = accepted;
+          await save('accepted', { recoveryError: message });
+          throw Error('Local rollback refused before retirement: ' + message, { cause: error });
+        }
         await save('recovery-required', { recoveryError: message });
         throw Error('Local recovery requires inspection: ' + message, { cause: error });
       }

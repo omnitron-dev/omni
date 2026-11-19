@@ -232,6 +232,10 @@ export async function managedLocalSyncRoundtrip(context) {
     async assertStopped(expected) { assert.equal(stopped, expected.ownerId); },
     async validateRestore(expected) { assert.equal(expected.before.console, null); assert.equal(expected.before.consoleCommit, null); },
     async canRestore(expected) { return Boolean(stopped && stopped === expected.ownerId); },
+    async withRollbackAdmission(_plan, identity, stop) {
+      assert.equal(identity.ownerId, (await status()).execution.owner.id);
+      return stop();
+    },
     async captureForRollback() {
       const value = await nativeRoles(await status());
       assert.equal(value.backend, candidate.id); assert.notEqual(value.ownerId, plan.before.ownerId);

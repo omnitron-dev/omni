@@ -167,12 +167,13 @@ pnpm exec xec update local-sync --status
 
 ### Studio and Flows when returning to an earlier backend
 
-Run the capable manager's `omnitron --json backend upgrade <retained-runtime>/packages/0/dist --check` against the exact recovery target. The check opens the controller's SQLite journal read-only. The serving controller checks again after incoming requests drain, before releasing ownership. A new manager carries the verified target digest through the private guardian request.
+Run the capable manager's `omnitron --json backend upgrade <retained-runtime>/packages/0/dist --check` against the exact recovery target. The check opens the controller's SQLite journal read-only. The serving controller stops admitting new public requests and Flow work, waits for admitted requests, disk samples and deliveries, then checks the journal again before releasing ownership. A drain timeout resumes that controller. A new manager carries the verified target digest through the private guardian request.
 
 | Current journal | Returning to the individual-conversation backend at `6c98e39f` |
 | --- | --- |
 | Individual conversations only, at most one queued or running turn per thread and one running turn per connector | The legacy backend can open the journal and continue those conversations. |
 | A team room exists, including an idle one | Select a retained backend that understands team membership and separate provider conversations. The old backend can dispatch a peer's turn using the lead's provider session. |
+| A live namespaced Studio connector, or a saved room, policy or member references a custom provider ID | Select a backend declaring `studioProviders: 1`. An expired registration with no saved references can remain in the journal. |
 | Several outstanding turns in a thread or several running turns on one connector | Allow the work to settle or select a compatible backend. The legacy constructor attempts to recreate both unique indexes and can fail after creating the first. |
 | An active flow or a queued or dispatching external delivery | Continue with a compatible runtime. To retire that automation deliberately, inspect original receiver IDs, settle outstanding work and review the pause in Flows before checking again. |
 | Inactive flow drafts and historical receipts only | The old backend leaves these tables on disk. A compatible backend can reopen the same history later. An unconfirmed receipt still requires observation of its original command. |
@@ -404,6 +405,12 @@ The Xec equivalents are `update local-sync --review <plan-sha256> --reconcile`
 and `update local-sync --review <plan-sha256> --rollback`. Neither path rebuilds
 the runtime. A deadline ends observation, not the underlying operation's durable
 ownership; a late reply cannot publish acceptance.
+
+For one application outage, review and perform `stack stop <project> <stack> --keep-infrastructure`, then prepare a fresh host update. Confirm the stopped stack appears in `excluded` with reason `disabled`, the host plan has the intended empty local application and watch lists, and the reviewed container IDs are retained. After host acceptance, SDK selection, migrations and the single reviewed stack start each use their own receipts.
+
+Cold rollback checks the current journal against both its interim starter and final backend before retiring the owner. A serving controller holds public requests and background Flow work, then checks the journal, catalogue, workers and watches against the recorded shutdown intent. Native service control can retire the reviewed owner while public ingress is held. If the updating process exits first, the controller reopens ingress and resumes sampling. An unavailable backend uses the independent native empty-owner evidence described above. A serving controller without the rollback admission protocol can accept a new stack between its final inventory check and shutdown. Use a compatible managed backend handoff or a newly reviewed forward update on that version.
+
+An empty plan cannot retire an application started after host acceptance. A partially started candidate can recover when its observed processes belong to the original reviewed stacks and app handles. A refusal before any native retirement keeps a previously accepted update available for independent forward recovery. Inspect the refusal in `runtime update status <plan-sha256>`. A migration or SDK change has its own recovery decision.
 
 A confirmed transition failure attempts to restore the recorded roles and Console from the
 installed artifacts once clean process retirement is established. For an

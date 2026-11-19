@@ -188,7 +188,7 @@ describe('backup transfer lifecycle', () => {
       await new Promise<void>(resolve => { timers.add(setTimeout(resolve, 800)); });
     });
     await expect(dumpToFile(testExecution, process.execPath, ['-e', 'process.stdout.end("complete")'], file('late-sync'), false,
-      { timeoutMs: 300 })).rejects.toThrow(/deadline/);
+      { timeoutMs: 300 })).rejects.toThrow('deadline during publication (8 bytes written to archive)');
     expect(fs.existsSync(file('late-sync'))).toBe(false);
     expect(fs.readdirSync(directory).filter(name => name.endsWith('.partial'))).toEqual([]);
   });

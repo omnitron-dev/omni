@@ -356,6 +356,8 @@ Run `omnitron backup create catalog/dev/cache` for a manual dump or `omnitron ba
 
 For a single database, `omnitron backup create <project>/<stack>/<database>` prints the operation UUID before submitting the dump. If the RPC reply is lost, the CLI reads that same backup operation. It follows an in-progress receipt for up to the configured database transfer timeout. A successful receipt reports the archive UUID and size. If the outcome is still unconfirmed or you interrupt the CLI, inspect it with `omnitron --json backup operations <uuid>` before requesting another dump.
 
+A database transfer deadline covers file preparation, transfer and durable publication. The error names the PostgreSQL tool, the phase that reached the deadline, and the archive bytes read or written at that point. For a compressed backup the count measures compressed bytes. Use the operation receipt to confirm the final outcome.
+
 `omnitron --json backup list` returns the archive records in `data.backups`, with full restore IDs, and the schedule outcomes and stack coverage in `data.status`. When the archive index is available but coverage cannot be read, the command exits with code 1 and includes the archive records under `backups` in the `BACKUP_STATUS_UNAVAILABLE` error.
 
 ## Logs and operations

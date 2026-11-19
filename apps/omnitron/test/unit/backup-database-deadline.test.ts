@@ -91,8 +91,10 @@ if (restore) { process.stdin.resume(); process.stdin.on('end', done); } else don
     vi.stubEnv('OMNI_BACKUP_FIXTURE_DELAY', '5000');
     const dumping = backup.createBackup('fixture/dev/ledger');
     expect(() => backup.configure({ databaseTimeoutMs: 5_000 })).toThrow(/before starting/);
-    await expect(dumping).rejects.toThrow(/300 ms deadline/);
-    await expect(backup.restoreBackup(record.id)).rejects.toThrow(/300 ms deadline/);
+    await expect(dumping).rejects.toThrow(/pg_dump pipeline exceeded its 300 ms deadline during transfer \(\d+ bytes written to archive\)/);
+    await expect(backup.restoreBackup(record.id)).rejects.toThrow(
+      `psql pipeline exceeded its 300 ms deadline during transfer (${record.size} bytes read from archive)`,
+    );
     expect(backup.activeOperationCount()).toBe(0);
     expect((await backup.listBackups()).map(item => item.id)).toEqual([record.id]);
     expect(fs.readdirSync(path.join(state.home, 'backups')).filter(name => name.endsWith('.partial'))).toEqual([]);

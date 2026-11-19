@@ -119,6 +119,7 @@ export function resolveBackupTimeout(timeoutMs = DEFAULT_TIMEOUT_MS): number {
 interface FileTransfer {
   direction: 'dump' | 'restore';
   location: string;
+  archiveBytes(): number;
   prepare?(): Promise<void>;
   pipe(streams: { stdout: PassThrough; stdin: PassThrough }, signal: AbortSignal): Promise<void>;
   publish?(checkDeadline: () => void): Promise<void>;
@@ -138,12 +139,17 @@ async function withinCleanup<T>(task: Promise<T>, deadline: number, location: st
 /** Xec owns command completion; this layer owns file streams and durable publication. */
 async function runFileTransfer(execution: Pick<ExecutionService, 'execute'>, command: string, args: string[], options: PipelineOptions, transfer: FileTransfer): Promise<void> {
   const timeoutMs = resolveBackupTimeout(options.timeoutMs);
+  const target = options.execution?.adapterOptions;
+  const entrypoint = target?.type === 'docker' && target.runMode === 'run' ? target.entrypoint : undefined;
+  const program = (Array.isArray(entrypoint) ? entrypoint[0] : entrypoint) || command;
 
   const deadline = performance.now() + timeoutMs;
   const controller = new AbortController();
+  let phase = 'preparation';
   const expire = () => {
     const limit = timeoutMs >= 1000 ? `${timeoutMs / 1000} s` : `${timeoutMs} ms`;
-    controller.abort(new Error(`${command} pipeline exceeded its ${limit} deadline`));
+    const progress = transfer.direction === 'dump' ? 'bytes written to archive' : 'bytes read from archive';
+    controller.abort(new Error(`${program} pipeline exceeded its ${limit} deadline during ${phase} (${transfer.archiveBytes()} ${progress})`));
   };
   const cancel = () => controller.abort(options.signal!.reason);
   options.signal?.addEventListener('abort', cancel, { once: true });
@@ -177,6 +183,7 @@ async function runFileTransfer(execution: Pick<ExecutionService, 'execute'>, com
     const preparation = transfer.prepare?.();
     if (preparation) await wait(preparation);
     checkDeadline();
+    phase = 'transfer';
     const pumping = track(transfer.pipe(streams, controller.signal));
     processResult = execution.execute({ ...options.execution, command, args, shell: false, nothrow: true,
       env: Object.fromEntries(Object.entries(options.env ?? {}).filter((entry): entry is [string, string] => entry[1] !== undefined)),
@@ -186,12 +193,14 @@ async function runFileTransfer(execution: Pick<ExecutionService, 'execute'>, com
       stderr: 'pipe', maxBuffer: 8192 });
     const successfulExit = processResult.then(result => {
       if (result.exitCode !== 0 || result.signal || result.aborted)
-        throw new Error(`${command} exited with ${result.signal ? `signal ${result.signal}` : `code ${result.exitCode}`}${result.stderr ? `: ${result.stderr.trim()}` : ''}`);
+        throw new Error(`${program} exited with ${result.signal ? `signal ${result.signal}` : `code ${result.exitCode}`}${result.stderr ? `: ${result.stderr.trim()}` : ''}`);
     });
     await wait(Promise.all([pumping, successfulExit]));
     checkDeadline();
-    const publication = transfer.publish?.(checkDeadline);
-    if (publication) await wait(publication);
+    if (transfer.publish) {
+      phase = 'publication';
+      await wait(transfer.publish(checkDeadline));
+    }
     checkDeadline();
   } catch (error) {
     failure = controller.signal.aborted ? controller.signal.reason : error;
@@ -255,6 +264,7 @@ export async function dumpToFile(
     await runFileTransfer(execution, command, args, options, {
       direction: 'dump',
       location: staging,
+      archiveBytes: () => output?.bytesWritten ?? 0,
       async prepare() {
         // Refuse before spawning, and independently protect the publication race
         // with link(), which atomically refuses an occupied final name.
@@ -322,11 +332,13 @@ export async function restoreFromFile(
   compressed: boolean,
   options: PipelineOptions = {},
 ): Promise<void> {
+  let input: fs.ReadStream | undefined;
   await runFileTransfer(execution, command, args, options, {
     direction: 'restore',
     location: inputPath,
+    archiveBytes: () => input?.bytesRead ?? 0,
     pipe(child, signal) {
-      const input = fs.createReadStream(inputPath);
+      input = fs.createReadStream(inputPath);
       return compressed
         ? pipeline(input, createGunzip(), child.stdin!, { signal })
         : pipeline(input, child.stdin!, { signal });

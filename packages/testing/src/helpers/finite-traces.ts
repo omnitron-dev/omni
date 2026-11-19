@@ -163,7 +163,7 @@ export async function verifyFiniteTraces<State, A extends string, View>(
     if (report.verdict !== 'matched') break;
     report.completedTraces++;
   }
-  if (report.mode === 'replay' && report.verdict === 'matched') report.trace = replay;
+  if (replay !== undefined && report.verdict === 'matched') report.trace = replay;
   report.elapsedMs = Math.round(performance.now() - begin);
   return report;
 }

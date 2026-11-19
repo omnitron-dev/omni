@@ -1,4 +1,5 @@
 import { testExecution } from '../fixtures/execution.js';
+import { createPipelineTestDatabase } from '../fixtures/pipeline-database.js';
 import 'reflect-metadata';
 import { afterEach, expect, it, vi } from 'vitest';
 import fs from 'node:fs/promises';
@@ -125,10 +126,7 @@ console.log('release completed');
   Object.assign(projects, { logger, daemonStateStore: state, configRegistry: new Map([[scope.project, { config }]]),
     registry: { get: (name: string) => name === scope.project ? registered : undefined, resolveStack: (value: unknown) => value },
     nodeStackStop: { assertMutable() {} }, orchestrator: { getExecutionOwnerRuntime: getRuntime }, releaseStore: async () => store });
-  const raw = new Database(path.join(root, 'pipelines.sqlite'));
-  raw.exec(`CREATE TABLE pipelines(id TEXT PRIMARY KEY,name TEXT UNIQUE NOT NULL,description TEXT,steps TEXT NOT NULL,triggers TEXT NOT NULL,createdAt TEXT NOT NULL,updatedAt TEXT NOT NULL);
-    CREATE TABLE pipeline_runs(id TEXT PRIMARY KEY,pipelineId TEXT NOT NULL,status TEXT NOT NULL,steps TEXT NOT NULL,startedAt TEXT NOT NULL,completedAt TEXT,triggeredBy TEXT NOT NULL,params TEXT,admission TEXT);`);
-  db = new Kysely<OmnitronDatabase>({ dialect: new SqliteDialect({ database: withDateBinding(raw) }) });
+  db = createPipelineTestDatabase(path.join(root, 'pipelines.sqlite'));
   pipelines = new PipelineService(db, logger as never, testExecution);
   const gate = vi.fn();
   pipelines.configure({ getNode: () => undefined, nodeToSshTarget: async () => { throw Error('No remote execution'); } } as never, undefined,

@@ -14,6 +14,7 @@ const temporaryDirectory = realpathSync(tmpdir());
 export default defineConfig({
   resolve: {
     alias: withPrismSourceAliases({
+      '@omnitron-dev/testing/helpers': path.resolve(import.meta.dirname, '../../packages/testing/src/helpers/index.ts'),
       '@omnitron-dev/common/process-identity': path.resolve(import.meta.dirname, '../../packages/common/src/node/process-identity.ts'),
       '@omnitron-dev/titan-database/coordination': path.resolve(import.meta.dirname, '../../packages/titan-database/src/exports/coordination.ts'),
       // Exercise current source contracts without rebuilding packages used by live applications.

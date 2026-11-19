@@ -1,3 +1,4 @@
+import type { Readable, Writable } from 'node:stream';
 import type { IMcpToolDef } from './types.js';
 
 /**
@@ -8,6 +9,8 @@ import type { IMcpToolDef } from './types.js';
  */
 export class McpBridge {
   private tools = new Map<string, IMcpToolDef>();
+
+  constructor(private readonly input: Readable = process.stdin, private readonly output: Writable = process.stdout) {}
 
   registerTools(tools: IMcpToolDef[]): void {
     for (const tool of tools) {
@@ -23,7 +26,7 @@ export class McpBridge {
   async start(): Promise<void> {
     const { createInterface } = await import('node:readline');
 
-    const rl = createInterface({ input: process.stdin });
+    const rl = createInterface({ input: this.input });
 
     // Send server info on connect
     this.send({
@@ -127,7 +130,7 @@ export class McpBridge {
   }
 
   private send(message: any): void {
-    process.stdout.write(JSON.stringify(message) + '\n');
+    this.output.write(JSON.stringify(message) + '\n');
   }
 
   private sendError(id: unknown, code: number, message: string): void {

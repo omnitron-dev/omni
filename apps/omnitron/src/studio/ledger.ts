@@ -7,6 +7,8 @@ import type {
   StudioThread,
   StudioTurn,
   StudioResult,
+  StudioStatus,
+  StudioThreadCursor,
 } from '../shared/dto/studio.js';
 
 export interface StudioScope {
@@ -33,6 +35,9 @@ export interface StudioJob {
 const scopeValues = (s: StudioScope) => [s.account, s.project, s.directory];
 const threadColumns = 'id, title, provider, updatedAt, assignment, stack';
 const lease = 45_000;
+const threadPageSize = 40;
+const turnPageSize = 8;
+const pendingPerConnector = 16;
 
 /** Local private state. SQLite serializes each admission, including across a backend handoff. */
 export class StudioLedger {
@@ -51,7 +56,8 @@ export class StudioLedger {
         provider TEXT NOT NULL, title TEXT NOT NULL, updatedAt INTEGER NOT NULL, conversation TEXT,
         assignment TEXT NOT NULL, stack TEXT
       );
-      CREATE INDEX IF NOT EXISTS studio_workspace ON studio_threads(account,project,directory,updatedAt DESC);
+      CREATE INDEX IF NOT EXISTS studio_list ON studio_threads(account,project,directory,updatedAt DESC,id DESC);
+      CREATE INDEX IF NOT EXISTS studio_stack_list ON studio_threads(account,project,directory,stack,updatedAt DESC,id DESC);
       CREATE TABLE IF NOT EXISTS studio_turns (
         seq INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE, threadId TEXT NOT NULL REFERENCES studio_threads(id),
         connection TEXT NOT NULL, session TEXT, prompt TEXT NOT NULL, answer TEXT NOT NULL DEFAULT '',
@@ -61,6 +67,10 @@ export class StudioLedger {
       CREATE INDEX IF NOT EXISTS studio_dispatch ON studio_turns(connection, status, seq);
       CREATE UNIQUE INDEX IF NOT EXISTS studio_active_turn ON studio_turns(threadId) WHERE status IN ('queued','running');
       CREATE UNIQUE INDEX IF NOT EXISTS studio_active_connector ON studio_turns(connection) WHERE status = 'running';
+      CREATE TABLE IF NOT EXISTS studio_withdrawn (
+        account TEXT NOT NULL, project TEXT NOT NULL, directory TEXT NOT NULL, threadId TEXT NOT NULL,
+        turnId TEXT NOT NULL, PRIMARY KEY (account,project,directory,threadId,turnId)
+      ) WITHOUT ROWID;
     `);
   }
 
@@ -115,7 +125,7 @@ export class StudioLedger {
       .get(...scopeValues(scope), provider, this.clock()) as StudioLink | undefined;
   }
 
-  workspace(scope: StudioScope) {
+  workspace(scope: StudioScope, stack?: string, before?: StudioThreadCursor) {
     this.reap();
     const links = this.db
       .prepare(
@@ -126,10 +136,24 @@ export class StudioLedger {
       .prepare(
         'SELECT ' +
           threadColumns +
-          ' FROM studio_threads WHERE account=? AND project=? AND directory=? ORDER BY updatedAt DESC, rowid DESC'
+          ' FROM studio_threads WHERE account=? AND project=? AND directory=?' +
+          (stack ? ' AND stack=?' : '') +
+          (before ? ' AND (updatedAt,id)<(?,?)' : '') +
+          ' ORDER BY updatedAt DESC, id DESC LIMIT ?'
       )
-      .all(...scopeValues(scope)) as StoredThread[];
-    return { links, threads: rows.map(threadView) };
+      .all(
+        ...scopeValues(scope),
+        ...(stack ? [stack] : []),
+        ...(before ? [before.updatedAt, before.id] : []),
+        threadPageSize + 1
+      ) as StoredThread[];
+    const threads = rows.slice(0, threadPageSize).map(threadView);
+    const last = threads.at(-1);
+    return {
+      links,
+      threads,
+      older: last && rows.length > threadPageSize ? { updatedAt: last.updatedAt, id: last.id } : null,
+    };
   }
 
   private owned(scope: StudioScope, threadId: string) {
@@ -140,17 +164,29 @@ export class StudioLedger {
       .get(threadId, ...scopeValues(scope)) as StoredThread | undefined;
   }
 
-  thread(scope: StudioScope, id: string) {
+  thread(scope: StudioScope, id: string, before?: string) {
     this.reap();
     const thread = this.owned(scope, id);
     if (!thread) throw Error('Conversation unavailable in this workspace');
-    const turns = this.db
+    const boundary = before
+      ? (this.db.prepare('SELECT seq FROM studio_turns WHERE threadId=? AND id=?').get(id, before) as
+          { seq: number } | undefined)
+      : undefined;
+    if (before && !boundary) throw Error('Turn cursor unavailable in this conversation');
+    const rows = this.db
       .prepare(
-        'SELECT id, prompt, answer, status, failure, createdAt, usage, review FROM studio_turns WHERE threadId=? ORDER BY seq'
+        'SELECT id, prompt, answer, status, failure, createdAt, usage, review FROM studio_turns WHERE threadId=?' +
+          (boundary ? ' AND seq<?' : '') +
+          ' ORDER BY seq DESC LIMIT ?'
       )
-      .all(id) as (Omit<StudioTurn, 'usage' | 'review'> & { usage: string | null; review: string | null })[];
+      .all(id, ...(boundary ? [boundary.seq] : []), turnPageSize + 1) as (Omit<StudioTurn, 'usage' | 'review'> & {
+      usage: string | null;
+      review: string | null;
+    })[];
+    const turns = rows.slice(0, turnPageSize).reverse();
     return {
       thread: threadView(thread),
+      beforeTurn: rows.length > turnPageSize ? turns[0]!.id : null,
       turns: turns.map((row) => ({
         ...row,
         usage: row.usage ? JSON.parse(row.usage) : null,
@@ -168,6 +204,14 @@ export class StudioLedger {
     return this.db
       .transaction(() => {
         this.reap();
+        if (
+          this.db
+            .prepare(
+              'SELECT 1 FROM studio_withdrawn WHERE account=? AND project=? AND directory=? AND threadId=? AND turnId=?'
+            )
+            .get(...scopeValues(scope), data.threadId, data.turnId)
+        )
+          throw Error('This request was withdrawn');
         const existing = this.owned(scope, data.threadId);
         const previous = this.db
           .prepare('SELECT threadId, prompt, parent FROM studio_turns WHERE id=?')
@@ -187,6 +231,11 @@ export class StudioLedger {
         }
         const link = this.linkFor(scope, data.provider);
         if (!link) throw Error('Connect this adapter before sending a message');
+        const pending = this.db
+          .prepare("SELECT count(*) AS total FROM studio_turns WHERE connection=? AND status IN ('queued','running')")
+          .get(link.id) as { total: number };
+        if (pending.total >= pendingPerConnector)
+          throw Error('The connector queue is full. Wait for an outstanding turn to finish.');
         if (existing) {
           if (
             existing.provider !== data.provider ||
@@ -230,12 +279,26 @@ export class StudioLedger {
   }
 
   cancel(scope: StudioScope, threadId: string, turnId: string) {
-    if (!this.owned(scope, threadId)) throw Error('Conversation unavailable in this workspace');
-    this.db
-      .prepare(
-        "UPDATE studio_turns SET status='cancelled',session=NULL WHERE threadId=? AND id=? AND status IN ('queued','running')"
-      )
-      .run(threadId, turnId);
+    return this.db
+      .transaction(() => {
+        const turn =
+          this.owned(scope, threadId) &&
+          (this.db.prepare('SELECT status FROM studio_turns WHERE threadId=? AND id=?').get(threadId, turnId) as
+            { status: StudioStatus } | undefined);
+        if (!turn) {
+          // A late delivery must remain withdrawn even when cancel arrives before send.
+          this.db
+            .prepare('INSERT OR IGNORE INTO studio_withdrawn VALUES (?,?,?,?,?)')
+            .run(...scopeValues(scope), threadId, turnId);
+          return { status: 'withdrawn' as const };
+        }
+        if (turn.status !== 'queued' && turn.status !== 'running') return { status: turn.status };
+        this.db
+          .prepare("UPDATE studio_turns SET status='cancelled',session=NULL WHERE threadId=? AND id=?")
+          .run(threadId, turnId);
+        return { status: 'cancelled' as const };
+      })
+      .immediate();
   }
 
   review(

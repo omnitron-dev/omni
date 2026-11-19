@@ -20,6 +20,42 @@ Agent Studio connects a Console operator to a model available through their loca
 
 SQL projects select one driver for SQLite, PostgreSQL or MySQL. Xec and Kysera command projects have no resident worker. On the command line, `omnitron init --name weekly-report --automation --database sqlite --service none` produces the same reviewed composition. The generated README describes installation and the commands, including which operation creates a table or writes an event.
 
+## How project composition works
+
+The catalog answers three independent questions about the requested workload. Xec owns execution and cancellation for a repeatable task. Kysera owns data access through a Kysely executor and one chosen database driver. Omnitron owns supervision when a process has a lifetime to manage. A supervised process can use Node directly or use Titan's application lifecycle. Selecting all three capabilities composes the same components used by each smaller project.
+
+```mermaid
+flowchart LR
+  Human[Operator] --> Form[Project choices]
+  Human --> Studio[Private interview]
+  Studio -->|Validated suggestion| Form
+  Form --> Plan[Deterministic starter plan]
+  CLI[Omnitron CLI] --> Plan
+  Plan --> Files[Files and dependency manifest]
+  Files --> Review[Review destination and effects]
+  Review -->|Approved digest| Registry[Registered project]
+  Registry -->|Finite task| Pipeline[Reviewed Xec pipeline]
+  Registry -->|Resident process| Owner[Omnitron execution owner]
+```
+
+The interview and the form use the same option catalog. The model can ask questions and propose choices. The server independently derives filenames, code, dependencies, effects and the digest from the selected choices. The browser submits the name, choices and digest for creation. A change in content, name, destination or workspace identity requires a new review. CLI initialization runs the same generator in the operator's current directory.
+
+For a tenant-isolated report service, storing a report and enforcing isolation on every query are separate requirements. The current SQL starter demonstrates persistence. Tenant policies require their own implementation and tests. The interview explains the gap and asks whether the operator wants this partial starter. An explicitly required database engine or machine stays part of the review.
+
+### Extending the catalog
+
+Each additional capability needs a concrete user question, an owning subsystem, declared effects and a verification path through its normal entry point. Add independent choices when users genuinely need them. Couple choices only where a technical dependency requires it.
+
+| Workload requirement | Owning mechanism | Evidence required before offering the choice |
+| --- | --- | --- |
+| Evolve a populated schema | Kysera migrations and the selected dialect | Apply to a populated disposable database, interrupt and resume, verify schema and retained records. Expose the recovery policy for destructive changes. |
+| Isolate records for different tenants | Kysera executor with application policies, optionally native PostgreSQL RLS | Exercise each allowed operation and verify refusal across two tenant identities, including transactions and bulk writes. |
+| Run on another machine or in a container | An explicitly selected Xec target | Check target identity and access, cancellation and cleanup on that target. Bind destination and effects to the operator's review. |
+| Serve requests from several components | Titan lifecycle and Netron contracts | Exercise the public client and server path, readiness, disconnect, recovery and authorization for the proposed operation. |
+| Change an established project | Its registered path and declared application or task | Show the current revision, proposed files, conflicts, and checks against the project's own entry point. Preserve unrelated local edits. |
+
+These rows define admission criteria for future options. The current starter provisions the capabilities listed in the example table above. Integrating another package also requires testing projects that omit it, so an expanded catalog keeps smaller projects independently usable.
+
 ## Work on an existing project
 
 Choose a registered project in the Console. Select a stack to bind a new conversation to it. Open **Connection details** and run the copied command from that project's registered directory. Each connection serves one provider, Console account and workspace. For example:
@@ -60,7 +96,7 @@ The local ledger retains the request, response, outcome, reported usage and oper
 
 ## Recover an interrupted conversation
 
-The daemon admits each turn by a stable request ID and rechecks the sending user's session before dispatch. A connector claims one turn at a time. **Stop turn** cancels queued or running work. Losing the connector marks in-flight work interrupted and preserves the last recorded response. After a lost acknowledgment, inspect the conversation or retry the same request. Start a fresh conversation for an interrupted turn whose provider outcome is unknown.
+The daemon admits each turn by a stable request ID and rechecks the sending user's session before dispatch. A connector claims one turn at a time and has capacity for 16 queued and running turns. **Stop turn** cancels queued or running work. Losing the connector marks in-flight work interrupted and preserves the last recorded response. After a lost acknowledgment, **Retry same request** uses the original ID. **Withdraw request** cancels an admitted turn or records a withdrawal that also applies if the original request arrives later. A completed result remains available. Start a fresh conversation for an interrupted turn whose provider outcome is unknown.
 
 ## Verification
 

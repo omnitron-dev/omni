@@ -59,14 +59,16 @@ export interface StudioModelRequirements {
 
 /** Role defaults constrain automatic selection, never erase explicit task constraints. */
 export function studioRoleRequirements(role: StudioRole, requirements: StudioModelRequirements, pinned: boolean): StudioModelRequirements {
-  if (!Object.hasOwn(STUDIO_ROLE_POLICY, role) || !requirements || typeof pinned !== 'boolean')
+  if (!Object.hasOwn(STUDIO_ROLE_POLICY, role) || !validRequirements(requirements) || typeof pinned !== 'boolean')
     throw new Error('Invalid Studio role requirements');
   const classes = pinned ? requirements.classes : requirements.classes?.length
     ? requirements.classes.filter(value => STUDIO_ROLE_POLICY[role].classes.includes(value))
     : [...STUDIO_ROLE_POLICY[role].classes];
   if (!pinned && !classes?.length) throw new Error('Task classes do not match the Studio responsibility');
-  return { ...requirements, ...(classes && { classes: [...classes] }),
-    ...(requirements.capabilities && { capabilities: [...requirements.capabilities] }),
+  return { ...(classes?.length && { classes: [...classes].sort() }),
+    ...(requirements.capabilities?.length && { capabilities: [...requirements.capabilities].sort() }),
+    ...(requirements.minQualityTier && { minQualityTier: requirements.minQualityTier }),
+    ...(requirements.maxCostTier && { maxCostTier: requirements.maxCostTier }),
     ...(requirements.maxPrice && { maxPrice: { amount: requirements.maxPrice.amount, unit: requirements.maxPrice.unit } }) };
 }
 export interface StudioModelSelection {
@@ -104,6 +106,16 @@ const knownCost = (value: StudioModelDescriptor): value is StudioModelDescriptor
 const fail = (reason: StudioModelRefusal, message: string): StudioModelDecision => ({ ok: false, reason, message });
 const order = (left: string, right: string) => left < right ? -1 : left > right ? 1 : 0;
 
+function validRequirements(value: StudioModelRequirements): boolean {
+  return !!value && typeof value === 'object' && !Array.isArray(value) &&
+    Object.keys(value).every(k => ['classes','capabilities','minQualityTier','maxCostTier','maxPrice'].includes(k)) &&
+    (value.classes === undefined || (unique(value.classes) && value.classes.every(v => CLASSES.includes(v)))) &&
+    (value.capabilities === undefined || unique(value.capabilities)) &&
+    (value.minQualityTier === undefined || QUALITY.includes(value.minQualityTier)) &&
+    (value.maxCostTier === undefined || COST.includes(value.maxCostTier)) &&
+    (value.maxPrice === undefined || price(value.maxPrice));
+}
+
 /** Listing names do not imply capability, quality or price (including opaque model families). */
 export function studioCatalogFromListing(provider: StudioProvider, connector: string, revision: string,
   models: Array<{ id: string; label: string }>): StudioModelCatalog {
@@ -123,11 +135,7 @@ export function selectStudioModel(catalog: StudioModelCatalog, request: StudioMo
   if (!request || request.provider !== catalog.provider || request.connector !== catalog.connector)
     return fail('connector-mismatch', 'The model catalog belongs to another connector');
   const requirements = request.requirements;
-  if (!requirements || (requirements.classes !== undefined && (!unique(requirements.classes) || !requirements.classes.every(value => CLASSES.includes(value)))) ||
-      (requirements.capabilities !== undefined && !unique(requirements.capabilities)) ||
-      (requirements.minQualityTier !== undefined && !QUALITY.includes(requirements.minQualityTier)) ||
-      (requirements.maxCostTier !== undefined && !COST.includes(requirements.maxCostTier)) ||
-      (requirements.maxPrice !== undefined && !price(requirements.maxPrice)) ||
+  if (!validRequirements(requirements) ||
       (request.model !== undefined && !text(request.model))) return fail('invalid-requirements', 'The task model requirements are invalid');
   const previous = request.previous;
   if (previous && (previous.provider !== catalog.provider || previous.connector !== catalog.connector ||

@@ -71,6 +71,8 @@ The documentation catalog pairs rendered examples with their checked-in TypeScri
 
 ## Research documents and authoring
 
+For private messages, import `Markdown` from `@omnitron-dev/prism/components/content-renderer` and select `embeddedMedia="text"`. Prism renders image descriptions and keeps ordinary links available for the reader to open. Markdown and HTML message bodies follow the same sanitized rendering path. The default `inline` mode displays images for authored content. Import `@omnitron-dev/prism/components/content-renderer/styles.css` once for syntax highlighting.
+
 `@omnitron-dev/prism/components/research` exports `ResearchDocument`, `parseResearchMarkdown` and validated widget definitions. Import `@omnitron-dev/prism/components/research/styles.css` once. The renderer supports GFM, heading anchors, admonitions, tabs, KaTeX and strict Mermaid diagrams.
 
 Documents cannot import code or grant permissions. Host applications register widgets and validate their versioned props. Raw HTML and unsupported constructs remain inert with diagnostics. Mermaid output is sanitized and displayed as an isolated SVG image. Labels admit text formatting before measurement; measured XHTML wrappers retain a limited set of text-layout styles, without links, resources, events or arbitrary CSS. Quoted labels and Mermaid entity codes therefore render as text without injecting SVG into the host document. Source-size limits do not impose a browser execution-time limit.

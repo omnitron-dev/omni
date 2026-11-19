@@ -54,6 +54,7 @@
       "types": "./dist/components/content-renderer/index.d.ts",
       "import": "./dist/components/content-renderer/index.js"
     },
+    "./components/content-renderer/styles.css": "./dist/components/content-renderer/index.css",
     "./components/editor": {
       "types": "./dist/components/editor/index.d.ts",
       "import": "./dist/components/editor/index.js"

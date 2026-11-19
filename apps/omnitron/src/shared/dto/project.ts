@@ -34,10 +34,15 @@ export interface RuntimeStackScope {
 // Project DTOs
 // =============================================================================
 
+export const projectStarterOptions = {
+  persistence: { none: 'No persistence', sqlite: 'SQLite file', postgresql: 'PostgreSQL database', mysql: 'MySQL database' },
+  service: { none: 'None · standalone commands', node: 'Node worker', titan: 'Titan application' },
+} as const;
+
 export interface ProjectStarterNeeds {
   automation: boolean;
-  persistence: 'none' | 'sqlite' | 'postgresql' | 'mysql';
-  service: 'none' | 'node' | 'titan';
+  persistence: keyof typeof projectStarterOptions.persistence;
+  service: keyof typeof projectStarterOptions.service;
 }
 
 export const defaultProjectStarterNeeds: Readonly<ProjectStarterNeeds> = Object.freeze({
@@ -49,8 +54,8 @@ export function isProjectStarterNeeds(value: unknown): value is ProjectStarterNe
   const fields = value as Record<string, unknown>;
   const { automation, persistence, service } = fields;
   return Object.keys(fields).length === 3 && ['automation', 'persistence', 'service'].every(key => Object.hasOwn(fields, key)) &&
-    typeof automation === 'boolean' && typeof persistence === 'string' && ['none', 'sqlite', 'postgresql', 'mysql'].includes(persistence) &&
-    typeof service === 'string' && ['none', 'node', 'titan'].includes(service) && (automation || persistence !== 'none' || service !== 'none');
+    typeof automation === 'boolean' && typeof persistence === 'string' && Object.hasOwn(projectStarterOptions.persistence,persistence) &&
+    typeof service === 'string' && Object.hasOwn(projectStarterOptions.service,service) && (automation || persistence !== 'none' || service !== 'none');
 }
 
 export interface ProjectStarterManifest {

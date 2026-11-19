@@ -4,7 +4,7 @@ import type { TopologyScope, TopologySpec, TopologyDraft, TopologyPlan, Topology
 export type { TopologyScope, TopologySpec, TopologyDraft, TopologyPlan, TopologyInventory, TopologyWorkspace, TopologyChange, TopologyIssue } from './topology.js';
 import type { ProjectTopology } from './project.js';
 export type { ProjectStarterNeeds, ProjectStarterManifest, ProjectCreationReview } from './project.js';
-export { defaultProjectStarterNeeds, isProjectStarterNeeds } from './project.js';
+export { defaultProjectStarterNeeds, isProjectStarterNeeds, projectStarterOptions } from './project.js';
 export type { PreparedArtifactVolume, ReleaseAdmission, InstalledStackResumeResult, ConfigurationImport, ProjectConfigurationInfo, RuntimeStackScope, ProjectDependency, ProjectTopology, TopologyMetadataRefresh, StackStopReview } from './project.js';
 import type { LogIngestionStats } from './logs.js';
 /**

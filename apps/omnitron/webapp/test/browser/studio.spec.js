@@ -23,8 +23,8 @@ for (const width of [1280, 360]) {
     });
     await stubInventory(page, {
       'OmnitronProject.listProjects': [],
-      'OmnitronStudio.workspace': () => ({ account: 'reader', catalogs: [catalog], threads }),
-      'OmnitronStudio.thread': () => ({ thread: threads[0], turns }),
+      'OmnitronStudio.workspace': () => ({ account: 'reader', catalogs: [catalog], threads, older:null }),
+      'OmnitronStudio.thread': () => ({ thread: threads[0], turns, beforeTurn:null }),
       'OmnitronStudio.send': (request) => {
         requests.push(request);
         threads.push({
@@ -129,3 +129,22 @@ for (const width of [1280, 360]) {
     ]);
   });
 }
+
+test('private HTML can display a reference without fetching its embedded resources', async ({ page, url }) => {
+  const contacted = [];
+  await page.route('**/external-preview.invalid/**', route => { contacted.push(route.request().url()); return route.abort(); });
+  const thread = { id: '1aa3ca1c-3581-4c33-a1ec-60e2f3814354', title: 'Image review', provider: 'codex', stack: null, updatedAt: 1,
+    assignment: { preferences: { role: 'reviewer', result: 'review', model: 'model', requirements: {} }, selection: { model: 'model' } } };
+  const turn = { id: 'f4c25276-eb33-4ae4-a9e0-2a156625827d', createdAt: 1, prompt: 'Review the illustration.', status:'completed', failure:null,usage:null,review:null,
+    answer:'<p><picture><source srcset="https://external-preview.invalid/large.png"><img src="https://external-preview.invalid/small.png" alt="Blueprint"></picture> <a href="https://external-preview.invalid/reference">Reference document</a></p>' };
+  await stubInventory(page,{
+    'OmnitronStudio.workspace':()=>({account:'reader',catalogs:[],threads:[thread],older:null}),
+    'OmnitronStudio.thread':()=>({thread,turns:[turn],beforeTurn:null}),
+  });
+  await page.route('**/studio',async route=>route.fulfill({response:await route.fetch({url:url+'/workspace.html'})}));
+  await page.goto(url+'/studio');
+  await page.getByRole('button',{name:/Image review/}).click();
+  await expect(page.getByText('Blueprint',{exact:true})).toBeVisible();
+  await expect(page.getByRole('link',{name:'Reference document'})).toHaveAttribute('href','https://external-preview.invalid/reference');
+  expect(contacted).toEqual([]);
+});

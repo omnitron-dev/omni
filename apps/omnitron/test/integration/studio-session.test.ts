@@ -1,13 +1,15 @@
 import 'reflect-metadata';
 import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runWithAuth } from '../../src/services/auth-context.js';
 import { StudioLedger } from '../../src/studio/ledger.js';
 import { StudioRpcService } from '../../src/studio/studio.rpc-service.js';
+import { handleStudioTask } from '../../src/commands/studio.js';
+import { readProjectSuggestion } from '../../src/shared/dto/studio-starter.js';
 import { studioCatalogFromListing } from '../../src/shared/dto/studio-policy.js';
 import type { StudioSend } from '../../src/shared/dto/studio.js';
 import type { OmnitronAuthUser } from '../../src/shared/dto/services.js';
@@ -47,7 +49,7 @@ describe('Studio assignment and delivery', () => {
     directory = mkdtempSync(join(tmpdir(), 'studio-test-'));
     db = new Database(':memory:');
     const projects = {
-      getProject: (name: string) => ({ name, path: directory }),
+      getWorkspaceDirectory: () => directory,
       resolveProjectStack: async <T>(s: T) => s,
       listStacks: () => [{ name: 'dev' }],
     };
@@ -117,9 +119,12 @@ describe('Studio assignment and delivery', () => {
       'unavailable'
     );
     await expect(human(() => rpc.thread({ project: 'beta', threadId: data.threadId }))).rejects.toThrow('unavailable');
-    await expect(
-      human(() => rpc.cancel({ project: 'alpha', threadId: data.threadId, turnId: data.turnId }), 'bob')
-    ).rejects.toThrow();
+    expect(
+      await human(() => rpc.cancel({ project: 'alpha', threadId: data.threadId, turnId: data.turnId }), 'bob')
+    ).toEqual({ status: 'withdrawn' });
+    expect((await human(() => rpc.thread({ project: 'alpha', threadId: data.threadId }))).turns[0]?.status).toBe(
+      'queued'
+    );
     const browserAdmin = { ...alice(), roles: ['admin'] };
     await expect(runWithAuth(browserAdmin, () => rpc.nextTurn({ connection }))).rejects.toThrow();
     await expect(human(() => rpc.send({ ...request(), stack: 'missing' }))).rejects.toThrow('known stack');
@@ -196,5 +201,93 @@ describe('Studio assignment and delivery', () => {
     expect((await localCall(() => rpc.nextTurn(planning)))?.turnId).toBe(data.turnId);
     expect((await human(() => rpc.workspace({ project: 'alpha' }))).threads).toEqual([]);
     await expect(human(() => rpc.send({ ...request(), project: null, stack: 'dev' }))).rejects.toThrow();
+  });
+
+  it('withdraws an unacknowledged request even if its original delivery arrives later', async () => {
+    const data = request();
+    await expect(human(() => rpc.cancel(data))).resolves.toEqual({ status: 'withdrawn' });
+    await expect(human(() => rpc.send(data))).rejects.toThrow('withdrawn');
+    expect(await localCall(() => rpc.nextTurn({ connection }))).toBeNull();
+    await human(() => rpc.send({ ...data, turnId: randomUUID() }));
+    expect((await localCall(() => rpc.nextTurn({ connection })))?.prompt).toBe(data.prompt);
+  });
+
+  it('paginates equal timestamps and long conversations inside the selected workspace and stack', async () => {
+    const all: string[] = [];
+    const complete = async (data: StudioSend) => {
+      await human(() => rpc.send(data));
+      expect((await localCall(() => rpc.nextTurn({ connection })))?.turnId).toBe(data.turnId);
+      await localCall(() =>
+        rpc.finishTurn({
+          connection,
+          turnId: data.turnId,
+          result: { status: 'completed', answer: 'Done.', conversation: 'native' },
+        })
+      );
+    };
+    for (let i = 0; i < 43; i++) {
+      const task = request();
+      if (i % 2 === 0) task.stack = 'dev';
+      await complete(task);
+      all.push(task.threadId);
+    }
+    const first = await human(() => rpc.workspace({ project: 'alpha' }));
+    const second = await human(() => rpc.workspace({ project: 'alpha', before: first.older! }));
+    expect(first.threads).toHaveLength(40);
+    expect(second.older).toBeNull();
+    expect([...first.threads, ...second.threads].map((t) => t.id).sort()).toEqual(all.sort());
+    const scoped = await human(() => rpc.workspace({ project: 'alpha', stack: 'dev' }));
+    expect(scoped.threads).toHaveLength(22);
+    expect(scoped.threads.every((t) => t.stack === 'dev')).toBe(true);
+    const conversation = request();
+    const ids = [conversation.turnId];
+    await complete(conversation);
+    for (let i = 0; i < 12; i++) {
+      const id = randomUUID();
+      await complete({ ...conversation, after: ids.at(-1)!, turnId: id });
+      ids.push(id);
+    }
+    const current = await human(() => rpc.thread(conversation));
+    const earlier = await human(() => rpc.thread({ ...conversation, before: current.beforeTurn! }));
+    expect(current.turns).toHaveLength(8);
+    expect(earlier.beforeTurn).toBeNull();
+    expect([...earlier.turns, ...current.turns].map((t) => t.id)).toEqual(ids);
+    await expect(human(() => rpc.thread({ ...conversation, before: randomUUID() }))).rejects.toThrow('cursor');
+  });
+
+  it('bounds the connector queue while retaining receipts for an identical retry', async () => {
+    const initial = request();
+    await human(() => rpc.send(initial));
+    for (let i = 1; i < 16; i++) await human(() => rpc.send(request()));
+    await expect(human(() => rpc.send(request()))).rejects.toThrow('queue is full');
+    await expect(human(() => rpc.send(initial))).resolves.toMatchObject({ turnId: initial.turnId });
+    await human(() => rpc.cancel(initial));
+    await expect(human(() => rpc.send(request()))).resolves.toHaveProperty('turnId');
+  });
+
+  it.skipIf(process.platform === 'win32')('stops the connector on lost confirmation of an active turn', async () => {
+    const data = request();
+    await human(() => rpc.send(data));
+    const task = await localCall(() => rpc.nextTurn({ connection }));
+    const binary = join(directory, 'provider');
+    writeFileSync(binary, '#!/usr/bin/env node\nsetTimeout(() => {}, 10000);\n', { mode: 0o700 });
+    const localRpc = Object.create(rpc) as StudioRpcService;
+    localRpc.heartbeat = async () => {
+      throw Error('Private connection lost');
+    };
+    await expect(
+      handleStudioTask(localRpc, connection, 'codex', binary, directory, task!, AbortSignal.timeout(5000))
+    ).rejects.toThrow('could not confirm');
+    await localCall(() => rpc.disconnectAdapter({ connection }));
+    expect((await human(() => rpc.thread(data))).turns[0]?.status).toBe('interrupted');
+  });
+
+  it('passes only one validated project recommendation to the wizard', () => {
+    const needs = { automation: false, persistence: 'sqlite', service: 'none' };
+    const block = '```json\n' + JSON.stringify(needs) + '\n```';
+    expect(readProjectSuggestion('A local database fits.\n' + block)).toEqual(needs);
+    expect(readProjectSuggestion(block + '\n' + block)).toBeNull();
+    expect(readProjectSuggestion(JSON.stringify({ ...needs, command: 'extra' }))).toBeNull();
+    expect(readProjectSuggestion(JSON.stringify({ ...needs, persistence: 'none' }))).toBeNull();
   });
 });

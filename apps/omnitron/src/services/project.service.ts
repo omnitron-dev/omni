@@ -841,6 +841,14 @@ export class ProjectService extends EventEmitter {
     return this.listProjects().find(record => record.name === (project.configuration?.project ?? name))!;
   }
 
+  /** Resolve one user workspace without materializing every stack and its runtime inventory. */
+  getWorkspaceDirectory(name: string): string {
+    const project = this.registry.get(name);
+    if (!project || (project.configuration && project.configuration.project !== name) || isControlPlaneWorkspace(project.path))
+      throw Error('Select a registered workspace');
+    return project.path;
+  }
+
   reviewProjectCreation(name: string, needs: ProjectStarterNeeds) {
     if (this.registry.get(name)) throw Error('Project name is already registered');
     return reviewProjectCreation(name, needs);

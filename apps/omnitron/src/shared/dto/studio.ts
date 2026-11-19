@@ -64,6 +64,14 @@ export interface StudioWorkspace {
   account: string;
   catalogs: StudioModelCatalog[];
   threads: StudioThread[];
+  older: StudioThreadCursor | null;
+}
+
+export type StudioThreadCursor = Pick<StudioThread, 'updatedAt' | 'id'>;
+export interface StudioHistory {
+  thread: StudioThread;
+  turns: StudioTurn[];
+  beforeTurn: string | null;
 }
 
 export interface StudioSend {
@@ -86,10 +94,14 @@ export type StudioResult =
   | { status: 'failed'; failure: StudioFailure };
 
 export interface IOmnitronStudioService {
-  workspace(data: { project: string | null }): Promise<StudioWorkspace>;
-  thread(data: { project: string | null; threadId: string }): Promise<{ thread: StudioThread; turns: StudioTurn[] }>;
+  workspace(data: { project: string | null; stack?: string; before?: StudioThreadCursor }): Promise<StudioWorkspace>;
+  thread(data: { project: string | null; threadId: string; before?: string }): Promise<StudioHistory>;
   send(data: StudioSend): Promise<{ threadId: string; turnId: string }>;
-  cancel(data: { project: string | null; threadId: string; turnId: string }): Promise<void>;
+  cancel(data: {
+    project: string | null;
+    threadId: string;
+    turnId: string;
+  }): Promise<{ status: StudioStatus | 'withdrawn' }>;
   review(data: {
     project: string | null;
     threadId: string;

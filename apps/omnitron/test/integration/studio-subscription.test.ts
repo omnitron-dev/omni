@@ -54,7 +54,7 @@ for (const provider of STUDIO_PROVIDERS) {
           permissions: [],
           metadata: { source: 'local-unix-socket' },
         });
-        const projects = { getProject: () => ({ name: 'sample', path: scratch }) };
+        const projects = { getWorkspaceDirectory: () => scratch };
         await server.peer.exposeService(
           new StudioRpcService(
             new StudioLedger(database),

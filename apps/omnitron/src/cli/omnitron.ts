@@ -1328,7 +1328,7 @@ program.command('studio').description('Project development with local agent subs
   .requiredOption('--provider <name>', 'codex or agy')
   .option('--binary <path>', 'Absolute path to the installed provider CLI')
   .option('--model-policy <file>', 'Local model capability and cost declarations')
-  .action(async (project, options) => (await import('../commands/studio.js')).connectStudio(project, options));
+  .action(async (projectName, options) => (await import('../commands/studio.js')).connectStudio(projectName, options));
 
 const pipeline = program.command('pipeline').description('CI/CD pipeline management');
 

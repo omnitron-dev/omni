@@ -36,7 +36,7 @@ const failures = new Set<StudioFailure>([
   'timeout',
 ]);
 const MAX_ANSWER = 128 * 1024;
-type ProjectReader = Pick<ProjectService, 'getProject' | 'resolveProjectStack' | 'listStacks'>;
+type ProjectReader = Pick<ProjectService, 'getWorkspaceDirectory' | 'resolveProjectStack' | 'listStacks'>;
 type LinkRequest = Parameters<IOmnitronStudioService['connectAdapter']>[0];
 
 @Service({ name: 'OmnitronStudio' })
@@ -52,9 +52,7 @@ export class StudioRpcService implements IOmnitronStudioService {
     if (project === null) return { project: '', account, directory: '' };
     if (typeof project !== 'string' || !project.length || project.length > 160)
       throw Error('Select a registered project');
-    const info = this.projects.getProject(project);
-    if (info.name !== project) throw Error('Select the registered workspace');
-    return { project, account, directory: realpathSync(info.path) };
+    return { project, account, directory: realpathSync(this.projects.getWorkspaceDirectory(project)) };
   }
 
   private async localOperator() {
@@ -91,21 +89,28 @@ export class StudioRpcService implements IOmnitronStudioService {
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
-  async workspace({ project }: { project: string | null }) {
+  async workspace({ project, stack, before }: Parameters<IOmnitronStudioService['workspace']>[0]) {
     const { context } = await daemonPrincipal(this.auth, 'operator');
-    const { links, threads } = this.ledger.workspace(this.scope(project, context.userId!));
+    if (
+      (stack !== undefined && (typeof stack !== 'string' || !stack.length || stack.length > 160 || project === null)) ||
+      (before !== undefined &&
+        (!before || !uuid(before.id) || !Number.isSafeInteger(before.updatedAt) || before.updatedAt < 0))
+    )
+      throw Error('Invalid conversation list request');
+    const { links, threads, older } = this.ledger.workspace(this.scope(project, context.userId!), stack, before);
     return {
       account: context.userId!,
       threads,
+      older,
       catalogs: links.map((link) => JSON.parse(link.catalog) as StudioModelCatalog),
     };
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
-  async thread(data: { project: string | null; threadId: string }) {
+  async thread(data: Parameters<IOmnitronStudioService['thread']>[0]) {
     const { context } = await daemonPrincipal(this.auth, 'operator');
-    if (!uuid(data.threadId)) throw Error('Invalid conversation');
-    return this.ledger.thread(this.scope(data.project, context.userId!), data.threadId);
+    if (!uuid(data.threadId) || (data.before !== undefined && !uuid(data.before))) throw Error('Invalid conversation');
+    return this.ledger.thread(this.scope(data.project, context.userId!), data.threadId, data.before);
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
@@ -163,7 +168,8 @@ export class StudioRpcService implements IOmnitronStudioService {
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async cancel(data: { project: string | null; threadId: string; turnId: string }) {
     const { context } = await daemonPrincipal(this.auth, 'operator');
-    this.ledger.cancel(this.scope(data.project, context.userId!), data.threadId, data.turnId);
+    if (!uuid(data.threadId) || !uuid(data.turnId)) throw Error('Invalid turn');
+    return this.ledger.cancel(this.scope(data.project, context.userId!), data.threadId, data.turnId);
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })

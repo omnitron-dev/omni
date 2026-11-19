@@ -1,4 +1,4 @@
-import { useRef, useState, type ChangeEvent } from 'react';
+import { memo, useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -31,6 +31,7 @@ import {
   type StudioRole,
   type StudioSend,
   type StudioTurn,
+  type StudioThreadCursor,
 } from '@omnitron-dev/omnitron/dto/services';
 import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
@@ -40,6 +41,7 @@ import { useAccess } from 'src/auth/access';
 import { PlusIcon } from 'src/assets/icons';
 
 const labels = { codex: 'Codex', agy: 'Antigravity' };
+const ResponseMarkdown = memo(Markdown);
 const budgetLabels = { economy: 'Economy', standard: 'Standard', premium: 'Premium' };
 const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
 const describe = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -87,27 +89,63 @@ function StudioWorkspace({ project, stack }: { project: string | null; stack: st
   const notify = useSnackbar();
   const [selected, setSelected] = useState<string | null>(null);
   const [provider, setProvider] = useState<StudioProvider>('codex');
-  const [model, setModel] = useState('');
+  const [model, setModel] = useState('@automatic');
   const [tier, setTier] = useState<StudioCostTier>('economy');
   const [role, setRole] = useState<StudioRole>('analyst');
   const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [connecting, setConnecting] = useState(false);
+  const [listBefore, setListBefore] = useState<StudioThreadCursor>();
+  const [turnBefore, setTurnBefore] = useState<string>();
+  const [following, setFollowing] = useState<string | null>(null);
   const uncertain = useRef<StudioSend | null>(null);
-  const workspace = usePolledResource(() => studio.workspace({ project }), {
-    resourceKey: project ?? 'planning',
-    intervalMs: 5000,
-  });
-  const history = usePolledResource(() => studio.thread({ project, threadId: selected! }), {
-    resourceKey: selected,
-    enabled: !!selected,
-    intervalMs: 1600,
-  });
+  const workspace = usePolledResource(
+    () => studio.workspace({ project, ...(stack && { stack }), ...(listBefore && { before: listBefore }) }),
+    {
+      resourceKey: JSON.stringify([project, stack, listBefore]),
+      paused: !!listBefore,
+      intervalMs: 10_000,
+    }
+  );
+  const threads = workspace.data?.threads ?? [];
+  const latestChange = threads.find((entry) => entry.id === selected)?.updatedAt;
+  const history = usePolledResource(
+    async () => {
+      const result = await studio.thread({ project, threadId: selected!, ...(turnBefore && { before: turnBefore }) });
+      const status = result.turns.at(-1)?.status;
+      if (!turnBefore) {
+        if (status === 'queued' || status === 'running') setFollowing(selected);
+        else setFollowing((current) => (current === selected ? null : current));
+      }
+      return result;
+    },
+    {
+      resourceKey: JSON.stringify([selected, turnBefore]),
+      enabled: !!selected,
+      paused: !!turnBefore || following !== selected,
+      intervalMs: 1600,
+    }
+  );
+  const observed = useRef({ selected, latestChange });
+  const refreshHistory = history.refresh;
+  useEffect(() => {
+    const previous = observed.current;
+    observed.current = { selected, latestChange };
+    if (
+      selected &&
+      !turnBefore &&
+      previous.selected === selected &&
+      latestChange !== undefined &&
+      previous.latestChange !== undefined &&
+      latestChange !== previous.latestChange
+    )
+      void refreshHistory();
+  }, [selected, turnBefore, latestChange, refreshHistory]);
   const thread = history.data?.thread;
   const turns = history.data?.turns ?? [];
   const last = turns.at(-1);
-  const active = last?.status === 'queued' || last?.status === 'running';
+  const active = !turnBefore && (last?.status === 'queued' || last?.status === 'running');
   const currentProvider = thread?.provider ?? provider;
   const catalog = workspace.data?.catalogs.find((c) => c.provider === currentProvider);
   const frozen = !!selected;
@@ -133,9 +171,9 @@ function StudioWorkspace({ project, stack }: { project: string | null; stack: st
       : null;
   const ready =
     !busy && !active && !!prompt.trim() && choice?.ok && (!selected || (thread && last?.status === 'completed'));
-  const threads = (workspace.data?.threads ?? []).filter((t) => !stack || t.stack === stack);
   const reset = (id: string | null) => {
     setSelected(id);
+    setTurnBefore(undefined);
     setPrompt('');
     setError('');
     uncertain.current = null;
@@ -167,6 +205,8 @@ function StudioWorkspace({ project, stack }: { project: string | null; stack: st
       const receipt = await studio.send(request);
       uncertain.current = null;
       setSelected(receipt.threadId);
+      setListBefore(undefined);
+      setTurnBefore(undefined);
       setPrompt('');
       await workspace.refresh();
       if (selected === receipt.threadId) await history.refresh();
@@ -247,6 +287,20 @@ function StudioWorkspace({ project, stack }: { project: string | null; stack: st
               No conversations yet.
             </Typography>
           )}
+          {(listBefore || workspace.data?.older) && (
+            <Stack direction="row" spacing={1}>
+              {listBefore && (
+                <Button size="small" onClick={() => setListBefore(undefined)}>
+                  Latest
+                </Button>
+              )}
+              {workspace.data?.older && (
+                <Button size="small" onClick={() => setListBefore(workspace.data!.older!)}>
+                  Older conversations
+                </Button>
+              )}
+            </Stack>
+          )}
         </Paper>
         <Paper variant="outlined" sx={{ minWidth: 0, p: { xs: 1.75, sm: 3 } }}>
           <Stack spacing={2}>
@@ -262,7 +316,7 @@ function StudioWorkspace({ project, stack }: { project: string | null; stack: st
                   value={provider}
                   onChange={(e) => {
                     setProvider(e.target.value as StudioProvider);
-                    setModel('');
+                    setModel('@automatic');
                   }}
                 >
                   {STUDIO_PROVIDERS.map((v) => (
@@ -351,6 +405,20 @@ function StudioWorkspace({ project, stack }: { project: string | null; stack: st
                 {connecting ? 'Hide connector' : 'Connection details'}
               </Button>
             )}
+            {(turnBefore || history.data?.beforeTurn) && (
+              <Stack direction="row" spacing={1}>
+                {history.data?.beforeTurn && (
+                  <Button size="small" onClick={() => setTurnBefore(history.data!.beforeTurn!)}>
+                    Earlier turns
+                  </Button>
+                )}
+                {turnBefore && (
+                  <Button size="small" onClick={() => setTurnBefore(undefined)}>
+                    Latest turns
+                  </Button>
+                )}
+              </Stack>
+            )}
             {turns.map((t) => (
               <Turn
                 key={t.id}
@@ -392,10 +460,10 @@ function StudioWorkspace({ project, stack }: { project: string | null; stack: st
                   Stop turn
                 </Button>
               </Stack>
-            ) : last && last.status !== 'completed' ? (
+            ) : !turnBefore && last && last.status !== 'completed' ? (
               <Alert severity="info">Start a new conversation to continue after this turn.</Alert>
             ) : null}
-            {(!selected || (thread && last?.status === 'completed')) && (
+            {!turnBefore && (!selected || (thread && last?.status === 'completed')) && (
               <>
                 {!selected && !prompt && (
                   <Button size="small" sx={{ alignSelf: 'start' }} onClick={() => setPrompt(projectInterview)}>
@@ -425,13 +493,28 @@ function StudioWorkspace({ project, stack }: { project: string | null; stack: st
                   </Button>
                   {!!uncertain.current && (
                     <Button
-                      onClick={() => {
-                        uncertain.current = null;
-                        setError('');
-                        void workspace.refresh();
-                      }}
+                      disabled={busy}
+                      onClick={() =>
+                        action(async () => {
+                          const pending = uncertain.current!;
+                          const { status } = await studio.cancel({
+                            project,
+                            threadId: pending.threadId,
+                            turnId: pending.turnId,
+                          });
+                          uncertain.current = null;
+                          if (status === 'withdrawn') {
+                            notify.info('Request withdrawn. The draft is ready to edit.');
+                          } else {
+                            setSelected(pending.threadId);
+                            setPrompt('');
+                            await workspace.refresh();
+                            if (selected === pending.threadId) await history.refresh();
+                          }
+                        })
+                      }
                     >
-                      Inspect workspace
+                      Withdraw request
                     </Button>
                   )}
                   <Button
@@ -478,11 +561,8 @@ function Turn({
           Agent
         </Typography>
       )}
-      {turn.answer && (
-        <Markdown compact components={{ img: ({ alt }) => <span>{alt || 'Image'}</span> }}>
-          {turn.answer}
-        </Markdown>
-      )}
+      {turn.answer && (turn.status === 'running' ? <Typography variant="body2" sx={plain}>{turn.answer}</Typography>
+        : <ResponseMarkdown compact embeddedMedia="text">{turn.answer}</ResponseMarkdown>)}
       {turn.failure && <Alert severity="warning">{blocked[turn.failure]}</Alert>}
       <Stack direction="row" sx={{ alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
         <Chip size="small" label={turn.status} variant="outlined" />

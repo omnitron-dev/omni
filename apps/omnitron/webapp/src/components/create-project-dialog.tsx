@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Box, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, MenuItem, Stack, TextField, Typography } from '@mui/material';
 import { Alert } from '@omnitron-dev/prism/components/alert';
-import { defaultProjectStarterNeeds, isProjectStarterNeeds, type ProjectStarterNeeds } from '@omnitron-dev/omnitron/dto/services';
+import { defaultProjectStarterNeeds, isProjectStarterNeeds, projectStarterOptions, type ProjectStarterNeeds } from '@omnitron-dev/omnitron/dto/services';
 import { project } from 'src/netron/client';
 
 type Review = Awaited<ReturnType<typeof project.reviewProjectCreation>>;
@@ -49,13 +49,11 @@ export function CreateProjectDialog({ query, onClose, onCreated }: { query: URLS
       <TextField select label="Where should the project store data?" value={needs.persistence} disabled={busy}
         helperText="Database choices include a Kysera program and its database driver."
         onChange={event => changeNeeds({ persistence: event.target.value as ProjectStarterNeeds['persistence'] })}>
-        <MenuItem value="none">No persistence</MenuItem><MenuItem value="sqlite">SQLite file</MenuItem>
-        <MenuItem value="postgresql">PostgreSQL database</MenuItem><MenuItem value="mysql">MySQL database</MenuItem>
+        {Object.entries(projectStarterOptions.persistence).map(([value,label])=><MenuItem key={value} value={value}>{label}</MenuItem>)}
       </TextField>
       <TextField select label="Which service should Omnitron supervise?" value={needs.service} disabled={busy}
         onChange={event => changeNeeds({ service: event.target.value as ProjectStarterNeeds['service'] })}>
-        <MenuItem value="none">None · standalone commands</MenuItem><MenuItem value="node">Node worker</MenuItem>
-        <MenuItem value="titan">Titan application</MenuItem>
+        {Object.entries(projectStarterOptions.service).map(([value,label])=><MenuItem key={value} value={value}>{label}</MenuItem>)}
       </TextField>
       {review && <>
         <Typography variant="body2"><strong>{review.path}</strong></Typography>

@@ -4,7 +4,7 @@ import './code-highlight.css';
 
 import type { Options } from 'react-markdown';
 import { useId, useMemo } from 'react';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import rehypeHighlight from 'rehype-highlight';
@@ -31,6 +31,8 @@ export type MarkdownProps = {
   sx?: SxProps<Theme>;
   /** Compact mode for chat messages, comments, etc. */
   compact?: boolean;
+  /** Render media descriptions without loading resources embedded in untrusted messages. */
+  embeddedMedia?: 'inline' | 'text';
   /** Custom react-markdown component overrides */
   components?: Options['components'];
   /** Additional rehype plugins */
@@ -97,6 +99,7 @@ export function Markdown({
   className,
   sx,
   compact,
+  embeddedMedia = 'inline',
   components,
   rehypePlugins,
   remarkPlugins,
@@ -104,8 +107,10 @@ export function Markdown({
 }: MarkdownProps) {
   const content = useMemo(() => {
     const cleaned = String(children).trim();
-    return isMarkdownContent(cleaned) ? cleaned : htmlToMarkdown(cleaned);
-  }, [children]);
+    // Send private messages directly to the inert Markdown/HTML syntax tree.
+    // The general HTML converter can instantiate browser resource elements during conversion.
+    return embeddedMedia === 'text' || isMarkdownContent(cleaned) ? cleaned : htmlToMarkdown(cleaned);
+  }, [children, embeddedMedia]);
 
   const allRehypePlugins = useMemo(() => [...defaultRehypePlugins, ...(rehypePlugins ?? [])], [rehypePlugins]);
 
@@ -113,7 +118,8 @@ export function Markdown({
 
   const defaultComponents = useMemo(
     (): NonNullable<Options['components']> => ({
-      img: ({ node: _n, ...other }) => <img className={contentClasses.image} {...other} />,
+      img: ({ node: _n, ...other }) => embeddedMedia === 'text' ? <span>{other.alt || 'Image'}</span> :
+        <img className={contentClasses.image} {...other} />,
       a: ({ href = '', children: linkChildren, node: _n, ...other }) => {
         if (isExternalLink(href)) {
           return (
@@ -155,7 +161,7 @@ export function Markdown({
           <input type={type} {...other} />
         ),
     }),
-    [routerLinkComponent]
+    [routerLinkComponent, embeddedMedia]
   );
 
   return (
@@ -166,6 +172,7 @@ export function Markdown({
       sx={sx}
     >
       <ReactMarkdown
+        {...(embeddedMedia === 'text' && {urlTransform: privateUrl})}
         components={{ ...defaultComponents, ...components }}
         rehypePlugins={allRehypePlugins}
         remarkPlugins={allRemarkPlugins}
@@ -175,6 +182,9 @@ export function Markdown({
     </ContentRoot>
   );
 }
+
+const privateUrl: NonNullable<Options['urlTransform']> = (url,key,node) =>
+  key === 'href' && node.tagName === 'a' ? defaultUrlTransform(url) : undefined;
 
 function CheckboxInput(props: React.ComponentProps<'input'>) {
   const uniqueId = useId();

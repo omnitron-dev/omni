@@ -23,6 +23,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(here, '../../src');
@@ -53,6 +54,24 @@ function clientAliases(source: string): Map<string, string> {
   return new Map(
     Array.from(source.matchAll(/export const (\w+) = daemonClient\.daemon\.(\w+);/g), (m) => [m[1]!, m[2]!])
   );
+}
+
+/** Read the same service-to-DTO mapping that types daemonClient.daemon. */
+function clientInterfaces(source: string): Map<string, string> {
+  const file = ts.createSourceFile('client.ts', source, ts.ScriptTarget.Latest);
+  const schema = file.statements.find((node): node is ts.InterfaceDeclaration =>
+    ts.isInterfaceDeclaration(node) && node.name.text === 'OmnitronConsoleSchema');
+  const daemon = schema?.members.find((member): member is ts.PropertySignature =>
+    ts.isPropertySignature(member) && ts.isIdentifier(member.name) && member.name.text === 'daemon')?.type;
+  if (!daemon || !ts.isTypeLiteralNode(daemon)) throw Error('Missing OmnitronConsoleSchema.daemon');
+  const services = new Map<string, string>();
+  for (const member of daemon.members) {
+    if (!ts.isPropertySignature(member) || !ts.isIdentifier(member.name) || !member.type ||
+      !ts.isTypeReferenceNode(member.type) || !ts.isIdentifier(member.type.typeName))
+      throw Error('Expected a named RPC interface in OmnitronConsoleSchema.daemon');
+    services.set(member.name.text, member.type.typeName.text);
+  }
+  return services;
 }
 
 /**
@@ -88,10 +107,17 @@ function consoleCalls(aliases: Map<string, string>): Map<string, Set<string>> {
   return calls;
 }
 
-/** Service name → methods carrying an `@Public` decorator. */
+function decoratorCall(node: ts.ClassDeclaration | ts.MethodDeclaration, name: string) {
+  return ts.getDecorators(node)?.map(decorator => decorator.expression).find((expression): expression is ts.CallExpression =>
+    ts.isCallExpression(expression) && ts.isIdentifier(expression.expression) && expression.expression.text === name);
+}
+
+/** Each service owns the public methods on its decorated class. */
 function exposedMethods(): Map<string, Set<string>> {
   const out = new Map<string, Set<string>>();
   const roots = [SRC, path.join(PACKAGES, 'packages', 'titan-metrics', 'src')];
+  const daemonId = fs.readFileSync(path.join(SRC, 'config/defaults.ts'), 'utf8')
+    .match(/^export const DAEMON_SERVICE_ID = '([^']+)';/m)?.[1];
 
   const walk = (dir: string): void => {
     if (!fs.existsSync(dir)) return;
@@ -100,19 +126,25 @@ function exposedMethods(): Map<string, Set<string>> {
       if (entry.isDirectory()) { walk(full); continue; }
       if (!entry.name.endsWith('.ts')) continue;
       const raw = fs.readFileSync(full, 'utf8');
-      const named = /@Service\(\{\s*name:\s*(?:'([^']+)'|(\w+))/.exec(raw);
-      if (!named) continue;
-      // `@Service({ name: DAEMON_SERVICE_ID })` — resolve the one constant
-      // that is used this way rather than pretending the file declares none.
-      const service = named[1] ?? (named[2] === 'DAEMON_SERVICE_ID' ? 'OmnitronDaemon' : null);
-      if (!service) continue;
-
-      const stripped = raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-      const methods = out.get(service) ?? new Set<string>();
-      for (const m of stripped.matchAll(/@Public\([^)]*\)\s*\n\s*(?:async\s+)?(\w+)\s*\(/g)) {
-        methods.add(m[1]!);
+      if (!raw.includes('@Service')) continue;
+      const file = ts.createSourceFile(full, raw, ts.ScriptTarget.Latest);
+      for (const node of file.statements) {
+        if (!ts.isClassDeclaration(node)) continue;
+        const options = decoratorCall(node, 'Service')?.arguments[0];
+        if (!options || !ts.isObjectLiteralExpression(options)) continue;
+        const id = options.properties.find((property): property is ts.PropertyAssignment =>
+          ts.isPropertyAssignment(property) && ts.isIdentifier(property.name) && property.name.text === 'name')?.initializer;
+        if (!id) continue;
+        const service = ts.isStringLiteral(id) ? id.text :
+          ts.isIdentifier(id) && id.text === 'DAEMON_SERVICE_ID' ? daemonId : undefined;
+        if (!service) continue;
+        const methods = out.get(service) ?? new Set<string>();
+        for (const member of node.members) {
+          if (ts.isMethodDeclaration(member) && ts.isIdentifier(member.name) && decoratorCall(member, 'Public'))
+            methods.add(member.name.text);
+        }
+        out.set(service, methods);
       }
-      out.set(service, methods);
     }
   };
   roots.forEach(walk);
@@ -126,26 +158,17 @@ const clientSource = fs.readFileSync(path.join(WEBAPP, 'netron/client.ts'), 'utf
 
 const interfaces = interfaceMethods(dtoSource);
 const aliases = clientAliases(clientSource);
+const serviceInterfaces = clientInterfaces(clientSource);
 const calls = consoleCalls(aliases);
 const exposed = exposedMethods();
 
-/**
- * Service name → the interface that declares it.
- *
- * Mostly `OmnitronInfra` → `IOmnitronInfraService`, but two predate the
- * convention and are named differently. Listed rather than guessed: a
- * mapping that silently fails to resolve reports a healthy service as
- * having no interface, which is what the first version of this did — it
- * matched `IInfraService` for `OmnitronInfra` and called six live methods
- * missing.
- */
-const INTERFACE_OVERRIDES: Record<string, string> = {
-  OmnitronDaemon: 'IDaemonService',
-  OmnitronProject: 'IProjectRpcService',
-};
-
-const interfaceFor = (service: string): string =>
-  INTERFACE_OVERRIDES[service] ?? `I${service}Service`;
+function declaredMethods(service: string): Set<string> {
+  const name = serviceInterfaces.get(service);
+  if (!name) throw Error(`Missing schema entry for ${service}`);
+  const methods = interfaces.get(name);
+  if (!methods) throw Error(`Missing DTO interface ${name} for ${service}`);
+  return methods;
+}
 
 describe('console RPC surface', () => {
   it('found all three layers', () => {
@@ -163,10 +186,7 @@ describe('console RPC surface', () => {
   it('calls only methods its DTO declares', () => {
     const undeclared: string[] = [];
     for (const [alias, service] of aliases) {
-      const declared = interfaces.get(interfaceFor(service));
-      // An unresolved interface is a broken mapping, not a passing check.
-      expect(declared, `interface ${interfaceFor(service)} for ${service}`).toBeDefined();
-      if (!declared) continue;
+      const declared = declaredMethods(service);
       for (const method of calls.get(alias) ?? []) {
         if (!declared.has(method)) undeclared.push(`${alias}.${method}`);
       }
@@ -179,14 +199,20 @@ describe('console RPC surface', () => {
     // "eight methods that never existed".
     const phantom: string[] = [];
     for (const [, service] of aliases) {
-      const declared = interfaces.get(interfaceFor(service));
+      const declared = declaredMethods(service);
       const live = exposed.get(service);
-      if (!declared || !live || live.size === 0) continue;
       for (const method of declared) {
-        if (!live.has(method)) phantom.push(`${service}.${method}`);
+        if (!live?.has(method)) phantom.push(`${service}.${method}`);
       }
     }
     expect(phantom.sort(), 'declared in the DTO, not exposed by any @Public method').toEqual([]);
+  });
+
+  it('keeps peer transfer methods on the management service that exposes them', () => {
+    for (const method of ['probe', 'receive']) {
+      expect(exposed.get('OmnitronFlowReviewPeer')).toContain(method);
+      expect(exposed.get('OmnitronFlowReviews')).not.toContain(method);
+    }
   });
 
   it('reaches every service the console holds a client for', () => {

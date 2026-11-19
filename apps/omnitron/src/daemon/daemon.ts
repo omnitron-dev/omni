@@ -1746,6 +1746,18 @@ export class OmnitronDaemon {
           report: error => loggerModule.logger.warn({ error: String(error) }, 'Flow source evaluation failed'),
         });
         await this.app.netron.peer.exposeService(new FlowsRpcService(runtime, authService, audit, scope, admit, studio));
+        const { FlowReviewRpcService, FlowReviewPeerRpcService } = await import('../flows/peer-review.rpc-service.js');
+        const reviewHost = { ledger: runtime.ledger, scope, admit };
+        await this.app.netron.peer.exposeService(new FlowReviewRpcService(reviewHost, authService, audit, (id) => {
+          const connector = this.slaveConnector;
+          if (!nodeRegistry || !connector) throw Error('No enrolled mesh available');
+          const target = nodeRegistry.peerReviewTarget(id);
+          return {
+            pin: target.pin,
+            open: () => connector.pinnedService(target.host, target.port, id, target.managementIdentity, 'OmnitronFlowReviewPeer'),
+          };
+        }));
+        await this.app.netron.peer.exposeService(new FlowReviewPeerRpcService(reviewHost));
         this.flowRuntime = runtime;
         runtime.listen(this.eventBroadcaster);
       }

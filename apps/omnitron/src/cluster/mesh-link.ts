@@ -21,6 +21,8 @@ export interface MeshLink {
   refreshCredential?: (() => Promise<{ token: string; expiresAt: number }>) | undefined;
   /** How the master got there, for the operator reading a node card. */
   via: 'direct' | 'ssh-tunnel';
+  /** Registration and approved management key actually used to open this tunnel. */
+  managementIdentity?: string;
   /**
    * Called when the node refuses this credential.
    *
@@ -53,6 +55,13 @@ export function meshRegistration<T extends { id: string; host: string; daemonPor
   if (matches.length > 1) throw new Error('Ambiguous mesh address: multiple registered nodes share this daemon endpoint');
   if (target.nodeId !== undefined && matches[0]?.id !== target.nodeId) throw new Error('Registered mesh identity no longer matches this endpoint');
   return matches[0] ?? null;
+}
+
+export function meshManagementIdentity(
+  nodeId: string | undefined,
+  ssh: Pick<SSHTarget, 'host' | 'port' | 'username' | 'expectedHostFingerprint'>
+): string {
+  return JSON.stringify([nodeId ?? null, ssh.host, ssh.port ?? 22, ssh.username ?? 'root', ssh.expectedHostFingerprint ?? null]);
 }
 
 export type MeshDialer = (target: MeshTarget) => Promise<MeshLink>;
@@ -166,7 +175,7 @@ export function createMeshDialer(options: MeshDialerOptions): MeshDialer {
       throw new Error(`${key} is not reachable on its daemon port, and this master holds no SSH credentials for it`);
     }
 
-    const identity = JSON.stringify([target.nodeId ?? null, ssh.host, ssh.port ?? 22, ssh.username ?? 'root', ssh.expectedHostFingerprint ?? null]);
+    const identity = meshManagementIdentity(target.nodeId, ssh);
     // A reachable management port is still plaintext. Establish the tunnel before
     // reading a credential, and release it if credential setup or validation fails.
     const tunnel = await execution.tunnel(ssh, target.port);
@@ -192,7 +201,11 @@ export function createMeshDialer(options: MeshDialerOptions): MeshDialer {
       };
 
       logger.info({ host: target.host, daemonPort: target.port, via: 'ssh-tunnel' }, 'Node daemon reached over SSH');
-      return { url, token, expiresAt, refreshCredential, via: 'ssh-tunnel', close: tunnel.close, onRejected };
+      return {
+        url, token, expiresAt, refreshCredential, via: 'ssh-tunnel',
+        ...(ssh.expectedHostFingerprint && { managementIdentity: identity }),
+        close: tunnel.close, onRejected,
+      };
     } catch (error) {
       await tunnel.close();
       throw error;

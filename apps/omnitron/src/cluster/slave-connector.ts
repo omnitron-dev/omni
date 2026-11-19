@@ -495,7 +495,27 @@ export class SlaveConnector {
     }
   }
 
-  private async callOnSlave(host: string, port: number, service: string, method: string, args: unknown[], requireCredential = false, expectedNodeId?: string): Promise<unknown> {
+  /** All messages in an application handshake must reach the same authenticated, pinned Netron peer. */
+  pinnedService(host: string, port: number, id: string, managementIdentity: string, service: string) {
+    const conn = this.connections.get(host + ':' + port);
+    const link = conn?.link;
+    if (!conn?.peer || conn.config.nodeId !== id || !conn.authenticated || link?.via !== 'ssh-tunnel' ||
+        !managementIdentity || link.managementIdentity !== managementIdentity)
+      throw Error('The verified management connection is unavailable');
+    const peer = conn.peer;
+    return (method: string, payload: unknown, beforeSend?: () => Promise<void>) =>
+      this.callOnSlave(host, port, service, method, [payload], true, id, peer, async () => {
+        if (beforeSend) await beforeSend();
+        if (conn.link !== link || link.managementIdentity !== managementIdentity || !conn.authenticated ||
+            !link.expiresAt || link.expiresAt <= Date.now())
+          throw Error('The verified management connection changed');
+      });
+  }
+
+  private async callOnSlave(
+    host: string, port: number, service: string, method: string, args: unknown[],
+    requireCredential = false, expectedNodeId?: string, pinnedPeer?: object, beforeSend?: () => Promise<void>,
+  ): Promise<unknown> {
     const key = `${host}:${port}`;
     const conn = this.connections.get(key);
     if (conn?.status !== 'connected' || !conn.peer) {
@@ -503,6 +523,7 @@ export class SlaveConnector {
     }
     const peer = conn.peer;
     const checkRegistration = () => {
+      if (pinnedPeer && peer !== pinnedPeer) throw Error('The verified management connection changed');
       if (expectedNodeId !== undefined &&
           (conn.config.nodeId !== expectedNodeId || conn.peer !== peer || this.connections.get(key) !== conn))
         throw new Error('Registered mesh identity changed during the request');
@@ -513,6 +534,7 @@ export class SlaveConnector {
       await this.ensureCredential(conn, peer, publicPing);
       const proxy = await peer.queryInterface(service);
       await this.ensureCredential(conn, peer, publicPing);
+      if (beforeSend) await beforeSend();
       checkRegistration();
       const fn = (proxy as any)[method];
       if (typeof fn !== 'function') throw new Error(`Method ${method} not found on service ${service}`);

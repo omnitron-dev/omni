@@ -1,3 +1,4 @@
+export * from './flow-peer-review.js';
 export type { StackDiagnosis, StackDiagnosisCheck } from './stack-diagnosis.js';
 export * from './flows.js';
 export type * from './flow-runtime.js';

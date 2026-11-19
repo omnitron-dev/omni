@@ -11,6 +11,7 @@ import {
   type SavedFlow,
 } from '@omnitron-dev/omnitron/dto/services';
 import { useAccess } from 'src/auth/access';
+import { FlowPeerReview } from 'src/components/flow-peer-review';
 import { FlowGraph, canWire } from 'src/components/flow-graph';
 import { FlowInspector, flowFieldError } from 'src/components/flow-inspector';
 import { describeFlowError, FlowOperations } from 'src/components/flow-operations';
@@ -210,6 +211,7 @@ function FlowWorkspacePage({ workspace }: { workspace: FlowWorkspace }) {
             <Typography variant="h6" sx={{ flex: 1 }}>
               {mayList ? 'Saved flows' : 'Node library'}
             </Typography>
+            <FlowPeerReview workspace={workspace} />
             {canEdit && (
               <>
                 <Button
@@ -453,6 +455,7 @@ function FlowEditor({
               </Button>
             )}
           </Stack>
+          {saved && <FlowPeerReview workspace={workspace} saved={saved} current={!dirty && !changed && !readFailed} />}
           {saved?.submission && (
             <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
               Submitted for review by {saved.submission.actor} · original revision {saved.submission.revision}

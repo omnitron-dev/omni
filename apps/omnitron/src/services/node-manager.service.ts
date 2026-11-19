@@ -25,6 +25,7 @@ import {
 } from './remote-ops.service.js';
 import { OMNITRON_HOME, CLI_VERSION } from '../config/defaults.js';
 import type { INodeHealthSummary, INodeCheckTarget, NodeHealthStatus } from '../workers/types.js';
+import { meshManagementIdentity } from '../cluster/mesh-link.js';
 import { nodeHostFingerprint, nodeSshIdentity } from './node-host-key.js';
 import type { SecretsService } from './secrets.service.js';
 import type {
@@ -220,13 +221,27 @@ export class NodeManagerService extends EventEmitter {
     return { ...toWireNode(node), status: this.statusFor(id) };
   }
 
+  /** Public evidence of the approved route, without resolving SSH passwords or key material. */
+  peerReviewTarget(id: string) {
+    const { node, fingerprint, pin } = this.reviewedMeshRegistration(id);
+    const ssh = { host: node.host, port: node.sshPort, username: node.sshUser, expectedHostFingerprint: fingerprint };
+    return { host: node.host, port: node.daemonPort, pin, managementIdentity: meshManagementIdentity(id, ssh) };
+  }
+
   /** Pin reviewed mesh observations to the registered machine and its approved host key. */
   meshIdentity(id: string): string {
+    return this.reviewedMeshRegistration(id).pin;
+  }
+
+  private reviewedMeshRegistration(id: string) {
     const node = this.nodes.get(id);
     if (!node || node.isLocal || this.changingNodes.has(id)) throw new Error('Select an enrolled remote node');
     const fingerprint = nodeHostFingerprint(this.store, node);
     if (!fingerprint) throw new Error('Verify the SSH host key for the selected mesh node');
-    return createHash('sha256').update(JSON.stringify([id, node.createdAt, nodeSshIdentity(node), node.daemonPort, fingerprint])).digest('hex');
+    const pin = createHash('sha256')
+      .update(JSON.stringify([id, node.createdAt, nodeSshIdentity(node), node.daemonPort, fingerprint]))
+      .digest('hex');
+    return { node, fingerprint, pin };
   }
 
   /**

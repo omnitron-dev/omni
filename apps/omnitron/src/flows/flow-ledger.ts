@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { stableJson as canonical } from '../shared/canonical-json.js';
 import { meshSourceIds } from './mesh-disk.js';
+import { PeerReviewLedger } from './peer-review-ledger.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import {
   compileFlow,
@@ -118,6 +119,7 @@ const publicDelivery = (row: DeliverySummary): FlowDelivery => ({
 
 /** State transitions, notifications and intents for other services commit in one local transaction. */
 export class FlowLedger {
+  readonly peerReviews: PeerReviewLedger;
   private readonly compiled = new Map<
     string,
     { activation: string; revision: string; evaluate: ReturnType<typeof compileFlow> }
@@ -168,6 +170,16 @@ export class FlowLedger {
       if (!columns.some((c) => c.name === 'attempt'))
         db.exec('ALTER TABLE flow_deliveries ADD COLUMN attempt INTEGER NOT NULL DEFAULT 0');
     }).immediate();
+    this.peerReviews = new PeerReviewLedger(
+      db, (work) => this.commit(work),
+      (workspace, definition, binding) => {
+        const ref = { id: randomUUID(), workspace };
+        const revision = this.revision(definition, binding);
+        this.insertDraft(ref, canonical(definition), revision);
+        return { ...ref, revision };
+      },
+      now
+    );
   }
 
   private byId(id: string): Stored | undefined {
@@ -275,6 +287,13 @@ export class FlowLedger {
   }
   get(ref: FlowRef, { includeProjectStacks = false } = {}) {
     return this.saved(this.scoped(ref, includeProjectStacks));
+  }
+  reviewedGraph(ref: FlowRef, revision: string, binding: FlowBinding): FlowDefinition {
+    const row = this.scoped(ref);
+    const graph = JSON.parse(row.definition) as FlowDefinition;
+    if (row.revision !== revision || this.revision(graph, binding) !== revision)
+      throw Error('The reviewed flow revision or project registration changed');
+    return graph;
   }
   private insertDraft(ref: FlowRef, definition: string, revision: string) {
     this.db

@@ -91,6 +91,21 @@ Use **Enrolled node** to monitor an exact mount on a registered peer. The same n
 
 Machine-local outputs run under the authority of the controller hosting the flow. For lifecycle broadcasts the source is live. The controller reports overload before admission. For a submitted event the durable guarantee starts when the controller commits the input, branch state and delivery IDs.
 
+## Review a draft on another controller
+
+A project administrator can offer an exact saved flow to an enrolled controller that hosts its own Flows service. Both administrators select the same project and optional stack name on their own installations. The invitation binds each side's project registration independently. A Studio room owner can first submit a proposal for local administrator review.
+
+1. Open the saved flow and choose **Share with a controller**. Select the receiving node from the fleet. Review the graph name, notification titles, node IDs and connections, then select **Prepare public offer**. Give that document to the receiving administrator through your established channel.
+2. On the receiving controller, open **Flows** in the agreed workspace. Choose **Receive a flow**, paste the offer, and verify the transfer ID, source registration and graph digest with the sender. **Issue invitation** produces a public reply valid for ten minutes. The receiving administrator can use the same offer to **Revoke invitation** until the draft arrives.
+3. On the sending controller, paste the invitation, verify the receiving registration and choose **Send reviewed graph**. The controller checks the enrolled node and its approved SSH host key, authenticates over the Xec tunnel and challenges the issuing installation on that Netron connection. It encrypts the reviewed graph for the invitation's receiving key.
+4. The receiver validates the graph and records its inactive draft and receipt together. The receiving administrator can paste the original offer, choose **Check incoming transfer** and use **Open received draft** to reach its exact local ID. Its project inventory also shows the new draft. A local administrator can inspect it, preview an event and separately activate a reviewed local revision. Each controller owns its copy. Later edits, restarts and activations on one controller do not change the other copy or its applications.
+
+The portable format supports **Manual input** and **Local notification**, up to 64 KiB. The public offer contains a graph digest. The encrypted document carries its name, component IDs, notification text and connections. Controller paths, mesh nodes, pipeline handles and Studio room bindings require destination-local review and are outside this format. Studio history, memory, credentials and sessions stay with their owners.
+
+If the reply is lost, reopen the original flow, select the same enrolled node, paste the original invitation and choose **Check receipt**. After acceptance the first draft ID and revision remain available across restart, expiry and later edits. A pending invitation leaves the destination inventory unchanged. A revoked or unused expired invitation requires a new offer. Changing the enrolled peer or either project registration requires a new review. An unreachable receiver leaves the transfer unconfirmed.
+
+During a runtime rollback to a release that predates controller transfers, the receiving draft remains an ordinary local flow. Transfer RPCs are unavailable during that window. The earlier runtime leaves invitations, revocations and receipts in the private SQLite file. Restoring the newer runtime with those same files restores receipt lookup. Invitations continue to expire in wall-clock time. Transfers require an explicit sender request and have no background delivery worker.
+
 ## Design references
 
 Node-RED's message ports and subflows make connections understandable in the editor. n8n distinguishes triggers from actions and supports human review before a tool acts. Omnitron applies both ideas to the same project-scoped definition and puts effect authority in the receiving service. [Node-RED concepts](https://nodered.org/docs/user-guide/concepts) · [n8n nodes](https://docs.n8n.io/workflows/components/nodes/) · [n8n approvals](https://docs.n8n.io/advanced-ai/human-in-the-loop-tools/)

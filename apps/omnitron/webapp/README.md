@@ -30,7 +30,7 @@ including forward references. Saving checks the revision you opened. To run the 
 
 A stack detail page uses `/projects/<project>/stacks/<stack>`. Selecting another stack opens its details. **All stacks** opens the inventory. Selecting a different stack from an application card opens the Applications list for the selection. A release detail uses `/projects/<project>/releases/<id>`. A link that only knows the release ID can use `/releases/<id>`. The controller's release record supplies the canonical project.
 
-Logs lists the selected stack's local and remote applications, including those awaiting their first log. For an older worker that reports `project/deployed/app`, select its registry node and application. Console includes those records when the observed placement identifies one stack on that node.
+Logs lists the selected stack's local and remote applications, including those awaiting their first log. For an older worker that reports `project/deployed/app`, select its registry node and application. Console includes those records when the observed placement identifies one stack on that node. The Topology log drawer and its **View logs** link use the same application handle and registry node. An ambiguous placement is shown as unconfirmed.
 
 In **Deploy a release**, an administrator can update missing application declarations for the selected release and target. Console then asks the controller for a fresh admission decision. A running target that needs to stop stays available through **Inspect stack** for a separate reviewed operation.
 

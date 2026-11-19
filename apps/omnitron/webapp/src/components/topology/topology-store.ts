@@ -70,6 +70,7 @@ export interface InfraNodeData {
 }
 
 export interface AppNodeData {
+  logEndpoint?: { host: string; port: number };
   workspace?: ProcessInfoDto['workspace'];
   nodeType: 'app';
   label: string;
@@ -305,6 +306,8 @@ export function stackBands(
             label: `${s.name}/${name}`,
             name: process?.name ?? `${runtimeScope.project}/${runtimeScope.stack}/${name}`,
             logicalApp: name,
+            logEndpoint: { host: placement.host, port: placement.port },
+            ...(scope.project && { workspace: { project: scope.project, stack: s.name } }),
             project: scope.project,
             stack: s.name,
             nodeKey: placement.nodeKey,
@@ -371,6 +374,8 @@ export function stackBands(
         remote,
         project: scope.project,
         logicalApp: a.name,
+        ...(scope.project && { workspace: { project: scope.project, stack: s.name } }),
+        ...(remote && s.nodes.length === 1 && { logEndpoint: { host: s.nodes[0]!.host, port: s.nodes[0]!.port } }),
         nodeKey: remote ? (s.nodes.length === 1 ? `${s.nodes[0]!.host}:${s.nodes[0]!.port}` : undefined) : 'local',
         port: a.port,
         status: a.status,
@@ -629,7 +634,11 @@ export const useTopologyStore = create<TopologyState>((set, get) => {
             for (const app of band.apps) {
               const [runtimeProject, runtimeStack] = app.name.split('/');
               const identity = scopes.get(`${runtimeProject}/${runtimeStack}`);
-              if (identity) { app.project = identity.project; app.stack = identity.stack; }
+              if (identity) {
+                app.project = identity.project;
+                app.stack = identity.stack;
+                if (app.workspace === undefined) app.workspace = { project: identity.project, stack: identity.stack };
+              }
             }
             for (const service of [...band.services, ...(band.gateway ? [band.gateway] : [])]) {
               const identity = scopes.get(`${service['project']}/${service.stack}`);

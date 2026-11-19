@@ -71,6 +71,7 @@ const { queryLogs, getLogStats } = vi.hoisted(() => {
   };
 });
 
+vi.mock('src/auth/access', () => ({ useAccess: () => ({ can: () => true }) }));
 vi.mock('src/netron/client', () => ({
   logs: { queryLogs, getLogStats, streamLogs: vi.fn(async () => []) },
   daemon: { list: vi.fn(async () => []) },

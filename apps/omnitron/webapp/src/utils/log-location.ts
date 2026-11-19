@@ -1,4 +1,6 @@
+import { qualifiedAppHandle } from './app-address';
 import { quoteShellArgument as quote } from './shell-command';
+import type { AppNodeData } from '../components/topology/topology-store';
 import type { IStackInfo } from '@omnitron-dev/omnitron/dto/services';
 
 /** Older workers report project/deployed/app. Only a unique stack allocation on the selected registry node identifies it. */
@@ -33,6 +35,24 @@ export function legacyLogTargets(
     if (matching.size === 1 && matching.has(selectedStack)) available.add(handle);
   }
   return { available, observed };
+}
+
+export type TopologyLogTarget = { app: string; nodeId?: string };
+
+/** A graph placement identifies a worker endpoint. Logs are stored under its registry ID. */
+export function topologyLogTarget(app: AppNodeData | null, inventory?: {
+  project: string; nodes: { id: string; host: string; daemonPort: number }[]; stacks: IStackInfo[];
+} | null): TopologyLogTarget | null {
+  if (!app) return null;
+  if (!app.remote) return { app: app.name };
+  if (!qualifiedAppHandle(app.name) || !app.project || app.project !== inventory?.project || !app.logEndpoint) return null;
+  const { host, port } = app.logEndpoint;
+  const matches = inventory.nodes.filter(node => node.host === host && node.daemonPort === port);
+  if (matches.length !== 1) return null;
+  const nodeId = matches[0]!.id;
+  if (app.name.split('/')[1] === 'deployed' &&
+      !legacyLogTargets(app.project, app.stack, inventory.stacks, inventory.nodes, nodeId).available.has(app.name)) return null;
+  return { app: app.name, nodeId };
 }
 
 /** Preserve the exact application handle and registry node across Console navigation. */

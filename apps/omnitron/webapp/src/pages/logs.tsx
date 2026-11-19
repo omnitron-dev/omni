@@ -110,9 +110,14 @@ function shortAppName(name: string): string {
 // =============================================================================
 
 export default function LogsPage() {
+  const { can } = useAccess();
+  const canStream = can('OmnitronLogs.streamLogs');
+  const canIngestion = can('OmnitronLogs.getIngestionStats');
+  const canStats = can('OmnitronLogs.getLogStats');
   const [ingestion, setIngestion] = useState<LogIngestionStats | null>(null);
   const ingestionReading = readLogIngestion(ingestion);
   useEffect(() => {
+    if (!canIngestion) return undefined;
     let active = true;
     let inFlight = false;
     const poll = async () => {
@@ -125,11 +130,10 @@ export default function LogsPage() {
     void poll();
     const timer = setInterval(() => { void poll(); }, 5000);
     return () => { active = false; clearInterval(timer); };
-  }, []);
+  }, [canIngestion]);
   const theme = useTheme();
   const { activeProject, activeStack, namespacePrefixes, matchesNamespace } = useStackContext();
   const stacks = useActiveProjectStacks();
-  const { can } = useAccess();
   const daemonMode = !activeProject;
   const canListDaemonApps = daemonMode && can('OmnitronDaemon.list');
   const daemonApps = usePolledResource(() => daemon.list(), {
@@ -174,7 +178,8 @@ export default function LogsPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [labelInput, setLabelInput] = useState('');
-  const [timeRangeKey, setTimeRangeKey] = useState<TimeRangeKey>('live');
+  const [selectedTimeRange, setTimeRangeKey] = useState<TimeRangeKey>('live');
+  const timeRangeKey = selectedTimeRange === 'live' && !canStream ? '1h' : selectedTimeRange;
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
 
@@ -251,6 +256,7 @@ export default function LogsPage() {
   // and on Refresh — not on every change of filter, which it answers nothing
   // about.
   const fetchLoggedApps = useCallback(async () => {
+    if (!canStats) return;
     try {
       const s = await logs.getLogStats();
       // Replaced, not unioned: `byApp` is the complete grouping of the log
@@ -259,7 +265,7 @@ export default function LogsPage() {
     } catch {
       /* the running apps still fill the filter */
     }
-  }, []);
+  }, [canStats]);
 
   useEffect(() => {
     fetchLoggedApps();
@@ -584,9 +590,9 @@ export default function LogsPage() {
             <Stack direction="row" spacing={0.5} sx={{
               alignItems: "center", flexWrap: 'wrap'
             }}>
-              <Tooltip title={`Current node: ${ingestionReading.detail}`}>
+              {canIngestion && <Tooltip title={`Current node: ${ingestionReading.detail}`}>
                 <Chip size="small" color={ingestionReading.severity} variant="outlined" label={ingestionReading.title} />
-              </Tooltip>
+              </Tooltip>}
               {isLive && (
                 <Chip
                   label={paused ? 'PAUSED' : 'LIVE TAIL'}
@@ -783,7 +789,7 @@ export default function LogsPage() {
 
           {/* Time range */}
           <ButtonGroup size="small" variant="outlined" sx={{ flexWrap: 'wrap', maxWidth: '100%', rowGap: 0.5 }}>
-            {TIME_RANGES.map((range) => {
+            {TIME_RANGES.filter(range => range.key !== 'live' || canStream).map((range) => {
               const active = timeRangeKey === range.key;
               return (
                 <Button

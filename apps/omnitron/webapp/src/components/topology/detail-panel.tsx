@@ -15,6 +15,8 @@ import Divider from '@mui/material/Divider';
 import { Tabs } from '@omnitron-dev/prism/components/tabs';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { useTheme, alpha } from '@mui/material/styles';
+import type { TopologyLogTarget } from 'src/utils/log-location';
+import { qualifiedAppHandle } from 'src/utils/app-address';
 import { useAccess } from 'src/auth/access';
 import { MetricChart } from 'src/components/metric-chart';
 import { metricLines, formatBytes, formatCpu } from 'src/utils/metric-series';
@@ -68,7 +70,7 @@ function AppActions({ data }: { data: AppNodeData }) {
           size="small"
           color="success"
           startIcon={<PlayIcon />}
-          disabled={!data.name.includes('/') || !can('OmnitronDaemon.startApp')}
+          disabled={!qualifiedAppHandle(data.name) || !can('OmnitronDaemon.startApp')}
           onClick={() => startApp(data.name)}
           sx={{ textTransform: 'none', fontWeight: 600 }}
         >
@@ -81,7 +83,7 @@ function AppActions({ data }: { data: AppNodeData }) {
             size="small"
             color="warning"
             startIcon={<RestartIcon />}
-            disabled={!data.name.includes('/') || !can('OmnitronDaemon.restartApp')}
+            disabled={!qualifiedAppHandle(data.name) || !can('OmnitronDaemon.restartApp')}
             onClick={() => restartApp(data.name)}
             sx={{ textTransform: 'none', fontWeight: 600 }}
           >
@@ -92,7 +94,7 @@ function AppActions({ data }: { data: AppNodeData }) {
             size="small"
             color="error"
             startIcon={<StopIcon />}
-            disabled={!data.name.includes('/') || !can('OmnitronDaemon.stopApp')}
+            disabled={!qualifiedAppHandle(data.name) || !can('OmnitronDaemon.stopApp')}
             onClick={() => stopApp(data.name)}
             sx={{ textTransform: 'none', fontWeight: 600 }}
           >
@@ -356,14 +358,14 @@ function ServerOverview({ data }: { data: ServerNodeData }) {
 // Logs Tab
 // ---------------------------------------------------------------------------
 
-function LogsTab({ appName }: { appName: string }) {
+function LogsTab({ app, nodeId }: TopologyLogTarget) {
   const [logEntries, setLogEntries] = useState<LogEntryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchLogs = useCallback(async () => {
     try {
-      const result = await logs.streamLogs({ app: appName, tail: 30 });
+      const result = await logs.streamLogs({ app, ...(nodeId && { nodeId }), tail: 30 });
       setLogEntries(result);
       setError(null);
     } catch (err) {
@@ -375,7 +377,7 @@ function LogsTab({ appName }: { appName: string }) {
     } finally {
       setLoading(false);
     }
-  }, [appName]);
+  }, [app, nodeId]);
 
   usePollingEffect(() => void fetchLogs(), { intervalMs: 5_000 });
 
@@ -559,7 +561,7 @@ function MetricsTab({ appName }: { appName: string }) {
 // Detail Panel
 // ---------------------------------------------------------------------------
 
-export function DetailPanel({ container }: { container?: HTMLElement | null }) {
+export function DetailPanel({ container, logTarget }: { container?: HTMLElement | null; logTarget: TopologyLogTarget | null }) {
   const theme = useTheme();
   const wide = useMediaQuery(theme.breakpoints.up('md'));
   const { detailPanel, closeDetail, edges, nodes, openDetail } = useTopologyStore();
@@ -627,10 +629,13 @@ export function DetailPanel({ container }: { container?: HTMLElement | null }) {
           ...(can('OmnitronDaemon.inspect')
             ? [{ value: 'Config', label: 'Config', content: <ConfigTab key={app.name} appName={app.name} /> }]
             : []),
-          { value: 'Metrics', label: 'Metrics', content: <MetricsTab key={app.name} appName={app.name} /> },
+          ...(can('OmnitronMetrics.querySeries')
+            ? [{ value: 'Metrics', label: 'Metrics', content: <MetricsTab key={app.name} appName={app.name} /> }] : []),
         ]
       : []),
-    ...(app ? [{ value: 'Logs', label: 'Logs', content: <LogsTab key={app.name} appName={app.name} /> }] : []),
+    ...(app && can('OmnitronLogs.streamLogs') ? [{ value: 'Logs', label: 'Logs', content: logTarget
+      ? <LogsTab key={JSON.stringify(logTarget)} {...logTarget} />
+      : <Typography variant="body2" color="text.secondary">The log stream for this placement is unconfirmed.</Typography> }] : []),
   ];
   return (
     <Drawer

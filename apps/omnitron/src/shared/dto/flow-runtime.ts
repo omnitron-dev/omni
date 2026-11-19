@@ -1,6 +1,7 @@
 import type { FlowDefinition, FlowEffect, FlowEvent, FlowNodeDescriptor, FlowPreview, FlowState } from './flows.js';
 import type { StudioProposalRef } from './studio.js';
 
+/** Placement on the owning controller. The RPC principal supplies the operator or administrator role. */
 export interface FlowWorkspace {
   project: string | null;
   stack?: string;

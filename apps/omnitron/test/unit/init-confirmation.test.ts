@@ -51,13 +51,14 @@ describe('configuration overwrite admission', () => {
     fs.writeFileSync(file, 'original');
     await initCommand({ force: true });
     expect(prompt.confirm).not.toHaveBeenCalled();
-    expect(fs.readFileSync(file, 'utf8')).toContain('defineEcosystem');
+    expect(fs.readFileSync(file, 'utf8')).toContain('./omnitron-worker.js');
   });
 
   it('creates a new config without confirmation', async () => {
     await initCommand();
     expect(prompt.confirm).not.toHaveBeenCalled();
-    expect(fs.readFileSync(file, 'utf8')).toContain('defineEcosystem');
+    expect(fs.readFileSync(file, 'utf8')).toContain('./omnitron-worker.js');
+    expect(fs.readFileSync(path.join(directory, 'omnitron-worker.js'), 'utf8')).toContain("type: 'ready'");
   });
 
   it('preserves a symlink target even when overwrite is explicit', async () => {
@@ -66,5 +67,14 @@ describe('configuration overwrite admission', () => {
     fs.symlinkSync(target, file);
     await expect(initCommand({ force: true })).rejects.toThrow('symbolic link');
     expect(fs.readFileSync(target, 'utf8')).toBe('original');
+  });
+
+  it('preserves both the application and configuration when the starter filename is occupied', async () => {
+    fs.writeFileSync(file, 'previous configuration');
+    const worker = path.join(directory, 'omnitron-worker.js');
+    fs.writeFileSync(worker, 'existing application');
+    await expect(initCommand({ force: true })).rejects.toThrow('different contents');
+    expect(fs.readFileSync(worker, 'utf8')).toBe('existing application');
+    expect(fs.readFileSync(file, 'utf8')).toBe('previous configuration');
   });
 });

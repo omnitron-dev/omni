@@ -8,6 +8,8 @@ import { ProjectSwitcher } from '../../webapp/src/components/project-switcher.js
 import ProjectsPage from '../../webapp/src/pages/projects.js';
 
 const access = vi.hoisted(() => ({ allowed: true }));
+const rpc = vi.hoisted(() => ({ reviewProjectCreation: vi.fn(), createProject: vi.fn() }));
+vi.mock('src/netron/client', () => ({ project: rpc, daemonClient: {} }));
 const state = vi.hoisted(() => ({
   projects: [] as IProjectInfo[],
   activeProject: null as string | null,
@@ -73,23 +75,53 @@ describe('workspace menu commands', () => {
     fireEvent.keyDown(current, { key: 'ArrowUp' });
     expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'alpha 1 stacks' }));
   });
-  it('opens the authorized Add Project form through keyboard menu navigation', async () => {
+  it('reviews the starter through the workspace menu and registers the exact reviewed project', async () => {
+    const needs = { automation: false, persistence: 'none', service: 'node' };
+    rpc.reviewProjectCreation.mockResolvedValue({ name: 'sample', path: '/workspace/sample', effects: [],
+      manifest: { needs, commands: { start: 'node omnitron-worker.js' }, dependencies: {} },
+      digest: 'a'.repeat(64), files: [{ path: 'omnitron.config.ts', content: 'configuration' }] });
+    rpc.createProject.mockResolvedValue({ name: 'sample' });
     mount();
     fireEvent.click(screen.getByRole('button', { name: 'Switch workspace: Omnitron' }));
     const menu = screen.getByRole('menu');
     fireEvent.keyDown(menu, { key: 'End' });
-    const add = screen.getByRole('menuitem', { name: 'Add project' });
+    const add = screen.getByRole('menuitem', { name: 'Create project' });
     await waitFor(() => expect(document.activeElement).toBe(add));
     fireEvent.click(add);
-    expect(await screen.findByRole('dialog', { name: 'Add Project' })).toBeTruthy();
+    expect(await screen.findByRole('dialog', { name: 'Create project' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Project name'), { target: { value: 'sample' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Review starter' }));
+    await screen.findByText('/workspace/sample');
+    expect(rpc.reviewProjectCreation).toHaveBeenCalledWith({ name: 'sample', needs });
+    expect(rpc.createProject).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Create project' }));
+    await waitFor(() => expect(state.fetchProjects).toHaveBeenCalled());
+    expect(rpc.createProject).toHaveBeenCalledWith({ name: 'sample', needs, digest: 'a'.repeat(64) });
     expect(state.addProject).not.toHaveBeenCalled();
+  });
+  it('keeps existing directory registration separate from starter creation', () => {
+    mount('/projects');
+    fireEvent.click(screen.getByRole('button', { name: 'Add existing project' }));
+    expect(screen.getByRole('dialog', { name: 'Add existing project' })).toBeTruthy();
+    expect(screen.getByLabelText('Project Path')).toBeTruthy();
+    expect(rpc.reviewProjectCreation).not.toHaveBeenCalled();
+  });
+  it('lets an administrator review suggested needs before any project is created', async () => {
+    mount('/projects?create=1&name=notes&automation=1&persistence=sqlite&service=none');
+    expect((screen.getByLabelText('Run automation with Xec') as HTMLInputElement).checked).toBe(true);
+    expect(rpc.reviewProjectCreation).not.toHaveBeenCalled();
+    rpc.reviewProjectCreation.mockRejectedValueOnce(Error('Review unavailable'));
+    fireEvent.click(screen.getByRole('button', { name: 'Review starter' }));
+    await screen.findByText('Review unavailable');
+    expect(rpc.reviewProjectCreation).toHaveBeenCalledWith({ name: 'notes', needs: { automation: true, persistence: 'sqlite', service: 'none' } });
+    expect(rpc.createProject).not.toHaveBeenCalled();
   });
   it('does not offer or open a registration form without permission', () => {
     access.allowed = false;
     mount('/projects?create=1');
     fireEvent.click(screen.getByRole('button', { name: 'Switch workspace: Omnitron' }));
-    expect(screen.queryByRole('menuitem', { name: 'Add project' })).toBeNull();
-    expect(screen.queryByRole('dialog', { name: 'Add Project' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Create project' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Create project' })).toBeNull();
   });
   it('does not query or reveal a retained project name without inventory access', () => {
     access.allowed = false;

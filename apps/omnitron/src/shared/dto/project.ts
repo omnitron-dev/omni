@@ -34,6 +34,44 @@ export interface RuntimeStackScope {
 // Project DTOs
 // =============================================================================
 
+export interface ProjectStarterNeeds {
+  automation: boolean;
+  persistence: 'none' | 'sqlite' | 'postgresql' | 'mysql';
+  service: 'none' | 'node' | 'titan';
+}
+
+export const defaultProjectStarterNeeds: Readonly<ProjectStarterNeeds> = Object.freeze({
+  automation: false, persistence: 'none', service: 'node',
+});
+
+export function isProjectStarterNeeds(value: unknown): value is ProjectStarterNeeds {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const fields = value as Record<string, unknown>;
+  const { automation, persistence, service } = fields;
+  return Object.keys(fields).length === 3 && ['automation', 'persistence', 'service'].every(key => Object.hasOwn(fields, key)) &&
+    typeof automation === 'boolean' && typeof persistence === 'string' && ['none', 'sqlite', 'postgresql', 'mysql'].includes(persistence) &&
+    typeof service === 'string' && ['none', 'node', 'titan'].includes(service) && (automation || persistence !== 'none' || service !== 'none');
+}
+
+export interface ProjectStarterManifest {
+  version: 1;
+  name: string;
+  needs: ProjectStarterNeeds;
+  dependencies: Record<string, string>;
+  commands: Record<string, string>;
+  stack: string | null;
+  app: string | null;
+}
+
+export interface ProjectCreationReview {
+  name: string;
+  path: string;
+  manifest: ProjectStarterManifest;
+  effects: string[];
+  files: Array<{ path: string; content: string }>;
+  digest: string;
+}
+
 export interface IProjectInfo {
   /** Registry name (directory-based, e.g. 'omni') */
   name: string;

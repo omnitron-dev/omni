@@ -6,55 +6,20 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { log, confirm } from '@xec-sh/kit';
 
-/**
- * The scaffold a new project starts from.
- *
- * It used to be one particular private stack, copied whole: five apps named
- * `main`, `storage`, `pricing`, `payments` and `messaging`, each pointing at
- * `./apps/<name>/src/main.ts` — paths that exist in exactly one repository on
- * earth. Anybody else running `omnitron init` got a config whose every entry
- * was wrong, and `omnitron up` answered with five failures before they had
- * written a line. The same file, dropped into this package's own directory,
- * is why a daemon started here registers five apps that can never run.
- *
- * One entry, obviously an example, is a better starting point than five that
- * look authoritative and are not.
- */
-const CONFIG_TEMPLATE = `import { defineEcosystem } from '@omnitron-dev/omnitron';
+import { writeStarter } from '../project/starter.js';
+import { planStarter, starterConfig } from '../project/starter-plan.js';
+import { defaultProjectStarterNeeds, type ProjectStarterNeeds } from '../shared/dto/project.js';
 
-export default defineEcosystem({
-  apps: [
-    {
-      // Replace with your own — one entry per process omnitron should run.
-      name: 'api',
-      script: './src/main.ts',
-      // bootstrap: './src/bootstrap.ts',  // for a Titan app with child processes
-      // critical: true,                   // the stack stops if this one cannot start
-      // dependsOn: ['other-app'],
-      // watch: './src',                   // restart on change, in development
-    },
-  ],
-
-  supervision: {
-    strategy: 'one_for_one',
-    maxRestarts: 5,
-    window: 60_000,
-    backoff: { type: 'exponential', initial: 1_000, max: 30_000, factor: 2 },
-  },
-
-  monitoring: {
-    healthCheck: { interval: 15_000, timeout: 5_000 },
-    metrics: { interval: 5_000, retention: 3600 },
-  },
-
-  env: 'development',
-});
-`;
-
-export async function initCommand(options: { force?: boolean } = {}): Promise<void> {
-  const configPath = path.resolve(process.cwd(), 'omnitron.config.ts');
-  const exists = fs.existsSync(configPath);
-  if (exists && fs.lstatSync(configPath).isSymbolicLink()) {
+export async function initCommand(options: { force?: boolean; name?: string; automation?: boolean;
+  database?: ProjectStarterNeeds['persistence']; service?: ProjectStarterNeeds['service'] } = {}): Promise<void> {
+  const basename = path.basename(process.cwd()).toLowerCase().replace(/[^a-z0-9-]/g, '-');
+  const name = options.name ?? (/^[a-z]/.test(basename) ? basename : 'project-' + basename).slice(0, 63);
+  const needs = { automation: options.automation ?? defaultProjectStarterNeeds.automation,
+    persistence: options.database ?? defaultProjectStarterNeeds.persistence, service: options.service ?? defaultProjectStarterNeeds.service };
+  const plan = planStarter(name, needs);
+  const configPath = path.resolve(process.cwd(), starterConfig);
+  const exists = fs.lstatSync(configPath, { throwIfNoEntry: false });
+  if (exists?.isSymbolicLink()) {
     throw new Error('omnitron.config.ts is a symbolic link. Select its project directory explicitly.');
   }
   if (exists && !options.force) {
@@ -74,10 +39,11 @@ export async function initCommand(options: { force?: boolean } = {}): Promise<vo
     }
   }
 
-  const fd = fs.openSync(configPath, exists
-    ? fs.constants.O_WRONLY | fs.constants.O_TRUNC | fs.constants.O_NOFOLLOW
-    : 'wx');
-  try { fs.writeFileSync(fd, CONFIG_TEMPLATE, 'utf-8'); }
-  finally { fs.closeSync(fd); }
-  log.success('Created omnitron.config.ts');
+  // A dependency-free Node starter can also be added to an established package.
+  // Keep its package metadata and documentation under the project owner's control.
+  const files = plan.files.filter(file => Object.keys(plan.manifest.dependencies).length || !['package.json', 'README.md'].includes(file.path) ||
+    !fs.lstatSync(path.join(process.cwd(), file.path), { throwIfNoEntry: false }));
+  writeStarter(process.cwd(), files, !!exists);
+  log.success('Initialized ' + name + '. ' + plan.effects.slice(1).join(' '));
+  if (files.length !== plan.files.length) log.info('Existing project metadata was preserved. Run the worker with node omnitron-worker.js.');
 }

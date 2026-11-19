@@ -20,6 +20,29 @@ omnitron status
 
 The CLI and daemon require Node.js 22.14+ on 22.x or 23.6+, including the Node-API support needed by SQLite. Configure an ecosystem before starting applications. `omnitron up` starts the daemon and may start configured stacks.
 
+In **Console → Projects → Create project**, choose automation, persistence and
+service supervision independently. Review the destination, dependencies, commands
+and complete file contents. An administrator can then create and register a new
+directory under `$OMNITRON_HOME/workspaces/<name>`. The operator chooses when to
+install dependencies and run the generated commands.
+**Add existing project** registers a directory you already own.
+
+| Need | Generated program | Operation |
+| --- | --- | --- |
+| Automation | Xec task | `npm run automation` checks the syntax of each program using the local Node runtime and runs the database command if selected. |
+| Persistence | Kysera with SQLite, PostgreSQL or MySQL | `npm run data` creates `starter_events` if needed, inserts an event and reads it back. SQLite uses a project-local file. PostgreSQL and MySQL use the operator's `DATABASE_URL`. |
+| Service | Node or Titan worker | `npm start` starts the worker directly. Its **dev** stack can supervise the same entry and observe its IPC readiness. With persistence, startup also records one event. |
+
+The generated `omnitron.starter.json` records the selected composition and the
+README lists its commands. Xec and Kysera standalone projects work with their
+own dependencies and commands. Run `npm install` in the project directory when
+the manifest lists dependencies. The default Node worker uses the standard library.
+
+`omnitron init` generates the same starter locally. For example, from an empty
+directory run `omnitron init --name notes --automation --database sqlite --service none`
+to create an independent Xec and Kysera project. Register an existing directory
+with `omnitron project add <name> <absolute-directory>`.
+
 ```sh
 omnitron start project/stack/app
 omnitron logs project/stack/app

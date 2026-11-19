@@ -3,6 +3,8 @@ export type { InstalledReleaseInspection, InstalledArtifactObservation, Installe
 import type { TopologyScope, TopologySpec, TopologyDraft, TopologyPlan, TopologyInventory, TopologyWorkspace } from './topology.js';
 export type { TopologyScope, TopologySpec, TopologyDraft, TopologyPlan, TopologyInventory, TopologyWorkspace, TopologyChange, TopologyIssue } from './topology.js';
 import type { ProjectTopology } from './project.js';
+export type { ProjectStarterNeeds, ProjectStarterManifest, ProjectCreationReview } from './project.js';
+export { defaultProjectStarterNeeds, isProjectStarterNeeds } from './project.js';
 export type { PreparedArtifactVolume, ReleaseAdmission, InstalledStackResumeResult, ConfigurationImport, ProjectConfigurationInfo, RuntimeStackScope, ProjectDependency, ProjectTopology, TopologyMetadataRefresh, StackStopReview } from './project.js';
 import type { LogIngestionStats } from './logs.js';
 /**
@@ -360,6 +362,8 @@ export interface IProjectRpcService {
   scanRequirements(data: { project: string }): Promise<IProjectRequirements>;
 
   // --- Projects (Admin) ---
+  reviewProjectCreation(data: { name: string; needs: import('./project.js').ProjectStarterNeeds }): Promise<import('./project.js').ProjectCreationReview>;
+  createProject(data: { name: string; needs: import('./project.js').ProjectStarterNeeds; digest: string }): Promise<IProjectInfo>;
   addProject(data: { name: string; path: string }): Promise<IProjectInfo>;
   updateProject(data: { name: string; path?: string }): Promise<IProjectInfo>;
   refreshInfrastructureOwnership(data: { project: string; stack: string }): Promise<{ released: string[]; adopted: string[] }>;

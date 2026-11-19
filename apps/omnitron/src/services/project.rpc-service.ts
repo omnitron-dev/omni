@@ -10,7 +10,7 @@ import { publicStackName, type ConfigurationImport } from '../project/configurat
  * RBAC:
  * - Viewer: listProjects, getProject, listStacks, getStack, scanRequirements, getStackStatus
  * - Operator: startStack, stopStack, resumeInstalledStack
- * - Admin: addProject, removeProject
+ * - Admin: reviewProjectCreation, createProject, addProject, removeProject
  */
 
 import { Service, Public } from '@omnitron-dev/titan/decorators';
@@ -20,6 +20,7 @@ import type { ProjectService } from './project.service.js';
 import type { DeployProgressRecord } from './remote-deployer.service.js';
 import type {
   IProjectInfo,
+  ProjectStarterNeeds,
   IStackInfo,
   IProjectAppStatus,
   StackRuntime,
@@ -165,6 +166,29 @@ export class ProjectRpcService {
   async detachConfiguration(data: { project: string; name: string; expectedRevision: string }): Promise<{ success: true }> {
     await this.projectService.detachProjectConfiguration(data);
     return { success: true };
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async reviewProjectCreation(data: { name: string; needs: ProjectStarterNeeds }) {
+    if (!data || typeof data.name !== 'string' || Object.keys(data).some(key => key !== 'name' && key !== 'needs'))
+      throw Errors.badRequest('Review takes a project name and its needs');
+    return this.projectService.reviewProjectCreation(data.name, data.needs);
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async createProject(data: { name: string; needs: ProjectStarterNeeds; digest: string }): Promise<IProjectInfo> {
+    if (!data || typeof data.name !== 'string' || typeof data.digest !== 'string' || !/^[a-f0-9]{64}$/.test(data.digest) ||
+        Object.keys(data).some(key => key !== 'name' && key !== 'needs' && key !== 'digest'))
+      throw Errors.badRequest('Create requires the project name and its reviewed digest');
+    const event = { action: 'project.create', resourceType: 'project', resourceId: data.name };
+    let project: IProjectInfo;
+    try { project = await this.projectService.createProject(data.name, data.needs, data.digest); }
+    catch (error) {
+      await this.audit?.record({ ...event, outcome: 'failed', error });
+      throw error;
+    }
+    await this.audit?.record({ ...event, details: { path: project.path, digest: data.digest }, outcome: 'ok' });
+    return project;
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })

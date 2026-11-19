@@ -189,8 +189,13 @@ export function ProjectSwitcher() {
             </MenuItem>
           );
         })}
-        {can('OmnitronProject.addProject') && <Divider />}
-        {can('OmnitronProject.addProject') && (
+        {(can('OmnitronProject.addProject') || can('OmnitronProject.reviewProjectCreation') && can('OmnitronProject.createProject')) && <Divider />}
+        {can('OmnitronProject.addProject') && <MenuItem onClick={() => {
+          onClose(); deselectProject('/projects'); navigate('/projects?add=1');
+        }} sx={{ minHeight: 44, gap: 1.5 }}>
+          <PlusIcon sx={{ fontSize: 22 }} /> Add existing project
+        </MenuItem>}
+        {can('OmnitronProject.reviewProjectCreation') && can('OmnitronProject.createProject') && (
           <MenuItem
             onClick={() => {
               onClose();
@@ -200,7 +205,7 @@ export function ProjectSwitcher() {
             sx={{ minHeight: { xs: 44, sm: 44 }, gap: 1.5, color: 'primary.main' }}
           >
             <PlusIcon sx={{ fontSize: 22 }} />
-            Add project
+            Create project
           </MenuItem>
         )}
       </Menu>

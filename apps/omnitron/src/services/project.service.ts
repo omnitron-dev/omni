@@ -2,12 +2,13 @@ import { readColdBatch, reviewedColdStart, claimColdStart, type ColdStartPermit 
 import { readRestartConfiguration, restartLaunchIntent } from '../project/runtime-restart.js';
 import type { RuntimeRestartConfiguration, RuntimeRestartStack } from '../shared/dto/runtime-update.js';
 import { readProjectStacks, resolveProjectStacks } from '../config/project-stacks.js';
+import { createProjectDirectory, reviewProjectCreation } from '../project/project-creation.js';
 import { assertApplicationInstances } from '../config/define-ecosystem.js';
 import { readSavedDaemonConfig } from '../config/saved.js';
 import { observeStackHealth, type HealthAnswers } from '../project/stack-health.js';
 import { LocalReleaseSelection } from '../project/local-release-selection.js';
 import { StackMigrations, migrationReviewDigest, type PreparedStackMigrations } from '../project/stack-migrations.js';
-import type { StackMigrationReview, StackMigrationRequest } from '../shared/dto/project.js';
+import type { StackMigrationReview, StackMigrationRequest, ProjectStarterNeeds } from '../shared/dto/project.js';
 import { planLocalMigrations, executeMigrationPlan, inspectMigrationDependencies } from './migration-execution.js';
 import { inspectMigrationSdk } from '../../bin/sdk.js';
 import { assertExecutionCapabilities } from '../daemon/execution-capabilities.js';
@@ -840,6 +841,31 @@ export class ProjectService extends EventEmitter {
     return this.listProjects().find(record => record.name === (project.configuration?.project ?? name))!;
   }
 
+  reviewProjectCreation(name: string, needs: ProjectStarterNeeds) {
+    if (this.registry.get(name)) throw Error('Project name is already registered');
+    return reviewProjectCreation(name, needs);
+  }
+
+  @RecoveryMutation()
+  async createProject(name: string, needs: ProjectStarterNeeds, digest: string): Promise<IProjectInfo> {
+    this.migrations.assertIdle();
+    if (this.registry.get(name)) throw Error('Project name is already registered');
+    const created = createProjectDirectory(name, needs, digest);
+    try {
+      this.registerProject(name, created.path);
+    } catch (error) {
+      // A listener or the final registry read can fail after the durable insert.
+      if (this.registry.get(name)?.path !== created.path) created.rollback();
+      throw error;
+    }
+    try {
+      await this.ensureConfig(name);
+      return this.getProject(name);
+    } catch (cause) {
+      throw Error(`Project '${name}' was registered at ${created.path}, but its configuration could not be loaded`, { cause });
+    }
+  }
+
   @RecoveryMutation()
   async addProject(name: string, projectPath: string): Promise<IProjectInfo & { reread?: { redefined: number } }> {
     this.migrations.assertIdle();
@@ -859,6 +885,10 @@ export class ProjectService extends EventEmitter {
       const redefined = await this.rereadProject(name);
       return { ...this.toProjectInfo(existing), reread: { redefined } };
     }
+    return this.registerProject(name, projectPath);
+  }
+
+  private registerProject(name: string, projectPath: string): IProjectInfo {
     const project = this.registry.add(name, projectPath);
     this.logger.info({ project: name, path: projectPath }, 'Project registered');
     this.emit('project:added', name, projectPath);
@@ -5391,7 +5421,7 @@ export class ProjectService extends EventEmitter {
     // These writers already retain RecoveryMutation admission across awaits.
     // Their entry guards reject a new write during a migration; this check
     // rejects migration admission while an earlier write is still settling.
-    const writers = new Set(['importProjectConfiguration', 'detachProjectConfiguration', 'addProject',
+    const writers = new Set(['importProjectConfiguration', 'detachProjectConfiguration', 'addProject', 'createProject',
       'updateProject', 'removeProject', 'createStack', 'deleteStack', 'rereadProject',
       'refreshInfrastructureOwnership', 'applyTopologyPlan', 'refreshTopologyMetadata']);
     if (recoveryState.pendingOperations().some(operation => writers.has(operation.reason)))

@@ -40,6 +40,7 @@ import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
 import { useSnackbar } from '@omnitron-dev/prism/components/snackbar';
 import { project as projectRpc } from 'src/netron/client';
 import { ImportStacksDialog } from 'src/components/import-stacks-dialog';
+import { CreateProjectDialog } from 'src/components/create-project-dialog';
 import { useProjectStore } from 'src/stores/project.store';
 import type { IProjectInfo } from '@omnitron-dev/omnitron/dto/services';
 import { timeAgo } from 'src/utils/formatters';
@@ -356,7 +357,7 @@ function AddProjectDialog({
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Add Project</DialogTitle>
+      <DialogTitle>Add existing project</DialogTitle>
       <DialogContent>
         <Stack
           spacing={2.5}
@@ -394,7 +395,7 @@ function AddProjectDialog({
         </Button>
         <Can permission="OmnitronProject.addProject">
           <Button variant="contained" onClick={() => onAdd(name.trim(), path.trim())} disabled={!canSubmit || loading}>
-            Add Project
+            Add existing project
           </Button>
         </Can>
       </DialogActions>
@@ -425,14 +426,16 @@ export default function ProjectsPage() {
 
   const [editProject, setEditProject] = useState<IProjectInfo | null>(null);
   const [importProject, setImportProject] = useState<IProjectInfo | null>(null);
-  const addOpen = searchParams.get('create') === '1' && can('OmnitronProject.addProject');
-  const setAddOpen = useCallback(
-    (open: boolean) => {
+  const addOpen = searchParams.get('add') === '1' && can('OmnitronProject.addProject');
+  const createOpen = searchParams.get('create') === '1' && can('OmnitronProject.reviewProjectCreation') && can('OmnitronProject.createProject');
+  const setProjectForm = useCallback(
+    (action: 'add' | 'create', open: boolean) => {
       setSearchParams(
         (previous) => {
           const next = new URLSearchParams(previous);
-          if (open) next.set('create', '1');
-          else next.delete('create');
+          next.delete('add');
+          next.delete('create');
+          if (open) next.set(action, '1');
           return next;
         },
         { replace: true }
@@ -440,6 +443,8 @@ export default function ProjectsPage() {
     },
     [setSearchParams]
   );
+  const setAddOpen = useCallback((open: boolean) => setProjectForm('add', open), [setProjectForm]);
+  const setCreateOpen = (open: boolean) => setProjectForm('create', open);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -520,14 +525,16 @@ export default function ProjectsPage() {
             </Button>
             <Can permission="OmnitronProject.addProject">
               <Button
-                variant="contained"
+                variant="outlined"
                 size="small"
-                startIcon={<PlusIcon sx={{ fontSize: 18 }} />}
                 onClick={() => setAddOpen(true)}
               >
-                Add Project
+                Add existing project
               </Button>
             </Can>
+            {can('OmnitronProject.reviewProjectCreation') && can('OmnitronProject.createProject') &&
+              <Button variant="contained" size="small" startIcon={<PlusIcon sx={{ fontSize: 18 }} />}
+                onClick={() => setCreateOpen(true)}>Create project</Button>}
           </Stack>
         }
       />
@@ -550,7 +557,7 @@ export default function ProjectsPage() {
         <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300 }}>
           <EmptyContent
             title="No projects"
-            description="Register your first project to get started. A project is a monorepo with omnitron.config.ts at the root."
+            description="Create a runnable starter or register an existing project directory."
           />
         </Box>
       ) : (
@@ -575,6 +582,11 @@ export default function ProjectsPage() {
       />
 
       {/* Add dialog */}
+      {createOpen && <CreateProjectDialog query={searchParams} onClose={() => setCreateOpen(false)} onCreated={name => {
+        setCreateOpen(false);
+        void fetchProjects();
+        snackbar.success(`Project "${name}" created`);
+      }} />}
       <AddProjectDialog open={addOpen} onClose={() => setAddOpen(false)} onAdd={handleAdd} loading={submitting} />
 
       {/* Remove confirmation */}

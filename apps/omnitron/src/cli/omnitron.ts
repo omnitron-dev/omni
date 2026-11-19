@@ -1754,9 +1754,13 @@ program
 
 program
   .command('init')
-  .description('Scaffold omnitron.config.ts in current directory')
+  .description('Create a runnable project in the current directory')
+  .option('--name <name>', 'Project name (defaults to the directory name)')
+  .option('--automation', 'Add a portable Xec automation task')
+  .option('--database <engine>', 'Kysera database: none, sqlite, postgresql, mysql')
+  .option('--service <runtime>', 'Supervised service: none, node, titan')
   .option('--force', 'Overwrite an existing configuration explicitly')
-  .action(async (options: { force?: boolean }) => {
+  .action(async options => {
     const { initCommand } = await import('../commands/init.js');
     await initCommand(options);
   });

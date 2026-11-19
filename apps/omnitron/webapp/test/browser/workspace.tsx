@@ -24,7 +24,8 @@ import '@fontsource/inter/700.css';
 const params = new URLSearchParams(location.search);
 const view = params.get('view');
 const direction = params.get('dir') === 'rtl' ? 'rtl' : 'ltr';
-useAuthStore.setState({ user: { id: 'reader', username: 'reader', displayName: 'Reader', role: 'viewer' }, initialized: true });
+const account = (window as Window & { fixtureAccount?: string }).fixtureAccount ?? 'reader';
+useAuthStore.setState({ user: { id: account, username: account, displayName: account === 'reader' ? 'Reader' : account, role: 'viewer' }, initialized: true });
 const workspace = (
       <ConsoleAccessProvider>
         <SnackbarProvider><Routes>

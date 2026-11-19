@@ -1,6 +1,4 @@
 import { useState } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
-import { flowHref, useWorkspace } from 'src/routes/workspace';
 import {
   Box,
   Button,
@@ -29,6 +27,7 @@ import type {
 import { useAccess } from 'src/auth/access';
 import { studio } from 'src/netron/client';
 import { attachStudioText } from 'src/utils/studio-message';
+import { StudioFlowProposalRow } from './studio-flow-proposal';
 import { StudioTeamEditor, studioProviderNames } from './studio-team-editor';
 import { StudioTurnCard } from './studio-turn';
 
@@ -58,7 +57,6 @@ export function StudioTeamRoom({
   refresh,
 }: Props) {
   const { team, thread } = history;
-  const workspace = useWorkspace();
   const { can } = useAccess();
   const [editor, setEditor] = useState<'member' | 'policy' | null>(null);
   const [retiring, setRetiring] = useState<StudioMember | null>(null);
@@ -348,22 +346,13 @@ export function StudioTeamRoom({
           <>
             {team.proposals?.length ? (
               team.proposals.map((proposal) => (
-                <Stack key={proposal.id} spacing={0.5}>
-                  <Typography variant="subtitle2">{proposal.name}</Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {memberName(proposal.authorId)} · {new Date(proposal.createdAt).toLocaleString()}
-                  </Typography>
-                  {can('OmnitronStudio.flowProposal') && (
-                    <Button
-                      component={RouterLink}
-                      size="small"
-                      sx={{ alignSelf: 'start' }}
-                      to={flowHref(workspace, { team: room.threadId, proposal: proposal.id })}
-                    >
-                      Open in flow editor
-                    </Button>
-                  )}
-                </Stack>
+                <StudioFlowProposalRow
+                  key={proposal.id}
+                  proposal={proposal}
+                  room={room}
+                  stack={thread.stack ?? null}
+                  author={memberName(proposal.authorId)}
+                />
               ))
             ) : (
               <Typography variant="body2" color="text.secondary">

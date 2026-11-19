@@ -14,6 +14,7 @@ function controller(options = {}) {
   const registry = new FlowRegistry(undefined, [diagnostic]);
   const ledger = new FlowLedger(db, registry);
   const scopeBinding = options.binding ?? binding;
+  const authority = options.authority ?? actor;
   const changes = [],
     previews = [];
   let lost = !!options.loseSubmission;
@@ -51,8 +52,8 @@ function controller(options = {}) {
       },
       'OmnitronFlows.history': (ref) => ledger.history(ref, ref.limit),
       'OmnitronFlows.save': invoke('save', (data) => ledger.save(data, scopeBinding)),
-      'OmnitronFlows.activate': invoke('activate', (data) => ledger.change(data, actor, scopeBinding)),
-      'OmnitronFlows.deactivate': invoke('deactivate', (data) => ledger.change(data, actor, null)),
+      'OmnitronFlows.activate': invoke('activate', (data) => ledger.change(data, authority, scopeBinding)),
+      'OmnitronFlows.deactivate': invoke('deactivate', (data) => ledger.change(data, authority, null)),
       'OmnitronFlows.submit': invoke('submit', (data) => {
         const receipt = ledger.submit(data, data.activation, data.event);
         if (lost) {
@@ -62,7 +63,7 @@ function controller(options = {}) {
         return receipt;
       }),
       'OmnitronFlows.retryDelivery': invoke('retry', (data) =>
-        ledger.retry(data, data.activation, data.delivery, actor)
+        ledger.retry(data, data.activation, data.delivery, authority)
       ),
     },
   };
@@ -663,6 +664,148 @@ test('a Studio operator opens a proposal, edits its sample and previews it witho
     expect(calls.filter((method) => method === 'preview')).toHaveLength(2);
   } finally {
     releaseOld();
+  }
+});
+
+test('an operator explicitly shares a private Studio graph for independent administrator review', async ({
+  browser,
+  page,
+  context,
+  url,
+}) => {
+  const threadId = randomUUID(),
+    proposalId = randomUUID();
+  const operatorId = 'operator-a',
+    adminId = 'administrator-b';
+  const definition = diskSpaceFlow('/original-mount', 100, 200);
+  definition.name = 'Disk review for storage';
+  const assignment = { preferences: { role: 'analyst' }, selection: { model: 'example' } };
+  const thread = {
+    id: threadId,
+    leadMemberId: threadId,
+    title: 'Private operator team',
+    provider: 'codex',
+    assignment,
+    updatedAt: 1,
+    stack: project.stack,
+  };
+  const proposal = { id: proposalId, name: definition.name, authorId: threadId, createdAt: 1 };
+  const team = {
+    policy: { providers: ['codex'], maxMembers: 1, maxDelegations: 0, maxCostTier: 'standard' },
+    members: [{ id: threadId, name: 'Coordinator', provider: 'codex', assignment, lead: true, active: true }],
+    notes: [{ key: 'owner-only', text: 'private team note', authorId: threadId, revision: 1, updatedAt: 1 }],
+    tasks: [],
+    hasActiveTurns: false,
+    proposals: [proposal],
+  };
+  const host = controller({ authority: { actor: adminId, session: 'admin-fixture' } });
+  const source = { actor: operatorId, threadId, proposalId };
+  const calls = [];
+  let unknown = true;
+  const ownerReadings = {
+    'OmnitronStudio.workspace': { account: operatorId, threads: [thread], catalogs: [], older: null },
+    'OmnitronStudio.thread': { thread, team, turns: [], beforeTurn: null },
+    'OmnitronStudio.flowProposal': { definition, stack: project.stack },
+    'OmnitronFlows.catalog': host.readings['OmnitronFlows.catalog'],
+    'OmnitronFlows.preview': host.readings['OmnitronFlows.preview'],
+    'OmnitronFlows.submitProposal': (input) => {
+      if (input.project !== project.project || input.threadId !== threadId || input.proposalId !== proposalId)
+        return Error('Wrong proposal');
+      const receipt = host.ledger.submitProposal(source, project, definition, binding);
+      if (unknown) {
+        unknown = false;
+        return Error('Submission acknowledgement unavailable');
+      }
+      return receipt;
+    },
+  };
+  const adminContext = await browser.newContext();
+  context.on('request', (request) => {
+    if (!request.url().endsWith('/netron/invoke')) return;
+    const { service, method, input } = request.postDataJSON();
+    if (service === 'OmnitronFlows') calls.push({ method, input: input[0] });
+  });
+  try {
+    await stubInventory(context, ownerReadings, 'online', {
+      role: 'operator',
+      userId: operatorId,
+      grants: Object.keys(ownerReadings),
+    });
+    await stubInventory(adminContext, host.readings, 'online', { role: 'admin', userId: adminId });
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: url });
+    const studioHref = '/projects/sample/studio?team=' + threadId + '&tab=flows&stack=dev';
+    await page.goto(url + studioHref);
+    await page.getByRole('link', { name: 'Open in flow editor' }).click();
+    await page.getByRole('textbox', { name: 'Volume path' }).fill('/unsaved-preview');
+    await page.getByRole('link', { name: 'Open proposal in Studio' }).click();
+    await expect(page.getByRole('tab', { name: 'Flows' })).toHaveAttribute('aria-selected', 'true');
+    const start = page.getByRole('button', { name: 'Submit for administrator review' });
+    await start.click();
+    const confirm = page.getByRole('dialog', { name: 'Submit for administrator review' });
+    await expect(confirm.getByText(definition.name + ' · sample / dev')).toBeVisible();
+    await expect(confirm.getByText(/original proposal's nodes, connections and configuration values/)).toBeVisible();
+    await expect(confirm.getByRole('button', { name: 'Cancel' })).toBeFocused();
+    await page.keyboard.press('Escape');
+    expect(host.ledger.list({ workspace: project }).items).toHaveLength(0);
+    expect(calls.some((q) => q.method === 'submitProposal')).toBe(false);
+    await page.setViewportSize({ width: 360, height: 850 });
+    await start.click();
+    await page.screenshot({ path: test.info().outputPath('proposal-share-mobile.png') });
+    await confirm.getByRole('button', { name: 'Submit draft' }).click();
+    await expect(confirm.getByRole('alert')).toHaveText('Submission acknowledgement unavailable');
+    const first = host.ledger.proposalReceipt(source, project);
+    expect(host.ledger.get(first).active).toBeNull();
+    await confirm.getByRole('button', { name: 'Submit draft' }).click();
+    await expect(page.getByText('Draft ' + first.id + ' · submitted revision ' + first.revision)).toBeVisible();
+    expect(host.ledger.list({ workspace: project }).items).toHaveLength(1);
+    await expect(page.getByText('Submitted for review in sample / dev.')).toBeFocused();
+    await expect(page.getByRole('link', { name: 'Open shared draft' })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Copy review link' }).click();
+    await expect(page.getByRole('button', { name: 'Review link copied' })).toBeVisible();
+    const shared = await page.evaluate(() => navigator.clipboard.readText());
+    expect(shared).toBe(url + '/projects/sample/flows?flow=' + first.id + '&stack=dev');
+    expect(shared).not.toContain(threadId);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    const admin = await adminContext.newPage();
+    await admin.goto(url + '/projects/sample/flows?stack=dev');
+    await expect(admin.getByRole('link', { name: definition.name })).toHaveAttribute(
+      'href',
+      new URL(shared).pathname + new URL(shared).search
+    );
+    await admin.getByRole('link', { name: definition.name }).click();
+    await expect(admin.getByRole('textbox', { name: 'Volume path' })).toHaveValue('/original-mount');
+    await expect(
+      admin.getByText('Submitted for review by ' + operatorId + ' · original revision ' + first.revision)
+    ).toBeVisible();
+    await expect(admin.getByText('Paused', { exact: true })).toBeVisible();
+    await expect(admin.getByText('private team note')).toHaveCount(0);
+    await admin.getByRole('textbox', { name: 'Flow name' }).scrollIntoViewIfNeeded();
+    await admin.screenshot({ path: test.info().outputPath('submitted-draft-admin.png') });
+    await admin.getByRole('textbox', { name: 'Flow name' }).fill('Reviewed storage limits');
+    await admin.getByRole('button', { name: 'Save draft' }).click();
+    await expect.poll(() => host.ledger.get(first).revision).not.toBe(first.revision);
+    await admin.getByRole('button', { name: 'Review activation' }).click();
+    const activation = admin.getByRole('dialog', { name: 'Activate flow' });
+    expect(host.ledger.get(first).active).toBeNull();
+    await activation.getByRole('button', { name: 'Activate flow' }).click();
+    await expect(admin.getByText('Active', { exact: true })).toBeVisible();
+    expect(host.ledger.get(first).active.actor).toBe(adminId);
+    await admin.screenshot({ path: test.info().outputPath('submitted-activation-admin.png') });
+    const before = calls.filter((q) => q.method === 'submitProposal').length;
+    await page.reload();
+    await expect(start).toBeVisible();
+    expect(calls.filter((q) => q.method === 'submitProposal')).toHaveLength(before);
+    await start.click();
+    await confirm.getByRole('button', { name: 'Submit draft' }).click();
+    await expect(page.getByText('Draft ' + first.id + ' · submitted revision ' + first.revision)).toBeVisible();
+    expect(host.ledger.get(first).definition.name).toBe('Reviewed storage limits');
+    expect(calls.every((q) => ['catalog', 'submitProposal'].includes(q.method))).toBe(true);
+    expect(calls.filter((q) => q.method === 'submitProposal').map((q) => q.input)).toEqual(
+      Array(3).fill({ project: project.project, threadId, proposalId })
+    );
+  } finally {
+    await adminContext.close();
+    host.dispose();
   }
 });
 

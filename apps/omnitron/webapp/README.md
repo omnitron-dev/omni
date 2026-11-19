@@ -63,6 +63,8 @@ Choose the recipient in **Chat**. **Tasks** addresses work to a specific member 
 
 The **Tasks** tab loads the team's task bodies when opened, and `tab=tasks` in the room address returns to that view. The journal follows work in progress across all team members. **Memory** stores named, revisioned notes. **Flows** lists the team's proposals. **Open in flow editor** carries the team, proposal and current workspace to the editor for review. Existing individual conversations remain accessible. With a compatible lead connector, **Enable team** adds team collaboration to an individual conversation.
 
+**Submit for administrator review** shares the original graph into the room’s workspace as a paused draft. The operator can copy the review link from the receipt. An administrator can inspect its submission origin, edit the draft and review activation in **Flows**. Team messages and memory stay private. Submitting the same proposal again retrieves its original receipt.
+
 ## Runtime operations
 
 **Nodes → Managed backend updates** prepares a rollout from selected catalog builds or an exact commit. Review the node checks, owner and rollback artifacts before applying the plan. **Stage from controller catalog** explicitly transfers missing runtimes; leaving it unchecked inspects already staged artifacts.

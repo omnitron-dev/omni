@@ -196,7 +196,7 @@ function FlowWorkspacePage({ workspace }: { workspace: FlowWorkspace }) {
               team && proposal && can('OmnitronStudio.thread')
                 ? workspaceHref(
                     { project: workspace.project, stack: workspace.stack ?? null },
-                    '/studio?' + new URLSearchParams({ team })
+                    '/studio?' + new URLSearchParams({ team, tab: 'flows' })
                   )
                 : null
             }
@@ -420,7 +420,7 @@ function FlowEditor({
       {proposalLink && (
         <Box>
           <Button component={RouterLink} size="small" to={proposalLink}>
-            Open Studio team
+            Open proposal in Studio
           </Button>
         </Box>
       )}
@@ -453,6 +453,11 @@ function FlowEditor({
               </Button>
             )}
           </Stack>
+          {saved?.submission && (
+            <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
+              Submitted for review by {saved.submission.actor} · original revision {saved.submission.revision}
+            </Typography>
+          )}
           {canEdit && (
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { sm: 'center' } }}>
               <TextField

@@ -36,7 +36,8 @@ export const test = base.extend({
   }, { scope: 'worker', timeout: 90_000 }],
 });
 
-export async function stubInventory(page, extraReadings = {}, healthStatus = 'online', { grants, role = 'viewer' } = {}) {
+export async function stubInventory(page, extraReadings = {}, healthStatus = 'online', { grants, role = 'viewer', userId = 'reader' } = {}) {
+  if (userId !== 'reader') await page.addInitScript(id => { window.fixtureAccount = id; }, userId);
   const readings = {
     'OmnitronProject.listProjects': ['Example', 'Other'].map(displayName => ({
       name: displayName.toLowerCase(), displayName, path: '/' + displayName, totalStacks: 1, runningStacks: 0,
@@ -53,7 +54,7 @@ export async function stubInventory(page, extraReadings = {}, healthStatus = 'on
     const { id, service, method, input } = route.request().postDataJSON();
     const key = service + '.' + method;
     const reading = readings[key];
-    const data = key === 'OmnitronAccess.describe' ? { userId: 'reader', role, capabilities, roles: [] }
+    const data = key === 'OmnitronAccess.describe' ? { userId, role, capabilities, roles: [] }
       : typeof reading === 'function' ? await reading(...input) : reading;
     if (data instanceof Error) {
       return route.fulfill({ json: { id, success: false, error: { code: 'UNAVAILABLE', message: data.message } } });

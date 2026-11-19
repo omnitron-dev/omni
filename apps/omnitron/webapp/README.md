@@ -61,7 +61,7 @@ To start a team, enter its name and choose the lead's name, responsibility, conn
 
 Choose the recipient in **Chat**. **Tasks** addresses work to a specific member and keeps its queued, running or final receipt. The journal shows who initiated each turn and who received it. Other members can receive messages while a task is active. Messages, attached text and shared memory may enter the assigned providers' context. A lost acknowledgement can be retried with the original request ID or withdrawn.
 
-**Memory** stores named, revisioned notes. **Flows** lists the team's proposals. **Open in flow editor** carries the team, proposal and current workspace to the editor for review. Existing individual conversations remain accessible. With a compatible lead connector, **Enable team** adds team collaboration to an individual conversation.
+The **Tasks** tab loads the team's task bodies when opened, and `tab=tasks` in the room address returns to that view. The journal follows work in progress across all team members. **Memory** stores named, revisioned notes. **Flows** lists the team's proposals. **Open in flow editor** carries the team, proposal and current workspace to the editor for review. Existing individual conversations remain accessible. With a compatible lead connector, **Enable team** adds team collaboration to an individual conversation.
 
 ## Runtime operations
 

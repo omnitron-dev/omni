@@ -36,7 +36,7 @@ import { useAccess } from 'src/auth/access';
 import { attachStudioText } from 'src/utils/studio-message';
 import { StudioTurnCard } from 'src/components/studio-turn';
 import { StudioTeamEditor, studioProviderNames as labels } from 'src/components/studio-team-editor';
-import { StudioTeamRoom } from 'src/components/studio-team-room';
+import { StudioTeamRoom, studioSections, type StudioSection } from 'src/components/studio-team-room';
 import { PlusIcon } from 'src/assets/icons';
 
 const budgetLabels = { economy: 'Economy', standard: 'Standard', premium: 'Premium' };
@@ -62,6 +62,18 @@ function StudioWorkspace({ project, stack }: { project: string | null; stack: st
   const location = useLocation();
   const [params, setParams] = useSearchParams();
   const selected = params.get('team') || null;
+  const section = studioSections.find((value) => value === params.get('tab')) ?? 'chat';
+  const includeTasks = section === 'tasks';
+  const setSection = (value: StudioSection) =>
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        if (value === 'chat') next.delete('tab');
+        else next.set('tab', value);
+        return next;
+      },
+      { preventScrollReset: true }
+    );
   const [draftTeamId, setDraftTeamId] = useState(() => crypto.randomUUID());
   const [editingPolicy, setEditingPolicy] = useState(false);
   const [individual, setIndividual] = useState(false);
@@ -73,12 +85,16 @@ function StudioWorkspace({ project, stack }: { project: string | null; stack: st
       if (id) next.set('team', id);
       else next.delete('team');
       next.delete('before');
+      next.delete('tab');
       return next;
     });
   const teamHref = (item: StudioThread) => {
     const next = new URLSearchParams(params);
     next.set('team', item.id);
-    if (item.id !== selected) next.delete('before');
+    if (item.id !== selected) {
+      next.delete('before');
+      next.delete('tab');
+    }
     return workspaceHref({ project, stack: item.stack ?? null }, '/studio?' + next + location.hash);
   };
   const [provider, setProvider] = useState<StudioProvider>('codex');
@@ -116,15 +132,20 @@ function StudioWorkspace({ project, stack }: { project: string | null; stack: st
   const latestChange = threads.find((entry) => entry.id === selected)?.updatedAt;
   const history = usePolledResource(
     async () => {
-      const result = await studio.thread({ project, threadId: selected!, ...(turnBefore && { before: turnBefore }) });
-      const running = [...result.turns, ...(result.team?.tasks ?? [])].some(
-        (item) => item.status === 'queued' || item.status === 'running'
-      );
+      const result = await studio.thread({
+        project,
+        threadId: selected!,
+        includeTasks,
+        ...(turnBefore && { before: turnBefore }),
+      });
+      const running =
+        result.team?.hasActiveTurns ??
+        result.turns.some((item) => item.status === 'queued' || item.status === 'running');
       if (!turnBefore && currentThread.current === selected) {
         if (running) setFollowing(selected);
         else setFollowing((current) => (current === selected ? null : current));
       }
-      return result;
+      return { ...result, includesTasks: includeTasks };
     },
     {
       resourceKey: JSON.stringify([selected, turnBefore]),
@@ -133,21 +154,22 @@ function StudioWorkspace({ project, stack }: { project: string | null; stack: st
       intervalMs: 1600,
     }
   );
-  const observed = useRef({ selected, latestChange });
+  const observed = useRef({ selected, latestChange, includeTasks });
   const refreshHistory = history.refresh;
   useEffect(() => {
     const previous = observed.current;
-    observed.current = { selected, latestChange };
+    observed.current = { selected, latestChange, includeTasks };
     if (
       selected &&
-      !turnBefore &&
       previous.selected === selected &&
-      latestChange !== undefined &&
-      previous.latestChange !== undefined &&
-      latestChange !== previous.latestChange
+      (includeTasks !== previous.includeTasks ||
+        (!turnBefore &&
+          latestChange !== undefined &&
+          previous.latestChange !== undefined &&
+          latestChange !== previous.latestChange))
     )
       void refreshHistory();
-  }, [selected, turnBefore, latestChange, refreshHistory]);
+  }, [selected, turnBefore, latestChange, includeTasks, refreshHistory]);
   const thread = history.data?.thread;
   const turns = history.data?.turns ?? [];
   const last = turns.at(-1);
@@ -392,6 +414,9 @@ function StudioWorkspace({ project, stack }: { project: string | null; stack: st
                   key={thread.id}
                   room={{ project, threadId: thread.id }}
                   history={history.data}
+                  section={section}
+                  setSection={setSection}
+                  tasksState={history.data.includesTasks ? 'ready' : history.error ? 'unavailable' : 'loading'}
                   catalogs={workspace.data?.catalogs ?? []}
                   account={workspace.data?.account ?? ''}
                   latest={!turnBefore}

@@ -224,7 +224,16 @@ for (const width of [1280, 360]) {
           threads: thread ? [thread] : [],
           older: null,
         }),
-        'OmnitronStudio.thread': () => ({ thread, turns, team, beforeTurn: null }),
+        'OmnitronStudio.thread': ({ includeTasks }) => ({
+          thread,
+          turns,
+          beforeTurn: null,
+          team: {
+            ...team,
+            hasActiveTurns: turns.some((item) => ['queued', 'running'].includes(item.status)),
+            tasks: includeTasks ? team.tasks : [],
+          },
+        }),
         'OmnitronStudio.createTeam': (input) => {
           expect(input.project).toBe('sample');
           expect(input.stack).toBe('dev');
@@ -364,7 +373,7 @@ for (const width of [1280, 360]) {
       await expect(page.getByText('Operator → Coordinator', { exact: true })).toBeVisible();
       expect(sent[2].memberId).toBe(thread.leadMemberId);
       await page.getByRole('tab', { name: 'Tasks' }).click();
-      await page.getByRole('button', { name: 'Stop turn' }).click();
+      await page.getByRole('tabpanel', { name: 'Tasks' }).getByRole('button', { name: 'Stop turn' }).click();
       await expect(page.getByText('cancelled', { exact: true })).toBeVisible();
       expect(canceled[0].turnId).toBe(sent[0].turnId);
       await chat.click();
@@ -463,4 +472,79 @@ test('a shared team URL opens the journal read-only with its original senders an
       ['post', 'cancel', 'review', 'listStacks', 'listProjects', 'addMember', 'writeNote'].includes(method)
     )
   ).toEqual([]);
+});
+
+test('the journal follows off-page work while task bodies load only on the Tasks tab', async ({
+  page,
+  context,
+  url,
+}) => {
+  const id = '1aa3ca1c-3581-4c33-a1ec-60e2f3814354';
+  const assignment = { preferences: { role: 'analyst' }, selection: { model: 'test' } };
+  const thread = {
+    id,
+    leadMemberId: id,
+    title: 'Background work',
+    provider: 'codex',
+    assignment,
+    updatedAt: 1,
+    stack: 'dev',
+  };
+  const member = { id, name: 'Lead', provider: 'codex', assignment, lead: true, active: true };
+  const turn = {
+    id: 'work',
+    memberId: id,
+    authorId: null,
+    kind: 'task',
+    prompt: 'Read the earlier assignment.',
+    answer: '',
+    originId: null,
+    status: 'running',
+    createdAt: 1,
+    failure: null,
+    review: null,
+    usage: null,
+  };
+  const calls = [];
+  await stubInventory(context, {
+    'OmnitronStudio.workspace': { account: 'reader', threads: [thread], catalogs: [], older: null },
+    'OmnitronStudio.thread': ({ includeTasks }) => {
+      calls.push(includeTasks);
+      return {
+        thread,
+        turns: [],
+        beforeTurn: null,
+        team: {
+          hasActiveTurns: true,
+          policy: { providers: ['codex'], maxMembers: 1, maxDelegations: 0, maxCostTier: 'standard' },
+          members: [member],
+          notes: [],
+          proposals: [],
+          tasks: includeTasks ? [turn] : [],
+        },
+      };
+    },
+    'OmnitronStudio.post': () => new Error('This scenario keeps its draft.'),
+  });
+  await page.clock.install();
+  await page.goto(url + '/projects/sample/studio?stack=dev&team=' + id);
+  await expect(page.getByText('No messages yet.')).toBeVisible();
+  const message = page.getByRole('textbox', { name: 'Message', exact: true });
+  await message.fill('Keep this text while checking the task list.');
+  await page.clock.runFor(3400);
+  await expect.poll(() => calls.length).toBeGreaterThanOrEqual(2);
+  expect(calls.every((value) => value === false)).toBe(true);
+  await page.getByRole('tab', { name: 'Tasks' }).click();
+  await expect(page.getByText('Read the earlier assignment.')).toBeVisible();
+  expect(calls.at(-1)).toBe(true);
+  await expect(page).toHaveURL(/tab=tasks/);
+  await page.goBack();
+  await expect(message).toHaveValue('Keep this text while checking the task list.');
+  await expect.poll(() => calls.at(-1)).toBe(false);
+  await page.goForward();
+  await expect(page.getByText('Read the earlier assignment.')).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('tab', { name: 'Tasks' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByText('Read the earlier assignment.')).toBeVisible();
+  expect(calls.at(-1)).toBe(true);
 });

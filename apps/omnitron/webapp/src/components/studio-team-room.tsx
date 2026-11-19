@@ -32,27 +32,44 @@ import { attachStudioText } from 'src/utils/studio-message';
 import { StudioTeamEditor, studioProviderNames } from './studio-team-editor';
 import { StudioTurnCard } from './studio-turn';
 
-type Section = 'chat' | 'tasks' | 'memory' | 'members' | 'flows';
+export const studioSections = ['chat', 'tasks', 'memory', 'members', 'flows'] as const;
+export type StudioSection = (typeof studioSections)[number];
 interface Props {
   room: StudioRoomRef;
   history: StudioHistory;
   account: string;
   catalogs: StudioModelCatalog[];
   latest: boolean;
+  section: StudioSection;
+  setSection(section: StudioSection): void;
+  tasksState: 'loading' | 'unavailable' | 'ready';
   refresh: () => Promise<void>;
 }
 
-export function StudioTeamRoom({ room, history, account, catalogs, latest, refresh }: Props) {
+export function StudioTeamRoom({
+  room,
+  history,
+  account,
+  catalogs,
+  latest,
+  section,
+  setSection,
+  tasksState,
+  refresh,
+}: Props) {
   const { team, thread } = history;
   const workspace = useWorkspace();
   const { can } = useAccess();
-  const [section, setSection] = useState<Section>('chat');
   const [editor, setEditor] = useState<'member' | 'policy' | null>(null);
   const [retiring, setRetiring] = useState<StudioMember | null>(null);
   const [draft, setDraft] = useState('');
   const [memberId, setMemberId] = useState(thread.leadMemberId);
-  const [kind, setKind] = useState<StudioPost['kind']>('message');
   const [pending, setPending] = useState<StudioPost | null>(null);
+  const [composerKind, setComposerKind] = useState<{ section: StudioSection; value: StudioPost['kind'] }>();
+  const kind =
+    pending?.kind ??
+    (composerKind?.section === section ? composerKind.value : section === 'tasks' ? 'task' : 'message');
+  const setKind = (value: StudioPost['kind']) => setComposerKind({ section, value });
   const [note, setNote] = useState<StudioNoteInput | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -133,15 +150,15 @@ export function StudioTeamRoom({ room, history, account, catalogs, latest, refre
       </Stack>
       <Tabs
         value={section}
-        onChange={(_, value: Section) => {
+        onChange={(_, value: StudioSection) => {
           setSection(value);
-          if (!pending && (value === 'chat' || value === 'tasks')) setKind(value === 'tasks' ? 'task' : 'message');
+          setComposerKind(undefined);
         }}
         variant="scrollable"
         scrollButtons="auto"
         aria-label="Team workspace"
       >
-        {(['chat', 'tasks', 'memory', 'members', 'flows'] as const).map((key) => (
+        {studioSections.map((key) => (
           <Tab
             key={key}
             id={'studio-tab-' + key}
@@ -156,7 +173,12 @@ export function StudioTeamRoom({ room, history, account, catalogs, latest, refre
         {(section === 'chat' || section === 'tasks') && (
           <>
             {visibleTurns.map(reviewedTurn)}
-            {!visibleTurns.length && (
+            {section === 'tasks' && tasksState !== 'ready' && (
+              <Typography role="status" variant="body2">
+                {tasksState === 'loading' ? 'Loading team tasks…' : 'Team tasks unavailable.'}
+              </Typography>
+            )}
+            {!visibleTurns.length && !(section === 'tasks' && tasksState !== 'ready') && (
               <Typography variant="body2" color="text.secondary">
                 {section === 'tasks' ? 'No tasks assigned.' : 'No messages yet.'}
               </Typography>

@@ -4,7 +4,7 @@
 
 import os from 'node:os';
 import path from 'node:path';
-import { readFileSync } from 'node:fs';
+import { lstatSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { IEcosystemConfig, IDaemonConfig } from './types.js';
 
@@ -27,6 +27,18 @@ export const DAEMON_SERVICE_ID = 'OmnitronDaemon';
 
 /** Default Unix socket path for local daemon RPC */
 export const DEFAULT_SOCKET_PATH = path.join(OMNITRON_HOME, 'daemon.sock');
+
+/** Local lifecycle commands operate on one PID file, service authority and RPC socket. */
+export function instanceLifecycleSocket(): string {
+  const socket = process.env['OMNITRON_SOCKET'];
+  if (socket !== undefined && (!path.isAbsolute(socket) || path.resolve(socket) !== path.resolve(DEFAULT_SOCKET_PATH))) {
+    throw new Error('OMNITRON_SOCKET must identify daemon.sock in the selected OMNITRON_HOME for local lifecycle commands');
+  }
+  for (const file of [DEFAULT_SOCKET_PATH, path.join(OMNITRON_HOME, 'daemon.pid')]) {
+    if (lstatSync(file, { throwIfNoEntry: false })?.isSymbolicLink()) throw Error('Local lifecycle endpoint is a symbolic link: ' + file);
+  }
+  return DEFAULT_SOCKET_PATH;
+}
 
 /** Default secrets file path */
 export const DEFAULT_SECRETS_PATH = path.join(OMNITRON_HOME, 'secrets.enc');

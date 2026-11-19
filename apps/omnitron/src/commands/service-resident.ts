@@ -14,6 +14,7 @@ import { assertManagedRuntime, readManagedRuntimeRecord, managedRuntimeFile, typ
 import { BackendRecoveryJournal } from '../daemon/backend-recovery-journal.js';
 import { expandPath } from '../shared/paths.js';
 import { readSavedDaemonConfig, savedDaemonOverrides } from '../config/saved.js';
+import { installTargets, serviceInventory, unchangedJob } from './service-registration.js';
 import { LAUNCHD_LABEL, SYSTEMD_UNIT, OWNER_LAUNCHD_LABEL, OWNER_SYSTEMD_UNIT,
   renderLaunchdPlist, renderSystemdUnit, unitPathFor, type UnitInputs } from './service-units.js';
 
@@ -142,8 +143,8 @@ async function withPreparedService<T>(inputs: ResidentServiceInputs, mode: 'prep
     await writePrivateFile(path.join(planDirectory, 'owner.unit'), render(owner));
     await writePrivateFile(path.join(planDirectory, 'backend.unit'), render(backend));
     return finish({ config, planDirectory, ownerUnit: render(owner), backendUnit: render(backend),
-      ownerPath: unitPathFor(process.platform, inputs.scope, os.homedir(), true),
-      backendPath: unitPathFor(process.platform, inputs.scope, os.homedir()),
+      ownerPath: unitPathFor(process.platform, inputs.scope, os.userInfo().homedir, true),
+      backendPath: unitPathFor(process.platform, inputs.scope, os.userInfo().homedir),
       backendRunning: new PidManager(expandPath(dc.pidFile)).isRunning(),
       ownerRunning: new PidManager(path.join(directory, 'owner.pid')).isRunning(),
     });
@@ -206,13 +207,9 @@ export function assertResidentServicesStopped(scope: UnitInputs['scope'], platfo
 export async function installResidentService(inputs: ResidentServiceInputs): Promise<string> {
   return withPreparedService(inputs, 'install', async plan => {
     if (plan.backendRunning || plan.ownerRunning) throw new Error(`Independent owner supervision requires a controlled initial shutdown. Review ${plan.planDirectory}; running applications were not stopped.`);
-    // Refuse scope overlap before writing anything active.
-    const other = inputs.scope === 'user' ? 'system' : 'user';
-    for (const owner of [false, true]) {
-      try { await fs.access(unitPathFor(process.platform, other, os.homedir(), owner)); }
-      catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue; throw error; }
-      throw new Error('Remove the other service scope before installing independent supervision');
-    }
+    const inventory = serviceInventory();
+    if (inventory.owned && inventory.owned.scope !== inputs.scope) throw Error('Remove the other service scope before installing independent supervision');
+    const targets = installTargets(inputs.scope, true, inventory);
     assertResidentServicesStopped(inputs.scope);
     // Recheck live PID evidence after the OS query, still under the same lease.
     const dc = { ...DEFAULT_DAEMON_CONFIG, ...savedDaemonOverrides(readSavedDaemonConfig()) };
@@ -220,11 +217,15 @@ export async function installResidentService(inputs: ResidentServiceInputs): Pro
         new PidManager(path.join(plan.config.directory, 'owner.pid')).isRunning()) {
       throw new Error('Resident processes appeared during service installation; no active files were written');
     }
+    for (const target of targets) unchangedJob(target);
     await fs.mkdir(plan.config.directory, { recursive: true, mode: 0o700 });
     await writePrivateRecord(managedRuntimeFile(), plan.config);
     for (const [target, contents] of [[plan.ownerPath, plan.ownerUnit], [plan.backendPath, plan.backendUnit]] as const) {
+      const checked = targets.find(job => job.file === target);
+      if (!checked) throw Error('The prepared native destination differs from this instance registration');
+      unchangedJob(checked);
       await fs.mkdir(path.dirname(target), { recursive: true });
-      await fs.writeFile(target, contents, { mode: 0o644 });
+      await fs.writeFile(target, contents, { mode: 0o644, flag: checked.body === null ? 'wx' : 'w' });
     }
     return plan.planDirectory;
   });

@@ -1,4 +1,4 @@
-import { OMNITRON_HOME } from '../config/defaults.js';
+import { OMNITRON_HOME, instanceLifecycleSocket } from '../config/defaults.js';
 /**
  * omnitron service install|uninstall|status — OS-level daemon supervision.
  *
@@ -34,31 +34,29 @@ import { log } from '@xec-sh/kit';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 import {
-  LAUNCHD_LABEL,
-  SYSTEMD_UNIT,
-  OWNER_LAUNCHD_LABEL,
-  OWNER_SYSTEMD_UNIT,
-  unitPathFor,
   renderLaunchdPlist,
   renderSystemdUnit,
   decideScope,
 } from './service-units.js';
 import type { ServiceScope } from '../shared/dto/runtime-update.js';
-import { managedRuntimeFile, readManagedRuntime, managedSupervisorSocket } from '../daemon/managed-runtime.js';
+import { managedRuntimeFile, managedSupervisorSocket } from '../daemon/managed-runtime.js';
 import { privateControlClient } from '../daemon/private-control-client.js';
+import { installTargets, launchctl, nativeDomain, nativeLoaded, serviceInventory, systemctl, unchangedJob, type NativeService } from './service-registration.js';
+import { randomUUID } from 'node:crypto';
 import type { BackendSupervisorService } from '../daemon/backend-supervisor.js';
 
 /** Collect the facts the renderers need from this process. */
-function unitInputs(scope: ServiceScope): Parameters<typeof renderSystemdUnit>[0] {
+function unitInputs(scope: ServiceScope, identity?: { user: string; home: string }): Parameters<typeof renderSystemdUnit>[0] {
   return {
     scope,
     execPath: process.execPath,
-    entryPath: daemonEntryPath(),
+    entryPath: path.join(serviceWorkdir(), 'dist/daemon/daemon-entry.js'),
+    environment: { OMNITRON_HOME, OMNITRON_SOCKET: instanceLifecycleSocket() },
     workdir: serviceWorkdir(),
     path: servicePath(),
     stderrLog: path.join(logsDir(), process.platform === 'darwin' ? 'launchd.err.log' : 'systemd.err.log'),
     ...(scope === 'system'
-      ? { identity: { user: os.userInfo().username, home: os.homedir() } }
+      ? { identity: identity ?? { user: os.userInfo().username, home: os.userInfo().homedir } }
       : {}),
   };
 }
@@ -81,34 +79,6 @@ function lingerEnabled(): boolean {
     // No loginctl, or no such user session — either way, not proven true.
     return false;
   }
-}
-
-function launchdPlistPath(scope: ServiceScope = 'user'): string {
-  return unitPathFor('darwin', scope, os.homedir());
-}
-
-function systemdUnitPath(scope: ServiceScope = 'user'): string {
-  return unitPathFor('linux', scope, os.homedir());
-}
-
-/** True when the current platform's service definition file exists. */
-export function isServiceInstalled(): boolean {
-  if (process.platform !== 'darwin' && process.platform !== 'linux') return false;
-  // Either scope counts. A machine with a system unit and a user that never
-  // installed one still has a supervised daemon, and the callers of this —
-  // `omnitron up`, the uninstall path — need to know that.
-  return (['system', 'user'] as const).some((scope) =>
-    [false, true].some(owner => fs.existsSync(unitPathFor(process.platform, scope, os.homedir(), owner))),
-  );
-}
-
-/**
- * The daemon entry the supervisor execs — same file `omnitron up` forks
- * (dist/commands → ../daemon/daemon-entry.js), so both launchers run the
- * identical daemon.
- */
-function daemonEntryPath(): string {
-  return path.resolve(__dirname, '../daemon/daemon-entry.js');
 }
 
 /**
@@ -166,123 +136,58 @@ function logsDir(): string {
   return dir;
 }
 
-function launchctl(args: string[], opts: { allowFail?: boolean } = {}): string {
-  try {
-    return execFileSync('launchctl', args, { encoding: 'utf8' });
-  } catch (err) {
-    if (opts.allowFail) return '';
-    throw err;
+export function installedService(): NativeService | null {
+  return serviceInventory().owned;
+}
+
+function checkedJobs(service: NativeService) {
+  // Check both roles before the first effect. A guardian match cannot authorize a different owner.
+  return service.jobs.map(job => ({ job, loaded: nativeLoaded(job) }));
+}
+
+export function serviceBootout(service: NativeService): void {
+  for (const { job, loaded } of checkedJobs(service).reverse()) {
+    unchangedJob(job);
+    if (process.platform === 'darwin') {
+      if (loaded) launchctl(['bootout', nativeDomain(service.scope) + '/' + job.name]);
+    } else systemctl(service.scope, ['disable', ...(loaded ? ['--now'] : []), job.name]);
   }
 }
 
-/**
- * `systemctl`, for the scope being operated on.
- *
- * `--user` and no flag address two different registries: a unit installed in
- * `/etc/systemd/system` is invisible to `systemctl --user`, and the reverse.
- * Getting this wrong does not error — it reports "unit not found" for a unit
- * that is there, in the other one.
- */
-function systemctl(scope: ServiceScope, args: string[], opts: { allowFail?: boolean } = {}): string {
-  const scoped = scope === 'system' ? args : ['--user', ...args];
-  try {
-    return execFileSync('systemctl', scoped, { encoding: 'utf8' });
-  } catch (err) {
-    if (opts.allowFail) return '';
-    throw err;
-  }
-}
-
-/**
- * launchd's domain for a scope: the login session, or the machine.
- *
- * `system` is where a LaunchDaemon lives and is the only domain that exists
- * before anybody logs in.
- */
-function domain(scope: ServiceScope): string {
-  return scope === 'system' ? 'system' : `gui/${process.getuid?.() ?? 501}`;
-}
-
-/**
- * The scope actually installed on this machine, for the callers that operate
- * on whatever is there — `serviceKickstart` after a `daemon down`, and the
- * uninstall path. Defaults to `user` when nothing is installed, which is what
- * the pre-scope code always assumed.
- */
-function currentScope(): ServiceScope {
-  return [false, true].some(owner => fs.existsSync(unitPathFor(process.platform, 'system', os.homedir(), owner))) ? 'system' : 'user';
-}
-
-/** Load (or reload) the service with the supervisor and start it. */
-export function serviceBootstrap(scope: ServiceScope = currentScope()): void {
-  if (fs.existsSync(managedRuntimeFile())) {
-    for (const owner of [true, false]) {
-      if (process.platform === 'darwin') {
-        const label = owner ? OWNER_LAUNCHD_LABEL : LAUNCHD_LABEL;
-        launchctl(['bootout', `${domain(scope)}/${label}`], { allowFail: true });
-        launchctl(['bootstrap', domain(scope), unitPathFor('darwin', scope, os.homedir(), owner)]);
-        launchctl(['enable', `${domain(scope)}/${label}`]);
-      } else {
-        systemctl(scope, ['daemon-reload']);
-        systemctl(scope, ['enable', '--now', owner ? OWNER_SYSTEMD_UNIT : SYSTEMD_UNIT]);
+export function serviceKickstart(service: NativeService): void {
+  for (const { job, loaded } of checkedJobs(service)) {
+    unchangedJob(job);
+    if (process.platform === 'darwin') {
+      const target = nativeDomain(service.scope) + '/' + job.name;
+      if (loaded) launchctl(['kickstart', target]);
+      else {
+        launchctl(['enable', target]);
+        launchctl(['bootstrap', nativeDomain(service.scope), job.file]);
       }
+    } else {
+      if (!loaded) {
+        systemctl(service.scope, ['daemon-reload']);
+        if (!nativeLoaded(job)) throw Error('Installed systemd unit is unavailable: ' + job.file);
+      }
+      systemctl(service.scope, ['enable', '--now', job.name]);
     }
-    return;
-  }
-  if (process.platform === 'darwin') {
-    // bootout first so a re-install picks up a rewritten plist; ignore
-    // "not loaded" failures.
-    launchctl(['bootout', `${domain(scope)}/${LAUNCHD_LABEL}`], { allowFail: true });
-    launchctl(['bootstrap', domain(scope), launchdPlistPath(scope)]);
-    launchctl(['enable', `${domain(scope)}/${LAUNCHD_LABEL}`], { allowFail: true });
-  } else if (process.platform === 'linux') {
-    systemctl(scope, ['daemon-reload']);
-    systemctl(scope, ['enable', '--now', SYSTEMD_UNIT]);
   }
 }
 
-/** Unload the service (stops the daemon via supervisor SIGTERM). */
-export function serviceBootout(scope: ServiceScope = currentScope()): void {
-  if (fs.existsSync(managedRuntimeFile())) {
-    for (const owner of [false, true]) {
-      if (process.platform === 'darwin') {
-        const job = `${domain(scope)}/${owner ? OWNER_LAUNCHD_LABEL : LAUNCHD_LABEL}`;
-        if (launchctl(['print', job], { allowFail: true })) launchctl(['bootout', job]);
-      } else if (process.platform === 'linux') systemctl(scope, ['disable', '--now', owner ? OWNER_SYSTEMD_UNIT : SYSTEMD_UNIT]);
-    }
-    return;
+function removeService(service: NativeService): void {
+  serviceBootout(service);
+  for (const job of service.jobs) {
+    unchangedJob(job);
+    fs.unlinkSync(job.file);
   }
-  if (process.platform === 'darwin') {
-    launchctl(['bootout', `${domain(scope)}/${LAUNCHD_LABEL}`], { allowFail: true });
-  } else if (process.platform === 'linux') {
-    systemctl(scope, ['disable', '--now', SYSTEMD_UNIT], { allowFail: true });
-  }
+  if (process.platform === 'linux') systemctl(service.scope, ['daemon-reload']);
 }
 
-/** Ask the supervisor to start the (already loaded) service now. */
-export function serviceKickstart(scope: ServiceScope = currentScope()): void {
-  if (fs.existsSync(managedRuntimeFile())) {
-    for (const owner of [true, false]) {
-      if (process.platform === 'darwin') {
-        const job = `${domain(scope)}/${owner ? OWNER_LAUNCHD_LABEL : LAUNCHD_LABEL}`;
-        if (!launchctl(['print', job], { allowFail: true })) launchctl(['bootstrap', domain(scope), unitPathFor('darwin', scope, os.homedir(), owner)]);
-        else launchctl(['kickstart', job]);
-      } else if (process.platform === 'linux') systemctl(scope, ['start', owner ? OWNER_SYSTEMD_UNIT : SYSTEMD_UNIT]);
-    }
-    return;
-  }
-  if (process.platform === 'darwin') {
-    // If a previous bootout unloaded the job, bootstrap it back first.
-    const loaded = launchctl(['print', `${domain(scope)}/${LAUNCHD_LABEL}`], { allowFail: true });
-    if (!loaded) {
-      launchctl(['bootstrap', domain(scope), launchdPlistPath(scope)]);
-      launchctl(['enable', `${domain(scope)}/${LAUNCHD_LABEL}`], { allowFail: true });
-      return; // RunAtLoad starts it
-    }
-    launchctl(['kickstart', `${domain(scope)}/${LAUNCHD_LABEL}`], { allowFail: true });
-  } else if (process.platform === 'linux') {
-    systemctl(scope, ['start', SYSTEMD_UNIT]);
-  }
+function startInstallation(scope: ServiceScope): void {
+  const service = installedService();
+  if (!service || service.scope !== scope) throw Error('Installed native registration does not match the selected instance');
+  if (process.platform === 'linux') systemctl(scope, ['daemon-reload']);
+  serviceKickstart(service);
 }
 
 export async function serviceInstall(options: { scope?: ServiceScope; prepare?: boolean; ownerRuntime?: string } = {}): Promise<void> {
@@ -295,13 +200,18 @@ export async function serviceInstall(options: { scope?: ServiceScope; prepare?: 
   // The scope decides whether this survives a logout, which for a slave is
   // the whole point of installing it. See `service-units.ts`.
   const { readSavedDaemonConfig } = await import('../config/saved.js');
-  const decision = decideScope({
-    requested: options.scope,
-    role: readSavedDaemonConfig()?.role,
-    isRoot: options.prepare === true || process.getuid?.() === 0,
-    lingerEnabled: lingerEnabled(),
-    platform: process.platform,
-  });
+  instanceLifecycleSocket();
+  const saved = readSavedDaemonConfig();
+  if (!saved?.executionHost?.enabled && options.ownerRuntime !== undefined) throw new Error('Owner runtime selection requires independent resident execution');
+  if (!saved?.executionHost?.enabled && options.prepare) throw new Error('Service preparation is available for independent resident execution');
+  const inventory = options.prepare ? null : serviceInventory();
+  const scopeInputs = { requested: options.scope, role: saved?.role, isRoot: options.prepare === true || process.getuid?.() === 0,
+    platform: process.platform, lingerEnabled: false };
+  let decision = decideScope(scopeInputs);
+  if (decision.refusal && process.platform === 'linux') {
+    if (inventory?.foreign.some(job => job.scope === 'user')) throw Error('The fallback user service belongs to another instance');
+    decision = decideScope({ ...scopeInputs, lingerEnabled: lingerEnabled() });
+  }
 
   if (decision.refusal) {
     // Not a warning beside an install that happened anyway. A slave
@@ -314,114 +224,73 @@ export async function serviceInstall(options: { scope?: ServiceScope; prepare?: 
   }
 
   const scope = decision.scope;
-  if (readSavedDaemonConfig()?.executionHost?.enabled) {
+  const resident = saved?.executionHost?.enabled === true;
+  const targets = inventory ? installTargets(scope, resident, inventory) : [];
+  const previous = inventory?.owned;
+  if (previous) checkedJobs(previous);
+  for (const target of targets) nativeLoaded(target);
+  const prior = previous?.jobs.at(-1)?.definition;
+  const identity = prior?.account ? { user: prior.account, home: prior.environment['HOME']! } : undefined;
+  const ownerUid = fs.statSync(OMNITRON_HOME, { throwIfNoEntry: false })?.uid;
+  if (!identity && ownerUid !== undefined && ownerUid !== os.userInfo().uid) {
+    throw Error('Prepare native supervision as the owner of the selected OMNITRON_HOME');
+  }
+  if (resident) {
     const { prepareResidentService, installResidentService } = await import('./service-resident.js');
-    const inputs = { ...unitInputs(scope), ...(options.ownerRuntime !== undefined ? { ownerRuntime: options.ownerRuntime } : {}) };
+    const inputs = { ...unitInputs(scope, identity), ...(options.ownerRuntime !== undefined ? { ownerRuntime: options.ownerRuntime } : {}) };
     if (options.prepare) {
       const plan = await prepareResidentService(inputs);
       log.info(`Independent supervision plan: ${plan.planDirectory}`);
       log.info(`Owner: ${plan.ownerPath}\nBackend: ${plan.backendPath}`);
       return;
     }
+    if (previous && previous.scope !== scope) throw Error('Uninstall the previous scope before installing independent supervision');
     const plan = await installResidentService(inputs);
-    serviceBootstrap(scope);
+    startInstallation(scope);
     log.success(`Independent owner and backend services installed (${scope}). Plan: ${plan}`);
     return;
   }
-  if (options.ownerRuntime !== undefined) throw new Error('Owner runtime selection requires independent resident execution');
-  if (options.prepare) throw new Error('Service preparation is available for independent resident execution');
 
-  // Stop a manually-started daemon first so the supervised one can bind
-  // the socket immediately (daemon-entry's pid guard would otherwise make
-  // the service exit until the foreign daemon dies).
+  if (previous && previous.scope !== scope) removeService(previous);
+  else if (previous) serviceBootout(previous);
   const { daemonStop } = await import('./daemon-cmd.js');
-  await daemonStop().catch(() => { /* not running — fine */ });
+  await daemonStop();
 
-  // A scope change leaves the other scope's definition behind, and two
-  // supervisors racing for one socket is worse than either alone.
-  removeOtherScope(scope);
-
-  const inputs = unitInputs(scope);
-  if (process.platform === 'darwin') {
-    const plist = launchdPlistPath(scope);
-    fs.mkdirSync(path.dirname(plist), { recursive: true });
-    fs.writeFileSync(plist, renderLaunchdPlist(inputs));
-    serviceBootstrap(scope);
-    log.success(`${scope === 'system' ? 'LaunchDaemon' : 'LaunchAgent'} installed: ${plist}`);
-    log.info(`  Label: ${LAUNCHD_LABEL} (KeepAlive on crash, RunAtLoad at boot)`);
-  } else {
-    const unit = systemdUnitPath(scope);
-    fs.mkdirSync(path.dirname(unit), { recursive: true });
-    fs.writeFileSync(unit, renderSystemdUnit(inputs));
-    serviceBootstrap(scope);
-    log.success(`systemd ${scope} unit installed: ${unit}`);
-    log.info(`  Unit: ${SYSTEMD_UNIT} (Restart=on-failure)`);
+  const target = targets[0]!;
+  const inputs = unitInputs(scope, identity);
+  const contents = process.platform === 'darwin' ? renderLaunchdPlist(inputs) : renderSystemdUnit(inputs);
+  fs.mkdirSync(path.dirname(target.file), { recursive: true });
+  unchangedJob(target);
+  if (target.body === null) fs.writeFileSync(target.file, contents, { flag: 'wx', mode: 0o644 });
+  else {
+    const temp = path.join(path.dirname(target.file), '.omnitron-' + randomUUID());
+    fs.writeFileSync(temp, contents, { flag: 'wx', mode: 0o644 });
+    try { unchangedJob(target); fs.renameSync(temp, target.file); }
+    finally { fs.rmSync(temp, { force: true }); }
   }
+  startInstallation(scope);
+  log.success(`Installed ${scope} service: ${target.file}`);
 
   log.info(`  Scope: ${scope} — ${decision.because}.`);
   if (scope === 'system') {
-    log.info(`  Runs as: ${os.userInfo().username} (root installs the unit; root does not run the daemon).`);
+    log.info(`  Runs as: ${inputs.identity!.user}.`);
   }
   log.info('  Crash → auto-restart; `omnitron down` → stays down until `omnitron up`.');
 }
 
-/**
- * Remove the definition for the scope we are NOT installing.
- *
- * Switching a node from user to system supervision otherwise leaves both on
- * disk: the old one still enabled, the new one starting at boot, and both
- * trying to bind one unix socket. The pid guard in `daemon-entry` makes that
- * survivable and unexplainable — one of them exits immediately, for ever,
- * and which one depends on the order they start.
- */
-function removeOtherScope(keeping: ServiceScope): void {
-  const other: ServiceScope = keeping === 'system' ? 'user' : 'system';
-  const otherPath = unitPathFor(process.platform, other, os.homedir());
-  if (!fs.existsSync(otherPath)) return;
-  try {
-    serviceBootout(other);
-    fs.rmSync(otherPath, { force: true });
-    log.info(`  Removed the previous ${other} definition: ${otherPath}`);
-  } catch (err) {
-    // Reported, not fatal: an operator who cannot remove the old one still
-    // needs to know it is there.
-    log.warn(`  Could not remove the previous ${other} definition at ${otherPath}: ${(err as Error).message}`);
-  }
-}
-
 export async function serviceUninstall(): Promise<void> {
-  if (!isServiceInstalled()) {
-    log.warn('Service is not installed.');
-    return;
-  }
-  // Both scopes, not just the one this process would install. An uninstall
-  // that leaves the other definition on disk is how a machine ends up with a
-  // daemon nobody asked for starting at boot.
-  for (const scope of ['system', 'user'] as const) {
-    const unitPath = unitPathFor(process.platform, scope, os.homedir());
-    if (!fs.existsSync(unitPath) && !fs.existsSync(unitPathFor(process.platform, scope, os.homedir(), true))) continue;
-    try {
-      serviceBootout(scope);
-      if (process.platform === 'linux') systemctl(scope, ['daemon-reload'], { allowFail: true });
-      fs.rmSync(unitPath, { force: true });
-      fs.rmSync(unitPathFor(process.platform, scope, os.homedir(), true), { force: true });
-      log.success(`Removed the ${scope} service definition: ${unitPath}`);
-    } catch (err) {
-      log.error(`Could not remove ${unitPath}: ${(err as Error).message}`);
-      process.exitCode = 1;
-    }
-  }
-  if (!isServiceInstalled()) fs.rmSync(managedRuntimeFile(), { force: true });
-  log.info('  Use `omnitron up` to run the daemon unsupervised again.');
+  const service = installedService();
+  if (!service) { log.warn('No native service is registered for this instance.'); return; }
+  removeService(service);
+  if (service.managed) fs.unlinkSync(managedRuntimeFile());
+  log.success(`Removed the ${service.scope} service for ${OMNITRON_HOME}.`);
 }
 
 export async function serviceStatus(): Promise<void> {
-  if (!isServiceInstalled()) {
-    log.info('Service: not installed. Run `omnitron service install` to supervise the daemon.');
-    return;
-  }
-  const scope = currentScope();
-  const managed = await readManagedRuntime();
+  const service = installedService();
+  if (!service) { log.info('No native service is registered for this instance.'); return; }
+  const observed = checkedJobs(service);
+  const { scope, managed } = service;
   if (managed) {
     const connection = await privateControlClient<BackendSupervisorService>(managedSupervisorSocket(managed), 'OmnitronSupervisor').catch(() => null);
     if (connection) {
@@ -432,26 +301,12 @@ export async function serviceStatus(): Promise<void> {
       } finally { await connection.close(); }
     } else log.warn('The backend guardian is unavailable; inspect its OS service and private supervisor.log.');
   }
-  if (process.platform === 'darwin') {
-    log.info(`Service: installed, ${scope} scope (${launchdPlistPath(scope)})`);
-    const out = launchctl(['print', `${domain(scope)}/${LAUNCHD_LABEL}`], { allowFail: true });
-    if (!out) {
-      log.warn('  State: not loaded (boot it with `omnitron up` or `launchctl bootstrap`)');
-      return;
-    }
-    const state = out.match(/state = (.+)/)?.[1]?.trim();
-    const pid = out.match(/pid = (\d+)/)?.[1];
-    const lastExit = out.match(/last exit code = (.+)/)?.[1]?.trim();
-    log.info(`  State: ${state ?? 'unknown'}${pid ? ` (PID: ${pid})` : ''}`);
-    if (lastExit && lastExit !== '(never exited)') log.info(`  Last exit: ${lastExit}`);
-  } else {
-    log.info(`Service: installed, ${scope} scope (${systemdUnitPath(scope)})`);
-    const out = systemctl(scope, ['status', '--no-pager', SYSTEMD_UNIT], { allowFail: true });
-    log.info(out.split('\n').slice(0, 5).map((l: string) => `  ${l}`).join('\n'));
-    if (scope === 'user' && !lingerEnabled()) {
-      // Said where it is true, rather than as a tip beside every install: a
-      // user unit without lingering stops when the last session ends.
-      log.warn('  This unit stops when your last session ends (lingering is off for this account).');
-    }
+  for (const { job, loaded } of observed) {
+    log.info(`Service: ${scope} scope, ${loaded ? loaded.state : 'unloaded'} (${job.file})`);
+    if (loaded && loaded.pid) log.info(`  PID: ${loaded.pid}`);
+    if (loaded && loaded.lastExit) log.info(`  Last exit: ${loaded.lastExit}`);
+  }
+  if (process.platform === 'linux' && scope === 'user' && !lingerEnabled()) {
+    log.warn('The user service stops when your last session ends (lingering is off).');
   }
 }

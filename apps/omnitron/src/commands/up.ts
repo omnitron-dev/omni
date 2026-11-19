@@ -20,11 +20,12 @@ import { fileURLToPath } from 'node:url';
 import { log, select, isCancel } from '@xec-sh/kit';
 import { ProjectRegistry } from '../project/registry.js';
 import { loadEcosystemConfig, loadEcosystemConfigFile } from '../config/loader.js';
-import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
+import { DEFAULT_DAEMON_CONFIG, instanceLifecycleSocket } from '../config/defaults.js';
 import { OmnitronDaemon } from '../daemon/daemon.js';
 import { PidManager } from '../daemon/pid-manager.js';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import type { DaemonRole } from '../config/types.js';
+import type { NativeService } from './service-registration.js';
 import { expandPath } from '../shared/paths.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -134,6 +135,12 @@ async function ensureDaemonConfig(options?: UpCommandOptions): Promise<SavedDaem
 
 /** A foreground daemon owns process shutdown after startup has completed. */
 export async function upCommand(options?: UpCommandOptions): Promise<'foreground-running' | 'completed'> {
+  instanceLifecycleSocket();
+  const { installedService } = await import('./service.js');
+  const service = installedService();
+  if (service?.managed && (options?.foreground || options?.noInfra || options?.noWatch)) {
+    throw Error('Start this independent owner and backend through their verified registration with omnitron up');
+  }
   const { selectedBackend } = await import('../daemon/runtime-installation.js');
   const installed = await selectedBackend();
   if (options?.foreground && installed && (installed.directory !== path.resolve(__dirname, '..') || installed.execPath !== fs.realpathSync(process.execPath))) {
@@ -221,7 +228,7 @@ export async function upCommand(options?: UpCommandOptions): Promise<'foreground
   }
 
   // 4. Background mode (default) — fork detached daemon
-  await startBackground(socketPath, dc, options);
+  await startBackground(socketPath, dc, options, service);
   return 'completed';
 }
 
@@ -294,6 +301,7 @@ async function startBackground(
   socketPath: string,
   dc: import('../config/types.js').IDaemonConfig,
   options: UpCommandOptions | undefined,
+  service: NativeService | null,
 ): Promise<void> {
   const s = createProgress();
   s.start('Starting Omnitron daemon...');
@@ -306,15 +314,11 @@ async function startBackground(
   // fall back to a direct fork.
   let viaService = false;
   if (!options?.noInfra && !options?.noWatch) {
-    try {
-      const { isServiceInstalled, serviceKickstart } = await import('./service.js');
-      if (isServiceInstalled()) {
-        serviceKickstart();
-        viaService = true;
-        s.message('Starting Omnitron daemon via OS service...');
-      }
-    } catch {
-      viaService = false; // supervisor refused — fall through to fork
+    const { serviceKickstart } = await import('./service.js');
+    if (service) {
+      serviceKickstart(service);
+      viaService = true;
+      s.message('Starting Omnitron daemon via OS service...');
     }
   }
 
@@ -422,12 +426,14 @@ export function planDown(supervised: boolean): DownPlan {
 }
 
 export async function downCommand(): Promise<void> {
-  const { isServiceInstalled, serviceBootout } = await import('./service.js');
-  const plan = planDown(isServiceInstalled());
+  instanceLifecycleSocket();
+  const { installedService, serviceBootout } = await import('./service.js');
+  const service = installedService();
+  const plan = planDown(service !== null);
 
   for (const step of plan.steps) {
-    if (step === 'unload-service') {
-      serviceBootout();
+    if (step === 'unload-service' && service) {
+      serviceBootout(service);
       // The supervisor sends SIGTERM and waits; the daemon's own shutdown
       // tasks run in that window. Give it the same budget the plist does
       // before deciding the process needs stopping directly.

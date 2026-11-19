@@ -16,7 +16,7 @@ import { log } from '@xec-sh/kit';
 import { PidManager } from '../daemon/pid-manager.js';
 import { spawnDaemon, describeStartupTimeout } from '../daemon/spawn-daemon.js';
 import { createDaemonClient } from '../daemon/daemon-client.js';
-import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
+import { DEFAULT_DAEMON_CONFIG, instanceLifecycleSocket } from '../config/defaults.js';
 import { OmnitronDaemon } from '../daemon/daemon.js';
 import { formatUptime } from '../shared/format.js';
 import { expandPath } from '../shared/paths.js';
@@ -25,6 +25,9 @@ import { reportAbsence } from './daemon-required.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export async function daemonStart(options: { foreground?: boolean; config?: string } = {}): Promise<void> {
+  instanceLifecycleSocket();
+  const { installedService } = await import('./service.js');
+  if (installedService()?.managed) throw Error('Start this independent owner and backend through their verified registration with omnitron up');
   const dc = DEFAULT_DAEMON_CONFIG;
   const pidFile = expandPath(dc.pidFile);
   const socketPath = expandPath(dc.socketPath);
@@ -123,7 +126,7 @@ export async function daemonStart(options: { foreground?: boolean; config?: stri
 }
 
 export async function daemonStop(): Promise<void> {
-  const client = createDaemonClient();
+  const client = createDaemonClient(instanceLifecycleSocket());
 
   if (!(await client.isReachable())) {
     // Socket not responding — try PID-based cleanup as fallback
@@ -138,8 +141,8 @@ export async function daemonStop(): Promise<void> {
       try {
         process.kill(pid, 'SIGTERM');
         await new Promise((r) => setTimeout(r, 3000));
-        if (!PidManager.isProcessAlive(pid)) {
-          pidManager.remove();
+        if (pidManager.getPid() !== pid) {
+          if (pidManager.readPid() === pid) pidManager.remove();
           log.success('Daemon stopped via SIGTERM');
         } else {
           process.kill(pid, 'SIGKILL');
@@ -164,6 +167,10 @@ export async function daemonStop(): Promise<void> {
   const pidManager = new PidManager(pidFile);
   const pid = pidManager.getPid();
 
+  if (pid && (await client.ping()).pid !== pid) {
+    await client.disconnect();
+    throw Error('The selected instance socket and PID file identify different processes');
+  }
   const s = createProgress();
   s.start('Stopping Omnitron daemon...');
 
@@ -197,8 +204,7 @@ export async function daemonStop(): Promise<void> {
     s.stop('Daemon stopped');
   }
 
-  // Clean up stale files
-  pidManager.remove();
+  if (pid && pidManager.readPid() === pid) pidManager.remove();
 }
 
 export async function daemonPing(): Promise<void> {
@@ -227,6 +233,7 @@ export async function daemonPing(): Promise<void> {
 }
 
 export async function daemonKill(): Promise<void> {
+  instanceLifecycleSocket();
   const dc = DEFAULT_DAEMON_CONFIG;
   const pidFile = expandPath(dc.pidFile);
   const socketPath = expandPath(dc.socketPath);
@@ -249,7 +256,8 @@ export async function daemonKill(): Promise<void> {
   // `cleanupStale` already treats "different process alive at this pid" as
   // stale, so the recovery for that case was written and simply never
   // reached from here.
-  if (!pidManager.getPid()) {
+  if (pidManager.getPid() !== rawPid) {
+    if (pidManager.readPid() !== rawPid) { log.warn('Daemon PID changed; inspect current status before retrying'); return; }
     pidManager.cleanupStale(socketPath);
     log.warn(
       PidManager.isProcessAlive(rawPid)
@@ -261,6 +269,7 @@ export async function daemonKill(): Promise<void> {
 
   try {
     process.kill(rawPid, 'SIGKILL');
+    if (pidManager.readPid() !== rawPid) return;
     pidManager.remove();
     // Also clean up socket since SIGKILL prevents graceful cleanup
     if (socketPath) {

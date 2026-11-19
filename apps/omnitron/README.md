@@ -83,6 +83,36 @@ omnitron stop project/stack/app
 
 `stop` requires a responsive daemon and fails when completion cannot be confirmed. `stop all` stops managed applications; `down` explicitly shuts down the daemon. Inspect the current process and operation state after a lost acknowledgement before issuing another mutation.
 
+### Running a separate local daemon
+
+`OMNITRON_HOME` selects an instance's `daemon.pid`, `daemon.sock` and private
+supervision record. For local lifecycle commands, an explicit
+`OMNITRON_SOCKET` must point to that same `daemon.sock`. For a private
+foreground session, use an empty working directory, a fresh absolute instance
+directory and two unused loopback ports. This example runs an unpaired slave
+with local SQLite storage.
+
+```sh
+export OMNITRON_HOME="$(mktemp -d)"
+export OMNITRON_SOCKET="$OMNITRON_HOME/daemon.sock"
+cd "$OMNITRON_HOME"
+printf '%s\n' '{"role":"slave","initialized":true,"host":"127.0.0.1","port":49701,"httpPort":49702,"webapp":false}' > config.json
+omnitron up --foreground --no-infra --no-watch
+```
+
+Stop with Ctrl+C, or run `omnitron down` in another shell with those same two
+exported paths. An unregistered instance uses its own socket and PID file.
+`service install` explicitly registers the selected instance for native
+supervision. `up`, `down` and `service uninstall` match the installed
+definition, supervisor domain and loaded job. Independent owner/backend jobs
+also have to match both roles and sealed artifacts in the private record.
+A label collision, a changed loaded definition or an unrecognized systemd
+override reports the affected registration for reconciliation. Site-owned
+resource-limit drop-ins can stay in place.
+
+To exercise both platforms with a disposable registry and fake managers, run
+`pnpm exec vitest run test/unit/service-instance-lifecycle.test.ts` from `apps/omnitron`.
+
 ## Runtime ownership and releases
 
 Build application releases on a host matching the execution owner's OS,

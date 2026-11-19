@@ -4,7 +4,9 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { createNullLogger } from '@omnitron-dev/titan/module/logger';
+import { DaemonStateStore } from '../../src/daemon/daemon-state-store.service.js';
 import { refuseReleaseOwners, type ReleaseOwnerAnswer } from '../../src/release/owner-admission.js';
 import type { ReleaseManifest } from '../../src/release/manifest.js';
 import type { ApplicationRuntime } from '../../src/services/host-upgrade.js';
@@ -87,14 +89,17 @@ describe('admission asks the node before anything moves', () => {
     fs.writeFileSync(path.join(store, id, 'manifest.json'), JSON.stringify(manifest));
 
     const inspectInstalledBundle = vi.fn(answer);
+    const daemonStateStore = new DaemonStateStore(createNullLogger(), path.join(scratch, `state-${id}.sqlite`));
+    onTestFinished(() => daemonStateStore.dispose());
     const svc: any = Object.create(ProjectService.prototype);
     Object.assign(svc, {
+      daemonStateStore,
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
       audit: { record: vi.fn(async () => {}) },
       registry: { get: () => ({ name: 'sample', path: dir }), list: () => [] },
       stackStates: new Map(),
       startsInFlight: new Map(),
-    infrastructurePolicy: () => null,
+      infrastructurePolicy: () => null,
       stopsInFlight: new Map(),
       assertStackMutable: vi.fn(),
       markPriorStopSuperseded: vi.fn(),
@@ -104,7 +109,7 @@ describe('admission asks the node before anything moves', () => {
         test: {
           type: 'remote',
           apps: 'all',
-          nodes: [{ host: '37.27.130.185', port: 9700 }],
+          nodes: [{ host: '192.0.2.15', port: 9700 }],
           release: { mode: 'required' },
         },
       }),
@@ -121,7 +126,7 @@ describe('admission asks the node before anything moves', () => {
   it('refuses an unproven resident before transferring or starting anything', async () => {
     const { id, svc, inspectInstalledBundle } = setup(async () => ({ root: '/old', commit: RELEASE_OMNI }));
     await expect(svc.startStack('sample', 'test', { source: 'operator', release: id })).rejects.toThrow(/independent execution owner/);
-    expect(inspectInstalledBundle).toHaveBeenCalledWith(expect.objectContaining({ host: '37.27.130.185', daemonPort: 9700 }));
+    expect(inspectInstalledBundle).toHaveBeenCalledWith(expect.objectContaining({ host: '192.0.2.15', daemonPort: 9700 }));
     expect(svc.startRemoteStack).not.toHaveBeenCalled();
   });
   it('retains the native refusal reason when the node cannot be verified', async () => {

@@ -285,10 +285,12 @@ it('bounds parallel file readers and closes every descriptor before completing',
   expect(active).toBe(0);
 });
 
-it.each(['prepare', 'verify'])('reads independent SDK inputs concurrently during %s and retains their order', async phase => {
-  const guards = Array.from({ length: 32 }, (_, index) => path.join(source, `input-${index}.ts`));
-  await Promise.all(guards.map((file, index) => fs.writeFile(file, String(index))));
-  const retain = () => prepareSdkTransition({ root, source, paths: [output], guards: [...guards, guards[0]!] });
+it.each(['inventory', 'prepare', 'verify'])('reads independent SDK paths concurrently during %s and retains their order', async phase => {
+  const files = Array.from({ length: 32 }, (_, index) => path.join(source, `input-${index}.ts`));
+  await Promise.all(files.map((file, index) => fs.writeFile(file, String(index))));
+  const repeated = [...files, files[0]!];
+  const inventory = phase === 'inventory';
+  const retain = () => prepareSdkTransition({ root, source, paths: inventory ? repeated : [output], guards: inventory ? [] : repeated });
   if (phase === 'verify') await retain();
 
   let release!: () => void;
@@ -296,24 +298,25 @@ it.each(['prepare', 'verify'])('reads independent SDK inputs concurrently during
   const opened = new Set<string>();
   const open = fs.open;
   vi.spyOn(fs, 'open').mockImplementation(async (...args: Parameters<typeof open>) => {
-    if (guards.includes(String(args[0]))) {
+    if (files.includes(String(args[0]))) {
       opened.add(String(args[0]));
       await barrier;
     }
     return open(...args);
   });
-  const operation = phase === 'prepare' ? retain() : sdkTransitionStatus(root, true);
+  const operation = phase === 'verify' ? sdkTransitionStatus(root, true) : retain();
   try {
     await vi.waitFor(() => expect(opened.size).toBeGreaterThan(1));
-    expect(opened.size).toBeLessThanOrEqual(16);
+    expect(opened.size).toBeLessThanOrEqual(inventory ? 4 : 16);
   } finally {
     release();
     await operation;
   }
   const journal = await json(path.join(state, 'transition.json'));
   const proof = await json(path.join(journal.snapshot, 'proof.json'));
-  expect(proof.guards.map((item: { path: string }) => item.path)).toEqual(guards);
-  expect(opened.size).toBe(guards.length);
+  const entries = inventory ? proof.entries : proof.guards;
+  expect(entries.map((item: { path: string }) => item.path)).toEqual(files);
+  expect(opened.size).toBe(files.length);
 });
 
 it('drains concurrent copies before removing a failed staging directory', async () => {

@@ -207,6 +207,8 @@ The first selection may ask pnpm to generate its package-manager metadata. That 
 
 `--no-watch` checks the selected installation, Turbo inputs and output hashes under both workspace locks. If they match the saved build, the command can finish while applications are serving. It keeps their existing receipts and the recovery snapshot. If an install or rebuild is needed, stop the affected source stacks first. Omnitron retains a recovery snapshot before changing shared dependencies or outputs.
 
+During a switch, the CLI reports how long it spends reading the initial state, copying and checking the saved files, and verifying that the source still matches. It reads independent output trees in bounded parallel batches and keeps their original order in the recovery record.
+
 In watch mode the SDK rebuilds changed packages. With `--stack dev`, Omnitron records the owner's receipt for each watched application that uses the changed SDK. An application such as a Vite server can declare `watch: false` and manage its own reloads. The CLI checks each binding against the stack declaration and reports applications that manage their own reloads separately.
 
 To edit the source of one running application while keeping its current generation online, suspend its existing owner registration. Use the full name reported by the owner.

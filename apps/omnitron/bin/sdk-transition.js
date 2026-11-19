@@ -14,6 +14,7 @@ const absent = error => { if (error.code === 'ENOENT') return null; throw error;
 const stat = file => fs.lstat(file, { bigint: true }).catch(absent);
 const identity = value => ({ device: String(value.dev), inode: String(value.ino) });
 const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+const TREE_CONCURRENCY = 4;
 const FILE_CONCURRENCY = 16;
 const readFile = pLimit(FILE_CONCURRENCY);
 const SMALL_FILE_BYTES = 256n * 1024n;
@@ -136,7 +137,7 @@ async function verifyGuards(proof) {
   });
 }
 async function measurements(proof) {
-  return settledMap(proof.entries, 4, async item => {
+  return settledMap(proof.entries, TREE_CONCURRENCY, async item => {
     await physical(path.dirname(item.path)); return measure(item.path);
   });
 }
@@ -269,7 +270,7 @@ export async function prepareSdkTransition({ root, source, paths, guards, progre
   }
   await sdkDirectory(cache); await owned(cache, true, false);
   await owned(path.dirname(state(root)), true, false);
-  const id = randomUUID(), entries = [], roots = [];
+  const id = randomUUID(), roots = [];
   for (const directory of [root, source]) {
     await physical(directory); roots.push({ path: directory, identity: identity(await stat(directory)) });
   }
@@ -277,12 +278,14 @@ export async function prepareSdkTransition({ root, source, paths, guards, progre
   // before any build or package-manager repair rather than guessing ownership.
   const unique = [...new Set(paths)].filter(file => !paths.some(parent => parent !== file && inside(parent, file)));
   progress?.({ phase: 'inventory', paths: unique.length });
-  for (const file of unique) {
+  for (const file of unique)
     if (![root, source].some(base => inside(base, file)) || [root, source].includes(file) || file.split(path.sep).includes('.git'))
       throw Error('SDK transition path escapes its workspace: ' + file);
-    await physical(path.dirname(file));
-    entries.push({ path: file, parent: identity(await stat(path.dirname(file))), before: await measure(file) });
-  }
+  const entries = await settledMap(unique, TREE_CONCURRENCY, async file => {
+    const parent = path.dirname(file);
+    await physical(parent);
+    return { path: file, parent: identity(await stat(parent)), before: await measure(file) };
+  });
   const measuredGuards = await settledMap([...new Set(guards)], FILE_CONCURRENCY, async file =>
     ({ path: file, before: await measure(file) }));
   const proof = { schema: 1, id, root, source, roots, entries, guards: measuredGuards };
@@ -294,7 +297,7 @@ export async function prepareSdkTransition({ root, source, paths, guards, progre
   await fs.mkdir(temporary, { mode: 0o700 });
   try {
     progress?.({ phase: 'retain', paths: entries.length, bytes });
-    await settledMap(entries, 4, async (entry, index) => {
+    await settledMap(entries, TREE_CONCURRENCY, async (entry, index) => {
       if (!entry.before.absent) await copy(entry.path, path.join(temporary, String(index)));
       if (!same(await measure(path.join(temporary, String(index))), entry.before)) throw Error('SDK before-image copy verification failed: ' + entry.path);
     });

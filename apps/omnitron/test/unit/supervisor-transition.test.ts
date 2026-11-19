@@ -39,7 +39,7 @@ vi.mock('../../src/daemon/execution-client.js', () => ({ ExecutionClient: class 
 vi.mock('../../src/daemon/private-control-client.js', async original => ({
   ...await original<typeof import('../../src/daemon/private-control-client.js')>(), privateControlClient: fake.control,
 }));
-import { checkSystemGuardian, guardianUnitProperties, replaceGuardianExec } from '../../src/daemon/system-guardian-unit.js';
+import { checkRootGuardianCredentials, checkSystemGuardian, guardianUnitProperties, replaceGuardianExec } from '../../src/daemon/system-guardian-unit.js';
 import type { ManagedRuntime } from '../../src/daemon/managed-runtime.js';
 import { applySupervisorTransition, prepareSupervisorTransition, readSupervisorTransition, supervisorTransitionIntentDigest, type SupervisorTransition } from '../../src/daemon/supervisor-transition.js';
 import { writePrivateRecord } from '../../src/daemon/execution-journal.js';
@@ -236,6 +236,28 @@ it('preserves site-specific working directory, restart and account directives wh
     expect(() => replaceGuardianExec(invalid, before, after)).toThrow('ExecStart');
   }
 });
+it('checks all four kernel UID and GID values of the root-owned system guardian', () => {
+  const status = 'Name:\tnode\nUid:\t0\t0\t0\t0\nGid:\t0\t0\t0\t0\n';
+  expect(() => checkRootGuardianCredentials(status)).not.toThrow();
+  for (const field of ['Uid:', 'Gid:']) {
+    for (const ids of ['', '0 0 0', '1 0 0 0', '0 1 0 0', '0 0 1 0', '0 0 0 1']) {
+      expect(() => checkRootGuardianCredentials(status.replace(field + '\t0\t0\t0\t0', field + '\t' + ids))).toThrow('UID/GID');
+    }
+  }
+});
+
+it('refuses system guardian preparation as the service account before installing or contacting systemd', async () => {
+  const { plan, control } = await backupFixture();
+  fake.config = { ...plan.before, scope: 'system' };
+  const uid = vi.spyOn(process, 'getuid').mockReturnValue(1001);
+  try {
+    await expect(prepareSupervisorTransition('/unused')).rejects.toThrow('separate privileged systemd coordinator');
+    expect(fake.opened).not.toHaveBeenCalled();
+    expect(fake.native).not.toHaveBeenCalled();
+    expect(control.prepare).not.toHaveBeenCalled();
+  } finally { uid.mockRestore(); }
+});
+
 it('blocks stoppage when a system guardian cascades, has external hooks, uses drop-ins or has drifted', () => {
   const unit = 'omnitron-fixture.service';
   const facts = { ...Object.fromEntries(guardianUnitProperties.map(key => [key, ''])),
@@ -274,7 +296,7 @@ it('checks prepare, admission and rollback without taking the installation lease
   expect(installation.exclusive).not.toHaveBeenCalled(); expect(control.prepare).not.toHaveBeenCalled(); expect(control.retire).not.toHaveBeenCalled();
   expect(await fs.readFile(file)).toEqual(source);
   state.runtime.blockers.terminalSessions = 1;
-  await expect(applySupervisorTransition(file, { checkOnly: true })).rejects.toThrow(/operations block/);
+  await expect(applySupervisorTransition(file, { checkOnly: true })).rejects.toThrow('terminalSessions=1');
   state.runtime.blockers.terminalSessions = 0; state.ticketId = 'foreign';
   await expect(applySupervisorTransition(file, { checkOnly: true })).rejects.toThrow(/transfer/);
   expect(await fs.readFile(file)).toEqual(source);

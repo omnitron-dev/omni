@@ -123,6 +123,17 @@ home. Prepare their system units as that account with
 and the private supervision record. Review the unit contents before installing
 them with administrative privileges. systemd uses the account's primary GID.
 
+Automatic guardian replacement currently supports a Linux system instance only
+when its private state and running guardian belong to root. The coordinator
+checks the real and effective operator UID, the guardian's four kernel UID and
+GID values, its sealed executable, and the loaded unit's stop effects.
+For a dedicated service account, the private socket, journal and candidate
+verification require that account, while replacing the root-owned unit and
+controlling systemd require an administrator. This installation still needs a
+privileged coordinator that independently verifies the reviewed unit, process
+and stop boundary before applying the native changes. Keep guardian replacement
+as a separate maintenance operation for this layout.
+
 When moving an existing instance to a different account, retain the original
 units and a consistent copy of its private state. Verify the runtime selections,
 absolute paths, node identity, application registrations, and recovery history

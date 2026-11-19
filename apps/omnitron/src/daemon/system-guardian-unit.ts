@@ -26,6 +26,15 @@ export function checkSystemGuardian(unit: string, facts: Record<string, string>,
       !['', 'root'].includes(facts['Group'] ?? '?')) throw Error('Unsupported or changed system guardian unit');
 }
 
+/** Linux reports real, effective, saved and filesystem credentials in this order. */
+export function checkRootGuardianCredentials(status: string): void {
+  for (const field of ['Uid:', 'Gid:']) {
+    const lines = status.split('\n').filter(line => line.startsWith(field));
+    if (lines.length !== 1 || !/^0\s+0\s+0\s+0$/.test(lines[0]!.slice(field.length).trim()))
+      throw Error('Actual system guardian UID/GID differs from the root-owned instance');
+  }
+}
+
 /** Preserve the site's account, environment, restart policy and working directory byte-for-byte. */
 export function replaceGuardianExec(text: string, before: ManagedRuntime, after: ManagedRuntime): string {
   const line = (config: ManagedRuntime) => {

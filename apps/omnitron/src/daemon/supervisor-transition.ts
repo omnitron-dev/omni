@@ -21,7 +21,7 @@ import { checkpointInstanceHome, readBackendBootRecord } from './backend-handoff
 import { readPrivateRecord, writePrivateRecord } from './execution-journal.js';
 import { ExecutionClient } from './execution-client.js';
 import { PidManager } from './pid-manager.js';
-import { checkSystemGuardian, guardianUnitProperties, replaceGuardianExec } from './system-guardian-unit.js';
+import { checkRootGuardianCredentials, checkSystemGuardian, guardianUnitProperties, replaceGuardianExec } from './system-guardian-unit.js';
 import type { GuardianStopFence } from './system-guardian-cgroup.js';
 import { expandPath } from '../shared/paths.js';
 import { projectExecutionIdentity, compareExecutionIdentityEvidence, describeExecutionIdentityDrift, type ExecutionIdentityEvidence } from '../shared/execution-identity.js';
@@ -63,8 +63,12 @@ async function native(command: string, args: string[]): Promise<string> {
 const domain = () => `gui/${process.getuid!()}`;
 
 const systemctlScope = (config: ManagedRuntime) => config.scope === 'user' ? ['--user'] : [];
+function requireSystemGuardianOperator(): void {
+  if (process.platform !== 'linux' || process.getuid?.() !== 0 || process.geteuid?.() !== 0)
+    throw Error('Automatic system guardian replacement requires a root-owned Linux instance and a root operator. A dedicated service account requires a separate privileged systemd coordinator.');
+}
 async function systemGuardianFile(config: ManagedRuntime, requireLoaded: boolean): Promise<string> {
-  if (process.platform !== 'linux' || process.getuid?.() !== 0) throw Error('System guardian replacement requires the root-owned Linux instance');
+  requireSystemGuardianOperator();
   const facts = await managedSystemdProperties(config, config.backend.unit, guardianUnitProperties);
   checkSystemGuardian(config.backend.unit, facts, requireLoaded);
   const file = facts['FragmentPath']!;
@@ -74,6 +78,7 @@ async function systemGuardianFile(config: ManagedRuntime, requireLoaded: boolean
 
 async function assertSystemGuardianProcess(config: ManagedRuntime, pid: number): Promise<void> {
   const root = path.join(config.instanceHome, 'runtime/releases', config.backend.artifact);
+  checkRootGuardianCredentials(await fs.readFile(`/proc/${pid}/status`, 'utf8'));
   const args = (await fs.readFile(`/proc/${pid}/cmdline`, 'utf8')).split('\0').filter(Boolean);
   if (await fs.realpath(`/proc/${pid}/exe`) !== path.join(root, 'node') ||
       args.length !== 3 || args[1] !== path.join(root, 'packages/0/dist/daemon/managed-entry.js') || args[2] !== 'backend')
@@ -221,7 +226,8 @@ export async function prepareSupervisorTransition(directory: string, socket?: st
   try {
     const current = await control.service.status();
     const config = await readManagedRuntime(current.instanceHome);
-    if (!config || config.scope === 'system' && (process.platform !== 'linux' || process.getuid?.() !== 0)) throw new Error('Automatic guardian replacement requires independent user services or a root-owned Linux system instance');
+    if (!config) throw new Error('Automatic guardian replacement requires a managed instance');
+    if (config.scope === 'system') requireSystemGuardianOperator();
     if (path.dirname(controlAddress.socket) !== config.directory || !current.runtime.owner ||
         (retired ? (!current.retired || current.pid !== backendPid || current.ticketId !== retired.state.ticket.id ||
           current.instanceHome !== checkpointInstanceHome(retired)) : (current.retired || current.ticketId))) {
@@ -304,6 +310,7 @@ export async function applySupervisorTransition(file: string, options: { checkOn
   file = path.resolve(file);
   let plan = await readSupervisorTransition(file);
   if (plan.phase === 'complete') return options.checkOnly ? { ...summarize(plan), checked: false } : summarize(plan);
+  if (plan.before.scope === 'system') requireSystemGuardianOperator();
   if (options.checkOnly && plan.phase !== 'prepared') throw Error('Guardian transition already started; reconcile its checkpoint before continuing');
   const installation = options.checkOnly ? await RuntimeInstallation.openReadOnly(plan.before.instanceHome) :
     await RuntimeInstallation.open(plan.before.instanceHome, { existing: true });
@@ -438,7 +445,10 @@ export async function applySupervisorTransition(file: string, options: { checkOn
           if (await managedJobPid(plan.before, 'backend') !== plan.guardianPid) throw new Error('A different guardian now owns the OS job');
           if (process.platform === 'darwin') await native('/bin/launchctl', ['bootout', `${domain()}/${plan.before.backend.label}`]);
           else {
-            if (plan.before.scope === 'system') await systemGuardianFile(plan.before, true);
+            if (plan.before.scope === 'system') {
+              await systemGuardianFile(plan.before, true);
+              await assertSystemGuardianProcess(plan.before, plan.guardianPid);
+            }
             assertSameOwner(plan, await inventory(plan.before));
             await verifyStopBoundary(plan, true);
             await native('systemctl', [...systemctlScope(plan.before), 'stop', plan.before.backend.unit]);

@@ -16,7 +16,6 @@ import {
 import { Alert } from '@omnitron-dev/prism/components/alert';
 import { useSnackbar } from '@omnitron-dev/prism/components/snackbar';
 import {
-  STUDIO_PROVIDERS,
   STUDIO_ROLES,
   STUDIO_ROLE_POLICY,
   selectStudioModel,
@@ -35,12 +34,13 @@ import { studio } from 'src/netron/client';
 import { useAccess } from 'src/auth/access';
 import { attachStudioText } from 'src/utils/studio-message';
 import { StudioTurnCard } from 'src/components/studio-turn';
-import { StudioTeamEditor, studioProviderNames as labels } from 'src/components/studio-team-editor';
+import { StudioTeamEditor } from 'src/components/studio-team-editor';
+import { StudioConnectorDetails } from 'src/components/studio-connector-details';
+import { studioProviderName, studioProviderOptions } from 'src/utils/studio-provider';
 import { StudioTeamRoom, studioSections, type StudioSection } from 'src/components/studio-team-room';
 import { PlusIcon } from 'src/assets/icons';
 
 const budgetLabels = { economy: 'Economy', standard: 'Standard', premium: 'Premium' };
-const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
 const describe = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const plain = { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' } as const;
 export default function StudioPage() {
@@ -252,13 +252,6 @@ function StudioWorkspace({ project, stack }: { project: string | null; stack: st
       setError(describe(e));
     }
   };
-  const command =
-    'omnitron studio connect ' +
-    (project ? quote(project) : '--planning') +
-    ' --account ' +
-    quote(workspace.data?.account ?? '') +
-    ' --provider ' +
-    currentProvider;
   if (thread && (thread.stack ?? null) !== stack) return <Navigate replace to={teamHref(thread)} />;
   return (
     <Stack spacing={2.5} sx={{ minWidth: 0 }}>
@@ -316,7 +309,7 @@ function StudioWorkspace({ project, stack }: { project: string | null; stack: st
               >
                 <ListItemText
                   primary={t.title}
-                  secondary={labels[t.provider] + ' · ' + t.assignment.preferences.role}
+                  secondary={studioProviderName(t.provider) + ' · ' + t.assignment.preferences.role}
                   slotProps={{ primary: { noWrap: true } }}
                 />
               </ListItemButton>
@@ -467,9 +460,9 @@ function StudioWorkspace({ project, stack }: { project: string | null; stack: st
                         setModel('@automatic');
                       }}
                     >
-                      {STUDIO_PROVIDERS.map((v) => (
-                        <MenuItem key={v} value={v}>
-                          {labels[v]}
+                      {studioProviderOptions(workspace.data?.catalogs ?? [], [provider]).map((v) => (
+                        <MenuItem key={v} value={v} sx={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>
+                          {studioProviderName(v)}
                         </MenuItem>
                       ))}
                     </TextField>
@@ -532,28 +525,18 @@ function StudioWorkspace({ project, stack }: { project: string | null; stack: st
                   </Typography>
                 )}
                 {workspace.data && (!catalog || connecting) && (
-                  <Alert severity="info">
-                    <Stack spacing={1} sx={{ minWidth: 0 }}>
-                      <Typography variant="body2">
-                        Connect your subscription {project ? 'from the project directory' : 'from a local terminal'}.
-                      </Typography>
-                      <Box component="code" sx={{ ...plain, fontSize: '0.8125rem' }}>
-                        {command}
-                      </Box>
-                      <Button
-                        size="small"
-                        sx={{ alignSelf: 'start' }}
-                        onClick={() =>
-                          navigator.clipboard
-                            .writeText(command)
-                            .then(() => notify.success('Command copied'))
-                            .catch((e) => setError(describe(e)))
-                        }
-                      >
-                        Copy command
-                      </Button>
-                    </Stack>
-                  </Alert>
+                  <StudioConnectorDetails
+                    project={project}
+                    account={workspace.data.account}
+                    provider={currentProvider}
+                    connected={Boolean(catalog)}
+                    onCopy={(command) =>
+                      navigator.clipboard
+                        .writeText(command)
+                        .then(() => notify.success('Command copied'))
+                        .catch((e) => setError(describe(e)))
+                    }
+                  />
                 )}
                 {catalog && (
                   <Button size="small" sx={{ alignSelf: 'start' }} onClick={() => setConnecting(!connecting)}>

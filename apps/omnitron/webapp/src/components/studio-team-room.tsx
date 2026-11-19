@@ -28,7 +28,8 @@ import { useAccess } from 'src/auth/access';
 import { studio } from 'src/netron/client';
 import { attachStudioText } from 'src/utils/studio-message';
 import { StudioFlowProposalRow } from './studio-flow-proposal';
-import { StudioTeamEditor, studioProviderNames } from './studio-team-editor';
+import { studioProviderName } from 'src/utils/studio-provider';
+import { StudioTeamEditor } from './studio-team-editor';
 import { StudioTurnCard } from './studio-turn';
 
 export const studioSections = ['chat', 'tasks', 'memory', 'members', 'flows'] as const;
@@ -224,11 +225,9 @@ export function StudioTeamRoom({
                   <Typography variant="caption" color="text.secondary">
                     The team journal and memory are available to all assigned adapters. {memberName(addressed)} receives
                     this message and attached text through{' '}
-                    {
-                      studioProviderNames[
-                        recipientChoices.find((member) => member.id === addressed)?.provider ?? thread.provider
-                      ]
-                    }
+                    {studioProviderName(
+                      recipientChoices.find((member) => member.id === addressed)?.provider ?? thread.provider
+                    )}
                     .
                   </Typography>
                   <TextField
@@ -312,7 +311,7 @@ export function StudioTeamRoom({
                     {member.active ? '' : ' · Retired'}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    {member.assignment.preferences.role} · {studioProviderNames[member.provider]} ·{' '}
+                    {member.assignment.preferences.role} · {studioProviderName(member.provider)} ·{' '}
                     {member.assignment.selection.model}
                   </Typography>
                 </Box>

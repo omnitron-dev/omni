@@ -15,6 +15,7 @@ import {
 import { Alert } from '@omnitron-dev/prism/components/alert';
 import {
   STUDIO_PROVIDERS,
+  STUDIO_PROVIDER_LIMIT,
   STUDIO_ROLES,
   STUDIO_ROLE_POLICY,
   selectStudioModel,
@@ -27,15 +28,10 @@ import {
   type StudioRoomRef,
   type StudioTeamPolicy,
 } from '@omnitron-dev/omnitron/dto/services';
-import { quoteShellArgument } from 'src/utils/shell-command';
+import { studioProviderName, studioProviderOptions } from 'src/utils/studio-provider';
 import { studio } from 'src/netron/client';
+import { StudioConnectorDetails } from './studio-connector-details';
 
-export const studioProviderNames: Record<StudioProvider, string> = {
-  codex: 'Codex',
-  agy: 'Antigravity',
-  claude: 'Claude Code',
-  kimi: 'Kimi Code',
-};
 const tiers: StudioCostTier[] = ['economy', 'standard', 'premium'];
 const small = { size: 'small', fullWidth: true } as const;
 
@@ -87,6 +83,7 @@ export function StudioTeamEditor({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const catalog = catalogs.find((item) => item.provider === provider);
+  const providerOptions = studioProviderOptions(catalogs, policy.providers);
   const selection: StudioMemberInput = {
     name: name.trim(),
     provider,
@@ -107,6 +104,7 @@ export function StudioTeamEditor({
     });
   const policyValid =
     policy.providers.length > 0 &&
+    policy.providers.length <= STUDIO_PROVIDER_LIMIT &&
     Number.isInteger(policy.maxMembers) &&
     policy.maxMembers >= 1 &&
     policy.maxMembers <= 12 &&
@@ -139,14 +137,19 @@ export function StudioTeamEditor({
   const policyFields = (
     <Stack spacing={1.5}>
       <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap' }} role="group" aria-label="Allowed adapters">
-        {STUDIO_PROVIDERS.map((id) => (
+        {providerOptions.map((id) => (
           <FormControlLabel
             key={id}
-            label={studioProviderNames[id]}
+            label={studioProviderName(id)}
+            sx={{ minWidth: 0, overflowWrap: 'anywhere' }}
             control={
               <Checkbox
                 size="small"
                 checked={policy.providers.includes(id)}
+                disabled={
+                  (mode === 'policy' && id === leadProvider) ||
+                  (!policy.providers.includes(id) && policy.providers.length >= STUDIO_PROVIDER_LIMIT)
+                }
                 onChange={(_, checked) => {
                   const providers = checked
                     ? [...policy.providers, id]
@@ -247,13 +250,22 @@ export function StudioTeamEditor({
                   label="Adapter"
                   value={provider}
                   onChange={(event) => {
-                    setProvider(event.target.value as StudioProvider);
+                    const selected = event.target.value as StudioProvider;
+                    if (mode === 'create' && !policy.providers.includes(selected)) {
+                      setPolicy({ ...policy, providers: [...policy.providers, selected] });
+                    }
+                    setProvider(selected);
                     setModel('');
                   }}
                 >
-                  {policy.providers.map((id) => (
-                    <MenuItem key={id} value={id}>
-                      {studioProviderNames[id]}
+                  {(mode === 'create' ? providerOptions : policy.providers).map((id) => (
+                    <MenuItem
+                      key={id}
+                      value={id}
+                      disabled={!policy.providers.includes(id) && policy.providers.length >= STUDIO_PROVIDER_LIMIT}
+                      sx={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}
+                    >
+                      {studioProviderName(id)}
                     </MenuItem>
                   ))}
                 </TextField>
@@ -278,15 +290,7 @@ export function StudioTeamEditor({
                 </Typography>
               )}
               {choice && !choice.ok && <Alert severity="warning">{choice.message}</Alert>}
-              {!catalog && (
-                <Alert severity="info">
-                  Connect {studioProviderNames[provider]} for {account} to choose a model.
-                  <Box component="code" sx={{ display: 'block', mt: 0.5, overflowWrap: 'anywhere' }}>
-                    omnitron studio connect {room.project ? quoteShellArgument(room.project) : '--planning'} --account{' '}
-                    {quoteShellArgument(account)} --provider {provider}
-                  </Box>
-                </Alert>
-              )}
+              {!catalog && <StudioConnectorDetails project={room.project} account={account} provider={provider} />}
             </>
           )}
           {mode === 'create' && (

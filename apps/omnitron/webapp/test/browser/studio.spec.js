@@ -181,14 +181,16 @@ for (const width of [1280, 360]) {
   test(
     'work with separate team members, their shared tasks and memory at ' + width + 'px',
     async ({ page, context, url }) => {
+      const leadProvider = width === 360 ? 'example.org/research' : 'codex';
+      const leadLabel = width === 360 ? leadProvider : 'Codex';
       const catalogs = [
-        { provider: 'codex', connector: 'primary', model: 'lead-model' },
+        { provider: leadProvider, connector: 'primary', model: 'lead-model' },
         { provider: 'agy', connector: 'secondary', model: 'review-model' },
       ].map(({ provider, connector, model }) => ({
         provider,
         connector,
         revision: 'catalog-1',
-        teamTools: provider === 'codex',
+        teamTools: provider === leadProvider,
         models: [
           {
             id: model,
@@ -237,6 +239,8 @@ for (const width of [1280, 360]) {
         'OmnitronStudio.createTeam': (input) => {
           expect(input.project).toBe('sample');
           expect(input.stack).toBe('dev');
+          expect(input.provider).toBe(leadProvider);
+          expect(input.policy.providers).toContain(leadProvider);
           expect(input.policy).toMatchObject({ maxMembers: 3, maxDelegations: 2, maxCostTier: 'economy' });
           thread = {
             id: input.threadId,
@@ -330,6 +334,13 @@ for (const width of [1280, 360]) {
       await page.getByRole('textbox', { name: 'Team name', exact: true }).fill('Release planning');
       await page.getByRole('textbox', { name: 'Lead name', exact: true }).fill('Coordinator');
       await page.getByRole('button', { name: 'Team limits' }).click();
+      if (width === 360) {
+        const permission = page.getByRole('checkbox', { name: leadLabel, exact: true });
+        await expect(permission).not.toBeChecked();
+        await page.getByRole('combobox', { name: 'Adapter', exact: true }).click();
+        await page.getByRole('option', { name: leadLabel, exact: true }).click();
+        await expect(permission).toBeChecked();
+      }
       await page.getByLabel('Maximum members').fill('3');
       await page.getByLabel('Maximum delegations').fill('2');
       await page.getByRole('button', { name: 'Create team' }).click();
@@ -350,7 +361,7 @@ for (const width of [1280, 360]) {
       await page.getByRole('option', { name: 'review-model' }).click();
       await dialog.getByRole('button', { name: 'Add member' }).click();
       await expect(page.getByText('reviewer · Antigravity · review-model')).toBeVisible();
-      await expect(page.getByText('analyst · Codex · lead-model')).toBeVisible();
+      await expect(page.getByText('analyst · ' + leadLabel + ' · lead-model')).toBeVisible();
       await page.screenshot({ path: test.info().outputPath('members.png') });
       await page.getByRole('tab', { name: 'Tasks' }).click();
       await page.getByRole('combobox', { name: 'Recipient' }).click();

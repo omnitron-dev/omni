@@ -191,6 +191,9 @@ else {
       readStudioEvent('claude', stream(), { ...init, tools: [...init.tools, 'Bash'] }, true, 'example')
     ).toThrow();
     expect(() => readStudioEvent('claude', stream(), init, true, 'changed')).toThrow();
+    expect(() => readStudioEvent('claude', stream(), init, true, 'example', 'a-different-session')).toThrow(
+      'conversation'
+    );
     const state = stream();
     readStudioEvent('claude', state, init, true, 'example');
     readStudioEvent('claude', state, {
@@ -208,6 +211,82 @@ else {
       usage: { inputTokens: 12, outputTokens: 3 },
     });
   });
+
+  it('keeps Antigravity deltas private until its strict-mode receipt identifies the requested conversation', () => {
+    const state = stream();
+    const observe = (event: Parameters<typeof readStudioEvent>[2]) =>
+      readStudioEvent('agy', state, event, false, 'example', 'room-session');
+    const delta = { event: 'step_update', step_update: { step_type: 'agent_response', text_delta: 'A partial reply' } };
+    observe({ event: 'init', init: { permission_mode: 'strict' } });
+    observe(delta);
+    expect(state.answer).toBe('');
+    observe({ ...delta, conversation_id: 'room-session' });
+    expect(state.answer).toBe('A partial reply');
+    expect(() => observe({ ...delta, conversation_id: 'other-session' })).toThrow('conversation');
+    expect(() =>
+      observe({
+        event: 'result',
+        result: { status: 'SUCCESS', conversation_id: 'other-session', response: 'Other reply' },
+      })
+    ).toThrow('conversation');
+    expect(state.answer).toBe('A partial reply');
+    observe({
+      event: 'result',
+      result: { status: 'SUCCESS', conversation_id: 'room-session', response: 'Full reply' },
+    });
+    expect(state).toMatchObject({ answer: 'Full reply', conversation: 'room-session', completed: true });
+  });
+
+  it.skipIf(process.platform === 'win32')(
+    'publishes Codex previews only after the resumed native thread is confirmed',
+    async () => {
+      const scratch = await fixtures();
+      const executable = join(scratch, 'provider');
+      const reply = { type: 'item.completed', item: { type: 'agent_message', text: 'Room reply' } };
+      const run = async (events: unknown[]) => {
+        await writeFile(
+          executable,
+          `#!/usr/bin/env node
+const emit = value => console.log(JSON.stringify(value));
+if (process.argv.includes('debug')) {
+  emit({ models: [{ slug: 'example', visibility: 'list', display_name: 'Example' }] });
+} else {
+  process.stdin.resume();
+  process.stdin.on('end', () => ${JSON.stringify(events)}.forEach(emit));
+}`,
+          { mode: 0o700 }
+        );
+        const previews: string[] = [];
+        const result = await runStudioTurn(
+          'codex',
+          executable,
+          scratch,
+          { ...task(), teamTools: false, conversation: 'room-session' },
+          AbortSignal.timeout(5000),
+          (value) => previews.push(value)
+        );
+        return { result, previews };
+      };
+      try {
+        const start = { type: 'thread.started', thread_id: 'room-session' },
+          finish = { type: 'turn.completed' };
+        expect(await run([reply, start, finish])).toEqual({
+          result: { status: 'failed', failure: 'protocol' },
+          previews: [],
+        });
+        expect(await run([{ ...start, thread_id: 'other-session' }, reply, finish])).toEqual({
+          result: { status: 'failed', failure: 'protocol' },
+          previews: [],
+        });
+        expect(await run([start, reply, finish])).toMatchObject({
+          result: { status: 'completed', answer: 'Room reply', conversation: 'room-session' },
+          previews: ['Room reply'],
+        });
+      } finally {
+        await rm(scratch, { recursive: true, force: true });
+      }
+    }
+  );
 
   it.skipIf(process.platform === 'win32')(
     'resumes a Claude session after an interrupted connector left its private working directory',

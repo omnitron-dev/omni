@@ -111,28 +111,43 @@ const usageReport = (usage: ProviderUsage | undefined) =>
     outputTokens: usage?.output_tokens ?? null,
     totalTokens: usage?.total_tokens ?? null,
   });
+function bindConversation(state: StudioStream, id: unknown, expected?: string | null) {
+  if (!providerId(id) || (expected && expected !== id) || (state.conversation && state.conversation !== id))
+    throw Error('The provider did not confirm the requested conversation');
+  state.conversation = id;
+}
 export function readStudioEvent(
   provider: StudioProvider,
   state: StudioStream,
   event: ProviderEvent,
   team = false,
-  model?: string
+  model?: string,
+  expectedConversation?: string | null
 ): void {
+  if (state.failure) return;
   if (provider === 'agy') {
     if (event.event === 'init') {
       if (event.init?.permission_mode !== 'strict') throw Error('The adapter did not confirm strict tool permissions');
+      if (event.init.conversation_id !== undefined)
+        bindConversation(state, event.init.conversation_id, expectedConversation);
+      if (event.conversation_id !== undefined) bindConversation(state, event.conversation_id, expectedConversation);
       state.verified = true;
-      state.conversation = event.conversation_id ?? event.init?.conversation_id ?? null;
     }
-    if (event.event === 'step_update' && event.step_update?.step_type === 'agent_response')
-      state.answer += typeof event.step_update.text_delta === 'string' ? event.step_update.text_delta : '';
+    if (event.event === 'step_update' && event.step_update?.step_type === 'agent_response') {
+      if (!state.verified) throw Error('The provider sent a response before initialization');
+      if (event.conversation_id !== undefined) bindConversation(state, event.conversation_id, expectedConversation);
+      // Some CLI versions identify the conversation only on the final result, which carries the full answer.
+      if (state.conversation)
+        state.answer += typeof event.step_update.text_delta === 'string' ? event.step_update.text_delta : '';
+    }
     if (event.event === 'result') {
       if (!state.verified || !event.result || typeof event.result !== 'object' || event.result.status !== 'SUCCESS') {
         state.failure = 'provider';
         return;
       }
+      if (event.conversation_id !== undefined) bindConversation(state, event.conversation_id, expectedConversation);
+      bindConversation(state, event.result.conversation_id, expectedConversation);
       state.answer = event.result.response ?? '';
-      state.conversation = event.result.conversation_id ?? null;
       state.completed = true;
       state.usage = usageReport(event.result.usage);
     }
@@ -147,12 +162,11 @@ export function readStudioEvent(
         !Array.isArray(event.mcp_servers) ||
         event.mcp_servers.length !== (team ? 1 : 0) ||
         (team && !event.mcp_servers.some((s) => s.name === 'studio' && s.status === 'connected')) ||
-        event.model !== model ||
-        !providerId(event.session_id)
+        event.model !== model
       )
         throw Error('Claude Code did not confirm the selected model and tool restrictions');
+      bindConversation(state, event.session_id, expectedConversation);
       state.verified = true;
-      state.conversation = event.session_id;
     }
     if (event.type === 'result') {
       if (
@@ -171,12 +185,17 @@ export function readStudioEvent(
     }
   } else if (provider === 'codex') {
     if (event.type === 'thread.started') {
-      state.conversation = event.thread_id ?? null;
+      bindConversation(state, event.thread_id, expectedConversation);
       state.verified = true;
     }
-    if (event.type === 'item.completed' && event.item?.type === 'agent_message' && event.item.phase !== 'commentary')
+    if (event.type === 'item.completed' && event.item?.type === 'agent_message' && event.item.phase !== 'commentary') {
+      if (!state.verified) throw Error('The provider sent a response before initialization');
+      if (event.thread_id !== undefined) bindConversation(state, event.thread_id, expectedConversation);
       state.answer = event.item.text ?? '';
+    }
     if (event.type === 'turn.completed') {
+      if (!state.verified) throw Error('The provider completed a turn before initialization');
+      if (event.thread_id !== undefined) bindConversation(state, event.thread_id, expectedConversation);
       state.completed = true;
       state.usage = usageReport(event.usage);
     }
@@ -213,8 +232,15 @@ export async function runStudioTurn(
   const consume = (line: string) => {
     if (!line.trim()) return;
     const old = state.answer;
-    readStudioEvent(provider, state, JSON.parse(line), Boolean(endpoint), task.model);
-    if (state.answer !== old) preview(state.answer);
+    readStudioEvent(
+      provider,
+      state,
+      JSON.parse(line),
+      Boolean(endpoint),
+      task.model,
+      task.conversation ?? initialSession
+    );
+    if (state.answer !== old && (!endpoint || endpoint.discovered())) preview(state.answer);
   };
   const sink = new Writable({
     write(chunk: Buffer, _encoding, done) {

@@ -1,4 +1,4 @@
-export const STUDIO_PROVIDERS = ['codex', 'agy'] as const;
+export const STUDIO_PROVIDERS = ['codex', 'agy', 'claude', 'kimi'] as const;
 export type StudioProvider = typeof STUDIO_PROVIDERS[number];
 
 /** Studio responsibilities constrain the proposed result, never grant infrastructure authority. */
@@ -42,6 +42,8 @@ export interface StudioModelDescriptor {
   price: StudioPriceQuote | null;
 }
 export interface StudioModelCatalog {
+  /** The installed connector can isolate the room MCP server for one turn. */
+  teamTools?: boolean;
   provider: StudioProvider;
   /** Identifies this connection's catalog locally; never forwarded to the provider. */
   connector: string;
@@ -126,6 +128,7 @@ export function studioCatalogFromListing(provider: StudioProvider, connector: st
 /** Pure, deterministic selection within one trusted connector's current catalog. */
 export function selectStudioModel(catalog: StudioModelCatalog, request: StudioModelRequest): StudioModelDecision {
   if (!catalog || !STUDIO_PROVIDERS.includes(catalog.provider) || !text(catalog.connector) || !text(catalog.revision) ||
+      (catalog.teamTools !== undefined && typeof catalog.teamTools !== 'boolean') ||
       !Array.isArray(catalog.models) || new Set(catalog.models.map(model => model?.id)).size !== catalog.models.length ||
       catalog.models.some(model => !model || !text(model.id) || !text(model.label) || !unique(model.classes) ||
         !model.classes.every(value => CLASSES.includes(value)) || !unique(model.capabilities) ||

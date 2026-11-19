@@ -6,8 +6,10 @@ import type {
   StudioRole,
   StudioResultClass,
   StudioUsageReport,
+  StudioCostTier,
   createStudioProviderInput,
 } from './studio-policy.js';
+import type { FlowDefinition } from './flows.js';
 
 export { STUDIO_PROVIDERS, type StudioProvider } from './studio-policy.js';
 export { projectInterview, readProjectSuggestion } from './studio-starter.js';
@@ -24,6 +26,7 @@ export type StudioFailure =
 
 export interface StudioThread {
   id: string;
+  leadMemberId: string;
   title: string;
   provider: StudioProvider;
   updatedAt: number;
@@ -46,6 +49,10 @@ export interface StudioDecision {
 
 export interface StudioTurn {
   id: string;
+  memberId: string;
+  authorId: string | null;
+  kind: 'message' | 'task' | 'summary';
+  originId: string | null;
   prompt: string;
   answer: string;
   status: StudioStatus;
@@ -73,7 +80,75 @@ export interface StudioHistory {
   thread: StudioThread;
   turns: StudioTurn[];
   beforeTurn: string | null;
+  team: StudioTeam;
 }
+
+export interface StudioTeamPolicy {
+  providers: StudioProvider[];
+  maxMembers: number;
+  maxDelegations: number;
+  maxCostTier: StudioCostTier;
+}
+export interface StudioMember {
+  id: string;
+  name: string;
+  provider: StudioProvider;
+  assignment: StudioDecision;
+  lead: boolean;
+  active: boolean;
+}
+export interface StudioNote {
+  key: string;
+  text: string;
+  revision: number;
+  authorId: string | null;
+  updatedAt: number;
+}
+export interface StudioTeam {
+  policy: StudioTeamPolicy | null;
+  members: StudioMember[];
+  notes: StudioNote[];
+  tasks: StudioTurn[];
+  proposals: StudioFlowProposal[];
+}
+export interface StudioFlowProposal {
+  id: string;
+  name: string;
+  authorId: string;
+  createdAt: number;
+}
+export interface StudioRoomRef {
+  project: string | null;
+  threadId: string;
+}
+export interface StudioMemberInput {
+  name: string;
+  provider: StudioProvider;
+  preferences: StudioPreferences;
+}
+export interface StudioPost extends StudioRoomRef {
+  turnId: string;
+  memberId: string;
+  kind: 'task' | 'message';
+  text: string;
+}
+export interface StudioNoteInput {
+  key: string;
+  text: string;
+  revision: number;
+}
+export const STUDIO_TEAM_TOOLS = [
+  'team_state',
+  'team_catalog',
+  'team_invite',
+  'team_assign',
+  'team_note',
+  'team_message',
+  'flow_catalog',
+  'flow_preview',
+  'flow_propose',
+] as const;
+export type StudioTeamTool = (typeof STUDIO_TEAM_TOOLS)[number];
 
 export interface StudioSend {
   project: string | null;
@@ -88,6 +163,7 @@ export interface StudioSend {
 
 export type StudioTask = ReturnType<typeof createStudioProviderInput> & {
   turnId: string;
+  teamTools?: boolean;
 };
 
 export type StudioResult =
@@ -97,6 +173,20 @@ export type StudioResult =
 export interface IOmnitronStudioService {
   workspace(data: { project: string | null; stack?: string; before?: StudioThreadCursor }): Promise<StudioWorkspace>;
   thread(data: { project: string | null; threadId: string; before?: string }): Promise<StudioHistory>;
+  createTeam(
+    data: StudioRoomRef &
+      StudioMemberInput & {
+        title: string;
+        stack?: string;
+        policy: StudioTeamPolicy;
+      }
+  ): Promise<{ threadId: string }>;
+  configureTeam(data: StudioRoomRef & { policy: StudioTeamPolicy; previous: StudioTeamPolicy | null }): Promise<void>;
+  addMember(data: StudioRoomRef & StudioMemberInput & { memberId: string }): Promise<{ memberId: string }>;
+  retireMember(data: StudioRoomRef & { memberId: string }): Promise<void>;
+  post(data: StudioPost): Promise<{ threadId: string; turnId: string }>;
+  writeNote(data: StudioRoomRef & StudioNoteInput): Promise<StudioNote>;
+  flowProposal(data: StudioRoomRef & { proposalId: string }): Promise<{ definition: FlowDefinition; stack: string | null }>;
   send(data: StudioSend): Promise<{ threadId: string; turnId: string }>;
   cancel(data: {
     project: string | null;
@@ -118,9 +208,16 @@ export interface IOmnitronStudioService {
     account: string;
     catalog: StudioModelCatalog;
     directory: string | null;
+    capacity?: number;
   }): Promise<{ connection: string }>;
   nextTurn(data: { connection: string }): Promise<StudioTask | null>;
   heartbeat(data: { connection: string; turnId: string; preview?: string }): Promise<{ active: boolean }>;
   finishTurn(data: { connection: string; turnId: string; result: StudioResult }): Promise<void>;
+  teamTool(data: {
+    connection: string;
+    turnId: string;
+    name: StudioTeamTool;
+    arguments: Record<string, unknown>;
+  }): Promise<unknown>;
   disconnectAdapter(data: { connection: string }): Promise<void>;
 }

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { StudioTeamLedger, publicDecision, publicTurn, turnColumns } from './team-ledger.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import type {
   StudioProvider,
@@ -23,6 +24,8 @@ export interface StudioLink extends StudioScope {
   catalog: string;
 }
 export interface StudioJob {
+  memberId: string;
+  shared: number;
   id: string;
   threadId: string;
   prompt: string;
@@ -41,6 +44,7 @@ const pendingPerConnector = 16;
 
 /** Local private state. SQLite serializes each admission, including across a backend handoff. */
 export class StudioLedger {
+  readonly teams: StudioTeamLedger;
   constructor(
     private readonly db: ReturnType<DaemonStateStore['initSync']>,
     private readonly clock = Date.now
@@ -65,13 +69,12 @@ export class StudioLedger {
       );
       CREATE INDEX IF NOT EXISTS studio_history ON studio_turns(threadId, seq);
       CREATE INDEX IF NOT EXISTS studio_dispatch ON studio_turns(connection, status, seq);
-      CREATE UNIQUE INDEX IF NOT EXISTS studio_active_turn ON studio_turns(threadId) WHERE status IN ('queued','running');
-      CREATE UNIQUE INDEX IF NOT EXISTS studio_active_connector ON studio_turns(connection) WHERE status = 'running';
       CREATE TABLE IF NOT EXISTS studio_withdrawn (
         account TEXT NOT NULL, project TEXT NOT NULL, directory TEXT NOT NULL, threadId TEXT NOT NULL,
         turnId TEXT NOT NULL, PRIMARY KEY (account,project,directory,threadId,turnId)
       ) WITHOUT ROWID;
     `);
+    this.teams = new StudioTeamLedger(db, clock);
   }
 
   private reap() {
@@ -81,7 +84,7 @@ export class StudioLedger {
     for (const row of expired) this.disconnect(row.id);
   }
 
-  connect(scope: StudioScope, provider: StudioProvider, catalog: string) {
+  connect(scope: StudioScope, provider: StudioProvider, catalog: string, capacity = 1) {
     return this.db
       .transaction(() => {
         this.reap();
@@ -90,9 +93,9 @@ export class StudioLedger {
         const id = randomUUID();
         this.db
           .prepare(
-            'INSERT INTO studio_connections (id, account, project, directory, provider, expires, catalog) VALUES (?,?,?,?,?,?,?)'
+            'INSERT INTO studio_connections (id, account, project, directory, provider, expires, catalog, capacity) VALUES (?,?,?,?,?,?,?,?)'
           )
-          .run(id, ...scopeValues(scope), provider, this.clock() + lease, catalog);
+          .run(id, ...scopeValues(scope), provider, this.clock() + lease, catalog, capacity);
         return id;
       })
       .immediate();
@@ -175,7 +178,9 @@ export class StudioLedger {
     if (before && !boundary) throw Error('Turn cursor unavailable in this conversation');
     const rows = this.db
       .prepare(
-        'SELECT id, prompt, answer, status, failure, createdAt, usage, review FROM studio_turns WHERE threadId=?' +
+        'SELECT ' +
+          turnColumns +
+          ' FROM studio_turns WHERE threadId=?' +
           (boundary ? ' AND seq<?' : '') +
           ' ORDER BY seq DESC LIMIT ?'
       )
@@ -187,11 +192,8 @@ export class StudioLedger {
     return {
       thread: threadView(thread),
       beforeTurn: rows.length > turnPageSize ? turns[0]!.id : null,
-      turns: turns.map((row) => ({
-        ...row,
-        usage: row.usage ? JSON.parse(row.usage) : null,
-        review: row.review ? (JSON.parse(row.review) as StudioReview) : null,
-      })),
+      turns: turns.map(publicTurn),
+      team: this.teams.snapshot(id),
     };
   }
 
@@ -213,6 +215,8 @@ export class StudioLedger {
         )
           throw Error('This request was withdrawn');
         const existing = this.owned(scope, data.threadId);
+        if (existing && this.teams.room(scope, data.threadId).policy)
+          throw Error('Address a member of the team when sending a message');
         const previous = this.db
           .prepare('SELECT threadId, prompt, parent FROM studio_turns WHERE id=?')
           .get(data.turnId) as { threadId: string; prompt: string; parent: string | null } | undefined;
@@ -292,11 +296,8 @@ export class StudioLedger {
             .run(...scopeValues(scope), threadId, turnId);
           return { status: 'withdrawn' as const };
         }
-        if (turn.status !== 'queued' && turn.status !== 'running') return { status: turn.status };
-        this.db
-          .prepare("UPDATE studio_turns SET status='cancelled',session=NULL WHERE threadId=? AND id=?")
-          .run(threadId, turnId);
-        return { status: 'cancelled' as const };
+        this.teams.cancelBranch(threadId, turnId);
+        return { status: turn.status === 'queued' || turn.status === 'running' ? ('cancelled' as const) : turn.status };
       })
       .immediate();
   }
@@ -320,23 +321,37 @@ export class StudioLedger {
   }
 
   pending(id: string) {
+    this.teams.collect(id);
     return this.db
       .prepare(
-        `SELECT t.id,t.threadId,t.session,t.prompt,h.conversation,h.stack,h.assignment FROM studio_turns t
-      JOIN studio_threads h ON h.id=t.threadId WHERE t.connection=? AND t.status='queued'
-      AND NOT EXISTS (SELECT 1 FROM studio_turns a WHERE a.connection=t.connection AND a.status='running')
-      ORDER BY t.seq LIMIT 1`
+        `
+      SELECT t.id,t.threadId,t.session,t.prompt,t.shared,m.id AS memberId,m.conversation,h.stack,m.assignment
+      FROM studio_turns t JOIN studio_threads h ON h.id=t.threadId
+      JOIN studio_team_members m ON m.threadId=t.threadId AND m.id=COALESCE(t.memberId,t.threadId) AND m.active=1
+      JOIN studio_connections c ON c.id=t.connection
+      WHERE c.id=? AND t.status='queued' AND
+        (SELECT count(*) FROM studio_turns a WHERE a.connection=c.id AND a.status='running')<c.capacity
+        AND NOT EXISTS(SELECT 1 FROM studio_turns a WHERE a.threadId=t.threadId
+          AND COALESCE(a.memberId,a.threadId)=m.id AND (a.status='running' OR (a.status='queued' AND a.seq<t.seq)))
+      ORDER BY t.seq LIMIT 1
+    `
       )
       .get(id) as StudioJob | undefined;
   }
 
   claim(link: string, turnId: string): boolean {
+    // Recheck capacity after async session, registration and model verification.
     return (
       this.db
         .prepare(
-          "UPDATE studio_turns SET status='running' WHERE id=? AND connection=? AND status='queued' AND EXISTS (SELECT 1 FROM studio_connections WHERE id=? AND expires>?)"
+          `UPDATE studio_turns AS t SET status='running'
+      WHERE t.id=? AND t.connection=? AND t.status='queued' AND EXISTS
+      (SELECT 1 FROM studio_connections c WHERE c.id=t.connection AND c.expires>? AND
+        (SELECT count(*) FROM studio_turns a WHERE a.connection=c.id AND a.status='running')<c.capacity)
+      AND NOT EXISTS (SELECT 1 FROM studio_turns a WHERE a.threadId=t.threadId AND
+        COALESCE(a.memberId,a.threadId)=COALESCE(t.memberId,t.threadId) AND (a.status='running' OR (a.status='queued' AND a.seq<t.seq)))`
         )
-        .run(turnId, link, link, this.clock()).changes === 1
+        .run(turnId, link, this.clock()).changes === 1
     );
   }
 
@@ -365,7 +380,7 @@ export class StudioLedger {
       .transaction(() => {
         const applied = this.db
           .prepare(
-            "UPDATE studio_turns SET status=?,answer=COALESCE(?,answer),failure=?,usage=?,session=NULL WHERE id=? AND connection=? AND status='running' RETURNING threadId"
+            "UPDATE studio_turns SET status=?,answer=COALESCE(?,answer),failure=?,usage=?,session=NULL WHERE id=? AND connection=? AND status='running' RETURNING threadId, COALESCE(memberId,threadId) AS memberId"
           )
           .get(
             result.status,
@@ -374,8 +389,13 @@ export class StudioLedger {
             result.status === 'completed' && result.usage ? JSON.stringify(result.usage) : null,
             id,
             link
-          ) as { threadId: string } | undefined;
-        if (applied && result.status === 'completed')
+          ) as { threadId: string; memberId: string } | undefined;
+        if (applied && result.status === 'completed' && applied.threadId !== applied.memberId) {
+          this.db
+            .prepare('UPDATE studio_peers SET conversation=? WHERE threadId=? AND id=?')
+            .run(result.conversation, applied.threadId, applied.memberId);
+          this.db.prepare('UPDATE studio_threads SET updatedAt=? WHERE id=?').run(this.clock(), applied.threadId);
+        } else if (applied && result.status === 'completed')
           this.db
             .prepare('UPDATE studio_threads SET conversation=?,updatedAt=? WHERE id=?')
             .run(result.conversation, this.clock(), applied.threadId);
@@ -389,6 +409,5 @@ interface StoredThread extends Omit<StudioThread, 'assignment'> {
   assignment: string;
 }
 function threadView(row: StoredThread): StudioThread {
-  const { preferences, selection } = JSON.parse(row.assignment);
-  return { ...row, assignment: { preferences, selection } };
+  return { ...row, leadMemberId: row.id, assignment: publicDecision(row.assignment) };
 }

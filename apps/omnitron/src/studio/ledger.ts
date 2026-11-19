@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { STUDIO_PROVIDER_LIMIT } from '../shared/dto/studio-policy.js';
 import { StudioTeamLedger, publicDecision, publicTurn, turnColumns } from './team-ledger.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import type {
@@ -90,6 +91,11 @@ export class StudioLedger {
         this.reap();
         if (this.linkFor(scope, provider))
           throw Error('This adapter is already connected for the selected account and project');
+        const { count } = this.db
+          .prepare('SELECT count(*) AS count FROM studio_connections WHERE account=? AND project=? AND directory=?')
+          .get(...scopeValues(scope)) as { count: number };
+        if (count >= STUDIO_PROVIDER_LIMIT)
+          throw Error(`A Studio workspace supports up to ${STUDIO_PROVIDER_LIMIT} connected providers`);
         const id = randomUUID();
         this.db
           .prepare(

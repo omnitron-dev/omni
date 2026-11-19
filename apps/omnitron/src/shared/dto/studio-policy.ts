@@ -1,5 +1,20 @@
 export const STUDIO_PROVIDERS = ['codex', 'agy', 'claude', 'kimi'] as const;
-export type StudioProvider = typeof STUDIO_PROVIDERS[number];
+export type BuiltinStudioProvider = typeof STUDIO_PROVIDERS[number];
+export type StudioProvider = BuiltinStudioProvider | `${string}/${string}`;
+export const STUDIO_PROVIDER_LIMIT = 32;
+const builtinProviders = new Set<string>(STUDIO_PROVIDERS);
+const providerLabel = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+export function isBuiltinStudioProvider(value: unknown): value is BuiltinStudioProvider {
+  return typeof value === 'string' && builtinProviders.has(value);
+}
+/** A third-party provider names a locally connected catalog, never an executable or network address. */
+export function isStudioProvider(value: unknown): value is StudioProvider {
+  if (isBuiltinStudioProvider(value)) return true;
+  if (typeof value !== 'string' || value.length > 128) return false;
+  const [namespace, name, extra] = value.split('/');
+  if (!namespace?.includes('.') || !name || extra !== undefined) return false;
+  return providerLabel.test(name) && namespace.split('.').every((label) => providerLabel.test(label));
+}
 
 /** Studio responsibilities constrain the proposed result, never grant infrastructure authority. */
 export const STUDIO_ROLES = ['analyst', 'engineer', 'reviewer', 'operator'] as const;
@@ -127,7 +142,7 @@ export function studioCatalogFromListing(provider: StudioProvider, connector: st
 
 /** Pure, deterministic selection within one trusted connector's current catalog. */
 export function selectStudioModel(catalog: StudioModelCatalog, request: StudioModelRequest): StudioModelDecision {
-  if (!catalog || !STUDIO_PROVIDERS.includes(catalog.provider) || !text(catalog.connector) || !text(catalog.revision) ||
+  if (!catalog || !isStudioProvider(catalog.provider) || !text(catalog.connector) || !text(catalog.revision) ||
       (catalog.teamTools !== undefined && typeof catalog.teamTools !== 'boolean') ||
       !Array.isArray(catalog.models) || new Set(catalog.models.map(model => model?.id)).size !== catalog.models.length ||
       catalog.models.some(model => !model || !text(model.id) || !text(model.label) || !unique(model.classes) ||

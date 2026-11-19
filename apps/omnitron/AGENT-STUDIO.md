@@ -19,7 +19,7 @@ The connector owns its subscription. A provider receives the addressed task, ins
 | Codex | Member or lead when the installed CLI exposes the isolated room MCP toolset. |
 | Claude Code | Member or lead with a signed-in supported restricted CLI. Check the installed profile with `studio doctor`. |
 | Antigravity | Member through strict headless execution. Completed answers feed back to the lead. |
-| Kimi | The doctor reports local availability. Execution requires a qualified adapter that isolates the room's tools. |
+| Kimi | The built-in driver reports its unqualified execution profile. A separate local connector can provide a qualified Kimi implementation. |
 
 Read the journal after a dropped connection. A claimed turn with an unknown provider outcome remains interrupted. Cancelling a request closes outstanding descendants. A model with an uncertain conversation receives a fresh provider context on its next team turn. A connector rechecks operator authority before dispatch and before accepting output.
 
@@ -30,6 +30,20 @@ T3 Code separates the application thread from provider sessions and keeps execut
 AutoGen documents explicit group termination. Google ADK and CrewAI describe role-based orchestration. Studio makes role eligibility, provider access and the limit on delegation enforceable in the controller. A cheaper model needs declared qualifications, and a team message uses part of the same dispatch budget as an assignment. [AutoGen selector teams](https://microsoft.github.io/autogen/stable/user-guide/agentchat-user-guide/selector-group-chat.html) · [ADK multi-agent systems](https://google.github.io/adk-docs/agents/multi-agents/) · [CrewAI crews](https://docs.crewai.com/en/concepts/crews)
 
 MCP serves the tools of a single active turn. ACP and A2A distinguish protocol capabilities, sessions and tasks. A connector advertising a model and a connector able to isolate room tools are distinct observations. The controller verifies the selected capability before starting the lead. [MCP lifecycle](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle) · [ACP initialization](https://agentclientprotocol.com/protocol/v1/initialization) · [A2A specification](https://a2a-protocol.org/latest/specification/)
+
+## Connect your own provider
+
+Run a trusted adapter process under the local account that owns the provider. Give its catalog a stable ID such as `example.org/research`. Use a dotted lowercase namespace and a single adapter name. Each label accepts up to 63 ASCII letters, digits and internal hyphens, and the full ID accepts up to 128 characters. Studio treats the ID as data. The process chooses its executable or endpoint and manages authentication. The built-in `studio connect --binary` command speaks the protocol of the selected built-in driver.
+
+Connect a Titan Netron client to the controller's private Unix socket. Register `UnixSocketTransport` from `@omnitron-dev/titan/netron/transport/unix`, connect to `unix://` followed by the absolute socket path, and request `peer.queryInterface<IOmnitronStudioService>('OmnitronStudio')`. The published type, catalog helpers and provider ID validator are available from `@omnitron-dev/omnitron/dto/services`.
+
+1. Call `connectAdapter` with the Console account ID, project, its registered directory and your catalog. For a planning workspace use `null` for both project and directory. Declare model IDs supported by the installed adapter and any known capability and cost tiers. A workspace admits up to 32 active provider catalogs per account. An operator explicitly selects providers for each team.
+2. Use the returned connection ID to poll `nextTurn`. Deliver the returned instructions and prompt to the selected model with the exact provider conversation. Check `heartbeat` while it runs. Cancel provider work and close its room tools when the turn becomes inactive. Bind previews and replies to the confirmed conversation.
+3. Return the final answer, provider conversation and any reported usage with `finishTurn`. Report the appropriate failure when the provider cannot confirm completion. Disconnect using `disconnectAdapter` on shutdown.
+
+Members can return results with `teamTools: false`. A lead requires a connector that isolates tool execution and advertises `teamTools: true`. The local connector owns this guarantee. Use `openStudioMcp` from `@omnitron-dev/omnitron/studio/mcp` to issue the active turn's loopback endpoint. Its callback forwards only the tool name and arguments to `studio.teamTool({ connection, turnId, name, arguments })`. Keep the private Netron client inside the trusted adapter and supply the isolated provider with the per-turn MCP capability.
+
+Moonshot archived the Python Kimi CLI in September 2026. Its successor's agent files can restrict tools and its print mode emits a provider session ID. User configuration and plugins can also supply MCP servers and hooks. Qualify the exact installed implementation for tool discovery, hook suppression, subscription model selection, continuation and cancellation before advertising room access. [Python CLI archive](https://github.com/MoonshotAI/kimi-cli) · [Kimi Code agent files](https://moonshotai.github.io/kimi-code/en/customization/agents) · [MCP configuration](https://www.kimi.com/code/docs/en/kimi-code-cli/customization/mcp.html) · [Hook sources](https://moonshotai.github.io/kimi-code/en/customization/hooks) · [Print mode](https://moonshotai.github.io/kimi-code/en/guides/print.html)
 
 ## Plan a first project
 

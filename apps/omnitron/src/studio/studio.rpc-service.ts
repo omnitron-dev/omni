@@ -20,7 +20,7 @@ import type { AuthService } from '../services/auth.service.js';
 import type { ProjectService } from '../services/project.service.js';
 import type { StudioLedger, StudioLink, StudioScope } from './ledger.js';
 import {
-  STUDIO_PROVIDERS,
+  isStudioProvider,
   STUDIO_TEAM_TOOLS,
   type StudioMemberInput,
   type StudioNoteInput,
@@ -40,6 +40,11 @@ import {
 } from '../shared/dto/studio-policy.js';
 
 const opaque = (s: unknown) => typeof s === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(s);
+const catalogFields = new Set(['provider', 'connector', 'revision', 'models', 'teamTools']);
+const modelFields = new Set(['id', 'label', 'classes', 'qualityTier', 'costTier', 'capabilities', 'price']);
+const quoteFields = new Set(['amount', 'unit']);
+const declaredFields = (value: unknown, fields: ReadonlySet<string>) =>
+  !!value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).every((key) => fields.has(key));
 const failures = new Set<StudioFailure>([
   'authorization',
   'disconnected',
@@ -134,7 +139,7 @@ export class StudioRpcService implements IOmnitronStudioService {
     const { context, sessionId } = await daemonPrincipal(this.auth, 'operator');
     const scope = this.scope(data.project, context.userId!);
     if (
-      !STUDIO_PROVIDERS.includes(data.provider) ||
+      !isStudioProvider(data.provider) ||
       !uuid(data.threadId) ||
       !uuid(data.turnId) ||
       (data.after !== null && !uuid(data.after)) ||
@@ -175,6 +180,7 @@ export class StudioRpcService implements IOmnitronStudioService {
   }
 
   private connected(scope: StudioScope, provider: StudioMemberInput['provider']) {
+    if (!isStudioProvider(provider)) throw Error('Select a Studio provider');
     const link = this.ledger.linkFor(scope, provider);
     if (!link) throw Error('Connect the selected adapter in this workspace');
     return JSON.parse(link.catalog) as StudioModelCatalog;
@@ -457,18 +463,25 @@ export class StudioRpcService implements IOmnitronStudioService {
         : typeof data.directory !== 'string' || realpathSync(data.directory) !== scope.directory
     )
       throw Error('Run the connector from the registered project directory');
-    const catalog = data.catalog;
+    const { catalog, capacity } = data;
     if (
       !catalog ||
-      !STUDIO_PROVIDERS.includes(catalog.provider) ||
+      !declaredFields(catalog, catalogFields) ||
+      !isStudioProvider(catalog.provider) ||
       !Array.isArray(catalog.models) ||
       !catalog.models.length ||
       catalog.models.length > 512 ||
+      catalog.models.some(
+        (model) =>
+          !declaredFields(model, modelFields) || (model.price !== null && !declaredFields(model.price, quoteFields))
+      ) ||
       (catalog.teamTools !== undefined && typeof catalog.teamTools !== 'boolean') ||
-      (data.capacity !== undefined && (!Number.isInteger(data.capacity) || data.capacity < 1 || data.capacity > 8)) ||
-      JSON.stringify(catalog).length > 256 * 1024
+      (capacity !== undefined && (!Number.isInteger(capacity) || capacity < 1 || capacity > 8))
     )
       throw Error('A bounded local model catalog is required');
+    const document = JSON.stringify(catalog);
+    if (Buffer.byteLength(document) > 256 * 1024) throw Error('A local model catalog may be up to 256 KiB');
+    const provider = catalog.provider;
     const check = selectStudioModel(catalog, {
       provider: catalog.provider,
       connector: catalog.connector,
@@ -477,10 +490,10 @@ export class StudioRpcService implements IOmnitronStudioService {
     });
     if (!check.ok) throw Error(check.message);
     await this.audit.record(
-      { action: 'studio.adapter.connect', resourceType: 'studio.adapter', resourceId: catalog.provider },
+      { action: 'studio.adapter.connect', resourceType: 'studio.adapter', resourceId: provider },
       true
     );
-    return { connection: this.ledger.connect(scope, catalog.provider, JSON.stringify(catalog), data.capacity) };
+    return { connection: this.ledger.connect(scope, provider, document, capacity) };
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })

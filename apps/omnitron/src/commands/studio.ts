@@ -8,8 +8,9 @@ import { log } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import {
   STUDIO_PROVIDERS,
+  isBuiltinStudioProvider,
   type IOmnitronStudioService,
-  type StudioProvider,
+  type BuiltinStudioProvider,
   type StudioTask,
   type StudioResult,
 } from '../shared/dto/studio.js';
@@ -17,12 +18,15 @@ import { runStudioTurn, studioCatalog } from '../studio/adapters.js';
 import { openStudioMcp, type StudioMcpEndpoint } from '../studio/team-mcp.js';
 
 async function providerInstallation(
-  provider: StudioProvider,
+  provider: BuiltinStudioProvider,
   scratch: string,
   explicit?: string,
   modelPolicy?: string
 ) {
-  if (!STUDIO_PROVIDERS.includes(provider)) throw Error('Choose a Studio provider: ' + STUDIO_PROVIDERS.join(', '));
+  if (!isBuiltinStudioProvider(provider))
+    throw Error(
+      'Choose a built-in Studio CLI: ' + STUDIO_PROVIDERS.join(', ') + '. Custom adapters connect over local Netron.'
+    );
   if (explicit && !path.isAbsolute(explicit)) throw Error('--binary requires an absolute path');
   const paths = explicit
     ? [explicit]
@@ -54,7 +58,7 @@ async function providerInstallation(
 }
 
 /** Status uses the same local binary, subscription and catalog checks as connect. */
-export async function doctorStudio(options: { provider?: StudioProvider; binary?: string }) {
+export async function doctorStudio(options: { provider?: BuiltinStudioProvider; binary?: string }) {
   if (options.binary && !options.provider) throw Error('Select --provider when checking an explicit binary');
   const scratch = await mkdtemp(path.join(os.tmpdir(), 'omnitron-studio-check-'));
   try {
@@ -83,7 +87,7 @@ type StudioWorker = Pick<IOmnitronStudioService, 'heartbeat' | 'finishTurn' | 't
 export async function handleStudioTask(
   svc: StudioWorker,
   connection: string,
-  provider: StudioProvider,
+  provider: BuiltinStudioProvider,
   binary: string,
   scratch: string,
   task: StudioTask,
@@ -136,7 +140,7 @@ export async function handleStudioTask(
             (process.getuid && (existing.uid !== process.getuid() || (existing.mode & 0o077) !== 0)) ||
             (await readdir(dir)).length
           )
-            throw Error('Claude session working directory is unavailable');
+            throw Error('Claude session working directory is unavailable', { cause: error });
         }
         cwd = dir;
       } else cwd = await mkdtemp(path.join(scratch, 'turn-'));
@@ -174,7 +178,7 @@ export async function handleStudioTask(
 export async function serveStudioConnection(
   svc: StudioWorker & Pick<IOmnitronStudioService, 'nextTurn'>,
   connection: string,
-  provider: StudioProvider,
+  provider: BuiltinStudioProvider,
   binary: string,
   scratch: string,
   capacity: number,
@@ -219,7 +223,7 @@ export async function connectStudio(
   options: {
     planning?: boolean;
     account: string;
-    provider: StudioProvider;
+    provider: BuiltinStudioProvider;
     binary?: string;
     modelPolicy?: string;
     jobs?: string;

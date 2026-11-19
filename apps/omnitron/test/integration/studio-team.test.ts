@@ -1,13 +1,26 @@
 import 'reflect-metadata';
 import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
+import { createNullLogger } from '@omnitron-dev/titan/module/logger';
+import { Netron } from '@omnitron-dev/titan/netron';
+import { AuthenticationManager, AuthorizationManager } from '@omnitron-dev/titan/netron/auth';
+import { UnixSocketTransport } from '@omnitron-dev/titan/netron/transport/unix';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { runWithAuth } from '../../src/services/auth-context.js';
+import { createAuthContextWrapper, runWithAuth } from '../../src/services/auth-context.js';
+import { openStudioMcp } from '../../src/studio/team-mcp.js';
 import { StudioLedger } from '../../src/studio/ledger.js';
 import { StudioRpcService } from '../../src/studio/studio.rpc-service.js';
 import { diskSpaceFlow } from '../../src/shared/dto/flows.js';
-import { studioCatalogFromListing, type StudioModelCatalog } from '../../src/shared/dto/studio-policy.js';
-import type { StudioTeamTool } from '../../src/shared/dto/studio.js';
+import {
+  STUDIO_PROVIDER_LIMIT,
+  studioCatalogFromListing,
+  type StudioModelCatalog,
+} from '../../src/shared/dto/studio-policy.js';
+import type { IOmnitronStudioService, StudioProvider, StudioTeamTool } from '../../src/shared/dto/studio.js';
 import type { OmnitronAuthUser } from '../../src/shared/dto/services.js';
 
 const directory = process.cwd();
@@ -21,7 +34,7 @@ const localCall = <T>(fn: () => Promise<T>) => runWithAuth(local, fn);
 const asUser = <T>(fn: () => Promise<T>, id = 'a') =>
   runWithAuth({ userId: id, roles: ['operator'], permissions: [], metadata: { sessionId: 'session-' + id } }, fn);
 function catalog(
-  provider: 'codex' | 'agy',
+  provider: StudioProvider,
   model: string,
   cost: 'economy' | 'standard',
   teamTools = true
@@ -101,6 +114,159 @@ describe('Studio runs a mixed-provider team through the operator and connector A
     );
   });
   afterEach(() => db.close());
+
+  it('connects an independently named specialist over private Netron and delegates only after its room owner approves it', async () => {
+    const scratch = await mkdtemp(join(tmpdir(), 'studio-ext-'));
+    const logger = createNullLogger();
+    const server = new Netron(logger),
+      client = new Netron(logger);
+    const socket = join(scratch, 'rpc');
+    const stop = new AbortController();
+    const mcp = new Client({ name: 'sample-lead', version: '1' });
+    let endpoint: Awaited<ReturnType<typeof openStudioMcp>> | undefined;
+    const provider = 'example.org/research';
+    try {
+      server.registerTransportServer('unix', {
+        name: 'studio',
+        options: { path: socket, mode: 0o600, invocationWrapper: createAuthContextWrapper() },
+      });
+      server.configureAuth(
+        new AuthenticationManager(logger, {
+          authenticate: async () => {
+            throw Error('Use the fixture socket');
+          },
+        }),
+        new AuthorizationManager(logger)
+      );
+      server.setTransportAuthContext('unix', local);
+      await server.peer.exposeService(rpc);
+      await server.start();
+      client.registerTransport('unix', () => new UnixSocketTransport());
+      const peer = await client.connect('unix://' + socket, false);
+      const adapter = await peer.queryInterface<IOmnitronStudioService>('OmnitronStudio');
+      const registration = {
+        project,
+        directory,
+        account: 'a',
+        catalog: catalog(provider, 'specialist', 'economy', false),
+      };
+      const other = await adapter.connectAdapter({ ...registration, account: 'b' });
+      for (const invalid of [
+        { ...registration.catalog, models: [{ ...registration.catalog.models[0]!, label: '文'.repeat(90_000) }] },
+        { ...registration.catalog, localSettings: 'connector only' },
+        { ...registration.catalog, models: [{ ...registration.catalog.models[0]!, localSettings: 'connector only' }] },
+        {
+          ...registration.catalog,
+          models: [
+            {
+              ...registration.catalog.models[0]!,
+              price: { amount: 1, unit: 'request', localSettings: 'connector only' },
+            },
+          ],
+        },
+      ])
+        await expect(adapter.connectAdapter({ ...registration, catalog: invalid })).rejects.toThrow('catalog');
+      expect((await asUser(() => rpc.workspace({ project }))).catalogs.map((c) => c.provider)).not.toContain(provider);
+      await expect(asUser(() => rpc.connectAdapter(registration))).rejects.toThrow('admin');
+      const { connection } = await adapter.connectAdapter(registration);
+      const privateRequest = {
+        ...base(),
+        threadId: randomUUID(),
+        turnId: randomUUID(),
+        provider,
+        preferences: { ...preferences, model: 'specialist' },
+        after: null,
+        prompt: 'Private sample',
+      } as const;
+      await asUser(() => rpc.send(privateRequest));
+      expect(await adapter.nextTurn(other)).toBeNull();
+      expect(await adapter.nextTurn({ connection })).toMatchObject({
+        turnId: privateRequest.turnId,
+        prompt: privateRequest.prompt,
+      });
+      await adapter.finishTurn({
+        connection,
+        turnId: privateRequest.turnId,
+        result: { status: 'completed', answer: 'Private result', conversation: 'private-local-session' },
+      });
+      const previous = (await asUser(() => rpc.thread(base()))).team.policy!;
+      const excess = Array.from({ length: STUDIO_PROVIDER_LIMIT }, (_, i) => `example.org/model-${i}` as const);
+      await expect(
+        asUser(() =>
+          rpc.configureTeam({
+            ...base(),
+            previous,
+            policy: { ...previous, providers: ['codex', ...excess] },
+          })
+        )
+      ).rejects.toThrow('team providers');
+      const invite = { provider, name: 'Researcher', role: 'analyst' } as const;
+      const denied = (await post(room, 'List approved providers')).turnId;
+      await claim(lead);
+      expect(await tool(lead, denied, 'team_catalog')).not.toContainEqual(expect.objectContaining({ provider }));
+      await expect(tool(lead, denied, 'team_invite', invite)).rejects.toThrow('approved provider');
+      await finish(lead, denied, 'Ready for review', 'lead-session');
+      await asUser(() =>
+        rpc.configureTeam({
+          ...base(),
+          previous,
+          policy: { ...previous, providers: [...previous.providers, provider] },
+        })
+      );
+
+      const leadTurn = (await post(room, 'Collect a specialist response')).turnId;
+      expect((await adapter.nextTurn({ connection: lead }))?.turnId).toBe(leadTurn);
+      endpoint = await openStudioMcp(stop.signal, (name, args) =>
+        adapter.teamTool({ connection: lead, turnId: leadTurn, name, arguments: args })
+      );
+      await mcp.connect(
+        new StreamableHTTPClientTransport(new URL(endpoint.url), {
+          requestInit: { headers: { authorization: 'Bearer ' + endpoint.token } },
+        })
+      );
+      const invited = await mcp.callTool({ name: 'team_invite', arguments: invite });
+      expect(invited.isError).not.toBe(true);
+      const memberId = (await asUser(() => rpc.thread(base()))).team.members.find((m) => m.provider === provider)!.id;
+      const assigned = await mcp.callTool({ name: 'team_assign', arguments: { memberId, task: 'Check the sample' } });
+      expect(assigned.isError).not.toBe(true);
+      await finish(lead, leadTurn, 'Delegated', 'lead-session');
+      expect(await adapter.nextTurn(other)).toBeNull();
+      const job = await adapter.nextTurn({ connection });
+      expect(job).toMatchObject({ prompt: 'Check the sample', model: 'specialist', conversation: null });
+      expect(job?.teamTools).toBeUndefined();
+      await expect(
+        adapter.teamTool({ connection, turnId: job!.turnId, name: 'team_state', arguments: {} })
+      ).rejects.toThrow('no team tool');
+      expect(await adapter.heartbeat({ connection, turnId: job!.turnId, preview: 'Checking' })).toEqual({
+        active: true,
+      });
+      await adapter.finishTurn({
+        connection,
+        turnId: job!.turnId,
+        result: { status: 'completed', answer: 'Sample verified', conversation: 'member-local-session' },
+      });
+      const summary = await adapter.nextTurn({ connection: lead });
+      expect(summary).toMatchObject({ conversation: 'lead-session' });
+      expect(
+        await adapter.teamTool({
+          connection: lead,
+          turnId: summary!.turnId,
+          name: 'team_state',
+          arguments: { turnId: job!.turnId },
+        })
+      ).toMatchObject({ answer: 'Sample verified' });
+      await finish(lead, summary!.turnId, 'Specialist verified the sample', 'lead-session');
+      await adapter.disconnectAdapter({ connection });
+      expect((await asUser(() => rpc.thread(base()))).turns.at(-1)?.status).toBe('completed');
+    } finally {
+      stop.abort();
+      await mcp.close();
+      await endpoint?.close();
+      await client.stop();
+      await server.stop();
+      await rm(scratch, { recursive: true, force: true });
+    }
+  });
 
   it('confirms only the exact admitted room command after its member and connector leave', async () => {
     const memberId = randomUUID();

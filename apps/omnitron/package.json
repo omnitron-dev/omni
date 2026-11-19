@@ -27,6 +27,10 @@
       "types": "./dist/shared/dto/flows.d.ts",
       "default": "./dist/shared/dto/flows.js"
     },
+    "./studio/mcp": {
+      "types": "./dist/studio/team-mcp.d.ts",
+      "default": "./dist/studio/team-mcp.js"
+    },
     "./alerts": {
       "types": "./dist/shared/alert-expression.d.ts",
       "default": "./dist/shared/alert-expression.js"

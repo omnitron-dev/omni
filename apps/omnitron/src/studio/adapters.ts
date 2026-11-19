@@ -13,7 +13,7 @@ import {
 } from './provider-cli.js';
 import type { StudioMcpEndpoint } from './team-mcp.js';
 import { STUDIO_TEAM_TOOLS } from '../shared/dto/studio.js';
-import type { StudioFailure, StudioProvider, StudioResult, StudioTask } from '../shared/dto/studio.js';
+import type { StudioFailure, BuiltinStudioProvider, StudioResult, StudioTask } from '../shared/dto/studio.js';
 import {
   selectStudioModel,
   studioCatalogFromListing,
@@ -23,7 +23,7 @@ import {
 } from '../shared/dto/studio-policy.js';
 
 export async function studioCatalog(
-  provider: StudioProvider,
+  provider: BuiltinStudioProvider,
   executable: string,
   cwd: string,
   policyFile?: string
@@ -117,7 +117,7 @@ function bindConversation(state: StudioStream, id: unknown, expected?: string | 
   state.conversation = id;
 }
 export function readStudioEvent(
-  provider: StudioProvider,
+  provider: BuiltinStudioProvider,
   state: StudioStream,
   event: ProviderEvent,
   team = false,
@@ -207,7 +207,7 @@ export function readStudioEvent(
 
 /** Only public response events enter the transcript. Native thread IDs never come from the browser. */
 export async function runStudioTurn(
-  provider: StudioProvider,
+  provider: BuiltinStudioProvider,
   executable: string,
   cwd: string,
   task: StudioTask,

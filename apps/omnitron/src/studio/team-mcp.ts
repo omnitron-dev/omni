@@ -2,7 +2,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { McpServer, WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { STUDIO_PROVIDERS, STUDIO_ROLES } from '../shared/dto/studio-policy.js';
+import { isStudioProvider, STUDIO_ROLES } from '../shared/dto/studio-policy.js';
 import { STUDIO_TEAM_TOOLS, type StudioTeamTool } from '../shared/dto/studio.js';
 
 const id = z.string().min(1).max(128);
@@ -24,7 +24,12 @@ const definitions = {
     {
       name: z.string().min(1).max(80),
       role: z.enum(STUDIO_ROLES),
-      provider: z.enum(STUDIO_PROVIDERS).optional(),
+      provider: z
+        .string()
+        .max(128)
+        .refine(isStudioProvider, 'Select a Studio provider')
+        .describe('Exact provider ID from team_catalog')
+        .optional(),
       model: id.optional(),
       requestId,
     },
@@ -75,32 +80,32 @@ export async function openStudioMcp(signal: AbortSignal, invoke: Invoke): Promis
 
   async function handle(req: IncomingMessage, res: ServerResponse) {
     const host = '127.0.0.1:' + req.socket.localPort;
-    const reject = (code: number) => {
-      res.writeHead(code).end();
+    const respond = (code: number, headers: Record<string, string> = {}, payload?: string) => {
+      res.writeHead(code, headers).end(payload);
     };
     if (
       req.socket.remoteAddress !== '127.0.0.1' ||
       req.headers.host !== host ||
       (req.headers.origin !== undefined && req.headers.origin !== 'http://' + host)
     )
-      return reject(403);
-    if (req.url !== '/mcp') return reject(404);
+      return respond(403);
+    if (req.url !== '/mcp') return respond(404);
     const supplied = Buffer.from(req.headers.authorization ?? '');
     if (supplied.length !== authorization.length || !timingSafeEqual(authorization, supplied)) {
       res.setHeader('WWW-Authenticate', 'Bearer');
-      return reject(401);
+      return respond(401);
     }
-    if (active.aborted) return reject(410);
+    if (active.aborted) return respond(410);
     if (req.method !== 'POST') {
       res.setHeader('Allow', 'POST');
-      return reject(405);
+      return respond(405);
     }
-    if (Number(req.headers['content-length']) > maxRequestBytes) return reject(413);
+    if (Number(req.headers['content-length']) > maxRequestBytes) return respond(413);
     const chunks: Buffer[] = [];
     let received = 0;
     for await (const chunk of req) {
       received += chunk.length;
-      if (received > maxRequestBytes) return reject(413);
+      if (received > maxRequestBytes) return respond(413);
       chunks.push(chunk);
     }
     const body = Buffer.concat(chunks).toString('utf8');
@@ -150,7 +155,7 @@ export async function openStudioMcp(signal: AbortSignal, invoke: Invoke): Promis
       const payload = await response.text();
       if (response.ok && payload && (JSON.parse(payload) as { result?: { tools?: unknown } }).result?.tools)
         listed = true;
-      res.writeHead(response.status, Object.fromEntries(response.headers)).end(payload);
+      return respond(response.status, Object.fromEntries(response.headers), payload);
     } finally {
       await mcp.close();
     }

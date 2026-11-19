@@ -11,7 +11,14 @@ import type {
 } from './studio-policy.js';
 import type { FlowDefinition } from './flows.js';
 
-export { STUDIO_PROVIDERS, type StudioProvider } from './studio-policy.js';
+export {
+  STUDIO_PROVIDERS,
+  STUDIO_PROVIDER_LIMIT,
+  isStudioProvider,
+  isBuiltinStudioProvider,
+  type StudioProvider,
+  type BuiltinStudioProvider,
+} from './studio-policy.js';
 export { projectInterview, readProjectSuggestion } from './studio-starter.js';
 export type StudioStatus = 'queued' | 'running' | 'completed' | 'failed' | 'interrupted' | 'cancelled';
 export type StudioFailure =

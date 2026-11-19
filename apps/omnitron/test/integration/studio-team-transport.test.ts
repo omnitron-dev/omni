@@ -170,6 +170,7 @@ else {
         );
         await expect(studioCatalog('claude', binary, scratch)).rejects.toThrow('required isolation flags');
         await expect(studioCatalog('kimi', binary, scratch)).rejects.toThrow('Kimi execution is unavailable');
+        await expect(studioCatalog('example.org/research' as never, binary, scratch)).rejects.toThrow('local Netron');
       } finally {
         await rm(scratch, { recursive: true, force: true });
       }

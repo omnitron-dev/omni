@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   assertStudioAssignment, createStudioProviderInput, selectStudioModel, studioCatalogFromListing,
-  studioRoleRequirements, studioUsageReport, STUDIO_ROLE_POLICY, STUDIO_ROLES,
+  studioRoleRequirements, studioUsageReport, STUDIO_ROLE_POLICY, STUDIO_ROLES, isStudioProvider, isBuiltinStudioProvider,
   type StudioAssignment, type StudioModelCatalog, type StudioModelDescriptor, type StudioModelRequest,
 } from '../../src/shared/dto/studio-policy.js';
 
@@ -15,6 +15,17 @@ const request = (extra: Partial<StudioModelRequest> = {}): StudioModelRequest =>
 const assignment: StudioAssignment = { scope: { project: 'private-project', stack: 'production' }, role: 'engineer', result: 'patch' };
 
 describe('Studio responsibility and privacy policy', () => {
+  it('separates built-in command drivers from qualified third-party catalog names', () => {
+    expect(isBuiltinStudioProvider('codex')).toBe(true);
+    expect(isStudioProvider('kimi')).toBe(true);
+    expect(isBuiltinStudioProvider('example.org/research')).toBe(false);
+    expect(isStudioProvider('tools.example.org/research-2')).toBe(true);
+    for (const id of ['research', 'Example.org/research', 'example.org/research/', 'example.org/.',
+      '.example.org/test', 'one..example/test', 'example.org/-test', 'https://example.org/test',
+      '/usr/local/tool', 'example.org/tool name', 'example.org/' + 'a'.repeat(130), null])
+      expect(isStudioProvider(id)).toBe(false);
+  });
+
   it('limits every scoped responsibility to its own proposed result without deployment authority', () => {
     for (const role of STUDIO_ROLES) {
       expect(STUDIO_ROLE_POLICY[role].canDeploy).toBe(false);

@@ -8,7 +8,8 @@ import {
   type StudioRole,
 } from '../shared/dto/studio-policy.js';
 import {
-  STUDIO_PROVIDERS,
+  isStudioProvider,
+  STUDIO_PROVIDER_LIMIT,
   type StudioDecision,
   type StudioPreferences,
   type StudioProvider,
@@ -27,8 +28,9 @@ export function policyValue(input: StudioTeamPolicy, lead: StudioProvider): Stud
   if (
     !input ||
     !Array.isArray(input.providers) ||
+    input.providers.length > STUDIO_PROVIDER_LIMIT ||
     !input.providers.includes(lead) ||
-    !input.providers.every((p) => STUDIO_PROVIDERS.includes(p)) ||
+    !input.providers.every(isStudioProvider) ||
     new Set(input.providers).size !== input.providers.length ||
     !Number.isInteger(input.maxMembers) ||
     input.maxMembers < 1 ||

@@ -10,7 +10,7 @@ import { StudioLedger } from '../../src/studio/ledger.js';
 import { StudioRpcService } from '../../src/studio/studio.rpc-service.js';
 import { handleStudioTask } from '../../src/commands/studio.js';
 import { readProjectSuggestion } from '../../src/shared/dto/studio-starter.js';
-import { studioCatalogFromListing } from '../../src/shared/dto/studio-policy.js';
+import { STUDIO_PROVIDER_LIMIT, studioCatalogFromListing } from '../../src/shared/dto/studio-policy.js';
 import type { StudioSend } from '../../src/shared/dto/studio.js';
 import type { OmnitronAuthUser } from '../../src/shared/dto/services.js';
 
@@ -67,6 +67,26 @@ describe('Studio assignment and delivery', () => {
   afterEach(() => {
     db.close();
     rmSync(directory, { recursive: true, force: true });
+  });
+
+  it('bounds connected catalogs per account and releases the slot on disconnect or lease expiry', async () => {
+    const connect = (number: number, account = 'alice') =>
+      localCall(() =>
+        rpc.connectAdapter({
+          project: 'alpha',
+          directory,
+          account,
+          catalog: { ...catalog, provider: `example.org/adapter-${number}` },
+        })
+      );
+    for (let number = 1; number < STUDIO_PROVIDER_LIMIT; number++) await connect(number);
+    await expect(connect(STUDIO_PROVIDER_LIMIT)).rejects.toThrow('connected providers');
+    expect((await connect(STUDIO_PROVIDER_LIMIT, 'bob')).connection).toBeTruthy();
+    await localCall(() => rpc.disconnectAdapter({ connection }));
+    expect((await connect(STUDIO_PROVIDER_LIMIT)).connection).toBeTruthy();
+    now += 60_000;
+    await connect(STUDIO_PROVIDER_LIMIT + 1);
+    expect((await human(() => rpc.workspace({ project: 'alpha' }))).catalogs).toHaveLength(1);
   });
 
   it('admits one turn, retains only its response, measures actual usage and supports a reviewed follow-up', async () => {

@@ -3,9 +3,9 @@ import { open, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { ExecutionEngine } from '@xec-sh/core';
-import type { StudioProvider, StudioTask } from '../shared/dto/studio.js';
+import type { BuiltinStudioProvider, StudioTask } from '../shared/dto/studio.js';
 import type { StudioMcpEndpoint } from './team-mcp.js';
-import { STUDIO_TEAM_TOOLS } from '../shared/dto/studio.js';
+import { isBuiltinStudioProvider, STUDIO_TEAM_TOOLS } from '../shared/dto/studio.js';
 
 export const providerId = (id: unknown): id is string =>
   typeof id === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$/.test(id);
@@ -19,7 +19,7 @@ export const studioEngine = () =>
   });
 
 const tokenEnv = 'OMNITRON_STUDIO_MCP_TOKEN';
-export function studioEnv(provider: StudioProvider, endpoint?: StudioMcpEndpoint): Record<string, string> {
+export function studioEnv(provider: BuiltinStudioProvider, endpoint?: StudioMcpEndpoint): Record<string, string> {
   const env: Record<string, string> = {};
   for (const key of [
     'HOME',
@@ -112,7 +112,7 @@ const claudePrivacy = [
 ];
 
 export function studioInvocation(
-  provider: StudioProvider,
+  provider: BuiltinStudioProvider,
   task: StudioTask,
   endpoint?: StudioMcpEndpoint,
   initialSession?: string
@@ -328,10 +328,10 @@ export async function verifyAgyProfile(engine: ExecutionEngine, binary: string, 
   await checkAgyIntegrations(plugins.stdout);
 }
 
-async function readCatalog(provider: StudioProvider, probe: Probe): Promise<Model[]> {
+async function readCatalog(provider: BuiltinStudioProvider, probe: Probe): Promise<Model[]> {
   if (provider === 'kimi')
     throw new CatalogUnavailable(
-      'Kimi execution is unavailable. Studio has no verified subscription mode that isolates global MCP servers and hooks for each turn.'
+      'Kimi execution is unavailable. The built-in connector has no qualified Kimi CLI profile for isolated turns.'
     );
   const helpArgs = provider === 'codex' ? ['exec', '--help'] : ['--help'];
   const help = await probe(helpArgs);
@@ -411,7 +411,9 @@ async function readCatalog(provider: StudioProvider, probe: Probe): Promise<Mode
 }
 
 /** Metadata-only probes keep raw stdout, stderr, account metadata and authentication details off the Console. */
-export async function discoverStudioModels(provider: StudioProvider, executable: string, cwd: string) {
+export async function discoverStudioModels(provider: BuiltinStudioProvider, executable: string, cwd: string) {
+  if (!isBuiltinStudioProvider(provider))
+    throw new CatalogUnavailable('Custom Studio adapters connect over local Netron.');
   const executor = studioEngine();
   try {
     if (provider === 'agy') await verifyAgyProfile(executor, executable, cwd);
@@ -439,6 +441,7 @@ export async function discoverStudioModels(provider: StudioProvider, executable:
           typeof m.label !== 'string' ||
           !m.label.trim() ||
           m.label.length > 256 ||
+          // eslint-disable-next-line no-control-regex -- Reject ASCII controls in display labels.
           /[\u0000-\u001f\u007f]/.test(m.label)
       )
     )

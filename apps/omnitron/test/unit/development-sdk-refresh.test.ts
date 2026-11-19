@@ -198,6 +198,36 @@ async function coldFixture() {
   return { ...f, apps, state, stop, target, digest, start, halt, command };
 }
 
+it('verifies a current one-shot SDK while its stack runs and retains recovery before rebuilding stale outputs', async () => {
+  const f = await coldFixture();
+  const snapshots = vi.spyOn(transitions, 'prepareSdkTransition');
+  const commands = vi.mocked(childProcess.spawn);
+  const ensure = () => sdkCommand(['dev', f.source, '--project-dir', f.consumer, '--stack', 'dev', '--no-watch']);
+  try {
+    await ensure();
+    const checkpoint = await fs.readFile(f.checkpoint, 'utf8');
+    const journal = path.join(path.dirname(f.checkpoint), 'transition.json');
+    const retained = await fs.readFile(journal, 'utf8');
+    f.start();
+    snapshots.mockClear(); commands.mockClear();
+    await ensure();
+    expect(snapshots).not.toHaveBeenCalled();
+    expect(commands.mock.calls.some(([, args]) => Array.isArray(args) &&
+      (args.includes('install') || args.includes('build') && !args.includes('--dry=json')))).toBe(false);
+    expect(await fs.readFile(f.checkpoint, 'utf8')).toBe(checkpoint);
+    expect(await fs.readFile(journal, 'utf8')).toBe(retained);
+    await fs.writeFile(path.join(f.pkg, 'src/index.js'), 'export const updated = true;\n');
+    await expect(ensure()).rejects.toThrow('Stop project/dev');
+    expect(snapshots).not.toHaveBeenCalled();
+    expect(rpc.start).not.toHaveBeenCalled();
+    expect(rpc.automatic).not.toHaveBeenCalled();
+    f.halt();
+    await ensure();
+    expect(snapshots).toHaveBeenCalledOnce();
+    expect(await fs.readFile(f.checkpoint, 'utf8')).not.toBe(checkpoint);
+  } finally { snapshots.mockRestore(); commands.mockClear(); await f.close(); }
+}, 120_000);
+
 it('reuses a verified build for its reviewed first start without another recovery snapshot, install or Turbo build', async () => {
   const f = await coldFixture();
   const snapshots = vi.spyOn(transitions, 'prepareSdkTransition'), commands = vi.mocked(childProcess.spawn);

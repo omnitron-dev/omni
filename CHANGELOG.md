@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Operators can preview a registered local stack's migrations while it is serving. After the stack stops, its execution owner binds the reviewed migration programs, installed dependencies and database destinations to a single request. The CLI can retrieve its recorded outcome after a lost connection.
+
+### Changed
+
+- A one-shot development SDK check reuses a current installation while applications are serving. A reviewed first start can reuse the same build. Both verify the package selection, Turbo inputs and output hashes. Dependency changes still require a retained recovery snapshot and stopped consumers.
+- Xec reports native update phases as they happen. Applying a reviewed update reuses its installed artifact when the invoking shell has a different Node version or cache path.
+
+### Fixed
+
+- A failed Console startup preserves the controller recovery path. A cold rollback can verify ownership after the first controller exits, including the case where it exited before saving a recovery checkpoint.
+- An interrupted backup submission is followed by its original operation ID. Migration review accepts registered SDK dependencies used by nested workspace packages and verifies their installed contents.
+
 ## [0.4.13] - 2026-11-18
 
 ### Added

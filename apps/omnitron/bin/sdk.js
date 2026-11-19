@@ -24,7 +24,7 @@ omnitron sdk status [--project-dir PATH] [--stack NAME]
 
 init installs the pnpm bridge without resolving registry dependencies.
 dev selects the local SDK and watches its sources. Start again without a path to
-reuse the selection. --no-watch builds the selected graph once without watching.
+reuse the selection. --no-watch verifies the selected graph and builds it once if stale.
 --stack confirms owner refreshes for watched applications in that local source stack.
 --start-stopped binds the owner's first online generations to the SDK during a reviewed
 working-tree start. Obtain the digest with stack start PROJECT STACK --dry-run --infrastructure preserve.
@@ -1115,7 +1115,7 @@ async function verifySelectedProfile(profile) {
   if (!isDeepStrictEqual(await profileStatus(profile.root), profile) ||
       !isDeepStrictEqual(await optionalJson(path.join(state, 'install.json')), profile) ||
       !isDeepStrictEqual(await desiredProfile(profile.root, profile.source, await distributionLock(profile.root)), profile))
-    throw Error('SDK selection or package graph changed during reviewed start');
+    throw Error('SDK selection or package graph changed during verification');
   await verifyLinks(profile.root, profile);
 }
 
@@ -1548,20 +1548,20 @@ export async function sdkCommand(argv) {
             const { client } = await localStack(root, values.stack);
             await client.disconnect();
           }
-          const reused = launch && await exclusively(await prepareState(source), async () => {
+          const reused = await exclusively(await prepareState(source), async () => {
             await assertSourceAvailable(root);
             await assertSourceAvailable(source);
-            await requireSourceStopped(root, source, values.stack);
+            if (launch) await requireSourceStopped(root, source, values.stack);
             await verifySelectedProfile(desired);
             const current = await reusableBuild(desired, controller.signal);
             if (!current) return false;
             await verifySelectedProfile(desired);
             console.log('Reusing verified development SDK build; no snapshot or rebuild is required');
-            await checkpointSdkBuild(desired, current, values.stack, controller.signal, undefined, launch, true);
+            if (launch) await checkpointSdkBuild(desired, current, values.stack, controller.signal, undefined, launch, true);
             return true;
           }, controller.signal);
-          // An explicit one-shot rebuild can overwrite a working SDK even
-          // without a profile change. It needs the same before-image/recovery.
+          // A stale build can overwrite shared outputs. changeSelection requires
+          // stopped consumers and retains the before-image before any rebuild.
           if (!reused) await changeSelection(root, source, values.stack, Object.keys(desired.links), controller.signal, async () => {
             built = await build(desired, Object.keys(desired.links), controller.signal, true);
             if (!isDeepStrictEqual(await desiredProfile(root, source, distribution), desired))

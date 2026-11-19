@@ -8,6 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { nodeHostPinKey, nodeSshIdentity } from '../../src/services/node-host-key.js';
 
 // Only the CLASS is replaced — see the note in
 // node-manager-worker-integration.test.ts. The module's pure functions are
@@ -379,6 +380,38 @@ describe('inline node SSH keys', () => {
     expect((await manager.nodeToSshTarget(edited)).privateKey).toBe(key);
     await manager.removeNode(node.id);
     expect(vault.values.has(`node:${node.id}:privateKey`)).toBe(false);
+  });
+});
+
+describe('reviewed mesh observations', () => {
+  it('binds a stable identity to the enrollment, daemon endpoint and approved SSH host key', async () => {
+    const store = makeStore();
+    const manager = new NodeManagerService(silentLogger, store);
+    const node = await manager.addNode({ name: 'reader', host: '192.0.2.21', daemonPort: 9700 });
+    const approve = (target: typeof node, fingerprint: string) =>
+      store.kvSetSync(nodeHostPinKey(target.id), { target: nodeSshIdentity(target), fingerprint });
+    const firstKey = 'SHA256:' + 'A'.repeat(43), secondKey = 'SHA256:' + 'B'.repeat(43);
+    expect(() => manager.meshIdentity(node.id)).toThrow('host key');
+    approve(node, firstKey);
+    const original = manager.meshIdentity(node.id);
+    expect(original).toMatch(/^[a-f0-9]{64}$/);
+    await manager.updateNode(node.id, { name: 'renamed reader' });
+    expect(new NodeManagerService(silentLogger, store).meshIdentity(node.id)).toBe(original);
+    approve(node, secondKey);
+    const rotated = manager.meshIdentity(node.id);
+    expect(rotated).not.toBe(original);
+    await manager.updateNode(node.id, { daemonPort: 9701 });
+    expect(manager.meshIdentity(node.id)).not.toBe(rotated);
+    const moved = await manager.updateNode(node.id, { sshPort: 2222 });
+    expect(() => manager.meshIdentity(node.id)).toThrow('host key');
+    approve(moved, secondKey);
+    const previous = manager.meshIdentity(moved.id);
+    await manager.removeNode(moved.id);
+    expect(() => manager.meshIdentity(moved.id)).toThrow('enrolled');
+    const replacement = await manager.addNode({ name: 'replacement', host: moved.host, sshPort: 2222, daemonPort: 9701 });
+    expect(() => manager.meshIdentity(replacement.id)).toThrow('host key');
+    approve(replacement, secondKey);
+    expect(manager.meshIdentity(replacement.id)).not.toBe(previous);
   });
 });
 

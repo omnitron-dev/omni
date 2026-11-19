@@ -45,11 +45,15 @@ describe.skipIf(!postgres.ok)('durable Xec automation lifecycle', () => {
       project, stack, releaseId: 'sealed', manifestSha256: 'a'.repeat(64), review: 'b'.repeat(64),
     } });
     const def = await service.createPipeline({ name: 'first delivery', steps: [step('imported', 'edge')] });
+    expect(await service.getPipeline(def.id, { project: 'alpha', stack: 'test' })).toEqual(def);
+    expect(await service.getPipeline(def.id, { project: 'alpha', stack: 'elsewhere' })).toBeNull();
     const prepare = (graph: typeof def) => service.prepareRun({ id: graph.id, runId: randomUUID(), expectedRevision: graph.revision }, 'reader');
     const first = await prepare(def);
     const older = await prepare(def);
     const updated = await service.updatePipeline(def.id, { name: 'second delivery', steps: [step('beta', 'test')] }, def.revision);
     const second = await prepare(updated);
+    expect(await service.getPipeline(def.id, { project: 'alpha', stack: 'test' })).toBeNull();
+    expect(await service.getPipeline(def.id, { project: 'beta' })).toEqual(updated);
     const shared = await service.createPipeline({ name: 'shared delivery', steps: [
       step('alpha', 'qa'), { ...step('beta', 'test'), name: 'other' },
     ] });

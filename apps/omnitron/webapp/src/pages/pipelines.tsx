@@ -537,7 +537,7 @@ function PipelineInventory({ workspace, section, setSection }: {
             {run.status === 'awaiting-review' && (
               <Can permission="OmnitronPipelines.startRun">
                 <Button sx={{ mt: 2 }} variant="contained" disabled={pending} onClick={() => act(async () => {
-                  const definition = await pipelines.getPipeline({ id: run.pipelineId });
+                  const definition = await pipelines.getPipeline({ id: run.pipelineId, ...(workspace && { workspace }) });
                   if (!definition || definition.revision !== run.review?.definitionRevision)
                     throw new Error('Definition changed after review. Cancel this request and prepare the current definition.');
                   setPreparedRun(run); setRequestId(run.id); setParams('{}');

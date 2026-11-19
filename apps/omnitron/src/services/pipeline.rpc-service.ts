@@ -44,9 +44,9 @@ export class PipelineRpcService implements IOmnitronPipelinesService {
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
-  async getPipeline(data: { id: string }): Promise<Pipeline | null> {
+  async getPipeline(data: { id: string; workspace?: PipelineWorkspace }): Promise<Pipeline | null> {
     await this.authorize();
-    return this.pipelines.getPipeline(data.id);
+    return this.pipelines.getPipeline(data.id, data.workspace);
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })

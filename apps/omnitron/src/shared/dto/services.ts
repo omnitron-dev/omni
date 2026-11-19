@@ -606,7 +606,7 @@ export interface IOmnitronPipelinesService {
   reconcileRun(data: { runId: string }): Promise<PipelineRun>;
   createPipeline(data: PipelineDef): Promise<Pipeline>;
   updatePipeline(data: { id: string; definition: PipelineDef; expectedRevision: string }): Promise<Pipeline>;
-  getPipeline(data: { id: string }): Promise<Pipeline | null>;
+  getPipeline(data: { id: string; workspace?: PipelineWorkspace }): Promise<Pipeline | null>;
   listPipelines(): Promise<Pipeline[]>;
   listWorkspace(data: PipelineWorkspace & { limit?: number }): Promise<{ definitions: Pipeline[]; runs: PipelineRunSummary[] }>;
   deletePipeline(data: { id: string }): Promise<{ success: boolean }>;

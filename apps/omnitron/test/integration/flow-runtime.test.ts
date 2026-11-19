@@ -891,7 +891,6 @@ describe('local flow runtime', () => {
             revision: fault === 'changed-revision' ? 'b'.repeat(64) : revision,
             steps: [step],
           }) as Pipeline,
-        listWorkspace: vi.fn(),
         prepareRun: prepare,
         startRun: start,
         getRunStatus: vi.fn(),
@@ -954,7 +953,6 @@ describe('local flow runtime', () => {
       pipelines: {
         getPipeline: async () =>
           ({ id: 'saved', revision, steps: [{ name: 'entry', kind: 'release', target: workspace }] }) as Pipeline,
-        listWorkspace: vi.fn(),
         prepareRun: async () => run,
         startRun: start,
         getRunStatus: observe,

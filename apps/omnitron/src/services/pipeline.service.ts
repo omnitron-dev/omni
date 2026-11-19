@@ -208,8 +208,10 @@ export class PipelineService {
       return this.mapPipeline(row);
     });
   }
-  async getPipeline(id: string): Promise<Pipeline | null> {
-    const row = await this.db.selectFrom('pipelines').selectAll().where('id', '=', id).executeTakeFirst();
+  async getPipeline(id: string, workspace?: PipelineWorkspace): Promise<Pipeline | null> {
+    let query = this.db.selectFrom('pipelines').selectAll().where('id', '=', id);
+    if (workspace !== undefined) query = query.where(this.workspaceQueries(workspace).definitions);
+    const row = await query.executeTakeFirst();
     return row ? this.mapPipeline(row) : null;
   }
   async listPipelines(filter?: RawBuilder<boolean>): Promise<Pipeline[]> {
@@ -217,12 +219,15 @@ export class PipelineService {
     if (filter) query = query.where(filter);
     return (await query.execute()).map(row => this.mapPipeline(row));
   }
-  async listWorkspace(workspace: PipelineWorkspace & { limit?: number }) {
+  private workspaceQueries(workspace: PipelineWorkspace) {
     if (typeof workspace?.project !== 'string' || !workspace.project ||
       (workspace.stack !== undefined && (typeof workspace.stack !== 'string' || !workspace.stack)))
       throw Error('Select a project and an optional stack for pipeline history');
     if (!this.projects?.projectConfigurations) throw Error('Project inventory is unavailable');
-    const filters = pipelineWorkspaceQueries(this.db, workspace, this.projects.projectConfigurations(workspace.project));
+    return pipelineWorkspaceQueries(this.db, workspace, this.projects.projectConfigurations(workspace.project));
+  }
+  async listWorkspace(workspace: PipelineWorkspace & { limit?: number }) {
+    const filters = this.workspaceQueries(workspace);
     const [definitions, runs] = await Promise.all([
       this.listPipelines(filters.definitions), this.listRuns(undefined, workspace.limit, filters),
     ]);

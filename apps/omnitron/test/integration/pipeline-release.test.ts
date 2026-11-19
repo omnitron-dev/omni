@@ -641,6 +641,8 @@ it('recovers two independent projects through the same Titan/Netron/Xec path wit
   expect(await b.witness()).toHaveLength(1);
   await a.noEffects();
   const aScope = { project: 'project-a', stack: 'publication', limit: 1 };
+  expect(await rpc.getPipeline({ id: pa.id, workspace: aScope })).toEqual(pa);
+  expect(await rpc.getPipeline({ id: pb.id, workspace: aScope })).toBeNull();
   expect(await rpc.listWorkspace(aScope)).toMatchObject({ definitions: [{ id: pa.id }],
     runs: [{ id: prepared.id, pipelineName: 'delivery-a', status: 'awaiting-review' }] });
   expect(await rpc.listWorkspace({ ...aScope, project: 'project-b' })).toMatchObject({ definitions: [{ id: pb.id }],

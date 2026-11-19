@@ -38,6 +38,8 @@ flowchart LR
 | Run approved release pipeline | Starts the pinned, local release-only pipeline for the reviewed project and stack. Event fields never become command parameters. |
 | Assign a Studio task | Sends the configured assignment to the selected team member through the ordinary Studio queue. The resulting turn identifies the work. |
 
+A project-scoped pipeline review looks up the selected definition by ID in the current project and stack, including registered stack aliases. If its target or revision changed, the operator can inspect the recorded delivery before choosing another revision.
+
 A disk cleanup can be a published project maintenance task. Review its allowed cache roots, inventory, retention limits and recovery before attaching the release pipeline. The stock disk template only records notifications. A Studio task is suitable when an unusual volume change needs investigation before anyone changes files. External actions use the activating administrator's current authority. Loss of authority leaves a delivery available for review.
 
 ## Share one graph

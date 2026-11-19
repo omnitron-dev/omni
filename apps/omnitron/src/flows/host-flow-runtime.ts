@@ -64,7 +64,7 @@ interface Host {
   auth: Pick<AuthService, 'validateSession'>;
   pipelines: Pick<
     IOmnitronPipelinesService,
-    'getPipeline' | 'listWorkspace' | 'prepareRun' | 'startRun' | 'getRunStatus'
+    'getPipeline' | 'prepareRun' | 'startRun' | 'getRunStatus'
   >;
   studio: Pick<StudioRpcService, 'postReceipt' | 'postIfNew'>;
   scope: FlowScopeReader;
@@ -145,13 +145,11 @@ export function hostFlowRuntime(ledger: FlowLedger, host: Host) {
           if (automatic) {
             await reviewedPipeline(effect.config, ledger.verifyActivation(row.flow_id, row.activation).binding);
           } else if (workspace.project) {
-            const inventory = await host.pipelines.listWorkspace({
-              project: workspace.project,
-              ...(workspace.stack && { stack: workspace.stack }),
-              limit: 1,
+            const pipeline = await host.pipelines.getPipeline({
+              id,
+              workspace: { project: workspace.project, ...(workspace.stack && { stack: workspace.stack }) },
             });
-            if (!inventory.definitions.some((p) => p.id === id))
-              throw Error('Pipeline is outside the reviewed workspace');
+            if (!pipeline) throw Error('Pipeline is outside the reviewed workspace');
           }
           await admit();
           check(true);

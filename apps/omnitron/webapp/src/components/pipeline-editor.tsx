@@ -16,6 +16,8 @@ import { ConfirmDialog } from '@omnitron-dev/prism/components/confirm-dialog';
 import type { Pipeline, PipelineStep, PipelineWorkspace } from '@omnitron-dev/omnitron/dto/services';
 import { pipelines, nodes } from 'src/netron/client';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
+import { PipelineDependencies } from './pipeline-dependencies';
+import { canConnectSteps, parsePipelineSteps, pipelineLevels, removeStep, renameStep, validStepName } from './pipeline-graph';
 
 const example = 'const result = await $target`uname -s`;\nconsole.log(result.stdout);\n';
 export function PipelineEditor({
@@ -35,6 +37,7 @@ export function PipelineEditor({
     definition?.steps ?? [{ name: 'inspect', kind: 'xec', run: example }]
   );
   const [active, setActive] = useState('0');
+  const [invalidName, setInvalidName] = useState<string | null>(null);
   const [advanced, setAdvanced] = useState(false);
   const [json, setJson] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +47,28 @@ export function PipelineEditor({
   const targets = usePolledResource(() => nodes.listNodes(), { intervalMs: 30_000 });
   const index = Number(active);
   const step = steps[index]!;
+  const select = (value: string) => {
+    setInvalidName(null);
+    setActive(value);
+  };
+  const rename = (value: string) => {
+    setDirty(true);
+    if (!validStepName(value) || steps.some((other, i) => i !== index && other.name === value)) {
+      setInvalidName(value);
+      return;
+    }
+    setInvalidName(null);
+    setSteps(current => renameStep(current, step.name, value));
+  };
+  const link = (from: string, to: string, connect: boolean) => {
+    setSteps(current => {
+      if (connect && !canConnectSteps(current, from, to)) return current;
+      return current.map(item => item.name !== to ? item : {
+        ...item, dependsOn: connect ? [...(item.dependsOn ?? []), from] : item.dependsOn?.filter(prerequisite => prerequisite !== from),
+      });
+    });
+    setDirty(true);
+  };
   const edit = (patch: Partial<Omit<PipelineStep, 'run' | 'kind' | 'target' | 'args'>>) => {
     setSteps((current) => current.map((item, i) => (i === index ? { ...item, ...patch } : item)));
     setDirty(true);
@@ -62,7 +87,9 @@ export function PipelineEditor({
     setSaving(true);
     setError(null);
     try {
-      const input = { name, description, steps: advanced ? JSON.parse(json) : steps, triggers: definition?.triggers ?? [] };
+      const savedSteps = advanced ? parsePipelineSteps(json) : steps;
+      if (!advanced) pipelineLevels(savedSteps);
+      const input = { name, description, steps: savedSteps, triggers: definition?.triggers ?? [] };
       if (definition) {
         if (!definition.conditionalUpdates) throw new Error('Update the daemon to support conditional pipeline edits');
         await pipelines.updatePipeline({ id: definition.id, definition: input, expectedRevision: definition.revision });
@@ -130,26 +157,21 @@ export function PipelineEditor({
               </Typography>
               <Button
                 size="small"
+                disabled={invalidName !== null}
                 onClick={() => {
                   if (!advanced) {
                     setJson(JSON.stringify(steps, null, 2));
                     setAdvanced(true);
                   } else
                     try {
-                      const parsed = JSON.parse(json);
-                      if (
-                        !Array.isArray(parsed) ||
-                        !parsed.length ||
-                        parsed.some((s) => typeof s?.name !== 'string' ||
-                          ((s.kind === 'release' || s.kind === 'deploy') ? !s.target || s.run !== undefined : typeof s?.run !== 'string'))
-                      )
-                        throw Error('A non-empty array of named steps is required');
+                      const parsed = parsePipelineSteps(json);
                       setSteps(parsed);
-                      setActive('0');
+                      const previous = parsed.findIndex(item => item.name === step.name);
+                      select(String(Math.max(0, previous)));
                       setAdvanced(false);
                       setError(null);
                     } catch (cause) {
-                      setError(String(cause));
+                      setError(cause instanceof Error ? cause.message : String(cause));
                     }
                 }}
               >
@@ -177,7 +199,7 @@ export function PipelineEditor({
               <>
                 <Tabs
                   value={active}
-                  onChange={setActive}
+                  onChange={select}
                   variant="scrollable"
                   scrollButtons="auto"
                   aria-label="Automation steps"
@@ -188,8 +210,8 @@ export function PipelineEditor({
                   }))}
                   onClose={(value) => {
                     const removed = Number(value);
-                    setSteps((current) => current.filter((_, i) => i !== removed));
-                    setActive(String(Math.max(0, Math.min(index - (removed < index ? 1 : 0), steps.length - 2))));
+                    setSteps(current => removeStep(current, steps[removed]!.name));
+                    select(String(Math.max(0, Math.min(index - (removed < index ? 1 : 0), steps.length - 2))));
                     setDirty(true);
                   }}
                   action={
@@ -197,11 +219,14 @@ export function PipelineEditor({
                       size="small"
                       disabled={steps.length >= 32}
                       onClick={() => {
+                        const used = new Set(steps.map(item => item.name));
+                        let number = steps.length + 1;
+                        while (used.has(`step-${number}`)) number++;
                         setSteps((current) => [
                           ...current,
-                          { name: `step-${current.length + 1}`, kind: 'xec', run: example },
+                          { name: `step-${number}`, kind: 'xec', run: example },
                         ]);
-                        setActive(String(steps.length));
+                        select(String(steps.length));
                         setDirty(true);
                       }}
                     >
@@ -209,6 +234,7 @@ export function PipelineEditor({
                     </Button>
                   }
                 />
+                <PipelineDependencies steps={steps} selected={index} onSelect={i => select(String(i))} onLink={link} />
                 <Box
                   sx={{
                     display: 'grid',
@@ -241,8 +267,10 @@ export function PipelineEditor({
                     <TextField
                       label="Step name"
                       size="small"
-                      value={step.name}
-                      onChange={(e) => edit({ name: e.target.value })}
+                      value={invalidName ?? step.name}
+                      error={invalidName !== null}
+                      helperText={invalidName !== null ? 'Choose a unique name using 1–80 letters, numbers, dots, underscores or hyphens.' : undefined}
+                      onChange={(e) => rename(e.target.value)}
                     />
                     <TextField
                       select
@@ -284,6 +312,7 @@ export function PipelineEditor({
                     )}
                     <TextField
                       label="Working directory"
+                      disabled={step.kind === 'deploy'}
                       size="small"
                       value={step.cwd ?? ''}
                       placeholder="Daemon working directory"
@@ -291,24 +320,11 @@ export function PipelineEditor({
                     />
                     <TextField
                       label="Timeout (seconds)"
+                      disabled={step.kind === 'deploy'}
                       type="number"
                       size="small"
                       value={(step.timeout ?? 300_000) / 1000}
                       onChange={(e) => edit({ timeout: Number(e.target.value) * 1000 })}
-                    />
-                    <TextField
-                      label="Depends on"
-                      size="small"
-                      value={(step.dependsOn ?? []).join(', ')}
-                      helperText="Step names, separated by commas"
-                      onChange={(e) =>
-                        edit({
-                          dependsOn: e.target.value
-                            .split(',')
-                            .map((v) => v.trim())
-                            .filter(Boolean),
-                        })
-                      }
                     />
                   </Stack>
                 </Box>
@@ -324,7 +340,7 @@ export function PipelineEditor({
           <Button onClick={close} disabled={saving}>
             Cancel
           </Button>
-          <Button variant="contained" loading={saving} onClick={save} disabled={saving || !name.trim()}>
+          <Button variant="contained" loading={saving} onClick={save} disabled={saving || !name.trim() || invalidName !== null}>
             {saving ? 'Saving…' : 'Save definition'}
           </Button>
         </DialogActions>

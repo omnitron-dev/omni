@@ -17,6 +17,13 @@ Choose a project in the header, then choose **All stacks** or an individual stac
 
 Open a failed or interrupted run to see which steps block continuation. **Inspect remote receipts** reads fresh deployment evidence where available. **Continue remaining steps** uses the reviewed checkpoint and any original parameters.
 
+In the automation editor, each arrow points from a prerequisite to the step that waits for it.
+Drag between ports to connect steps, or choose a step from **Add prerequisite** and press **Connect** using a keyboard or touch.
+Double-click an arrow or use its removal button to disconnect it. Steps without prerequisites are eligible
+to start together, subject to the runner’s concurrency limit. Renaming a step updates its references.
+Removing a step removes its incident dependencies. **Advanced JSON** edits the same `dependsOn` arrays,
+including forward references. Saving checks the revision you opened. To run the automation, open **Run** and review its targets.
+
 On a stack detail page, selecting another stack opens its details. Selecting **All stacks** opens the inventory. Browser Back, Forward and reload restore the workspace for that history entry. Controller-wide pages such as Audit and System omit the stack filter.
 
 Logs lists the selected stack's local and remote applications, including those awaiting their first log. For an older worker that reports `project/deployed/app`, select its registry node and application. Console includes those records when the observed placement identifies one stack on that node.

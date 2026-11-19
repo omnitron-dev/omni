@@ -16,12 +16,14 @@
  * and a write that fails does not fail the action that was already taken.
  */
 
-import { describe, it, expect } from 'vitest';
+import 'reflect-metadata';
+import { describe, it, expect, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { AuditService, scrubDetails, MAX_AUDIT_PAGE } from '../../src/services/audit.service.js';
+import { ProjectRpcService } from '../../src/services/project.rpc-service.js';
 import { stripComments } from '../../../../scripts/lib/strip-comments.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -184,10 +186,27 @@ describe('the actions worth recording are recorded', () => {
     return source.slice(at, next === -1 ? source.length : next);
   }
 
-  it('records what is done to a stack or a project', () => {
+  it.each(['ordinary', 'runtime'] as const)('records the outcome of a %s stack stop', async (mode) => {
+    const db = fakeDb() as unknown as { inserted: Array<Record<string, unknown>> };
+    const audit = new AuditService(logger.l as never, db as never);
+    const stopStack = vi.fn().mockResolvedValueOnce({ type: 'local', config: {} }).mockRejectedValueOnce(new Error('stop failed'));
+    const rpc = new ProjectRpcService({ resolveProjectStack: (scope: unknown) => scope, stopStack } as never, audit);
+    const scope = { project: 'sample', stack: 'prod', review: 'a'.repeat(64) };
+    const stop = () => mode === 'ordinary' ? rpc.stopStack(scope) : rpc.stopStackForRuntime({ ...scope, backupWindowId: 'window' });
+
+    await stop();
+    await expect(stop()).rejects.toThrow('stop failed');
+    const resource = { resourceType: 'stack', resourceId: 'sample/prod' };
+    const keepInfrastructure = mode === 'runtime';
+    expect(db.inserted).toMatchObject([
+      { ...resource, action: 'stack.stop', details: { keepInfrastructure, outcome: 'ok' } },
+      { ...resource, action: 'stack.stop.failed', details: { keepInfrastructure, outcome: 'failed', error: 'stop failed' } },
+    ]);
+  });
+
+  it('records changes to project registration', () => {
     const src = sourceOf('project.rpc-service.ts');
     for (const [method, action] of [
-      ['stopStack', 'stack.stop'],
       ['addProject', 'project.add'],
       ['removeProject', 'project.remove'],
     ] as const) {

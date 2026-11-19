@@ -176,7 +176,7 @@ describe('live session authority across HTTP cache and persistent WebSocket', ()
         const calls = stopStack.mock.calls.length;
         expect((await request(credential, 'stopStack', envelope)).status).toBe(principal === 'operator' ? 200 : 403);
         expect(stopStack.mock.calls.length).toBe(calls + (principal === 'operator' ? 1 : 0));
-        if (principal === 'operator') expect(stopStack).toHaveBeenLastCalledWith('sample', 'prod', input.review, keepInfrastructure);
+        if (principal === 'operator') expect(stopStack).toHaveBeenLastCalledWith('sample', 'prod', input.review, keepInfrastructure, undefined);
       }
     }
   });
@@ -198,7 +198,7 @@ describe('live session authority across HTTP cache and persistent WebSocket', ()
     for (const principal of ['viewer', 'operator']) {
       role = principal;
       const peer = await client.connect(ws);
-    if (!(peer instanceof RemotePeer)) throw new Error('Expected the native Netron peer');
+      if (!(peer instanceof RemotePeer)) throw new Error('Expected the native Netron peer');
       try {
         const credential = await mint({ role: principal, sid: 'active' });
         expect((await peer.runTask('authenticate', { token: credential })).success).toBe(true);
@@ -210,7 +210,7 @@ describe('live session authority across HTTP cache and persistent WebSocket', ()
         if (principal === 'viewer') await expect(service.stopStack(input)).rejects.toThrow();
         else {
           await service.stopStack(input);
-          expect(stopStack).toHaveBeenLastCalledWith('sample', 'prod', input.review, true);
+          expect(stopStack).toHaveBeenLastCalledWith('sample', 'prod', input.review, true, undefined);
         }
         expect(stopStack.mock.calls.length).toBe(calls + (principal === 'operator' ? 1 : 0));
         if (principal === 'operator') {

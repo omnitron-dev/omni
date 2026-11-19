@@ -1786,13 +1786,15 @@ program
 
 program
   .command('init')
-  .description('Create a runnable project in the current directory')
+  .description('Create a starter or prepare an existing project for registration')
+  .option('--existing', 'Add only a configuration with empty apps and stacks to an existing project')
+  .option('--check', 'Preview the existing project declarations and configuration')
   .option('--name <name>', 'Project name (defaults to the directory name)')
   .option('--automation', 'Add a portable Xec automation task')
   .option('--database <engine>', 'Kysera database: none, sqlite, postgresql, mysql')
   .option('--service <runtime>', 'Supervised service: none, node, titan')
   .option('--force', 'Overwrite an existing configuration explicitly')
-  .action(async options => {
+  .structuredAction(async options => {
     const { initCommand } = await import('../commands/init.js');
     await initCommand(options);
   });

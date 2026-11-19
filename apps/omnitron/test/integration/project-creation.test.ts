@@ -235,3 +235,21 @@ it('runs the standalone Xec/Kysera program via a reviewed controller Pipeline an
     });
   } finally { await engine.dispose(); await catalogue.destroy(); }
 }, 120_000);
+
+it('registers the attached existing package through the ordinary project service with its own commands and zero stacks', async () => {
+  const directory = path.join(home, 'existing-package');
+  fs.mkdirSync(directory);
+  const metadata = JSON.stringify({ name: 'existing-package', devDependencies: { '@xec-sh/cli': '^0.13.0' },
+    dependencies: { '@kysera/executor': '^0.10.0' }, scripts: { start: 'node existing.js' } });
+  fs.writeFileSync(path.join(directory, 'package.json'), metadata);
+  fs.writeFileSync(path.join(directory, 'existing.js'), "console.log('existing command');\n");
+  const cwd = vi.spyOn(process, 'cwd').mockReturnValue(directory);
+  try { await initCommand({ existing: true }); }
+  finally { cwd.mockRestore(); }
+  const project = await rpc.addProject({ name: 'attached', path: directory });
+  expect(project).toMatchObject({ name: 'attached', path: directory, totalStacks: 0 });
+  expect(await rpc.listStacks({ project: project.name })).toEqual([]);
+  expect(fs.readFileSync(path.join(directory, 'package.json'), 'utf8')).toBe(metadata);
+  const result = await execute('npm', ['run', '--silent', 'start'], { cwd: directory, timeout: 15_000 });
+  expect(result.stdout.trim()).toBe('existing command');
+}, 120_000);

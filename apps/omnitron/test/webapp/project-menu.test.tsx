@@ -104,6 +104,7 @@ describe('workspace menu commands', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add existing project' }));
     expect(screen.getByRole('dialog', { name: 'Add existing project' })).toBeTruthy();
     expect(screen.getByLabelText('Project Path')).toBeTruthy();
+    expect(screen.getByText('omnitron init --existing --check')).toBeTruthy();
     expect(rpc.reviewProjectCreation).not.toHaveBeenCalled();
   });
   it('lets an administrator review suggested needs before any project is created', async () => {

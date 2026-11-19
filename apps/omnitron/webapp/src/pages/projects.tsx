@@ -374,13 +374,17 @@ function AddProjectDialog({
             placeholder="my-project"
             helperText="Unique identifier for the project registry"
           />
+          <Typography variant="body2">
+            For an existing Xec or Kysera project, run <code>omnitron init --existing --check</code> in its
+            directory to preview the configuration, then <code>omnitron init --existing</code> to create it.
+          </Typography>
           <TextField
             label="Project Path"
             value={path}
             onChange={(e) => setPath(e.target.value)}
             fullWidth
             placeholder="/absolute/path/to/project"
-            helperText="Absolute path to the monorepo root containing omnitron.config.ts"
+            helperText="Absolute path to the project directory containing its Omnitron configuration"
             slotProps={{
               input: {
                 sx: { fontFamily: 'monospace', fontSize: 14 },

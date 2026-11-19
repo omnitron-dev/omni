@@ -57,6 +57,24 @@ directory run `omnitron init --name notes --automation --database sqlite --servi
 to create an independent Xec and Kysera project. Register an existing directory
 with `omnitron project add <name> <absolute-directory>`.
 
+For an existing Xec or Kysera package, run these commands from the directory
+you intend to register. The preview lists framework declarations by package
+manifest and dependency section, including development dependencies. At a
+workspace root it follows the package patterns in `pnpm-workspace.yaml` or
+the npm/Yarn `workspaces` field. Inside an individual member it inspects that
+member and its own declared workspace.
+
+```sh
+omnitron init --existing --check
+omnitron init --existing
+omnitron project add my-project "$PWD"
+```
+
+The write creates only `omnitron.config.ts` with empty `apps` and `stacks`.
+Existing configurations can be reviewed and registered directly. Project
+scripts and database connections are managed by their existing tools. The
+operator can also register the same directory in **Projects → Add existing project**.
+
 ```sh
 omnitron start project/stack/app
 omnitron logs project/stack/app

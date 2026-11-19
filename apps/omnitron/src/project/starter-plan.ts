@@ -2,6 +2,14 @@ import { isProjectStarterNeeds, type ProjectStarterNeeds, type ProjectStarterMan
 import type { PipelineDef } from '../shared/dto/pipelines.js';
 
 export const starterConfig = 'omnitron.config.ts';
+export function starterConfiguration(app: string | null) {
+  const config = app ? {
+    apps: [{ name: app, script: './omnitron-worker.js' }],
+    stacks: { dev: { type: 'local', apps: [app], infrastructureOwnership: 'external', watch: false } },
+  } : { apps: [], stacks: {} };
+  return { path: starterConfig, content: 'export default ' + JSON.stringify(config, null, 2) + ';\n' };
+}
+
 const databaseDrivers = {
   sqlite: { dependency: 'better-sqlite3', version: '13.0.3', dialect: 'SqliteDialect',
     imports: "import Database from 'better-sqlite3';\nimport { fileURLToPath } from 'node:url';",
@@ -126,10 +134,6 @@ ${needs.persistence === 'none' ? '  console.log(JSON.stringify({ checked, node: 
     files.push({ path: 'starter-pipeline.js', content: pipelineProgram(name, needs.automation ? 'starter-task.js' : 'starter-data.js') });
     effects.push('The pipeline command prints a manual, one-step definition for review in the controller workspace.');
   }
-  const config = manifest.app ? {
-    apps: [{ name: manifest.app, script: './omnitron-worker.js' }],
-    stacks: { dev: { type: 'local', apps: [manifest.app], infrastructureOwnership: 'external', watch: false } },
-  } : { apps: [], stacks: {} };
   const install = Object.keys(manifest.dependencies).length > 0;
   if (install) effects.push('Run npm install in the project directory before the first command.');
   const json = (value: unknown) => JSON.stringify(value, null, 2) + '\n';
@@ -147,7 +151,7 @@ ${needs.persistence === 'none' ? '  console.log(JSON.stringify({ checked, node: 
         'The system workspace lists this task under Pipelines, including its status and output. The review pins the graph and the local directory. Source and dependencies are read from the working tree at run time.',
         ...(needs.persistence !== 'none' && needs.persistence !== 'sqlite' ? ['',
           `Supply ${connectionVariable} through an operator-controlled runtime environment. Keep its value out of the pipeline definition.`] : []), ''] : [])].join('\n') },
-    { path: starterConfig, content: 'export default ' + JSON.stringify(config, null, 2) + ';\n' });
+    starterConfiguration(manifest.app));
   const names = new Set(files.map(file => file.path));
   if (names.size !== files.length || files.some(file => !/^[a-z0-9][a-z0-9.-]*$/i.test(file.path)) ||
       Object.values(manifest.commands).some(command => !command.startsWith('node ') || !names.has(command.slice('node '.length))))

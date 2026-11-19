@@ -295,6 +295,7 @@ export class OmnitronDaemon {
   private fileNode: import('../files/file-node.js').FileNode | null = null;
   private filesRpcService: import('../files/files.rpc-service.js').FilesRpcService | null = null;
   private pipelineService: import('../services/pipeline.service.js').PipelineService | null = null;
+  private flowRuntime: import('../flows/flow-runtime.js').FlowRuntime | null = null;
 
   /**
    * The live record of release builds this daemon is running.
@@ -1553,11 +1554,17 @@ export class OmnitronDaemon {
       const authService = await container.resolveAsync<AuthService>(AUTH_SERVICE_TOKEN);
       const authRpcService = new AuthRpcService(authService, this.app.netron);
       await this.app.netron.peer.exposeService(authRpcService);
+      const { loadHostFlowRegistry } = await import('../flows/component-packs.js');
+      const flowRegistry = loadHostFlowRegistry();
+      for (const diagnostic of flowRegistry.diagnostics)
+        loggerModule.logger.warn({ diagnostic }, 'Operator flow components unavailable');
+      let studio: import('../studio/studio.rpc-service.js').StudioRpcService | undefined;
       if (audit) {
         const { AccessRpcService } = await import('../services/access.rpc-service.js');
         const { StudioRpcService } = await import('../studio/studio.rpc-service.js');
         const { StudioLedger } = await import('../studio/ledger.js');
-        await this.app.netron.peer.exposeService(new StudioRpcService(new StudioLedger(fileState.initSync()), projectService, authService, audit));
+        studio = new StudioRpcService(new StudioLedger(fileState.initSync()), projectService, authService, audit, flowRegistry);
+        await this.app.netron.peer.exposeService(studio);
         const accessDb = await container.resolveAsync<import('kysely').Kysely<import('../database/schema.js').OmnitronDatabase>>(OMNITRON_DB_TOKEN);
         await this.app.netron.peer.exposeService(new AccessRpcService(accessDb, authService, audit, this.app.netron));
         const { FilesRpcService } = await import('../files/files.rpc-service.js');
@@ -1610,6 +1617,29 @@ export class OmnitronDaemon {
       this.pipelineService = pipelineService;
       const pipelineRpcService = new PipelineRpc(pipelineService, authService, audit);
       await this.app.netron.peer.exposeService(pipelineRpcService);
+      if (studio && audit) {
+        const { FlowLedger } = await import('../flows/flow-ledger.js');
+        const { FlowsRpcService } = await import('../flows/flows.rpc-service.js');
+        const { hostFlowRuntime, flowWorkspaceReader } = await import('../flows/host-flow-runtime.js');
+        const scope = flowWorkspaceReader(projectService);
+        const admit = async () => {
+          const execution = this.execution;
+          const check = () => {
+            if (!this.backendAdmitted || this.isShuttingDown || this.preparingBackend || this.handingOffBackend || execution !== this.execution)
+              throw Error('The controller is transferring authority');
+          };
+          check();
+          if (execution) await execution.controlledOwnerSnapshot();
+          check();
+        };
+        const runtime = hostFlowRuntime(new FlowLedger(fileState.initSync(), flowRegistry), {
+          auth: authService, pipelines: pipelineRpcService, studio, scope, admit,
+          report: error => loggerModule.logger.warn({ error: String(error) }, 'Flow source evaluation failed'),
+        });
+        await this.app.netron.peer.exposeService(new FlowsRpcService(runtime, authService, audit, scope, admit));
+        this.flowRuntime = runtime;
+        runtime.listen(this.eventBroadcaster);
+      }
 
       // Trace collector RPC service
       const { TraceRpcService: TraceRpc } = await import('../services/trace-collector.rpc-service.js');
@@ -2871,6 +2901,8 @@ export class OmnitronDaemon {
       this.filesRpcService = null;
       await this.fileNode?.dispose();
       this.fileNode = null;
+      await this.flowRuntime?.dispose();
+      this.flowRuntime = null;
       await this.pipelineService?.dispose();
       this.pipelineService = null;
       this.terminalRpcService?.dispose();

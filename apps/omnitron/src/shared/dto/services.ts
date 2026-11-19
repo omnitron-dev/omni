@@ -1,4 +1,6 @@
 export type { StackDiagnosis, StackDiagnosisCheck } from './stack-diagnosis.js';
+export * from './flows.js';
+export type * from './flow-runtime.js';
 export type { InstalledReleaseInspection, InstalledArtifactObservation, InstalledReleaseCandidate } from './installed-release.js';
 import type { TopologyScope, TopologySpec, TopologyDraft, TopologyPlan, TopologyInventory, TopologyWorkspace } from './topology.js';
 export type { TopologyScope, TopologySpec, TopologyDraft, TopologyPlan, TopologyInventory, TopologyWorkspace, TopologyChange, TopologyIssue } from './topology.js';

@@ -7,9 +7,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { Netron, type RemotePeer } from '@omnitron-dev/titan/netron';
-import { AuthenticationManager } from '@omnitron-dev/titan/netron/auth';
+import { AuthenticationManager, AuthorizationManager } from '@omnitron-dev/titan/netron/auth';
+import { HttpNativeServer } from '@omnitron-dev/titan/netron/transport/http';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import { PipelineRpcService } from '../../src/services/pipeline.rpc-service.js';
+import { FlowLedger } from '../../src/flows/flow-ledger.js';
+import { hostFlowRuntime, flowWorkspaceReader } from '../../src/flows/host-flow-runtime.js';
+import { FlowsRpcService } from '../../src/flows/flows.rpc-service.js';
+import type { SavedFlow, FlowReceipt, FlowDefinition, OmnitronAuthUser } from '../../src/shared/dto/services.js';
 import { createAuthContextWrapper } from '../../src/services/auth-context.js';
 import type { IOmnitronPipelinesService } from '../../src/shared/dto/services.js';
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
@@ -124,7 +129,8 @@ console.log('release completed');
   const getRuntime = vi.fn(async () => structuredClone(owner));
   const projects = Object.create(ProjectService.prototype) as ProjectService;
   Object.assign(projects, { logger, daemonStateStore: state, configRegistry: new Map([[scope.project, { config }]]),
-    registry: { get: (name: string) => name === scope.project ? registered : undefined, resolveStack: (value: unknown) => value },
+    registry: { get: (name: string) => name === scope.project ? registered : undefined, resolveStack: (value: unknown) => value,
+      registrations: (name:string) => name === scope.project ? [registered] : [] },
     nodeStackStop: { assertMutable() {} }, orchestrator: { getExecutionOwnerRuntime: getRuntime }, releaseStore: async () => store });
   db = createPipelineTestDatabase(path.join(root, 'pipelines.sqlite'));
   pipelines = new PipelineService(db, logger as never, testExecution);
@@ -148,6 +154,154 @@ console.log('release completed');
     witness: async () => (await fs.readFile(app.env.WITNESS, 'utf8')).trim().split('\n').map(line => JSON.parse(line)),
     noEffects: async () => expect(await fs.stat(app.env.WITNESS).then(() => true, () => false)).toBe(false) };
 }
+
+it('admits a reviewed release flow over native Netron HTTP and observes one local child after a lost start reply and repeated input', async () => {
+  const f = await fixture();
+  const published = await f.pipelines.createPipeline(f.definition);
+  const workspace = { project: 'research', stack: 'publication' };
+  const ref = { workspace, id: randomUUID() };
+  const auth = {
+    validateSession: async (id: string) =>
+      id === 'private-flow-session' ? ({ id: 'fixture-editor', role: 'admin' } as OmnitronAuthUser) : null,
+  };
+  const audit = { record: vi.fn(async () => {}) };
+  const pipelines = new PipelineRpcService(f.pipelines, auth, audit);
+  const start = pipelines.startRun.bind(pipelines);
+  const lost = vi.spyOn(pipelines, 'startRun').mockImplementationOnce(async (request) => {
+    await start(request);
+    throw Error('Private fixture dropped the start reply');
+  });
+  const scope = flowWorkspaceReader(f.projects);
+  const host = hostFlowRuntime(new FlowLedger(f.state.initSync()), {
+    auth,
+    pipelines,
+    scope,
+    admit: async () => {},
+    studio: { postReceipt: vi.fn(), postIfNew: vi.fn() },
+    report: (error) => {
+      throw error;
+    },
+  });
+  cleanup.push(() => host.dispose());
+  const service = new FlowsRpcService(host, auth, audit, scope, async () => {});
+  const log = createNullLogger(),
+    netron = new Netron(log);
+  cleanup.push(() => netron.stop());
+  netron.configureAuth(
+    new AuthenticationManager(log, {
+      authenticate: async () => {
+        throw Error('Private fixture credential required');
+      },
+      validateToken: async (token) => {
+        if (token !== 'private-flow-admin' && token !== 'private-flow-viewer')
+          throw Error('Unknown fixture credential');
+        return {
+          userId: 'fixture-editor',
+          roles: [token.endsWith('admin') ? 'admin' : 'viewer'],
+          permissions: [],
+          metadata: { sessionId: 'private-flow-session' },
+        };
+      },
+      tokenCache: { enabled: false },
+    }),
+    new AuthorizationManager(log)
+  );
+  await netron.start();
+  await netron.peer.exposeService(service);
+  const http = new HttpNativeServer({
+    host: '127.0.0.1',
+    port: 0,
+    cors: false,
+    invocationWrapper: createAuthContextWrapper(),
+  });
+  http.setPeer(netron.peer);
+  await http.listen();
+  cleanup.push(() => http.close());
+  const call = async (method: string, input: unknown, role = 'admin') => {
+    const response = await fetch('http://127.0.0.1:' + http.port + '/netron/invoke', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer private-flow-' + role },
+      body: JSON.stringify({ id: randomUUID(), service: 'OmnitronFlows', method, input: [input] }),
+    });
+    const body = (await response.json()) as { success: boolean; data: unknown; error?: unknown };
+    if (!response.ok || !body.success) throw Error(response.status + ' ' + JSON.stringify(body.error));
+    return body.data;
+  };
+  const definition: FlowDefinition = {
+    version: 1,
+    name: 'Reviewed publication',
+    nodes: [
+      { id: 'signal', type: 'input.manual@1', config: {} },
+      {
+        id: 'publish',
+        type: 'output.run-pipeline@1',
+        config: { pipelineId: published.id, revision: published.revision },
+      },
+    ],
+    edges: [{ from: 'signal', port: 'event', to: 'publish' }],
+  };
+  const save = { ...ref, definition, expectedRevision: null };
+  await expect(call('save', save, 'viewer')).rejects.toThrow('403');
+  const draft = (await call('save', save)) as SavedFlow;
+  const active = (await call('activate', { ...ref, revision: draft.revision, activation: null })) as SavedFlow;
+  const input = {
+    ...ref,
+    activation: active.active!.id,
+    event: { id: randomUUID(), source: 'signal', type: 'manual', data: { operatorInput: 'synthetic' } },
+  };
+  const intent = (await call('submit', input)) as FlowReceipt;
+  const delivery = intent.deliveries[0]!;
+  await vi.waitFor(
+    async () => {
+      const history = (await call('history', ref)) as FlowReceipt[];
+      expect(history[0]!.deliveries[0]).toMatchObject({ id: delivery.id, status: 'delivered', result: delivery.id });
+    },
+    { timeout: 15000 }
+  );
+  const run = await f.terminal(delivery.id);
+  expect(run.status).toBe('success');
+  expect(run.review?.parameterNames).toEqual([]);
+  expect(run.review?.definitionRevision).toBe(published.revision);
+  expect(run.steps[0]?.executions?.[0]?.state).toBe('completed');
+  expect(((await call('submit', input)) as FlowReceipt).deliveries[0]!.id).toBe(delivery.id);
+  expect(await f.pipelines.listRuns(published.id)).toHaveLength(1);
+  expect(await f.witness()).toHaveLength(1);
+  expect(lost).toHaveBeenCalledExactlyOnceWith({ runId: delivery.id, expectedDigest: run.review!.digest, params: {} });
+
+  let allowStart!: () => void;
+  const holdStart = new Promise<void>((resolve) => {
+    allowStart = resolve;
+  });
+  let ownerChecking!: () => void;
+  const waiting = new Promise<void>((resolve) => {
+    ownerChecking = resolve;
+  });
+  const observed = vi.spyOn(pipelines, 'getRunStatus');
+  // Prepare reaches the owner. Pause while its separate start is waiting for the final lifecycle check.
+  f.gate
+    .mockImplementationOnce(async () => {})
+    .mockImplementationOnce(() => {
+      ownerChecking();
+      return holdStart;
+    });
+  const interrupted = (await call('submit', { ...input, event: { ...input.event, id: randomUUID() } })) as FlowReceipt;
+  const held = interrupted.deliveries[0]!;
+  try {
+    await waiting;
+    await call('deactivate', { ...ref, revision: draft.revision, activation: input.activation });
+  } finally {
+    allowStart();
+  }
+  await vi.waitFor(() => expect(observed.mock.calls.filter(([request]) => request.runId === held.id)).toHaveLength(2));
+  await host.dispose();
+  expect((await f.pipelines.getRunStatus(held.id))?.status).toBe('awaiting-review');
+  expect(host.ledger.history(ref)[0]?.deliveries[0]).toMatchObject({
+    id: held.id,
+    status: 'unconfirmed',
+    result: held.id,
+  });
+  expect(await f.witness()).toHaveLength(1);
+});
 
 it('models the owner transition: unchanged artifact and runtime, different installation binding', () => {
   expect(transition.oldReceipt.origin).toEqual(transition.newReceipt.origin);

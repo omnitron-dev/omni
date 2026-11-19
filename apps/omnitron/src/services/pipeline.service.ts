@@ -1,4 +1,4 @@
-import { admitPipeline, assertParameters, readAdmission, readPrepareRun, readStartRun, type PipelineAdmission } from './pipeline-admission.js';
+import { admitPipeline, assertParameters, pipelineAdmissionCheck, readAdmission, readPrepareRun, readStartRun, type PipelineAdmission } from './pipeline-admission.js';
 import { completedStep, recoverableStep, recoveryReview } from './pipeline-recovery.js';
 import { pipelineWorkspaceQueries } from './pipeline-workspace.js';
 import { RecoveryMutation } from '../daemon/recovery-state.js';
@@ -258,6 +258,7 @@ export class PipelineService {
       throw new Error('Pipeline changed after review. Reload and review the current definition');
     await checkPipelineDefinition(storedDefinition(definition));
     const admission = admitPipeline(request.runId, definition, params, actor);
+    pipelineAdmissionCheck.getStore()?.();
     const inserted = await this.db.insertInto('pipeline_runs').values({
       id: request.runId, pipelineId: request.id, status: 'awaiting-review',
       steps: JSON.stringify(definition.steps.map(step => ({ name: step.name, status: 'pending', duration: 0,
@@ -373,6 +374,7 @@ export class PipelineService {
         throw new Error('Pipeline changed after review. Reload and review the current definition');
       await checkPipelineDefinition(storedDefinition(definition));
       const startedAt = new Date();
+      pipelineAdmissionCheck.getStore()?.();
       const claim = await this.db.updateTable('pipeline_runs').set({ status: 'running', startedAt,
         completedAt: null,
         admission: JSON.stringify({ ...admission, approvedBy: actor, ...(recovering ? { resumedFrom: request.expectedDigest } : {}) }) })

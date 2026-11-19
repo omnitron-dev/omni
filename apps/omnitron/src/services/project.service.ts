@@ -797,6 +797,12 @@ export class ProjectService extends EventEmitter {
     return this.registry.registrations(project);
   }
 
+  /** A registered stack's placement from loaded configuration, without polling every application. */
+  configuredStackType({ project, stack }: RuntimeStackScope): IStackConfig['type'] | null {
+    const config = this.getLoadedConfig(project);
+    return config ? this.resolveStacks(config, project)[stack]?.type ?? null : null;
+  }
+
   async resolveProjectStack<T extends RuntimeStackScope>(scope: T, options: { readOnly?: boolean } = {}): Promise<T> {
     const resolved = this.registry.resolveStack(scope);
     if (resolved.project !== scope.project) {

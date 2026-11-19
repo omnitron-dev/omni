@@ -1,6 +1,10 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import type { Pipeline, PipelineRunReview, PreparePipelineRun, StartPipelineRun } from '../shared/dto/pipelines.js';
 import { storedDefinition, validatePipeline, validatePipelineParams } from './pipeline-definition.js';
+
+/** In-process callers can revoke an admission while the owner is checking the request. */
+export const pipelineAdmissionCheck = new AsyncLocalStorage<() => void>();
 
 /** Only stored on the control plane; the wire receipt contains review alone. */
 export interface PipelineAdmission {

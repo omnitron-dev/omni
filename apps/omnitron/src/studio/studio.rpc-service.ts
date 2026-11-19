@@ -9,6 +9,7 @@ import type { ProjectService } from '../services/project.service.js';
 import type { StudioLedger, StudioLink, StudioScope } from './ledger.js';
 import {
   STUDIO_PROVIDERS,
+  projectInterview,
   type IOmnitronStudioService,
   type StudioSend,
   type StudioDecision,
@@ -130,7 +131,9 @@ export class StudioRpcService implements IOmnitronStudioService {
     )
       throw Error('Select an adapter and send a message up to 32 KiB');
     if (data.stack !== undefined) await this.requireStack(data.project, data.stack);
-    const { role, result, model } = data.preferences;
+    const { purpose, role, result, model } = data.preferences;
+    if (purpose !== undefined && (purpose !== 'project-interview' || role !== 'analyst'))
+      throw Error('A project interview requires an analyst assignment');
     if (model !== undefined && (typeof model !== 'string' || !model.trim()))
       throw Error('Select a model from the connected catalog');
     assertStudioAssignment({
@@ -139,14 +142,20 @@ export class StudioRpcService implements IOmnitronStudioService {
       result,
     });
     const requirements = studioRoleRequirements(role, data.preferences.requirements, model !== undefined);
-    const preferences = { role, result, requirements, ...(model === undefined ? {} : { model }) };
+    const preferences = {
+      role,
+      result,
+      requirements,
+      ...(model === undefined ? {} : { model }),
+      ...(purpose && { purpose }),
+    };
     const requestKey = createHash('sha256').update(JSON.stringify(preferences)).digest('hex');
     await this.audit.record(
       {
         action: 'studio.turn.requested',
         resourceType: 'studio.turn',
         resourceId: data.turnId,
-        details: { provider: data.provider, role, result },
+        details: { provider: data.provider, role, result, ...(purpose && { purpose }) },
       },
       true
     );
@@ -276,7 +285,12 @@ export class StudioRpcService implements IOmnitronStudioService {
       conversation: job.conversation,
     });
     if (!this.ledger.claim(connection, job.id)) return null;
-    return { turnId: job.id, ...input };
+    return {
+      turnId: job.id,
+      ...input,
+      instructions:
+        preferences.purpose === 'project-interview' ? input.instructions + '\n' + projectInterview : input.instructions,
+    };
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })

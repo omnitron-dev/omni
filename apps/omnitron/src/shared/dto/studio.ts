@@ -32,6 +32,7 @@ export interface StudioThread {
 }
 
 export interface StudioPreferences {
+  purpose?: 'project-interview';
   role: StudioRole;
   result: StudioResultClass;
   requirements: StudioModelRequirements;

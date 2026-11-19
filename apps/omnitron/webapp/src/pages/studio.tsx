@@ -21,7 +21,6 @@ import {
   STUDIO_PROVIDERS,
   STUDIO_ROLES,
   STUDIO_ROLE_POLICY,
-  projectInterview,
   readProjectSuggestion,
   selectStudioModel,
   studioRoleRequirements,
@@ -92,6 +91,8 @@ function StudioWorkspace({ project, stack }: { project: string | null; stack: st
   const [model, setModel] = useState('@automatic');
   const [tier, setTier] = useState<StudioCostTier>('economy');
   const [role, setRole] = useState<StudioRole>('analyst');
+  const [interview, setInterview] = useState(false);
+  const messageInput = useRef<HTMLTextAreaElement>(null);
   const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -151,6 +152,7 @@ function StudioWorkspace({ project, stack }: { project: string | null; stack: st
   const frozen = !!selected;
   const preferences: StudioPreferences = thread?.assignment.preferences ?? {
     role,
+    ...(interview && { purpose: 'project-interview' }),
     result: STUDIO_ROLE_POLICY[role].result,
     requirements: studioRoleRequirements(
       role,
@@ -173,6 +175,7 @@ function StudioWorkspace({ project, stack }: { project: string | null; stack: st
     !busy && !active && !!prompt.trim() && choice?.ok && (!selected || (thread && last?.status === 'completed'));
   const reset = (id: string | null) => {
     setSelected(id);
+    setInterview(false);
     setTurnBefore(undefined);
     setPrompt('');
     setError('');
@@ -305,7 +308,7 @@ function StudioWorkspace({ project, stack }: { project: string | null; stack: st
         <Paper variant="outlined" sx={{ minWidth: 0, p: { xs: 1.75, sm: 3 } }}>
           <Stack spacing={2}>
             <Typography variant="h6" sx={plain}>
-              {thread?.title ?? 'New conversation'}
+              {thread?.title ?? (interview ? 'Project interview' : 'New conversation')}
             </Typography>
             {!frozen && (
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ '& > *': { minWidth: 0, flex: 1 } }}>
@@ -327,6 +330,7 @@ function StudioWorkspace({ project, stack }: { project: string | null; stack: st
                 </TextField>
                 <TextField
                   label="Responsibility"
+                  disabled={interview}
                   size="small"
                   select
                   value={role}
@@ -424,7 +428,9 @@ function StudioWorkspace({ project, stack }: { project: string | null; stack: st
                 key={t.id}
                 turn={t}
                 onStarter={
-                  can('OmnitronProject.reviewProjectCreation') && can('OmnitronProject.createProject')
+                  preferences.purpose === 'project-interview' &&
+                  can('OmnitronProject.reviewProjectCreation') &&
+                  can('OmnitronProject.createProject')
                     ? (href) => navigate(href)
                     : undefined
                 }
@@ -465,9 +471,18 @@ function StudioWorkspace({ project, stack }: { project: string | null; stack: st
             ) : null}
             {!turnBefore && (!selected || (thread && last?.status === 'completed')) && (
               <>
-                {!selected && !prompt && (
-                  <Button size="small" sx={{ alignSelf: 'start' }} onClick={() => setPrompt(projectInterview)}>
-                    Plan a project
+                {!selected && (
+                  <Button
+                    size="small"
+                    sx={{ alignSelf: 'start' }}
+                    disabled={busy || !!uncertain.current}
+                    onClick={() => {
+                      setInterview(!interview);
+                      if (!interview) setRole('analyst');
+                      messageInput.current?.focus();
+                    }}
+                  >
+                    {interview ? 'Switch to conversation' : 'Plan a project'}
                   </Button>
                 )}
                 <TextField
@@ -475,6 +490,8 @@ function StudioWorkspace({ project, stack }: { project: string | null; stack: st
                   minRows={3}
                   maxRows={12}
                   label="Message"
+                  inputRef={messageInput}
+                  placeholder={interview && !thread ? 'What would you like the project to do?' : undefined}
                   value={prompt}
                   disabled={busy || !!uncertain.current}
                   onChange={(e) => setPrompt(e.target.value)}
@@ -561,8 +578,16 @@ function Turn({
           Agent
         </Typography>
       )}
-      {turn.answer && (turn.status === 'running' ? <Typography variant="body2" sx={plain}>{turn.answer}</Typography>
-        : <ResponseMarkdown compact embeddedMedia="text">{turn.answer}</ResponseMarkdown>)}
+      {turn.answer &&
+        (turn.status === 'running' ? (
+          <Typography variant="body2" sx={plain}>
+            {turn.answer}
+          </Typography>
+        ) : (
+          <ResponseMarkdown compact embeddedMedia="text">
+            {turn.answer}
+          </ResponseMarkdown>
+        ))}
       {turn.failure && <Alert severity="warning">{blocked[turn.failure]}</Alert>}
       <Stack direction="row" sx={{ alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
         <Chip size="small" label={turn.status} variant="outlined" />

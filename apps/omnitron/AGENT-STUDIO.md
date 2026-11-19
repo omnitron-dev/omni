@@ -6,7 +6,7 @@ Agent Studio connects a Console operator to a model available through their loca
 
 1. Open **Workspace → Agent Studio** with an operator or administrator account. In the system workspace, the conversation belongs to project planning.
 2. Pick a provider. Run the connection command shown in the Console in a terminal on the daemon host, as the account that owns the subscription. Leave the terminal open while using the adapter.
-3. Select a model, choose **Plan a project** and describe a concrete job. Include what triggers the work, what must survive between runs and whether a process must remain available.
+3. Choose **Plan a project** and describe a concrete job in your own words. Studio assigns an analyst to ask about missing requirements. The daemon supplies the interview instructions. Your draft contains only your own message.
 4. Once the requirements are clear, review the proposed choices. **Review project starter** opens the project form with those choices. Adjust any of them, set the name and inspect the full file contents, effects, dependencies and destination.
 5. An administrator can confirm **Create project** against the reviewed digest. The server checks the review again, creates the files under its workspace and registers the project. The same form works directly from **Projects**.
 
@@ -100,4 +100,4 @@ The daemon admits each turn by a stable request ID and rechecks the sending user
 
 ## Verification
 
-The integration tests exercise the private Netron socket, SQLite ledger, local Xec executor and installed provider under a synthetic account. The optional subscription test uses three synthetic turns per configured provider to check conversation continuity and project composition. Select an executable with `OMNITRON_STUDIO_LIVE_CODEX` or `OMNITRON_STUDIO_LIVE_AGY`, and a listed model with the corresponding `OMNITRON_STUDIO_MODEL_CODEX` or `OMNITRON_STUDIO_MODEL_AGY`. From the Omnitron application package run `pnpm exec vitest run test/integration/studio-subscription.test.ts`.
+The integration tests exercise the private Netron socket, SQLite ledger, local Xec executor and installed provider under a synthetic account. The optional subscription test uses four synthetic turns per configured provider. It checks conversation continuity, a clarifying question and the concrete manifest produced after the operator answers. Select an executable with `OMNITRON_STUDIO_LIVE_CODEX` or `OMNITRON_STUDIO_LIVE_AGY`, and a listed model with the corresponding `OMNITRON_STUDIO_MODEL_CODEX` or `OMNITRON_STUDIO_MODEL_AGY`. From the Omnitron application package run `pnpm exec vitest run test/integration/studio-subscription.test.ts`.

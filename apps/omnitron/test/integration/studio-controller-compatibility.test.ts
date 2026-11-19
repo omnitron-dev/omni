@@ -84,13 +84,13 @@ async function fixture() {
   db.exec('CREATE TABLE state_kv(key TEXT PRIMARY KEY,value TEXT)');
   return { root, db, open, legacy, previous, compatible, CurrentStudio, CurrentFlows };
 }
-const send = (studio: StudioLedger, threadId: string, prompt: string) => {
+const send = (studio: StudioLedger, threadId: string, prompt: string, provider: StudioSend['provider'] = 'codex') => {
   const turnId = randomUUID();
   studio.send(
     scope,
     {
       project: scope.project,
-      provider: 'codex',
+      provider,
       threadId,
       turnId,
       after: null,
@@ -278,7 +278,58 @@ it('requires only the journal formats actually in use, and only at a supported v
     path.join(target, 'shared/controller-journal-formats.json'),
     JSON.stringify({ studioTeams: formats.studioTeams, hostFlows: 999 })
   );
-  const teams = { teamRooms: true, concurrentTurns: false, activeFlows: false, pendingDeliveries: false };
+  const teams = {
+    teamRooms: true,
+    concurrentTurns: false,
+    activeFlows: false,
+    pendingDeliveries: false,
+    customStudioProviders: false,
+  };
   await assertControllerJournals(teams, target);
   await expect(assertControllerJournals({ ...teams, activeFlows: true }, target)).rejects.toThrow('active flows');
 });
+
+it.each(['conversation', 'room policy and retired member'] as const)(
+  'preserves a custom provider in a %s across connector disconnect and database reopen',
+  async (kind) => {
+    const f = await fixture();
+    const standard = path.join(f.root, 'builtins-only');
+    await mkdir(path.join(standard, 'shared'), { recursive: true });
+    await writeFile(
+      path.join(standard, 'shared/controller-journal-formats.json'),
+      JSON.stringify({ studioTeams: 1, hostFlows: 1 })
+    );
+    const checkStandard = () => assertOperationJournalCompatibility(f.root, standard);
+    const provider = 'example.org/research';
+    // An expired connector with no saved conversation leaves earlier controllers usable.
+    new StudioLedger(f.db, clock).connect(scope, provider, '[]');
+    await checkStandard();
+    const studio = new StudioLedger(f.db);
+    const link = studio.connect(scope, provider, '[]');
+    await expect(checkStandard()).rejects.toThrow('custom Studio providers');
+    studio.disconnect(link);
+    await checkStandard();
+    const room = randomUUID();
+    if (kind === 'conversation') {
+      const connected = studio.connect(scope, provider, '[]');
+      complete(studio, connected, send(studio, room, 'report', provider), 'provider-session');
+      studio.disconnect(connected);
+    } else {
+      const builtin = studio.connect(scope, 'codex', '[]');
+      complete(studio, builtin, send(studio, room, 'plan'), 'lead-session');
+      const extended: StudioTeamPolicy = { ...policy, providers: [...policy.providers, provider] };
+      studio.teams.configure(scope, room, extended, null);
+      await expect(checkStandard()).rejects.toThrow('custom Studio providers');
+      studio.teams.configure(scope, room, policy, extended);
+      await checkStandard();
+      studio.teams.configure(scope, room, extended, policy);
+      const member = randomUUID();
+      studio.teams.invite(room, member, 'Analyst', provider, assignment());
+      studio.teams.retire(room, member);
+      studio.teams.configure(scope, room, policy, extended);
+    }
+    f.db.close();
+    await expect(checkStandard()).rejects.toThrow('custom Studio providers');
+    await assertOperationJournalCompatibility(f.root, f.compatible);
+  }
+);

@@ -10,10 +10,19 @@ type Database = ReturnType<typeof openSqliteDatabase>;
 /** Only presence and cardinality are needed. Prompts, provider handles and human session grants stay in SQLite. */
 export function controllerJournalNeeds(db: Database) {
   const table = db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?");
-  const has = (sql: string) => db.prepare(sql).get() !== undefined;
+  const has = (sql: string, ...args: (number | string)[]) => db.prepare(sql).get(...args) !== undefined;
   return db.transaction(() => {
     const teams = !!table.get('studio_peers');
     return {
+      customStudioProviders:
+        (!!table.get('studio_connections') &&
+          has("SELECT 1 FROM studio_connections WHERE expires>? AND instr(provider,'/')>0 LIMIT 1", Date.now())) ||
+        (!!table.get('studio_threads') && has("SELECT 1 FROM studio_threads WHERE instr(provider,'/')>0 LIMIT 1")) ||
+        (teams &&
+          (has("SELECT 1 FROM studio_peers WHERE instr(provider,'/')>0 LIMIT 1") ||
+            has(
+              "SELECT 1 FROM studio_threads AS t, json_each(t.policy,'$.providers') AS p WHERE t.policy IS NOT NULL AND instr(p.value,'/')>0 LIMIT 1"
+            ))),
       teamRooms: teams && has('SELECT 1 FROM studio_threads WHERE policy IS NOT NULL LIMIT 1'),
       concurrentTurns:
         teams &&
@@ -54,6 +63,10 @@ export async function assertControllerJournals(needs: Needs, directory: string) 
   if ((needs.teamRooms || needs.concurrentTurns) && target?.studioTeams !== formats.studioTeams)
     throw Error(
       'The selected runtime cannot preserve Studio team conversations or concurrent turns. Select a team-compatible runtime.'
+    );
+  if (needs.customStudioProviders && target?.studioProviders !== formats.studioProviders)
+    throw Error(
+      'The selected runtime cannot preserve custom Studio providers. Select a runtime that supports registered connector IDs.'
     );
   if ((needs.activeFlows || needs.pendingDeliveries) && target?.hostFlows !== formats.hostFlows)
     throw Error(

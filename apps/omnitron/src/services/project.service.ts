@@ -221,6 +221,7 @@ interface StackRuntimeState {
  * meaning «last deployment a human typed».
  */
 export type StackStartSource = 'operator' | 'boot' | 'auto-resume' | 'unknown';
+type AdmitBackupWindow = () => NonNullable<StackStopProgress['backupWindow']>;
 
 /**
  * What a stack start has learned about itself so far — what its audit row
@@ -2418,7 +2419,7 @@ export class ProjectService extends EventEmitter {
   }
 
   @RecoveryMutation()
-  async stopStack(projectName: string, stackName: string, review?: string, keepInfrastructure = false): Promise<IStackInfo> {
+  async stopStack(projectName: string, stackName: string, review?: string, keepInfrastructure = false, admitMaintenance?: AdmitBackupWindow): Promise<IStackInfo> {
     this.migrations.assertIdle({ project: projectName, stack: stackName });
     await this.requireNoColdBatch();
     this.migrations.assertIdle({ project: projectName, stack: stackName });
@@ -2431,12 +2432,13 @@ export class ProjectService extends EventEmitter {
     if (pending && (review !== undefined || pending.keepInfrastructure !== keepInfrastructure)) throw new Error('A stop is already running; inspect its progress');
     if (pending) return pending.promise;
     if (review !== undefined && (typeof review !== 'string' || !/^[a-f0-9]{64}$/.test(review))) throw new Error('Invalid stack stop review');
-    const operation = this.stopStackOnce(projectName, stackName, review, keepInfrastructure).finally(() => this.stopsInFlight.delete(key));
+    if (admitMaintenance && (!keepInfrastructure || !review)) throw Error('Maintenance requires an exact application-only stop review');
+    const operation = this.stopStackOnce(projectName, stackName, review, keepInfrastructure, admitMaintenance).finally(() => this.stopsInFlight.delete(key));
     this.stopsInFlight.set(key, { keepInfrastructure, promise: operation });
     return operation;
   }
 
-  private async stopStackOnce(projectName: string, stackName: string, review: string | undefined, keepInfrastructure: boolean): Promise<IStackInfo> {
+  private async stopStackOnce(projectName: string, stackName: string, review: string | undefined, keepInfrastructure: boolean, admitMaintenance?: AdmitBackupWindow): Promise<IStackInfo> {
     const key = `${projectName}/${stackName}`;
     const config = await this.loadProjectConfig(projectName);
     const stackConfig = this.stackStates.get(key)?.config ?? this.resolveStacks(config, projectName)[stackName];
@@ -2509,6 +2511,10 @@ export class ProjectService extends EventEmitter {
       }
       // Losing this durable write refuses the operation before any effect.
       if (cluster) await cluster.election!.confirmStopAuthority();
+      if (admitMaintenance) {
+        if (!localPlan || prepared.length || cluster) throw Error('A local runtime update window requires a host-local application stack');
+        progress.backupWindow = admitMaintenance();
+      }
       this.updateEnabledStacks(projectName, stackName, false);
       if (keepInfrastructure) this.setInfrastructurePolicy(projectName, stackName, null);
       progress.phase = 'stopping'; progress.intentCommitted = true;

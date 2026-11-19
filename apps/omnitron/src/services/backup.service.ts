@@ -389,6 +389,15 @@ export class BackupService {
 
   activeOperationCount(): number { return this.activeOperations; }
 
+  ownsHandoff(owner: string): boolean { return this.quiescing && this.handoffOwner === owner; }
+
+  /** Transfer an already drained admission. There is no interval in which a new backup can start. */
+  transferHandoff(previous: string, next: string): void {
+    if (!this.ownsHandoff(previous) || this.activeOperations || this.listOperations().length)
+      throw Error('The reviewed backup window no longer owns an idle admission');
+    this.handoffOwner = next;
+  }
+
   /** Read-only cancellation authority for a plan; it grants no recovery certificate. */
   reviewHandoffOperations(): OperationReceipt[] {
     const pending = this.listOperations();
@@ -1247,7 +1256,8 @@ export class BackupService {
     try {
       const held = await this.runtimeAdmission();
       if (held) admission = { status: 'paused', reason: `Runtime update ${held.digest} is ${held.phase}`, runtimeUpdate: held };
-      else if (this.quiescing) admission = { status: 'paused', reason: 'Backend handoff has paused new backup operations' };
+      else if (this.quiescing) admission = { status: 'paused', reason: this.handoffOwner?.startsWith('application-stop:')
+        ? 'A reviewed application stop holds the foreground backup window' : 'Backend handoff has paused new backup operations' };
     } catch (error) { admission = { status: 'unconfirmed', reason: reasonOf(error) }; }
     const specs = await this.listSchedules();
     const passes = this.lastPasses();

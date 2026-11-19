@@ -248,6 +248,7 @@ export interface InstalledStackResumeResult {
 }
 
 export interface StackStopProgress {
+  backupWindow?: { id: string; target: string; expiresAt: string };
   keepInfrastructure?: true;
   intentCommitted?: boolean;
   supersededAt?: string;

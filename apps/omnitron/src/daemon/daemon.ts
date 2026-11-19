@@ -144,6 +144,7 @@ import type { BackendRuntimeStatus } from '../shared/dto/backend.js';
 import { BackendRpcService } from './backend.rpc-service.js';
 import { startBackendControl } from './backend-control.js';
 import { withControlDeadline } from './private-control-client.js';
+import { RuntimeBackupWindow, type BackupWindowRequest } from './runtime-backup-window.js';
 import { Errors } from '@omnitron-dev/titan/errors';
 
 /**
@@ -296,6 +297,7 @@ export class OmnitronDaemon {
   private filesRpcService: import('../files/files.rpc-service.js').FilesRpcService | null = null;
   private pipelineService: import('../services/pipeline.service.js').PipelineService | null = null;
   private flowRuntime: import('../flows/flow-runtime.js').FlowRuntime | null = null;
+  private backupWindow: RuntimeBackupWindow | null = null;
 
   /**
    * The live record of release builds this daemon is running.
@@ -508,6 +510,7 @@ export class OmnitronDaemon {
         const reviewed = await this.reviewRuntimeRestart(request.stacks);
         if (restartConfigurationDigest(reviewed.configuration) !== request.configurationSha256)
           throw Error('Runtime restart configuration changed before cancellation');
+        await this.backupWindow?.transfer(request.planDigest);
         await this.backupService?.prepareHandoff(request.backups, owner);
         if (!this.recoveryMonitor) throw Error('Recovery certification is unavailable');
         await this.recoveryMonitor.certify();
@@ -516,7 +519,7 @@ export class OmnitronDaemon {
           throw Error('Runtime restart configuration changed during cancellation');
         return configuration;
       } catch (error) {
-        try { await this.backupService?.resumeAfterHandoff(owner); }
+        try { if (this.backupService?.ownsHandoff(owner)) await this.backupService.resumeAfterHandoff(owner); }
         catch (recoveryError) {
           throw new AggregateError([error, recoveryError], 'Runtime restart admission failed and backup scheduling could not resume', { cause: recoveryError });
         }
@@ -537,6 +540,21 @@ export class OmnitronDaemon {
     await admission.ready.catch(() => undefined);
     await this.backupService?.resumeAfterHandoff(`runtime-update:${planDigest}`);
     if (this.runtimeRestartAdmission === admission) this.runtimeRestartAdmission = null;
+  }
+
+  maintenanceBackupWindow(): RuntimeBackupWindow {
+    if (!this.backupWindow) throw Error('The local backup service is unavailable');
+    return this.backupWindow;
+  }
+
+  async acquireBackupWindow(request: BackupWindowRequest): Promise<void> {
+    const runtimeHost: typeof import('./runtime-update-host.js') = await import('./runtime-update-host.js');
+    runtimeHost.assertLocalUpdatePlatform();
+    const { readManagedRuntime } = await import('./managed-runtime.js');
+    runtimeHost.assertLocalServiceTargets(await readManagedRuntime(OMNITRON_HOME));
+    if (this.isShuttingDown || this.preparingBackend || this.handingOffBackend || this.runtimeRestartAdmission)
+      throw Error('A controller transition already owns admission');
+    await this.maintenanceBackupWindow().acquire(request);
   }
 
   private async drainControllerWriters(): Promise<void> {
@@ -560,7 +578,7 @@ export class OmnitronDaemon {
       throw Error('No current rollback intent owns this serving controller');
     const caller = readProcessLifetime(callerPid);
     const gate = this.app?.netron?.inbound, execution = this.execution;
-    if (caller.state !== 'alive' || !gate || !execution || this.isShuttingDown || this.preparingBackend || this.handingOffBackend || this.runtimeRestartAdmission)
+    if (caller.state !== 'alive' || !gate || !execution || this.isShuttingDown || this.preparingBackend || this.handingOffBackend || this.runtimeRestartAdmission || this.backupWindow?.active)
       throw Error('The serving controller cannot hold this rollback');
     this.preparingBackend = true;
     let observing = false;
@@ -628,7 +646,7 @@ export class OmnitronDaemon {
     const { sourceControllerJournalCheck } = await import('./controller-journal-compatibility.js');
     const checkJournals = sourceControllerJournalCheck(OMNITRON_HOME, admission?.targetRuntimeHash);
     await checkJournals();
-    if (this.runtimeRestartAdmission) throw new Error('Runtime restart admission is held by another transition');
+    if (this.runtimeRestartAdmission || this.backupWindow?.active) throw new Error('Runtime restart admission is held by another transition');
     if (this.handingOffBackend || this.preparingBackend) throw new Error('A backend handoff is already in progress');
     const assertIdle = (allowBackupCancellation = false) => {
       const blockers = this.backendRuntimeStatus().blockers;
@@ -1309,6 +1327,7 @@ export class OmnitronDaemon {
     const backupService = await container.resolveAsync<BackupService>(BACKUP_SERVICE_TOKEN);
     backupService.configure(this.dc.backups);
     this.backupService = backupService;
+    this.backupWindow = new RuntimeBackupWindow(OMNITRON_HOME, backupService);
     const backupRpcService = new BackupRpc(backupService, isSlave ? null : await container.resolveAsync<AuthService>(AUTH_SERVICE_TOKEN));
     // Observe native update admission before exposing manual operations or
     // restoring schedules. A replacement retains an unfinished update's hold.
@@ -1379,7 +1398,7 @@ export class OmnitronDaemon {
       }
       projectService.setClusterStop(new StopRecipient(audience, leases, stateStore), this.leaderElection ?? undefined);
     }
-    const projectRpcService = new ProjectRpcService(projectService, audit);
+    const projectRpcService = new ProjectRpcService(projectService, audit, this.backupWindow);
     projectService.setHostedInfrastructure(() => this.infraService ?? undefined, scope => infraRpcService.drainStackProvisioning(scope));
     infraRpcService.setStackOperationGate(scope => projectService.assertInfrastructureMutable(scope));
     await this.app.netron.peer.exposeService(infraRpcService);

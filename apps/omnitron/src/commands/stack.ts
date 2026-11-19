@@ -13,6 +13,10 @@ import { emitJson, emitError, emitStep, emitSuccess, emitInfo, isJsonMode } from
 import { shellEscape } from '../shared/shell-escape.js';
 import { syncFinding, syncWords, syncSeverity } from '../shared/sync-reading.js';
 import { readDeploymentProgress, readStackStart } from '../shared/release-reading.js';
+import { randomUUID } from 'node:crypto';
+import type { BackendControlService } from '../daemon/backend-control.js';
+import type { BackendRpcService } from '../daemon/backend.rpc-service.js';
+import { privateControlClient } from '../daemon/private-control-client.js';
 
 // =============================================================================
 // Helpers
@@ -449,10 +453,18 @@ export async function stackResumeCommand(project: string, stack: string): Promis
   }
 }
 
-export async function stackStopCommand(projectName: string, stackName: string, options: { dryRun?: boolean; review?: string; keepInfrastructure?: boolean } = {}): Promise<void> {
+export async function stackStopCommand(projectName: string, stackName: string, options: {
+  dryRun?: boolean; review?: string; keepInfrastructure?: boolean; forRuntime?: string; backupWindowMinutes?: string;
+} = {}): Promise<void> {
   const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
   try {
     const svc = await client.service<IProjectRpcService>('OmnitronProject');
+    const target = options.forRuntime;
+    const minutes = Number(options.backupWindowMinutes ?? '15');
+    if (options.backupWindowMinutes !== undefined && target === undefined) throw Error('--backup-window-minutes requires --for-runtime');
+    if (target !== undefined && (!/^[a-f0-9]{64}$/.test(target) || !options.keepInfrastructure ||
+        !Number.isSafeInteger(minutes) || minutes < 1 || minutes > 60 || (!options.dryRun && !options.review)))
+      throw Error('--for-runtime requires an exact artifact SHA-256, --keep-infrastructure, a reviewed stop and a 1–60 minute window');
     if (options.dryRun && options.review !== undefined) throw new Error('Use --review when executing a previously inspected stop');
     const scope = { project: projectName, stack: stackName, ...(options.keepInfrastructure && { keepInfrastructure: true }) };
     const report = options.dryRun || options.keepInfrastructure ? await svc.reviewStackStop(scope) : null;
@@ -460,10 +472,11 @@ export async function stackStopCommand(projectName: string, stackName: string, o
       throw new Error('The controller did not confirm infrastructure preservation; no stop was requested. Update the controller before using --keep-infrastructure.');
     if (options.dryRun && report) {
       if (!report.digest) process.exitCode = 1;
-      if (emitJson(report)) return;
-      for (const target of report.targets) {
-        emitInfo(target.reason ? `${target.node} · ${target.reason}` :
-          `${target.node} · ${target.runtime ? `${target.runtime.project}/${target.runtime.stack}` : 'infrastructure only'} · applications: ${target.applications?.join(', ') || 'none'} · containers ${options.keepInfrastructure ? 'kept' : 'removed'}: ${target.containers?.join(', ') || 'none'}`);
+      if (emitJson(target ? { ...report, backupWindow: { target, minutes } } : report)) return;
+      if (target) emitInfo(`Host backups will be held for runtime ${target} for up to ${minutes} minutes after admission`);
+      for (const item of report.targets) {
+        emitInfo(item.reason ? `${item.node} · ${item.reason}` :
+          `${item.node} · ${item.runtime ? `${item.runtime.project}/${item.runtime.stack}` : 'infrastructure only'} · applications: ${item.applications?.join(', ') || 'none'} · containers ${options.keepInfrastructure ? 'kept' : 'removed'}: ${item.containers?.join(', ') || 'none'}`);
       }
       if (report.digest) emitInfo(`Review digest: ${report.digest}`);
       return;
@@ -472,11 +485,35 @@ export async function stackStopCommand(projectName: string, stackName: string, o
       throw new Error('The current application-only stop could not be confirmed against the reviewed footprint; no stop was requested. Inspect the stack again.');
     const review = options.review ?? report?.digest;
     emitStep(`Stopping ${options.keepInfrastructure ? 'applications in' : 'stack'} ${projectName}/${stackName}...`);
-    const result = await svc.stopStack({ ...scope, ...(review !== undefined && review !== null && { review }) });
+    let transferred: { id: string; target: string; digest: string } | undefined;
+    const stopForRuntime = async () => {
+      const { socket } = await (await client.service<BackendRpcService>('OmnitronBackend')).controlAddress();
+      const control = await privateControlClient<BackendControlService>(socket, 'OmnitronBackendControl', (minutes + 1) * 60_000);
+      const id = randomUUID();
+      let requested = false;
+      try {
+        const status = await control.service.status();
+        if (status.applicationStopBackupWindowProtocol !== 1) throw Error('Update the serving backend to support the reviewed backup window before stopping applications');
+        requested = true;
+        await control.service.backupWindowAcquire({ id, callerPid: process.pid, project: projectName, stack: stackName, review: options.review!, target: target!, minutes });
+        const stopped = await svc.stopStackForRuntime({ project: projectName, stack: stackName, review: options.review!, backupWindowId: id });
+        if (stopped.status !== 'stopped' || stopped.stopOperation?.phase !== 'stopped' || !stopped.stopOperation.keepInfrastructure ||
+            stopped.stopOperation.backupWindow?.id !== id || stopped.stopOperation.backupWindow.target !== target)
+          throw Error('The serving controller did not confirm the reviewed application stop');
+        emitStep('Applications stopped. Keep this command running while preparing and applying the reviewed native update in another terminal.');
+        const window = await control.service.backupWindowWait({ id });
+        if (window.state !== 'transferred') throw Error(`Applications stopped. The backup window ended (${window.state}) before native admission. Inspect stack and update status.`);
+        transferred = { id, target: target!, digest: window.digest };
+        return stopped;
+      } finally {
+        try { if (requested && !transferred) await control.service.backupWindowRelease({ id }); } finally { await control.close(); }
+      }
+    };
+    const result = target ? await stopForRuntime() : await svc.stopStack({ ...scope, ...(review !== undefined && review !== null && { review }) });
     if (result.status !== 'stopped' || result.stopOperation?.phase !== 'stopped') throw new Error('Daemon did not confirm the complete stack stop');
     if (options.keepInfrastructure && result.stopOperation.keepInfrastructure !== true)
       throw new Error('Daemon did not confirm infrastructure preservation. Inspect the stop operation before retrying.');
-    if (emitJson({ project: projectName, stack: stackName, action: 'stopped', operation: result.stopOperation })) return;
+    if (emitJson({ project: projectName, stack: stackName, action: 'stopped', operation: result.stopOperation, ...(transferred && { backupWindow: transferred }) })) return;
     for (const node of result.stopOperation.nodes) emitInfo(`${node.node}: ${node.outcome}${node.authority ? ` · ${node.authority.clusterId} epoch ${node.authority.epoch} (${node.authority.nodeId})` : ''}${node.observedAt ? ` at ${node.observedAt}` : ''}`);
     emitSuccess(options.keepInfrastructure ? `Applications in ${projectName}/${stackName} stopped; infrastructure retained` : `Stack ${projectName}/${stackName} stopped`);
   } catch (err) {

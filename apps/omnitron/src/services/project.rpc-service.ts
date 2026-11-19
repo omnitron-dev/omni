@@ -46,6 +46,7 @@ export class ProjectRpcService {
      * dependency of the control plane.
      */
     private readonly audit?: import('./audit.service.js').AuditService | undefined,
+    private readonly backupWindow?: Pick<import('../daemon/runtime-backup-window.js').RuntimeBackupWindow, 'admitStop'>,
   ) {}
 
   // ===========================================================================
@@ -406,12 +407,27 @@ export class ProjectRpcService {
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async stopStack(data: { project: string; stack: string; review?: string; keepInfrastructure?: boolean }): Promise<IStackInfo> {
+    return this.stopReviewedStack(data);
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async stopStackForRuntime(data: { project: string; stack: string; review: string; backupWindowId: string }): Promise<IStackInfo> {
+    if (typeof data.backupWindowId !== 'string' || !data.backupWindowId || !data.review) throw Errors.badRequest('A reviewed local backup window is required');
+    return this.stopReviewedStack({ ...data, keepInfrastructure: true }, data.backupWindowId);
+  }
+
+  private async stopReviewedStack(data: { project: string; stack: string; review?: string; keepInfrastructure?: boolean }, backupWindowId?: string): Promise<IStackInfo> {
     if (data.keepInfrastructure !== undefined && typeof data.keepInfrastructure !== 'boolean')
       throw Errors.badRequest('keepInfrastructure must be a boolean');
     const logicalName = data.stack;
+    const logicalProject = data.project;
     data = await this.projectService.resolveProjectStack(data);
     try {
-      const info = await this.projectService.stopStack(data.project, data.stack, data.review, data.keepInfrastructure === true);
+      const admit = backupWindowId === undefined ? undefined : () => {
+        if (!this.backupWindow) throw Error('The controller cannot confirm the application stop backup window');
+        return this.backupWindow.admitStop(backupWindowId, logicalProject, logicalName, data.review);
+      };
+      const info = await this.projectService.stopStack(data.project, data.stack, data.review, data.keepInfrastructure === true, admit);
       await this.audit?.record({
         action: 'stack.stop', resourceType: 'stack', resourceId: `${data.project}/${data.stack}`, outcome: 'ok',
         details: { type: info.type, operationId: info.stopOperation?.id, nodes: info.stopOperation?.nodes,

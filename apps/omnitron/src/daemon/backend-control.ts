@@ -36,6 +36,7 @@ export class BackendControlService {
       runtimeRestartProtocol: 1,
       runtimeRestartAdmissionProtocol: 1,
       runtimeRollbackAdmissionProtocol: 1,
+      applicationStopBackupWindowProtocol: 1,
       backupHandoffProtocol: 1,
       backendHandoffReviewProtocol: 1,
       daemonSocket: expandPath(this.daemon.daemonConfig.socketPath),
@@ -78,6 +79,18 @@ export class BackendControlService {
   async runtimeRollbackRelease(data: { digest: string; attempt: string }): Promise<void> {
     this.daemon.releaseRuntimeRollback(data.digest, data.attempt);
   }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async backupWindowAcquire(data: import('./runtime-backup-window.js').BackupWindowRequest): Promise<void> {
+    this.assertRestartReview([]);
+    await this.daemon.acquireBackupWindow(data);
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async backupWindowWait(data: { id: string }) { return this.daemon.maintenanceBackupWindow().wait(data.id); }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async backupWindowRelease(data: { id: string }): Promise<void> { await this.daemon.maintenanceBackupWindow().release(data.id); }
 
   private assertRestartReview(stacks: unknown): void {
     if (this.preparing || this.prepared || this.retired || !Array.isArray(stacks) || stacks.length > 1000)

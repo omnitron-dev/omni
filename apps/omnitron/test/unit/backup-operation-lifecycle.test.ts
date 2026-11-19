@@ -1,4 +1,13 @@
 import fs from 'node:fs';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
+import { runtimeArtifactDigest } from '../../src/shared/runtime-artifact.js';
+import { RuntimeBackupWindow, type BackupWindowRequest } from '../../src/daemon/runtime-backup-window.js';
+import * as privateControl from '../../src/daemon/private-control-client.js';
+import { stackStopCommand } from '../../src/commands/stack.js';
+import * as managedRuntime from '../../src/daemon/managed-runtime.js';
+import * as runtimeHost from '../../src/daemon/runtime-update-host.js';
+import { OWNER_LAUNCHD_LABEL, LAUNCHD_LABEL } from '../../src/commands/service-units.js';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
@@ -116,6 +125,182 @@ async function runtimeReceipt(phase: RuntimeUpdatePhase, artifact = 'b'.repeat(6
   await writePrivateRecord(path.join(fixture.home, 'runtime/local-updates/current.json'), receipt);
   return receipt;
 }
+
+async function maintenanceTarget() {
+  const stage = path.join(fixture.home, 'unbound-runtime'), releases = path.join(fixture.home, 'runtime/releases');
+  fs.mkdirSync(path.join(stage, 'packages/0/dist/cli'), { recursive: true });
+  fs.mkdirSync(path.join(stage, 'packages/0/webapp/dist'), { recursive: true });
+  for (const output of ['dist', 'webapp/dist'])
+    fs.writeFileSync(path.join(stage, 'packages/0', output, 'BUILD.json'), JSON.stringify({ commit: 'a'.repeat(40), dirty: false, builtAt: new Date().toISOString() }));
+  fs.writeFileSync(path.join(stage, 'node'), 'fixture', { mode: 0o700 });
+  fs.writeFileSync(path.join(stage, 'packages/0/dist/cli/omnitron.js'), '// sealed fixture');
+  const target = await runtimeArtifactDigest(stage);
+  fs.writeFileSync(path.join(stage, 'RUNTIME.json'), JSON.stringify({ protocol: 1, sha256: target, platform: process.platform, arch: process.arch, nodeVersion: process.version, packages: 1 }));
+  fs.mkdirSync(releases, { recursive: true }); fs.renameSync(stage, path.join(releases, target));
+  return { id: randomUUID(), review: 'e'.repeat(64), target, project: 'one', stack: 'dev', callerPid: process.ppid, minutes: 1 };
+}
+
+describe('foreground backup window before a reviewed application stop', () => {
+  it('releases a pending acquisition during artifact verification without pausing schedules later', async () => {
+    const request = await maintenanceTarget(), window = new RuntimeBackupWindow(fixture.home, backups);
+    const checking = Promise.withResolvers<void>(), resume = Promise.withResolvers<void>();
+    const verify = runtimeHost.verifyRuntimeUpdateTarget;
+    vi.spyOn(runtimeHost, 'verifyRuntimeUpdateTarget').mockImplementationOnce(async (...args) => {
+      checking.resolve(); await resume.promise; return verify(...args);
+    });
+    const drain = vi.spyOn(backups, 'prepareHandoff');
+    const acquire = expect(window.acquire(request)).rejects.toThrow('live local caller');
+    await checking.promise; await window.release(request.id); resume.resolve(); await acquire;
+    expect(drain).not.toHaveBeenCalled();
+    expect(window.active).toBe(false);
+  });
+
+  it('preserves the application on an older local controller that cannot hold backups', async () => {
+    const stop = vi.fn(), release = vi.fn(), acquire = vi.fn();
+    const previous = process.exitCode;
+    vi.spyOn(daemonClient, 'createDaemonClient').mockReturnValue({ service: async (name: string) =>
+      name === 'OmnitronBackend' ? { controlAddress: async () => ({ socket: 'local-fixture' }) } : {
+        reviewStackStop: async () => ({ digest: 'a'.repeat(64), keepInfrastructure: true }), stopStack: stop, stopStackForRuntime: stop,
+      }, disconnect: vi.fn() } as never);
+    vi.spyOn(privateControl, 'privateControlClient').mockResolvedValue({
+      service: { status: async () => ({}), backupWindowAcquire: acquire, backupWindowRelease: release }, close: vi.fn(),
+    } as never);
+    try {
+      await stackStopCommand('one', 'dev', { keepInfrastructure: true, review: 'a'.repeat(64), forRuntime: 'b'.repeat(64) });
+      expect(process.exitCode).toBe(1);
+      expect(stop).not.toHaveBeenCalled(); expect(acquire).not.toHaveBeenCalled(); expect(release).not.toHaveBeenCalled();
+    } finally { process.exitCode = previous; }
+  });
+
+  it('moves the same admission from the CLI stop into the durable native update while a scheduled tick is due', async () => {
+    const request = await maintenanceTarget();
+    const window = new RuntimeBackupWindow(fixture.home, backups);
+    if (process.platform !== 'darwin') vi.spyOn(runtimeHost, 'assertLocalUpdatePlatform').mockImplementation(() => {});
+    vi.spyOn(managedRuntime, 'readManagedRuntime').mockResolvedValue({ scope: 'user', owner: { label: OWNER_LAUNCHD_LABEL }, backend: { label: LAUNCHD_LABEL } } as never);
+    const native = Object.assign(Object.create(OmnitronDaemon.prototype), {
+      backupWindow: window, backupService: backups, watchConfig: { apps: [] },
+      execution: { state: () => ({ phase: 'active' }), controlledOwnerSnapshot: async () => ({
+        status: { owner: { id: 'fixture-owner' }, controller: { epoch: 1 } }, inventoryDigest: 'e'.repeat(64) }) },
+      app: { container: { resolveAsync: async () => ({ recoveryRegistryDigest: () => 'd'.repeat(64), captureRuntimeRestart: async () => ({ projects: [], stacks: [] }) }) } },
+      recoveryMonitor: { status: () => ({ status: 'ready' }), certify: vi.fn() },
+    }) as OmnitronDaemon;
+    const stopAdmitted = Promise.withResolvers<string>();
+    const project = {
+      reviewStackStop: vi.fn(async () => ({ digest: request.review, keepInfrastructure: true, targets: [{ node: 'local' }] })),
+      stopStack: vi.fn(),
+      stopStackForRuntime: vi.fn(async (data: { project: string; stack: string; review: string; backupWindowId: string }) => {
+        const claim = window.admitStop(data.backupWindowId, data.project, data.stack, data.review);
+        stopAdmitted.resolve(data.backupWindowId);
+        return { status: 'stopped', stopOperation: { phase: 'stopped', keepInfrastructure: true, backupWindow: claim, nodes: [] } };
+      }),
+    };
+    const control = {
+      service: {
+        status: async () => ({ applicationStopBackupWindowProtocol: 1 }),
+        // CLI and daemon share this test worker; use the actual separate vitest parent lifetime.
+        backupWindowAcquire: (input: BackupWindowRequest) => native.acquireBackupWindow({ ...input, callerPid: process.ppid }),
+        backupWindowWait: ({ id }: { id: string }) => window.wait(id),
+        backupWindowRelease: ({ id }: { id: string }) => window.release(id),
+      }, close: vi.fn(),
+    };
+    vi.spyOn(privateControl, 'privateControlClient').mockResolvedValue(control as never);
+    vi.spyOn(daemonClient, 'createDaemonClient').mockReturnValue({
+      service: async (name: string) => name === 'OmnitronBackend' ? { controlAddress: async () => ({ socket: 'fixture-private-control' }) } : project,
+      disconnect: vi.fn(),
+    } as never);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    store.kvSetSync('backup:schedules', { 'one/dev/ledger': 'hourly' });
+    await backups.restoreSchedules();
+    expect((await backups.getStatus()).schedules[0]!.armed).toBe(true);
+    const command = stackStopCommand(request.project, request.stack, { keepInfrastructure: true, review: request.review, forRuntime: request.target, backupWindowMinutes: '3' });
+    const id = await stopAdmitted.promise;
+    const cancel = vi.spyOn(backups, 'cancelOperation');
+    try {
+      expect((await backups.getStatus()).schedules[0]!.armed).toBe(false);
+      await vi.advanceTimersByTimeAsync(60_001);
+      vi.useRealTimers();
+      await expect(backups.createBackup('one/dev/ledger')).rejects.toThrow('paused');
+      expect(executor.execute).not.toHaveBeenCalled();
+      expect(() => window.admitStop(id, request.project, request.stack, request.review)).toThrow('unavailable');
+      const base = await runtimeReceipt('draining');
+      const plan = { ...base.plan, target: { ...base.plan.target, artifact: request.target }, before: { ...base.plan.before, backendPid: process.pid },
+        excluded: [{ project: request.project, stack: request.stack, reason: 'disabled' as const }] };
+      const digest = runtimeUpdate.runtimeUpdatePlanDigest(plan);
+      await expect(window.transfer(digest)).rejects.toThrow('does not match');
+      await writePrivateRecord(path.join(fixture.home, 'runtime/local-updates/current.json'), { ...base, plan, digest });
+      const review = await native.reviewRuntimeRestart([]);
+      await native.prepareRuntimeRestart({ stacks: [], backups: [], planDigest: digest, configurationSha256: restartConfigurationDigest(review.configuration) });
+      expect(await window.wait(id)).toEqual({ state: 'transferred', digest });
+      expect(backups.ownsHandoff('runtime-update:' + digest)).toBe(true);
+      await command;
+      expect(project.stopStack).not.toHaveBeenCalled();
+      expect(project.stopStackForRuntime).toHaveBeenCalledOnce();
+      expect(cancel).not.toHaveBeenCalled();
+      await writePrivateRecord(path.join(fixture.home, 'runtime/local-updates/current.json'), { ...base, plan, digest, phase: 'accepted' });
+      await native.releaseRuntimeRestart(digest);
+      expect(backups.ownsHandoff('runtime-update:' + digest)).toBe(false);
+    } finally { vi.useRealTimers(); await window.release(id); await command; }
+  });
+
+  it('refuses a newly scheduled database backup before any stop and preserves its original receipt', async () => {
+    const request = await maintenanceTarget(), window = new RuntimeBackupWindow(fixture.home, backups);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    try {
+      store.kvSetSync('backup:schedules', { 'one/dev/ledger': 'hourly' });
+      mode = 'wait';
+      await backups.restoreSchedules();
+      await vi.advanceTimersByTimeAsync(60_001);
+    } finally { vi.useRealTimers(); }
+    await vi.waitFor(() => expect(submitted).toHaveLength(1));
+    const existing = backups.listOperations();
+    expect(existing).toHaveLength(1);
+    const cancel = vi.spyOn(backups, 'cancelOperation');
+    await expect(window.acquire(request)).rejects.toThrow('changed after review');
+    const stop = vi.fn(), ordinary = vi.fn(), previousExit = process.exitCode;
+    vi.spyOn(daemonClient, 'createDaemonClient').mockReturnValue({ service: async (name: string) =>
+      name === 'OmnitronBackend' ? { controlAddress: async () => ({ socket: 'local-fixture' }) } : {
+        reviewStackStop: async () => ({ digest: request.review, keepInfrastructure: true }),
+        stopStackForRuntime: stop, stopStack: ordinary,
+      }, disconnect: vi.fn() } as never);
+    vi.spyOn(privateControl, 'privateControlClient').mockResolvedValue({ service: {
+      status: async () => ({ applicationStopBackupWindowProtocol: 1 }),
+      backupWindowAcquire: (input: BackupWindowRequest) => window.acquire({ ...input, callerPid: process.ppid }),
+      backupWindowRelease: ({ id }: { id: string }) => window.release(id),
+    }, close: vi.fn() } as never);
+    try {
+      await stackStopCommand(request.project, request.stack, { keepInfrastructure: true, review: request.review, forRuntime: request.target });
+      expect(process.exitCode).toBe(1);
+      expect(stop).not.toHaveBeenCalled();
+      expect(ordinary).not.toHaveBeenCalled();
+    } finally { process.exitCode = previousExit; }
+    expect(window.active).toBe(false);
+    expect(backups.listOperations()).toEqual(existing);
+    expect(cancel).not.toHaveBeenCalled();
+    expect(() => window.admitStop(request.id, request.project, request.stack, request.review)).toThrow('unavailable');
+  });
+
+  it.each(['owner-exited', 'expired'] as const)('rearms the original schedules when the foreground holder is %s', async reason => {
+    const request = await maintenanceTarget(), window = new RuntimeBackupWindow(fixture.home, backups);
+    const child = spawn(process.execPath, ['-e', 'setTimeout(()=>{},30000)'], { stdio: 'ignore' });
+    await once(child, 'spawn');
+    store.kvSetSync('backup:schedules', { 'one/dev/ledger': 'hourly' });
+    await backups.restoreSchedules();
+    try {
+      if (reason === 'expired') vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
+      await window.acquire({ ...request, callerPid: child.pid! });
+      expect((await backups.getStatus()).schedules[0]!.armed).toBe(false);
+      expect(() => window.admitStop(request.id, 'other', request.stack, request.review)).toThrow();
+      if (reason === 'expired') await vi.advanceTimersByTimeAsync(61_000);
+      else { const exited = once(child, 'exit'); child.kill(); await exited; }
+      expect(await window.wait(request.id)).toEqual({ state: reason });
+      expect((await backups.getStatus()).schedules[0]!.armed).toBe(true);
+      expect(await backups.listSchedules()).toEqual({ 'one/dev/ledger': 'hourly' });
+    } finally {
+      vi.useRealTimers(); await window.release(request.id);
+      if (child.exitCode === null && child.signalCode === null) child.kill();
+    }
+  }, 7000);
+});
 
 describe('backup admission follows the native runtime receipt', () => {
   it.each(['draining', 'stopping', 'starting', 'verifying', 'failed', 'stopping-candidate', 'restoring', 'recovery-required'] as const)(

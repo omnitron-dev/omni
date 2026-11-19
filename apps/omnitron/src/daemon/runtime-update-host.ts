@@ -177,7 +177,7 @@ export function assertLocalServiceTargets(config: ManagedRuntime | null): assert
     throw Error('Local service commands address only the standard Omnitron user services');
 }
 
-function assertLocalUpdatePlatform(): void {
+export function assertLocalUpdatePlatform(): void {
   if (process.platform !== 'darwin')
     throw Error('Local runtime updates require macOS user services. For a managed Linux server, run omnitron fleet rollout plan from its controller.');
 }

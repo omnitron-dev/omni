@@ -35,6 +35,23 @@ function fixture(remote = true) {
   return { service, calls, invoke, data };
 }
 describe('stack stop coordinator', () => {
+  it('checks the specific backup window after the footprint review and before disabling or stopping the local application', async () => {
+    const { service, data } = fixture(false);
+    const review = await service.reviewStackStop(project, stack, true);
+    const claim = { id: 'fixture-stop', target: 'e'.repeat(64), expiresAt: '2026-11-19T21:00:00Z' };
+    const denied = vi.fn(() => { throw Error('The foreground backup window expired'); });
+    await expect(service.stopStack(project, stack, review.digest, true, denied)).rejects.toThrow('window expired');
+    expect(denied).toHaveBeenCalledOnce();
+    expect(service.registry.setStackEnabled).not.toHaveBeenCalled();
+    expect(service.orchestrator.stopStackExecution).not.toHaveBeenCalled();
+    expect(data.get('stack:sample/prod:last-stop')).toMatchObject({ phase: 'failed' });
+    const admitted = vi.fn(() => claim);
+    await expect(service.stopStack(project, stack, 'a'.repeat(64), true, admitted)).rejects.toThrow('changed since review');
+    expect(admitted).not.toHaveBeenCalled();
+    const result = await service.stopStack(project, stack, review.digest, true, admitted);
+    expect(result.stopOperation).toMatchObject({ phase: 'stopped', backupWindow: claim });
+    expect(service.orchestrator.stopStackExecution).toHaveBeenCalledOnce();
+  });
   it('keeps local containers and requires preservation review before application resume', async () => {
     const { service } = fixture(false);
     service.infraManager.inspectStopContainers = vi.fn(async () => [{ id: 'a'.repeat(64), name: 'database' }]);

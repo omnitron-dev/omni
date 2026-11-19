@@ -422,6 +422,7 @@ export interface IProjectRpcService {
   checkRelease(data: { project: string; stack: string; release: string; prepare?: boolean }): Promise<import('./project.js').ReleaseAdmission>;
   reviewStackStop(data: { project: string; stack: string; keepInfrastructure?: boolean }): Promise<import('./project.js').StackStopReview>;
   stopStack(data: { project: string; stack: string; review?: string; keepInfrastructure?: boolean }): Promise<IStackInfo>;
+  stopStackForRuntime(data: { project: string; stack: string; review: string; backupWindowId: string }): Promise<IStackInfo>;
 
   // --- Stacks (Admin) ---
   /** What each node of a stack would find and do on its host — read, never changed. */

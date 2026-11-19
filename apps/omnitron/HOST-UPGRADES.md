@@ -408,6 +408,17 @@ ownership; a late reply cannot publish acceptance.
 
 For one application outage, review and perform `stack stop <project> <stack> --keep-infrastructure`, then prepare a fresh host update. Confirm the stopped stack appears in `excluded` with reason `disabled`, the host plan has the intended empty local application and watch lists, and the reviewed container IDs are retained. After host acceptance, SDK selection, migrations and the single reviewed stack start each use their own receipts.
 
+For an application-only stop followed by a local native update, stage the exact runtime artifact and use a foreground backup window. This requires a serving backend with `applicationStopBackupWindowProtocol@1` and the local administrator socket. The command verifies the installed artifact and requires backup and restore operations to settle while the applications are still running. An unconfirmed operation needs its ordinary reconciliation.
+
+```sh
+omnitron stack stop <project> <stack> --keep-infrastructure --dry-run
+omnitron stack stop <project> <stack> --keep-infrastructure --review <stop-digest> --for-runtime <artifact-sha256> --backup-window-minutes 15
+```
+
+Keep the second command running. In another terminal, confirm the stack's stopped receipt and its `backupWindow`, then prepare and apply the new host plan. The backend transfers backup admission to the native update when its durable `draining` receipt matches the artifact, serving controller and excluded local stack. The foreground command returns that receipt's digest. Backup schedules remain subject to the ordinary native update until it reaches a terminal phase.
+
+The foreground window accepts 1 to 60 minutes. The backend checks the caller's OS process lifetime every second and releases the window when the caller exits or the deadline passes. A controller restart ends a foreground window. If applications already stopped, inspect their stop receipt and the native update status before choosing the next operation. Separate commands still own SDK selection, migrations and application restart. The current SDK selection rechecks and retains its own before-image after the source is stopped.
+
 Cold rollback checks the current journal against both its interim starter and final backend before retiring the owner. A serving controller holds public requests and background Flow work, then checks the journal, catalogue, workers and watches against the recorded shutdown intent. Native service control can retire the reviewed owner while public ingress is held. If the updating process exits first, the controller reopens ingress and resumes sampling. An unavailable backend uses the independent native empty-owner evidence described above. A serving controller without the rollback admission protocol can accept a new stack between its final inventory check and shutdown. Use a compatible managed backend handoff or a newly reviewed forward update on that version.
 
 An empty plan cannot retire an application started after host acceptance. A partially started candidate can recover when its observed processes belong to the original reviewed stacks and app handles. A refusal before any native retirement keeps a previously accepted update available for independent forward recovery. Inspect the refusal in `runtime update status <plan-sha256>`. A migration or SDK change has its own recovery decision.

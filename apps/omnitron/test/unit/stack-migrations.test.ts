@@ -3,6 +3,8 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import { ProjectService } from '../../src/services/project.service.js';
@@ -16,6 +18,7 @@ import { OperationJournal, assertOperationJournalCompatibility } from '../../src
 import { StackMigrations } from '../../src/project/stack-migrations.js';
 import * as provenance from '../../src/release/runtime-provenance.js';
 import { inspectMigrationDependencies } from '../../src/services/migration-execution.js';
+import { migrationWorkspaceBindings } from '../../src/services/migration-workspace-bindings.js';
 import { normalizeInfraConfig } from '../../src/infrastructure/config-normalizer.js';
 import { createDefaultRegistry } from '../../src/infrastructure/presets/index.js';
 import { BackupService } from '../../src/services/backup.service.js';
@@ -310,21 +313,61 @@ it('reviews a nested SDK importer and binds its linked package and transitive co
   const appLink = path.join(f.cwd, 'node_modules/@omnitron-dev/omnitron');
   await fs.rename(appLink, framework);
   await fs.symlink(framework, appLink, 'dir');
-  const link = path.join(importer, 'node_modules', name), leaf = path.join(selected, 'node_modules/leaf');
-  await fs.mkdir(path.dirname(link), { recursive: true });
+  const owner = '@omnitron-dev/omnitron', bin = path.join(importer, 'node_modules/.bin');
+  const executable = path.join(selected, 'cli.js'), leaf = path.join(selected, 'node_modules/leaf');
+  await fs.mkdir(importer, { recursive: true });
   await fs.mkdir(leaf, { recursive: true });
-  await fs.writeFile(path.join(importer, 'package.json'), JSON.stringify({ name: 'web', dependencies: { [name]: 'workspace:*' } }));
-  await fs.writeFile(path.join(selected, 'package.json'), JSON.stringify({ name, version: '1.0.0', dependencies: { leaf: '1.0.0' } }));
+  await fs.writeFile(path.join(importer, 'package.json'), JSON.stringify({ name: 'web', dependencies: { [name]: 'link:../../ui', [owner]: 'link:..' } }));
+  await fs.writeFile(path.join(importer, 'pnpm-workspace.yaml'), [
+    'nodeLinker: hoisted', 'preferSymlinkedExecutables: true', 'offline: true', 'pmOnFail: ignore',
+    'storeDir: ' + path.join(source, 'store'), 'cacheDir: ' + path.join(source, 'cache'), '',
+  ].join('\n'));
+  await fs.writeFile(path.join(framework, 'package.json'), JSON.stringify({ name: owner, version: '1.0.0', bin: './index.js' }));
+  await fs.writeFile(path.join(framework, 'index.js'), '#!/usr/bin/env node\nthrow Error("review must not execute this tool");\n');
+  await fs.chmod(path.join(framework, 'index.js'), 0o755);
+  await fs.writeFile(path.join(selected, 'package.json'), JSON.stringify({ name, version: '1.0.0', bin: { prism: './cli.js' }, dependencies: { leaf: '1.0.0' } }));
+  await fs.writeFile(executable, '#!/usr/bin/env node\nthrow Error("review must not execute this tool");\n', { mode: 0o755 });
   await fs.writeFile(path.join(leaf, 'package.json'), '{"name":"leaf","version":"1.0.0"}');
   await fs.writeFile(path.join(leaf, 'index.js'), 'export default 1;');
-  await fs.symlink(selected, link, 'dir');
-  const sdk = { root: f.root, source, bindings: { [name]: selected } };
+  await promisify(execFile)('pnpm', ['install', '--offline', '--ignore-scripts'], { cwd: importer, timeout: 10_000 });
+  const external = path.join(bin, 'prism'), internal = path.join(bin, 'omnitron');
+  for (const [link, target] of [[external, executable], [internal, path.join(framework, 'index.js')],
+    [path.join(importer, 'node_modules', name), selected], [path.join(importer, 'node_modules', owner), framework]] as const) {
+    expect(await fs.readlink(link)).toBe(path.relative(path.dirname(link), target));
+  }
+  const sdk = { root: f.root, source, bindings: { [name]: selected, [owner]: framework } };
   const before = await inspectMigrationDependencies(plan, sdk);
   expect(await inspectMigrationDependencies(plan, sdk)).toBe(before);
   await fs.writeFile(path.join(leaf, 'index.js'), 'export default 2;');
-  expect(await inspectMigrationDependencies(plan, sdk)).not.toBe(before);
+  const changedDependency = await inspectMigrationDependencies(plan, sdk);
+  expect(changedDependency).not.toBe(before);
   await expect(provenance.releaseTreeDigest(framework, true, true)).rejects.toThrow('packed boundary');
+  await expect(inspectMigrationDependencies(plan.map((item: (typeof plan)[number]) => ({ ...item, target: { ...item.target, sealed: true } })), sdk))
+    .rejects.toThrow('packed boundary');
   await expect(inspectMigrationDependencies(plan, { ...sdk, bindings: {} })).rejects.toThrow('packed boundary');
+
+  const observed = migrationWorkspaceBindings(sdk, () => {});
+  expect(await observed.inspect(external, executable)).toBe(true);
+  await fs.appendFile(executable, '// changed executable\n');
+  await expect(observed.verify()).rejects.toThrow('changed during verification');
+  expect(await inspectMigrationDependencies(plan, sdk)).not.toBe(changedDependency);
+
+  await fs.unlink(internal);
+  await fs.symlink(path.relative(bin, path.join(framework, 'package.json')), internal);
+  await expect(inspectMigrationDependencies(plan, sdk)).rejects.toThrow('unverified dependency binding');
+  await fs.unlink(internal);
+  await fs.symlink(path.relative(bin, path.join(framework, 'index.js')), internal);
+  await fs.rename(external, path.join(bin, 'unknown'));
+  await expect(inspectMigrationDependencies(plan, sdk)).rejects.toThrow('packed boundary');
+  await fs.rename(path.join(bin, 'unknown'), external);
+  const installed = path.join(importer, 'node_modules', name), replacement = path.join(source, 'other-install');
+  await fs.mkdir(replacement);
+  await fs.copyFile(path.join(selected, 'package.json'), path.join(replacement, 'package.json'));
+  await fs.unlink(installed);
+  await fs.symlink(path.relative(path.dirname(installed), replacement), installed, 'dir');
+  await expect(inspectMigrationDependencies(plan, sdk)).rejects.toThrow('packed boundary');
+  await fs.unlink(installed);
+  await fs.symlink(path.relative(path.dirname(installed), selected), installed, 'dir');
   await fs.writeFile(path.join(importer, 'package.json'), '{"name":"web"}');
   await expect(inspectMigrationDependencies(plan, sdk)).rejects.toThrow('packed boundary');
 });

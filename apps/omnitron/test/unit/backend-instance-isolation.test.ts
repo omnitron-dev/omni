@@ -264,12 +264,25 @@ it('uses only the migration scope attested by the selected private control peer'
 
 it('delegates to the selected managed instance and never the ambient instance', async () => {
   const target = await fixture(true);
+  const candidateHash = 'c'.repeat(64);
+  mocks.candidate.mockResolvedValue({ runtimeHash: candidateHash, build: { commit: 'target' } });
   await expect(readManagedRuntime(target.home)).resolves.toMatchObject({ instanceHome: target.home });
   await expect(replaceBackend('/candidate', { socket: target.socket, checkOnly: true })).resolves.toMatchObject({ build: { commit: 'target' } });
-  expect(target.upgrade).toHaveBeenCalledWith({ directory: '/candidate', checkOnly: true, admission: target.admission });
+  expect(target.upgrade).toHaveBeenCalledExactlyOnceWith({
+    directory: '/candidate', checkOnly: true, admission: { ...target.admission, targetRuntimeHash: candidateHash },
+  });
   expect(mocks.control.mock.calls.map(call => call[0])).toEqual([target.control, path.join(target.execution, 'supervisor.sock')]);
   expect(mocks.candidate).toHaveBeenCalledWith('/candidate', undefined, undefined);
   expect(mocks.installation).not.toHaveBeenCalled();
+});
+
+it('refuses a managed candidate whose runtime hash differs from the review', async () => {
+  const target = await fixture(true);
+  await expect(replaceBackend('/candidate', {
+    socket: target.socket, checkOnly: true, admission: { ...target.admission, targetRuntimeHash: 'c'.repeat(64) },
+  })).rejects.toThrow('Reviewed journal compatibility targets a different runtime');
+  expect(target.upgrade).not.toHaveBeenCalled();
+  expect(target.prepare).not.toHaveBeenCalled();
 });
 
 it('refreshes only the confirmed managed instance launcher after an older guardian completes promotion', async () => {

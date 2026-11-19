@@ -26,7 +26,8 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { builtinModules } from 'node:module';
+import { tmpdir } from 'node:os';
+import { packageOf, specifiersOf } from '../../../../scripts/lib/package-imports.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
@@ -49,12 +50,8 @@ const declared = new Set([
   ...Object.keys(pkg.dependencies ?? {}),
   ...Object.keys(pkg.peerDependencies ?? {}),
   ...Object.keys(pkg.optionalDependencies ?? {}),
-  // A package may name itself: `init.ts` puts the package name inside the
-  // config template it writes for a new project.
   pkg.name,
 ]);
-
-const builtin = new Set(builtinModules);
 
 /** Every .ts file under src. */
 function sources(dir: string): string[] {
@@ -67,42 +64,15 @@ function sources(dir: string): string[] {
   return out;
 }
 
-/**
- * The package a line imports, or null.
- *
- * Line-based on purpose. A previous scanner in this repository shared a
- * comment-stripping helper that deleted code and reported 26 live keys as
- * dead; the lesson taken from it was to prefer a rule with visible limits
- * over a parser with invisible ones.
- *
- * The rule: a real import statement starts its line, and names its module
- * after `from` — or, for a side-effect import, as the whole statement. A line
- * inside a block comment starts with `*`, a line comment with `//`, and a
- * template literal's contents are indented under an assignment, so none of
- * them match; the prose mentions of `zod` and the config template that names
- * the package itself are excluded by construction rather than by stripping.
- *
- * The `from` is load-bearing, and leaving it out is how this check first
- * reported fifty-five findings: without it,
- * `export type ElectionState = 'follower' | …` reads as an import of a
- * package called `follower`. A scan's findings are usually the scan.
- *
- * What it misses: a dynamic `await import()` that is not at the start of its
- * line. Those are checked separately below.
- */
-function importedPackage(line: string): string | null {
-  const trimmed = line.trimStart();
-  const viaFrom = /^(?:import|export)\b[^'"]*\bfrom\s*['"]([^'"]+)['"]/.exec(trimmed);
-  const sideEffect = /^import\s*['"]([^'"]+)['"]/.exec(trimmed);
-  const specifier = viaFrom?.[1] ?? sideEffect?.[1];
-  return specifier ? packageOf(specifier) : null;
-}
-
-function packageOf(specifier: string): string | null {
-  if (specifier.startsWith('.') || specifier.startsWith('node:') || specifier.startsWith('/')) return null;
-  const parts = specifier.split('/');
-  const name = specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0]!;
-  return builtin.has(name) ? null : name;
+function importedPackages(files: string[]) {
+  const references: Array<{ name: string; specifier: string; location: string }> = [];
+  for (const file of files) {
+    for (const { spec, line } of specifiersOf(file)) {
+      const name = packageOf(spec);
+      if (name) references.push({ name, specifier: spec, location: `${path.relative(root, file)}:${line}` });
+    }
+  }
+  return references;
 }
 
 describe('every package src imports is declared', () => {
@@ -114,47 +84,34 @@ describe('every package src imports is declared', () => {
     expect(files.length).toBeGreaterThan(50);
   });
 
-  it('declares every statically imported package', () => {
-    const undeclared = new Map<string, string>();
-    for (const file of files) {
-      for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
-        const name = importedPackage(line);
-        if (name && !declared.has(name)) {
-          undeclared.set(name, path.relative(root, file));
-        }
-      }
-    }
-
-    expect(
-      [...undeclared].map(([name, where]) => `${name} (${where})`),
-      'imported but not in package.json — works in the workspace, fails everywhere else',
-    ).toEqual([]);
+  it('declares packages loaded by imports, require calls and child process loader flags', () => {
+    const imports = importedPackages(files);
+    expect(imports.filter(({ name }) => !declared.has(name))).toEqual([]);
+    expect(imports.filter(({ specifier }) => specifier === 'tsx/esm').length).toBeGreaterThan(3);
   });
 
-  it('declares every dynamically imported package too', () => {
-    // `await import('systeminformation')` is the same dependency by another
-    // spelling, and the daemon uses dynamic imports throughout to keep its
-    // startup cheap.
-    //
-    // Line by line, skipping comment lines, for the same reason the static
-    // check is line-anchored: scanning the whole file text found
-    // `await import('@my-org/foo')` inside a docblock explaining why
-    // workspace packages get bundled. The limit of this rule, stated rather
-    // than hidden: a dynamic import written inside a template literal is not
-    // seen. Nothing in this tree does that.
-    const undeclared = new Map<string, string>();
-    for (const file of files) {
-      for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
-        const code = line.trimStart();
-        if (code.startsWith('*') || code.startsWith('//') || code.startsWith('/*')) continue;
-        for (const m of code.matchAll(/\bimport\(\s*['"]([^'"]+)['"]\s*\)/g)) {
-          const name = packageOf(m[1]!);
-          if (name && !declared.has(name)) undeclared.set(name, path.relative(root, file));
-        }
-      }
+  it('distinguishes imports in generated starter text from modules resolved by the platform', () => {
+    const directory = fs.mkdtempSync(path.join(tmpdir(), 'omni-imports-'));
+    try {
+      const file = path.join(directory, 'generator.ts');
+      fs.writeFileSync(file, [
+        'const emitted = `',
+        "import 'starter-only';",
+        "const lazy = import('starter-lazy');",
+        '`;',
+        'import {',
+        '  render,',
+        "} from '@example/render/client';",
+        "const plugin = import('@example/plugin');",
+        "const reader = require('@example/reader');",
+        "const childArgs = ['--import', '@example/loader/register'];",
+      ].join('\n'));
+      expect(importedPackages([file]).map(({ name }) => name)).toEqual([
+        '@example/render', '@example/plugin', '@example/reader', '@example/loader',
+      ]);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
     }
-
-    expect([...undeclared].map(([name, where]) => `${name} (${where})`)).toEqual([]);
   });
 
   it('declares systeminformation, the one this file was written for', () => {
@@ -162,70 +119,7 @@ describe('every package src imports is declared', () => {
   });
 });
 
-// =============================================================================
-// A package can be a dependency without ever being imported
-// =============================================================================
-
 describe('packages handed to a child process are dependencies too', () => {
-  /**
-   * `--import tsx/esm` names a package, and no import scanner can see it.
-   *
-   * Two scanners looked at this tree today — a regexp over import lines and a
-   * colleague's, which reads specifiers with the TypeScript parser. Both found
-   * `esbuild`, correctly. Neither found `tsx`, correctly: it is never
-   * imported. It appears as a string inside `execArgv`, resolved by Node in a
-   * CHILD process, from that child's working directory.
-   *
-   * Which makes it the more dangerous of the two, because the thing that
-   * would notice cannot look there. `service.ts` builds the launchd and
-   * systemd units' ExecStart as
-   * `[execPath, '--import', 'tsx/esm', daemonEntryPath()]`, and the docblock
-   * beside it states the requirement and asserts it is met: "`--import
-   * tsx/esm` resolves from here upward through node_modules, which the
-   * package's install tree provides".
-   *
-   * It did not provide it. `tsx` was in devDependencies, which npm does not
-   * install for a published package. Measured on a host with omnitron
-   * installed from the registry:
-   *
-   *     esbuild              NOT FOUND ERR_MODULE_NOT_FOUND
-   *     tsx                  NOT FOUND ERR_MODULE_NOT_FOUND
-   *     systeminformation    NOT FOUND ERR_MODULE_NOT_FOUND
-   *
-   * So a node prepared from npm, registered with its OS supervisor, would
-   * have had a service that cannot start — at install, and again at every
-   * boot.
-   */
-  const RUNTIME_FLAG_PACKAGES = /--import['"\s,\]]+['"]([^'"]+)['"]/g;
-
-  it('declares every package named in an --import flag', () => {
-    const undeclared = new Map<string, string>();
-    for (const file of sources(path.join(root, 'src'))) {
-      const text = fs.readFileSync(file, 'utf8');
-      for (const m of text.matchAll(RUNTIME_FLAG_PACKAGES)) {
-        const name = packageOf(m[1]!);
-        if (name && !declared.has(name)) undeclared.set(name, path.relative(root, file));
-      }
-    }
-
-    expect(
-      [...undeclared].map(([name, where]) => `${name} (${where})`),
-      'handed to a child process by name, and not a declared dependency',
-    ).toEqual([]);
-  });
-
-  it('finds the flags it is looking for', () => {
-    // The check above passes trivially against a tree with no such flags, and
-    // this tree has several — so a refactor that changes the spelling makes
-    // this fail rather than making the check silently vacuous.
-    const found = sources(path.join(root, 'src'))
-      .flatMap((f) => [...fs.readFileSync(f, 'utf8').matchAll(RUNTIME_FLAG_PACKAGES)])
-      .map((m) => m[1]!);
-
-    expect(found.length).toBeGreaterThan(3);
-    expect(found).toContain('tsx/esm');
-  });
-
   it('ships the runtime halves of the TypeScript path, both of them', () => {
     // A `.ts` app goes: compile with esbuild, and on failure fall back to a
     // child spawned with `--import tsx/esm`. Both halves were devDependencies,

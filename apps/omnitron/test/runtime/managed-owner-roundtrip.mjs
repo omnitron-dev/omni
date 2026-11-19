@@ -44,6 +44,7 @@ export async function managedOwnerRoundtrip(context) {
   const load = name => import(pathToFileURL(path.join(managementDist, name + '.js')).href);
   const { createDaemonClient, LONG_REQUEST_TIMEOUT } = await load('daemon/daemon-client');
   const { ExecutionClient } = await load('daemon/execution-client');
+  const { assertExecutionCapabilities } = await load('daemon/execution-capabilities');
   const { PidManager } = await load('daemon/pid-manager');
   const quiet = { trace() {}, debug() {}, info() {}, warn() {}, error() {}, fatal() {}, child() { return this; } };
   const api = async work => {
@@ -267,8 +268,9 @@ export async function managedOwnerRoundtrip(context) {
     const stopped = await api(async client => (await client.service('OmnitronProject')).getStack({ project: 'probe', stack: 'local' }));
     assert.equal(stopped.status, 'stopped');
     assert.ok(!stopped.apps.some(a => a.status === 'online'), 'A stopped stack restarted without explicit intent');
-    if (target.phase === 'owner-forward') for (const capability of ['applicationRuntimeResolution', 'executionScopes', 'stoppedStackReconciliation'])
-      assert.equal(after.execution.ownerCapabilities[capability], 1);
+    if (target.phase === 'owner-forward') assertExecutionCapabilities(after.execution.ownerCapabilities, {
+      applicationRuntimeResolution: 2, executionScopes: 1, stoppedStackReconciliation: 1,
+    }, 'Owner upgrade qualification');
     await api(async client => (await client.service('OmnitronProject')).startStack({ project: 'probe', stack: 'local', workingTree: true }));
     worker = await ready(after.execution.owner.pid, priorWorker); track(worker.pid);
     if (target.phase === 'owner-forward') {

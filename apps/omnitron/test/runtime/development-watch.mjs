@@ -13,6 +13,7 @@ import { cleanupFixture } from './fixture-cleanup.mjs';
 const dist = path.resolve(process.argv[2]);
 const load = name => import(pathToFileURL(path.join(dist, name + '.js')));
 const { ExecutionClient } = await load('daemon/execution-client');
+const { assertExecutionCapabilities } = await load('daemon/execution-capabilities');
 const { DEFAULT_ECOSYSTEM, DEFAULT_DAEMON_CONFIG } = await load('config/defaults');
 const { OWN_BUILD } = await load('shared/build-stamp');
 const { resolveInstalledDependency } = await load('release/package-resolution');
@@ -104,7 +105,7 @@ async function until(check, label, timeout = 60_000) {
   while (Date.now() < end) { const value = await check(); if (value) return value; await delay(100); }
   throw Error(label + '; inspect ' + directory);
 }
-let connected = false, primaryFailure;
+let acquired = false, primaryFailure;
 try {
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(Error('Private owner boot timed out')), 30_000);
@@ -112,11 +113,14 @@ try {
     owner.once('exit', code => { clearTimeout(timer); reject(Error('Private owner exited ' + code)); });
     owner.once('message', message => { clearTimeout(timer); assert.equal(message.type, 'execution-ready'); resolve(); });
   });
-  const snapshot = await client.connect(); connected = true;
+  const snapshot = await client.connect();
   assert.equal(snapshot.ownerBuild.commit, OWN_BUILD.commit);
-  assert.equal(snapshot.capabilities.applicationTopology, 1);
-  if (nextSdk) assert.equal(snapshot.capabilities.applicationRuntimeResolution, 1);
-  await client.acquire(); client.orchestrator.devMode = true;
+  assertExecutionCapabilities(snapshot.capabilities, {
+    applicationTopology: 1, ...(nextSdk && { applicationRuntimeResolution: 2 }),
+  }, 'Development SDK qualification');
+  await client.acquire();
+  acquired = true;
+  client.orchestrator.devMode = true;
   for (const entry of config.apps) await client.orchestrator.startApp(entry, config);
   const initial = {};
   for (const name of sources.keys()) initial[name] = await until(async () => (await rows()).find(row => row.value === name + '-initial'), name + ' initial RPC');
@@ -164,7 +168,7 @@ try {
 } catch (error) { primaryFailure = { error }; }
 finally {
   await cleanupFixture(directory, primaryFailure, async attempt => {
-    if (connected) await attempt('owned applications', async () => { await client.orchestrator.setWatchMode(false); await client.orchestrator.stopAll(false); await client.shutdownOwner(); });
+    if (acquired) await attempt('owned applications', async () => { await client.orchestrator.setWatchMode(false); await client.orchestrator.stopAll(false); await client.shutdownOwner(); });
     await attempt('client', () => client.close());
     if (owner.exitCode === null && owner.signalCode === null) owner.kill('SIGTERM');
     await attempt('owner exit', () => Promise.race([exited, delay(35_000, undefined, { ref: false }).then(() => { throw Error('Private owner did not exit'); })]));

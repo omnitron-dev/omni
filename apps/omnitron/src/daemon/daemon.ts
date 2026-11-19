@@ -546,6 +546,9 @@ export class OmnitronDaemon {
       if (!isDeepStrictEqual(current.admission.configuration, configuration) || !isDeepStrictEqual(current.admission.backend, admission.backend))
         throw Error('Reviewed backend identity or configuration changed before cancellation');
     }
+    const { sourceControllerJournalCheck } = await import('./controller-journal-compatibility.js');
+    const checkJournals = sourceControllerJournalCheck(OMNITRON_HOME, admission?.targetRuntimeHash);
+    await checkJournals();
     if (this.runtimeRestartAdmission) throw new Error('Runtime restart admission is held by another transition');
     if (this.handingOffBackend || this.preparingBackend) throw new Error('A backend handoff is already in progress');
     const assertIdle = (allowBackupCancellation = false) => {
@@ -564,6 +567,7 @@ export class OmnitronDaemon {
       projects = await this.app.container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
       const drained = await gate.drain(30_000);
       if (!drained.drained) throw new Error(`${drained.left} inbound request(s) have not drained; backend transfer was refused`);
+      await checkJournals();
       assertIdle();
       const projectState = await projects.prepareHandoff();
       const infrastructure = await this.infraService?.prepareHandoff() ?? null;

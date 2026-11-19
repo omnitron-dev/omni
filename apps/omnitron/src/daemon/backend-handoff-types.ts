@@ -36,6 +36,8 @@ export interface BackendBootRecord {
 
 export interface BackendConfigurationReview { sha256: string; registryDigest: string }
 export interface BackendHandoffAdmission {
+  /** Exact destination verified by the initiating manager, retained across older guardians. */
+  targetRuntimeHash?: string;
   backend: { pid: number; controller: ControllerGrant };
   configuration: BackendConfigurationReview;
   backups: OperationReceipt[];
@@ -78,6 +80,9 @@ export function backendConfigurationDigest(record: Omit<BackendBootRecord, 'stat
 }
 
 export function assertBackendHandoffAdmission(admission: BackendHandoffAdmission): void {
+  if (admission?.targetRuntimeHash !== undefined &&
+      (typeof admission.targetRuntimeHash !== 'string' || !/^[a-f0-9]{64}$/.test(admission.targetRuntimeHash)))
+    throw Error('Invalid reviewed destination runtime identity');
   if (!admission || !Number.isSafeInteger(admission.backend?.pid) || admission.backend.pid < 1 ||
       !admission.backend.controller?.ownerId || !admission.backend.controller.controllerId ||
       !Number.isSafeInteger(admission.backend.controller.epoch) || admission.backend.controller.epoch < 1 ||

@@ -248,6 +248,9 @@ export async function replaceBackend(directory: string, options: {
       ownerId: previous.runtime?.owner?.id, epoch: previous.runtime?.epoch, ...(fence && { inventory: fence.appsDigest }) });
     const expected = options.admission ?? fence?.admission;
     const admission = expected ? backendHandoffAdmissionForApply(expected, reviewed.admission) : structuredClone(reviewed.admission);
+    if (admission.targetRuntimeHash && admission.targetRuntimeHash !== artifact.runtimeHash)
+      throw Error('Reviewed journal compatibility targets a different runtime');
+    admission.targetRuntimeHash = artifact.runtimeHash;
     const reader = createDaemonClient(options.socket, 15_000);
     try {
       admission.backups = await retainReviewedBackups(reviewed.admission.backups, expected?.backups, async id =>

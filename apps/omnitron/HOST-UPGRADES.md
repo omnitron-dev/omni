@@ -165,6 +165,22 @@ pnpm exec xec update local-sync --review <plan-sha256>
 pnpm exec xec update local-sync --status
 ```
 
+### Studio and Flows when returning to an earlier backend
+
+Run the capable manager's `omnitron --json backend upgrade <retained-runtime>/packages/0/dist --check` against the exact recovery target. The check opens the controller's SQLite journal read-only. The serving controller checks again after incoming requests drain, before releasing ownership. A new manager carries the verified target digest through the private guardian request.
+
+| Current journal | Returning to the individual-conversation backend at `6c98e39f` |
+| --- | --- |
+| Individual conversations only, at most one queued or running turn per thread and one running turn per connector | The legacy backend can open the journal and continue those conversations. |
+| A team room exists, including an idle one | Select a retained backend that understands team membership and separate provider conversations. The old backend can dispatch a peer's turn using the lead's provider session. |
+| Several outstanding turns in a thread or several running turns on one connector | Allow the work to settle or select a compatible backend. The legacy constructor attempts to recreate both unique indexes and can fail after creating the first. |
+| An active flow or a queued or dispatching external delivery | Continue with a compatible runtime. To retire that automation deliberately, inspect original receiver IDs, settle outstanding work and review the pause in Flows before checking again. |
+| Inactive flow drafts and historical receipts only | The old backend leaves these tables on disk. A compatible backend can reopen the same history later. An unconfirmed receipt still requires observation of its original command. |
+
+A hot rollback after team collaboration or while monitoring is active uses a sealed backend that declares the required versions in `shared/controller-journal-formats.json`. When the only retained backend predates that declaration, prepare a compatible forward recovery build. Run the same check for this alternate target, review its ordinary transfer and retain the current journal. Restoring a pre-update database discards work admitted since that backup. Inspect compatibility before opening the journal with a legacy binary. Its constructor executes DDL even when the intended operation is a read.
+
+The physical SQLite regression in `test/integration/studio-controller-compatibility.test.ts` can load both compiled releases. Point `OMNITRON_TEST_STUDIO_PREVIOUS_DIST` at the clean `6c98e39f` dist and `OMNITRON_TEST_STUDIO_CURRENT_DIST` at the candidate dist. A full source checkout can also compile the previous ledger from that exact Git object.
+
 For a stack in `preserve` mode, preparation compares its saved review with
 the retained launch and infrastructure for its next start. Inspect both with
 the following read-only commands.

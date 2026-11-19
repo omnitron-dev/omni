@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { openSqliteDatabase } from '@omnitron-dev/titan-database/sqlite';
+import { assertControllerJournals, controllerJournalNeeds } from '../daemon/controller-journal-compatibility.js';
 import {
   assertExecutionResource, assertOperationId,
   type ExecutionResource, type ExecutionResourceObservation,
@@ -39,11 +40,14 @@ export async function assertOperationJournalCompatibility(home: string, director
   catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw error; }
   const database = openSqliteDatabase(filename, { readonly: true, fileMustExist: true });
   let reviewed: unknown, active: { value: string } | undefined;
+  let controller: ReturnType<typeof controllerJournalNeeds>;
   try {
+    controller = controllerJournalNeeds(database);
     reviewed = database.prepare('SELECT value FROM state_kv WHERE key = ?').get(REVIEWED);
     active = database.prepare('SELECT value FROM state_kv WHERE key = ?').get(INDEX) as { value: string } | undefined;
   }
   finally { database.close(); }
+  await assertControllerJournals(controller, directory);
   if (reviewed !== undefined) await assertBackupReviewRuntime(directory);
   if (active && JSON.parse(active.value).protocol === 3) {
     const capability = await import(pathToFileURL(path.join(directory, 'execution/operation-journal.js')).href);

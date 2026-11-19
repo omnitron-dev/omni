@@ -17,7 +17,8 @@ import {
   PIPELINE_LIMITS,
   pipelineCondition,
   stepEnvironment,
-  validatePipeline,
+  checkPipelineDefinition,
+  storedDefinition,
   validatePipelineParams,
 } from './pipeline-definition.js';
 import type {
@@ -170,17 +171,8 @@ export class PipelineService {
     for (const run of this.activeRuns.values()) run.abort.abort(new Error('Daemon is stopping'));
     while (this.activeRuns.size) await Promise.allSettled([...this.activeRuns.values()].map((run) => run.done));
   }
-  private async validate(def: PipelineDef): Promise<void> {
-    validatePipeline(def);
-    const { Pipeline: XecPipeline } = await import('@xec-sh/ops');
-    const graph = XecPipeline.create(def.name);
-    for (const step of def.steps)
-      graph.step(step.name, { run: step.kind === 'release' || step.kind === 'deploy' ? async () => {} : step.run,
-        ...(step.dependsOn ? { dependsOn: step.dependsOn } : {}) });
-    graph.validate();
-  }
   async createPipeline(def: PipelineDef): Promise<Pipeline> {
-    await this.validate(def);
+    await checkPipelineDefinition(def);
     const row = await this.db
       .insertInto('pipelines')
       .values({
@@ -199,7 +191,7 @@ export class PipelineService {
   async updatePipeline(id: string, def: PipelineDef, expectedRevision: string): Promise<Pipeline> {
     if (!/^[a-f0-9]{64}$/.test(expectedRevision ?? ''))
       throw new Error('Review the current definition before updating it');
-    await this.validate(def);
+    await checkPipelineDefinition(def);
     return this.db.transaction().execute(async (trx) => {
       const current = await trx.selectFrom('pipelines').selectAll().where('id', '=', id)
         .forUpdate().executeTakeFirst();
@@ -264,7 +256,7 @@ export class PipelineService {
     if (!definition) throw new Error(`Pipeline '${request.id}' not found`);
     if (definition.revision !== request.expectedRevision)
       throw new Error('Pipeline changed after review. Reload and review the current definition');
-    await this.validate({ ...definition, description: definition.description ?? '' });
+    await checkPipelineDefinition(storedDefinition(definition));
     const admission = admitPipeline(request.runId, definition, params, actor);
     const inserted = await this.db.insertInto('pipeline_runs').values({
       id: request.runId, pipelineId: request.id, status: 'awaiting-review',
@@ -379,7 +371,7 @@ export class PipelineService {
       if (!definition) throw new Error(`Pipeline '${row.pipelineId}' not found`);
       if (admission.review.definitionRevision !== definition.revision)
         throw new Error('Pipeline changed after review. Reload and review the current definition');
-      await this.validate({ ...definition, description: definition.description ?? '' });
+      await checkPipelineDefinition(storedDefinition(definition));
       const startedAt = new Date();
       const claim = await this.db.updateTable('pipeline_runs').set({ status: 'running', startedAt,
         completedAt: null,

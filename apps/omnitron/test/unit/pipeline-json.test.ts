@@ -1,16 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFile } from 'node:fs/promises';
 import { resetEnvCache, setEnvOverride } from '../../src/shared/env-config.js';
 
 const { service } = vi.hoisted(() => ({ service: { prepareRun: vi.fn(), resumeRun: vi.fn(), reconcileRun: vi.fn(), startRun: vi.fn(), executePipeline: vi.fn(), getRunStatus: vi.fn(), listPipelines: vi.fn(), getPipeline: vi.fn(), updatePipeline: vi.fn(), createPipeline: vi.fn() } }));
-vi.mock('node:fs/promises', () => ({ readFile: async () => JSON.stringify({ name: 'inspect', steps: [{ name: 'one', run: 'echo ready' }] }) }));
+vi.mock('node:fs/promises', async (importOriginal) => ({
+  ...await importOriginal<typeof import('node:fs/promises')>(), readFile: vi.fn(),
+}));
 vi.mock('../../src/daemon/daemon-client.js', () => ({
   createDaemonClient: () => ({ service: async () => service, disconnect: async () => {} }),
 }));
-import { pipelineListCommand, pipelineStatusCommand, pipelineSaveCommand, pipelineRunCommand, pipelineStartCommand, pipelineReconcileCommand } from '../../src/commands/pipeline.js';
+import { pipelineCheckCommand, pipelineListCommand, pipelineStatusCommand, pipelineSaveCommand, pipelineRunCommand, pipelineStartCommand, pipelineReconcileCommand } from '../../src/commands/pipeline.js';
 import { hasEmittedJson } from '../../src/commands/output.js';
 
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.mocked(readFile).mockResolvedValue(JSON.stringify({ name: 'inspect', steps: [{ name: 'one', run: 'echo ready' }] }));
   process.exitCode = undefined;
   setEnvOverride({ OMNITRON_OUTPUT: 'json' });
 });
@@ -36,6 +40,29 @@ async function capture(run: () => Promise<void>) {
 }
 
 describe('pipeline CLI uses the shared machine output protocol', () => {
+  it('returns an offline graph receipt without source or a daemon operation', async () => {
+    const output = await capture(() => pipelineCheckCommand('pipeline.json'));
+    expect(output.err).toBe('');
+    expect(JSON.parse(output.out)).toEqual({ ok: true, data: {
+      scope: 'definition', sourceSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+      name: 'inspect', steps: [{ name: 'one', kind: 'shell', dependsOn: [] }],
+    } });
+    for (const call of Object.values(service)) expect(call).not.toHaveBeenCalled();
+  });
+
+  it('keeps file contents out of parse and validation errors', async () => {
+    const privateValue = 'internal-test-value';
+    for (const source of [`{"name": "${privateValue}" ${privateValue}}`, JSON.stringify({
+      name: 'inspect', steps: [{ name: 'one', run: 'true', condition: `"${privateValue}"` }],
+    })]) {
+      vi.mocked(readFile).mockResolvedValueOnce(Buffer.from(source));
+      const output = await capture(() => pipelineCheckCommand('pipeline.json'));
+      expect(output.exitCode).toBe(1);
+      expect(JSON.parse(output.err).ok).toBe(false);
+      expect(output.err).not.toContain(privateValue);
+    }
+  });
+
   it('retains the exact request identity across CLI retries and never falls back to an older executor', async () => {
     const runId = 'ce9658f5-6225-48b5-a916-b7bb2a01ad70';
     service.listPipelines.mockResolvedValue([{ id: 'pipeline', name: 'inspect', revision: 'a'.repeat(64) }]);

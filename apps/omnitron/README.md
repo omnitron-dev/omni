@@ -154,7 +154,14 @@ that require reproducible release data should require `state: 'verified'` and th
 
 A pipeline step with `kind: 'release'` binds a registered project, stack, application, immutable producer artifact and package-relative JavaScript entry. It uses the verified resident owner's Node, rather than storing an installation directory or generated shell command in the definition. A new owner installation can therefore preserve the pipeline's identity and history.
 
+`omnitron pipeline check` validates a local JSON definition, including dependency
+names and cycles, using the same Xec graph rules as the server. Its JSON receipt
+lists the steps, dependencies and SHA-256 of the file. Keep this receipt when
+reviewing generated workflows. Runtime authorization, artifact identity and target
+availability are checked when preparing or starting the operation. [Reviewing generated workflows](../../tests/verification/ASSURANCE.md#from-a-generated-graph-to-an-operator-receipt)
+
 ```sh
+omnitron pipeline check publication.json --json
 omnitron pipeline save publication.json
 omnitron pipeline run <pipeline-id>
 omnitron pipeline run <pipeline-id> --prepare --run-id <uuid-v4> --json

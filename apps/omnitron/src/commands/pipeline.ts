@@ -4,11 +4,11 @@
  * omnitron pipeline status <runId> — Check run status
  */
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { log } from '@xec-sh/kit';
 import { readFile } from 'node:fs/promises';
-import { createDaemonClient } from '../daemon/daemon-client.js';
 import type { IOmnitronPipelinesService } from '../shared/dto/services.js';
+import type { PipelineDef } from '../shared/dto/pipelines.js';
 import { emitJson, emitError } from './output.js';
 
 /**
@@ -28,6 +28,7 @@ import { emitJson, emitError } from './output.js';
  * `listRuns()` with `[]` — «No pipelines defined» was the true answer.
  */
 async function withPipelines<T>(call: (svc: IOmnitronPipelinesService) => Promise<T>): Promise<T> {
+  const { createDaemonClient } = await import('../daemon/daemon-client.js');
   const client = createDaemonClient();
   try {
     return await call(await client.service<IOmnitronPipelinesService>('OmnitronPipelines'));
@@ -134,13 +135,22 @@ export async function pipelineStatusCommand(runId: string, options: { output?: b
   }
 }
 
+function parseDefinition(source: string): PipelineDef {
+  try {
+    return JSON.parse(source);
+  } catch {
+    // Node's syntax error can include an excerpt of commands or environment values.
+    throw new Error('Pipeline definition must be valid JSON');
+  }
+}
+
 export async function pipelineSaveCommand(file: string, options: { id?: string; expectedRevision?: string } = {}): Promise<void> {
   try {
     if (options.id && !/^[a-f0-9]{64}$/.test(options.expectedRevision ?? ''))
       throw new Error('Updating requires --expected-revision <revision> from the reviewed pipeline');
     if (!options.id && options.expectedRevision)
       throw new Error('--expected-revision requires --id');
-    const definition = JSON.parse(await readFile(file, 'utf8'));
+    const definition = parseDefinition(await readFile(file, 'utf8'));
     const result = await withPipelines(async (svc) => {
       if (!options.id) return svc.createPipeline(definition);
       const current = await svc.getPipeline({ id: options.id });
@@ -151,6 +161,24 @@ export async function pipelineSaveCommand(file: string, options: { id?: string; 
     if (!emitJson(result)) log.success(`Pipeline saved: ${result.id} (${result.name})`);
   } catch (error) {
     emitError(`Failed: ${(error as Error).message}`);
+    process.exitCode = 1;
+  }
+}
+
+export async function pipelineCheckCommand(file: string): Promise<void> {
+  try {
+    const source = await readFile(file);
+    const definition = parseDefinition(source.toString('utf8'));
+    const { checkPipelineDefinition } = await import('../services/pipeline-definition.js');
+    await checkPipelineDefinition(definition);
+    const steps = definition.steps.map(step => ({
+      name: step.name, kind: step.kind ?? 'shell', dependsOn: step.dependsOn ?? [],
+    }));
+    const sourceSha256 = createHash('sha256').update(source).digest('hex');
+    if (!emitJson({ scope: 'definition', sourceSha256, name: definition.name, steps }))
+      log.success(`Checked pipeline ${definition.name} (${steps.length} steps)`);
+  } catch (error) {
+    emitError(error);
     process.exitCode = 1;
   }
 }

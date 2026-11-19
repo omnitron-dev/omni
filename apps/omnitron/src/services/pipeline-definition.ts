@@ -1,4 +1,4 @@
-import type { PipelineDef, PipelineStep } from '../shared/dto/pipelines.js';
+import type { Pipeline, PipelineDef, PipelineStep, PipelineTrigger } from '../shared/dto/pipelines.js';
 import { assertArtifactIdentity } from '../runtime/identity.js';
 import { assertReleaseLoaderEnvironment } from '../release/target-runtime.js';
 
@@ -13,19 +13,51 @@ export const PIPELINE_LIMITS = {
 
 /** A deliberately small condition language. Unsupported expressions never authorize a step. */
 export function pipelineCondition(expression: string, params: Record<string, unknown>): boolean {
+  const parameter = (name: string): unknown => Object.hasOwn(params, name) ? params[name] : undefined;
   const comparison = expression.match(/^params\.(\w+)\s*(==|!=)\s*(['"])(.*?)\3\s*$/);
   if (comparison) {
-    const equal = String(params[comparison[1]!] ?? '') === comparison[4];
+    const equal = String(parameter(comparison[1]!) ?? '') === comparison[4];
     return comparison[2] === '==' ? equal : !equal;
   }
   const boolean = expression.match(/^(!\s*)?params\.(\w+)\s*$/);
-  if (boolean) return boolean[1] ? !params[boolean[2]!] : Boolean(params[boolean[2]!]);
-  throw new Error(`Unsupported pipeline condition: ${expression}`);
+  if (boolean) return boolean[1] ? !parameter(boolean[2]!) : Boolean(parameter(boolean[2]!));
+  throw new Error('Unsupported pipeline condition. Use a parameter flag or compare a parameter with a literal');
+}
+
+const definitionFields = new Set(['name', 'description', 'steps', 'triggers'] satisfies (keyof PipelineDef)[]);
+const stepFields = new Set(['name', 'kind', 'run', 'target', 'args', 'cwd', 'nodeId', 'dependsOn', 'env',
+  'timeout', 'retries', 'condition'] satisfies (keyof PipelineStep)[]);
+const triggerFields = new Set(['type', 'config'] satisfies (keyof PipelineTrigger)[]);
+const stepName = /^[\w.-]{1,80}$/;
+
+function checkFields(value: object, allowed: ReadonlySet<string>, context: string): void {
+  const unknown = Object.keys(value).find(key => !allowed.has(key));
+  if (unknown !== undefined) {
+    const label = /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(unknown) ? `: ${unknown}` : '';
+    throw new Error(`Unknown ${context} field${label}`);
+  }
+}
+
+export function storedDefinition({ name, description, steps, triggers }: Pick<Pipeline, keyof PipelineDef>): PipelineDef {
+  return { name, description: description ?? '', steps, triggers };
+}
+
+/** Check an authored definition without registering it, resolving a target, or executing source. */
+export async function checkPipelineDefinition(def: PipelineDef): Promise<void> {
+  validatePipeline(def);
+  const { Pipeline } = await import('@xec-sh/ops/pipeline');
+  const graph = Pipeline.create(def.name);
+  for (const step of def.steps) {
+    graph.step(step.name, { run: step.kind === 'release' || step.kind === 'deploy' ? async () => {} : step.run,
+      ...(step.dependsOn ? { dependsOn: step.dependsOn } : {}) });
+  }
+  graph.validate();
 }
 
 export function validatePipeline(def: PipelineDef): void {
   if (!def || typeof def.name !== 'string' || !def.name.trim() || def.name.length > 120)
     throw new Error('Pipeline name must contain 1–120 characters');
+  checkFields(def, definitionFields, 'pipeline');
   if (def.description !== undefined && (typeof def.description !== 'string' || def.description.length > 2000))
     throw new Error('Pipeline description must contain at most 2000 characters');
   if (!Array.isArray(def.steps) || !def.steps.length || def.steps.length > PIPELINE_LIMITS.steps)
@@ -35,9 +67,11 @@ export function validatePipeline(def: PipelineDef): void {
     (!Array.isArray(def.triggers) || def.triggers.some((trigger) => !trigger || trigger.type !== 'manual'))
   )
     throw new Error('Only manual triggers are currently supported');
+  for (const trigger of def.triggers ?? []) checkFields(trigger, triggerFields, 'trigger');
   for (const step of def.steps) {
-    if (!step || typeof step.name !== 'string' || !/^[\w.-]{1,80}$/.test(step.name))
+    if (!step || typeof step.name !== 'string' || !stepName.test(step.name))
       throw new Error('Invalid step name');
+    checkFields(step, stepFields, `step ${step.name}`);
     if (step.kind === 'deploy') {
       const target = step.target;
       if (!target || Object.keys(target).sort().join(',') !== 'manifestSha256,project,releaseId,review,stack' ||
@@ -83,7 +117,7 @@ export function validatePipeline(def: PipelineDef): void {
         throw new Error('Invalid working directory or node ID');
     if (
       step.dependsOn !== undefined &&
-      (!Array.isArray(step.dependsOn) || !step.dependsOn.every((d) => typeof d === 'string'))
+      (!Array.isArray(step.dependsOn) || !step.dependsOn.every((name) => typeof name === 'string' && stepName.test(name)))
     )
       throw new Error('Step dependencies must be an array of names');
     if (

@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import type { Pipeline, PipelineRunReview, PreparePipelineRun, StartPipelineRun } from '../shared/dto/pipelines.js';
-import { validatePipeline, validatePipelineParams } from './pipeline-definition.js';
+import { storedDefinition, validatePipeline, validatePipelineParams } from './pipeline-definition.js';
 
 /** Only stored on the control plane; the wire receipt contains review alone. */
 export interface PipelineAdmission {
@@ -56,7 +56,7 @@ export function readAdmission(stored: unknown): PipelineAdmission | undefined {
   if (data['definition'] !== undefined) {
     if (typeof data['definition'] !== 'string') throw Error('Invalid pinned definition');
     const { revision, conditionalUpdates: _conditionalUpdates, ...body } = JSON.parse(data['definition']) as Pipeline;
-    validatePipeline({ ...body, description: body.description ?? '' });
+    validatePipeline(storedDefinition(body));
     if (revision !== data['review']['definitionRevision'] || createHash('sha256').update(JSON.stringify(body)).digest('hex') !== revision)
       throw Error('Pinned definition digest differs');
   }

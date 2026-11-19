@@ -1337,6 +1337,11 @@ pipeline
     await pipelineStatusCommand(runId, options);
   });
 
+pipeline.command('check <file>').description('Validate a local JSON definition and its dependency graph offline')
+  .structuredAction(async (file) => {
+    const { pipelineCheckCommand } = await import('../commands/pipeline.js');
+    await pipelineCheckCommand(file);
+  });
 pipeline.command('save <file>').description('Create a pipeline from JSON, or update an existing definition')
   .option('--id <id>', 'Existing pipeline ID to update')
   .option('--expected-revision <sha256>', 'Reviewed revision, required with --id')

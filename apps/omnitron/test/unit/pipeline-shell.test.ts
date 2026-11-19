@@ -3,6 +3,7 @@ import { Pipeline } from '@xec-sh/ops';
 import { PipelineOutput } from '../../src/services/pipeline.service.js';
 import {
   PIPELINE_LIMITS,
+  checkPipelineDefinition,
   pipelineCondition,
   validatePipeline,
   validatePipelineParams,
@@ -49,6 +50,20 @@ describe('Omnitron uses the Xec step executor', () => {
 });
 
 describe('pipeline admission and diagnostics', () => {
+  it('requires explicit parameter values for conditions', () => {
+    const params = Object.assign(Object.create({ approved: true }), { selected: 'blue' });
+    expect(pipelineCondition('params.approved', params)).toBe(false);
+    expect(pipelineCondition('params.selected == "blue"', params)).toBe(true);
+  });
+
+  it('checks authored fields and Xec dependencies before saving or executing', async () => {
+    const step = { name: 'test', run: 'echo checked' };
+    await expect(checkPipelineDefinition({ name: 'CI', steps: [step, { ...step, name: 'publish', dependsOn: ['test'] }] })).resolves.toBeUndefined();
+    await expect(checkPipelineDefinition({ name: 'CI', steps: [{ ...step, dependOn: ['build'] }] } as never)).rejects.toThrow('dependOn');
+    await expect(checkPipelineDefinition({ name: 'CI', steps: [{ ...step, dependsOn: ['build'] }] })).rejects.toThrow('unknown step');
+    await expect(checkPipelineDefinition({ name: 'CI', steps: [{ ...step, dependsOn: ['test'] }] })).rejects.toThrow(/circular/i);
+  });
+
   it('rejects unsupported conditions and unsafe parameter interpolation', () => {
     expect(() => pipelineCondition('runAnything()', {})).toThrow('Unsupported');
     expect(pipelineCondition('params.confirm == "yes"', { confirm: 'yes' })).toBe(true);

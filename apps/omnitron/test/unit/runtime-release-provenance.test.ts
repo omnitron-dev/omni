@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { syncBuiltinESMExports } from 'node:module';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { releaseTreeDigest, frameworkDependencyDigest, RELEASE_RECEIPT, verifyLaunchRelease, type ReleaseArtifactOrigin } from '../../src/release/runtime-provenance.js';
 import { AppHandle } from '../../src/orchestrator/app-handle.js';
@@ -10,6 +11,47 @@ import { stackFixture, stackAppFixture } from '../helpers/stack-fixture.js';
 import { selectNodeApps } from '../../src/project/node-app-config.js';
 
 const directories: string[] = [];
+it('refuses a working package file replaced after opening it', async () => {
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'migration-tree-change-')));
+  directories.push(root);
+  const file = path.join(root, 'tool.js');
+  await fs.writeFile(file, 'original');
+  const open = fs.open.bind(fs);
+  const changed = vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+    const fd = await open(...args);
+    if (args[0] === file) {
+      await fs.rename(file, path.join(root, 'old'));
+      await fs.writeFile(file, 'new file');
+    }
+    return fd;
+  });
+  syncBuiltinESMExports();
+  try { await expect(releaseTreeDigest(root, true, true, [], undefined, true)).rejects.toThrow('changed during verification'); }
+  finally { changed.mockRestore(); syncBuiltinESMExports(); }
+});
+
+it('preserves the serial tree digest across working file batches, references and streamed outputs', async () => {
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'migration-tree-')));
+  directories.push(root);
+  const nested = path.join(root, 'nested');
+  await fs.mkdir(nested);
+  for (let i = 0; i < 28; i++) await fs.writeFile(path.join(root, 'item-' + i), Buffer.alloc(i * 7, i));
+  await fs.writeFile(path.join(nested, 'large'), Buffer.alloc(256 * 1024 + 17, 42), { mode: 0o755 });
+  await fs.link(path.join(root, 'item-3'), path.join(root, 'alias-hard'));
+  await fs.symlink('item-7', path.join(root, 'alias-link'));
+  await fs.symlink('nested', path.join(root, 'alias-directory'), 'dir');
+  await fs.mkdir(path.join(root, 'node_modules'));
+  await fs.writeFile(path.join(root, 'node_modules/excluded'), 'ignored');
+  for (const portable of [false, true]) {
+    const serial = await releaseTreeDigest(root, portable, true, ['item-2']);
+    expect(await releaseTreeDigest(root, portable, true, ['item-2'], undefined, true)).toBe(serial);
+  }
+  const before = await releaseTreeDigest(root, true, true, [], undefined, true);
+  await fs.appendFile(path.join(nested, 'large'), 'changed');
+  expect(await releaseTreeDigest(root, true, true)).not.toBe(before);
+  expect(await releaseTreeDigest(root, true, true, [], undefined, true)).toBe(await releaseTreeDigest(root, true, true));
+});
+
 // pnpm can set NODE_PATH for Vitest. Fixtures represent a clean execution owner.
 beforeEach(() => { vi.stubEnv('NODE_PATH', ''); vi.stubEnv('NODE_OPTIONS', ''); });
 afterEach(async () => { vi.unstubAllEnvs(); for (const directory of directories.splice(0)) await fs.rm(directory, { recursive: true, force: true }); });

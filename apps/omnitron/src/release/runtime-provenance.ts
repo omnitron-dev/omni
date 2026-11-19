@@ -13,7 +13,7 @@ export const RELEASE_RECEIPT = '.omnitron-release.json';
 
 /** Self-contained so exactly this implementation also seals the remote candidate. */
 export async function releaseTreeDigest(directory: string, portable = false, skipDependencies = false, excludedRootEntries: readonly string[] = [],
-  inspectWorkspaceBinding?: (link: string, target: string) => Promise<boolean | undefined>): Promise<string> {
+  inspectWorkspaceBinding?: (link: string, target: string) => Promise<boolean | undefined>, workingFiles = false): Promise<string> {
   const io = await import('node:fs/promises');
   const paths = await import('node:path');
   const { createHash } = await import('node:crypto');
@@ -21,9 +21,44 @@ export async function releaseTreeDigest(directory: string, portable = false, ski
   const seen = new Map<string, string>();
   let files = 0, bytes = 0;
   const deadline = Date.now() + 60_000;
-  const walk = async (absolute: string, label: string): Promise<void> => {
+  const sameFile = (a: import('node:fs').BigIntStats, b: import('node:fs').BigIntStats) => a.dev === b.dev &&
+    a.ino === b.ino && a.mode === b.mode && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs;
+  const reserve = (size: bigint) => {
+    if (++files > 200_000 || (bytes += Number(size)) > 2_147_483_648 || size > 268_435_456n)
+      throw new Error('Release tree exceeds verification capacity');
+  };
+  const chunkSize = 64 * 1024, batchSize = 12;
+  type RegularFile = { before: import('node:fs').BigIntStats; contents?: Buffer };
+  // Working reviews bound both outstanding reads and retained bytes. A large
+  // file streams into the original hash at its canonical position.
+  const readWorkingFile = async (file: string, before: import('node:fs').BigIntStats, stream = false) => {
+    reserve(before.size);
+    if (process.getuid && before.uid !== BigInt(process.getuid()) || (before.mode & 0o022n) !== 0n)
+      throw new Error('Release dependency has unsafe ownership or permissions');
+    const fd = await io.open(file, io.constants.O_RDONLY | io.constants.O_NOFOLLOW | io.constants.O_NONBLOCK);
+    try {
+      if (!sameFile(before, await fd.stat({ bigint: true }))) throw new Error('Release tree changed during verification');
+      const size = Number(before.size), buffer = Buffer.allocUnsafe(Math.min(size, chunkSize));
+      for (let offset = 0; offset < size;) {
+        if (Date.now() > deadline) throw new Error('Release tree verification deadline exceeded');
+        const length = Math.min(buffer.length, size - offset);
+        let filled = 0;
+        while (filled < length) {
+          const { bytesRead } = await fd.read(buffer, filled, length - filled, null);
+          if (!bytesRead) throw new Error('Release tree changed during verification');
+          filled += bytesRead;
+        }
+        if (stream) digest.update(buffer.subarray(0, length));
+        offset += length;
+      }
+      if (!sameFile(before, await fd.stat({ bigint: true })) || !sameFile(before, await io.lstat(file, { bigint: true })))
+        throw new Error('Release tree changed during verification');
+      return buffer;
+    } finally { await fd.close(); }
+  };
+  const walk = async (absolute: string, label: string, regular?: RegularFile): Promise<void> => {
     if (Date.now() > deadline) throw new Error('Release tree verification deadline exceeded');
-    const before = await io.lstat(absolute, { bigint: true });
+    const before = regular?.before ?? await io.lstat(absolute, { bigint: true });
     if (process.getuid && before.uid !== BigInt(process.getuid())) throw new Error('Release tree belongs to another user');
     if (before.isSymbolicLink()) {
       const target = await io.realpath(absolute);
@@ -51,21 +86,43 @@ export async function releaseTreeDigest(directory: string, portable = false, ski
     seen.set(absolute, label);
     if (before.isDirectory()) {
       digest.update(`directory\0${label}\0`);
-      for (const name of (await io.readdir(absolute)).sort()) {
-        if (skipDependencies && absolute === root && name === 'node_modules') continue;
-        if (absolute === root && excludedRootEntries.includes(name)) continue;
-        // Operational receipts are written after deployment; they are not code.
-        if (absolute === root && ['.omnitron-release.json', '.artifact-sha256'].includes(name)) continue;
-        await walk(paths.join(absolute, name), `${label}/${name}`);
+      const excluded = (name: string) => absolute === root && (skipDependencies && name === 'node_modules' ||
+        excludedRootEntries.includes(name) || ['.omnitron-release.json', '.artifact-sha256'].includes(name));
+      if (!workingFiles) {
+        for (const name of (await io.readdir(absolute)).sort()) {
+          if (!excluded(name)) await walk(paths.join(absolute, name), `${label}/${name}`);
+        }
+      } else {
+        const entries = (await io.readdir(absolute, { withFileTypes: true })).filter(entry => !excluded(entry.name))
+          .sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+        for (let i = 0; i < entries.length;) {
+          const start = i, entry = entries[i++]!;
+          if (!entry.isFile()) { await walk(paths.join(absolute, entry.name), `${label}/${entry.name}`); continue; }
+          while (i < entries.length && i - start < batchSize && entries[i]!.isFile()) i++;
+          const group = entries.slice(start, i);
+          const captures = await Promise.allSettled(group.map(async ({ name }): Promise<RegularFile> => {
+            const file = paths.join(absolute, name), initial = await io.lstat(file, { bigint: true });
+            if (!initial.isFile()) throw new Error('Release tree changed during verification');
+            if (seen.has(file) || initial.size > BigInt(chunkSize)) return { before: initial };
+            return { before: initial, contents: await readWorkingFile(file, initial) };
+          }));
+          for (const [j, result] of captures.entries()) {
+            if (result.status === 'rejected') throw result.reason;
+            const name = group[j]!.name;
+            await walk(paths.join(absolute, name), `${label}/${name}`, result.value);
+          }
+        }
       }
     } else if (before.isFile()) {
-      if (++files > 200_000 || (bytes += Number(before.size)) > 2_147_483_648 || before.size > 268_435_456n)
-        throw new Error('Release tree exceeds verification capacity');
       digest.update(`file\0${label}\0${portable ? (before.mode & 0o111n ? 0o111n : 0n) : before.mode & 0o111n}\0`);
-      digest.update(await io.readFile(absolute)); digest.update('\0');
+      if (regular?.contents) digest.update(regular.contents);
+      else if (workingFiles) await readWorkingFile(absolute, before, true);
+      else { reserve(before.size); digest.update(await io.readFile(absolute)); }
+      digest.update('\0');
+      if (workingFiles) return; // readWorkingFile checked the open descriptor and its pathname.
     } else throw new Error('Unsupported file in release tree');
     const after = await io.lstat(absolute, { bigint: true });
-    if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs)
+    if (!sameFile(before, after))
       throw new Error('Release tree changed during verification');
   };
   await walk(root, '.');

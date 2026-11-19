@@ -123,6 +123,36 @@ it('reads each source package once per inspection and rechecks before each exter
   // Request review, admission before drain, and reinspection under SDK locks precede these actions.
   expect(observations).toEqual([4, 5, 6]);
 });
+it('admits four package reads at a time and measures shared physical dependencies once per review', async () => {
+  const f = await fixture();
+  const { plan } = await f.internals.prepareStackMigrations(scope);
+  const packages = Array.from({ length: 10 }, (_, i) => 'probe-' + i);
+  const dependencies = Object.fromEntries([...packages, 'tsx'].map(name => [name, '1.0.0']));
+  await fs.writeFile(path.join(f.cwd, 'package.json'), JSON.stringify({ name: 'app', version: '1.0.0', dependencies }));
+  for (const name of packages) {
+    const root = path.join(f.cwd, 'node_modules', name);
+    await fs.mkdir(root);
+    await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({ name, version: '1.0.0', dependencies: { tsx: '1.0.0' } }));
+  }
+  const release = deferred(), ready = deferred();
+  const original = provenance.releaseTreeDigest, calls: string[] = [];
+  let active = 0, peak = 0;
+  vi.spyOn(provenance, 'releaseTreeDigest').mockImplementation(async (dir, ...options) => {
+    calls.push(dir);
+    peak = Math.max(peak, ++active);
+    if (active === 4) ready.release();
+    try { await release.promise; return await original(dir, ...options); }
+    finally { active--; }
+  });
+  const inspect = inspectMigrationDependencies(plan, { root: f.root, source: null, bindings: {} });
+  try { await ready.promise; expect(calls).toHaveLength(4); }
+  finally { release.release(); }
+  expect(await inspect).toMatch(/^[a-f0-9]{64}$/);
+  expect(peak).toBe(4);
+  expect(new Set(calls).size).toBe(calls.length);
+  expect(calls).toContain(path.join(f.cwd, 'node_modules/tsx'));
+});
+
 it.each(['untracked', 'program', 'port', 'secret', 'stop', 'pid', 'missing-handle', 'native'] as const)('rejects %s drift before SQL', async change => {
   const f = await fixture(), input = await request(f);
   if (change === 'untracked') await fs.writeFile(path.join(f.cwd, 'src/database/new-migration.ts'), 'export const revision = 2;');

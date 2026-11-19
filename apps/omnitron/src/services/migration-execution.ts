@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from 'node:util';
 import { createHash } from 'node:crypto';
+import { pLimit } from '@omnitron-dev/common';
 import { redactDiagnosticText } from '@omnitron-dev/titan/diagnostics';
 import path from 'node:path';
 import type { IEcosystemAppEntry } from '../config/types.js';
@@ -25,7 +26,7 @@ export async function planLocalMigrations(requests: readonly MigrationRequest[],
     if (!target.sealed && target.source.split('/').some(part => ['.git', '.omnitron', 'node_modules'].includes(part)))
       throw Error('A source migration must belong to application sources, outside Git, operation state and dependency directories');
     if (!trees.has(target.cwd)) trees.set(target.cwd, releaseTreeDigest(target.cwd, !target.sealed, !target.sealed,
-      target.sealed ? [] : ['.git', '.omnitron']));
+      target.sealed ? [] : ['.git', '.omnitron'], undefined, !target.sealed));
     return { target, env: { ...env, ...database.env }, database, program: await trees.get(target.cwd)! };
   }));
   validateMigrationDestinations(plan.map(({ target, database }) => ({ app: target.app, database })));
@@ -42,6 +43,8 @@ export async function inspectMigrationDependencies(plan: LocalMigrationPlan, sdk
   const bindings = migrationWorkspaceBindings(sdk, directory => { if (!covered.has(directory)) roots.add(directory); });
   const content = new Map<string, Promise<string>>();
   const sealedContent = new Map<string, Promise<string>>();
+  const measure = pLimit(4);
+  let failure: Error | undefined;
   for (const { target, program } of plan) {
     // This inspection's source plan already measured this physical package
     // with the same portable digest and exclusions. Sealed trees use a different digest.
@@ -60,13 +63,26 @@ export async function inspectMigrationDependencies(plan: LocalMigrationPlan, sdk
     const cache = sealed.has(root) ? sealedContent : content;
     const inspect = sealed.has(root) || !sdk.source ? undefined : bindings.inspect;
     if (inspect) for (const item of graph) covered.add(item.root);
-    const packages = await Promise.all(graph.map(async item => {
+    for (const item of graph) {
       if (item.metadata.name.startsWith('@omnitron-dev/') && !frameworkRoots.some(directory => item.root === directory || item.root.startsWith(directory + path.sep)))
         throw Error('Migration framework dependency has no declared SDK workspace owner: ' + item.metadata.name);
-      if (!cache.has(item.root)) cache.set(item.root, releaseTreeDigest(item.root, true, true, ['.git', '.omnitron'], inspect));
+    }
+    const results = await Promise.allSettled(graph.map(async item => {
+      if (!cache.has(item.root)) cache.set(item.root, measure(async () => {
+        if (failure) throw failure;
+        try { return await releaseTreeDigest(item.root, true, true, ['.git', '.omnitron'], inspect, !sealed.has(root)); }
+        catch (cause) {
+          failure ??= new Error(`Migration dependency ${item.metadata.name} at ${item.root}: ${(cause as Error).message}`, { cause });
+          throw failure;
+        }
+      }));
       return { root: item.root, name: item.metadata.name, version: item.metadata.version,
         dependencies: [...item.dependencies], sha256: await cache.get(item.root)! };
     }));
+    const packages = results.map(result => {
+      if (result.status === 'rejected') throw result.reason;
+      return result.value;
+    });
     evidence.push({ root, packages });
   }
   await bindings.verify();

@@ -1321,13 +1321,18 @@ infra
 // CI/CD Pipelines
 // ============================================================================
 
-program.command('studio').description('Project development with local agent subscriptions')
-  .command('connect [project]').description('Connect a local agent to one Console account and workspace')
+const studio = program.command('studio').description('Project development with local agent subscriptions');
+studio.command('doctor').description('Check local executables, subscription catalogs and room tool support')
+  .option('--provider <name>', 'Check codex, agy, claude or kimi')
+  .option('--binary <path>', 'Absolute path to the selected provider CLI')
+  .action(async (opts) => (await import('../commands/studio.js')).doctorStudio(opts));
+studio.command('connect [project]').description('Connect a local agent to one Console account and workspace')
   .option('--planning', 'Enable project interviews before the first project exists')
   .requiredOption('--account <id>', 'Account shown in Console Agent Studio')
-  .requiredOption('--provider <name>', 'codex or agy')
+  .requiredOption('--provider <name>', 'codex, agy, claude or kimi')
   .option('--binary <path>', 'Absolute path to the installed provider CLI')
   .option('--model-policy <file>', 'Local model capability and cost declarations')
+  .option('--jobs <count>', 'Concurrent provider turns on this subscription (1–8)', '1')
   .action(async (projectName, options) => (await import('../commands/studio.js')).connectStudio(projectName, options));
 
 const pipeline = program.command('pipeline').description('CI/CD pipeline management');

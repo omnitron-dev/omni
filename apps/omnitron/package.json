@@ -23,6 +23,10 @@
       "types": "./dist/shared/events.d.ts",
       "default": "./dist/shared/events.js"
     },
+    "./flows": {
+      "types": "./dist/shared/dto/flows.d.ts",
+      "default": "./dist/shared/dto/flows.js"
+    },
     "./alerts": {
       "types": "./dist/shared/alert-expression.d.ts",
       "default": "./dist/shared/alert-expression.js"
@@ -123,6 +127,7 @@
     "lint:fix": "eslint src/**/*.ts --fix"
   },
   "dependencies": {
+    "@modelcontextprotocol/server": "^2.4.0",
     "@omnitron-dev/access": "workspace:*",
     "@omnitron-dev/common": "workspace:*",
     "@omnitron-dev/eventemitter": "workspace:*",
@@ -156,11 +161,13 @@
     "systeminformation": "^5.33.19",
     "tar": "7.5.22",
     "tsx": "^4.23.15",
-    "yaml": "^2.9.1"
+    "yaml": "^2.9.1",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
+    "@modelcontextprotocol/client": "^2.4.0",
     "@mui/material": "^9.5.0",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",

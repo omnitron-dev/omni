@@ -1,8 +1,18 @@
 import { createHash } from 'node:crypto';
-import { open } from 'node:fs/promises';
+import { open, rm } from 'node:fs/promises';
 import { Writable } from 'node:stream';
 import { StringDecoder } from 'node:string_decoder';
-import { ExecutionEngine } from '@xec-sh/core';
+import {
+  discoverStudioModels,
+  providerId,
+  studioEnv,
+  studioEngine,
+  studioInvocation,
+  verifyAgyProfile,
+  writeCodexConsultationCatalog,
+} from './provider-cli.js';
+import type { StudioMcpEndpoint } from './team-mcp.js';
+import { STUDIO_TEAM_TOOLS } from '../shared/dto/studio.js';
 import type { StudioFailure, StudioProvider, StudioResult, StudioTask } from '../shared/dto/studio.js';
 import {
   selectStudioModel,
@@ -12,127 +22,55 @@ import {
   type StudioUsageReport,
 } from '../shared/dto/studio-policy.js';
 
-const agentEnv = () =>
-  Object.fromEntries(
-    ['HOME', 'USERPROFILE', 'PATH', 'TMPDIR', 'TEMP', 'TMP', 'SystemRoot', 'LANG', 'LC_ALL', 'SSL_CERT_FILE'].flatMap(
-      (key) => (process.env[key] ? [[key, process.env[key]!]] : [])
-    )
-  );
-const engine = () =>
-  new ExecutionEngine({
-    defaultShell: false,
-    quiet: true,
-    enableEvents: false,
-    retry: { retries: 0 },
-    preferLocal: false,
-  });
-const safeId = (id: unknown): id is string => typeof id === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$/.test(id);
-const codexPrivacy = [
-  '--ignore-user-config',
-  '--ignore-rules',
-  '--disable',
-  'shell_tool',
-  '--disable',
-  'unified_exec',
-  '--sandbox',
-  'read-only',
-  '--skip-git-repo-check',
-  '--json',
-];
-const agyPrivacy = [
-  '--sandbox',
-  '--mode',
-  'plan',
-  '--settings',
-  JSON.stringify({ toolPermission: 'strict', allowNonWorkspaceAccess: false }),
-  '--disable-slash-commands',
-  '--input-format',
-  'stream-json',
-  '--output-format',
-  'stream-json',
-];
-
 export async function studioCatalog(
   provider: StudioProvider,
   executable: string,
   cwd: string,
   policyFile?: string
 ): Promise<StudioModelCatalog> {
-  const executor = engine();
-  try {
-    const result = await executor.execute({
-      command: executable,
-      args: provider === 'agy' ? ['models'] : ['debug', 'models'],
-      cwd,
-      shell: false,
-      env: agentEnv(),
-      envMode: 'replace',
-      maxBuffer: 8 * 1024 * 1024,
-      timeout: 40_000,
-      nothrow: true,
-    });
-    if (result.exitCode !== 0)
-      throw Error(
-        `The installed ${provider} CLI could not list models. Select a supported executable with --binary and check its local login.`
-      );
-    const listing: { id: string; label: string }[] =
-      provider === 'agy'
-        ? result.stdout
-            .split(/\r?\n/)
-            .filter((s) => s.includes('\t'))
-            .map((s) => {
-              const [id, ...rest] = s.split('\t');
-              return { id: id!.trim(), label: rest.join(' ').trim() };
-            })
-        : (JSON.parse(result.stdout).models as { slug: string; display_name: string; visibility: string }[])
-            .filter((m) => m.visibility === 'list')
-            .map((m) => ({ id: m.slug, label: m.display_name }));
-    if (!listing.length || listing.length > 512 || listing.some((m) => !safeId(m.id) || !m.label))
-      throw Error('The provider returned an invalid model catalog');
-    const catalog = studioCatalogFromListing(provider, provider, 'local', listing);
-    if (policyFile) {
-      const file = await open(policyFile, 'r');
-      let policy: unknown;
-      try {
-        const stat = await file.stat();
-        if (!stat.isFile() || stat.size > 256 * 1024) throw Error('Use a model policy file of up to 256 KiB');
-        policy = JSON.parse(await file.readFile('utf8'));
-      } finally {
-        await file.close();
-      }
-      if (
-        !Array.isArray(policy) ||
-        policy.length > listing.length ||
-        new Set(policy.map((m) => m?.id)).size !== policy.length
-      )
-        throw Error('The model policy must list each selected model once');
-      for (const entry of policy) {
-        const model = catalog.models.find((m) => m.id === entry?.id);
-        if (
-          !model ||
-          !entry ||
-          typeof entry !== 'object' ||
-          Object.keys(entry).some(
-            (k) => !['id', 'classes', 'capabilities', 'qualityTier', 'costTier', 'price'].includes(k)
-          )
-        )
-          throw Error('The model policy contains an unlisted model or unknown field');
-        for (const key of ['classes', 'capabilities', 'qualityTier', 'costTier', 'price'] as const)
-          if (Object.hasOwn(entry, key)) Object.assign(model, { [key]: entry[key] });
-      }
+  const listing = await discoverStudioModels(provider, executable, cwd);
+  const catalog = studioCatalogFromListing(provider, provider, 'local', listing);
+  catalog.teamTools = provider === 'codex' || provider === 'claude';
+  if (policyFile) {
+    const file = await open(policyFile, 'r');
+    let policy: unknown;
+    try {
+      const stat = await file.stat();
+      if (!stat.isFile() || stat.size > 256 * 1024) throw Error('Use a model policy file of up to 256 KiB');
+      policy = JSON.parse(await file.readFile('utf8'));
+    } finally {
+      await file.close();
     }
-    catalog.revision = createHash('sha256').update(JSON.stringify(catalog.models)).digest('hex');
-    const check = selectStudioModel(catalog, {
-      provider,
-      connector: catalog.connector,
-      requirements: {},
-      model: catalog.models[0]!.id,
-    });
-    if (!check.ok) throw Error(check.message);
-    return catalog;
-  } finally {
-    await executor.dispose();
+    if (
+      !Array.isArray(policy) ||
+      policy.length > listing.length ||
+      new Set(policy.map((m) => m?.id)).size !== policy.length
+    )
+      throw Error('The model policy must list each selected model once');
+    for (const entry of policy) {
+      const model = catalog.models.find((m) => m.id === entry?.id);
+      if (
+        !model ||
+        !entry ||
+        typeof entry !== 'object' ||
+        Object.keys(entry).some(
+          (k) => !['id', 'classes', 'capabilities', 'qualityTier', 'costTier', 'price'].includes(k)
+        )
+      )
+        throw Error('The model policy contains an unlisted model or unknown field');
+      for (const key of ['classes', 'capabilities', 'qualityTier', 'costTier', 'price'] as const)
+        if (Object.hasOwn(entry, key)) Object.assign(model, { [key]: entry[key] });
+    }
   }
+  catalog.revision = createHash('sha256').update(JSON.stringify(catalog.models)).digest('hex');
+  const check = selectStudioModel(catalog, {
+    provider,
+    connector: catalog.connector,
+    requirements: {},
+    model: catalog.models[0]!.id,
+  });
+  if (!check.ok) throw Error(check.message);
+  return catalog;
 }
 
 export interface StudioStream {
@@ -156,7 +94,14 @@ interface ProviderEvent {
   conversation_id?: string;
   init?: { permission_mode?: string; conversation_id?: string };
   step_update?: { step_type?: string; text_delta?: string };
-  result?: { status?: string; response?: string; conversation_id?: string; usage?: ProviderUsage };
+  result?: string | { status?: string; response?: string; conversation_id?: string; usage?: ProviderUsage };
+  subtype?: string;
+  is_error?: boolean;
+  session_id?: string;
+  model?: string;
+  tools?: string[];
+  permissionMode?: string;
+  mcp_servers?: { name: string; status: string }[];
   item?: { type?: string; phase?: string; text?: string };
   usage?: ProviderUsage;
 }
@@ -166,7 +111,13 @@ const usageReport = (usage: ProviderUsage | undefined) =>
     outputTokens: usage?.output_tokens ?? null,
     totalTokens: usage?.total_tokens ?? null,
   });
-export function readStudioEvent(provider: StudioProvider, state: StudioStream, event: ProviderEvent): void {
+export function readStudioEvent(
+  provider: StudioProvider,
+  state: StudioStream,
+  event: ProviderEvent,
+  team = false,
+  model?: string
+): void {
   if (provider === 'agy') {
     if (event.event === 'init') {
       if (event.init?.permission_mode !== 'strict') throw Error('The adapter did not confirm strict tool permissions');
@@ -176,7 +127,7 @@ export function readStudioEvent(provider: StudioProvider, state: StudioStream, e
     if (event.event === 'step_update' && event.step_update?.step_type === 'agent_response')
       state.answer += typeof event.step_update.text_delta === 'string' ? event.step_update.text_delta : '';
     if (event.event === 'result') {
-      if (!state.verified || event.result?.status !== 'SUCCESS') {
+      if (!state.verified || !event.result || typeof event.result !== 'object' || event.result.status !== 'SUCCESS') {
         state.failure = 'provider';
         return;
       }
@@ -185,7 +136,40 @@ export function readStudioEvent(provider: StudioProvider, state: StudioStream, e
       state.completed = true;
       state.usage = usageReport(event.result.usage);
     }
-  } else {
+  } else if (provider === 'claude') {
+    if (event.type === 'system' && event.subtype === 'init') {
+      const permitted = team ? STUDIO_TEAM_TOOLS.map((n) => 'mcp__studio__' + n) : [];
+      if (
+        event.permissionMode !== 'dontAsk' ||
+        !Array.isArray(event.tools) ||
+        event.tools.length !== permitted.length ||
+        !permitted.every((n) => event.tools!.includes(n)) ||
+        !Array.isArray(event.mcp_servers) ||
+        event.mcp_servers.length !== (team ? 1 : 0) ||
+        (team && !event.mcp_servers.some((s) => s.name === 'studio' && s.status === 'connected')) ||
+        event.model !== model ||
+        !providerId(event.session_id)
+      )
+        throw Error('Claude Code did not confirm the selected model and tool restrictions');
+      state.verified = true;
+      state.conversation = event.session_id;
+    }
+    if (event.type === 'result') {
+      if (
+        event.subtype !== 'success' ||
+        event.is_error ||
+        !state.verified ||
+        event.session_id !== state.conversation ||
+        typeof event.result !== 'string'
+      ) {
+        state.failure = 'provider';
+        return;
+      }
+      state.answer = event.result;
+      state.usage = usageReport(event.usage);
+      state.completed = true;
+    }
+  } else if (provider === 'codex') {
     if (event.type === 'thread.started') {
       state.conversation = event.thread_id ?? null;
       state.verified = true;
@@ -209,26 +193,11 @@ export async function runStudioTurn(
   cwd: string,
   task: StudioTask,
   signal: AbortSignal,
-  preview: (value: string) => void
+  preview: (value: string) => void,
+  endpoint?: StudioMcpEndpoint,
+  initialSession?: string
 ): Promise<StudioResult> {
-  const { model } = task;
-  if (!safeId(model) || (task.conversation !== null && !safeId(task.conversation)))
-    throw Error('Invalid provider identity');
-  const prompt = task.instructions + '\nUse only the material in the conversation.\n\n' + task.prompt;
-  const args =
-    provider === 'agy'
-      ? [...agyPrivacy, '--model', model, ...(task.conversation ? ['--conversation', task.conversation] : [])]
-      : [
-          '-a',
-          'never',
-          'exec',
-          ...codexPrivacy,
-          '--model',
-          model,
-          ...(task.conversation ? ['resume', task.conversation] : []),
-          '-',
-        ];
-  const input = provider === 'agy' ? JSON.stringify({ event: 'user', message: { content: prompt } }) + '\n' : prompt;
+  const { args, input } = studioInvocation(provider, task, endpoint, initialSession);
   const state: StudioStream = {
     answer: '',
     conversation: null,
@@ -244,7 +213,7 @@ export async function runStudioTurn(
   const consume = (line: string) => {
     if (!line.trim()) return;
     const old = state.answer;
-    readStudioEvent(provider, state, JSON.parse(line));
+    readStudioEvent(provider, state, JSON.parse(line), Boolean(endpoint), task.model);
     if (state.answer !== old) preview(state.answer);
   };
   const sink = new Writable({
@@ -274,20 +243,28 @@ export async function runStudioTurn(
       done();
     },
   });
-  const executor = engine();
+  const executor = studioEngine();
   const deadline = AbortSignal.timeout(180_000);
+  const active = AbortSignal.any([signal, stop.signal, deadline]);
+  let modelFile: string | null = null;
   try {
+    if (provider === 'agy') await verifyAgyProfile(executor, executable, cwd, active);
+    if (provider === 'codex') {
+      modelFile = await writeCodexConsultationCatalog(executor, executable, cwd, task.model, active);
+      if (!modelFile) return { status: 'failed', failure: 'model-changed' };
+      args.unshift('-c', 'model_catalog_json=' + JSON.stringify(modelFile));
+    }
     const result = await executor.execute({
       command: executable,
       args,
       stdin: input,
       stdout: sink,
-      env: agentEnv(),
+      env: studioEnv(provider, endpoint),
       envMode: 'replace',
       cwd,
       shell: false,
       detached: process.platform !== 'win32',
-      signal: AbortSignal.any([signal, stop.signal, deadline]),
+      signal: active,
       maxBuffer: 2 * 1024 * 1024,
       nothrow: true,
     });
@@ -297,8 +274,9 @@ export async function runStudioTurn(
       !state.verified ||
       !state.completed ||
       !state.answer.trim() ||
-      !safeId(state.conversation) ||
-      (task.conversation && task.conversation !== state.conversation)
+      !providerId(state.conversation) ||
+      (endpoint && !endpoint.discovered()) ||
+      ((task.conversation ?? initialSession) && (task.conversation ?? initialSession) !== state.conversation)
     )
       return {
         status: 'failed',
@@ -310,6 +288,10 @@ export async function runStudioTurn(
   } catch {
     return { status: 'failed', failure: state.failure ?? (deadline.aborted ? 'timeout' : 'provider') };
   } finally {
-    await executor.dispose();
+    try {
+      await executor.dispose();
+    } finally {
+      if (modelFile) await rm(modelFile, { force: true });
+    }
   }
 }

@@ -42,7 +42,7 @@ A disk cleanup can be a published project maintenance task. Review its allowed c
 
 ## Share one graph
 
-Studio offers `flow_catalog`, `flow_preview` and `flow_propose`. The editor and the authenticated `OmnitronFlows` service use the controller's registry and validator. The room owner can open a proposal for a private preview or choose **Submit for review** to share its graph with workspace administrators. The confirmation identifies the room's project and stack. Review the node parameters and output text before sharing them.
+Studio offers `flow_catalog`, `flow_preview` and `flow_propose`. The editor and the authenticated `OmnitronFlows` service use the controller's registry and validator. The room owner can open a proposal for a private preview or choose **Submit for administrator review** to share its graph with workspace administrators. The confirmation identifies the room's project and stack. Review the node parameters and output text before sharing them.
 
 `OmnitronFlows.submitProposal({ project, threadId, proposalId })` copies the selected proposal into an inactive draft in that workspace. The receipt contains the shared flow ID, workspace and original revision. Submitting the same proposal again returns that receipt across controller restarts and subsequent administrator edits. Conversation history, team memory, provider sessions and operator grants stay in Studio.
 

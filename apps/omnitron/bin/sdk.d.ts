@@ -31,6 +31,10 @@ export function inspectMigrationSdk(projectDirectory: string): Promise<Migration
 export function withMigrationSdk<T>(projectDirectory: string, reference: import('./sdk-operation.js').MigrationSdkReference,
   body: (hold: import('./sdk-operation.js').MigrationSdkHold) => Promise<T>): Promise<T>;
 export function sdkCommand(args: string[]): Promise<void>;
+export function prepareDevelopmentSdk(projectDirectory: string, checkout?: string): Promise<{
+  root: string; source: string; token: string; paths: number; bytes: number;
+  projectRevision: string | { unborn: string } | null; sourceRevision: string | { unborn: string } | null;
+}>;
 export function inspectSdk(projectDirectory?: string, stack?: string): Promise<DevelopmentSdkStatus>;
 export interface DevelopmentSdkLaunchStatus {
   stack: string;

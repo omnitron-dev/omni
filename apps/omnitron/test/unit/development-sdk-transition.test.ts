@@ -3,9 +3,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { prepareSdkTransition, beginSdkTransition, finishSdkTransition, recoverSdkTransition, sdkTransitionStatus,
+import { prepareSdkTransition, readPreparedSdkTransition, beginSdkTransition, finishSdkTransition, recoverSdkTransition, sdkTransitionStatus,
   saveSdkBuildCheckpoint, sdkAdoptionTransition, supersedeSdkTransition } from '../../bin/sdk-transition.js';
 import { sdkCommand, inspectSdk } from '../../bin/sdk.js';
+import { prepareSdkState, exclusively } from '../../bin/sdk-operation.js';
 
 const rpc = vi.hoisted(() => ({ projects: vi.fn(), stacks: vi.fn(), status: vi.fn(), disconnect: vi.fn(), mutable: vi.fn() }));
 vi.mock('@omnitron-dev/omnitron/operations', async () => ({
@@ -37,12 +38,18 @@ beforeEach(async () => {
   const profile = { schema: 1, root, source, links: {} };
   for (const name of ['active.json', 'install.json']) await fs.writeFile(path.join(state, name), JSON.stringify(profile));
   await fs.writeFile(path.join(state, 'built.json'), JSON.stringify({ schema: 2, source, hashes: {}, applications: {} }));
-  vi.stubEnv('OMNITRON_DEV_CACHE', cache); vi.stubEnv('OMNITRON_HOME', path.join(temporary, 'no-owner'));
+  vi.stubEnv('OMNITRON_DEV_CACHE', cache); vi.stubEnv('OMNITRON_HOME', path.join(temporary, 'no-owner')); vi.stubEnv('OMNITRON_SOCKET', undefined);
 });
 afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllEnvs(); await fs.rm(temporary, { recursive: true, force: true }); });
-const prepare = () => prepareSdkTransition({ root, source,
+const inventory = () => ({ root, source,
   paths: [output, modules, path.join(root, 'pnpm-lock.yaml'), ...['built.json', 'install.json', 'active.json'].map(name => path.join(state, name))],
   guards: [path.join(source, 'package.json')] });
+const prepare = () => prepareSdkTransition(inventory());
+const inputs = () => ({ ...inventory(), detached: true, intent: 'fixture selection and revisions' });
+async function stage() {
+  const { journal } = await prepareSdkTransition(inputs());
+  return { token: journal.id + '.' + journal.proof, snapshot: journal.snapshot };
+}
 async function mutate() {
   await fs.writeFile(path.join(output, 'index.js'), 'partially rebuilt');
   await fs.chmod(path.join(output, 'tool'), 0o600);
@@ -53,6 +60,96 @@ async function mutate() {
   await fs.writeFile(path.join(state, 'built.json'), '{"schema":3}');
   await fs.writeFile(path.join(state, 'install.json'), '{"installing":true}');
 }
+
+it('uses a detached image once and restores its exact bytes through public recover', async () => {
+  const { token, snapshot } = await stage();
+  expect(await sdkTransitionStatus(root)).toBeNull();
+  const selection = await readPreparedSdkTransition(inputs(), token);
+  await beginSdkTransition(selection); await mutate(); await finishSdkTransition(selection, true);
+  await sdkCommand(['recover', '--project-dir', root]);
+  expect(await fs.readFile(path.join(output, 'index.js'), 'utf8')).toBe('old executable bytes');
+  expect(await fs.readlink(path.join(modules, '.bin/tool'))).toBe('../../../../source/dist/tool');
+  expect(await present(path.join(root, 'pnpm-lock.yaml'))).toBe(false);
+  expect(await present(path.join(snapshot, 'claimed'))).toBe(true);
+  await expect(readPreparedSdkTransition(inputs(), token)).rejects.toThrow('already been used');
+});
+
+it.each(['.gitignore', 'operation.sqlite', 'operation.sqlite-journal'])('preserves a foreign target of linked coordination metadata: %s', async file => {
+  const foreign = path.join(output, 'index.js');
+  await fs.symlink(foreign, path.join(state, file));
+  const admitted = vi.fn();
+  await expect((async () => exclusively(await prepareSdkState(root), admitted))()).rejects.toThrow('workspace-owned file');
+  expect(admitted).not.toHaveBeenCalled();
+  expect(await fs.readFile(foreign, 'utf8')).toBe('old executable bytes');
+});
+
+it.each(['guard', 'live bytes', 'retained bytes', 'lost retained file', 'new output', 'removed guard', 'source identity',
+  'consumer identity', 'profile', 'predecessor', 'token'])('refuses detached preparation drift before taking ownership: %s', async drift => {
+  const prior = await prepare(); await beginSdkTransition(prior); await finishSdkTransition(prior, true);
+  const staged = await stage(), input = inputs();
+  let token = staged.token;
+  if (drift === 'guard') await fs.appendFile(input.guards[0]!, 'changed');
+  if (drift === 'live bytes') await fs.appendFile(path.join(output, 'index.js'), 'changed');
+  if (drift === 'retained bytes') await fs.appendFile(path.join(staged.snapshot, '0/index.js'), 'changed');
+  if (drift === 'lost retained file') await fs.unlink(path.join(staged.snapshot, '0/index.js'));
+  if (drift === 'new output') input.paths.push(path.join(root, 'generated'));
+  if (drift === 'removed guard') input.guards.pop();
+  if (drift === 'profile') input.intent += 'changed';
+  if (drift === 'token') token = token.slice(0, 37) + '0'.repeat(64);
+  if (drift === 'predecessor') await recoverSdkTransition(root);
+  if (drift === 'source identity' || drift === 'consumer identity') {
+    const directory = drift === 'source identity' ? source : root;
+    await fs.rename(directory, directory + '-old');
+    await fs.cp(directory + '-old', directory, { recursive: true, verbatimSymlinks: true });
+  }
+  const current = await fs.readFile(path.join(state, 'transition.json'));
+  await expect((async () => beginSdkTransition(await readPreparedSdkTransition(input, token)))()).rejects.toThrow();
+  expect(await fs.readFile(path.join(state, 'transition.json'))).toEqual(current);
+  expect(await present(path.join(staged.snapshot, 'claimed'))).toBe(false);
+});
+
+it.each(['admission', 'fence', 'mutating publication'])('cancellation at %s preserves the predecessor and the unspent image', async point => {
+  const prior = await prepare(); await beginSdkTransition(prior); await finishSdkTransition(prior, true);
+  const previous = await fs.readFile(path.join(state, 'transition.json')), { token, snapshot } = await stage();
+  const selection = await readPreparedSdkTransition(inputs(), token), controller = new AbortController();
+  const marker = path.join(state, 'fixture-fence');
+  const rename = fs.rename;
+  vi.spyOn(fs, 'rename').mockImplementation(async (a, b) => {
+    await rename(a, b);
+    if (point === 'mutating publication' && b === path.join(state, 'transition.json') && (await json(String(b))).phase === 'mutating')
+      controller.abort();
+  });
+  const admit = async () => { if (point === 'admission') controller.abort(); };
+  const fence = async () => { await fs.writeFile(marker, 'held'); if (point === 'fence') controller.abort(); };
+  await expect(beginSdkTransition(selection, { signal: controller.signal, admit, fence,
+    unfence: () => fs.unlink(marker) })).rejects.toThrow(/abort/i);
+  expect(await fs.readFile(path.join(state, 'transition.json'))).toEqual(previous);
+  expect(await present(marker)).toBe(false);
+  expect(await present(path.join(snapshot, 'claimed'))).toBe(false);
+  await beginSdkTransition(await readPreparedSdkTransition(inputs(), token));
+  await finishSdkTransition(selection, true);
+});
+
+it('compares stopped-stage copies and full payload reads on the same one-MiB fixture', async () => {
+  const payload = path.join(output, 'payload');
+  await fs.writeFile(payload, Buffer.alloc(1024 * 1024, 0x47));
+  const open = vi.spyOn(fs, 'open'), cp = vi.spyOn(fs, 'cp');
+  const counts = () => ({ copies: cp.mock.calls.length, liveReads: open.mock.calls.filter(([file]) => file === payload).length,
+    retainedReads: open.mock.calls.filter(([file]) => String(file).startsWith(cache + path.sep) && path.basename(String(file)) === 'payload').length });
+  const coldStart = performance.now();
+  const cold = await prepareSdkTransition(inputs()); await beginSdkTransition(cold);
+  const coldMs = Math.round(performance.now() - coldStart), coldCounts = counts();
+  await finishSdkTransition(cold, true);
+  const { token } = await stage();
+  open.mockClear(); cp.mockClear();
+  const warmStart = performance.now();
+  await beginSdkTransition(await readPreparedSdkTransition(inputs(), token));
+  const warmMs = Math.round(performance.now() - warmStart), warmCounts = counts();
+  expect(coldCounts.copies).toBeGreaterThan(0);
+  expect(coldCounts).toMatchObject({ liveReads: 3, retainedReads: 1 });
+  expect(warmCounts).toEqual({ copies: 0, liveReads: 1, retainedReads: 1 });
+  console.log(JSON.stringify({ fixtureBytes: 1024 * 1024, cold: { ...coldCounts, ms: coldMs }, prepared: { ...warmCounts, ms: warmMs } }));
+});
 
 it.each([false, true])('public recover restores exact outputs, native dependencies, links, modes and absent files: committed=%s', async committed => {
   const transition = await prepare(); await beginSdkTransition(transition); await mutate(); await finishSdkTransition(transition, committed);
@@ -377,6 +474,16 @@ it('does not certify a second consumer while the shared source has an unfinished
   await fs.mkdir(otherState, { recursive: true });
   await fs.writeFile(path.join(otherState, 'active.json'), JSON.stringify({ schema: 1, root: other, source, links: {} }));
   await expect(inspectSdk(other)).rejects.toThrow('Shared SDK source has an unfinished selection');
+});
+
+it('checks the configured owner socket for an unscoped SDK mutation', async () => {
+  const transition = await prepare(); await beginSdkTransition(transition); await mutate(); await finishSdkTransition(transition, false);
+  const socket = path.join(temporary, 'isolated-owner.sock'); await fs.writeFile(socket, '');
+  vi.stubEnv('OMNITRON_SOCKET', socket);
+  rpc.projects.mockResolvedValue([{ name: 'example', path: root }]);
+  rpc.stacks.mockResolvedValue([{ name: 'serving', type: 'local', apps: [{ status: 'online' }] }]);
+  await expect(sdkCommand(['recover', '--project-dir', root])).rejects.toThrow('Stop example/serving');
+  expect((await sdkTransitionStatus(root))?.phase).toBe('recoverable');
 });
 
 it('rejects an overlapping cache and paths outside the admitted workspaces', async () => {

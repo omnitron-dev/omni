@@ -42,8 +42,18 @@ export async function prepareSdkState(root) {
   const dir = sdkStatePath(root);
   await sdkDirectory(dir);
   await protectedState(root);
-  await fs.writeFile(path.join(dir, '.gitignore'), '*\n', { mode: 0o600 });
+  const ignore = path.join(dir, '.gitignore');
+  const current = await coordinationFile(ignore);
+  if (!current || current.size !== 2 || await fs.readFile(ignore, 'utf8') !== '*\n')
+    await writeCoordinationFile(ignore, '*\n');
   return dir;
+}
+
+async function coordinationFile(file) {
+  const info = await fs.lstat(file).catch(absent);
+  if (info && (!info.isFile() || info.nlink !== 1 || typeof process.getuid === 'function' &&
+      (info.uid !== process.getuid() || info.mode & 0o022))) throw Error('SDK coordination requires a physical workspace-owned file: ' + file);
+  return info;
 }
 
 async function protectedState(root) {
@@ -67,7 +77,9 @@ export async function sdkWorkspaceIdentity(root) {
 // process death is backed by pending-selection, which survives that process.
 export async function exclusively(dir, body, waitSignal) {
   const { DatabaseSync } = await import('node:sqlite');
-  const db = new DatabaseSync(path.join(dir, 'operation.sqlite'));
+  const file = path.join(dir, 'operation.sqlite');
+  await Promise.all(['', '-journal', '-wal', '-shm'].map(suffix => coordinationFile(file + suffix)));
+  const db = new DatabaseSync(file);
   try {
     for (;;) {
       waitSignal?.throwIfAborted();
@@ -91,15 +103,16 @@ async function readMarker(root) {
   return { bytes: await fs.readFile(file, 'utf8') };
 }
 
-async function atomicMarker(root, bytes) {
-  const file = markerPath(root), temporary = file + '.' + randomUUID() + '.tmp';
+async function writeCoordinationFile(file, bytes) {
+  const temporary = file + '.' + randomUUID() + '.tmp';
   const fd = await fs.open(temporary, 'wx', 0o600);
   try { await fd.writeFile(bytes); await fd.sync(); }
   finally { await fd.close(); }
   try { await fs.rename(temporary, file); }
   finally { await fs.rm(temporary, { force: true }); }
-  await syncDirectory(sdkStatePath(root));
+  await syncDirectory(path.dirname(file));
 }
+const atomicMarker = (root, bytes) => writeCoordinationFile(markerPath(root), bytes);
 async function syncDirectory(dir) {
   const fd = await fs.open(dir, 'r');
   try { await fd.sync(); } finally { await fd.close(); }

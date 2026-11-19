@@ -37,8 +37,17 @@ const sdk = program.command('sdk').description('Select the framework SDK for loc
 sdk.command('init').description('Install the pnpm bridge without resolving registry dependencies')
   .option('--project-dir <path>', 'Consumer workspace directory', process.cwd())
   .action(async ({ projectDir }) => (await import('../../bin/sdk.js')).sdkCommand(['init', '--project-dir', projectDir]));
+sdk.command('prepare [checkout]').description('Retain the development SDK before-image while consumers are serving')
+  .option('--project-dir <path>', 'Consumer workspace directory', process.cwd())
+  .structuredAction(async (checkout, { projectDir }) => {
+    const { prepareDevelopmentSdk } = await import('../../bin/sdk.js');
+    const { emitInfo, emitJson } = await import('../commands/output.js');
+    const result = await prepareDevelopmentSdk(projectDir, checkout);
+    if (!emitJson(result)) emitInfo(`Prepared ${result.paths} paths (${result.bytes} bytes) for ${result.source}\n--prepared ${result.token}`);
+  });
 sdk.command('dev [checkout]').description('Select a local SDK and rebuild when it changes')
   .option('--project-dir <path>', 'Consumer workspace directory', process.cwd())
+  .option('--prepared <token>', 'Use the exact before-image reported by sdk prepare once')
   .option('--stack <name>', 'Refresh watched applications in this local source stack')
   .option('--start-stopped', 'Start the stopped working-tree stack and confirm its first SDK generations')
   .option('--review <digest>', 'Use the exact infrastructure preservation review for that start')
@@ -48,6 +57,7 @@ sdk.command('dev [checkout]').description('Select a local SDK and rebuild when i
     ...(options.stack ? ['--stack', options.stack] : []), ...(options.watch === false ? ['--no-watch'] : []),
     ...(options.startStopped ? ['--start-stopped'] : []),
     ...(options.review !== undefined ? ['--review', options.review] : []),
+    ...(options.prepared !== undefined ? ['--prepared', options.prepared] : []),
   ]));
 sdk.command('registry').description('Restore dependencies from the frozen distribution lock')
   .option('--project-dir <path>', 'Consumer workspace directory', process.cwd())

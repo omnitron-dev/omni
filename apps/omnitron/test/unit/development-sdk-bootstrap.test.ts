@@ -6,6 +6,7 @@ import { createRequire, syncBuiltinESMExports } from 'node:module';
 import { createHash } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import { promisify } from 'node:util';
+import { pathToFileURL } from 'node:url';
 import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { parseAllDocuments } from 'yaml';
 import { create } from 'tar';
@@ -83,6 +84,7 @@ beforeEach(async () => {
   consumer = path.join(root, 'consumer');
   source = path.join(root, 'source');
   vi.stubEnv('OMNITRON_HOME', path.join(root, 'no-daemon'));
+  vi.stubEnv('OMNITRON_SOCKET', undefined);
   const retained = path.join(root, 'retained'); await fs.mkdir(retained);
   vi.stubEnv('OMNITRON_DEV_CACHE', retained);
   await workspace(consumer);
@@ -104,6 +106,89 @@ afterEach(async () => {
 });
 const initialize = () => sdkCommand(['init', '--project-dir', consumer]);
 const select = (checkout?: string) => sdkCommand(['dev', ...(checkout ? [checkout] : []), '--project-dir', consumer, '--no-watch']);
+
+it('prepares a serving checkout through the public CLI, binds revisions and manager metadata, selects once and recovers', async () => {
+  await initialize();
+  const cli = path.resolve(import.meta.dirname, '../../src/cli/omnitron.ts');
+  const run = (...args: string[]) => exec(process.execPath, ['--import', pathToFileURL(require.resolve('tsx/esm')).href, cli, ...args],
+    { cwd: consumer, timeout: 60_000 });
+  const prepare = async () => {
+    const response = JSON.parse((await run('--json', 'sdk', 'prepare', source, '--project-dir', consumer)).stdout);
+    expect(response.ok).toBe(true);
+    return response.data;
+  };
+  const commit = (directory: string) => exec('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+    '-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '--quiet', '-m', 'Neutral fixture'], { cwd: directory });
+  for (const directory of [consumer, source]) await commit(directory);
+  const manager = parseAllDocuments(await fs.readFile(path.resolve(import.meta.dirname, '../../../../pnpm-lock.yaml'), 'utf8'))[0]!.toString() + '---\n';
+  const lock = path.join(consumer, 'pnpm-lock.yaml'), journal = path.join(consumer, '.omnitron/dev-sdk/transition.json');
+  const fence = path.join(source, '.omnitron/dev-sdk/pending-selection');
+  const socket = path.join(process.env['OMNITRON_HOME']!, 'daemon.sock');
+  await fs.mkdir(path.dirname(socket)); await fs.writeFile(socket, 'isolated unreachable owner');
+  const initial = await prepare();
+  expect(initial).toMatchObject({ root: consumer, source, token: expect.stringMatching(/^[a-f0-9-]{36}\.[a-f0-9]{64}$/),
+    projectRevision: (await exec('git', ['rev-parse', 'HEAD'], { cwd: consumer })).stdout.trim(),
+    sourceRevision: (await exec('git', ['rev-parse', 'HEAD'], { cwd: source })).stdout.trim() });
+  expect(await distribution()).toBeNull();
+  expect(await exists(fence)).toBe(false); expect(await exists(journal)).toBe(false); expect(await exists(active())).toBe(false);
+  await fs.unlink(socket);
+  const consume = (token: string) => run('sdk', 'dev', source, '--project-dir', consumer, '--prepared', token, '--no-watch');
+  for (const directory of [source, consumer]) {
+    const candidate = directory === source ? initial : await prepare();
+    await commit(directory);
+    await expect(consume(candidate.token)).rejects.toThrow(/no longer matches/);
+    expect(await exists(journal)).toBe(false);
+  }
+  const absent = await prepare();
+  await fs.writeFile(lock, manager);
+  await expect(consume(absent.token)).rejects.toThrow(/no longer matches/);
+  expect(await exists(fence)).toBe(false); expect(await exists(journal)).toBe(false);
+  expect(await distribution()).toBe(manager);
+  const candidate = await prepare();
+  await consume(candidate.token);
+  expect((await json(journal)).id).toBe(candidate.token.split('.')[0]);
+  expect(await inspectSdk(consumer)).toMatchObject({ mode: 'development', source, distributionLock: 'manager-only', build: { status: 'current' } });
+  expect((await exec('pnpm', ['run', 'build'], { cwd: consumer })).stdout).toContain('Built with SDK value 42');
+  await run('sdk', 'recover', '--project-dir', consumer);
+  expect(await distribution()).toBe(manager); expect(await exists(active())).toBe(false);
+  await expect(consume(candidate.token)).rejects.toThrow(/already been used/);
+  expect((await json(journal)).phase).toBe('restored');
+}, 180_000);
+
+it('honors SIGTERM between retention and the first SDK writer, and detects a newly discovered Turbo input at admission', async () => {
+  await initialize();
+  let token = '';
+  const log = vi.spyOn(console, 'log').mockImplementation(line => {
+    if (String(line).startsWith('SDK recovery preparation: ')) {
+      token = String(line).slice('SDK recovery preparation: '.length);
+      process.emit('SIGTERM');
+    }
+  });
+  try { await expect(select(source)).rejects.toThrow(/abort/i); }
+  finally { log.mockRestore(); }
+  expect(token).toMatch(/^[a-f0-9-]{36}\.[a-f0-9]{64}$/);
+  const journal = path.join(consumer, '.omnitron/dev-sdk/transition.json');
+  const fence = path.join(source, '.omnitron/dev-sdk/pending-selection');
+  expect(await exists(journal)).toBe(false); expect(await exists(fence)).toBe(false);
+  const snapshot = path.join(process.env['OMNITRON_DEV_CACHE']!, 'sdk-transitions', token.split('.')[0]!);
+  const newInput = path.join(source, 'packages/lumen/src/new.ts');
+  const consume = () => sdkCommand(['dev', source, '--prepared', token, '--project-dir', consumer, '--no-watch']);
+  let added = false;
+  const open = fs.open;
+  const reader = vi.spyOn(fs, 'open').mockImplementation(async (...args: Parameters<typeof open>) => {
+    if (!added && typeof args[1] === 'number' && String(args[0]).startsWith(snapshot + path.sep)) {
+      added = true; await fs.writeFile(newInput, 'export const input = 1;\n');
+    }
+    return open(...args);
+  });
+  try { await expect(consume()).rejects.toThrow('preparation inputs changed before selection'); }
+  finally { reader.mockRestore(); }
+  expect(added).toBe(true); expect(await exists(journal)).toBe(false); expect(await exists(fence)).toBe(false);
+  expect(await exists(path.join(snapshot, 'claimed'))).toBe(false);
+  await fs.unlink(newInput);
+  await consume();
+  expect((await json(journal)).id).toBe(token.split('.')[0]); expect((await json(journal)).phase).toBe('committed');
+}, 90_000);
 
 async function installRegistry(virtualStoreDir?: string, nodeLinker = 'isolated') {
   const packages = new Map<string, { manifest: Record<string, unknown>; bytes: Buffer; integrity: string }>();

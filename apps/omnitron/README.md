@@ -200,6 +200,19 @@ omnitron sdk status --project-dir /path/to/project
 
 Changing an SDK selection retains the affected dependency directories, generated outputs and selection metadata in the development cache before writing them. At each phase the CLI reports the duration of the completed phase, total elapsed time and the size of the retained files once known. `retain` copies and checks those files. `verify` rechecks the source and records the recovery proof. Set `OMNITRON_DEV_CACHE` to the mounted development volume to keep the snapshot there. Application database backups follow their own schedule.
 
+To move inventory and copying ahead of a planned outage, prepare the development selection while its applications are serving. Use the same mounted development cache for both commands.
+
+```sh
+omnitron --json sdk prepare /path/to/omni --project-dir /path/to/project
+omnitron sdk dev /path/to/omni --project-dir /path/to/project --no-watch --prepared "$token"
+```
+
+Check `data.projectRevision` and `data.sourceRevision` against the planned Git commits. Set `token` to the complete `data.token` and stop the affected source consumers before the second command. Preparation takes the two SDK workspace locks for inspection and writes the verified image to the cache. The active selection and recovery journal stay available. Preparation uses the installed, pinned pnpm and a Turbo dry plan. Package-manager bootstrap and installation belong to the subsequent selection.
+
+At use, the CLI discovers the paths again, checks both physical checkout identities and Git revisions, the package and Turbo inputs, the preceding recovery receipt, and the bytes, modes and links of live and retained trees. This still reads both trees during the outage. It copies no dependency tree during this stage. A missing file, changed input, or different revision requires a fresh preparation. The atomically claimed token applies to one development selection. If the build is already current, run the usual `sdk dev` without a token. Review of a stopped application start remains a separate step.
+
+Cancellation observed through publication of the writer's admission releases the claim and leaves a completed image available. After admission, an interrupted writer can have an unknown outcome. If the CLI process dies during admission, inspect `sdk status` before retrying. A spent token without a new journal requires another preparation. A published `prepared` journal can be recovered through `sdk recover`. A `mutating` journal without an owned-output receipt requires inspection.
+
 Snapshot work has bounded parallelism: at most 16 file readers and four independent copies. File order, modes, symbolic links and content digests remain part of the retained proof. Every admitted writer settles before failed staging data is removed; an incomplete copy cannot authorize a build. `sdk recover` verifies the retained bytes and current ownership before restoration, preserving foreign edits and reporting an uncertain interrupted writer explicitly.
 
 The first selection may ask pnpm to generate its package-manager metadata. That metadata is not a registry application lock. A missing or stale registry baseline requires a normal registry installation before `sdk registry` can restore it. Ordinary `pnpm run` commands use the selected profile without extra flags.

@@ -6,12 +6,12 @@ export const STUDIO_ROLES = ['analyst', 'engineer', 'reviewer', 'operator'] as c
 export type StudioRole = typeof STUDIO_ROLES[number];
 export type StudioResultClass = 'analysis' | 'patch' | 'review' | 'runbook';
 export const STUDIO_ROLE_POLICY: Readonly<Record<StudioRole, {
-  result: StudioResultClass; canDeploy: false; instruction: string;
+  result: StudioResultClass; classes: readonly StudioModelClass[]; canDeploy: false; instruction: string;
 }>> = {
-  analyst: { result: 'analysis', canDeploy: false, instruction: 'Analyze the supplied evidence. Return findings, uncertainties and proposed next steps.' },
-  engineer: { result: 'patch', canDeploy: false, instruction: 'Propose an implementation with validation and explicit limitations. Do not deploy it.' },
-  reviewer: { result: 'review', canDeploy: false, instruction: 'Review the supplied change. Return concrete findings and evidence; do not approve or deploy on behalf of the operator.' },
-  operator: { result: 'runbook', canDeploy: false, instruction: 'Prepare a reviewable operational runbook with checks, scope, failure conditions and recovery. Do not execute infrastructure changes.' },
+  analyst: { result: 'analysis', classes: ['general', 'reasoning'], canDeploy: false, instruction: 'Analyze the supplied evidence. Return findings, uncertainties and proposed next steps.' },
+  engineer: { result: 'patch', classes: ['code'], canDeploy: false, instruction: 'Propose an implementation with validation and explicit limitations. Do not deploy it.' },
+  reviewer: { result: 'review', classes: ['reasoning', 'code'], canDeploy: false, instruction: 'Review the supplied change. Return concrete findings and evidence; do not approve or deploy on behalf of the operator.' },
+  operator: { result: 'runbook', classes: ['general', 'reasoning'], canDeploy: false, instruction: 'Prepare a reviewable operational runbook with checks, scope, failure conditions and recovery. Do not execute infrastructure changes.' },
 };
 
 export interface StudioAssignment {
@@ -55,6 +55,19 @@ export interface StudioModelRequirements {
   /** Explicit approval ceiling; an unknown tier cannot satisfy it. */
   maxCostTier?: StudioCostTier;
   maxPrice?: StudioPriceQuote;
+}
+
+/** Role defaults constrain automatic selection, never erase explicit task constraints. */
+export function studioRoleRequirements(role: StudioRole, requirements: StudioModelRequirements, pinned: boolean): StudioModelRequirements {
+  if (!Object.hasOwn(STUDIO_ROLE_POLICY, role) || !requirements || typeof pinned !== 'boolean')
+    throw new Error('Invalid Studio role requirements');
+  const classes = pinned ? requirements.classes : requirements.classes?.length
+    ? requirements.classes.filter(value => STUDIO_ROLE_POLICY[role].classes.includes(value))
+    : [...STUDIO_ROLE_POLICY[role].classes];
+  if (!pinned && !classes?.length) throw new Error('Task classes do not match the Studio responsibility');
+  return { ...requirements, ...(classes && { classes: [...classes] }),
+    ...(requirements.capabilities && { capabilities: [...requirements.capabilities] }),
+    ...(requirements.maxPrice && { maxPrice: { amount: requirements.maxPrice.amount, unit: requirements.maxPrice.unit } }) };
 }
 export interface StudioModelSelection {
   provider: StudioProvider;

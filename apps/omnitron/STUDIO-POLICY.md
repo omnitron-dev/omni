@@ -4,6 +4,8 @@ A Studio assignment belongs to a project and optionally a stack. Its responsibil
 
 `shared/dto/studio-policy.ts` is the shared, browser-safe contract. UI, CLI and the service use `assertStudioAssignment`, `selectStudioModel` and `studioUsageReport`. The trusted service retains the exact connector catalog revision, requirements and selection. A client-supplied catalog is not authority to spend or elevate access.
 
+Apply `studioRoleRequirements(role, requirements, pinned)` before selection in both UI and server. Automatic choices must match the responsibility's task classes: analyst general/reasoning, engineer code, reviewer reasoning/code, operator general/reasoning. Explicit class constraints are intersected with those defaults; an empty intersection is refused. Capabilities, minimum quality and budget remain unchanged. A manually pinned model receives no inferred class requirement, but every explicit task constraint still applies. Passing an unknown model name cannot bypass a required capability, hardware feature or quality tier.
+
 Each connector owns its available model catalog. Class, quality tier, cost tier and price are explicit facts or reviewed operator calibration. A model name does not establish any of them. For example, the observed `agy models` listing provides identifiers and labels, but no prices or quality/cost metadata. `studioCatalogFromListing` therefore leaves those fields unknown, including for Carbon and Argon. A manual pin may select an available opaque model when the task has no contradictory requirements; its estimated cost stays unknown.
 
 Automatic selection requires an explicit ceiling (`maxPrice` or `maxCostTier`) and the requested class, quality and capabilities. It chooses the lowest comparable declared price; if numeric prices are unavailable or incomparable, it can choose the lowest known declared tier only with an approved tier ceiling. Ties use model ID in code-point order, independent of machine locale or catalog order. Quotes are comparable only within the same declared unit: an input-token rate cannot be compared with a request price. A quote is not actual invoiced usage.
@@ -11,7 +13,7 @@ Automatic selection requires an explicit ceiling (`maxPrice` or `maxCostTier`) a
 This is an illustrative **local calibration**, not a claim about a provider or real model prices:
 
 ```ts
-const catalog = {
+const catalog: StudioModelCatalog = {
   provider: 'agy', connector: 'local-connection', revision: 'reviewed-calibration-1',
   models: [
     { id: 'available-model-a', label: 'Model A', classes: ['code'], qualityTier: 'advanced',

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   assertStudioAssignment, createStudioProviderInput, selectStudioModel, studioCatalogFromListing,
-  studioUsageReport, STUDIO_ROLE_POLICY, STUDIO_ROLES,
+  studioRoleRequirements, studioUsageReport, STUDIO_ROLE_POLICY, STUDIO_ROLES,
   type StudioAssignment, type StudioModelCatalog, type StudioModelDescriptor, type StudioModelRequest,
 } from '../../src/shared/dto/studio-policy.js';
 
@@ -40,6 +40,31 @@ describe('Studio responsibility and privacy policy', () => {
 });
 
 describe('Studio model assignment', () => {
+  it('applies role classes without loosening explicit requirements or the approved budget', () => {
+    const requirements = { classes: ['reasoning', 'code'] as const, minQualityTier: 'advanced' as const,
+      capabilities: ['tool-contract-v2'], maxCostTier: 'economy' as const, maxPrice: { amount: 2, unit: 'credits' } };
+    const selected = studioRoleRequirements('engineer', { ...requirements, classes: [...requirements.classes] }, false);
+    expect(selected).toEqual({ ...requirements, classes: ['code'] });
+    expect(studioRoleRequirements('operator', {}, false).classes).toEqual(['general', 'reasoning']);
+    expect(() => studioRoleRequirements('engineer', { classes: ['general'] }, false)).toThrow('Task classes');
+    expect(selected.capabilities).not.toBe(requirements.capabilities);
+    expect(selected.maxPrice).not.toBe(requirements.maxPrice);
+  });
+
+  it('allows an opaque explicitly pinned model only when all mandatory requirements can be satisfied', () => {
+    const opaque = studioCatalogFromListing('agy', 'local-connector', 'listing', [{ id: 'opaque', label: 'Opaque' }]);
+    const pinned = (requirements: StudioModelRequest['requirements']) => request({ model: 'opaque', requirements: studioRoleRequirements('engineer', requirements, true) });
+    expect(selectStudioModel(opaque, pinned({}))).toMatchObject({ ok: true });
+    const mandatory: StudioModelRequest['requirements'][] = [
+      { classes: ['code'] }, { capabilities: ['local-gpu'] }, { minQualityTier: 'advanced' },
+    ];
+    for (const requirements of mandatory) {
+      expect(selectStudioModel(opaque, pinned(requirements))).toMatchObject({ ok: false, reason: 'no-compatible-model' });
+    }
+    expect(selectStudioModel(opaque, request({ requirements: studioRoleRequirements('engineer', { maxCostTier: 'standard' }, false) })))
+      .toMatchObject({ ok: false, reason: 'no-compatible-model' });
+  });
+
   it('keeps names from a real listing opaque and allows only an explicit choice when cost is unknown', () => {
     const opaque = studioCatalogFromListing('agy', 'local-connector', 'listing-1', [
       { id: 'gemini-4-carbon-high', label: 'Gemini 4 Carbon (High)' },

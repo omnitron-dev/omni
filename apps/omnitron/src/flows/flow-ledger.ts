@@ -24,11 +24,14 @@ import type {
   FlowReceipt,
   FlowRef,
   FlowSave,
+  FlowSubmissionReceipt,
   FlowWorkspace,
   SavedFlow,
 } from '../shared/dto/flow-runtime.js';
+import type { StudioProposalRef } from '../shared/dto/studio.js';
 
 type Database = ReturnType<DaemonStateStore['initSync']>;
+type ProposalSource = Pick<StudioProposalRef, 'threadId' | 'proposalId'> & { actor: string };
 export interface FlowAuthority {
   actor: string;
   session: string | null;
@@ -129,6 +132,11 @@ export class FlowLedger {
         id TEXT PRIMARY KEY, project TEXT NOT NULL, stack TEXT NOT NULL, definition TEXT NOT NULL, revision TEXT NOT NULL,
         updated INTEGER NOT NULL, active TEXT, session TEXT, binding TEXT, state TEXT NOT NULL DEFAULT '{}'
       );
+      CREATE TABLE IF NOT EXISTS flow_proposal_submissions (
+        actor TEXT NOT NULL, thread_id TEXT NOT NULL, proposal_id TEXT NOT NULL,
+        flow_id TEXT NOT NULL UNIQUE REFERENCES flow_definitions(id), revision TEXT NOT NULL,
+        PRIMARY KEY(actor,thread_id,proposal_id)
+      );
       CREATE INDEX IF NOT EXISTS flow_project_page ON flow_definitions(project,updated DESC,id,stack,json_extract(definition,'$.name'),active IS NOT NULL);
       CREATE INDEX IF NOT EXISTS flow_stack_page ON flow_definitions(project,stack,updated DESC,id,json_extract(definition,'$.name'),active IS NOT NULL);
       DROP INDEX IF EXISTS flow_workspace;
@@ -220,11 +228,15 @@ export class FlowLedger {
     const sources = this.db
       .prepare('SELECT node AS nodeId,due AS dueAt,error FROM flow_sources WHERE flow_id=? ORDER BY node')
       .all(row.id) as SavedFlow['sources'];
+    const submission = this.db
+      .prepare('SELECT actor,revision FROM flow_proposal_submissions WHERE flow_id=?')
+      .get(row.id) as SavedFlow['submission'];
     return {
       id: row.id,
       workspace: workspaceOf(row),
       revision: row.revision,
       definition: JSON.parse(row.definition),
+      ...(submission && { submission }),
       active: activeOf(row),
       updatedAt: row.updated,
       sources,
@@ -264,6 +276,37 @@ export class FlowLedger {
   get(ref: FlowRef, { includeProjectStacks = false } = {}) {
     return this.saved(this.scoped(ref, includeProjectStacks));
   }
+  private insertDraft(ref: FlowRef, definition: string, revision: string) {
+    this.db
+      .prepare('INSERT INTO flow_definitions(id,project,stack,definition,revision,updated) VALUES(?,?,?,?,?,?)')
+      .run(ref.id, ref.workspace.project ?? '', ref.workspace.stack ?? '', definition, revision, this.now());
+  }
+  proposalReceipt(source: ProposalSource, workspace: FlowWorkspace): FlowSubmissionReceipt | undefined {
+    const row = this.db
+      .prepare(
+        'SELECT s.flow_id AS id,s.revision FROM flow_proposal_submissions s JOIN flow_definitions f ON f.id=s.flow_id ' +
+          'WHERE s.actor=? AND s.thread_id=? AND s.proposal_id=? AND f.project=? AND f.stack=?'
+      )
+      .get(source.actor, source.threadId, source.proposalId, workspace.project ?? '', workspace.stack ?? '') as
+      { id: string; revision: string } | undefined;
+    return row && { ...row, workspace };
+  }
+  submitProposal(source: ProposalSource, workspace: FlowWorkspace, definition: FlowDefinition, binding: FlowBinding) {
+    checkFlowWorkspace(workspace);
+    const revision = this.revision(definition, binding);
+    return this.commit(() => {
+      const previous = this.proposalReceipt(source, workspace);
+      if (previous) return previous;
+      const id = randomUUID();
+      this.insertDraft({ id, workspace }, canonical(definition), revision);
+      this.db
+        .prepare(
+          'INSERT INTO flow_proposal_submissions(actor,thread_id,proposal_id,flow_id,revision) VALUES(?,?,?,?,?)'
+        )
+        .run(source.actor, source.threadId, source.proposalId, id, revision);
+      return { id, workspace, revision };
+    });
+  }
   save(data: FlowSave, binding: FlowBinding): SavedFlow {
     checkFlowWorkspace(data.workspace);
     const revision = this.revision(data.definition, binding);
@@ -280,9 +323,7 @@ export class FlowLedger {
           .run(body, revision, this.now(), data.id);
       } else {
         if (data.expectedRevision !== null) throw Error('The original flow draft is unavailable');
-        this.db
-          .prepare('INSERT INTO flow_definitions(id,project,stack,definition,revision,updated) VALUES(?,?,?,?,?,?)')
-          .run(data.id, data.workspace.project ?? '', data.workspace.stack ?? '', body, revision, this.now());
+        this.insertDraft(data, body, revision);
       }
       return this.saved(this.scoped(data));
     });

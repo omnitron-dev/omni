@@ -122,6 +122,9 @@ export interface StudioRoomRef {
   project: string | null;
   threadId: string;
 }
+export interface StudioProposalRef extends StudioRoomRef {
+  proposalId: string;
+}
 export interface StudioMemberInput {
   name: string;
   provider: StudioProvider;
@@ -192,9 +195,7 @@ export interface IOmnitronStudioService {
   retireMember(data: StudioRoomRef & { memberId: string }): Promise<void>;
   post(data: StudioPost): Promise<{ threadId: string; turnId: string }>;
   writeNote(data: StudioRoomRef & StudioNoteInput): Promise<StudioNote>;
-  flowProposal(
-    data: StudioRoomRef & { proposalId: string }
-  ): Promise<{ definition: FlowDefinition; stack: string | null }>;
+  flowProposal(data: StudioProposalRef): Promise<{ definition: FlowDefinition; stack: string | null }>;
   send(data: StudioSend): Promise<{ threadId: string; turnId: string }>;
   cancel(data: {
     project: string | null;

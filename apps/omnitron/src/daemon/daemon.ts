@@ -1642,7 +1642,7 @@ export class OmnitronDaemon {
           auth: authService, pipelines: pipelineRpcService, studio, scope, admit, ...(mesh && { mesh }),
           report: error => loggerModule.logger.warn({ error: String(error) }, 'Flow source evaluation failed'),
         });
-        await this.app.netron.peer.exposeService(new FlowsRpcService(runtime, authService, audit, scope, admit));
+        await this.app.netron.peer.exposeService(new FlowsRpcService(runtime, authService, audit, scope, admit, studio));
         this.flowRuntime = runtime;
         runtime.listen(this.eventBroadcaster);
       }

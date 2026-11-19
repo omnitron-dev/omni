@@ -1,4 +1,5 @@
 import type { FlowDefinition, FlowEffect, FlowEvent, FlowNodeDescriptor, FlowPreview, FlowState } from './flows.js';
+import type { StudioProposalRef } from './studio.js';
 
 export interface FlowWorkspace {
   project: string | null;
@@ -7,6 +8,9 @@ export interface FlowWorkspace {
 export interface FlowRef {
   workspace: FlowWorkspace;
   id: string;
+}
+export interface FlowSubmissionReceipt extends FlowRef {
+  revision: string;
 }
 export interface FlowListCursor {
   updatedAt: number;
@@ -36,6 +40,7 @@ export interface FlowActivation {
 export interface SavedFlow extends FlowRef {
   revision: string;
   definition: FlowDefinition;
+  submission?: { actor: string; revision: string };
   active: FlowActivation | null;
   updatedAt: number;
   sources: { nodeId: string; dueAt: number; error: string | null }[];
@@ -74,6 +79,7 @@ export interface FlowChange extends FlowRef {
 export interface IOmnitronFlowsService {
   catalog(): Promise<{ nodes: FlowNodeDescriptor[]; diagnostics: readonly string[] }>;
   preview(data: { definition: FlowDefinition; event: FlowEvent; state?: FlowState }): Promise<FlowPreview>;
+  submitProposal(data: StudioProposalRef): Promise<FlowSubmissionReceipt>;
   list(data: FlowList): Promise<FlowPage>;
   get(data: FlowRef): Promise<SavedFlow>;
   save(data: FlowSave): Promise<SavedFlow>;

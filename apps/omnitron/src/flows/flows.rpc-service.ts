@@ -1,7 +1,14 @@
 import { Public, Service } from '@omnitron-dev/titan/decorators';
 import { ADMIN_ROLES, OPERATOR_ROLES } from '../shared/roles.js';
 import { evaluateFlow } from '../shared/dto/flows.js';
-import type { FlowChange, FlowRef, FlowSave, IOmnitronFlowsService } from '../shared/dto/flow-runtime.js';
+import type {
+  FlowChange,
+  FlowRef,
+  FlowSave,
+  FlowWorkspace,
+  IOmnitronFlowsService,
+} from '../shared/dto/flow-runtime.js';
+import type { IOmnitronStudioService, StudioProposalRef } from '../shared/dto/studio.js';
 import type { AuditService } from '../services/audit.service.js';
 import type { AuthService } from '../services/auth.service.js';
 import { daemonPrincipal } from '../services/daemon-principal.js';
@@ -16,7 +23,8 @@ export class FlowsRpcService implements IOmnitronFlowsService {
     private readonly auth: Pick<AuthService, 'validateSession'>,
     private readonly audit: Pick<AuditService, 'record'>,
     private readonly scope: FlowScopeReader,
-    private readonly admit: () => Promise<void>
+    private readonly admit: () => Promise<void>,
+    private readonly studio?: Pick<IOmnitronStudioService, 'flowProposal'>
   ) {}
   private async authorize(ref?: FlowRef, action?: string) {
     const principal = await daemonPrincipal(this.auth, 'admin');
@@ -37,6 +45,31 @@ export class FlowsRpcService implements IOmnitronFlowsService {
   async preview(data: Parameters<IOmnitronFlowsService['preview']>[0]) {
     await daemonPrincipal(this.auth, 'operator');
     return evaluateFlow(data.definition, data.event, data.state, this.runtime.ledger.registry);
+  }
+  @Public({ auth: { roles: OPERATOR_ROLES } })
+  async submitProposal(data: StudioProposalRef) {
+    const { context } = await daemonPrincipal(this.auth, 'operator');
+    if (!data || Object.keys(data).some((key) => !['project', 'threadId', 'proposalId'].includes(key)))
+      throw Error('Select a proposal in its Studio room');
+    if (!this.studio) throw Error('Studio proposals are unavailable on this controller');
+    const source = { actor: context.userId, threadId: data.threadId, proposalId: data.proposalId };
+    const proposal = await this.studio.flowProposal(data);
+    const workspace: FlowWorkspace = {
+      project: data.project,
+      ...(proposal.stack !== null && { stack: proposal.stack }),
+    };
+    const receipt = this.runtime.ledger.proposalReceipt(source, workspace);
+    if (receipt) return receipt;
+    const binding = await this.scope(workspace, meshSourceIds(proposal.definition));
+    await this.audit.record(
+      { action: 'flow.proposal.requested', resourceType: 'studio.flow-proposal', resourceId: data.proposalId },
+      true
+    );
+    await this.admit();
+    // Recheck the submitting account, room and project directory after resolving the destination.
+    const current = await this.studio.flowProposal(data);
+    if (current.stack !== proposal.stack) throw Error('The proposal workspace changed');
+    return this.runtime.ledger.submitProposal(source, workspace, current.definition, binding);
   }
   @Public({ auth: { roles: ADMIN_ROLES } })
   async list(data: Parameters<IOmnitronFlowsService['list']>[0]) {

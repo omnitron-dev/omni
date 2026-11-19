@@ -42,7 +42,11 @@ A disk cleanup can be a published project maintenance task. Review its allowed c
 
 ## Share one graph
 
-Studio offers `flow_catalog`, `flow_preview` and `flow_propose`. The editor and the authenticated `OmnitronFlows` service use the controller's registry and validator. A proposal belongs to its author and team until an operator opens and saves it. Saving, activating and delivering an effect are separately identifiable operations.
+Studio offers `flow_catalog`, `flow_preview` and `flow_propose`. The editor and the authenticated `OmnitronFlows` service use the controller's registry and validator. The room owner can open a proposal for a private preview or choose **Submit for review** to share its graph with workspace administrators. The confirmation identifies the room's project and stack. Review the node parameters and output text before sharing them.
+
+`OmnitronFlows.submitProposal({ project, threadId, proposalId })` copies the selected proposal into an inactive draft in that workspace. The receipt contains the shared flow ID, workspace and original revision. Submitting the same proposal again returns that receipt across controller restarts and subsequent administrator edits. Conversation history, team memory, provider sessions and operator grants stay in Studio.
+
+An administrator opens the draft from **Flows**, checks its submitting account and revision, and previews the graph. The administrator can edit and save it before activating a reviewed revision under their own account.
 
 An event has an idempotency key, a graph source, an event type and bounded named scalar fields. One source can fan out to several destinations. Each destination has one input. Graphs are acyclic. `data.select@1` specifies the fields to forward. Incoming events use authenticated Netron submission for a configured input. File paths and provider credentials belong to the node that owns them.
 

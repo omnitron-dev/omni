@@ -37,27 +37,40 @@ const sdk = program.command('sdk').description('Select the framework SDK for loc
 sdk.command('init').description('Install the pnpm bridge without resolving registry dependencies')
   .option('--project-dir <path>', 'Consumer workspace directory', process.cwd())
   .action(async ({ projectDir }) => (await import('../../bin/sdk.js')).sdkCommand(['init', '--project-dir', projectDir]));
-sdk.command('prepare [checkout]').description('Retain the development SDK before-image while consumers are serving')
+sdk.command('prepare [checkout]').description('Preview the next SDK selection or retain its recovery snapshot while consumers are serving')
   .option('--project-dir <path>', 'Consumer workspace directory', process.cwd())
-  .structuredAction(async (checkout, { projectDir }) => {
-    const { prepareDevelopmentSdk } = await import('../../bin/sdk.js');
+  .option('--check', 'Report whether a one-shot dev selection requires a recovery snapshot')
+  .structuredAction(async (checkout, { projectDir, check }) => {
+    const { inspectDevelopmentSdkSelection, prepareDevelopmentSdk } = await import('../../bin/sdk.js');
     const { emitInfo, emitJson } = await import('../commands/output.js');
+    if (check) {
+      const result = await inspectDevelopmentSdkSelection(projectDir, checkout);
+      if (!emitJson(result)) {
+        const snapshot = result.snapshotRequired === null ? 'snapshot requirement unconfirmed' :
+          result.snapshotRequired ? 'snapshot required' : 'existing build reusable';
+        emitInfo(`${result.source} · ${result.action} · ${snapshot}\n${result.reason}` +
+          (result.action === 'reuse' ? '\n--reuse-only ' + result.reuseDigest : ''));
+      }
+      return;
+    }
     const result = await prepareDevelopmentSdk(projectDir, checkout);
     if (!emitJson(result)) emitInfo(`Prepared ${result.paths} paths (${result.bytes} bytes) for ${result.source}\n--prepared ${result.token}`);
   });
 sdk.command('dev [checkout]').description('Select a local SDK and rebuild when it changes')
   .option('--project-dir <path>', 'Consumer workspace directory', process.cwd())
   .option('--prepared <token>', 'Use the exact before-image reported by sdk prepare once')
+  .option('--reuse-only <digest>', 'Require the exact verified installation from sdk prepare --check with --no-watch')
   .option('--stack <name>', 'Refresh watched applications in this local source stack')
   .option('--start-stopped', 'Start the stopped working-tree stack and confirm its first SDK generations')
   .option('--review <digest>', 'Use the exact infrastructure preservation review for that start')
-  .option('--no-watch', 'Install the SDK without starting a watch session')
+  .option('--no-watch', 'Select and verify the SDK once without starting a watch session')
   .action(async (checkout, options) => (await import('../../bin/sdk.js')).sdkCommand([
     'dev', ...(checkout ? [checkout] : []), '--project-dir', options.projectDir,
     ...(options.stack ? ['--stack', options.stack] : []), ...(options.watch === false ? ['--no-watch'] : []),
     ...(options.startStopped ? ['--start-stopped'] : []),
     ...(options.review !== undefined ? ['--review', options.review] : []),
     ...(options.prepared !== undefined ? ['--prepared', options.prepared] : []),
+    ...(options.reuseOnly !== undefined ? ['--reuse-only', options.reuseOnly] : []),
   ]));
 sdk.command('registry').description('Restore dependencies from the frozen distribution lock')
   .option('--project-dir <path>', 'Consumer workspace directory', process.cwd())
@@ -68,7 +81,7 @@ sdk.command('recover').description('Restore the retained SDK bytes and dependenc
   .action(async ({ projectDir, stack }) => (await import('../../bin/sdk.js')).sdkCommand([
     'recover', '--project-dir', projectDir, ...(stack ? ['--stack', stack] : []),
   ]));
-sdk.command('status').description('Verify the workspace imports and report their SDK origin')
+sdk.command('status').description('Verify the currently installed SDK and its workspace imports')
   .option('--project-dir <path>', 'Consumer workspace directory', process.cwd())
   .option('--stack <name>', 'Verify existing application refresh receipts against the execution owner')
   .structuredAction(async ({ projectDir, stack }) => {
@@ -80,6 +93,7 @@ sdk.command('status').description('Verify the workspace imports and report their
         ...(status.distributionLock === 'absent' ? ['no distribution lock'] : []),
         ...(status.distributionLock === 'manager-only' ? ['package-manager metadata only'] : []),
         ...(status.distributionLockChanged ? ['distribution lock changed'] : [])].filter(Boolean).join(' · '));
+      if (status.build) emitInfo('Installed build current. Use sdk prepare [checkout] --check to plan the next sdk dev selection.');
       if (status.refresh) {
         const { confirmed, inactive, optedOut, unaffected } = status.refresh;
         emitInfo(`${status.refresh.stack} · ${confirmed.length} owner receipts · ${inactive.length} inactive · ${unaffected.length} unaffected`);

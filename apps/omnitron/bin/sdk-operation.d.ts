@@ -10,7 +10,8 @@ export interface MigrationSdkHold { retain(): Promise<void>; release(): Promise<
 export function sdkStatePath(root: string): string;
 export function prepareSdkState(root: string): Promise<string>;
 export function sdkWorkspaceIdentity(root: string): Promise<SdkWorkspaceIdentity>;
-export function exclusively<T>(directory: string, body: () => Promise<T>, signal?: AbortSignal): Promise<T>;
+export function sdkReuseWorkspaceIdentity(root: string): Promise<SdkWorkspaceIdentity>;
+export function exclusively<T>(directory: string, body: () => Promise<T>, signal?: AbortSignal, existing?: boolean): Promise<T>;
 export function assertSdkAvailable(root: string, ownedSelection?: { root: string; id: string }): Promise<void>;
 export function clearSdkSelection(root: string, source: string, id: string): Promise<void>;
 export function withMigrationSdkLocks<T>(workspaces: readonly SdkWorkspaceIdentity[], reference: MigrationSdkReference,

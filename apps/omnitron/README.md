@@ -200,7 +200,23 @@ omnitron sdk status --project-dir /path/to/project
 
 Changing an SDK selection retains the affected dependency directories, generated outputs and selection metadata in the development cache before writing them. At each phase the CLI reports the duration of the completed phase, total elapsed time and the size of the retained files once known. `retain` copies and checks those files. `verify` rechecks the source and records the recovery proof. Set `OMNITRON_DEV_CACHE` to the mounted development volume to keep the snapshot there. Application database backups follow their own schedule.
 
-To move inventory and copying ahead of a planned outage, prepare the development selection while its applications are serving. Use the same mounted development cache for both commands.
+Before stopping any consumers, check the exact SDK checkout that the next `sdk dev --no-watch` or reviewed `--start-stopped` will use.
+
+```sh
+omnitron --json sdk prepare /path/to/omni --project-dir /path/to/project --check
+```
+
+`data.action` and `data.reason` describe that selection. `rebind` requires a recovery snapshot, a build and a consumer installation. The profile includes each complete consumer workspace manifest, pnpm settings and the effective module layout. An edit to a package's scripts or exports can therefore require rebinding even with identical dependency lists and lockfile bytes. This comparison reads package metadata before inspecting any build output. `rebuild` also requires a snapshot and keeps the existing consumer bindings. `reuse` means the selected packages, source installation, Turbo inputs and build outputs currently qualify for reuse. `unconfirmed` gives a reason and `snapshotRequired: null` when a source pnpm hook or configuration dependency requires running project code to verify the installation. The actual selection repeats its checks under the workspace locks.
+
+The check reads existing metadata and, when needed, build outputs. A `reuse` result returns `data.reuseDigest`. It identifies the physical project and SDK checkouts, their Git revisions, the pnpm installation directories, receipts and locks, and the verified build. After any planned checkout change, run the check again. Use the digest to require the exact observed installation for a one-shot command.
+
+```sh
+omnitron sdk dev /path/to/omni --project-dir /path/to/project --no-watch --reuse-only "$reuseDigest"
+```
+
+For a stopped stack, append `--stack dev --start-stopped --review "$launchDigest"` using its separate working-tree start review. The CLI rechecks SDK reuse under both workspace locks and again immediately before recording the start request. If the project, installation or build proof has changed, the command exits before taking a snapshot, installing, rebuilding or asking the owner to start. The `--reuse-only` option requires `--no-watch` and is exclusive with `--prepared`.
+
+When `snapshotRequired` is true, prepare the development selection while its applications are serving. Use the same mounted development cache for preparation and selection.
 
 ```sh
 omnitron --json sdk prepare /path/to/omni --project-dir /path/to/project
@@ -209,7 +225,7 @@ omnitron sdk dev /path/to/omni --project-dir /path/to/project --no-watch --prepa
 
 Check `data.projectRevision` and `data.sourceRevision` against the planned Git commits. Set `token` to the complete `data.token` and stop the affected source consumers before the second command. Preparation takes the two SDK workspace locks for inspection and writes the verified image to the cache. The active selection and recovery journal stay available. Preparation uses the installed, pinned pnpm and a Turbo dry plan. Package-manager bootstrap and installation belong to the subsequent selection.
 
-At use, the CLI discovers the paths again, checks both physical checkout identities and Git revisions, the package and Turbo inputs, the preceding recovery receipt, and the bytes, modes and links of live and retained trees. This still reads both trees during the outage. It copies no dependency tree during this stage. A missing file, changed input, or different revision requires a fresh preparation. The atomically claimed token applies to one development selection. If the build is already current, run the usual `sdk dev` without a token. Review of a stopped application start remains a separate step.
+At use, the CLI discovers the paths again, checks both physical checkout identities and Git revisions, the package and Turbo inputs, the preceding recovery receipt, and the bytes, modes and links of live and retained trees. This still reads both trees during the outage. It copies no dependency tree during this stage. A missing file, changed input, or different revision requires a fresh preparation. The atomically claimed token applies to one development selection.
 
 Cancellation observed through publication of the writer's admission releases the claim and leaves a completed image available. After admission, an interrupted writer can have an unknown outcome. If the CLI process dies during admission, inspect `sdk status` before retrying. A spent token without a new journal requires another preparation. A published `prepared` journal can be recovered through `sdk recover`. A `mutating` journal without an owned-output receipt requires inspection.
 
@@ -262,7 +278,7 @@ Current-state admission retires restoration through the former receipt; that rec
 
 Each completed SDK build binds its output hashes to Turbo's declared input graph, Turbo version and Node runtime. Input hashes must match before and after the build and when its checkpoint is saved. Filtered rebuilds retain the proofs for untouched packages. Shared root TypeScript configuration and the compiler script are declared in `turbo.json`, so the build cache and SDK readiness use the same inputs. This is a development freshness check, not an immutable production source attestation; build inputs and environment variables must be declared correctly in Turbo.
 
-Run `omnitron sdk status --project-dir /path/to/project --stack dev` to compare those inputs, current outputs and owner generations with the last build. Without `--stack`, status still verifies build freshness. Inspection runs Turbo's dry plan only: it never builds, installs dependencies or restarts applications. Changed inputs or a checkpoint without input proof fail explicitly and require `sdk dev`. Successful JSON reports `build.status: "current"`; with `--stack` it also identifies each confirmed application, explicit opt-out, inactive and unaffected application.
+Run `omnitron sdk status --project-dir /path/to/project --stack dev` to compare those inputs, current outputs and owner generations with the last build. Without `--stack`, status still verifies build freshness. Inspection runs Turbo's dry plan only: it never builds, installs dependencies or restarts applications. Changed inputs or a checkpoint without input proof fail explicitly and require `sdk dev`. A successful `build.status: "current"` describes the installed build. With `--stack`, status also identifies each confirmed application, explicit opt-out, inactive and unaffected application. Use `sdk prepare [SDK_CHECKOUT] --check` to determine whether the next selection needs a snapshot.
 
 Titan bootstrap workers can inject `RUNTIME_CONTEXT` from `@omnitron-dev/omnitron/runtime`.
 For a working-tree bundle produced by Omnitron, `development` records the generated worker's

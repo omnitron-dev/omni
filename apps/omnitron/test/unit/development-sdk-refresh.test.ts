@@ -23,7 +23,7 @@ vi.mock('@omnitron-dev/omnitron/operations', async () => ({
     status: rpc.status, getWatchStatus: rpc.watch, restartAfterChange: rpc.automatic,
     restartApp: rpc.manual, disconnect: rpc.disconnect }),
 }));
-const { inspectSdk, inspectSdkLaunch, reconcileSdkLaunch, inspectSdkAdoption, adoptSdk, sdkCommand, watchSdk } = await import('../../bin/sdk.js');
+const { inspectSdk, inspectSdkLaunch, reconcileSdkLaunch, inspectSdkAdoption, inspectDevelopmentSdkSelection, adoptSdk, sdkCommand, watchSdk } = await import('../../bin/sdk.js');
 import { exclusively, prepareSdkState } from '../../bin/sdk-operation.js';
 import * as transitions from '../../bin/sdk-transition.js';
 const require = createRequire(import.meta.url);
@@ -187,10 +187,10 @@ async function coldFixture() {
   await sdkCommand(['init', '--project-dir', f.consumer]);
   const sourceLock = path.join(f.source, 'pnpm-lock.yaml');
   const beforeSourceLock = await fs.readFile(sourceLock, 'utf8');
-  const command = async () => {
+  const command = async (reuseDigest?: string) => {
     try {
       return await sdkCommand(['dev', f.source, '--project-dir', f.consumer, '--stack', 'dev',
-        '--start-stopped', '--review', digest, '--no-watch']);
+        '--start-stopped', '--review', digest, '--no-watch', ...(reuseDigest ? ['--reuse-only', reuseDigest] : [])]);
     } finally {
       expect(await fs.readFile(sourceLock, 'utf8')).toBe(beforeSourceLock);
     }
@@ -301,6 +301,43 @@ it('verifies a current one-shot SDK while its stack runs and retains recovery be
     expect(snapshots).toHaveBeenCalledOnce();
     expect(await fs.readFile(f.checkpoint, 'utf8')).not.toBe(checkpoint);
   } finally { snapshots.mockRestore(); commands.mockClear(); await f.close(); }
+}, 120_000);
+
+it('requires the reviewed SDK through the final owner check before the first start write', async () => {
+  const f = await coldFixture();
+  const snapshots = vi.spyOn(transitions, 'prepareSdkTransition');
+  try {
+    await sdkCommand(['dev', f.source, '--project-dir', f.consumer, '--no-watch']);
+    const checked = await inspectDevelopmentSdkSelection(f.consumer, f.source);
+    if (checked.action !== 'reuse') throw Error(checked.reason);
+    const checkedBuild = await fs.stat(f.checkpoint, { bigint: true });
+    const state = path.dirname(f.checkpoint), journal = await fs.readFile(path.join(state, 'transition.json'), 'utf8');
+    const manifest = path.join(f.consumer, 'package.json'), original = await fs.readFile(manifest, 'utf8');
+    const review = { ...f.target, protocol: 1, selection: { workingTree: true }, digest: f.digest };
+    snapshots.mockClear();
+    rpc.review.mockResolvedValueOnce(review).mockImplementationOnce(async () => {
+      await fs.writeFile(manifest, JSON.stringify({ ...JSON.parse(original), scripts: { inspect: 'node --version' } }));
+      return review;
+    });
+    await expect(f.command(checked.reuseDigest)).rejects.toThrow('consumer profile input digest');
+    expect(rpc.start).not.toHaveBeenCalled();
+    expect(await fs.readFile(path.join(state, 'transition.json'), 'utf8')).toBe(journal);
+    expect((await fs.stat(f.checkpoint, { bigint: true })).ctimeNs).toBe(checkedBuild.ctimeNs);
+    await expect(fs.stat(path.join(state, 'start-attempts.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+
+    await fs.writeFile(manifest, original);
+    rpc.start.mockImplementationOnce(async () => {
+      for (const root of [f.consumer, f.source])
+        await expect(exclusively(path.join(root, '.omnitron/dev-sdk'), async () => undefined))
+          .rejects.toThrow('Another development SDK operation is active');
+      return f.start();
+    });
+    await f.command(checked.reuseDigest);
+    expect(rpc.start).toHaveBeenCalledExactlyOnceWith({ ...f.target, review: f.digest });
+    expect(snapshots).not.toHaveBeenCalled();
+    const confirmed = JSON.parse(await fs.readFile(f.checkpoint, 'utf8'));
+    for (const app of f.apps) expect(confirmed.applications['project/dev'][app.handleKey].generation).toBe(app.generation);
+  } finally { snapshots.mockRestore(); await f.close(); }
 }, 120_000);
 
 it('reuses a verified build for its reviewed first start without another recovery snapshot, install or Turbo build', async () => {

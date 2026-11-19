@@ -10,7 +10,7 @@ import { pathToFileURL } from 'node:url';
 import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { parseAllDocuments } from 'yaml';
 import { create } from 'tar';
-import { sdkCommand, inspectSdk, inspectMigrationSdk } from '../../bin/sdk.js';
+import { sdkCommand, inspectSdk, inspectMigrationSdk, inspectDevelopmentSdkSelection } from '../../bin/sdk.js';
 
 const exec = promisify(execFile), require = createRequire(import.meta.url);
 const turbo = path.dirname(require.resolve('turbo/package.json'));
@@ -106,6 +106,121 @@ afterEach(async () => {
 });
 const initialize = () => sdkCommand(['init', '--project-dir', consumer]);
 const select = (checkout?: string) => sdkCommand(['dev', ...(checkout ? [checkout] : []), '--project-dir', consumer, '--no-watch']);
+
+it('previews the actual development selection while the installed SDK still serves its verified build', async () => {
+  await initialize();
+  const check = () => inspectDevelopmentSdkSelection(consumer, source);
+  await expect(check()).resolves.toMatchObject({ action: 'rebind', snapshotRequired: true });
+  expect(await fs.readdir(process.env['OMNITRON_DEV_CACHE']!)).toEqual([]);
+  await select(source);
+  const original = await json(active());
+  const lock = await distribution();
+  const journal = path.join(consumer, '.omnitron/dev-sdk/transition.json');
+  const prior = await fs.readFile(journal, 'utf8');
+  await fs.rm(path.join(source, '.turbo'), { recursive: true, force: true });
+  const unchanged = await filesystemSnapshot(root);
+  const cli = path.resolve(import.meta.dirname, '../../src/cli/omnitron.ts');
+  const run = (...args: string[]) => exec(process.execPath, ['--import', pathToFileURL(require.resolve('tsx/esm')).href, cli, ...args],
+    { cwd: consumer, timeout: 60_000 });
+  const request = ['--json', 'sdk', 'prepare', source, '--project-dir', consumer, '--check'];
+  const reviewed = JSON.parse((await run(...request)).stdout).data;
+  expect(reviewed).toMatchObject({ action: 'reuse', snapshotRequired: false, reuseDigest: expect.stringMatching(/^[a-f0-9]{64}$/) });
+  const args = ['dev', source, '--project-dir', consumer, '--no-watch', '--reuse-only', reviewed.reuseDigest];
+  const strict = () => sdkCommand(args);
+  expect((await run('sdk', ...args)).stdout).toContain('Reused the reviewed development SDK build');
+  expect(await filesystemSnapshot(root)).toEqual(unchanged);
+
+  const manifestPath = path.join(consumer, 'package.json'), manifest = await json(manifestPath);
+  await write(manifestPath, { ...manifest, scripts: { ...manifest.scripts, inspect: 'node --version' }, exports: './build.js' });
+  await expect(inspectSdk(consumer)).resolves.toMatchObject({ build: { status: 'current' }, distributionLockChanged: false });
+  const changed = await filesystemSnapshot(root);
+  const response = await run(...request);
+  expect(JSON.parse(response.stdout)).toEqual({ ok: true, data: {
+    root: consumer, source, action: 'rebind', snapshotRequired: true, reason: expect.stringContaining('consumer profile input digest'),
+  } });
+  const reads = vi.spyOn(fs, 'readdir');
+  try {
+    await expect(check()).resolves.toMatchObject({ action: 'rebind', snapshotRequired: true });
+    await expect(strict()).rejects.toThrow('consumer profile input digest');
+    expect(reads.mock.calls.some(([file]) => String(file).endsWith('/dist'))).toBe(false);
+  } finally { reads.mockRestore(); }
+  expect(await filesystemSnapshot(root)).toEqual(changed);
+  await select();
+  expect((await json(active())).inputSha256).not.toBe(original.inputSha256);
+  expect(await fs.readFile(journal, 'utf8')).not.toBe(prior);
+  expect(await distribution()).toBe(lock);
+  const current = await check();
+  if (current.action !== 'reuse') throw Error(current.reason);
+  const rebound = await filesystemSnapshot(root);
+  await expect(strict()).rejects.toThrow('differs from the reviewed digest');
+  expect(await filesystemSnapshot(root)).toEqual(rebound);
+
+  const receipt = path.join(source, 'node_modules/.modules.yaml');
+  await fs.appendFile(receipt, '\n# updated fixture installation receipt\n');
+  const updated = await check();
+  if (updated.action !== 'reuse') throw Error(updated.reason);
+  expect(updated.reuseDigest).not.toBe(current.reuseDigest);
+  const installed = await filesystemSnapshot(root);
+  await expect(sdkCommand(['dev', source, '--project-dir', consumer, '--no-watch', '--reuse-only', current.reuseDigest]))
+    .rejects.toThrow('differs from the reviewed digest');
+  expect(await filesystemSnapshot(root)).toEqual(installed);
+
+  const modules = path.join(source, 'node_modules'), moved = path.join(root, 'previous-modules');
+  await fs.rename(modules, moved);
+  await fs.mkdir(modules);
+  for (const item of await fs.readdir(moved)) await fs.rename(path.join(moved, item), path.join(modules, item));
+  await fs.rmdir(moved);
+  const replacement = await check();
+  if (replacement.action !== 'reuse') throw Error(replacement.reason);
+  expect(replacement.reuseDigest).not.toBe(updated.reuseDigest);
+  await expect(sdkCommand(['dev', source, '--project-dir', consumer, '--no-watch', '--reuse-only', updated.reuseDigest]))
+    .rejects.toThrow('differs from the reviewed digest');
+
+  await exec('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', '-c', 'commit.gpgsign=false',
+    'commit', '--allow-empty', '--quiet', '-m', 'New project revision'], { cwd: consumer });
+  const revision = await check();
+  if (revision.action !== 'reuse') throw Error(revision.reason);
+  expect(revision.reuseDigest).not.toBe(replacement.reuseDigest);
+  await expect(sdkCommand(['dev', source, '--project-dir', consumer, '--no-watch', '--reuse-only', replacement.reuseDigest]))
+    .rejects.toThrow('differs from the reviewed digest');
+
+  const output = path.join(source, 'packages/lumen/dist/index.js');
+  await fs.appendFile(output, '\n// changed build output\n');
+  await expect(check()).resolves.toMatchObject({ action: 'rebuild', snapshotRequired: true,
+    reason: expect.stringContaining('build output changed for @omnitron-dev/lumen') });
+  const edited = await filesystemSnapshot(root);
+  await expect(strict()).rejects.toThrow('build output changed');
+  expect(await filesystemSnapshot(root)).toEqual(edited);
+}, 90_000);
+
+it('refuses invalid strict reuse arguments and an uninitialized selection without creating coordination state', async () => {
+  await initialize();
+  const args = ['dev', source, '--project-dir', consumer], digest = 'a'.repeat(64);
+  const before = await filesystemSnapshot(root);
+  for (const flags of [['--reuse-only', digest], ['--reuse-only', digest, '--no-watch', '--prepared', 'token'],
+    ['--reuse-only', 'invalid', '--no-watch']])
+    await expect(sdkCommand([...args, ...flags])).rejects.toThrow('Use sdk dev --no-watch --reuse-only DIGEST');
+  await expect(sdkCommand([...args, '--no-watch', '--reuse-only', digest])).rejects.toThrow(/Reuse-only requires an existing empty SDK workspace lock|no active development SDK selection/);
+  expect(await filesystemSnapshot(root)).toEqual(before);
+});
+
+it('leaves the reuse decision unconfirmed when it requires a custom pnpm hook from the SDK checkout', async () => {
+  await initialize();
+  await select(source);
+  const original = await inspectDevelopmentSdkSelection(consumer);
+  if (original.action !== 'reuse') throw Error(original.reason);
+  const ran = path.join(source, 'source-hook-ran');
+  await fs.writeFile(path.join(source, '.pnpmfile.mjs'),
+    `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(ran)}, 'unexpected'); export const hooks = {};\n`);
+  const before = await filesystemSnapshot(root);
+  await expect(inspectDevelopmentSdkSelection(consumer)).resolves.toMatchObject({
+    action: 'unconfirmed', snapshotRequired: null, reason: expect.stringContaining('source pnpm hook'),
+  });
+  await expect(sdkCommand(['dev', source, '--project-dir', consumer, '--no-watch', '--reuse-only', original.reuseDigest]))
+    .rejects.toThrow('source pnpm hook');
+  expect(await exists(ran)).toBe(false);
+  expect(await filesystemSnapshot(root)).toEqual(before);
+}, 90_000);
 
 it('prepares a serving checkout through the public CLI, binds revisions and manager metadata, selects once and recovers', async () => {
   await initialize();

@@ -31,6 +31,12 @@ export function inspectMigrationSdk(projectDirectory: string): Promise<Migration
 export function withMigrationSdk<T>(projectDirectory: string, reference: import('./sdk-operation.js').MigrationSdkReference,
   body: (hold: import('./sdk-operation.js').MigrationSdkHold) => Promise<T>): Promise<T>;
 export function sdkCommand(args: string[]): Promise<void>;
+export type DevelopmentSdkSelectionCheck = { root: string; source: string; reason: string } & (
+  | { action: 'reuse'; snapshotRequired: false; reuseDigest: string }
+  | { action: 'rebuild' | 'rebind'; snapshotRequired: true }
+  | { action: 'unconfirmed'; snapshotRequired: null }
+);
+export function inspectDevelopmentSdkSelection(projectDirectory: string, checkout?: string): Promise<DevelopmentSdkSelectionCheck>;
 export function prepareDevelopmentSdk(projectDirectory: string, checkout?: string): Promise<{
   root: string; source: string; token: string; paths: number; bytes: number;
   projectRevision: string | { unborn: string } | null; sourceRevision: string | { unborn: string } | null;

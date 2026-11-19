@@ -15,12 +15,12 @@ import { sdkTransitionStatus, sdkTransitionSettled, sdkAdoptionTransition, super
   saveSdkBuildCheckpoint } from './sdk-transition.js';
 import { sdkStatePath as statePath, prepareSdkState as prepareState, exclusively,
   assertSdkAvailable as assertSourceAvailable, clearSdkSelection as clearSourceSelection,
-  sdkWorkspaceIdentity, withMigrationSdkLocks } from './sdk-operation.js';
+  sdkWorkspaceIdentity, sdkReuseWorkspaceIdentity, withMigrationSdkLocks } from './sdk-operation.js';
 export { releaseTerminalMigrationSdk } from './sdk-operation.js';
 
 const help = `omnitron sdk init [--project-dir PATH]
-omnitron sdk prepare [SDK_CHECKOUT] [--project-dir PATH]
-omnitron sdk dev [SDK_CHECKOUT] [--project-dir PATH] [--prepared TOKEN] [--stack NAME [--start-stopped --review DIGEST]] [--no-watch]
+omnitron sdk prepare [SDK_CHECKOUT] [--project-dir PATH] [--check]
+omnitron sdk dev [SDK_CHECKOUT] [--project-dir PATH] [--prepared TOKEN | --reuse-only DIGEST] [--stack NAME [--start-stopped --review DIGEST]] [--no-watch]
 omnitron sdk registry [--project-dir PATH]
 omnitron sdk recover [--project-dir PATH] [--stack NAME]
 omnitron sdk adopt --stack NAME [--project-dir PATH] (--check | --review DIGEST)
@@ -34,7 +34,9 @@ reuse the selection. --no-watch verifies the selected graph and builds it once i
 --start-stopped binds the owner's first online generations to the SDK during a reviewed
 working-tree start. Obtain the digest with stack start PROJECT STACK --dry-run --infrastructure preserve.
 Applications declaring watch: false are reported separately. Missing required watchers fail.
-status verifies current Turbo inputs and build outputs; --stack also verifies application receipts.
+status verifies the installed SDK build; --stack also verifies application receipts.
+prepare --check reports whether a one-shot dev selection would reuse, rebuild or rebind the requested SDK.
+Pass its reuseDigest with --reuse-only and --no-watch to require that exact verified installation.
 Inspection never builds, installs dependencies or restarts applications.
 Selection retains a verified before-image in the development cache before building or installing.
 prepare retains it while consumers are serving. Pass its complete token to dev to consume it once.
@@ -244,6 +246,20 @@ async function desiredProfile(root, source, distribution) {
     links: Object.fromEntries(names.map(name => [name, links[name]])), versions: Object.fromEntries(names.map(name => [name, versions[name]])) };
 }
 
+/** Both the observer and the writer compare the same complete pnpm profile. */
+function rebindReason(active, installed, desired) {
+  if (JSON.stringify(installed) !== JSON.stringify(active)) return 'The recorded installation differs from the active selection.';
+  if (JSON.stringify(active) === JSON.stringify(desired)) return null;
+  if (!active) return 'This project has no active development SDK selection.';
+  if (active.source !== desired.source) return 'The requested SDK checkout differs from the active checkout.';
+  if (active.lockSha256 !== desired.lockSha256) return 'The consumer distribution lock changed.';
+  if (!isDeepStrictEqual(active.links, desired.links) || !isDeepStrictEqual(active.versions, desired.versions))
+    return 'The selected framework packages, their locations or versions changed.';
+  if (active.inputSha256 !== desired.inputSha256)
+    return 'The consumer profile input digest changed. It covers complete workspace package manifests, pnpm settings and the effective installation layout.';
+  return 'The recorded SDK selection differs from the requested profile.';
+}
+
 async function seedLock(root, dir, distribution) {
   if (applicationDocument(distribution) === null) {
     await fs.rm(path.join(dir, 'pnpm-lock.yaml'), { force: true });
@@ -441,8 +457,10 @@ const buildArguments = (names) => ['exec', 'turbo', 'run', 'build', ...[...names
 async function buildPlan(source, names, signal) {
   // Ask the same graph/cache engine that performs the build. Do not substitute
   // a second file scanner or let pnpm repair dependencies during inspection.
+  // A dry plan only consumes task hashes and declarations. Even a read-only
+  // Turbo cache creates its directory, so point it at the existing checkout.
   const plan = JSON.parse(await readOnlyPnpm(source,
-    ['--config.verifyDepsBeforeRun=false', ...buildArguments(names), '--dry=json'], signal));
+    ['--config.verifyDepsBeforeRun=false', ...buildArguments(names), '--dry=json', '--cache=local:r', '--cache-dir=.'], signal));
   if (typeof plan.turboVersion !== 'string' || !Array.isArray(plan.tasks))
     throw Error('Turbo did not report a verifiable SDK build graph');
   return plan;
@@ -542,11 +560,11 @@ async function verifyInputs(profile, inputs, signal) {
     throw Error('SDK build inputs changed for ' + changed.join(', ') + '; run sdk dev to rebuild before confirming readiness');
 }
 
-async function currentSourceInstallation(source, signal) {
+async function currentSourceInstallation(source, signal, options = []) {
   try {
     // A parent pnpm script exports a recursion guard; this probe owns the
     // check, but never repairs dependencies before retaining their before-image.
-    await exec('pnpm', ['--reporter=ndjson', 'exec', process.execPath, '--version'], {
+    await exec('pnpm', [...options, '--reporter=ndjson', 'exec', process.execPath, '--version'], {
       cwd: source, env: { ...nodeEnvironment(), pnpm_config_verify_deps_before_run: 'error' }, signal,
     });
     return true;
@@ -559,6 +577,19 @@ async function currentSourceInstallation(source, signal) {
     })) return false;
     throw error;
   }
+}
+
+// A comparison with hooks disabled cannot attest the result of an arbitrary
+// source hook. The writer still uses the source's full pnpm configuration.
+async function sourceHasPnpmHooks(source, signal) {
+  for (const name of ['.pnpmfile.mjs', '.pnpmfile.cjs', '.pnpmfile.js']) {
+    if (await fs.lstat(path.join(source, name)).catch(error => {
+      if (error.code === 'ENOENT') return null; throw error;
+    })) return true;
+  }
+  const configured = await Promise.all(['pnpmfile', 'globalPnpmfile', 'configDependencies'].map(async key =>
+    JSON.parse(await readOnlyPnpm(source, ['--config.lockfile=false', 'config', 'get', key, '--json'], signal))));
+  return configured.some(value => value && (typeof value !== 'object' || Object.keys(value).length > 0));
 }
 
 async function build(profile, names, signal, locked = false) {
@@ -742,6 +773,24 @@ async function requireSourceStopped(root, source, stack) {
   } finally { await client.disconnect(); }
 }
 
+async function recordedStores(directory) {
+  const stores = [];
+  // The development hook moves lockfileDir and its installed graph to the
+  // selection directory while importer links remain at the workspace root.
+  for (const modules of [path.join(directory, 'node_modules'), path.join(statePath(directory), 'node_modules')]) {
+    const receipt = await readInstallationReceipt(path.join(modules, '.modules.yaml')).catch(error => {
+      if (error.code === 'ENOENT') return null; throw error;
+    });
+    if (receipt === null) continue;
+    const store = lockDocuments(receipt).at(-1)?.toJS()?.virtualStoreDir;
+    if (typeof store !== 'string') throw Error('Installed SDK dependency store has no location receipt');
+    const installed = path.resolve(modules, store);
+    if (!inside(directory, installed)) throw Error('SDK recovery requires a project-owned installed virtual store: ' + installed);
+    stores.push({ modules, installed, digest: sha256(receipt) });
+  }
+  return stores;
+}
+
 async function selectionInventory(root, source, names, signal) {
   const paths = [], guards = [];
   let inputs;
@@ -750,20 +799,8 @@ async function selectionInventory(root, source, names, signal) {
     const installation = await moduleConfiguration(directory);
     if (!inside(directory, installation.virtualStoreDir)) throw Error('SDK recovery requires a project-owned virtual store: ' + installation.virtualStoreDir);
     paths.push(path.join(directory, 'node_modules'), installation.virtualStoreDir, path.join(directory, 'pnpm-lock.yaml'));
-    // The development hook moves lockfileDir here. With the default layout,
-    // pnpm puts its installed graph here and leaves importer links at the root.
     paths.push(path.join(statePath(directory), 'node_modules'));
-    for (const modules of [path.join(directory, 'node_modules'), path.join(statePath(directory), 'node_modules')]) {
-      const receipt = await fs.readFile(path.join(modules, '.modules.yaml'), 'utf8').catch(error => {
-        if (error.code === 'ENOENT') return null; throw error;
-      });
-      if (receipt === null) continue;
-      const store = lockDocuments(receipt).at(-1)?.toJS()?.virtualStoreDir;
-      if (typeof store !== 'string') throw Error('Installed SDK dependency store has no location receipt');
-      const installed = path.resolve(modules, store);
-      if (!inside(directory, installed)) throw Error('SDK recovery requires a project-owned installed virtual store: ' + installed);
-      paths.push(installed);
-    }
+    for (const { installed } of await recordedStores(directory)) paths.push(installed);
     guards.push(...['package.json', 'pnpm-workspace.yaml', '.npmrc', '.pnpmfile.mjs'].map(file => path.join(directory, file)));
     for (const pkg of packages.values()) {
       paths.push(path.join(pkg.directory, 'node_modules'));
@@ -1213,7 +1250,7 @@ async function verifySelectedProfile(profile) {
   await verifyLinks(profile.root, profile);
 }
 
-async function startStoppedStack(profile, stack, review, checkpoint, packages, persist, signal) {
+async function startStoppedStack(profile, stack, review, checkpoint, packages, persist, signal, beforeStart) {
   const { client, state, project } = await localStack(profile.root, stack);
   const scope = project + '/' + stack;
   let requested = false;
@@ -1232,8 +1269,11 @@ async function startStoppedStack(profile, stack, review, checkpoint, packages, p
     await verifyLaunchReview(service, target, digest);
     if (!isDeepStrictEqual(stoppedLaunch(await service.getStack({ project, stack }), stack), launch))
       throw Error('The stopped stack changed before starting ' + scope);
-    await verifyInputs(profile, checkpoint.inputs, signal);
-    await verifyOutputs(profile, checkpoint.hashes);
+    if (beforeStart) await beforeStart();
+    else {
+      await verifyInputs(profile, checkpoint.inputs, signal);
+      await verifyOutputs(profile, checkpoint.hashes);
+    }
     signal?.throwIfAborted();
     // One request per durable stop, even after a crashed CLI or lost RPC reply.
     const attempt = { protocol: 1, state: 'requested', stop: launch.stop, profile, target, digest,
@@ -1297,7 +1337,7 @@ async function verifyOutputs(profile, hashes) {
   }
 }
 
-async function checkpointSdkBuild(profile, built, stack, signal, packages, review, locked = false) {
+async function checkpointSdkBuild(profile, built, stack, signal, packages, review, locked = false, beforeStart) {
   const checkpoint = path.join(statePath(profile.root), 'built.json');
   const prior = await optionalJson(checkpoint);
   const hashes = prior?.source === profile.source ? prior.hashes : {};
@@ -1319,7 +1359,7 @@ async function checkpointSdkBuild(profile, built, stack, signal, packages, revie
     review.priorReceipts = nextCheckpoint.applications[scope];
     delete nextCheckpoint.applications[scope];
   }
-  const sourceState = await prepareState(profile.source);
+  const sourceState = beforeStart ? statePath(profile.source) : await prepareState(profile.source);
   const persist = async (confirmLaunch) => {
     if (!locked) {
       await assertSourceAvailable(profile.source);
@@ -1339,13 +1379,15 @@ async function checkpointSdkBuild(profile, built, stack, signal, packages, revie
   const save = () => locked ? persist() : exclusively(sourceState, persist, signal);
   // A completed build is a separate fact from any application's loaded modules.
   // Build-only use and another stack's receipt cannot certify this stack.
-  await save();
+  // Strict reuse already has this verified build. Its first write belongs to
+  // the guarded start request; new application receipts follow the acknowledgement.
+  if (!beforeStart) await save();
   if (stack) {
     packages ??= new Map([...(await inventory(profile.source)), ...(await inventory(profile.root))]);
     if (review) {
       // A cold launch must consume one stable build, including during daemon RPC.
       // persist() already runs under this writer lock and never reacquires it.
-      const launch = () => startStoppedStack(profile, stack, review, nextCheckpoint, packages, persist, signal);
+      const launch = () => startStoppedStack(profile, stack, review, nextCheckpoint, packages, persist, signal, beforeStart);
       if (locked) await launch();
       else await exclusively(sourceState, launch, signal);
     } else await refresh(profile.root, stack, nextCheckpoint, packages, save, signal);
@@ -1454,23 +1496,116 @@ function completeBuildCheckpoint(profile, checkpoint) {
     checkpoint.applications && typeof checkpoint.applications === 'object' && !Array.isArray(checkpoint.applications);
 }
 
-/** Consumer and source locks are held. A stale proof takes the ordinary
- * retained build path; errors or concurrent changes do not authorize writes. */
-async function reusableBuild(profile, signal) {
+/** Writers repeat this verification with both workspace locks held. */
+async function reusableBuild(profile, signal, inspection = false) {
   const file = path.join(statePath(profile.root), 'built.json');
   const checkpoint = await optionalJson(file);
-  if (!completeBuildCheckpoint(profile, checkpoint) || !await currentSourceInstallation(profile.source, signal)) return null;
-  if (!isDeepStrictEqual(await buildInputs(profile.source, Object.keys(profile.links), signal), checkpoint.inputs)) return null;
+  if (!completeBuildCheckpoint(profile, checkpoint))
+    return { action: 'rebuild', reason: 'The selected packages have no complete build checkpoint.' };
+  if (inspection && await sourceHasPnpmHooks(profile.source, signal))
+    return { action: 'unconfirmed', reason: 'A source pnpm hook or configuration dependency requires verification during selection.' };
+  if (!await currentSourceInstallation(profile.source, signal, inspection ? inspectionPnpmOptions : []))
+    return { action: 'rebuild', reason: 'pnpm reports that the SDK checkout needs a frozen dependency installation.' };
+  const inputs = await buildInputs(profile.source, Object.keys(profile.links), signal);
+  const changed = Object.keys(checkpoint.inputs).filter(name => !isDeepStrictEqual(inputs[name], checkpoint.inputs[name]));
+  if (changed.length) return { action: 'rebuild', reason: 'SDK build inputs changed for ' + changed.join(', ') + '.' };
   for (const [name, directory] of Object.entries(profile.links)) {
     let digest;
     try { digest = await buildDigest(directory); }
-    catch (error) { if (error.code === 'ENOENT') return null; throw error; }
-    if (digest !== checkpoint.hashes[name]) return null;
+    catch (error) {
+      if (error.code === 'ENOENT') return { action: 'rebuild', reason: 'SDK build output is missing for ' + name + '.' };
+      throw error;
+    }
+    if (digest !== checkpoint.hashes[name]) return { action: 'rebuild', reason: 'SDK build output changed for ' + name + '.' };
   }
   await verifyInputs(profile, checkpoint.inputs, signal);
   if (!isDeepStrictEqual(await optionalJson(file), checkpoint)) throw Error('SDK checkpoint changed while verifying reuse');
   signal?.throwIfAborted();
-  return { inputs: checkpoint.inputs, hashes: checkpoint.hashes };
+  return { action: 'reuse', reason: 'The installed SDK, build inputs and outputs match the selected profile.',
+    build: { inputs: checkpoint.inputs, hashes: checkpoint.hashes } };
+}
+
+async function reuseIdentity(profile, build, signal) {
+  const installations = await Promise.all([profile.root, profile.source].map(async directory => {
+    const workspace = await sdkReuseWorkspaceIdentity(directory), stores = await recordedStores(directory);
+    const modules = [path.join(directory, 'node_modules'), path.join(statePath(directory), 'node_modules')];
+    const locations = new Set([...modules, ...stores.map(({ installed }) => installed)]);
+    const directories = await Promise.all([...locations].map(async entry => {
+      const physical = await physicalInstallationDirectory(entry).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
+      const stat = physical && await fs.stat(physical, { bigint: true });
+      return [path.relative(directory, entry), stat && { device: String(stat.dev), inode: String(stat.ino) }];
+    }));
+    const files = [path.join(directory, 'pnpm-lock.yaml'), path.join(statePath(directory), 'pnpm-lock.yaml'),
+      ...modules.map(entry => path.join(entry, '.pnpm-workspace-state-v1.json')),
+      ...stores.map(({ installed }) => path.join(installed, 'lock.yaml'))];
+    const locks = await Promise.all(files.map(async file => {
+      const value = await readInstallationReceipt(file).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
+      return [path.relative(directory, file), lockIdentity(value)];
+    }));
+    return { workspace, pnpm: await inspectionPnpmVersion(directory, signal), revision: await checkoutRevision(directory, signal),
+      directories, stores, locks };
+  }));
+  return sha256(JSON.stringify({ operation: 'sdk-reuse', protocol: 1, profile, build, installations, abi: process.versions.modules }));
+}
+
+async function checkDevelopmentSelection(projectDirectory, checkout, signal) {
+  const root = await fs.realpath(projectDirectory);
+  await requireBridge(root);
+  await assertSourceAvailable(root);
+  const transition = await sdkTransitionStatus(root);
+  if (transition && !sdkTransitionSettled(transition.phase)) throw Error('SDK transition is unfinished; run sdk recover before another selection');
+  const active = await profileStatus(root);
+  const installFile = path.join(statePath(root), 'install.json'), installed = await optionalJson(installFile);
+  const source = await sdkSource(root, checkout ?? active?.source ?? installed?.source);
+  await assertSourceAvailable(source);
+  const desired = await desiredProfile(root, source, await distributionLock(root));
+  const rebind = rebindReason(active, installed, desired);
+  let result = { action: 'rebind', reason: rebind };
+  if (!rebind) {
+    await verifyLinks(root, desired);
+    result = await reusableBuild(desired, signal, true);
+  }
+  const reuseDigest = result.action === 'reuse' ? await reuseIdentity(desired, result.build, signal) : null;
+  await assertDistribution(root, desired.lockSha256);
+  if (reuseDigest) await verifySelectedProfile(desired);
+  if (!isDeepStrictEqual(active, await profileStatus(root)) || !isDeepStrictEqual(installed, await optionalJson(installFile)))
+    throw Error('The SDK selection changed during inspection; repeat sdk prepare --check');
+  await assertSourceAvailable(root);
+  await assertSourceAvailable(source);
+  signal?.throwIfAborted();
+  return { profile: desired, build: result.build, report: { root, source, action: result.action,
+    snapshotRequired: result.action === 'unconfirmed' ? null : result.action !== 'reuse',
+    reason: result.reason, ...(reuseDigest && { reuseDigest }) } };
+}
+
+export async function inspectDevelopmentSdkSelection(projectDirectory, checkout) {
+  return (await checkDevelopmentSelection(projectDirectory, checkout)).report;
+}
+
+// The consumer lock is already held. A strict selection only opens existing
+// coordination state and has no path to installation, rebuilding or retention.
+async function reuseReviewedSelection(root, source, digest, stack, launchReview, signal) {
+  await sdkReuseWorkspaceIdentity(source);
+  return exclusively(statePath(source), async () => {
+    const qualify = async () => {
+      const checked = await checkDevelopmentSelection(root, source, signal);
+      if (checked.report.action !== 'reuse') throw Error('SDK reuse-only refused: ' + checked.report.reason);
+      if (checked.report.reuseDigest !== digest)
+        throw Error('SDK reuse-only refused: the verified checkout, installation or build differs from the reviewed digest.');
+      signal.throwIfAborted();
+      return checked;
+    };
+    const { profile, build: built } = await qualify();
+    if (launchReview) {
+      await requireSourceStopped(root, source, stack);
+      const launch = await reviewedSdkLaunch(root, stack, launchReview);
+      await checkpointSdkBuild(profile, built, stack, signal, undefined, launch, true, qualify);
+    } else if (stack) {
+      const { client } = await localStack(root, stack);
+      await client.disconnect();
+    }
+    console.log('Reused the reviewed development SDK build');
+  }, signal, true);
 }
 
 async function inspectBuild(active, stack) {
@@ -1645,8 +1780,8 @@ export async function inspectSdkAdoption(projectDirectory, stack) {
   const profile = await profileStatus(root);
   if (!profile || profile.source !== source) throw Error('Current SDK selection does not match the recoverable operation');
   await verifySelectedProfile(profile);
-  const built = await reusableBuild(profile);
-  if (!built) throw Error('Current SDK inputs and outputs have no complete, unchanged build proof; adoption cannot rebuild or repair them');
+  const checked = await reusableBuild(profile);
+  if (checked.action !== 'reuse') throw Error('Current SDK inputs and outputs have no complete, unchanged build proof; adoption cannot rebuild or repair them');
   const checkpoint = await fs.readFile(path.join(statePath(root), 'built.json'), 'utf8');
   await verifySelectedProfile(profile);
   const final = await sdkAdoptionTransition(root);
@@ -1654,7 +1789,7 @@ export async function inspectSdkAdoption(projectDirectory, stack) {
     throw Error('SDK ownership or launch evidence changed during current-state inspection');
   const plan = { protocol: 1, root, source, stack, workspaces, transition: previous.transition,
     startAttemptsSha256: previous.startAttemptsSha256, profileSha256: sha256(JSON.stringify(profile)),
-    checkpointSha256: sha256(checkpoint), buildSha256: sha256(JSON.stringify(built)) };
+    checkpointSha256: sha256(checkpoint), buildSha256: sha256(JSON.stringify(checked.build)) };
   return { digest: sha256(JSON.stringify(plan)), plan, launch: 'unconfirmed' };
 }
 
@@ -1694,6 +1829,7 @@ export async function sdkCommand(argv) {
       'start-stopped': { type: 'boolean' },
       review: { type: 'string' },
       prepared: { type: 'string' },
+      'reuse-only': { type: 'string' },
       'no-watch': { type: 'boolean' },
       json: { type: 'boolean' },
       check: { type: 'boolean' },
@@ -1709,8 +1845,12 @@ export async function sdkCommand(argv) {
       positionals.length > (['dev', 'prepare'].includes(action) ? 2 : 1) || values.prepared !== undefined && action !== 'dev' ||
       action === 'prepare' && (values.stack || values['no-watch']))
     throw Error(help);
-  if (values.check && !['reconcile', 'adopt'].includes(action) || ['reconcile', 'adopt'].includes(action) && !values.stack)
-    throw Error('Use sdk reconcile --stack NAME [--check] or sdk adopt --stack NAME (--check | --review DIGEST)');
+  const reuseOnly = values['reuse-only'];
+  if (reuseOnly !== undefined && (action !== 'dev' || !values['no-watch'] || values.prepared !== undefined ||
+      !/^[a-f0-9]{64}$/.test(reuseOnly)))
+    throw Error('Use sdk dev --no-watch --reuse-only DIGEST with the reuseDigest from sdk prepare --check. Choose either --prepared or --reuse-only.');
+  if (values.check && !['prepare', 'reconcile', 'adopt'].includes(action) || ['reconcile', 'adopt'].includes(action) && !values.stack)
+    throw Error('Use sdk prepare [SDK_CHECKOUT] [--check], sdk reconcile --stack NAME [--check] or sdk adopt --stack NAME (--check | --review DIGEST)');
   if (action === 'adopt' && (values['start-stopped'] || !!values.check === (values.review !== undefined) ||
       values.review !== undefined && !/^[a-f0-9]{64}$/.test(values.review)))
     throw Error('Use sdk adopt --stack NAME (--check | --review DIGEST)');
@@ -1720,7 +1860,7 @@ export async function sdkCommand(argv) {
   const root = await fs.realpath(values['project-dir'] ?? process.cwd()),
     dir = statePath(root);
   if (action === 'prepare') {
-    console.log(JSON.stringify(await prepareDevelopmentSdk(root, sourceArg), null, 2));
+    console.log(JSON.stringify(await (values.check ? inspectDevelopmentSdkSelection : prepareDevelopmentSdk)(root, sourceArg), null, 2));
     return;
   }
   if (action === 'adopt') {
@@ -1762,7 +1902,8 @@ export async function sdkCommand(argv) {
     return;
   }
   if (action === 'dev') await requireBridge(root);
-  await prepareState(root);
+  if (reuseOnly !== undefined) await sdkReuseWorkspaceIdentity(root);
+  else await prepareState(root);
   await exclusively(dir, async () => {
     await assertSourceAvailable(root);
     const transition = await sdkTransitionStatus(root);
@@ -1783,7 +1924,7 @@ export async function sdkCommand(argv) {
       throw Error('SDK transition is unfinished; run sdk recover before another selection');
     // A crash after committing the consumer receipt can precede releasing the
     // source fence. Clear that exact terminal fence before replacing history.
-    if (transition) {
+    if (transition && reuseOnly === undefined) {
       const sourceState = statePath(transition.source);
       if (await fs.realpath(sourceState) !== sourceState) throw Error('SDK source operation directory changed');
       await exclusively(sourceState, () => clearSourceSelection(root, transition.source, transition.id));
@@ -1807,15 +1948,17 @@ export async function sdkCommand(argv) {
       return;
     }
     const source = await sdkSource(root, sourceArg ?? previous?.source ?? selected?.source);
-    let desired = await desiredProfile(root, source, distribution);
     const controller = new AbortController();
     const stop = () => controller.abort();
     process.once('SIGINT', stop);
     process.once('SIGTERM', stop);
     try {
+      if (reuseOnly !== undefined)
+        return await reuseReviewedSelection(root, source, reuseOnly, values.stack, values.review, controller.signal);
+      let desired = await desiredProfile(root, source, distribution);
       const launch = values['start-stopped'] ? await reviewedSdkLaunch(root, values.stack, values.review) : undefined;
       let built;
-      if (interrupted || JSON.stringify(previous) !== JSON.stringify(desired)) {
+      if (rebindReason(previous, selected, desired)) {
         await changeSelection(root, source, values.stack, desired, controller.signal, async ownDistribution => {
           built = await build(desired, Object.keys(desired.links), controller.signal, true);
           if (!isDeepStrictEqual(await desiredProfile(root, source, distribution), desired))
@@ -1842,7 +1985,7 @@ export async function sdkCommand(argv) {
             if (launch) await requireSourceStopped(root, source, values.stack);
             await verifySelectedProfile(desired);
             const current = await reusableBuild(desired, controller.signal);
-            if (!current) return false;
+            if (current.action !== 'reuse') return false;
             await verifySelectedProfile(desired);
             console.log('Reusing verified development SDK build; no snapshot or rebuild is required');
             return true;
@@ -1867,15 +2010,15 @@ export async function sdkCommand(argv) {
         await requireSourceStopped(root, source, values.stack);
         await verifySelectedProfile(desired);
         const current = await reusableBuild(desired, controller.signal);
-        if (!current) throw Error('SDK build changed before reviewed start; no start was sent');
-        await checkpointSdkBuild(desired, current, values.stack, controller.signal, undefined, launch, true);
+        if (current.action !== 'reuse') throw Error('SDK build changed before reviewed start; no start was sent');
+        await checkpointSdkBuild(desired, current.build, values.stack, controller.signal, undefined, launch, true);
       }, controller.signal);
       if (!values['no-watch']) await watchSdk(desired, values.stack, controller.signal);
     } finally {
       process.off('SIGINT', stop);
       process.off('SIGTERM', stop);
     }
-  });
+  }, undefined, reuseOnly !== undefined);
 }
 
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url)

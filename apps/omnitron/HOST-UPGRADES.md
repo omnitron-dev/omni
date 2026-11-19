@@ -419,7 +419,14 @@ Keep the second command running. In another terminal, confirm the stack's stoppe
 
 The foreground window accepts 1 to 60 minutes. The backend checks the caller's OS process lifetime every second and releases the window when the caller exits or the deadline passes. A controller restart ends a foreground window. If applications already stopped, inspect their stop receipt and the native update status before choosing the next operation. Separate commands own SDK selection, migrations and application restart.
 
-For a development SDK switch, run `omnitron --json sdk prepare SDK_CHECKOUT --project-dir PROJECT` before the application stop and retain its token. After the stop, pass `--prepared TOKEN` to the usual `sdk dev` command using the same checkouts, revisions and development cache. It rechecks the stopped consumers, current package inputs, live files and saved bytes before accepting the image once. Budget outage time for both verification reads and any build or installation. Omitting the token retains a new image during the stopped stage. See [Source SDK development](README.md#source-sdk-development).
+For a development SDK switch, run `omnitron --json sdk prepare SDK_CHECKOUT --project-dir PROJECT --check` before the application stop. Read `data.action`, `data.snapshotRequired` and `data.reason`. When a snapshot is required, repeat the command without `--check` and retain its token. After the stop, pass `--prepared TOKEN` to the usual `sdk dev` command using the same checkouts, revisions and development cache. It rechecks the stopped consumers, current package inputs, live files and saved bytes before accepting the image once. Budget outage time for both verification reads and any build or installation.
+
+For a short start with an installed SDK, obtain a fresh `reuse` result for the final project and SDK revisions and use its `data.reuseDigest`. Obtain the stack's working-tree launch review separately. The command below checks the reviewed installation again immediately before recording the start request. A change requiring a new snapshot, installation or build ends the command before the first write or start request. See [Source SDK development](README.md#source-sdk-development).
+
+```sh
+omnitron sdk dev SDK_CHECKOUT --project-dir PROJECT --no-watch --reuse-only "$reuseDigest" \
+  --stack STACK --start-stopped --review "$launchDigest"
+```
 
 Cold rollback checks the current journal against both its interim starter and final backend before retiring the owner. A serving controller holds public requests and background Flow work, then checks the journal, catalogue, workers and watches against the recorded shutdown intent. Native service control can retire the reviewed owner while public ingress is held. If the updating process exits first, the controller reopens ingress and resumes sampling. An unavailable backend uses the independent native empty-owner evidence described above. A serving controller without the rollback admission protocol can accept a new stack between its final inventory check and shutdown. Use a compatible managed backend handoff or a newly reviewed forward update on that version.
 

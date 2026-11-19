@@ -3,6 +3,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { sdkDirectory, sdkTransitionStatus, sdkTransitionSettled } from './sdk-transition.js';
 
@@ -73,14 +74,30 @@ export async function sdkWorkspaceIdentity(root) {
   return { root, device: String(info.dev), inode: String(info.ino) };
 }
 
+export async function sdkReuseWorkspaceIdentity(root) {
+  const identity = await sdkWorkspaceIdentity(root), dir = sdkStatePath(root);
+  requireExistingLock(await coordinationFile(path.join(dir, 'operation.sqlite')), dir);
+  return identity;
+}
+
+// This database holds only OS locks. SDK operations have never stored pages
+// in it. Do not open a foreign database or recover its journal during reuse.
+function requireExistingLock(lock, dir) {
+  if (lock?.size !== 0) throw Error('Reuse-only requires an existing empty SDK workspace lock: ' + dir);
+}
+
 // The same OS lock is used by already-running SDK watchers. Its release on
 // process death is backed by pending-selection, which survives that process.
-export async function exclusively(dir, body, waitSignal) {
+export async function exclusively(dir, body, waitSignal, existing = false) {
   const { DatabaseSync } = await import('node:sqlite');
   const file = path.join(dir, 'operation.sqlite');
-  await Promise.all(['', '-journal', '-wal', '-shm'].map(suffix => coordinationFile(file + suffix)));
-  const db = new DatabaseSync(file);
+  const [lock] = await Promise.all(['', '-journal', '-wal', '-shm'].map(suffix => coordinationFile(file + suffix)));
+  if (existing) requireExistingLock(lock, dir);
+  const db = new DatabaseSync(existing ? pathToFileURL(file).href + '?mode=rw' : file);
   try {
+    // BEGIN IMMEDIATE on an empty database can create a rollback journal even
+    // when no SQL data is written. Keep that journal in this connection only.
+    if (existing) db.exec('PRAGMA journal_mode=MEMORY');
     for (;;) {
       waitSignal?.throwIfAborted();
       try { db.exec('BEGIN IMMEDIATE'); break; }

@@ -14,7 +14,7 @@ import { usePolledResource } from 'src/hooks/use-polled-resource';
 export function AppHealth({ appName, refreshToken, onLogs }: {
   appName: string;
   refreshToken: number;
-  onLogs: () => void;
+  onLogs?: (() => void) | undefined;
 }) {
   const { data, error, loading, refresh } = usePolledResource(async () => {
     const report = await daemon.getHealth({ name: appName });
@@ -41,7 +41,7 @@ export function AppHealth({ appName, refreshToken, onLogs }: {
           {data && Number.isFinite(data.timestamp) && <Typography variant="caption" color="text.secondary">
             {verified ? 'Checked' : 'Last observation'} {new Date(data.timestamp).toLocaleTimeString()}
           </Typography>}
-          <Button size="small" onClick={onLogs} sx={{ ml: 'auto' }}>View logs</Button>
+          {onLogs && <Button size="small" onClick={onLogs} sx={{ ml: 'auto' }}>View logs</Button>}
         </Stack>
         {(error || stale) && <Alert severity="warning" variant="outlined" sx={{ mb: 1.5 }}>
           {error ?? 'Health observation is stale. Waiting for a fresh answer.'}

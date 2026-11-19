@@ -1,4 +1,5 @@
-import { Can } from 'src/auth/access';
+import { releaseHref, useWorkspace } from 'src/routes/workspace';
+import { Can, useAccess } from 'src/auth/access';
 /**
  * A build, while it is happening.
  *
@@ -46,6 +47,8 @@ export function ReleaseBuildPanel({
   onDeploy?: (releaseId: string) => void;
   compact?: boolean;
 }) {
+  const { can } = useAccess();
+  const scope = useWorkspace();
   const state = BUILD_STATE[record.state] ?? { label: record.state, color: 'info' as const };
   const running = record.state === 'running' || record.state === 'queued';
   const lines = record.history.slice(-VISIBLE_LINES);
@@ -68,8 +71,8 @@ export function ReleaseBuildPanel({
           </Typography>}
           {record.releaseId && (
             <Typography
-              component={RouterLink}
-              to={`/releases/${record.releaseId}`}
+              component={can('OmnitronRelease.get') ? RouterLink : 'span'}
+              {...(can('OmnitronRelease.get') && { to: releaseHref(request.project, record.releaseId, request.project === scope.project ? scope.stack : null) })}
               variant="caption"
               sx={{ fontFamily: 'monospace', color: 'text.secondary', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
             >

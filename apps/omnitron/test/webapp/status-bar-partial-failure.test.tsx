@@ -25,7 +25,7 @@ import '@testing-library/jest-dom/vitest';
 const can = vi.fn((_permission: string) => true);
 let principal = 'reader-1';
 vi.mock('src/auth/access', () => ({ useAccess: () => ({ can, snapshot: { userId: principal } }) }));
-const render = (ui: ReactElement) => renderView(ui, { wrapper: MemoryRouter });
+const render = (ui: ReactElement) => renderView(ui, { wrapper: ({ children }) => <MemoryRouter initialEntries={[activeProject ? '/projects/' + activeProject : '/']}>{children}</MemoryRouter> });
 const status = vi.fn();
 const ping = vi.fn();
 const listNodes = vi.fn();

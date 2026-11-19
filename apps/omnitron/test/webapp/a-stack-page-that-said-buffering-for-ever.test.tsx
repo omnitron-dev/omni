@@ -63,8 +63,6 @@ const testStack = (lastSyncAgoMs: number) => ({
 
 function select(lastSyncAgoMs: number) {
   useProjectStore.setState({
-    activeProject: 'sample',
-    activeStack: null,
     stacksByProject: { sample: [testStack(lastSyncAgoMs)] as never },
     fetchStacks: vi.fn(async () => undefined) as never,
   });
@@ -77,8 +75,8 @@ async function renderAt(path: string) {
     <ThemeProvider theme={createTheme()}>
       <MemoryRouter initialEntries={[path]}>
         <Routes>
-          <Route path="/stacks" element={<StacksPage />} />
-          <Route path="/stacks/:name" element={<StackDetailPage />} />
+          <Route path="/projects/sample/stacks" element={<StacksPage />} />
+          <Route path="/projects/sample/stacks/:name" element={<StackDetailPage />} />
         </Routes>
       </MemoryRouter>
     </ThemeProvider>
@@ -90,7 +88,7 @@ beforeEach(() => vi.clearAllMocks());
 describe('a stack page that said buffering for ever', () => {
   it('says a node keeping up is in sync, with what waits for the next pull', async () => {
     select(15_000);
-    await renderAt('/stacks/test');
+    await renderAt('/projects/sample/stacks/test');
 
     expect(await screen.findByText('keeping up · 258 waiting, oldest 12 s')).toBeInTheDocument();
     expect(screen.getByText(/replication in sync/)).toBeInTheDocument();
@@ -99,7 +97,7 @@ describe('a stack page that said buffering for ever', () => {
 
   it('says a node is behind when no pull has come', async () => {
     select(300_000);
-    await renderAt('/stacks/test');
+    await renderAt('/projects/sample/stacks/test');
 
     expect(await screen.findByText('behind · 258 waiting, last pull 300 s ago')).toBeInTheDocument();
     expect(screen.getByText(/1 of 1 behind/)).toBeInTheDocument();
@@ -107,7 +105,7 @@ describe('a stack page that said buffering for ever', () => {
 
   it('counts in the list the nodes that keep up, not those whose daemon answered', async () => {
     select(300_000);
-    await renderAt('/stacks');
+    await renderAt('/projects/sample/stacks');
 
     expect(await screen.findByText(/0\/\s*1 in sync/)).toBeInTheDocument();
     expect(screen.queryByText(/synced/)).not.toBeInTheDocument();

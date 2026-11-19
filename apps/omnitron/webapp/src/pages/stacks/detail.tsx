@@ -1,3 +1,4 @@
+import { useWorkspace, workspaceHref } from 'src/routes/workspace';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Box, Button, Card, CardContent, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle,
@@ -18,14 +19,14 @@ import { StackStartNotice } from 'src/components/stack-start-notice';
 import { StackStopDialog } from 'src/components/stack-stop-dialog';
 import { StackStopNotice } from 'src/components/stack-stop-notice';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
-import { useProjectStore, useActiveProject, useActiveProjectStacks } from 'src/stores/project.store';
+import { useProjectStore, useActiveProjectStacks } from 'src/stores/project.store';
 import { RuntimeSummary, StackRuntime } from './runtime';
 
 type DialogName = 'delete' | 'stop' | 'diagnose' | 'deploy' | 'working-tree';
 
 export default function StackDetailPage() {
   const { name } = useParams<{ name: string }>();
-  const activeProject = useActiveProject();
+  const { project: activeProject } = useWorkspace();
   return <StackDetail key={JSON.stringify([activeProject, name])} name={name} project={activeProject} />;
 }
 
@@ -52,7 +53,7 @@ function StackDetail({ name, project }: { name: string | undefined; project: str
 
   const stack = stacks.find(item => item.name === name);
   const refresh = () => { if (project) void fetchStacks(project); };
-  const tools = <Breadcrumbs links={[{ name: 'Stacks', href: '/stacks' }, { name: name ?? 'Stack' }]}
+  const tools = <Breadcrumbs links={[{ name: 'Stacks', href: workspaceHref({ project, stack: null }, '/stacks') }, { name: name ?? 'Stack' }]}
     action={<Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
       {stack && <Can permission="OmnitronProject.diagnoseStack"><Button size="small" variant="outlined"
         onClick={() => setDialog('diagnose')}>Check start prerequisites</Button></Can>}
@@ -63,7 +64,7 @@ function StackDetail({ name, project }: { name: string | undefined; project: str
     {!project ? <Alert severity="info">Select a project to view this stack.</Alert>
       : readError ? <Alert severity="error">Stack inventory unavailable · {readError} <Button onClick={refresh}>Retry</Button></Alert>
       : !known ? <OperationStatus active label="Reading stack inventory" />
-      : <Alert severity="warning">Stack “{name}” was not found in {project}. <Button onClick={() => navigate('/stacks')}>Back to stacks</Button></Alert>}
+      : <Alert severity="warning">Stack “{name}” was not found in {project}. <Button onClick={() => navigate(workspaceHref({ project, stack: null }, '/stacks'))}>Back to stacks</Button></Alert>}
   </PageContent>;
 
   const close = () => setDialog(null);
@@ -163,7 +164,7 @@ function StackDetail({ name, project }: { name: string | undefined; project: str
         <Button variant="contained" color="error" disabled={!canDelete} onClick={async () => {
           try {
             await deleteStack(project, stack.name);
-            navigate('/stacks');
+            navigate(workspaceHref({ project, stack: null }, '/stacks'));
           } catch { /* The store supplies the scoped failure notice. */ }
           close();
         }}>Delete stack</Button>

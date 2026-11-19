@@ -151,7 +151,7 @@ export default function AuditPage() {
   const filtered = Boolean(resourceType || actor || actionText);
   return (
     <Box sx={{ minWidth: 0 }}>
-      <Breadcrumbs heading="Audit" links={[{ name: 'Console', href: '/' }, { name: 'Audit' }]} sx={{ mb: 2 }} />
+      <Breadcrumbs heading="Audit" sx={{ mb: 2 }} />
       <Stack direction="row" sx={{ gap: 1, alignItems: 'center', flexWrap: 'wrap', mb: 1.5 }}>
         <Typography variant="body2" color="text.secondary" sx={{ flex: '1 1 180px' }}>
           Control-plane audit · all projects

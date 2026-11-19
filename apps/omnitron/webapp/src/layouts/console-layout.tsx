@@ -23,7 +23,7 @@ import { useAuthStore } from 'src/auth/store';
 import { useAccess, PageAccess, AccessBoundary } from 'src/auth/access';
 import { ProjectSwitcher } from 'src/components/project-switcher';
 import { StackSelector } from 'src/components/stack-selector';
-import { useActiveProject } from 'src/stores/project.store';
+import { useWorkspace } from 'src/routes/workspace';
 import { reportCrash } from 'src/utils/report-crash';
 import { useAlertNotifications } from 'src/hooks/use-alert-notifications';
 
@@ -102,10 +102,10 @@ function HeaderRight() {
 const workspaceGutter = { xs: 1, sm: 2, lg: 3 };
 
 export function ConsoleLayout() {
-  const activeProject = useActiveProject();
+  const { project, stack, pagePath } = useWorkspace();
   const { can, snapshot } = useAccess();
-  const navData = useMemo(() => consoleNavigation(Boolean(activeProject), can), [activeProject, can]);
   const location = useLocation();
+  const navData = useMemo(() => consoleNavigation({ project, stack }, can, location.pathname), [project, stack, can, location.pathname]);
   const terminalVisible = location.pathname === '/terminal';
   const filesVisible = location.pathname === '/files';
   const [filesVisited, setFilesVisited] = useState(filesVisible);
@@ -163,7 +163,7 @@ export function ConsoleLayout() {
           },
           main: {
             sx:
-              terminalVisible || filesVisible || location.pathname === '/topology'
+              terminalVisible || filesVisible || pagePath === '/topology'
                 ? { px: workspaceGutter, py: { xs: 1, sm: 1.5, md: 2 }, minHeight: 0 }
                 : { minWidth: 0, minHeight: 0, overflowY: 'auto', px: workspaceGutter, py: { xs: 1.5, sm: 2, md: 2.5 } },
           },

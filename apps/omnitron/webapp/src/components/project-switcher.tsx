@@ -9,8 +9,8 @@
  * project-scoped sections: Apps, Stacks, Logs, Metrics, etc.
  */
 
-import { useEffect, useCallback, useId, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useEffect, useId } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Divider from '@mui/material/Divider';
 import Menu from '@mui/material/Menu';
@@ -23,7 +23,8 @@ import type { SxProps, Theme } from '@mui/material/styles';
 import { usePopover } from '@omnitron-dev/prism/components/popover';
 import { Label } from '@omnitron-dev/prism/components/label';
 import { PlusIcon, ChipIcon, FolderIcon } from '../assets/icons';
-import { useProjectStore, useActiveProject } from '../stores/project.store';
+import { useProjectStore, workspaceBookmark } from '../stores/project.store';
+import { useWorkspace } from '../routes/workspace';
 import { useAccess } from '../auth/access';
 
 export function ProjectSwitcher() {
@@ -31,39 +32,18 @@ export function ProjectSwitcher() {
   const menuId = useId();
   const { can, snapshot } = useAccess();
   const canList = can('OmnitronProject.listProjects');
-  const navigate = useNavigate();
-  const { pathname } = useLocation();
-  const route = useRef(pathname);
-  route.current = pathname;
-
+  const { project: activeProject, stack: activeStack } = useWorkspace();
   const inventory = useProjectStore((s) => s.projects);
+  const routes = useProjectStore((s) => s.workspaceRoutes);
   const projects = canList ? inventory : [];
-  const activeProject = useActiveProject();
-  const activeStack = useProjectStore(s => s.activeStack);
-  const selectProject = useProjectStore((s) => s.selectProject);
-  const deselectProject = useProjectStore((s) => s.deselectProject);
   const fetchProjects = useProjectStore((s) => s.fetchProjects);
 
   useEffect(() => {
-    if (!canList) return;
-    void fetchProjects(route.current).then(next => { if (next) navigate(next, { replace: true }); });
-  }, [fetchProjects, navigate, canList, snapshot?.userId]);
-
-  const handleSelectOmnitron = useCallback(() => {
-    if (activeProject) navigate(deselectProject(pathname), { state: { workspace: { project: null, stack: null } } });
-    onClose();
-  }, [activeProject, deselectProject, navigate, pathname, onClose]);
-
-  const handleSelectProject = useCallback(
-    (name: string) => {
-      if (name !== activeProject) navigate(selectProject(name, pathname), { state: { workspace: { project: name, stack: null } } });
-      onClose();
-    },
-    [activeProject, selectProject, navigate, pathname, onClose]
-  );
+    if (canList) void fetchProjects();
+  }, [fetchProjects, canList, snapshot?.userId]);
 
   const activeInfo = projects.find((p) => p.name === activeProject);
-  const isOmnitron = !activeProject || !canList;
+  const isOmnitron = !activeProject;
   const stackReadError = useProjectStore(s => activeProject ? s.stackReadErrors?.[activeProject] : null);
 
   const buttonBg: SxProps<Theme> = {
@@ -147,7 +127,7 @@ export function ProjectSwitcher() {
         }}
       >
         {/* Omnitron — always first, system-level context */}
-        <MenuItem selected={isOmnitron} onClick={handleSelectOmnitron} sx={{ height: 48, gap: 1.5 }}>
+        <MenuItem component={RouterLink} to={workspaceBookmark(routes, null)} selected={isOmnitron} onClick={onClose} sx={{ height: 48, gap: 1.5 }}>
           <ChipIcon sx={isOmnitron ? menuIconActiveSx : menuIconSx} />
 
           <Box sx={{ flexGrow: 1, minWidth: 0 }}>
@@ -170,7 +150,7 @@ export function ProjectSwitcher() {
             <MenuItem
               key={p.name}
               selected={isActive}
-              onClick={() => handleSelectProject(p.name)}
+              component={RouterLink} to={workspaceBookmark(routes, p.name)} onClick={onClose}
               sx={{ height: 48, gap: 1.5 }}
             >
               <FolderIcon sx={isActive ? menuIconActiveSx : menuIconSx} />
@@ -190,18 +170,12 @@ export function ProjectSwitcher() {
           );
         })}
         {(can('OmnitronProject.addProject') || can('OmnitronProject.reviewProjectCreation') && can('OmnitronProject.createProject')) && <Divider />}
-        {can('OmnitronProject.addProject') && <MenuItem onClick={() => {
-          onClose(); deselectProject('/projects'); navigate('/projects?add=1');
-        }} sx={{ minHeight: 44, gap: 1.5 }}>
+        {can('OmnitronProject.addProject') && <MenuItem component={RouterLink} to="/projects?add=1" onClick={onClose} sx={{ minHeight: 44, gap: 1.5 }}>
           <PlusIcon sx={{ fontSize: 22 }} /> Add existing project
         </MenuItem>}
         {can('OmnitronProject.reviewProjectCreation') && can('OmnitronProject.createProject') && (
           <MenuItem
-            onClick={() => {
-              onClose();
-              deselectProject('/projects');
-              navigate('/projects?create=1');
-            }}
+            component={RouterLink} to="/projects?create=1" onClick={onClose}
             sx={{ minHeight: { xs: 44, sm: 44 }, gap: 1.5, color: 'primary.main' }}
           >
             <PlusIcon sx={{ fontSize: 22 }} />

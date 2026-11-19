@@ -1,3 +1,4 @@
+import { useWorkspace } from 'src/routes/workspace';
 import { stackApps, stackCounts, stackNodes, stacksInScope } from 'src/utils/stack-inventory';
 /**
  * Status Bar — Fixed bottom bar with real-time system health
@@ -119,8 +120,7 @@ interface StatusData {
 // =============================================================================
 
 export function StatusBar({ docked = false }: { docked?: boolean }) {
-  const project = useProjectStore(s => s.activeProject);
-  const stack = useProjectStore(s => s.activeStack);
+  const { project, stack } = useWorkspace();
   const { can, snapshot } = useAccess();
   const showStatus = can('OmnitronDaemon.status');
   const showStacks = can('OmnitronProject.listStacks');
@@ -142,8 +142,7 @@ function StatusBarReader({ docked, showStatus, showNodes, showStacks, showAlerts
   // Fleet status is visible on every authenticated route, including direct
   // entry into Access or Terminal where no page owns an event subscription.
   useEffect(initializeRealtime, [initializeRealtime]);
-  const activeProject = useProjectStore((s) => s.activeProject);
-  const activeStack = useProjectStore((s) => s.activeStack);
+  const { project: activeProject, stack: activeStack } = useWorkspace();
   const fetchStacks = useProjectStore(s => s.fetchStacks);
   const inventory = useProjectStore(s => activeProject ? s.stacksByProject?.[activeProject] : undefined);
   const inventoryError = useProjectStore(s => activeProject ? s.stackReadErrors?.[activeProject] : null);
@@ -379,8 +378,7 @@ function DaemonClock({ serverTimestamp }: { serverTimestamp: number }) {
 }
 
 function ProjectStackIndicator() {
-  const activeProject = useProjectStore((s) => s.activeProject);
-  const activeStack = useProjectStore((s) => s.activeStack);
+  const { project: activeProject, stack: activeStack } = useWorkspace();
   const stacks = useActiveProjectStacks();
 
   const stale = useProjectStore(s => activeProject ? s.stackReadErrors?.[activeProject] : null);

@@ -29,7 +29,7 @@ test('a project stack selection filters inventory, follows details and survives 
     if (route.request().resourceType() !== 'document') return route.continue();
     await route.fulfill({ response: await route.fetch({ url: url + '/workspace.html' }) });
   });
-  await page.goto(url + '/stacks');
+  await page.goto(url + '/projects/sample/stacks');
   const filter = page.getByRole('combobox', { name: 'Stack filter' });
   const card = name => page.getByRole('heading', { name, exact: true });
   const choose = async name => {
@@ -57,18 +57,20 @@ test('a project stack selection filters inventory, follows details and survives 
   await page.reload();
   await expect(filter).toHaveText('Stack: test');
   await expect(card('dev')).toHaveCount(0);
-  const detailLink = page.getByRole('link', { name: 'test', exact: true });
+  const detailLink = card('test').getByRole('link', { name: 'test', exact: true });
   await detailLink.focus();
   await detailLink.press('Enter');
-  await expect(page).toHaveURL(url + '/stacks/test');
+  await expect(page).toHaveURL(url + '/projects/sample/stacks/test');
   await choose('dev');
-  await expect(page).toHaveURL(url + '/stacks/dev');
+  await expect(page).toHaveURL(url + '/projects/sample/stacks/dev');
   await expect(page.getByRole('button', { name: 'Refresh stack' })).toBeVisible();
   await choose('All stacks');
-  await expect(page).toHaveURL(url + '/stacks');
+  await expect(page).toHaveURL(url + '/projects/sample/stacks');
   await expect(card('test')).toBeVisible();
   await expect(card('dev')).toBeVisible();
-  await page.getByRole('link', { name: 'Audit', exact: true }).click();
+  await page.getByRole('button', { name: 'Switch workspace: Sample' }).click();
+  await page.getByRole('menuitem', { name: /Omnitron/ }).click();
+  await expect(page.getByRole('link', { name: 'Audit', exact: true })).toBeVisible();
   await expect(filter).toHaveCount(0);
   await page.goBack();
   await choose('dev');
@@ -78,10 +80,10 @@ test('a project stack selection filters inventory, follows details and survives 
   await page.goBack();
   await expect(page.getByRole('button', { name: 'Switch workspace: Sample' })).toBeVisible();
   await expect(filter).toHaveText('Stack: dev');
-  await page.route(url + '/?view=dashboard', async route => {
+  await page.route(url + '/projects/sample?view=dashboard', async route => {
     await route.fulfill({ response: await route.fetch({ url: url + '/workspace.html' }) });
   });
-  await page.goto(url + '/?view=dashboard');
+  await page.goto(url + '/projects/sample?view=dashboard');
   await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();
   await choose('All stacks');
   await expect(page.getByLabel(/applications 2\/2, nodes 2\/2/)).toBeVisible();
@@ -112,11 +114,11 @@ test('log filters use the selected stack inventory, including remote apps that h
     localStorage.setItem('omnitron_active_project', 'sample');
     localStorage.setItem('omnitron_active_stack', 'test');
   });
-  await page.route(/\/logs$/, async route => {
+  await page.route(/\/logs(?:\?.*)?$/, async route => {
     if (route.request().resourceType() !== 'document') return route.continue();
     await route.fulfill({ response: await route.fetch({ url: url + '/workspace.html' }) });
   });
-  await page.goto(url + '/logs');
+  await page.goto(url + '/projects/sample/logs?stack=test');
   const picker = page.getByRole('combobox', { name: 'Application' });
   await picker.click();
   await expect(page.getByRole('option', { name: 'test-api' })).toBeVisible();
@@ -297,7 +299,7 @@ test('Overview separates observed health from process state and scopes expensive
     'OmnitronDaemon.list': () => { processLists++; return []; },
   });
   await page.addInitScript(() => localStorage.setItem('omnitron_active_project', 'sample'));
-  await page.goto(url + '/workspace.html?view=dashboard');
+  await page.goto(url + '/workspace.html?view=dashboard&path=/projects/sample');
   const table = page.getByRole('table', { name: 'Applications' });
   const rows = table.getByRole('row');
   await expect(rows.nth(1).getByRole('rowheader')).toHaveText(/^storage/);
@@ -355,7 +357,7 @@ for (const direction of ['ltr', 'rtl']) {
       localStorage.setItem('omnitron_active_project', 'example');
       localStorage.setItem('omnitron_active_stack', value);
     }, name);
-    await page.goto(url + '/workspace.html?dir=' + direction);
+    await page.goto(url + '/workspace.html?dir=' + direction + '&path=' + encodeURIComponent('/projects/example?stack=' + name));
     const field = page.getByRole('combobox', { name: 'Stack filter' });
     await expect(field).toContainText(name);
     await page.evaluate(() => document.fonts.ready);

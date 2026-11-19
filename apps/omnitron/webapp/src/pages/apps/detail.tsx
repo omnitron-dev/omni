@@ -1,6 +1,6 @@
-import { Can } from 'src/auth/access';
+import { Can, useAccess } from 'src/auth/access';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useParams, Link as RouterLink } from 'react-router-dom';
+import { useParams, Link as RouterLink, Navigate } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
@@ -30,9 +30,10 @@ import { formatUptime, formatMemory } from 'src/utils/formatters';
 import { LogLevelFilter } from 'src/components/log-level-filter';
 import { shortLogLevel } from 'src/utils/log-levels';
 import { STATUS_COLORS, LEVEL_COLORS } from 'src/utils/constants';
-import { useStackContext } from 'src/hooks/use-stack-context';
-import { countedTraffic, daemonNameFor, latencyCaption, measuredProcess, requestsCaption } from 'src/utils/app-address';
-import { usePollingEffect } from 'src/hooks/use-polled-resource';
+import { appHref, useWorkspace, workspaceHref } from 'src/routes/workspace';
+import { useProjectStore } from 'src/stores/project.store';
+import { countedTraffic, latencyCaption, measuredProcess, qualifiedAppHandle, requestsCaption } from 'src/utils/app-address';
+import { usePolledResource, usePollingEffect } from 'src/hooks/use-polled-resource';
 import { AppHealth } from 'src/components/app-health';
 
 import type {
@@ -392,6 +393,7 @@ function OverviewTab({
           </Typography>
           <Stack spacing={0.75}>
             <InfoRow label="Mode" value={app.mode} />
+            <InfoRow label="Runtime handle" value={app.name} mono />
             <InfoRow label="PID" value={app.pid ?? '—'} mono />
             <InfoRow label="Port" value={app.port ?? '—'} mono />
             <InfoRow label="Critical" value={app.critical ? 'Yes' : 'No'} />
@@ -759,6 +761,8 @@ function MetricsGaugeCard({ title, value, suffix, caption, color, loading }: {
 }
 
 function MetricsTab({ appName }: { appName: string }) {
+  const { can } = useAccess();
+  const canSeries = can('OmnitronMetrics.querySeries');
   // Same correction as LogsTab above, and measured the same way: every metrics
   // surface keys on the namespaced name. `getSnapshot().apps` is keyed
   // `acme/dev/main` (and `acme/dev/main/http` for its children), and
@@ -801,10 +805,10 @@ function MetricsTab({ appName }: { appName: string }) {
       // Fetch time-series
       const fiveMinAgo = new Date(Date.now() - 5 * 60_000).toISOString();
       try {
-        const [cpuData, memData]: [any[], any[]] = await Promise.all([
+        const [cpuData, memData]: [any[], any[]] = canSeries ? await Promise.all([
           metrics.querySeries({ names: ['cpu_percent'], apps: [appName], from: fiveMinAgo, interval: '10s' }),
           metrics.querySeries({ names: ['memory_bytes'], apps: [appName], from: fiveMinAgo, interval: '10s' }),
-        ]);
+        ]) : [[], []];
 
         if (cpuData.length > 0) {
           setCpuSeries(cpuData.map((s: any) => ({
@@ -828,7 +832,7 @@ function MetricsTab({ appName }: { appName: string }) {
     } finally {
       setLoading(false);
     }
-  }, [appName]);
+  }, [appName, canSeries]);
 
   usePollingEffect(() => void fetchMetrics(), { intervalMs: 10_000, enabled: autoRefresh });
 
@@ -966,57 +970,53 @@ function MetricsTab({ appName }: { appName: string }) {
 // ---------------------------------------------------------------------------
 
 export default function AppDetailPage() {
-  const { name } = useParams<{ name: string }>();
-  const { activeProject, activeStack } = useStackContext();
-  const daemonName = name && daemonNameFor(name, activeProject, activeStack);
-  return <AppDetail key={daemonName} name={name} daemonName={daemonName} activeProject={activeProject} />;
+  const { name = '', project: routeProject } = useParams();
+  const { project, stack } = useWorkspace();
+  const { snapshot } = useAccess();
+  if (routeProject && (!project || !stack || name.includes('/'))) {
+    return <Alert severity="warning">Invalid project application address.</Alert>;
+  }
+  return <AppDetail key={JSON.stringify([project, stack, name, snapshot?.userId])} name={name} project={project} stack={stack} />;
 }
 
-function AppDetail({ name, daemonName, activeProject }: { name: string | undefined; daemonName: string | undefined; activeProject: string | null }) {
-  const [app, setApp] = useState<ProcessInfoDto | null>(null);
-  const [diagnostics, setDiagnostics] = useState<AppDiagnosticsDto | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [diagLoading, setDiagLoading] = useState(true);
+function AppDetail({ name, project, stack }: { name: string; project: string | null; stack: string | null }) {
+  const { can } = useAccess();
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [tab, setTab] = useState(0);
   const [healthRefresh, setHealthRefresh] = useState(0);
-
-  const fetchApp = useCallback(async () => {
-    if (!daemonName) return;
-    try {
-      const info = await daemon.getApp({ name: daemonName });
-      setApp(info);
-      setError(null);
-    } catch (err: any) {
-      setError(err?.message ?? `Failed to fetch app "${name}"`);
-    } finally {
-      setLoading(false);
+  const inventory = useProjectStore(s => project && can('OmnitronProject.listStacks') ? s.stacksByProject[project] : undefined);
+  const observed = inventory?.find(item => item.name === stack);
+  const deployment = observed?.apps.find(item => item.name === name);
+  const exact = observed?.type === 'local' && qualifiedAppHandle(deployment?.handleKey) ? deployment.handleKey : null;
+  const process = usePolledResource(async () => {
+    if (project && stack) {
+      if (inventory && !exact) throw new Error('This application is absent from the local stack inventory.');
+      // The inventory also addresses older controllers by the qualified handle they supplied.
+      const info = exact ? await daemon.getApp({ name: exact, exact: true }) : await daemon.getApp({ project, stack, app: name });
+      const ownerMatches = info.workspace?.project === project && info.workspace.stack === stack;
+      const handleMatches = qualifiedAppHandle(info.name) && (exact ? info.name === exact : info.name.split('/')[2] === name);
+      if (!handleMatches || (!exact || info.workspace !== undefined) && !ownerMatches)
+        throw new Error('The controller could not confirm this application in the requested workspace.');
+      return info;
     }
-  }, [daemonName, name]);
-
-  const fetchDiagnostics = useCallback(async () => {
-    if (!daemonName) return;
-    try {
-      const diag = await daemon.inspect({ name: daemonName });
-      setDiagnostics(diag);
-    } catch {
-      // Diagnostics may fail for stopped apps
-    } finally {
-      setDiagLoading(false);
-    }
-  }, [daemonName]);
-
-  usePollingEffect(
-    () => {
-      void fetchApp();
-      void fetchDiagnostics();
-    },
-    { intervalMs: 5_000 }
-  );
-
+    const info = await daemon.getApp({ name, exact: true });
+    if (info.name !== name) throw new Error('The controller did not return this exact process handle.');
+    return info;
+  }, { intervalMs: 5_000, resourceKey: JSON.stringify([project, stack, name, Boolean(inventory), exact]) });
+  const app = process.error ? null : process.data;
+  const daemonName = app?.name;
+  const mayInspect = can('OmnitronDaemon.inspect');
+  const diag = usePolledResource(() => daemon.inspect({ name: daemonName! }), {
+    intervalMs: 5_000, enabled: !!daemonName && mayInspect, resourceKey: JSON.stringify([daemonName, mayInspect]),
+  });
+  const fetchApp = process.refresh;
+  const fetchDiagnostics = () => daemonName && mayInspect ? diag.refresh() : Promise.resolve();
+  const canReadLogs = can('OmnitronLogs.streamLogs');
+  const canReadMetrics = can('OmnitronDaemon.getMetrics');
+  if (!project && app?.workspace) return <Navigate replace to={appHref(app.workspace.project, app.workspace.stack, app.name.split('/').at(-1)!)} />;
   const handleAction = async (action: 'start' | 'stop' | 'restart') => {
-    if (!daemonName) return;
+    if (!qualifiedAppHandle(daemonName)) return;
     setActionLoading(true);
     try {
       if (action === 'start') await daemon.startApp({ name: daemonName });
@@ -1050,8 +1050,8 @@ function AppDetail({ name, daemonName, activeProject }: { name: string | undefin
       <Breadcrumbs
         linkComponent={RouterLink}
         links={[
-          activeProject ? { name: 'Applications', href: '/apps' } : { name: 'Overview', href: '/' },
-          { name: name ?? '' },
+          ...(project ? [{ name: 'Applications', ...(can('OmnitronProject.getProjectApps') && { href: workspaceHref({ project, stack }, '/apps') }) }] : []),
+          { name: name.split('/').at(-1) ?? name },
         ]}
         action={
           app ? (
@@ -1064,7 +1064,7 @@ function AppDetail({ name, daemonName, activeProject }: { name: string | undefin
                 variant="outlined"
                 size="small"
               />
-              {isStopped ? (
+              {!qualifiedAppHandle(daemonName) ? null : isStopped ? (
                 <Can permission="OmnitronDaemon.startApp"><Button variant="outlined" color="success" size="small" startIcon={<PlayIcon />} disabled={actionLoading} onClick={() => handleAction('start')}>
                   Start
                 </Button></Can>
@@ -1085,12 +1085,15 @@ function AppDetail({ name, daemonName, activeProject }: { name: string | undefin
           ) : undefined
         }
       />
+      {app && !project && <Alert severity="info" variant="outlined">
+        {app.workspace === null ? 'This controller process has no registered local stack.' : 'This controller does not report a project for this handle.'}
+      </Alert>}
       {error && (
         <Alert closable severity="error" variant="outlined" onClose={() => setError(null)}>
           {error}
         </Alert>
       )}
-      {loading ? (
+      {process.loading && !process.data ? (
         <Stack spacing={2}>
           <Stack direction="row" spacing={2}>
             {[...Array(5)].map((_, i) => <Skeleton key={i} height={80} variant="rounded" sx={{ flex: 1 }} />)}
@@ -1099,29 +1102,29 @@ function AppDetail({ name, daemonName, activeProject }: { name: string | undefin
         </Stack>
       ) : !app ? (
         <Alert severity="warning" variant="outlined">
-          Application "{name}" not found.
+           {process.error ?? 'Application unavailable.'}
         </Alert>
       ) : (
         <>
           <Tabs value={tab} onChange={(_, v) => setTab(v)}>
             <Tab label="Overview" />
-            <Tab label="Logs" />
-            <Tab label="Metrics" />
+            {canReadLogs && <Tab value={1} label="Logs" />}
+            {canReadMetrics && <Tab value={2} label="Metrics" />}
           </Tabs>
 
           <TabPanel value={tab} index={0}>
             <Stack spacing={2}>
-              <AppHealth key={app.name} appName={app.name} refreshToken={healthRefresh} onLogs={() => setTab(1)} />
-              <OverviewTab app={app} diagnostics={diagnostics} diagLoading={diagLoading} />
+              <Can permission="OmnitronDaemon.getHealth"><AppHealth key={app.name} appName={app.name} refreshToken={healthRefresh} onLogs={canReadLogs ? () => setTab(1) : undefined} /></Can>
+              <OverviewTab app={app} diagnostics={mayInspect ? diag.data : null} diagLoading={mayInspect && diag.loading} />
             </Stack>
           </TabPanel>
           {/* The handle the daemon answered with, not the URL's name: an older
               link says `main`, and every log and metric is keyed by the handle. */}
           <TabPanel value={tab} index={1}>
-            <LogsTab appName={app.name} />
+            {canReadLogs && <LogsTab appName={app.name} />}
           </TabPanel>
           <TabPanel value={tab} index={2}>
-            <MetricsTab appName={app.name} />
+            {canReadMetrics && <MetricsTab appName={app.name} />}
           </TabPanel>
         </>
       )}

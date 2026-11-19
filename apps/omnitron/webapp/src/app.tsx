@@ -16,16 +16,16 @@ import { reportCrash } from 'src/utils/report-crash';
 import { omnitronTheme } from '@omnitron-dev/prism/identity';
 
 function AppContent() {
-  const { pathname } = useLocation();
+  const { pathname, search, hash } = useLocation();
   const saveCurrentRoute = useProjectStore((s) => s.saveCurrentRoute);
 
   // Track route changes — save current path for workspace restore on switch
   useEffect(() => {
     // Don't save auth routes
     if (!pathname.startsWith('/auth')) {
-      saveCurrentRoute(pathname);
+      saveCurrentRoute(pathname + search + hash);
     }
-  }, [pathname, saveCurrentRoute]);
+  }, [pathname, search, hash, saveCurrentRoute]);
 
   return (
     <>

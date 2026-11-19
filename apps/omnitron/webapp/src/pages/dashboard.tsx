@@ -1,3 +1,5 @@
+import { appHref, stackHref, workspaceHref } from 'src/routes/workspace';
+import { processWorkspace } from 'src/utils/project-scope';
 import { useEffect, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { Button, Chip, Grid, Link, Stack, Typography } from '@mui/material';
@@ -39,6 +41,7 @@ function ApplicationInventory({
 }) {
   const [onlyAttention, setOnlyAttention] = useState(false);
   const { can } = useAccess();
+  const projects = useProjectStore(s => s.projects);
   const issues = apps.filter(attention);
   const columns: TableColumn<ShownApp>[] = [
     {
@@ -46,10 +49,12 @@ function ApplicationInventory({
       label: 'Application',
       rowHeader: true,
       render: (app) => {
+        const owner = project && app.stack ? { project, stack: app.stack }
+          : app.workspace === undefined ? processWorkspace(projects, app.key) : app.workspace;
         const href = app.remote
-          ? app.stack && can('OmnitronProject.listStacks') && `/stacks/${encodeURIComponent(app.stack)}`
-          : can('OmnitronDaemon.getApp') && `/apps/${encodeURIComponent(app.key)}`;
-        const scope = project ? app.stack : app.key.split('/').slice(0, -1).join('/');
+          ? owner && can('OmnitronProject.listStacks') && stackHref(owner.project, owner.stack)
+          : can('OmnitronDaemon.getApp') && (owner ? appHref(owner.project, owner.stack, app.name) : '/processes/' + encodeURIComponent(app.key));
+        const scope = project ? app.stack : owner ? owner.project + '/' + owner.stack : app.key.split('/').slice(0, -1).join('/');
         const processes = app.processes?.length
           ? `${app.processes.filter((process) => process.status === 'online').length}/${app.processes.length} processes online`
           : app.instances && app.instances > 1
@@ -185,7 +190,7 @@ function DashboardReader({
   const connected = useRealtimeStore((s) => s.connected);
   const lastAppEvent = useRealtimeStore((s) => s.appEvents[0]);
   const intervalMs = connected ? 15_000 : 5_000;
-  const processes = usePolledResource(() => daemon.list(), { intervalMs, enabled: readProcesses });
+  const processes = usePolledResource(() => daemon.list({ workspaces: true }), { intervalMs, enabled: readProcesses });
   const refreshProcesses = processes.refresh;
   useEffect(() => {
     if (readProcesses && lastAppEvent && document.visibilityState === 'visible') void refreshProcesses();
@@ -249,11 +254,11 @@ function DashboardReader({
         links={[{ name: 'Overview' }]}
         action={
           stack && readStacks ? (
-            <Button size="small" component={RouterLink} to={`/stacks/${encodeURIComponent(stack)}`}>
+            <Button size="small" component={RouterLink} to={stackHref(project!, stack)}>
               Open stack
             </Button>
           ) : project && can('OmnitronMetrics.getSnapshot') ? (
-            <Button size="small" component={RouterLink} to="/metrics">
+            <Button size="small" component={RouterLink} to={workspaceHref({ project, stack }, '/metrics')}>
               Metrics
             </Button>
           ) : undefined

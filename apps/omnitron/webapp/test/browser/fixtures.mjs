@@ -14,6 +14,13 @@ export const test = base.extend({
     const root = import.meta.dirname;
     const output = await mkdtemp(path.join(os.tmpdir(), 'omnitron-console-browser-'));
     const config = {
+      plugins: [{ name: 'console-history-fallback', configurePreviewServer(server) {
+        server.middlewares.use((request, _response, next) => {
+          const pathname = request.url.split('?')[0];
+          if (request.headers['sec-fetch-dest'] === 'document' && !pathname.endsWith('.html')) request.url = '/workspace.html';
+          next();
+        });
+      } }],
       root, configFile: path.resolve(root, '../../vite.config.ts'), logLevel: 'error',
       build: { outDir: output, rolldownOptions: { input: [path.join(root, 'index.html'), path.join(root, 'workspace.html'), path.join(root, 'identity.html')] } },
     };
@@ -29,7 +36,7 @@ export const test = base.extend({
   }, { scope: 'worker', timeout: 90_000 }],
 });
 
-export async function stubInventory(page, extraReadings = {}, healthStatus = 'online') {
+export async function stubInventory(page, extraReadings = {}, healthStatus = 'online', { grants, role = 'viewer' } = {}) {
   const readings = {
     'OmnitronProject.listProjects': ['Example', 'Other'].map(displayName => ({
       name: displayName.toLowerCase(), displayName, path: '/' + displayName, totalStacks: 1, runningStacks: 0,
@@ -38,15 +45,15 @@ export async function stubInventory(page, extraReadings = {}, healthStatus = 'on
     'OmnitronDaemon.status': { apps: [], uptime: 1000 }, 'OmnitronDaemon.ping': { uptime: 1000 },
     ...extraReadings,
   };
-  const capabilities = Object.keys(readings).map(key => {
+  const capabilities = (grants ?? Object.keys(readings)).map(key => {
     const [service, method] = key.split('.');
-    return { service, method, allowed: true, roles: ['viewer'], conditional: false };
+    return { service, method, allowed: true, roles: [role], conditional: false };
   });
   await page.route('**/netron/invoke', async route => {
     const { id, service, method, input } = route.request().postDataJSON();
     const key = service + '.' + method;
     const reading = readings[key];
-    const data = key === 'OmnitronAccess.describe' ? { userId: 'reader', role: 'viewer', capabilities, roles: [] }
+    const data = key === 'OmnitronAccess.describe' ? { userId: 'reader', role, capabilities, roles: [] }
       : typeof reading === 'function' ? await reading(...input) : reading;
     if (data instanceof Error) {
       return route.fulfill({ json: { id, success: false, error: { code: 'UNAVAILABLE', message: data.message } } });

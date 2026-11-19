@@ -1,3 +1,5 @@
+import { releaseHref } from 'src/routes/workspace';
+import { useAccess } from 'src/auth/access';
 import { useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { Box, Button, Stack, Typography } from '@mui/material';
@@ -9,6 +11,7 @@ import { when } from './release-bits';
 
 /** An explicit expensive read, independent of both polling and historical launch receipts. */
 export function InstalledFilesInspection({ project, stack }: { project: string; stack: string }) {
+  const { can } = useAccess();
   const [report, setReport] = useState<InstalledReleaseInspection | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
@@ -40,7 +43,7 @@ export function InstalledFilesInspection({ project, stack }: { project: string; 
           <Typography variant="caption" color="text.secondary">Observed PID {app.pid ?? 'none'} · {when(app.observedAt)}</Typography>
           {app.reasons.map(reason => <Typography key={reason} variant="caption" color="warning.main">{reason}</Typography>)}
           {app.candidates.map(candidate => <Box key={candidate.releaseId}>
-            <Typography variant="caption" component="div">Retained archive matches <Typography component={RouterLink} variant="caption" to={`/releases/${encodeURIComponent(candidate.releaseId)}`} sx={{ color: 'primary.main', textDecoration: 'none', fontFamily: 'monospace' }}>{candidate.releaseId}</Typography></Typography>
+            <Typography variant="caption" component="div">Retained archive matches <Typography component={can('OmnitronRelease.get') ? RouterLink : 'span'} variant="caption" {...(can('OmnitronRelease.get') && { to: releaseHref(project, candidate.releaseId, stack) })} sx={{ color: 'primary.main', textDecoration: 'none', fontFamily: 'monospace' }}>{candidate.releaseId}</Typography></Typography>
             {candidate.reasons.map(reason => <Typography key={reason} variant="caption" component="div" color="warning.main">{reason}</Typography>)}
           </Box>)}
         </Stack>

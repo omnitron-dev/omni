@@ -4,7 +4,9 @@ import { TopologyWorkspaceLauncher } from 'src/components/topology/topology-edit
 import { TopologyMetadataDialog } from 'src/components/topology/topology-metadata-dialog';
 /** Deployment topology: machines, declared dependencies, applications and ingress. */
 import { useEffect, useCallback, useMemo, useState, useRef } from 'react';
-import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import { workspaceHref } from 'src/routes/workspace';
+import { logHref } from 'src/utils/log-location';
+import { Link as RouterLink } from 'react-router-dom';
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -97,7 +99,6 @@ function TopologyWorkspace() {
   const theme = useTheme();
   const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
   const { can } = useAccess();
-  const navigate = useNavigate();
   const { activeProject, activeStack } = useStackContext();
   const {
     nodes: storeNodes,
@@ -301,7 +302,7 @@ function TopologyWorkspace() {
   const menuApp = menu?.node.data.nodeType === 'app' ? (menu.node.data as AppNodeData) : null;
   const localApp = menuApp && !menuApp.remote ? menuApp : null;
   const act = (action: 'start' | 'stop' | 'restart') => {
-    if (!localApp) return;
+    if (!localApp?.name.includes('/')) return;
     const name = localApp.name;
     setMenu(null);
     void useTopologyStore.getState()[`${action}App`](name);
@@ -714,12 +715,12 @@ function TopologyWorkspace() {
           {localApp &&
             (localApp.status === 'online' ? (
               [
-                <MenuItem key="restart" disabled={!can('OmnitronDaemon.restartApp')} onClick={() => act('restart')}>
+                <MenuItem key="restart" disabled={!localApp.name.includes('/') || !can('OmnitronDaemon.restartApp')} onClick={() => act('restart')}>
                   Restart
                 </MenuItem>,
                 <MenuItem
                   key="stop"
-                  disabled={!can('OmnitronDaemon.stopApp')}
+                  disabled={!localApp.name.includes('/') || !can('OmnitronDaemon.stopApp')}
                   onClick={() => act('stop')}
                   sx={{ color: 'error.main' }}
                 >
@@ -727,17 +728,15 @@ function TopologyWorkspace() {
                 </MenuItem>,
               ]
             ) : (
-              <MenuItem disabled={!can('OmnitronDaemon.startApp')} onClick={() => act('start')}>
+              <MenuItem disabled={!localApp.name.includes('/') || !can('OmnitronDaemon.startApp')} onClick={() => act('start')}>
                 Start
               </MenuItem>
             ))}
-          {localApp && (
-            <MenuItem
-              onClick={() => {
-                navigate(`/logs?app=${encodeURIComponent(localApp.name)}`);
-                setMenu(null);
-              }}
-            >
+          {localApp && can('OmnitronLogs.queryLogs') && (
+            <MenuItem component={RouterLink}
+              to={workspaceHref({ project: activeProject ?? localApp.workspace?.project ?? null,
+                stack: activeProject ? localApp.stack : localApp.workspace?.stack ?? null }, logHref(localApp.name))}
+              onClick={() => setMenu(null)}>
               View logs
             </MenuItem>
           )}

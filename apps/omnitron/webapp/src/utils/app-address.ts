@@ -17,27 +17,15 @@ import type {
 /** Only a local stack's apps are this daemon's own: a detail page, start, stop. */
 export const isLocal = (app: IProjectAppStatus): boolean => app.stackType === 'local';
 
-/** The detail page of a local deployment, by the handle the daemon knows it by. */
-export const detailHref = (app: IProjectAppStatus): string => `/apps/${encodeURIComponent(app.handleKey)}`;
+/** Lifecycle operations on a local deployment require the full controller handle. */
+export function qualifiedAppHandle(name: string | undefined): name is string {
+  const parts = name?.split('/');
+  return parts?.length === 3 && parts.every(Boolean);
+}
 
 /** One stack's deployments, or all of them when no stack is selected. */
 export const deploymentsIn = (apps: IProjectAppStatus[], stack: string | null): IProjectAppStatus[] =>
   stack ? apps.filter((app) => app.stack === stack) : apps;
-
-/**
- * The name to ask the daemon for, from the detail page's URL.
- *
- * A handle is asked for as it is. A bare name — a link from before handles —
- * is qualified with the selected stack; with all stacks selected there is
- * nothing to qualify it with, and the daemon resolves a short name only when
- * one app has it. This used to prepend `project/` alone, which names no app:
- * every detail page opened with all stacks selected answered «App with id
- * sample/main not found», four times a poll.
- */
-export function daemonNameFor(name: string, project: string | null, stack: string | null): string {
-  if (name.includes('/') || !project || !stack) return name;
-  return `${project}/${stack}/${name}`;
-}
 
 /** Online and total among a list of apps. */
 export const tally = (apps: ReadonlyArray<{ status: string }>) => ({
@@ -74,6 +62,7 @@ export interface ShownApp {
   stack: string | null;
   /** Run by a node rather than by this daemon. */
   remote: boolean;
+  workspace?: ProcessInfoDto['workspace'];
   status: IProjectAppStatus['status'];
   health?: IProjectAppStatus['health'];
   instances?: number;
@@ -120,6 +109,7 @@ export function shownApps(
         name: parts[parts.length - 1]!,
         stack: parts.length >= 3 ? parts[1]! : null,
         remote: false,
+        workspace: process.workspace,
         ...(process.processes ? { processes: process.processes } : {}),
       };
     });

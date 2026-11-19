@@ -68,7 +68,7 @@ function AppActions({ data }: { data: AppNodeData }) {
           size="small"
           color="success"
           startIcon={<PlayIcon />}
-          disabled={!can('OmnitronDaemon.startApp')}
+          disabled={!data.name.includes('/') || !can('OmnitronDaemon.startApp')}
           onClick={() => startApp(data.name)}
           sx={{ textTransform: 'none', fontWeight: 600 }}
         >
@@ -81,7 +81,7 @@ function AppActions({ data }: { data: AppNodeData }) {
             size="small"
             color="warning"
             startIcon={<RestartIcon />}
-            disabled={!can('OmnitronDaemon.restartApp')}
+            disabled={!data.name.includes('/') || !can('OmnitronDaemon.restartApp')}
             onClick={() => restartApp(data.name)}
             sx={{ textTransform: 'none', fontWeight: 600 }}
           >
@@ -92,7 +92,7 @@ function AppActions({ data }: { data: AppNodeData }) {
             size="small"
             color="error"
             startIcon={<StopIcon />}
-            disabled={!can('OmnitronDaemon.stopApp')}
+            disabled={!data.name.includes('/') || !can('OmnitronDaemon.stopApp')}
             onClick={() => stopApp(data.name)}
             sx={{ textTransform: 'none', fontWeight: 600 }}
           >

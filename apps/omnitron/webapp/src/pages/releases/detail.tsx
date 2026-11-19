@@ -1,3 +1,4 @@
+import { releaseHref, useWorkspace, workspaceHref } from 'src/routes/workspace';
 /**
  * One release, in full.
  *
@@ -15,7 +16,7 @@
  */
 
 import { useCallback, useState, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { Navigate, useParams } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
@@ -60,6 +61,7 @@ export default function ReleaseDetailPage() {
 
 function ReleaseDetails({ id }: { id: string }) {
   const { can } = useAccess();
+  const scope = useWorkspace();
   const mayReadBuilds = can('OmnitronRelease.builds');
   const mayReadLogs = can('OmnitronRelease.getLog');
   const logRequest = useRef(0);
@@ -102,7 +104,7 @@ function ReleaseDetails({ id }: { id: string }) {
   if (error && !data) {
     return (
       <Stack spacing={3}>
-        <Breadcrumbs links={[{ name: 'Releases', href: '/releases' }, { name: id }]} />
+        <Breadcrumbs links={[{ name: 'Releases', ...(can('OmnitronRelease.list') && { href: workspaceHref(scope, '/releases') }) }, { name: id }]} />
         <Alert severity="error" variant="outlined">
           {error}
         </Alert>
@@ -111,13 +113,14 @@ function ReleaseDetails({ id }: { id: string }) {
   }
 
   const release = data!.detail;
+  if (release.project !== scope.project) return <Navigate replace to={releaseHref(release.project, id)} />;
   const manifest = release.manifest;
   const build = data!.builds.records.find((b) => b.releaseId === id) ?? null;
 
   return (
     <Stack spacing={3}>
       <Breadcrumbs
-        links={[{ name: 'Releases', href: '/releases' }, { name: id }]}
+        links={[{ name: 'Releases', ...(can('OmnitronRelease.list') && { href: workspaceHref(scope, '/releases') }) }, { name: id }]}
         action={
           <Stack direction="row" spacing={1}>
             <IconButton data-console-command="refresh" size="small" onClick={() => void refresh()} title="Refresh">
@@ -146,7 +149,7 @@ function ReleaseDetails({ id }: { id: string }) {
 
       {build && <ReleaseBuildPanel record={build} compact={build.state !== 'running'} />}
 
-      <ReleaseDeploymentState key={release.project} project={release.project} />
+      <ReleaseDeploymentState key={release.project} project={release.project} {...(scope.stack && { stack: scope.stack })} />
 
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, md: 6 }}>
@@ -410,6 +413,7 @@ function ReleaseDetails({ id }: { id: string }) {
         open={deployOpen}
         onClose={() => setDeployOpen(false)}
         project={release.project}
+        {...(scope.stack && { stack: scope.stack })}
         release={release as ReleaseSummary}
       /></Can>
     </Stack>

@@ -24,6 +24,7 @@ const { app, aggregate } = vi.hoisted(() => {
   const MB = 1024 * 1024;
   const app = {
     name: 'sample/dev/main',
+    workspace: { project: 'sample', stack: 'dev' },
     status: 'online',
     pid: 26669,
     cpu: 7.4,
@@ -51,6 +52,8 @@ const { app, aggregate } = vi.hoisted(() => {
   };
 });
 
+vi.mock('src/auth/access', () => ({ useAccess: () => ({ can: (grant: string) =>
+  ['OmnitronDaemon.getApp', 'OmnitronDaemon.getMetrics', 'OmnitronMetrics.querySeries'].includes(grant) }), Can: () => null }));
 vi.mock('react-apexcharts', () => ({ default: () => null }));
 vi.mock('src/netron/client', () => ({
   daemon: {
@@ -79,9 +82,9 @@ describe('a latency beside a count of another window', () => {
     const { default: AppDetailPage } = await import('../../webapp/src/pages/apps/detail.js');
     render(
       <ThemeProvider theme={createTheme()}>
-        <MemoryRouter initialEntries={['/apps/sample%2Fdev%2Fmain']}>
+        <MemoryRouter initialEntries={['/projects/sample/apps/dev/main']}>
           <Routes>
-            <Route path="/apps/:name" element={<AppDetailPage />} />
+            <Route path="/projects/:project/apps/:stack/:name" element={<AppDetailPage />} />
           </Routes>
         </MemoryRouter>
       </ThemeProvider>
@@ -110,9 +113,9 @@ describe('a latency that stopped timing the waits and said nothing', () => {
     const { default: AppDetailPage } = await import('../../webapp/src/pages/apps/detail.js');
     render(
       <ThemeProvider theme={createTheme()}>
-        <MemoryRouter initialEntries={['/apps/sample%2Fdev%2Fmain']}>
+        <MemoryRouter initialEntries={['/projects/sample/apps/dev/main']}>
           <Routes>
-            <Route path="/apps/:name" element={<AppDetailPage />} />
+            <Route path="/projects/:project/apps/:stack/:name" element={<AppDetailPage />} />
           </Routes>
         </MemoryRouter>
       </ThemeProvider>

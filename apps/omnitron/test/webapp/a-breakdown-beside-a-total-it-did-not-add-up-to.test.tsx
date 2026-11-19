@@ -18,7 +18,6 @@ import { MemoryRouter } from 'react-router-dom';
 import '@testing-library/jest-dom/vitest';
 import userEvent from '@testing-library/user-event';
 
-import { useProjectStore } from '../../webapp/src/stores/project.store.js';
 
 const { queryLogs, getLogStats } = vi.hoisted(() => {
   const entry = (i: number, level: string) => ({
@@ -80,11 +79,10 @@ vi.mock('src/netron/client', () => ({
 }));
 
 async function renderPage(initial = '/') {
-  useProjectStore.setState({ activeProject: 'sample', activeStack: null });
   const { default: LogsPage } = await import('../../webapp/src/pages/logs.js');
   render(
     <ThemeProvider theme={createTheme()}>
-      <MemoryRouter initialEntries={[initial]}>
+      <MemoryRouter initialEntries={['/projects/sample/logs' + (initial.split('?')[1] ? '?' + initial.split('?')[1] : '')]}>
         <LogsPage />
       </MemoryRouter>
     </ThemeProvider>

@@ -17,6 +17,7 @@ const { api, selection } = vi.hoisted(() => ({
     nodes: vi.fn(),
   },
 }));
+vi.mock('src/auth/access', () => ({ useAccess: () => ({ can: () => true }) }));
 vi.mock('src/netron/client', () => ({
   daemon: { list: api.list },
   project: { getProjectApps: api.apps, listStacks: api.stacks },

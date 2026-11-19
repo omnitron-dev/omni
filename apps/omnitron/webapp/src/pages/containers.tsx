@@ -1,3 +1,4 @@
+import { stackHref, useWorkspace } from 'src/routes/workspace';
 import { Can, useAccess } from 'src/auth/access';
 import { useEffect, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
@@ -183,8 +184,7 @@ function LogModal({ open, containerName, logs, onClose }: LogModalProps) {
 // ---------------------------------------------------------------------------
 
 export default function ContainersPage() {
-  const activeProject = useProjectStore(state => state.activeProject);
-  const activeStack = useProjectStore(state => state.activeStack);
+  const { project: activeProject, stack: activeStack } = useWorkspace();
   return <ContainerInventory key={JSON.stringify([activeProject, activeStack])} />;
 }
 
@@ -473,7 +473,7 @@ function ContainerInventory() {
           {remoteStacks.map((s, i) => (
             <span key={s.name}>
               {i > 0 && ', '}
-              <Link component={RouterLink} to={`/stacks/${encodeURIComponent(s.name)}`}>
+              <Link component={RouterLink} to={stackHref(activeProject!, s.name)}>
                 {s.name}
               </Link>
             </span>

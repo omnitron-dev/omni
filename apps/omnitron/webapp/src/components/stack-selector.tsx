@@ -1,6 +1,5 @@
-/** Explicit, persistent workspace filter. Opening a detail page never changes it. */
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate, useNavigationType } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import MenuItem from '@mui/material/MenuItem';
 import Select from '@mui/material/Select';
@@ -9,60 +8,36 @@ import Typography from '@mui/material/Typography';
 import { useProjectStore, useActiveProjectStacks } from '../stores/project.store';
 import { useAccess } from '../auth/access';
 import { getStatusColor } from './topology/shared-styles';
+import { stackHref, useWorkspace, workspaceHref } from '../routes/workspace';
 import { consoleRoute } from '../routes/navigation';
 
-/** Store the workspace with each history entry, including entries reached by a sidebar link. */
+/** Every choice is a browser history entry. Detail views always name a specific stack. */
 export function StackSelector() {
   const location = useLocation();
   const navigate = useNavigate();
-  const navigation = useNavigationType();
-  const project = useProjectStore(s => s.activeProject);
-  const stack = useProjectStore(s => s.activeStack);
-  const restore = useProjectStore(s => s.restoreWorkspace);
-  const handled = useRef<typeof location | null>(null);
-  useLayoutEffect(() => {
-    // Store changes can render before their matching navigation. Conversely,
-    // a rapid Back may produce a fresh POP for the same entry key that React
-    // last rendered. Handle each router location, not each distinct key.
-    if (handled.current === location) return;
-    handled.current = location;
-    const saved = location.state?.workspace;
-    if (saved &&
-        (saved.project === null || typeof saved.project === 'string') &&
-        (saved.stack === null || typeof saved.stack === 'string')) {
-      if (navigation === 'POP' && (saved.project !== project || saved.stack !== stack)) restore(saved.project, saved.stack);
-      return;
-    }
-    // Stamp an unstamped entry once. A store update can render before its
-    // matching router push and must never rewrite the entry we are leaving.
-    void navigate({ pathname: location.pathname, search: location.search, hash: location.hash }, {
-      replace: true, preventScrollReset: true, state: { ...location.state, workspace: { project, stack } },
-    });
-  }, [location, navigate, navigation, project, stack, restore]);
-
-  const { stackFilter, stackDetail } = consoleRoute(location.pathname);
-  if (!stackFilter) return null;
+  const { project, stack, pagePath, appDetail, stackDetail } = useWorkspace();
+  if (!project || !consoleRoute(location.pathname).stackFilter) return null;
   return <StackFilter onChange={chosen => {
-    const state = useProjectStore.getState();
-    if (state.activeStack === chosen) return;
-    state.selectStack(chosen);
-    if (useProjectStore.getState().activeStack !== chosen) return;
-    const pathname = stackDetail ? (chosen ? '/stacks/' + encodeURIComponent(chosen) : '/stacks') : location.pathname;
-    void navigate({ pathname, search: location.search, hash: location.hash }, {
-      preventScrollReset: true, state: { ...location.state, workspace: { project, stack: chosen } },
-    });
+    if (chosen === stack) return;
+    if (stackDetail && chosen) { void navigate(stackHref(project, chosen)); return; }
+    const path = stackDetail ? '/stacks' : appDetail ? '/apps' : pagePath;
+    const params = new URLSearchParams(location.search);
+    params.delete('stack');
+    // A log handle may belong only to the stack being left.
+    if (path === '/logs') { params.delete('app'); params.delete('node'); }
+    void navigate(workspaceHref({ project, stack: chosen }, path + '?' + params) + location.hash);
   }} />;
 }
 
 function StackFilter({ onChange }: { onChange: (name: string | null) => void }) {
   const { can } = useAccess();
   const [menuOpen, setMenuOpen] = useState(false);
-  const activeProject = useProjectStore(s => s.activeProject);
-  const activeStack = useProjectStore(s => s.activeStack);
+  const { project: activeProject, stack: activeStack } = useWorkspace();
   const readError = useProjectStore(s => activeProject ? s.stackReadErrors[activeProject] : null);
   const stacks = useActiveProjectStacks();
   const sortedStacks = useMemo(() => [...stacks].sort((a, b) => a.name.localeCompare(b.name)), [stacks]);
-  if (!activeProject || !can('OmnitronProject.listStacks')) return null;
+  if (!activeProject) return null;
+  if (!can('OmnitronProject.listStacks')) return activeStack ? <Typography variant="caption">Stack: {activeStack}</Typography> : null;
   const unverified = Boolean(activeStack && !stacks.some(stack => stack.name === activeStack));
 
   return (

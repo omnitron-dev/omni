@@ -3,6 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
+vi.mock('src/auth/access', () => ({ useAccess: () => ({ can: (permission: string) => permission === 'OmnitronRelease.get' }) }));
 vi.mock('src/netron/client', () => ({ daemonClient: { invoke: mocks.invoke } }));
 const { InstalledFilesInspection } = await import('../../webapp/src/components/installed-files-inspection');
 afterEach(() => { cleanup(); vi.resetAllMocks(); });
@@ -21,7 +22,7 @@ it('inspects only on demand, gives progress feedback, and labels a modified inst
     apps: [{ app: 'sample/deployed/main', node: 'test-node', pid: 123, observedAt: '2026-11-02T00:00:00Z', state: 'observed', reasons: [],
       candidates: [{ releaseId: 'sample-base', state: 'modified', reasons: ['Installed entry point differs from the retained release archive'] }] }] });
   await waitFor(() => expect(screen.getByText(/Installed files modified/)).toBeTruthy());
-  expect(screen.getByRole('link', { name: 'sample-base', hidden: true }).getAttribute('href')).toBe('/releases/sample-base');
+  expect(screen.getByRole('link', { name: 'sample-base', hidden: true }).getAttribute('href')).toBe('/projects/sample/releases/sample-base?stack=test');
   expect(screen.queryByText('Launch release verified')).toBeNull();
   expect(screen.getByText(/does not prove what a running process loaded/)).toBeTruthy();
   expect(screen.queryByRole('status')).toBeNull();

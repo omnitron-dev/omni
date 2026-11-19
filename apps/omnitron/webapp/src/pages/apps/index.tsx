@@ -1,5 +1,6 @@
 import { ApplicationHealthStatus } from 'src/components/stack-health-status';
-import { Can } from 'src/auth/access';
+import { appHref, stackHref } from 'src/routes/workspace';
+import { Can, useAccess } from 'src/auth/access';
 import { useState, useEffect } from 'react';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import Typography from '@mui/material/Typography';
@@ -21,7 +22,7 @@ import { STATUS_COLORS } from 'src/utils/constants';
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { useRealtimeStore } from 'src/stores/realtime.store';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
-import { deploymentsIn, detailHref, isLocal } from 'src/utils/app-address';
+import { deploymentsIn, isLocal, qualifiedAppHandle } from 'src/utils/app-address';
 
 import type { IProjectAppStatus } from '@omnitron-dev/omnitron/dto/services';
 
@@ -31,6 +32,7 @@ import type { IProjectAppStatus } from '@omnitron-dev/omnitron/dto/services';
 
 export default function AppsListPage() {
   const navigate = useNavigate();
+  const { can } = useAccess();
   const [actionError, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterValues>({ search: '', status: '' });
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -124,11 +126,11 @@ export default function AppsListPage() {
       id: 'name',
       label: 'Name',
       render: (app) =>
-        isLocal(app) ? (
+        isLocal(app) && can('OmnitronDaemon.getApp') ? (
           // Keep a real link for open-in-new-tab and standard browser navigation.
           <Link
             component={RouterLink}
-            to={detailHref(app)}
+            to={appHref(activeProject!, app.stack, app.name)}
             variant="body2"
             underline="hover"
             sx={{ fontWeight: 600, color: 'text.primary' }}
@@ -148,17 +150,17 @@ export default function AppsListPage() {
           {
             id: 'stack',
             label: 'Stack',
-            render: (app: IProjectAppStatus) => (
+            render: (app: IProjectAppStatus) => can('OmnitronProject.listStacks') ? (
               <Link
                 component={RouterLink}
-                to={`/stacks/${encodeURIComponent(app.stack)}`}
+                to={stackHref(activeProject!, app.stack)}
                 variant="body2"
                 underline="hover"
                 onClick={(e) => e.stopPropagation()}
               >
                 {isLocal(app) ? app.stack : `${app.stack} · ${app.stackType}`}
               </Link>
-            ),
+            ) : app.stack,
           },
         ]),
     {
@@ -198,7 +200,7 @@ export default function AppsListPage() {
       label: 'Actions',
       align: 'center',
       render: (app) =>
-        !isLocal(app) ? (
+        !isLocal(app) || !qualifiedAppHandle(app.handleKey) ? (
           <Tooltip title="Runs on a node — started and stopped with its stack">
             <Typography variant="caption" sx={{ color: 'text.disabled' }}>
               on node
@@ -298,7 +300,10 @@ export default function AppsListPage() {
         rowKey={(app) => `${app.stack}/${app.name}`}
         loading={loading}
         loadingRows={3}
-        onRowClick={(app) => navigate(isLocal(app) ? detailHref(app) : `/stacks/${encodeURIComponent(app.stack)}`)}
+        onRowClick={app => {
+          if (isLocal(app) && can('OmnitronDaemon.getApp')) navigate(appHref(activeProject!, app.stack, app.name));
+          else if (!isLocal(app) && can('OmnitronProject.listStacks')) navigate(stackHref(activeProject!, app.stack));
+        }}
         emptyContent={
           <Stack spacing={1} sx={{ alignItems: 'center' }}>
             <Typography variant="body2" sx={{ color: 'text.secondary' }}>

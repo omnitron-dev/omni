@@ -3,7 +3,7 @@ import { Alert, Button } from '@mui/material';
 import { LoadingScreen } from '@omnitron-dev/prism/components/loading-screen';
 import { RoleBasedGuard, hasPermission, type AuthState } from '@omnitron-dev/prism/auth';
 import type { ConsoleAccess } from '@omnitron-dev/omnitron/dto/services';
-import { Navigate, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { consoleRoute, type PagePermission } from 'src/routes/navigation';
 import { access, type OmnitronConsoleSchema } from 'src/netron/client';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
@@ -104,8 +104,6 @@ export function AccessBoundary({ permission, children }: { permission: PagePermi
 
 export function PageAccess({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
-  const project = useProjectStore(s => s.activeProject);
-  const { permission, requiresProject } = consoleRoute(pathname);
-  if (requiresProject && !project) return <Navigate to="/" replace />;
+  const { permission } = consoleRoute(pathname);
   return permission ? <AccessBoundary permission={permission}>{children}</AccessBoundary> : children;
 }

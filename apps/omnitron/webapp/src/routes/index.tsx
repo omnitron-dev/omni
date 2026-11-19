@@ -38,6 +38,18 @@ const ReleaseDetailPage = lazy(() => import('src/pages/releases/detail'));
 // Router
 // ---------------------------------------------------------------------------
 
+const sharedPages = <>
+  <Route path="studio" element={<Page><StudioPage /></Page>} />
+  <Route path="dashboard-builder" element={<Page><DashboardBuilderPage /></Page>} />
+  <Route path="metrics" element={<Page><MetricsPage /></Page>} />
+  <Route path="deployments" element={<Page><DeploymentsPage /></Page>} />
+  <Route path="logs" element={<Page><LogsPage /></Page>} />
+  <Route path="pipelines" element={<Page><PipelinesPage /></Page>} />
+  <Route path="releases" element={<Page><ReleasesPage /></Page>} />
+  <Route path="topology" element={<Page><TopologyPage /></Page>} />
+  <Route path="containers" element={<Page><ContainersPage /></Page>} />
+</>;
+
 export function Router() {
   return (
     <Routes>
@@ -60,44 +72,29 @@ export function Router() {
           </AuthGuard>
         }
       >
-        {/* Always accessible — no project required */}
         <Route index element={<Page><DashboardPage /></Page>} />
         <Route path="nodes" element={<Page><NodesPage /></Page>} />
-        {/* Workspace stays mounted in ConsoleLayout while navigating other pages. */}
         <Route path="terminal" element={null} />
         <Route path="files" element={null} />
         <Route path="projects" element={<Page><ProjectsPage /></Page>} />
-        <Route path="studio" element={<Page><StudioPage /></Page>} />
-        <Route path="dashboard-builder" element={<Page><DashboardBuilderPage /></Page>} />
         <Route path="system" element={<Page><SystemInfoPage /></Page>} />
         <Route path="settings" element={<Page><SettingsPage /></Page>} />
-        <Route path="logs" element={<Page><LogsPage /></Page>} />
         <Route path="alerts" element={<Page><AlertsPage /></Page>} />
         <Route path="audit" element={<Page><AuditPage /></Page>} />
         <Route path="access" element={<Page><AccessPage /></Page>} />
-        <Route path="pipelines" element={<Page><PipelinesPage /></Page>} />
-        {/*
-          Not project-scoped. A release names the project it was built for,
-          and the page filters by the active one — but the master holds every
-          project's releases, and a console with no project selected is
-          exactly where somebody goes looking for what was built.
-        */}
-        <Route path="releases" element={<Page><ReleasesPage /></Page>} />
-        <Route path="releases/:id" element={<Page><ReleaseDetailPage /></Page>} />
-        {/* A daemon handle identifies the app without a selected workspace.
-            The global dashboard links here too; project selection is a filter,
-            while PageAccess and the daemon retain authorization checks. */}
-        <Route path="apps/:name" element={<Page><AppDetailPage /></Page>} />
-
-        {/* Project-scoped — redirect to / if no active project */}
-        <Route path="apps" element={<Page><AppsListPage /></Page>} />
-        <Route path="stacks" element={<Page><StacksPage /></Page>} />
-        <Route path="stacks/:name" element={<Page><StackDetailPage /></Page>} />
-        <Route path="metrics" element={<Page><MetricsPage /></Page>} />
-        <Route path="topology" element={<Page><TopologyPage /></Page>} />
-        <Route path="containers" element={<Page><ContainersPage /></Page>} />
-        <Route path="deployments" element={<Page><DeploymentsPage /></Page>} />
         <Route path="traces" element={<Page><TracesPage /></Page>} />
+        <Route path="processes/:name" element={<Page><AppDetailPage /></Page>} />
+        {sharedPages}
+        <Route path="releases/:id" element={<Page><ReleaseDetailPage /></Page>} />
+        <Route path="projects/:project">
+          <Route index element={<Page><DashboardPage /></Page>} />
+          {sharedPages}
+          <Route path="releases/:id" element={<Page><ReleaseDetailPage /></Page>} />
+          <Route path="apps" element={<Page><AppsListPage /></Page>} />
+          <Route path="apps/:stack/:name" element={<Page><AppDetailPage /></Page>} />
+          <Route path="stacks" element={<Page><StacksPage /></Page>} />
+          <Route path="stacks/:name" element={<Page><StackDetailPage /></Page>} />
+        </Route>
 
       </Route>
 

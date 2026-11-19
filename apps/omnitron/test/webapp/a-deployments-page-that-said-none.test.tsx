@@ -13,7 +13,7 @@ vi.mock('src/netron/release-wire', () => ({ releaseApi: { deployments: mocks.sta
 vi.mock('src/auth/access', () => ({ useAccess: () => ({ can: mocks.can }) }));
 vi.mock('src/stores/project.store', () => ({ useProjectStore: (select: (state: typeof mocks.state) => unknown) => select(mocks.state) }));
 const { default: DeploymentsPage } = await import('../../webapp/src/pages/deployments');
-const draw = () => render(<ThemeProvider theme={createTheme()}><MemoryRouter><DeploymentsPage /></MemoryRouter></ThemeProvider>);
+const draw = () => render(<ThemeProvider theme={createTheme()}><MemoryRouter initialEntries={['/projects/sample/deployments' + (mocks.state.activeStack ? '?stack=' + mocks.state.activeStack : '')]}><DeploymentsPage /></MemoryRouter></ThemeProvider>);
 const start = (project: string, stack: string, release: string) => ({ project, stack, release, releaseUnnamed: false, at: '2026-10-01T00:00:00Z', source: 'operator', actorId: 'operator', projectCommit: null, omniCommit: null });
 beforeEach(() => { vi.resetAllMocks(); mocks.state.activeProject = 'sample'; mocks.state.activeStack = null;
   mocks.can.mockReturnValue(true);
@@ -25,7 +25,7 @@ describe('deployment operations workspace', () => {
   it('points to the actual release workflow and makes history coverage explicit', async () => {
     draw();
     expect(await screen.findByText('No stack start recorded for this workspace')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Deploy a release' })).toHaveAttribute('href', '/releases');
+    expect(screen.getByRole('link', { name: 'Deploy a release' })).toHaveAttribute('href', '/projects/sample/releases');
     expect(screen.getByRole('link', { name: 'Audit' })).toHaveAttribute('href', '/audit');
     expect(screen.getByText(/Latest recorded start per stack/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Deploy' })).not.toBeInTheDocument();
@@ -39,7 +39,7 @@ describe('deployment operations workspace', () => {
     ]);
     draw();
     expect(await screen.findByRole('link', { name: 'sample-release' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'prod' })).toHaveAttribute('href', '/stacks/prod');
+    expect(screen.getByRole('link', { name: 'prod' })).toHaveAttribute('href', '/projects/sample/stacks/prod');
     expect(screen.queryByText('foreign-release')).not.toBeInTheDocument();
     await act(async () => { fireEvent.click(screen.getByRole('tab', { name: /App history/ })); });
     expect(await screen.findByText('old-label')).toBeInTheDocument();

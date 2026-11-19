@@ -1,3 +1,4 @@
+import { workspaceHref, workspaceLocation, type Workspace } from './workspace';
 import type { ReactNode } from 'react';
 import type { LayoutNavData } from '@omnitron-dev/prism/layouts';
 import type { RpcPermission } from 'src/auth/access';
@@ -32,7 +33,7 @@ interface Destination {
   title: string;
   icon: ReactNode;
   permission?: PagePermission;
-  requiresProject?: boolean;
+  scope?: 'system' | 'project';
   stackFilter?: boolean;
 }
 
@@ -42,14 +43,14 @@ const sections: { title: string; items: Destination[] }[] = [
     title: 'Workspace',
     items: [
       { path: '/', title: 'Overview', icon: <DashboardIcon />, permission: 'OmnitronDaemon.status', stackFilter: true },
-      { path: '/projects', title: 'Projects', icon: <ProjectIcon />, permission: 'OmnitronProject.listProjects' },
+      { path: '/projects', scope: 'system', title: 'Projects', icon: <ProjectIcon />, permission: 'OmnitronProject.listProjects' },
       { path: '/studio', title: 'Agent Studio', icon: <TerminalIcon />, permission: 'OmnitronStudio.workspace', stackFilter: true },
       {
         path: '/stacks',
         title: 'Stacks',
         icon: <StacksIcon />,
         permission: 'OmnitronProject.listStacks',
-        requiresProject: true,
+        scope: 'project',
         stackFilter: true,
       },
       {
@@ -57,7 +58,7 @@ const sections: { title: string; items: Destination[] }[] = [
         title: 'Applications',
         icon: <AppsIcon />,
         permission: 'OmnitronProject.getProjectApps',
-        requiresProject: true,
+        scope: 'project',
         stackFilter: true,
       },
     ],
@@ -77,7 +78,6 @@ const sections: { title: string; items: Destination[] }[] = [
         title: 'Deployments',
         icon: <DeployIcon />,
         permission: ['OmnitronProject.getDeployProgress', 'OmnitronRelease.deployments', 'OmnitronDeploy.getHistory'],
-        requiresProject: true,
         stackFilter: true,
       },
       { path: '/pipelines', title: 'Pipelines', icon: <PipelineIcon />, permission: 'OmnitronPipelines.listPipelines', stackFilter: true },
@@ -92,7 +92,6 @@ const sections: { title: string; items: Destination[] }[] = [
         title: 'Metrics',
         icon: <MetricsIcon />,
         permission: 'OmnitronMetrics.getSnapshot',
-        requiresProject: true,
         stackFilter: true,
       },
       {
@@ -100,9 +99,9 @@ const sections: { title: string; items: Destination[] }[] = [
         title: 'Traces',
         icon: <TraceIcon />,
         permission: 'OmnitronTraces.queryTraces',
-        requiresProject: true,
+        scope: 'system',
       },
-      { path: '/alerts', title: 'Alerts', icon: <AlertIcon />, permission: 'OmnitronAlerts.getRules' },
+      { path: '/alerts', scope: 'system', title: 'Alerts', icon: <AlertIcon />, permission: 'OmnitronAlerts.getRules' },
       {
         path: '/dashboard-builder',
         title: 'Dashboard Builder',
@@ -127,7 +126,7 @@ const sections: { title: string; items: Destination[] }[] = [
         permission: 'OmnitronNodes.listNodes',
         stackFilter: true,
       },
-      { path: '/nodes', title: 'Nodes', icon: <NodesIcon />, permission: 'OmnitronNodes.listNodes' },
+      { path: '/nodes', scope: 'system', title: 'Nodes', icon: <NodesIcon />, permission: 'OmnitronNodes.listNodes' },
       {
         path: '/containers',
         title: 'Containers',
@@ -135,17 +134,17 @@ const sections: { title: string; items: Destination[] }[] = [
         permission: ['OmnitronInfra.listContainers', 'OmnitronProject.listStacks'],
         stackFilter: true,
       },
-      { path: '/terminal', title: 'SSH workspace', icon: <TerminalIcon />, permission: 'OmnitronTerminal.open' },
-      { path: '/files', title: 'Files', icon: <FolderIcon />, permission: 'OmnitronFiles.roots' },
+      { path: '/terminal', scope: 'system', title: 'SSH workspace', icon: <TerminalIcon />, permission: 'OmnitronTerminal.open' },
+      { path: '/files', scope: 'system', title: 'Files', icon: <FolderIcon />, permission: 'OmnitronFiles.roots' },
     ],
   },
   {
     title: 'Administration',
     items: [
-      { path: '/access', title: 'Access', icon: <AccessIcon />, permission: 'OmnitronAccess.describe' },
-      { path: '/audit', title: 'Audit', icon: <AuditIcon />, permission: 'OmnitronAudit.list' },
-      { path: '/system', title: 'System', icon: <SystemInfoIcon />, permission: 'OmnitronSystemInfo.getSnapshot' },
-      { path: '/settings', title: 'Settings', icon: <SettingsIcon /> },
+      { path: '/access', scope: 'system', title: 'Access', icon: <AccessIcon />, permission: 'OmnitronAccess.describe' },
+      { path: '/audit', scope: 'system', title: 'Audit', icon: <AuditIcon />, permission: 'OmnitronAudit.list' },
+      { path: '/system', scope: 'system', title: 'System', icon: <SystemInfoIcon />, permission: 'OmnitronSystemInfo.getSnapshot' },
+      { path: '/settings', scope: 'system', title: 'Settings', icon: <SettingsIcon /> },
     ],
   },
 ];
@@ -153,36 +152,40 @@ const sections: { title: string; items: Destination[] }[] = [
 const byPath = new Map(sections.flatMap((section) => section.items.map((item) => [item.path, item] as const)));
 
 export function consoleRoute(pathname: string) {
-  const [page = '', detail, ...rest] = pathname.split('/').filter(Boolean);
+  const { pagePath, project, appDetail, stackDetail } = workspaceLocation({ pathname });
+  const [page = '', detail] = pagePath.split('/').filter(Boolean);
+  const process = page === 'processes' && !project && !!detail;
   const item = byPath.get('/' + page);
-  const appDetail = page === 'apps' && Boolean(detail) && rest.length === 0;
-  const stackDetail = page === 'stacks' && Boolean(detail) && rest.length === 0;
+  const release = page === 'releases' && !!detail;
   return {
-    permission: appDetail ? ('OmnitronDaemon.getApp' as const) : item?.permission,
-    requiresProject: Boolean(item?.requiresProject && !appDetail),
-    stackFilter: Boolean(item?.stackFilter && (!detail || stackDetail)),
-    stackDetail,
+    permission: appDetail || process ? ('OmnitronDaemon.getApp' as const) : release ? ('OmnitronRelease.get' as const) : item?.permission,
+    scope: item?.scope,
+    stackFilter: Boolean(project && item?.stackFilter),
+    appDetail, stackDetail,
   };
 }
 
-export function consoleNavigation(hasProject: boolean, can: (permission: RpcPermission) => boolean): LayoutNavData {
+export function consoleNavigation(workspace: Workspace, can: (permission: RpcPermission) => boolean, pathname = '/'): LayoutNavData {
+  const { project } = workspace;
+  const current = workspaceLocation({ pathname });
+  const detailGrant = consoleRoute(pathname).permission;
   return sections
     .map(({ title: sectionTitle, items }) => ({
       id: sectionTitle.toLowerCase(),
       subheader: sectionTitle,
       items: items
-        .filter((item) => {
-          if (item.requiresProject && !hasProject) return false;
-          const grant = item.permission;
-          return !grant || (Array.isArray(grant) ? grant.some(can) : can(grant));
-        })
-        .map(({ title, path, icon }) => ({
-          id: path.slice(1) || 'dashboard',
-          title,
-          path,
-          icon,
-          ...(path !== '/' && { selectionPrefix: path }),
-        })),
+        .flatMap(({ title, path, icon, scope, permission }) => {
+          if (scope === 'project' && !project || scope === 'system' && project) return [];
+          const mayList = !permission || (Array.isArray(permission) ? permission.some(can) : can(permission));
+          const selected = current.pagePath === path || path !== '/' && current.pagePath.startsWith(path + '/')
+            || path === '/' && current.pagePath.startsWith('/processes/');
+          const mayReadDetail = selected && typeof detailGrant === 'string' && can(detailGrant);
+          if (!mayList && !mayReadDetail) return [];
+          return [{ id: path.slice(1) || 'dashboard', title, icon, deepMatch: path !== '/',
+            path: mayList ? workspaceHref(workspace, path) : pathname,
+            ...(path === '/' && !project && { selectionPrefix: '/processes/' }),
+          }];
+        }),
     }))
     .filter((section) => section.items.length > 0);
 }

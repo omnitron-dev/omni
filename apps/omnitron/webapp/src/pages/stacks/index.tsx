@@ -1,3 +1,4 @@
+import { stackHref, useWorkspace } from 'src/routes/workspace';
 import { StackHealthStatus } from 'src/components/stack-health-status';
 import { StackLifecycleActions } from 'src/components/stack-lifecycle-actions';
 import { statusColor } from 'src/utils/constants';
@@ -39,8 +40,6 @@ import { DeployReleaseDialog } from 'src/components/deploy-release-dialog';
 import CreateStackDialog from './create-stack-dialog';
 import {
   useProjectStore,
-  useActiveProject,
-  useActiveStack,
   useScopedStacks,
 } from '../../stores/project.store';
 import type { IStackInfo } from '@omnitron-dev/omnitron/dto/services';
@@ -59,8 +58,7 @@ const TYPE_LABEL: Record<string, string> = {
 // =============================================================================
 
 export default function StacksPage() {
-  const activeProject = useActiveProject();
-  const activeStack = useActiveStack();
+  const { project: activeProject, stack: activeStack } = useWorkspace();
   return <StackInventory key={JSON.stringify([activeProject, activeStack])} activeProject={activeProject} activeStack={activeStack} />;
 }
 
@@ -179,7 +177,7 @@ function StackInventory({ activeProject, activeStack }: { activeProject: string 
       ) : (
         <Grid container spacing={2}>
           {stacks.map((stack) => {
-            const detailPath = `/stacks/${encodeURIComponent(stack.name)}`;
+            const detailPath = stackHref(activeProject!, stack.name);
             return <Grid key={stack.name} size={{ xs: 12, sm: 6, md: 4 }}>
               <StackCard
                 stack={stack}

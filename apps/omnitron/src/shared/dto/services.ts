@@ -103,8 +103,8 @@ export interface IDaemonService {
   reloadApp(data: { name: string }): Promise<ProcessInfoDto>;
 
   // --- Information ---
-  list(): Promise<ProcessInfoDto[]>;
-  getApp(data: { name: string }): Promise<ProcessInfoDto>;
+  list(options?: { workspaces?: boolean }): Promise<ProcessInfoDto[]>;
+  getApp(data: { name: string; exact?: boolean } | { project: string; stack: string; app: string }): Promise<ProcessInfoDto>;
   status(): Promise<DaemonStatusDto>;
 
   // --- Monitoring ---

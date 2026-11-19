@@ -9,6 +9,7 @@
  * nothing.
  */
 
+import { appHref, stackHref, workspaceLocation } from '../routes/workspace';
 import { describe, it, expect } from 'vitest';
 
 import type { IProjectAppStatus, ProcessInfoDto, SubProcessInfoDto } from '@omnitron-dev/omnitron/dto/services';
@@ -16,9 +17,7 @@ import type { IProjectAppStatus, ProcessInfoDto, SubProcessInfoDto } from '@omni
 import {
   countedApps,
   countedTraffic,
-  daemonNameFor,
   deploymentsIn,
-  detailHref,
   isLocal,
   measuredProcess,
   shownApps,
@@ -51,24 +50,19 @@ describe('an app list that showed one stack of two', () => {
   });
 
   it('links a local deployment by its handle, and a remote one nowhere the daemon cannot answer', () => {
-    expect(detailHref(devMain)).toBe('/apps/sample%2Fdev%2Fmain');
+    expect(appHref('sample', devMain.stack, devMain.name)).toBe('/projects/sample/apps/dev/main');
     expect(isLocal(devMain)).toBe(true);
     expect(isLocal(testMain)).toBe(false);
   });
 });
 
-describe('a detail page that asked for an app no daemon has', () => {
-  it('asks for a handle as it is, whatever is selected', () => {
-    expect(daemonNameFor('sample/dev/main', 'sample', null)).toBe('sample/dev/main');
-    expect(daemonNameFor('sample/dev/main', 'sample', 'test')).toBe('sample/dev/main');
-  });
-
-  it('qualifies a bare name with the selected stack', () => {
-    expect(daemonNameFor('main', 'sample', 'dev')).toBe('sample/dev/main');
-  });
-
-  it('leaves a bare name bare with all stacks selected — never project/name', () => {
-    expect(daemonNameFor('main', 'sample', null)).toBe('main');
+describe('workspace URLs', () => {
+  it('reads public detail identity independently of a conflicting list filter', () => {
+    for (const pathname of [stackHref('sample', 'research'), appHref('sample', 'research', 'main')]) {
+      expect(workspaceLocation({ pathname, search: '?stack=dev' })).toMatchObject({ project: 'sample', stack: 'research' });
+    }
+    expect(workspaceLocation({ pathname: '/projects/sample/apps', search: '?stack=dev' })).toMatchObject({ project: 'sample', stack: 'dev' });
+    expect(workspaceLocation({ pathname: '/', search: '?stack=dev' })).toMatchObject({ project: null, stack: null });
   });
 });
 

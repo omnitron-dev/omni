@@ -12,7 +12,7 @@ import { Can, useAccess } from 'src/auth/access';
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
+import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
@@ -41,7 +41,7 @@ import { useSnackbar } from '@omnitron-dev/prism/components/snackbar';
 import { project as projectRpc } from 'src/netron/client';
 import { ImportStacksDialog } from 'src/components/import-stacks-dialog';
 import { CreateProjectDialog } from 'src/components/create-project-dialog';
-import { useProjectStore } from 'src/stores/project.store';
+import { useProjectStore, workspaceBookmark } from 'src/stores/project.store';
 import type { IProjectInfo } from '@omnitron-dev/omnitron/dto/services';
 import { timeAgo } from 'src/utils/formatters';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
@@ -55,21 +55,18 @@ function ProjectCard({
   project,
   onEdit,
   onRemove,
-  onOpen,
+  href,
   onImport,
 }: {
   project: IProjectInfo;
   onEdit: (p: IProjectInfo) => void;
   onRemove: (name: string) => void;
-  onOpen: (name: string) => void;
+  href: string;
   onImport: (p: IProjectInfo) => void;
 }) {
-  const inventory = useProjectStore(s => s.stacksByProject[project.name]);
-  const error = useProjectStore(s => s.stackReadErrors[project.name]);
-  const fetchStacks = useProjectStore(s => s.fetchStacks);
-  usePollingEffect(() => { void fetchStacks(project.name); }, { intervalMs: 10_000 });
-  const hasRunning = inventory ? inventory.some(stack => stack.status === 'running') : false;
-  const counts = inventory ? `${inventory.filter(stack => stack.status === 'running').length}/${inventory.length}${error ? ' stale' : ''}` : `?/${project.totalStacks}`;
+  const navigate = useNavigate();
+  const hasRunning = project.runningStacks > 0;
+  const counts = project.runningStacks + '/' + project.totalStacks;
 
   return (
     <Card
@@ -85,7 +82,7 @@ function ProjectCard({
         },
       }}
       variant="outlined"
-      onClick={() => onOpen(project.name)}
+      onClick={() => navigate(href)}
     >
       <CardContent sx={{ flex: 1, pb: '12px !important' }}>
         {/* Header */}
@@ -108,11 +105,9 @@ function ProjectCard({
             <ProjectIcon sx={{ fontSize: 28, color: hasRunning ? 'primary.main' : 'text.secondary', flexShrink: 0 }} />
             <Box sx={{ minWidth: 0 }}>
               <Typography
-                variant="subtitle2"
+                component={RouterLink} to={href} onClick={event => event.stopPropagation()}
+                variant="subtitle2" color="inherit" sx={{ fontWeight: 700, textDecoration: 'none' }}
                 noWrap
-                sx={{
-                  fontWeight: 700,
-                }}
               >
                 {project.displayName}
               </Typography>
@@ -420,10 +415,7 @@ export default function ProjectsPage() {
   const addProject = useProjectStore((s) => s.addProject);
   const updateProject = useProjectStore((s) => s.updateProject);
   const removeProject = useProjectStore((s) => s.removeProject);
-  const selectProject = useProjectStore((s) => s.selectProject);
-
-  const navigate = useNavigate();
-  const { pathname } = useLocation();
+  const routes = useProjectStore((s) => s.workspaceRoutes);
   const snackbar = useSnackbar();
   const { can } = useAccess();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -456,13 +448,6 @@ export default function ProjectsPage() {
   // it the pause on a hidden tab.
   usePollingEffect(() => void fetchProjects(), { intervalMs: 15_000 });
 
-  const handleOpenProject = useCallback(
-    (name: string) => {
-      const targetRoute = selectProject(name, pathname);
-      navigate(targetRoute);
-    },
-    [selectProject, navigate, pathname]
-  );
 
   const handleAdd = useCallback(
     async (name: string, path: string) => {
@@ -568,7 +553,7 @@ export default function ProjectsPage() {
         <Grid container spacing={3}>
           {projects.map((p) => (
             <Grid key={p.name} size={{ xs: 12, sm: 6, md: 4 }}>
-              <ProjectCard project={p} onEdit={setEditProject} onRemove={setConfirmRemove} onOpen={handleOpenProject} onImport={setImportProject} />
+              <ProjectCard project={p} onEdit={setEditProject} onRemove={setConfirmRemove} href={workspaceBookmark(routes, p.name)} onImport={setImportProject} />
             </Grid>
           ))}
         </Grid>

@@ -1,3 +1,5 @@
+import { deploymentWorkspace } from 'src/utils/project-scope';
+import { stackHref, releaseHref, workspaceHref } from 'src/routes/workspace';
 import { useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import Link from '@mui/material/Link';
@@ -34,7 +36,8 @@ export default function DeploymentsPage() {
 
 function DeploymentWorkspace() {
   const { activeProject, activeStack, matchesNamespace, visibleStackName } = useStackContext();
-  const info = useProjectStore(s => s.projects.find(p => p.name === activeProject));
+  const projects = useProjectStore(s => s.projects);
+  const info = projects.find(p => p.name === activeProject);
   const { can } = useAccess();
   const canHistory = can('OmnitronRelease.deployments');
   const canLegacy = can('OmnitronDeploy.getHistory');
@@ -77,13 +80,14 @@ function DeploymentWorkspace() {
   const stackColumns: ColumnDef<ReleaseDeploymentDto>[] = [
     { key: 'stack', header: 'Stack', render: row => {
       const name = visibleStackName(row.project, row.stack);
-      return activeProject && name && can('OmnitronProject.listStacks')
-        ? <Stack><Link component={RouterLink} to={`/stacks/${encodeURIComponent(name)}`}>{name}</Link>
-          {(row.project !== activeProject || row.stack !== name) && <Typography variant="caption" color="text.secondary">{row.project}/{row.stack}</Typography>}</Stack>
+      const owner = activeProject && name ? { project: activeProject, stack: name } : deploymentWorkspace(projects, row.project, row.stack);
+      return owner && can('OmnitronProject.listStacks')
+        ? <Stack><Link component={RouterLink} to={stackHref(owner.project, owner.stack)}>{activeProject ? owner.stack : owner.project + '/' + owner.stack}</Link>
+          {(row.project !== owner.project || row.stack !== owner.stack) && <Typography variant="caption" color="text.secondary">{row.project}/{row.stack}</Typography>}</Stack>
         : <Typography variant="body2">{row.project}/{row.stack}</Typography>;
     } },
     { key: 'release', header: 'Recorded source', render: row => row.release
-      ? can('OmnitronRelease.get') ? <Link component={RouterLink} to={`/releases/${encodeURIComponent(row.release)}`} sx={{ overflowWrap: 'anywhere' }}>{row.release}</Link> : row.release
+      ? can('OmnitronRelease.get') ? <Link component={RouterLink} to={releaseHref(activeProject, row.release, activeStack)} sx={{ overflowWrap: 'anywhere' }}>{row.release}</Link> : row.release
       : <Typography variant="body2">{row.releaseUnnamed ? 'Release identity missing from record' : 'Working tree / source not recorded'}</Typography> },
     { key: 'at', header: 'Recorded at', render: row => formatDate(row.at) },
     { key: 'source', header: 'Trigger', render: row => row.source ?? 'Not recorded' },
@@ -105,8 +109,8 @@ function DeploymentWorkspace() {
   return <Stack spacing={2} sx={{ minWidth: 0 }}>
     <Breadcrumbs links={[{ name: 'Deployments' }]} action={<Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap', alignItems: 'center' }}>
       <IconButton data-console-command="refresh" aria-label="Refresh deployments" size="small" onClick={refresh} disabled={refreshing} aria-busy={refreshing}><RefreshIcon /></IconButton>
-      {can('OmnitronProject.listStacks') && <Button component={RouterLink} to="/stacks" size="small">Stacks</Button>}
-      {can('OmnitronRelease.list') && <Button component={RouterLink} to="/releases" size="small" variant="outlined">{can('OmnitronProject.startStack') ? 'Deploy a release' : 'Releases'}</Button>}
+      {activeProject && can('OmnitronProject.listStacks') && <Button component={RouterLink} to={workspaceHref({ project: activeProject, stack: activeStack }, '/stacks')} size="small">Stacks</Button>}
+      {can('OmnitronRelease.list') && <Button component={RouterLink} to={workspaceHref({ project: activeProject, stack: activeStack }, '/releases')} size="small" variant="outlined">{can('OmnitronProject.startStack') ? 'Deploy a release' : 'Releases'}</Button>}
     </Stack>} />
     {canProgress && progress.error && <Alert severity="warning" variant="outlined">Transfer observations unavailable: {progress.error}. Retained observations may be stale.</Alert>}
     {canProgress && progress.loading && <Typography role="status" variant="caption">Reading transfer observations…</Typography>}

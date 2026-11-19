@@ -28,12 +28,11 @@ const historicalStop: NonNullable<IStackInfo['stopOperation']> = {
 function openStack(stack: IStackInfo, grants: RpcPermission[] = [], readError?: string) {
   grants.forEach(grant => rpc.grants.add(grant));
   rpc.fetch.mockResolvedValue([stack]);
-  useProjectStore.setState({
-    activeProject: 'sample', activeStack: null, stacksByProject: { sample: [stack] }, stackReadErrors: readError ? { sample: readError } : {},
+  useProjectStore.setState({ stacksByProject: { sample: [stack] }, stackReadErrors: readError ? { sample: readError } : {},
     stackNotices: {}, pendingOps: {}, fetchStacks: rpc.fetch, startStack: rpc.start, stopStack: rpc.stop, deleteStack: rpc.remove,
   });
-  return render(<MemoryRouter initialEntries={['/stacks/dev']}><Routes>
-    <Route path="/stacks/:name" element={<StackDetailPage />} />
+  return render(<MemoryRouter initialEntries={['/projects/sample/stacks/dev']}><Routes>
+    <Route path="/projects/sample/stacks/:name" element={<StackDetailPage />} />
   </Routes></MemoryRouter>);
 }
 const select = (name: string) => fireEvent.click(screen.getByRole('tab', { name }));
@@ -62,7 +61,7 @@ it('shows the two health observations, links the local process by handle, and re
   expect(summary.getByText('Health warning')).toBeVisible();
   expect(summary.getByText('Ready')).toBeVisible();
   expect(summary.getByText('1 observed service')).toBeVisible();
-  expect(screen.getByRole('link', { name: 'payments' })).toHaveAttribute('href', '/apps/retained%2Flocal%2Fpayments');
+  expect(screen.getByRole('link', { name: 'payments' })).toHaveAttribute('href', '/projects/sample/apps/dev/payments');
   expect(screen.getByRole('region', { name: 'Stack infrastructure' })).toHaveTextContent('sample-dev-database');
   expect(rpc.history).not.toHaveBeenCalled();
   expect(screen.queryByText(/stop-local/)).not.toBeInTheDocument();

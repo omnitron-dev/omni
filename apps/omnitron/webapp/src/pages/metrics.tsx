@@ -20,6 +20,7 @@ import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import { MetricChart } from 'src/components/metric-chart';
 import { RefreshIcon } from 'src/assets/icons';
 import { daemon, metrics, project, logs, nodes } from 'src/netron/client';
+import { useAccess } from 'src/auth/access';
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { shownApps } from 'src/utils/app-address';
@@ -62,18 +63,26 @@ function MetricsReader({
   autoRefresh: boolean;
   setAutoRefresh: (value: boolean) => void;
 }) {
+  const { can } = useAccess();
+  const canListApps = can('OmnitronDaemon.list');
   const { activeProject, activeStack, namespacePrefix } = useStackContext();
+  const canInventory = activeProject ? can('OmnitronProject.getProjectApps') : canListApps;
+  const canStacks = can('OmnitronProject.listStacks');
+  const canNodes = can('OmnitronNodes.listNodes');
+  const canSeries = can('OmnitronMetrics.querySeries');
+  const canStorage = can('OmnitronMetrics.getStorageStatus');
+  const canIngestion = can('OmnitronLogs.getIngestionStats');
   const [includeProcesses, setIncludeProcesses] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const previousIngestion = useRef<{ total: number; at: number } | null>(null);
   const period = METRIC_WINDOWS[window];
-  const storage = usePolledResource(() => metrics.getStorageStatus(), { intervalMs: 10_000, paused: !autoRefresh });
+  const storage = usePolledResource(() => metrics.getStorageStatus(), { intervalMs: 10_000, paused: !autoRefresh, enabled: canStorage, resourceKey: Number(canStorage) });
   const storageReading = metricsStorageReading(storage.error ? null : storage.data);
 
   const inventory = usePolledResource(
     async () => {
       const [processes, deployments] = await Promise.all([
-        daemon.list(),
+        canListApps ? daemon.list() : [],
         activeProject ? project.getProjectApps({ project: activeProject }) : Promise.resolve(null),
       ]);
       const apps = shownApps(activeProject, activeStack, deployments, processes)!;
@@ -84,7 +93,7 @@ function MetricsReader({
         at: Date.now(),
       };
     },
-    { intervalMs: 10_000, paused: !autoRefresh }
+    { intervalMs: 10_000, paused: !autoRefresh, enabled: canInventory, resourceKey: JSON.stringify([canInventory, canListApps]) }
   );
 
   const history = usePolledResource(
@@ -100,8 +109,8 @@ function MetricsReader({
           interval: period.interval,
           limit: 120,
         }),
-        activeProject ? project.listStacks({ project: activeProject }) : Promise.resolve([]),
-        nodes.listNodes(),
+        activeProject && canStacks ? project.listStacks({ project: activeProject }) : Promise.resolve([]),
+        canNodes ? nodes.listNodes() : [],
       ]);
       return {
         series,
@@ -111,7 +120,7 @@ function MetricsReader({
         scope: activeProject ? metricScope(activeProject, activeStack, stacks, registry) : undefined,
       };
     },
-    { intervalMs: 10_000, paused: !autoRefresh }
+    { intervalMs: 10_000, paused: !autoRefresh, enabled: canSeries, resourceKey: JSON.stringify([canSeries, canStacks, canNodes]) }
   );
 
   const ingestion = usePolledResource(
@@ -124,7 +133,7 @@ function MetricsReader({
       previousIngestion.current = { total: stats.ingestedTotal, at };
       return rate;
     },
-    { intervalMs: 10_000, paused: !autoRefresh }
+    { intervalMs: 10_000, paused: !autoRefresh, enabled: canIngestion, resourceKey: Number(canIngestion) }
   );
 
   // A new reader loads its scope once, including while paused. Manual refresh
@@ -132,7 +141,7 @@ function MetricsReader({
   const refresh = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([inventory.refresh(), history.refresh(), ingestion.refresh(), storage.refresh()]);
+      await Promise.all([canInventory && inventory.refresh(), canSeries && history.refresh(), canIngestion && ingestion.refresh(), canStorage && storage.refresh()]);
     } finally {
       setRefreshing(false);
     }
@@ -171,10 +180,10 @@ function MetricsReader({
           </Stack>
         }
       />
-      <Alert severity={storageReading.severity} variant="outlined" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+      {canStorage && <Alert severity={storageReading.severity} variant="outlined" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
         <Typography variant="body2">{storageReading.summary}</Typography>
         <Typography variant="caption">{storageReading.detail}{storage.error ? `. ${storage.error}` : ''}</Typography>
-      </Alert>
+      </Alert>}
       {inventory.error && (
         <Alert severity="warning" variant="outlined">
           Application readings: {inventory.error}.{' '}
@@ -199,7 +208,7 @@ function MetricsReader({
           <Grid key={item.label} size={{ xs: 6, md: 3 }}>
             <StatCard
               {...item}
-              loading={item.label === 'Log ingestion' ? ingestion.loading : inventory.loading}
+              loading={item.label === 'Log ingestion' ? canIngestion && ingestion.loading : canInventory && inventory.loading}
               color="primary"
               sx={{
                 height: '100%',
@@ -245,7 +254,7 @@ function MetricsReader({
             format={formatCpu}
             from={from}
             to={to}
-            loading={history.loading}
+            loading={canSeries && history.loading}
             error={history.error}
           />
         </Grid>
@@ -257,7 +266,7 @@ function MetricsReader({
             format={formatBytes}
             from={from}
             to={to}
-            loading={history.loading}
+            loading={canSeries && history.loading}
             error={history.error}
           />
         </Grid>
@@ -266,7 +275,7 @@ function MetricsReader({
         CPU is summed process usage and can exceed 100%. Memory is resident bytes, not a percentage of host capacity.
         Child processes are shown separately and must not be added to their application totals.
       </Typography>
-      <LogStoreSummary />
+      {can('OmnitronLogs.getLogStats') && <LogStoreSummary />}
     </Stack>
   );
 }

@@ -70,6 +70,7 @@ export interface InfraNodeData {
 }
 
 export interface AppNodeData {
+  workspace?: ProcessInfoDto['workspace'];
   nodeType: 'app';
   label: string;
   project?: string | null | undefined;
@@ -217,6 +218,7 @@ function appFromProcess(process: ProcessInfoDto, stack: string | null): AppNodeD
     nodeType: 'app',
     label: process.name,
     name: process.name,
+    workspace: process.workspace,
     stack,
     remote: false,
     nodeKey: 'local',
@@ -581,7 +583,7 @@ export const useTopologyStore = create<TopologyState>((set, get) => {
         const [stacksAnswer, processesAnswer, containersAnswer, statusAnswer, dependenciesAnswer, inventoryAnswer] =
           await Promise.allSettled([
             scope.project ? ask(() => project.listStacks({ project: scope.project! })) : Promise.resolve(null),
-            ask(() => daemon.list()),
+            ask(() => daemon.list({ workspaces: true })),
             ask(() => infra.listContainers()),
             ask(() => daemon.status()),
             ask(() =>

@@ -27,11 +27,10 @@ import { MemoryRouter } from 'react-router-dom';
 import { SnackbarProvider } from '@omnitron-dev/prism';
 import '@testing-library/jest-dom/vitest';
 
-import { useProjectStore } from '../../webapp/src/stores/project.store.js';
 
 // Exercise a permitted operation's outcome. The real access provider is
 // covered independently, including denied and revoked capabilities.
-vi.mock('src/auth/access', () => ({ Can: ({ children }: { children: ReactNode }) => children }));
+vi.mock('src/auth/access', () => ({ useAccess: () => ({ can: () => true }), Can: ({ children }: { children: ReactNode }) => children }));
 
 const stopApp = vi.fn();
 /** The page's one read: `main`, running in the project's local dev stack. */
@@ -74,7 +73,7 @@ const render = (ui: ReactNode) =>
   rtlRender(
     <ThemeProvider theme={theme}>
       <SnackbarProvider>
-        <MemoryRouter>{ui}</MemoryRouter>
+        <MemoryRouter initialEntries={['/projects/sample/apps']}>{ui}</MemoryRouter>
       </SnackbarProvider>
     </ThemeProvider>
   );
@@ -94,7 +93,6 @@ function hideDocument(): void {
 beforeEach(() => {
   stopApp.mockReset();
   list.mockClear();
-  useProjectStore.setState({ activeProject: 'sample', activeStack: null });
   Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
 });
 

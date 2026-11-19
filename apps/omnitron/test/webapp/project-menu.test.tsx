@@ -20,8 +20,7 @@ const state = vi.hoisted(() => ({
   addProject: vi.fn(),
   updateProject: vi.fn(),
   removeProject: vi.fn(),
-  selectProject: vi.fn(),
-  deselectProject: vi.fn(),
+  workspaceRoutes: {},
 }));
 vi.mock('src/auth/access', () => ({
   useAccess: () => ({ can: () => access.allowed }),
@@ -29,7 +28,7 @@ vi.mock('src/auth/access', () => ({
 }));
 vi.mock('src/stores/project.store', () => ({
   useProjectStore: (selector: (value: typeof state) => unknown) => selector(state),
-  useActiveProject: () => state.activeProject,
+  workspaceBookmark: (_routes: unknown, project: string | null) => project ? '/projects/' + project : '/',
 }));
 vi.mock('src/hooks/use-polled-resource', () => ({ usePollingEffect: () => {} }));
 vi.mock('@omnitron-dev/prism/components/snackbar', () => ({
@@ -49,6 +48,7 @@ function mount(path = '/') {
       <MemoryRouter initialEntries={[path]}>
         <ProjectSwitcher />
         <Routes>
+          <Route path="/projects/:project" element={<main />} />
           <Route path="/" element={<main />} />
           <Route path="/projects" element={<ProjectsPage />} />
         </Routes>
@@ -67,8 +67,7 @@ describe('workspace menu commands', () => {
       runningStacks: 0,
       totalStacks: 1,
     }));
-    state.activeProject = 'beta';
-    mount();
+    mount('/projects/beta');
     fireEvent.click(screen.getByRole('button', { name: 'Switch workspace: beta' }));
     const current = screen.getByRole('menuitem', { name: 'beta 0/1 stacks' });
     await waitFor(() => expect(document.activeElement).toBe(current));

@@ -1,3 +1,4 @@
+import { useWorkspace } from 'src/routes/workspace';
 import { useState, type ReactNode } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -24,7 +25,6 @@ import { PipelineEditor } from 'src/components/pipeline-editor';
 import { pipelines, nodes } from 'src/netron/client';
 import { formatDate, formatDuration } from 'src/utils/formatters';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
-import { useProjectStore } from 'src/stores/project.store';
 import { settledPair } from 'src/utils/settled-pair';
 
 const colors: Record<string, 'success' | 'error' | 'info' | 'warning' | 'default'> = {
@@ -164,8 +164,7 @@ export function PipelineRunDetail({
 }
 
 export default function PipelinesPage() {
-  const project = useProjectStore(state => state.activeProject);
-  const stack = useProjectStore(state => state.activeStack);
+  const { project, stack } = useWorkspace();
   const { can } = useAccess();
   const [section, setSection] = useState('definitions');
   const workspace = project ? { project, ...(stack && { stack }) } : null;

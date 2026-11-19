@@ -13,6 +13,7 @@ vi.mock('../../src/shared/paths.js', async original => {
   return { ...module, expandPath: (value: string) => value.startsWith('~/') ? `${sandbox}/${value.slice(2)}` : module.expandPath(value) };
 });
 vi.mock('../../src/config/defaults.js', async original => ({ ...await original<typeof import('../../src/config/defaults.js')>(), OMNITRON_HOME: sandbox }));
+import { DaemonRpcService } from '../../src/daemon/daemon.rpc-service.js';
 import { DaemonStateStore } from '../../src/daemon/daemon-state-store.service.js';
 import { ProjectRegistry } from '../../src/project/registry.js';
 import { ProjectService } from '../../src/services/project.service.js';
@@ -87,6 +88,48 @@ describe('one repository owns many stacks', () => {
     registry.importConfiguration(input());
     expect(() => registry.remove('sample')).toThrow(/detach/);
     expect(() => registry.remove('sample-research')).toThrow(/not a separate project/);
+  });
+  it('addresses local daemon processes by their one public owner, including imported stacks', async () => {
+    registry.importConfiguration(input());
+    const configs: Record<string, Record<string, { type: string }>> = {
+      sample: { dev: { type: 'local' }, edge: { type: 'remote' } },
+      'sample-research': { local: { type: 'local' }, hidden: { type: 'local' } },
+      another: { dev: { type: 'local' } },
+    };
+    const projects = Object.assign(Object.create(ProjectService.prototype), {
+      registry, getLoadedConfig: (name: string) => configs[name], resolveStacks: (stacks: unknown) => stacks,
+    }) as ProjectService;
+    const handles = ['sample/dev/api', 'sample-research/local/api', 'another/dev/api', 'sample/edge/api', 'sample-research/hidden/api', 'loose'];
+    const processes = handles.map(name => ({ name, status: 'online' }));
+    const getApp = vi.fn((name: string) => processes.find(process => process.name === name)
+      ?? (name === 'api' ? processes[0] : undefined));
+    const owners = vi.fn((project?: string) => projects.localApplicationScopes(project));
+    const daemon = new DaemonRpcService({ list: () => processes, getApp } as never,
+      {} as never, {} as never, {} as never, {} as never, undefined, owners);
+
+    expect(await daemon.list()).toEqual(processes);
+    expect(owners).not.toHaveBeenCalled();
+    const listed = await daemon.list({ workspaces: true });
+    expect(owners).toHaveBeenCalledTimes(1);
+    const imported = { project: 'sample', stack: 'research' };
+    expect(listed.map(item => item.workspace)).toEqual([
+      { project: 'sample', stack: 'dev' }, imported, { project: 'another', stack: 'dev' }, null, null, null,
+    ]);
+    expect(await daemon.getApp({ ...imported, app: 'api' })).toMatchObject({ name: 'sample-research/local/api', workspace: imported });
+    expect(owners).toHaveBeenLastCalledWith('sample');
+    expect(await daemon.getApp({ name: 'sample-research/local/api', exact: true })).toMatchObject({ workspace: imported });
+    expect(await daemon.getApp({ name: 'loose', exact: true })).toMatchObject({ name: 'loose', workspace: null });
+    expect(await daemon.getApp({ name: 'api' })).toMatchObject({ name: 'sample/dev/api' });
+    await expect(daemon.getApp({ name: 'api', exact: true })).rejects.toThrow();
+    await expect(daemon.getApp({ ...imported, app: 'removed' })).rejects.toThrow();
+    getApp.mockClear();
+    await expect(daemon.getApp({ project: 'sample', stack: 'edge', app: 'api' })).rejects.toThrow();
+    await expect(daemon.getApp({ ...imported, app: 'another/dev/api' })).rejects.toThrow();
+    // A remote declaration colliding with an imported local public name is ambiguous.
+    configs['sample']!['research'] = { type: 'remote' };
+    await expect(daemon.getApp({ ...imported, app: 'api' })).rejects.toThrow();
+    expect(getApp).not.toHaveBeenCalled();
+    expect((await daemon.list({ workspaces: true }))[1]?.workspace).toBeNull();
   });
   it('refuses an ambiguous public stack after the default configuration changes', async () => {
     registry.importConfiguration(input());

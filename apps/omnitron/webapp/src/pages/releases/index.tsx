@@ -1,4 +1,5 @@
-import { Can } from 'src/auth/access';
+import { releaseHref } from 'src/routes/workspace';
+import { Can, useAccess } from 'src/auth/access';
 /** Release artifacts, build progress and current stack observations.
  * Audit records describe deployment history; they never identify live code.
  */
@@ -21,7 +22,7 @@ import { stacksByRelease, type DeploymentsAnswer } from '@omnitron-dev/omnitron/
 import { DeleteIcon, DeployIcon, PlusIcon, RefreshIcon } from 'src/assets/icons';
 import { DeployReleaseDialog } from 'src/components/deploy-release-dialog';
 import { ReleaseBuildPanel } from 'src/components/release-build-panel';
-import { ReleaseDeploymentState } from 'src/components/release-deployment-state';
+import { ReleaseDeploymentState, useCanReadDeploymentHistory } from 'src/components/release-deployment-state';
 import { CommitPair, GateCount, GateStrip, bytes, loadWords, ranLoaded, when } from 'src/components/release-bits';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { releases as releaseRpc } from 'src/netron/client';
@@ -49,12 +50,12 @@ interface PageData {
  * still has releases on its disk, and a page that blanked the table because
  * one of four calls failed would be hiding what it does know.
  */
-async function loadPage(): Promise<PageData> {
+async function loadPage(mayBuilds: boolean, mayPreflight: boolean, mayHistory: boolean): Promise<PageData> {
   const [list, builds, preflight, deployments] = await Promise.allSettled([
     releaseApi.list(),
-    releaseApi.builds(),
-    releaseApi.preflight(),
-    releaseApi.deployments(200),
+    mayBuilds ? releaseApi.builds() : [],
+    mayPreflight ? releaseApi.preflight() : null,
+    mayHistory ? releaseApi.deployments(200) : { known: false as const, why: 'Deployment history is unavailable with your permissions.' },
   ]);
   const failures: string[] = [];
   if (list.status === 'rejected') failures.push(`releases: ${(list.reason as Error)?.message ?? 'unavailable'}`);
@@ -76,6 +77,7 @@ async function loadPage(): Promise<PageData> {
 }
 
 export default function ReleasesPage() {
+  const { can } = useAccess();
   const { activeProject, activeStack, visibleStackName } = useStackContext();
   const [buildOpen, setBuildOpen] = useState(false);
   const [pruneOpen, setPruneOpen] = useState(false);
@@ -93,13 +95,17 @@ export default function ReleasesPage() {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
 
-  const { data, loading, error, refresh } = usePolledResource(loadPage, { intervalMs: 20_000 });
+  const mayBuilds = can('OmnitronRelease.builds');
+  const mayPreflight = can('OmnitronRelease.preflight');
+  const mayHistory = useCanReadDeploymentHistory();
+  const { data, loading, error, refresh } = usePolledResource(() => loadPage(mayBuilds, mayPreflight, mayHistory),
+    { intervalMs: 20_000, resourceKey: JSON.stringify([mayBuilds, mayPreflight, mayHistory]) });
 
   const building = (data?.builds ?? []).some((b) => b.state === 'running' || b.state === 'queued') || justStarted !== null;
   // Three seconds while something is building, twenty when nothing is: the
   // phase and the percent are the only readings on this page that change on
   // their own, and they change every few seconds.
-  const live = usePolledResource(async () => releaseApi.builds(), { intervalMs: 3_000, enabled: building });
+  const live = usePolledResource(async () => releaseApi.builds(), { intervalMs: 3_000, enabled: building && mayBuilds });
   const polled = live.data ?? data?.builds ?? [];
   const builds =
     justStarted && !polled.some((b) => b.buildId === justStarted.buildId) ? [justStarted, ...polled] : polled;
@@ -143,8 +149,8 @@ export default function ReleasesPage() {
         return (
           <Stack spacing={0.5}>
             <Typography
-              component={RouterLink}
-              to={`/releases/${r.id}`}
+              component={can('OmnitronRelease.get') ? RouterLink : 'span'}
+              {...(can('OmnitronRelease.get') && { to: releaseHref(r.project, r.id, activeProject === r.project ? activeStack : null) })}
               variant="body2"
               sx={{ fontFamily: 'monospace', fontWeight: 600, textDecoration: 'none', color: 'text.primary', wordBreak: 'break-all', '&:hover': { color: 'primary.main' } }}
             >

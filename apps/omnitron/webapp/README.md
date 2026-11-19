@@ -11,7 +11,11 @@ The management UI for Omnitron. This private workspace application uses React, V
 
 ## Workspace selection
 
-Choose a project in the header, then choose **All stacks** or an individual stack. The stack inventory, applications, logs, metrics, topology, containers and deployment views follow that selection. The Releases page keeps the project's artifact catalog available and narrows deployment observations and the proposed deployment target to the selected stack.
+The address identifies the workspace. Open `/` for the controller overview or `/projects/<project>` for a project. Choose a project in the header, then select **All stacks** or a stack. A filtered list has an address such as `/projects/sample/apps?stack=research`. Only an explicit workspace switch uses the last page visited in that workspace. Bookmarks, new tabs, reload, Back and Forward use the address of the selected history entry.
+
+A local application's address is `/projects/<project>/apps/<stack>/<app>`. System Overview, Applications and the stack's runtime inventory link to the same card. The URL, header, sidebar and breadcrumbs use the public owner, including when an imported configuration retains a different runtime namespace. The card shows its exact controller handle. Read access to the card uses the daemon's `getApp` permission. Inventory, diagnostics, health and lifecycle controls use their respective permissions. A remote deployment links to its stack when the account can read it. A controller process without a known project opens at `/processes/<encoded-handle>`. A bare handle supports inspection of its exact process and has no lifecycle controls.
+
+**Stacks** and **Applications** belong to projects. **Projects**, **Nodes**, **SSH workspace**, **Files**, **Traces**, **Alerts**, **Access**, **Audit**, **System** and **Settings** belong to the controller. Overview, Agent Studio, Dashboard Builder, Logs, Metrics, Pipelines, Releases, Deployments, Topology and Containers support both workspaces. The sidebar follows the current workspace and account permissions. Project release catalogs stay available across stack selections. The selected stack narrows deployment observations and the proposed deployment target.
 
 **Pipelines** shows automations with a release or deployment step targeting the selected project or stack. A graph with several targets appears in each relevant workspace. **Runs** uses the targets and name saved when each request was prepared, including runs of a definition that has since moved. The **Omnitron** workspace also includes shell-only automations and older runs with no recorded targets. Older receipts with just a project name appear under **All stacks** for that project.
 
@@ -24,7 +28,7 @@ to start together, subject to the runner’s concurrency limit. Renaming a step 
 Removing a step removes its incident dependencies. **Advanced JSON** edits the same `dependsOn` arrays,
 including forward references. Saving checks the revision you opened. To run the automation, open **Run** and review its targets.
 
-On a stack detail page, selecting another stack opens its details. Selecting **All stacks** opens the inventory. Browser Back, Forward and reload restore the workspace for that history entry. Controller-wide pages such as Audit and System omit the stack filter.
+A stack detail page uses `/projects/<project>/stacks/<stack>`. Selecting another stack opens its details. **All stacks** opens the inventory. Selecting a different stack from an application card opens the Applications list for the selection. A release detail uses `/projects/<project>/releases/<id>`. A link that only knows the release ID can use `/releases/<id>`. The controller's release record supplies the canonical project.
 
 Logs lists the selected stack's local and remote applications, including those awaiting their first log. For an older worker that reports `project/deployed/app`, select its registry node and application. Console includes those records when the observed placement identifies one stack on that node.
 

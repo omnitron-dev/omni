@@ -2,7 +2,7 @@
 import { type ReactNode, StrictMode } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useNavigate } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import '@testing-library/jest-dom/vitest';
 import type { ContainerState, IStackInfo } from '../../src/shared/dto/services.js';
@@ -27,13 +27,15 @@ const containers: ContainerState[] = [
   { name: 'controller-db', image: 'postgres', status: 'running', lifecycleRestriction: 'Owned by the control plane.' },
   { name: 'unassigned-db', image: 'postgres', status: 'running' },
 ];
-const view = () => <StrictMode><ThemeProvider theme={createTheme()}><MemoryRouter><ContainersPage /></MemoryRouter></ThemeProvider></StrictMode>;
+let navigate: ReturnType<typeof useNavigate>;
+function Location() { navigate = useNavigate(); return null; }
+const view = (path = '/projects/sample/containers') => <StrictMode><ThemeProvider theme={createTheme()}><MemoryRouter initialEntries={[path]}><Location /><ContainersPage /></MemoryRouter></ThemeProvider></StrictMode>;
 beforeEach(() => {
   vi.clearAllMocks(); rpc.readStacks = true;
   rpc.list.mockResolvedValue(containers); rpc.stacks.mockResolvedValue([remote]); rpc.start.mockResolvedValue(undefined);
   useProjectStore.getState().setInventoryReaders(null, null);
   useProjectStore.getState().setInventoryReaders('reader', 'reader');
-  useProjectStore.setState({ activeProject: 'sample', activeStack: null, stacksByProject: {}, stackReadErrors: {}, projects: [] });
+  useProjectStore.setState({ stacksByProject: {}, stackReadErrors: {}, projects: [] });
 });
 afterEach(() => { cleanup(); useProjectStore.getState().setInventoryReaders(null, null); });
 
@@ -50,15 +52,14 @@ it('loads unknown stack locations on direct entry and shares the existing reader
   const sameRequest = useProjectStore.getState().fetchStacks('sample');
   expect(rpc.stacks).toHaveBeenCalledTimes(1);
   await act(async () => { finish([remote]); await sameRequest; });
-  expect(screen.getByRole('link', { name: 'test' })).toHaveAttribute('href', '/stacks/test');
+  expect(screen.getByRole('link', { name: 'test' })).toHaveAttribute('href', '/projects/sample/stacks/test');
   expect(screen.queryByText(/Loading stack locations/)).not.toBeInTheDocument();
   const row = within(screen.getByText('project-db').closest('tr')!);
   expect(row.getByText('Not reported')).toBeInTheDocument();
 });
 
 it('keeps unlabeled infrastructure in the controller workspace', async () => {
-  useProjectStore.setState({ activeProject: null, activeStack: null });
-  render(view());
+  render(view('/containers'));
   const protectedRow = within((await screen.findByText('controller-db')).closest('tr')!);
   expect(protectedRow.getByLabelText('Read only. Owned by the control plane.')).toHaveTextContent('Read only');
   expect(protectedRow.getByRole('button', { name: 'Logs for controller-db' })).toBeInTheDocument();
@@ -70,16 +71,16 @@ it('keeps unlabeled infrastructure in the controller workspace', async () => {
 
 it('uses the public stack registration and discards an open removal when the stack changes', async () => {
   useProjectStore.setState({
-    activeStack: 'research', stacksByProject: { sample: [stackFixture('research'), remote] },
+    stacksByProject: { sample: [stackFixture('research'), remote] },
     projects: [{ name: 'sample', displayName: 'Sample', path: '/sample', registeredAt: '', enabledStacks: [], runningStacks: 2, totalStacks: 2,
       configurations: [{ name: 'research', path: '/sample/research', runtimeProject: 'sample-research', stacks: { local: 'research' } }] }],
   });
   rpc.list.mockResolvedValue([...containers, { ...containers[0]!, name: 'inherited-postgres', project: 'sample-research', stack: 'local' }]);
-  render(view());
+  render(view('/projects/sample/containers?stack=research'));
   fireEvent.click(await screen.findByRole('button', { name: 'Remove container inherited-postgres' }));
   expect(screen.getByRole('dialog')).toBeInTheDocument();
   expect(screen.queryByText('project-db')).not.toBeInTheDocument();
-  await act(async () => { useProjectStore.getState().selectStack('test'); });
+  await act(async () => { void navigate('/projects/sample/containers?stack=test'); });
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Remove container inherited-postgres' })).not.toBeInTheDocument();
   expect(screen.queryByText('controller-db')).not.toBeInTheDocument();

@@ -153,6 +153,7 @@ export default function LogsPage() {
   const setNodeFilter = (value: string) => setParams((previous) => {
     const next = new URLSearchParams(previous);
     if (value) next.set('node', value); else next.delete('node');
+    if (app.split('/')[1] === 'deployed') next.set('app', '');
     return next;
   }, { replace: true });
   const nodeNames = canReadNodes ? registry.data : null;
@@ -161,12 +162,8 @@ export default function LogsPage() {
   const legacyApp = Boolean(nodeFilter && app && legacy.available.has(app));
   const logNamespaces = useMemo(() => legacyApp ? [app.slice(0, app.lastIndexOf('/') + 1)] : namespacePrefixes,
     [app, legacyApp, namespacePrefixes]);
-  useEffect(() => {
-    if (activeProject && app && !matchesNamespace(app) && !legacyApp) {
-      if (nodeFilter && app.split('/')[1] === 'deployed' && canReadNodes && (registry.loading || !stacks.length)) return;
-      setParams(previous => { const next = new URLSearchParams(previous); next.set('app', ''); return next; }, { replace: true });
-    }
-  }, [activeProject, app, matchesNamespace, legacyApp, canReadNodes, nodeFilter, registry.loading, stacks.length, setParams]);
+  // Keep an explicit deep link while the imported namespace or node inventory is loading.
+  // The query always includes the workspace prefixes as well as the exact handle.
   /** The same list the Node dropdown shows, keyed for the row detail. */
   const nodeNameById = useMemo(
     () => Object.fromEntries((nodeNames ?? []).map(n => [n.id, n.name])),
@@ -641,6 +638,9 @@ export default function LogsPage() {
           }
         />
 
+        {activeProject && app && !matchesNamespace(app) && !legacyApp && <Alert severity="info">
+          The selected application has no verified placement in this workspace.
+        </Alert>}
         {legacy.observed && !legacyApp && <Alert severity="info" sx={{ mb: 1.5 }}>
           {legacy.available.size ? 'Select an application to read this node’s older deployed records.'
             : !canReadNodes ? 'Reading this stack’s older deployed records requires access to the node registry.'

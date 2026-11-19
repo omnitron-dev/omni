@@ -17,6 +17,7 @@ import { parsePoolScaleRequest, assertPoolScaleTarget } from '../shared/pool-sca
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { Errors } from '@omnitron-dev/titan/errors';
 import { callExposedService, type ExposingSupervisor } from '../orchestrator/call-exposed-service.js';
+import type { RuntimeStackScope } from '../shared/dto/project.js';
 import type { IDaemonService } from '../shared/dto/services.js';
 import type {
   ProcessInfoDto,
@@ -67,6 +68,7 @@ export class DaemonRpcService implements IDaemonService {
     private config: IEcosystemConfig,
     private readonly daemon: OmnitronDaemon,
     private readonly assertLifecycleMutable?: () => void,
+    private readonly localApplicationScopes?: (project?: string) => Map<string, RuntimeStackScope>,
   ) {}
 
   // ============================================================================
@@ -211,15 +213,33 @@ export class DaemonRpcService implements IDaemonService {
   // ============================================================================
 
   @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
-  async list(): Promise<ProcessInfoDto[]> {
-    return this.orchestrator.list();
+  async list(options?: { workspaces?: boolean }): Promise<ProcessInfoDto[]> {
+    const processes = this.orchestrator.list();
+    if (!options?.workspaces) return processes;
+    const scopes = this.localApplicationScopes?.();
+    return processes.map(process => this.applicationWorkspace(process, scopes));
+  }
+
+  private applicationWorkspace(process: ProcessInfoDto, scopes?: Map<string, RuntimeStackScope>): ProcessInfoDto {
+    if (!scopes) return process;
+    const namespace = process.name.split('/').slice(0, -1).join('/');
+    return { ...process, workspace: scopes.get(namespace) ?? null };
   }
 
   @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
-  async getApp(data: { name: string }): Promise<ProcessInfoDto> {
-    const info = this.orchestrator.getApp(data.name);
-    if (!info) throw Errors.notFound('App', data.name);
-    return info;
+  async getApp(data: Parameters<IDaemonService['getApp']>[0]): Promise<ProcessInfoDto> {
+    if ('name' in data) {
+      const info = this.orchestrator.getApp(data.name);
+      if (!info || data.exact && info.name !== data.name) throw Errors.notFound('App', data.name);
+      return data.exact ? this.applicationWorkspace(info, this.localApplicationScopes?.()) : info;
+    }
+    const scopes = this.localApplicationScopes?.(data.project);
+    const target = [...scopes ?? []].find(([, owner]) => owner.project === data.project && owner.stack === data.stack);
+    if (!target || !data.app || data.app.includes('/')) throw Errors.notFound('Local application', [data.project, data.stack, data.app].join('/'));
+    const handle = target[0] + '/' + data.app;
+    const process = this.orchestrator.getApp(handle);
+    if (!process || process.name !== handle) throw Errors.notFound('Application handle', handle);
+    return this.applicationWorkspace(process, scopes);
   }
 
   @Public({ auth: { roles: CONTROL_PLANE_ROLES } })

@@ -38,8 +38,6 @@ const stack = (name: string, type: 'local' | 'remote'): IStackInfo => ({ name, t
 
 beforeEach(() => {
   useProjectStore.setState({
-    activeProject: 'sample',
-    activeStack: 'test',
     stacksByProject: { sample: [stack('dev', 'local'), { ...stack('test', 'remote'), infrastructure: {
       ready: true, services: { postgres: { status: 'running', containerName: 'test-postgres', port: 5432 } },
     } }] },
@@ -51,7 +49,7 @@ describe('a containers page that hid a stack', () => {
     const { default: ContainersPage } = await import('../../webapp/src/pages/containers.js');
     render(
       <ThemeProvider theme={createTheme()}>
-        <MemoryRouter>
+        <MemoryRouter initialEntries={['/projects/sample/containers?stack=test']}>
           <ContainersPage />
         </MemoryRouter>
       </ThemeProvider>,

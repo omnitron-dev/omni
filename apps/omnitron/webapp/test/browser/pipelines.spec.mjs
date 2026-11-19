@@ -31,7 +31,7 @@ for (const width of [1440, 360]) {
     await page.addInitScript(() => localStorage.setItem('omnitron_active_project', 'example'));
     await page.route('**/pipelines', async route => route.fulfill({ response: await route.fetch({ url: url + '/workspace.html' }) }));
     await page.setViewportSize({ width, height: 940 });
-    await page.goto(url + '/pipelines');
+    await page.goto(url + '/projects/example/pipelines');
     await page.getByRole('button', { name: stored.name }).click();
     const dialog = page.getByRole('dialog');
     const edge = (from, to) => dialog.getByRole('group', { name: `${from} to ${to}`, exact: true });
@@ -169,14 +169,14 @@ for (const width of [1440, 360]) {
     });
     await page.addInitScript(() => {
       localStorage.setItem('omnitron_active_project', 'example');
-      localStorage.setItem('omnitron_workspace_routes', JSON.stringify({ example: '/pipelines', other: '/pipelines' }));
+      localStorage.setItem('omnitron_workspace_routes', JSON.stringify({ example: '/projects/example/pipelines', other: '/projects/other/pipelines' }));
     });
     await page.route('**/pipelines', async route => {
       if (route.request().resourceType() !== 'document') return route.continue();
       return route.fulfill({ response: await route.fetch({ url: url + '/workspace.html' }) });
     });
     await page.setViewportSize({ width, height: 850 });
-    await page.goto(url + '/pipelines');
+    await page.goto(url + '/projects/example/pipelines');
     const stack = page.getByRole('combobox', { name: 'Stack filter' });
     await stack.click();
     await page.getByRole('option', { name: /^dev/ }).click();
@@ -228,7 +228,7 @@ test('an older controller cannot mix global history into a project', async ({ pa
   });
   await page.addInitScript(() => localStorage.setItem('omnitron_active_project', 'example'));
   await page.route('**/pipelines', async route => route.fulfill({ response: await route.fetch({ url: url + '/workspace.html' }) }));
-  await page.goto(url + '/pipelines');
+  await page.goto(url + '/projects/example/pipelines');
   await expect(page.getByText(/Workspace pipeline history is unavailable/)).toBeVisible();
   expect(globalReads).toBe(0);
 });

@@ -102,16 +102,16 @@ function RouteMarker() {
   return <output aria-label="Current route">{useLocation().pathname}</output>;
 }
 
-it.each(['/stacks/test', '/stacks', '/releases'])('keeps the workspace filter independent of entry through %s', async (entry) => {
+it.each(['/projects/sample/stacks/test', '/projects/sample/stacks', '/releases'])('keeps the workspace filter independent of entry through %s', async (entry) => {
   mocks.stacks.mockResolvedValue([{ name: 'test', type: 'remote', status: 'running', apps: [], nodes: [] }]);
   mocks.deployments.mockResolvedValue({ known: true, deployments: [] });
   render(<MemoryRouter initialEntries={[entry]}><Routes>
     <Route path="/releases" element={<ReleaseDeploymentState project="sample" />} />
-    <Route path="/stacks" element={<Link to="/stacks/test">test</Link>} />
-    <Route path="/stacks/:name" element={<RouteMarker />} />
+    <Route path="/projects/sample/stacks" element={<Link to="/projects/sample/stacks/test">test</Link>} />
+    <Route path="/projects/sample/stacks/:name" element={<RouteMarker />} />
   </Routes></MemoryRouter>);
-  if (entry !== '/stacks/test') fireEvent.click(await screen.findByRole('link', { name: 'test' }));
-  expect(screen.getByLabelText('Current route').textContent).toBe('/stacks/test');
+  if (entry !== '/projects/sample/stacks/test') fireEvent.click(await screen.findByRole('link', { name: 'test' }));
+  expect(screen.getByLabelText('Current route').textContent).toBe('/projects/sample/stacks/test');
   expect(mocks.selectProject).not.toHaveBeenCalled();
   expect(mocks.selectStack).not.toHaveBeenCalled();
 });
@@ -121,7 +121,8 @@ it('changes a different workspace for a release link without installing a hidden
   mocks.stacks.mockResolvedValue([{ name: 'test', type: 'remote', status: 'running', apps: [], nodes: [] }]);
   mocks.deployments.mockResolvedValue({ known: true, deployments: [] });
   render(<MemoryRouter initialEntries={['/releases']}><ReleaseDeploymentState project="sample" /></MemoryRouter>);
-  fireEvent.click(await screen.findByRole('link', { name: 'test' }));
-  expect(mocks.selectProject).toHaveBeenCalledWith('sample', '/releases');
-  expect(mocks.selectStack).not.toHaveBeenCalled();
+  const link = await screen.findByRole('link', { name: 'test' });
+  expect(link.getAttribute('href')).toBe('/projects/sample/stacks/test');
+  fireEvent.click(link);
+  expect(mocks.selectProject).not.toHaveBeenCalled();
 });

@@ -43,17 +43,15 @@ const stack = (name: string, type: 'local' | 'remote', startedAt: string | null,
 
 async function renderStack(info: ReturnType<typeof stack>) {
   useProjectStore.setState({
-    activeProject: 'sample',
-    activeStack: null,
     stacksByProject: { sample: [info] as never },
     fetchStacks: vi.fn(async () => undefined) as never,
   });
   const { default: StackDetailPage } = await import('../../webapp/src/pages/stacks/detail.js');
   render(
     <ThemeProvider theme={createTheme()}>
-      <MemoryRouter initialEntries={[`/stacks/${info.name}`]}>
+      <MemoryRouter initialEntries={[`/projects/sample/stacks/${info.name}`]}>
         <Routes>
-          <Route path="/stacks/:name" element={<StackDetailPage />} />
+          <Route path="/projects/sample/stacks/:name" element={<StackDetailPage />} />
         </Routes>
       </MemoryRouter>
     </ThemeProvider>

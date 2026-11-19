@@ -1160,7 +1160,7 @@ export class OmnitronDaemon {
 
     const projectService = await container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
     const rpcService = new DaemonRpcService(orchestrator, titanHealth, logManager, config, this,
-      () => projectService.assertInfrastructureMutable());
+      () => projectService.assertInfrastructureMutable(), project => projectService.localApplicationScopes(project));
     await this.app.netron.peer.exposeService(rpcService);
     await this.app.netron.peer.exposeService(new BackendRpcService(this));
 

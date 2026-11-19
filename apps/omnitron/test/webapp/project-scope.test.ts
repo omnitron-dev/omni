@@ -1,7 +1,7 @@
 import { stackFixture } from '../helpers/stack-fixture.js';
 import { describe, expect, it } from 'vitest';
 import { publicDeploymentStack } from '@omnitron-dev/omnitron/release-reading';
-import { projectPrefixes, restoredProjectScope } from '../../webapp/src/utils/project-scope';
+import { projectPrefixes, processWorkspace } from '../../webapp/src/utils/project-scope';
 import { metricScope, seriesInScope } from '../../webapp/src/utils/metric-series';
 import type { IProjectInfo } from '../../src/shared/dto/project';
 
@@ -11,7 +11,7 @@ const project = { name: 'sample', configurations: [
 ] } as IProjectInfo;
 describe('project ownership across historical namespaces', () => {
   it('selects both the public name and its historical runtime namespace for an imported stack', () => {
-    expect(projectPrefixes(project, 'sample', null)).toEqual(['sample/', 'sample-research/']);
+    expect(projectPrefixes(project, 'sample', null)).toEqual(['sample/', 'sample-research/local/']);
     expect(projectPrefixes(project, 'sample', 'research')).toEqual(['sample-research/local/', 'sample/research/']);
     expect(projectPrefixes(project, 'sample', 'test')).toEqual(['sample/test/']);
     expect(publicDeploymentStack(project, 'sample-research', 'local')).toBe('research');
@@ -20,11 +20,13 @@ describe('project ownership across historical namespaces', () => {
     expect(publicDeploymentStack(project, 'sample-research', 'unregistered')).toBeNull();
     expect(publicDeploymentStack(null, 'other', 'dev')).toBe('dev');
   });
-  it('restores an old selected registration inside its owner without losing its stack', () => {
-    expect(restoredProjectScope([project], 'sample-research', 'local')).toEqual({ project: 'sample', stack: 'research' });
-    expect(restoredProjectScope([project], 'sample-research', null)).toEqual({ project: 'sample', stack: 'research' });
-    expect(restoredProjectScope([project], 'sample', 'test')).toEqual({ project: 'sample', stack: 'test' });
-    expect(restoredProjectScope([project], 'missing', null)).toBeNull();
+  it('resolves exact public and historical handles and declines ambiguous or unowned names', () => {
+    expect(processWorkspace([project], 'sample-research/local/api')).toEqual({ project: 'sample', stack: 'research' });
+    expect(processWorkspace([project], 'sample/test/api')).toEqual({ project: 'sample', stack: 'test' });
+    for (const handle of ['api', 'sample/api', 'sample-research/missing/api', 'other/local/api']) {
+      expect(processWorkspace([project], handle)).toBeNull();
+    }
+    expect(processWorkspace([project, { ...project, name: 'other' }], 'sample-research/local/api')).toBeNull();
   });
   it('keeps historical metric series attached to their public stack and excludes unrelated nodes', () => {
     const stacks = [stackFixture('research', { runtimeScope: { project: 'sample-research', stack: 'local' } })];

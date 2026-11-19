@@ -132,7 +132,7 @@ import {
   type DeployProgressRecord,
 } from './remote-deployer.service.js';
 import { withNodeLeases } from './node-deploy-lease.js';
-import { readDeploymentProgress } from '../shared/release-reading.js';
+import { publicDeploymentStack, readDeploymentProgress } from '../shared/release-reading.js';
 import { DEFAULT_MAINTENANCE_TIMING, MaintenanceLock } from './maintenance-lock.js';
 import { gatewayRedisDb } from '../infrastructure/gateway-redis-db.js';
 
@@ -762,6 +762,30 @@ export class ProjectService extends EventEmitter {
         catalogRevision: revision,
       };
     });
+  }
+
+  /** Read local stack declarations once per workspace-aware daemon inventory, without contacting workers. */
+  localApplicationScopes(owner?: string): Map<string, RuntimeStackScope> {
+    const scopes = new Map<string, RuntimeStackScope>();
+    const owners = new Map<string, string>();
+    const records = owner ? this.registry.registrations(owner) : this.registry.listRegistrations();
+    for (const record of records) {
+      const config = this.getLoadedConfig(record.name);
+      if (!config || isControlPlaneWorkspace(record.path)) continue;
+      const project = record.configuration?.project ?? record.name;
+      const registration = { name: project, configurations: [configurationInfo(record)] };
+      for (const [runtimeStack, definition] of Object.entries(this.resolveStacks(config, record.name))) {
+        const stack = publicDeploymentStack(registration, record.name, runtimeStack);
+        if (!stack) continue;
+        const key = project + '/' + stack;
+        const runtime = record.name + '/' + runtimeStack;
+        const previous = owners.get(key);
+        if (previous) { scopes.delete(previous); continue; }
+        owners.set(key, runtime);
+        if (definition.type === 'local') scopes.set(runtime, { project, stack });
+      }
+    }
+    return scopes;
   }
 
   /** Source inventory for execution, backup and recovery; not the public project catalogue. */

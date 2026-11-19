@@ -36,7 +36,7 @@ for (const width of [1440, 360]) {
       await route.fulfill({ response: await route.fetch({ url: url + '/workspace.html' }) });
     });
     await page.setViewportSize({ width, height: width === 360 ? 800 : 900 });
-    await page.goto(url + '/stacks/dev');
+    await page.goto(url + '/projects/sample/stacks/dev');
 
     const summary = page.getByRole('region', { name: 'Runtime summary' });
     const tabs = page.getByRole('tablist', { name: 'Stack details' });
@@ -45,7 +45,7 @@ for (const width of [1440, 360]) {
     await expect(summary.getByText('queue · Queue setup failed')).toBeVisible();
     await expect(summary.getByText(/Consumer lag exceeds 30 seconds/)).toBeVisible();
     const appList = page.getByRole('region', { name: 'Applications', exact: true });
-    await expect(appList.getByRole('link', { name: 'worker' })).toHaveAttribute('href', '/apps/source%2Fdev%2Fworker');
+    await expect(appList.getByRole('link', { name: 'worker' })).toHaveAttribute('href', '/projects/sample/apps/dev/worker');
     await expect(page.getByRole('region', { name: 'Stack infrastructure' }).getByText('Queue setup failed')).toBeVisible();
     expect(historyReads).toBe(0);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);

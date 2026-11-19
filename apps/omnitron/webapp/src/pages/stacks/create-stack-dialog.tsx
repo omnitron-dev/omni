@@ -1,3 +1,4 @@
+import { useWorkspace } from 'src/routes/workspace';
 /**
  * CreateStackDialog — Multi-step wizard for creating a new stack.
  *
@@ -84,7 +85,7 @@ const STEPS: StepItem[] = [
 
 export default function CreateStackDialog({ open, onClose, onCreated }: CreateStackDialogProps) {
   const createStack = useProjectStore((s) => s.createStack);
-  const activeProject = useProjectStore((s) => s.activeProject);
+  const { project: activeProject } = useWorkspace();
 
   // --- wizard state ---
   const [type, setType] = useState<StackType | null>(null);
@@ -134,12 +135,8 @@ export default function CreateStackDialog({ open, onClose, onCreated }: CreateSt
     if (stepper.activeStep === appsStepIndex) {
       setAppsLoading(true);
       // Fetch configured apps from project (not runtime — apps may not be running)
-      // Read fresh from the store rather than the closed-over value: this
-      // runs on a step change, and the component-level binding is a snapshot
-      // from the render that armed the effect.
-      const currentProject = useProjectStore.getState().activeProject;
-      if (currentProject) {
-        projectRpc.scanRequirements({ project: currentProject })
+      if (activeProject) {
+        projectRpc.scanRequirements({ project: activeProject })
           .then((reqs: any) => {
             const appNames = Object.keys(reqs?.apps ?? {});
             const list = appNames.map((name: string) => ({ name }));
@@ -161,7 +158,7 @@ export default function CreateStackDialog({ open, onClose, onCreated }: CreateSt
         setAppsLoading(false);
       }
     }
-  }, [open, stepper.activeStep, effectiveSteps]);
+  }, [activeProject, open, stepper.activeStep, effectiveSteps]);
 
   // --- Auto-suggest name when entering Name step ---
   useEffect(() => {

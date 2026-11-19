@@ -1,5 +1,6 @@
+import { App } from '../../src/app';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { PrismProvider } from '@omnitron-dev/prism/core';
 import { SnackbarProvider } from '@omnitron-dev/prism/components/snackbar';
 import { ConsoleAccessProvider } from '../../src/auth/access';
@@ -23,7 +24,7 @@ import '@fontsource/inter/700.css';
 const params = new URLSearchParams(location.search);
 const view = params.get('view');
 const direction = params.get('dir') === 'rtl' ? 'rtl' : 'ltr';
-useAuthStore.setState({ user: { id: 'reader', username: 'reader', displayName: 'Reader', role: 'viewer' } });
+useAuthStore.setState({ user: { id: 'reader', username: 'reader', displayName: 'Reader', role: 'viewer' }, initialized: true });
 const workspace = (
       <ConsoleAccessProvider>
         <SnackbarProvider><Routes>
@@ -36,6 +37,7 @@ const workspace = (
             <Route path="studio" element={<StudioPage />} />
             <Route path="stacks" element={<StacksPage />} />
             <Route path="stacks/:name" element={<StackDetailPage />} />
+            <Route path="projects/:project" element={view === 'dashboard' ? <DashboardPage /> : <div data-testid="content">Project content</div>} />
             <Route index element={view === 'dashboard' ? <DashboardPage /> : view === 'rollout'
               ? <FleetRollout nodes={[]} /> : <div data-testid="content">Project content</div>} />
           </Route>
@@ -43,10 +45,8 @@ const workspace = (
       </ConsoleAccessProvider>
 );
 createRoot(document.getElementById('root')!).render(
-  <PrismProvider mode={params.has('mode') ? (params.get('mode') === 'light' ? 'light' : 'dark') : undefined}
+  location.pathname !== '/workspace.html' ? <App /> : <PrismProvider mode={params.has('mode') ? (params.get('mode') === 'light' ? 'light' : 'dark') : undefined}
     themeOverrides={omnitronTheme} defaultSettings={{ mode: 'dark', preset: 'minimal', direction }}>
-    {location.pathname === '/workspace.html'
-      ? <MemoryRouter initialEntries={[view === 'files' ? '/files' : view === 'audit' ? '/audit' : '/']}>{workspace}</MemoryRouter>
-      : <BrowserRouter>{workspace}</BrowserRouter>}
+    <MemoryRouter initialEntries={[params.get('path') ?? (view === 'files' ? '/files' : view === 'audit' ? '/audit' : '/')]}>{workspace}</MemoryRouter>
   </PrismProvider>
 );

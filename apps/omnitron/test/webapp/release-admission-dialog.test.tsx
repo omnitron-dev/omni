@@ -63,7 +63,7 @@ it('lets an authorized operator refresh the exact release before reviewing the r
   expect(screen.queryByRole('button', { name: 'Update declarations…' })).toBeNull();
   // The updated verdict arrives before the nested confirmation dialog releases
   // its modal focus boundary. Wait for the parent action to be accessible.
-  expect((await screen.findByRole('button', { name: 'Inspect stack' })).hasAttribute('disabled')).toBe(false);
+  expect((await screen.findByRole('link', { name: 'Inspect stack' })).hasAttribute('disabled')).toBe(false);
   expect(rpc.start).not.toHaveBeenCalled();
 });
 
@@ -76,7 +76,7 @@ it('explains the exact grant needed and keeps a running stack inspectable for an
   expect(await screen.findByText(/An administrator must update/)).toBeTruthy();
   expect(screen.getByText(requiresDeclarations.declarationReason)).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Update declarations…' })).toBeNull();
-  expect(screen.getByRole('button', { name: 'Inspect stack' }).hasAttribute('disabled')).toBe(false);
+  expect(screen.getByRole('link', { name: 'Inspect stack' }).hasAttribute('disabled')).toBe(false);
   expect(rpc.start).not.toHaveBeenCalled();
   expect(rpc.refresh).not.toHaveBeenCalled();
 });

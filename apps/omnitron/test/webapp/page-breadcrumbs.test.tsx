@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { Breadcrumbs } from '../../webapp/src/components/page-breadcrumbs.js';
 
+vi.mock('src/auth/access', () => ({ useAccess: () => ({ can: () => true }) }));
 afterEach(cleanup);
 
 function Location() {

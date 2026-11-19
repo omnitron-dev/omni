@@ -1,3 +1,4 @@
+import { stackHref } from 'src/routes/workspace';
 /**
  * Putting a release on a stack.
  *
@@ -15,7 +16,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Autocomplete from '@mui/material/Autocomplete';
@@ -61,12 +62,9 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
   const { can } = useAccess();
   const canRefreshDeclarations = can('OmnitronProject.refreshTopologyMetadata');
   const navigate = useNavigate();
-  const location = useLocation();
   const openStack = (target: string) => {
-    const store = useProjectStore.getState();
-    if (store.activeProject !== project) store.selectProject(project,location.pathname);
     onClose();
-    navigate(`/stacks/${encodeURIComponent(target)}`);
+    navigate(stackHref(project, target));
   };
   const stacksByProject = useProjectStore((s) => s.stacksByProject);
   const fetchStacks = useProjectStore((s) => s.fetchStacks);
@@ -341,7 +339,7 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
         </Stack>
       </DialogContent>
       <DialogActions>
-        <Button onClick={deploying ? () => openStack(target) : onClose} size="small">
+        <Button {...(deploying && { component: RouterLink, to: stackHref(project, target) })} onClick={onClose} size="small">
           {deploying ? 'Open stack' : preparing ? 'Close' : 'Cancel'}
         </Button>
         <Button
@@ -349,7 +347,8 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
           size="small"
           startIcon={deploying ? <CircularProgress size={14} color="inherit" /> : <DeployIcon />}
           disabled={!releaseId || !target || deploying || preparing || checking || (!needsInspection && !needsPreparation && (needsDeclarations || verdict?.ok !== true))}
-          onClick={needsInspection ? () => openStack(target) : needsPreparation ? () => void checkAfterAction(true) : handleDeploy}
+           {...(needsInspection && { component: RouterLink, to: stackHref(project, target) })}
+          onClick={needsInspection ? onClose : needsPreparation ? () => void checkAfterAction(true) : handleDeploy}
         >
           {deploying ? 'Deploying…' : preparing ? 'Preparing…' : needsInspection ? 'Inspect stack' : verdict?.state === 'missing' ? 'Fetch and verify' : needsPreparation ? 'Prepare release' : 'Deploy'}
         </Button>

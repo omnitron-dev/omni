@@ -1,3 +1,4 @@
+import { useWorkspace } from 'src/routes/workspace';
 import { memo, useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -35,7 +36,6 @@ import {
 import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { studio } from 'src/netron/client';
-import { useProjectStore } from 'src/stores/project.store';
 import { useAccess } from 'src/auth/access';
 import { PlusIcon } from 'src/assets/icons';
 
@@ -70,8 +70,7 @@ function starterLink(answer: string) {
 }
 
 export default function StudioPage() {
-  const project = useProjectStore((s) => s.activeProject);
-  const stack = useProjectStore((s) => s.activeStack);
+  const { project, stack } = useWorkspace();
   const { snapshot } = useAccess();
   return (
     <StudioWorkspace

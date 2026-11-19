@@ -1,4 +1,5 @@
-import { Link as RouterLink, useLocation } from 'react-router-dom';
+import { releaseHref, stackHref, useWorkspace } from 'src/routes/workspace';
+import { Link as RouterLink } from 'react-router-dom';
 import { Box, Chip, IconButton, Stack, Tooltip, Typography } from '@mui/material';
 import { Alert } from '@omnitron-dev/prism/components/alert';
 import { readReleaseDeploymentState, runningReleaseLabel, type ReleaseStackObservation, type StackDeploymentHistory } from '@omnitron-dev/omnitron/release-reading';
@@ -13,7 +14,6 @@ import { InstalledFilesInspection } from './installed-files-inspection';
 
 /** Remount on project changes so a late answer never labels another workspace. */
 export function ReleaseDeploymentState({ project, stack }: { project: string; stack?: string }) {
-  const location = useLocation();
   const canReadHistory = useCanReadDeploymentHistory();
   const { data, loading, error, refresh } = usePolledResource(() => readReleaseDeploymentState(project, {
     stacks: async () => {
@@ -37,12 +37,7 @@ export function ReleaseDeploymentState({ project, stack }: { project: string; st
     {rows.map(row => <Box key={row.stack} sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'minmax(140px, .7fr) minmax(180px, 1fr) minmax(0, 1.3fr)' },
       gap: { xs: 1, md: 2 }, py: 1.5, borderBottom: 1, borderColor: 'divider', overflowWrap: 'anywhere' }}>
       <Stack spacing={0.5} sx={{ minWidth: 0 }}>
-        <Typography component={RouterLink} to={`/stacks/${encodeURIComponent(row.stack)}`} variant="body2"
-          onClick={(event) => {
-            if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-            const store = useProjectStore.getState();
-            if (store.activeProject !== project) store.selectProject(project, location.pathname);
-          }}
+        <Typography component={RouterLink} to={stackHref(project, row.stack)} variant="body2"
           sx={{ color: 'primary.main', textDecoration: 'none', fontWeight: 600 }}>{row.stack}</Typography>
         <Typography variant="caption" color="text.secondary">{row.type === 'local' ? 'Controller node' : row.type === 'cluster' ? 'Distributed stack' : 'Remote stack'}</Typography>
         {row.type !== 'local' && row.nodes.map(node => <Typography key={`${node.host}:${node.port}`} variant="caption" color={node.connected && !error ? 'text.secondary' : 'warning.main'}>
@@ -73,9 +68,10 @@ export function useCanReadDeploymentHistory() {
 
 function ReleaseName({ id }: { id: string }) {
   const { can } = useAccess();
+  const { project, stack } = useWorkspace();
   const sx = { fontFamily: 'monospace', overflowWrap: 'anywhere' } as const;
-  return can('OmnitronRelease.get') && can('OmnitronRelease.list')
-    ? <Typography component={RouterLink} to={`/releases/${encodeURIComponent(id)}`} variant="body2" sx={{ ...sx, color: 'primary.main' }}>{id}</Typography>
+  return can('OmnitronRelease.get')
+    ? <Typography component={RouterLink} to={releaseHref(project, id, stack)} variant="body2" sx={{ ...sx, color: 'primary.main' }}>{id}</Typography>
     : <Typography component="span" variant="body2" sx={sx}>{id}</Typography>;
 }
 

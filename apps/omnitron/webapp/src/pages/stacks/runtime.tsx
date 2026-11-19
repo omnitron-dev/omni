@@ -6,7 +6,8 @@ import type { IStackAppStatus, IStackInfo, IStackNodeStatus } from '@omnitron-de
 import { useAccess } from 'src/auth/access';
 import { ApplicationHealthStatus, StackHealthStatus } from 'src/components/stack-health-status';
 import { StackInfrastructure } from 'src/components/stack-infrastructure';
-import { detailHref, tally } from 'src/utils/app-address';
+import { appHref, useWorkspace } from 'src/routes/workspace';
+import { tally } from 'src/utils/app-address';
 import { statusColor } from 'src/utils/constants';
 import { formatUptime } from 'src/utils/formatters';
 
@@ -82,11 +83,12 @@ export function RuntimeSummary({ stack }: { stack: IStackInfo }) {
 
 function Applications({ stack }: { stack: IStackInfo }) {
   const { can } = useAccess();
-  const canOpenApp = stack.type === 'local' && can('OmnitronDaemon.getApp');
+  const { project } = useWorkspace();
+  const canOpenApp = project && stack.type === 'local' && can('OmnitronDaemon.getApp');
   const columns: TableColumn<IStackAppStatus>[] = [
     { id: 'name', label: 'Application', render: app => <Box sx={{ overflowWrap: 'anywhere' }}>
       {canOpenApp
-        ? <Link component={RouterLink} to={detailHref({ ...app, stack: stack.name, stackType: stack.type })} underline="hover" sx={{ fontWeight: 600 }}>{app.name}</Link>
+        ? <Link component={RouterLink} to={appHref(project!, stack.name, app.name)} underline="hover" sx={{ fontWeight: 600 }}>{app.name}</Link>
         : <Typography variant="body2" sx={{ fontWeight: 600 }}>{app.name}</Typography>}
       <Typography component="div" variant="caption" color="text.secondary">
         {[`${app.instances} ${app.instances === 1 ? 'instance' : 'instances'}`,

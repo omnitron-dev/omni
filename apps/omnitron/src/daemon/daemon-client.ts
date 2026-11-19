@@ -160,9 +160,9 @@ export class DaemonClient implements IDaemonService {
     return this.proxy!.reloadApp(data);
   }
 
-  async list(): Promise<ProcessInfoDto[]> {
+  async list(options?: { workspaces?: boolean }): Promise<ProcessInfoDto[]> {
     await this.ensureConnected();
-    return this.proxy!.list();
+    return this.proxy!.list(options);
   }
 
   async attestApplicationOwner(data: import('../shared/dto/backend.js').ApplicationOwnerObservation) {
@@ -175,7 +175,7 @@ export class DaemonClient implements IDaemonService {
     return this.proxy!.inspectInstalledArtifacts(data);
   }
 
-  async getApp(data: { name: string }): Promise<ProcessInfoDto> {
+  async getApp(data: Parameters<IDaemonService['getApp']>[0]): Promise<ProcessInfoDto> {
     await this.ensureConnected();
     return this.proxy!.getApp(data);
   }

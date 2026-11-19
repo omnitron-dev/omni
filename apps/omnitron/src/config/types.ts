@@ -995,6 +995,8 @@ export type RuntimeReleaseEvidence = {
 } | { state: 'unreported' | 'modified'; reason: string; releaseId?: string };
 
 export interface ProcessInfoDto {
+  /** Public ownership on a workspace-aware controller read. Null identifies an unassigned process. */
+  workspace?: import('../shared/dto/project.js').RuntimeStackScope | null;
   release?: RuntimeReleaseEvidence;
   /** Owner's application launch generation; absent on older owners. Not an OS PID. */
   generation?: string;

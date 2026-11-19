@@ -22,7 +22,7 @@ test('a stack displays remote infrastructure and keyboard-accessible declaration
     await route.fulfill({ response: await route.fetch({ url: url + '/workspace.html' }) });
   });
   await page.setViewportSize({ width: 360, height: 800 });
-  await page.goto(url + '/stacks/test');
+  await page.goto(url + '/projects/sample/stacks/test');
   const panel = page.getByRole('region', { name: 'Stack infrastructure' });
   await expect(panel.getByText('Unable to initialize the queue.')).toBeVisible();
   await expect(panel.getByRole('heading', { name: 'Worker · queue.example.internal:9700' })).toBeVisible();

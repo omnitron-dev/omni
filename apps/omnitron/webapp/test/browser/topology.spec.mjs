@@ -13,7 +13,7 @@ for (const width of [320, 768, 1440]) {
     const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));
     await page.setViewportSize({ width, height: 840 });
-    await page.goto(url);
+    await page.goto(url + '/index.html');
     const paths = page.locator('.react-flow__edge-path');
     await expect(paths).toHaveCount(12);
     const mini = page.locator('.react-flow__minimap');

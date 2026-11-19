@@ -49,11 +49,11 @@ vi.mock('src/netron/client', () => ({
 
 describe('a containers page that read the name for the label', () => {
   it("lists only the selected stack's containers by their labels", async () => {
-    useProjectStore.setState({ activeProject: 'sample', activeStack: 'dev', stacksByProject: { sample: [stackFixture('dev')] } });
+    useProjectStore.setState({ stacksByProject: { sample: [stackFixture('dev')] } });
     const { default: ContainersPage } = await import('../../webapp/src/pages/containers.js');
     render(
       <ThemeProvider theme={createTheme()}>
-        <MemoryRouter>
+        <MemoryRouter initialEntries={['/projects/sample/containers?stack=dev']}>
           <ContainersPage />
         </MemoryRouter>
       </ThemeProvider>

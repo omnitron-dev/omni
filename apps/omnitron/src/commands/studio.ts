@@ -1,7 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
-import { access, mkdir, realpath, mkdtemp, rm } from 'node:fs/promises';
+import { access, lstat, mkdir, readdir, realpath, mkdtemp, rm } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { log } from '@xec-sh/kit';
@@ -125,7 +125,19 @@ export async function handleStudioTask(
           .update(task.conversation ?? initialSession!)
           .digest('hex');
         const dir = path.join(os.tmpdir(), 'omnitron-studio-claude-' + digest);
-        await mkdir(dir, { mode: 0o700 });
+        try {
+          await mkdir(dir, { mode: 0o700 });
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+          // A terminated connector may have left the private cwd behind. Reject links and unexpected contents.
+          const existing = await lstat(dir);
+          if (
+            !existing.isDirectory() ||
+            (process.getuid && (existing.uid !== process.getuid() || (existing.mode & 0o077) !== 0)) ||
+            (await readdir(dir)).length
+          )
+            throw Error('Claude session working directory is unavailable');
+        }
         cwd = dir;
       } else cwd = await mkdtemp(path.join(scratch, 'turn-'));
       if (task.teamTools)

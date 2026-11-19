@@ -1,6 +1,6 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { request } from 'node:http';
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { openStudioMcp } from '../../src/studio/team-mcp.js';
 import { readStudioEvent, runStudioTurn, studioCatalog, type StudioStream } from '../../src/studio/adapters.js';
 import { checkAgyIntegrations, studioEnv, studioInvocation } from '../../src/studio/provider-cli.js';
-import { serveStudioConnection } from '../../src/commands/studio.js';
+import { handleStudioTask, serveStudioConnection } from '../../src/commands/studio.js';
 import {
   STUDIO_TEAM_TOOLS,
   type IOmnitronStudioService,
@@ -208,6 +208,54 @@ else {
       usage: { inputTokens: 12, outputTokens: 3 },
     });
   });
+
+  it.skipIf(process.platform === 'win32')(
+    'resumes a Claude session after an interrupted connector left its private working directory',
+    async () => {
+      const scratch = await fixtures();
+      const session = randomUUID();
+      const dir = join(tmpdir(), 'omnitron-studio-claude-' + createHash('sha256').update(session).digest('hex'));
+      const job = { ...task(), conversation: session, teamTools: false };
+      const results: StudioResult[] = [];
+      const service = {
+        async heartbeat() {
+          return { active: true };
+        },
+        async teamTool() {
+          throw Error('Unexpected tool call');
+        },
+        async finishTurn(data) {
+          results.push(data.result);
+        },
+      } satisfies Pick<IOmnitronStudioService, 'heartbeat' | 'teamTool' | 'finishTurn'>;
+      const binary = join(scratch, 'claude');
+      const run = () =>
+        handleStudioTask(service, 'connection', 'claude', binary, scratch, job, AbortSignal.timeout(5000));
+      try {
+        await writeFile(
+          binary,
+          `#!/usr/bin/env node
+const a=process.argv.slice(2), id=a[a.indexOf('--resume')+1], emit=(e)=>console.log(JSON.stringify(e));
+process.stdin.resume(); process.stdin.on('end',()=>{
+  emit({type:'system',subtype:'init',tools:[],mcp_servers:[],permissionMode:'dontAsk',session_id:id,model:'example'});
+  emit({type:'result',subtype:'success',session_id:id,result:'Resumed.'});
+});\n`,
+          { mode: 0o700 }
+        );
+        await mkdir(dir, { mode: 0o700 });
+        await run();
+        expect(results.at(-1)).toMatchObject({ status: 'completed', conversation: session, answer: 'Resumed.' });
+        await mkdir(dir, { mode: 0o700 });
+        await writeFile(join(dir, 'preserve'), 'owned by someone else');
+        await run();
+        expect(results.at(-1)).toMatchObject({ status: 'failed', failure: 'protocol' });
+        expect(await readdir(dir)).toEqual(['preserve']);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+        await rm(scratch, { recursive: true, force: true });
+      }
+    }
+  );
 
   it.skipIf(process.platform === 'win32')(
     'dispatches two simultaneous native-CLI fixtures to different turns and removes both private working directories',

@@ -212,9 +212,9 @@ export function renderSystemdUnit(inputs: UnitInputs): string {
   ];
 
   if (system && id) {
-    // The daemon does not run as root. See the note at the top of this file:
-    // its unix socket is the authentication check.
-    lines.push(`User=${id.user}`, `Group=${id.user}`);
+    // systemd resolves the account's primary GID from User=. A service
+    // account can belong to a group with a different name.
+    lines.push(`User=${id.user}`);
     // HOME is stated, not inferred, and the reason is HOW it breaks rather
     // than which systemd version derives it.
     //

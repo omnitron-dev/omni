@@ -108,7 +108,7 @@ describe('the systemd unit', () => {
     const unit = renderSystemdUnit(inputs({ scope: 'system' }));
 
     expect(unit).toContain('User=omni');
-    expect(unit).toContain('Group=omni');
+    expect(unit).not.toMatch(/^Group=/m);
   });
 
   it('states HOME, because that is where ~/.omnitron resolves', () => {

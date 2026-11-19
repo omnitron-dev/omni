@@ -115,6 +115,27 @@ For a protocol gap, retain the staged runtime and prepare a native maintenance
 transition with the service owner, including the exact previous role bindings
 and the recovery path for data written during the transition.
 
+### Linux service identity
+
+Give the resident owner and backend a dedicated system account with a private
+home. Prepare their system units as that account with
+`omnitron service install --scope system --prepare`. The plan emits both units
+and the private supervision record. Review the unit contents before installing
+them with administrative privileges. systemd uses the account's primary GID.
+
+When moving an existing instance to a different account, retain the original
+units and a consistent copy of its private state. Verify the runtime selections,
+absolute paths, node identity, application registrations, and recovery history
+under the new account before enabling the services. Stop the original writers
+before taking the final copy. Rehearse how the previous runtime will read any
+records accepted after activation.
+
+Review container permissions separately. Access to a rootful Docker socket
+grants host administration to its clients, including processes that inherit
+the service account's groups. Record which processes require that access and
+verify the permitted operations against the retained containers and volumes.
+[Docker Engine permissions](https://docs.docker.com/engine/install/linux-postinstall/)
+
 ## Local development rollout
 
 Finish a reviewed batch on a macOS development machine from its clean main

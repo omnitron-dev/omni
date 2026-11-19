@@ -15,7 +15,7 @@ import {
 } from '../services/backup-pipeline.js';
 import { createDaemonClient, isRequestTimeout } from '../daemon/daemon-client.js';
 import { emitError, emitJson, isJsonMode } from './output.js';
-import type { BackupArtifactRequest, BackupRecord } from '../shared/dto/backups.js';
+import type { BackupArtifactRequest, BackupRecord, BackupStatus } from '../shared/dto/backups.js';
 import { isLostRpcAcknowledgement, type IOmnitronBackupsService } from '../shared/dto/services.js';
 import type { OperationArtifact, OperationReceipt } from '../shared/dto/execution-operations.js';
 
@@ -32,12 +32,14 @@ async function withBackups<T>(invoke: (service: IOmnitronBackupsService) => Prom
 }
 
 /** The status the daemon reports beside the index rows, or why there is none. */
-async function readBackupStatus(): Promise<{ status?: any; unavailable?: string }> {
+async function readBackupStatus(read: () => Promise<BackupStatus>): Promise<
+  { status: BackupStatus; unavailable?: never } | { status?: never; unavailable: string }
+> {
   try {
-    const status = await withBackups(service => service.getBackupStatus());
+    const status = await read();
     return status ? { status } : { unavailable: 'the daemon returned no backup status' };
   } catch (err) {
-    return { unavailable: (err as Error).message };
+    return { unavailable: err instanceof Error ? err.message : String(err) };
   }
 }
 
@@ -232,7 +234,20 @@ export async function backupAcknowledgeCommand(id: string, options: { revision: 
 
 export async function backupListCommand(): Promise<void> {
   try {
-    const backups = await withBackups(service => service.listBackups());
+    const { backups, status, unavailable } = await withBackups(async service => {
+      const records = await service.listBackups();
+      const coverage = await readBackupStatus(() => service.getBackupStatus());
+      return { backups: records, ...coverage };
+    });
+
+    if (isJsonMode()) {
+      if (status) emitJson({ backups, status });
+      else {
+        emitError(`Backup status unavailable: ${unavailable}`, { code: 'BACKUP_STATUS_UNAVAILABLE', backups });
+        process.exitCode = 1;
+      }
+      return;
+    }
 
     if (backups.length === 0) {
       log.info('No backups available');
@@ -262,7 +277,6 @@ export async function backupListCommand(): Promise<void> {
 
     // A pass that lost a database leaves a listing that looks complete — the
     // missing row is the only trace. Say so here, where people look.
-    const { status, unavailable } = await readBackupStatus();
     if (!status) {
       log.warn(`Which stacks are backed up, and how each schedule last ran: unknown — ${unavailable}`);
       process.exitCode = 1;
@@ -371,7 +385,7 @@ export async function backupScheduleCommand(target: string, cron: string): Promi
 
 export async function backupSchedulesCommand(): Promise<void> {
   try {
-    const { status, unavailable } = await readBackupStatus();
+    const { status, unavailable } = await readBackupStatus(() => withBackups(service => service.getBackupStatus()));
     if (!status) {
       emitError(`Backup status unavailable: ${unavailable}`);
       process.exitCode = 1;

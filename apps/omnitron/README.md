@@ -343,6 +343,8 @@ Run `omnitron backup create catalog/dev/cache` for a manual dump or `omnitron ba
 
 For a single database, `omnitron backup create <project>/<stack>/<database>` prints the operation UUID before submitting the dump. If the RPC reply is lost, the CLI reads that same backup operation. It follows an in-progress receipt for up to the configured database transfer timeout. A successful receipt reports the archive UUID and size. If the outcome is still unconfirmed or you interrupt the CLI, inspect it with `omnitron --json backup operations <uuid>` before requesting another dump.
 
+`omnitron --json backup list` returns the archive records in `data.backups`, with full restore IDs, and the schedule outcomes and stack coverage in `data.status`. When the archive index is available but coverage cannot be read, the command exits with code 1 and includes the archive records under `backups` in the `BACKUP_STATUS_UNAVAILABLE` error.
+
 ## Logs and operations
 
 CLI ranked log levels are minimum severities; `--level unknown` selects records without a recognized level. Console's level filters select exact values. Capture, storage and remote delivery are separate states: a live log line does not prove durable delivery.

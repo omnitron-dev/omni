@@ -1466,7 +1466,7 @@ backup
 backup
   .command('list')
   .description('List available backups')
-  .action(async () => {
+  .structuredAction(async () => {
     const { backupListCommand } = await import('../commands/backup.js');
     await backupListCommand();
   });

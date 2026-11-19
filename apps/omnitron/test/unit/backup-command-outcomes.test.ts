@@ -307,6 +307,39 @@ describe('backup command outcomes', () => {
     expect(fixture.printed.some(line => line.level === 'warn' && line.text.includes('connection lost'))).toBe(true);
   });
 
+  it('returns full archive identities and the reported coverage in one JSON response', async () => {
+    process.env['OMNITRON_OUTPUT'] = 'json';
+    resetEnvCache();
+    const archives = [backup, { ...backup, id: 'aaaaaaaa-cccc-4ccc-8ddd-eeeeeeeeeeee', project: 'sample', stack: 'dev' }];
+    const status = { databaseTimeoutMs: 60_000, schedules: [], stacks: [
+      { project: 'sample', stack: 'other', databases: [], notBackedUp: 'remote databases' },
+    ] };
+    fixture.rpc['listBackups'] = () => archives;
+    fixture.rpc['getBackupStatus'] = () => status;
+    const out = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    await commands.backupListCommand();
+    expect(out).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(out.mock.calls[0]![0]))).toEqual({ ok: true, data: { backups: archives, status } });
+    expect(fixture.printed).toEqual([]);
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it('includes the available index in a structured error when coverage is unavailable', async () => {
+    process.env['OMNITRON_OUTPUT'] = 'json';
+    resetEnvCache();
+    fixture.rpc['listBackups'] = () => [backup];
+    fixture.rpc['getBackupStatus'] = () => { throw new Error('connection lost'); };
+    const out = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    const err = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    await commands.backupListCommand();
+    expect(out).not.toHaveBeenCalled();
+    expect(err).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(err.mock.calls[0]![0]))).toEqual({
+      ok: false, code: 'BACKUP_STATUS_UNAVAILABLE', error: 'Backup status unavailable: connection lost', backups: [backup],
+    });
+    expect(process.exitCode).toBe(1);
+  });
+
   it.each(['list', 'schedules'])('shows uncovered stacks even when %s is empty', async command => {
     fixture.rpc['listBackups'] = () => [];
     fixture.rpc['getBackupStatus'] = () => ({ schedules: [], stacks: [

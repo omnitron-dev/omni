@@ -19,6 +19,16 @@ export interface FlowEvent {
   type: string;
   data: FlowData;
 }
+/** Only the daemon and its source drivers can record these event types. */
+const nativeEvents = new Set([
+  'host.disk.sample',
+  'mesh.disk.sample',
+  'stack.started',
+  'stack.stopped',
+  'flow.source.unavailable',
+  'flow.source.resumed',
+]);
+export const isNativeFlowEvent = (type: string): boolean => nativeEvents.has(type);
 export interface FlowEffect {
   nodeId: string;
   kind: 'notification' | 'pipeline-review' | 'pipeline-run' | 'studio-task';

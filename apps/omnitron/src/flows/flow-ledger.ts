@@ -5,6 +5,7 @@ import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import {
   compileFlow,
   defaultFlowRegistry,
+  isNativeFlowEvent,
   validateFlow,
   validateFlowEvent,
   type FlowData,
@@ -81,6 +82,7 @@ export interface DiskSource {
   path: string;
   interval_ms: number;
   due: number;
+  error: string | null;
 }
 export const isFlowId = (value: unknown): value is string =>
   typeof value === 'string' && /^[a-f\d]{8}-[a-f\d]{4}-4[a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/i.test(value);
@@ -355,8 +357,7 @@ export class FlowLedger {
     if (
       !source ||
       (origin === 'host') !== (source.type === 'host.disk@1' || source.type === 'mesh.disk@1') ||
-      (origin === 'input' &&
-        ['host.disk.sample', 'mesh.disk.sample', 'stack.started', 'stack.stopped'].includes(event.type))
+      (origin === 'input' && isNativeFlowEvent(event.type))
     )
       throw Error('This source only accepts observations from its registered provider');
     const stored = this.db.prepare('SELECT * FROM flow_events WHERE flow_id=? AND activation=? AND event_id=?');
@@ -366,6 +367,8 @@ export class FlowLedger {
       if (previous.event !== payload) throw Error('This event ID already belongs to different input');
       return this.receipt(row.id, previous);
     }
+    if (origin === 'input' && event.id.startsWith('sample:'))
+      throw Error('The sample: event ID prefix belongs to the disk source');
     const result = this.compiled.get(row.id)!.evaluate(event, JSON.parse(row.state) as FlowState);
     const state = JSON.stringify(result.state);
     this.db
@@ -422,30 +425,55 @@ export class FlowLedger {
   }
   settleSample(source: DiskSource, observation: { freeBytes: number; totalBytes: number } | Error) {
     return this.commit(() => {
+      const at = this.now();
+      const error =
+        observation instanceof Error ? observation.message.slice(0, 512) || 'Disk observation failed' : null;
       const advanced = this.db
         .prepare('UPDATE flow_sources SET due=?,error=? WHERE flow_id=? AND activation=? AND node=? AND due=?')
-        .run(
-          this.now() + source.interval_ms,
-          observation instanceof Error ? observation.message : null,
-          source.flow_id,
-          source.activation,
-          source.node,
-          source.due
-        );
-      if (advanced.changes && !(observation instanceof Error))
-        return this.handleEvent(
-          this.byId(source.flow_id)!,
-          source.activation,
-          {
-            id: 'sample:' + source.node + ':' + source.due,
-            source: source.node,
-            type: Object.hasOwn(observation, 'nodeId') ? 'mesh.disk.sample' : 'host.disk.sample',
-            data: observation,
-          },
-          'host'
-        );
-      return undefined;
+        .run(at + source.interval_ms, error, source.flow_id, source.activation, source.node, source.due);
+      if (!advanced.changes || (error !== null && source.error !== null)) return undefined;
+      const missed = at - source.due >= source.interval_ms;
+      const row = this.byId(source.flow_id)!;
+      if (source.error === null && (error !== null || missed))
+        this.sourceCoverage(row, source, 'flow.source.unavailable', at, error ?? 'A scheduled sample was missed');
+      if (observation instanceof Error) return undefined;
+      if (source.error !== null || missed) this.sourceCoverage(row, source, 'flow.source.resumed', at);
+      return this.handleEvent(
+        row,
+        source.activation,
+        {
+          id: 'sample:' + source.node + ':' + source.due,
+          source: source.node,
+          type: Object.hasOwn(observation, 'nodeId') ? 'mesh.disk.sample' : 'host.disk.sample',
+          data: observation,
+        },
+        'host'
+      );
     });
+  }
+  /** Coverage belongs to the journal. Only an actual sample can evaluate the graph or deliver an effect. */
+  private sourceCoverage(
+    row: Stored,
+    source: DiskSource,
+    type: 'flow.source.unavailable' | 'flow.source.resumed',
+    at: number,
+    reason?: string
+  ) {
+    const active = activeOf(row)!;
+    const node = active.definition.nodes.find((entry) => entry.id === source.node)!;
+    const data: FlowData = { mount: source.path, scheduledAt: source.due };
+    if (reason) data['reason'] = reason;
+    if (node.type === 'mesh.disk@1') {
+      const id = String(node.config['nodeId']);
+      data['nodeId'] = id;
+      data['nodeIdentity'] = (JSON.parse(row.binding!) as FlowBinding).mesh![id]!;
+    }
+    const event: FlowEvent = { id: randomUUID(), source: source.node, type, data };
+    this.db
+      .prepare(
+        "INSERT INTO flow_events(flow_id,activation,event_id,revision,event,at,visited,traversed,state,sample_only) VALUES(?,?,?,?,?,?,'[]','[]',?,0)"
+      )
+      .run(row.id, source.activation, event.id, active.revision, canonical(event), at, row.state);
   }
   stackSources(type: string, project: string, stack: string) {
     const rows = this.db.prepare('SELECT * FROM flow_definitions WHERE active IS NOT NULL').all() as Stored[];

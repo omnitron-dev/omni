@@ -283,6 +283,10 @@ describe('local flow runtime', () => {
     const { ref, active: deployment } = active(ledger, manual());
     const input = { id: 'sensor-42', source: 'signal', type: 'manual', data: { count: 2, label: 'record' } };
     const first = ledger.submit(ref, deployment.id, input);
+    expect(() => ledger.submit(ref, deployment.id, { ...input, id: 'sample:disk:11' })).toThrow('prefix');
+    expect(() => ledger.submit(ref, deployment.id, { ...input, type: 'flow.source.resumed' })).toThrow(
+      'registered provider'
+    );
     expect(ledger.submit(ref, deployment.id, { ...input, data: { label: 'record', count: 2 } })).toEqual(first);
     expect(() => ledger.submit(ref, deployment.id, { ...input, data: { count: 3 } })).toThrow('different input');
     const draft = ledger.save(
@@ -315,6 +319,36 @@ describe('local flow runtime', () => {
     expect(() => ledger.submit(ref, deployment.id, input)).toThrow('changed');
     expect(ledger.submit(ref, newDeployment.id, input).deliveries[0]?.title).toBe('Edited title');
     expect(() => ledger.get({ ...ref, workspace: { project: 'other' } })).toThrow('not found');
+  });
+
+  it('records unsampled time after a controller restart without synthesizing a threshold crossing', async () => {
+    let now = 1000;
+    const db = newDb();
+    const dependencies = {
+      scope: async () => binding,
+      admit: async () => {},
+      deliver: vi.fn(),
+      report: vi.fn(),
+      readDisk: async () => ({ freeBytes: 50, totalBytes: 100 }),
+    };
+    const first = new FlowRuntime(new FlowLedger(db, defaultFlowRegistry, () => now), dependencies);
+    const { ref } = active(first.ledger, diskSpaceFlow('/data', 10, 20, 1000));
+    await first.tick();
+    await first.dispose();
+    now = 6000;
+    const resumed = new FlowRuntime(new FlowLedger(db, defaultFlowRegistry, () => now), dependencies);
+    clean.push(() => resumed.dispose());
+    await resumed.tick();
+    const history = resumed.ledger.history(ref).reverse();
+    expect(history.map((entry) => entry.event.type)).toEqual([
+      'host.disk.sample',
+      'flow.source.unavailable',
+      'flow.source.resumed',
+      'host.disk.sample',
+    ]);
+    expect(history[1]!.event.data).toMatchObject({ scheduledAt: 2000, mount: '/data' });
+    expect(history[2]!.at).toBe(6000);
+    expect(history.flatMap((entry) => entry.deliveries)).toEqual([]);
   });
 
   it('returns the recorded event without invoking a stateful component again', async () => {

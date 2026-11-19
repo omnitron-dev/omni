@@ -81,6 +81,8 @@ Custom hosts can register typed components with `FlowRegistry` from `@omnitron-d
 
 Use **Enrolled node** to monitor an exact mount on a registered peer. The same node registry and authenticated Netron reader power **Fleet**. A reviewed revision pins the peer ID, endpoint and trusted SSH host key. The controller admits the peer's reading to its own journal with its node ID, mount and measurement time. A missing mount, stale snapshot, lost connection or replaced peer is a source error. The controller keeps the last decision and samples again on schedule. Re-enrolling the target requires reviewing a new revision.
 
+**Sampling interrupted** records the first failed observation or the first missed deadline when the controller wakes after a skipped interval. Repeated failures share one interruption. **Sampling resumed** marks the next valid sample. These entries carry the reviewed source and activation and remain in history after a restart or pause. Threshold decisions during the gap are unknown. A fresh reading drives the next decision. If a maintenance task must continue while its network link is down, activate its local monitor on the controller that owns the volume and release.
+
 Machine-local outputs run under the authority of the controller hosting the flow. For lifecycle broadcasts the source is live. The controller reports overload before admission. For a submitted event the durable guarantee starts when the controller commits the input, branch state and delivery IDs.
 
 ## Design references

@@ -137,13 +137,18 @@ describe('controller authority on the TCP mesh', () => {
         await runtime.tick();
         expect(disk).toHaveBeenCalledTimes(1);
         expect(ledger.get(ref).sources[0]?.error).toMatch(/identity changed/);
-        expect((await rpc.history(ref))).toHaveLength(1);
+        const interruption = (await rpc.history(ref))[0]!;
+        expect(interruption).toMatchObject({ event: { type:'flow.source.unavailable', data:{ nodeId, nodeIdentity:pin, mount:'/data', scheduledAt:now } }, visited:[], traversed:[], deliveries:[] });
+        now += 5000;
+        await runtime.tick();
+        expect((await rpc.history(ref))).toHaveLength(2);
         await controller.removeSlave('127.0.0.1', port);
         await controller.addSlave({ host:'127.0.0.1', port, nodeId });
         expect(await controller.waitUntilConnected('127.0.0.1', port, 2000)).toBe(true);
         now += 5000;
         await runtime.tick();
         expect((await rpc.history(ref))[0]?.deliveries).toMatchObject([{ title:'Disk space recovered' }]);
+        expect((await rpc.history(ref))[1]).toMatchObject({ event:{ type:'flow.source.resumed', data:{nodeId,nodeIdentity:pin} }, deliveries:[] });
         pin = 'replacement-enrollment';
         now += 5000;
         await runtime.tick();
@@ -156,7 +161,9 @@ describe('controller authority on the TCP mesh', () => {
         db.close();
         const reopened = new Database(file);
         try {
-          const old = new FlowLedger(reopened).history(ref).find(x => x.deliveries[0]?.id === firstDelivery);
+          const history = new FlowLedger(reopened).history(ref);
+          expect(history.find(item => item.event.id === interruption.event.id)).toEqual(interruption);
+          const old = history.find(x => x.deliveries[0]?.id === firstDelivery);
           expect(old?.event.data).toMatchObject({ nodeId, nodeIdentity:'first-enrollment', freeBytes:20 });
         } finally { reopened.close(); }
       });

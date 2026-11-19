@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Stack, Typography } from '@mui/material';
 import { Alert } from '@omnitron-dev/prism/components/alert';
+import { isNativeFlowEvent } from '@omnitron-dev/omnitron/dto/services';
 import type {
   FlowChange,
   FlowDelivery,
@@ -38,14 +39,21 @@ function Receipt({
   retry(delivery: FlowDelivery): void;
 }) {
   const fmt = (value: unknown) => (typeof value === 'string' ? value : JSON.stringify(value));
+  const coverage =
+    receipt.event.type === 'flow.source.unavailable'
+      ? 'Sampling interrupted'
+      : receipt.event.type === 'flow.source.resumed'
+        ? 'Sampling resumed'
+        : null;
   return (
     <Box
       component="details"
       sx={{ py: 1, borderTop: 1, borderColor: 'divider', typography: 'body2', overflowWrap: 'anywhere' }}
     >
       <summary>
-        {formatDate(new Date(receipt.at))} · {receipt.event.source} · {receipt.event.type} · {receipt.deliveries.length}{' '}
-        {receipt.deliveries.length === 1 ? 'effect' : 'effects'}
+        {formatDate(new Date(receipt.at))} · {receipt.event.source} ·{' '}
+        {coverage ??
+          `${receipt.event.type} · ${receipt.deliveries.length} ${receipt.deliveries.length === 1 ? 'effect' : 'effects'}`}
       </summary>
       <Stack spacing={1} sx={{ pl: 1.25, pt: 1 }}>
         <Typography variant="caption">
@@ -64,7 +72,7 @@ function Receipt({
               {key} · {fmt(value)}
             </Typography>
           ))}
-        <Typography variant="body2">Visited · {receipt.visited.join(', ')}</Typography>
+        {receipt.visited.length > 0 && <Typography variant="body2">Visited · {receipt.visited.join(', ')}</Typography>}
         {receipt.traversed.map((edge) => (
           <Typography variant="caption" key={[edge.from, edge.port, edge.to].join(':')}>
             {edge.from} · {edge.port} → {edge.to}
@@ -130,8 +138,7 @@ export function FlowOperations({
   const eligible = sample && saved.definition.nodes.find((node) => node.id === sample.event.source);
   const liveEvent =
     eligible?.type === 'input.manual@1' ||
-    (eligible?.type === 'input.event@1' &&
-      !['host.disk.sample', 'mesh.disk.sample', 'stack.started', 'stack.stopped'].includes(sample!.event.type));
+    (eligible?.type === 'input.event@1' && !isNativeFlowEvent(sample!.event.type));
   const open = (command: Review) => {
     setReview(command);
     setError('');

@@ -28,6 +28,7 @@ const StackDetailPage = lazy(() => import('src/pages/stacks/detail'));
 const SystemInfoPage = lazy(() => import('src/pages/system-info'));
 const NodesPage = lazy(() => import('src/pages/nodes'));
 const ProjectsPage = lazy(() => import('src/pages/projects'));
+const StudioPage = lazy(() => import('src/pages/studio'));
 const AuditPage = lazy(() => import('src/pages/audit'));
 const AccessPage = lazy(() => import('src/pages/access'));
 const ReleasesPage = lazy(() => import('src/pages/releases/index'));
@@ -66,6 +67,7 @@ export function Router() {
         <Route path="terminal" element={null} />
         <Route path="files" element={null} />
         <Route path="projects" element={<Page><ProjectsPage /></Page>} />
+        <Route path="studio" element={<Page><StudioPage /></Page>} />
         <Route path="dashboard-builder" element={<Page><DashboardBuilderPage /></Page>} />
         <Route path="system" element={<Page><SystemInfoPage /></Page>} />
         <Route path="settings" element={<Page><SettingsPage /></Page>} />

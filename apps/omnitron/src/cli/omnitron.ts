@@ -1298,6 +1298,15 @@ infra
 // CI/CD Pipelines
 // ============================================================================
 
+program.command('studio').description('Project development with local agent subscriptions')
+  .command('connect [project]').description('Connect a local agent to one Console account and workspace')
+  .option('--planning', 'Enable project interviews before the first project exists')
+  .requiredOption('--account <id>', 'Account shown in Console Agent Studio')
+  .requiredOption('--provider <name>', 'codex or agy')
+  .option('--binary <path>', 'Absolute path to the installed provider CLI')
+  .option('--model-policy <file>', 'Local model capability and cost declarations')
+  .action(async (project, options) => (await import('../commands/studio.js')).connectStudio(project, options));
+
 const pipeline = program.command('pipeline').description('CI/CD pipeline management');
 
 pipeline

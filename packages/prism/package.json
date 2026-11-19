@@ -50,6 +50,10 @@
       "types": "./dist/components/index.d.ts",
       "import": "./dist/components/index.js"
     },
+    "./components/content-renderer": {
+      "types": "./dist/components/content-renderer/index.d.ts",
+      "import": "./dist/components/content-renderer/index.js"
+    },
     "./components/editor": {
       "types": "./dist/components/editor/index.d.ts",
       "import": "./dist/components/editor/index.js"

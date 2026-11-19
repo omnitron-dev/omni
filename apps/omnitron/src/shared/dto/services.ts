@@ -287,6 +287,9 @@ export interface IInfraService {
 // Project Service Interface (OmnitronProject)
 // ============================================================================
 
+export * from './studio.js';
+export * from './studio-policy.js';
+
 import type {
   IProjectInfo,
   IStackInfo,

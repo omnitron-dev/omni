@@ -19,6 +19,7 @@ import {
 import { LONG_REQUEST_TIMEOUT } from '@omnitron-dev/omnitron/dto/services';
 import type {
   IOmnitronAccessService,
+  IOmnitronStudioService,
   IOmnitronBackendService,
   IOmnitronFilesService,
   IOmnitronTerminalService,
@@ -53,6 +54,7 @@ export { errorStatus };
 export interface OmnitronConsoleSchema extends BackendSchema {
   daemon: {
     OmnitronAccess: IOmnitronAccessService;
+    OmnitronStudio: IOmnitronStudioService;
     OmnitronBackend: IOmnitronBackendService;
     OmnitronFiles: IOmnitronFilesService;
     OmnitronTerminal: IOmnitronTerminalService;
@@ -217,6 +219,7 @@ export const audit = daemonClient.daemon.OmnitronAudit;
 
 /** Project + Stack management */
 export const project = daemonClient.daemon.OmnitronProject;
+export const studio = daemonClient.daemon.OmnitronStudio;
 
 /** Use the CLI lifecycle budget without extending short reads or replaying a lost mutation. */
 export function invokeStackLifecycle<M extends 'startStack' | 'stopStack' | 'resumeInstalledStack' | 'checkRelease'>(

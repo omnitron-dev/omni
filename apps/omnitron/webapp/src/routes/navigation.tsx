@@ -43,6 +43,7 @@ const sections: { title: string; items: Destination[] }[] = [
     items: [
       { path: '/', title: 'Overview', icon: <DashboardIcon />, permission: 'OmnitronDaemon.status', stackFilter: true },
       { path: '/projects', title: 'Projects', icon: <ProjectIcon />, permission: 'OmnitronProject.listProjects' },
+      { path: '/studio', title: 'Agent Studio', icon: <TerminalIcon />, permission: 'OmnitronStudio.workspace', stackFilter: true },
       {
         path: '/stacks',
         title: 'Stacks',

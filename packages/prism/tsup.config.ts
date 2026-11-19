@@ -40,6 +40,7 @@ export default defineConfig([
       'components/chart/index': 'src/components/chart/index.ts',
       'components/command-palette/index': 'src/components/command-palette/index.ts',
       'components/confirm-dialog/index': 'src/components/confirm-dialog/index.ts',
+      'components/content-renderer/index': 'src/components/content-renderer/index.ts',
       'components/empty-content/index': 'src/components/empty-content/index.ts',
       'components/error-boundary/index': 'src/components/error-boundary/index.ts',
       'components/label/index': 'src/components/label/index.ts',

@@ -1555,6 +1555,9 @@ export class OmnitronDaemon {
       await this.app.netron.peer.exposeService(authRpcService);
       if (audit) {
         const { AccessRpcService } = await import('../services/access.rpc-service.js');
+        const { StudioRpcService } = await import('../studio/studio.rpc-service.js');
+        const { StudioLedger } = await import('../studio/ledger.js');
+        await this.app.netron.peer.exposeService(new StudioRpcService(new StudioLedger(fileState.initSync()), projectService, authService, audit));
         const accessDb = await container.resolveAsync<import('kysely').Kysely<import('../database/schema.js').OmnitronDatabase>>(OMNITRON_DB_TOKEN);
         await this.app.netron.peer.exposeService(new AccessRpcService(accessDb, authService, audit, this.app.netron));
         const { FilesRpcService } = await import('../files/files.rpc-service.js');

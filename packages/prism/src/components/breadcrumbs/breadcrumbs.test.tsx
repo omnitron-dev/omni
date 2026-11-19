@@ -40,6 +40,26 @@ describe('Breadcrumbs', () => {
     expect(screen.queryByRole('link', { name: 'Orders' })).not.toBeInTheDocument();
   });
 
+  it('sizes the icon when the server emits an inline stylesheet before it', () => {
+    render(
+      <Breadcrumbs
+        links={[{
+          name: 'Projects',
+          icon: (
+            <>
+              <style data-emotion="server-icon">{'svg { fill: currentColor; }'}</style>
+              <svg aria-label="Project icon" />
+            </>
+          ),
+        }]}
+      />
+    );
+    const icon = screen.getByLabelText('Project icon');
+    expect(icon.previousElementSibling?.tagName).toBe('STYLE');
+    expect(getComputedStyle(icon).width).toBe('20px');
+    expect(getComputedStyle(icon).height).toBe('20px');
+  });
+
   it('keeps the last crumb clickable when activeLast is set', () => {
     render(
       <Breadcrumbs

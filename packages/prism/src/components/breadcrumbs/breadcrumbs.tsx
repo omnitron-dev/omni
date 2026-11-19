@@ -27,7 +27,7 @@ export interface BreadcrumbLinkProps {
   name?: string;
   /** Link href */
   href?: string;
-  /** Link icon */
+  /** Link icon, rendered at 20 by 20 pixels. */
   icon?: ReactNode;
   /** Whether the link is disabled */
   disabled?: boolean;
@@ -160,13 +160,10 @@ const ItemRoot = styled('div', {
 }));
 
 const ItemIcon = styled('span')({
-  display: 'inherit',
-  // Constrain the icon (first real child) to 20×20. The previous
-  // selector chain `:first-of-type:not(style):not(:first-of-type ~ *)`
-  // was an obscure way to say "the first child that isn't a <style>
-  // tag" — replaced with the modern `:first-child:not(style)` for
-  // both readability and v9 lint compliance.
-  '& > :first-child:not(style)': {
+  display: 'inline-flex',
+  flexShrink: 0,
+  // Emotion can emit a stylesheet beside the icon during server rendering.
+  '& > :not(style)': {
     width: 20,
     height: 20,
   },

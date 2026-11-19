@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from 'node:util';
 import { createHash } from 'node:crypto';
+import { redactDiagnosticText } from '@omnitron-dev/titan/diagnostics';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { IEcosystemAppEntry } from '../config/types.js';
@@ -89,6 +90,7 @@ export async function executeMigrationPlan(plan: LocalMigrationPlan, options: {
   inspect(): Promise<LocalMigrationPlan>;
   beforeExecution?(): void;
   output?(target: LocalMigrationPlan[number]['target'], stdout: string): void;
+  failed?(target: LocalMigrationPlan[number]['target'], diagnostic: string): void;
 }) {
   const verify = async () => {
     if (!isDeepStrictEqual(plan, await options.inspect()))
@@ -106,7 +108,13 @@ export async function executeMigrationPlan(plan: LocalMigrationPlan, options: {
     await waitForPostgres(database.host, database.port, database.user, database.password, 180_000, database.connectionString);
     await verify();
     options.beforeExecution?.();
-    const { stdout } = await executeLocalMigration(target, env);
-    options.output?.(target, stdout);
+    let result: Awaited<ReturnType<typeof executeLocalMigration>>;
+    try { result = await executeLocalMigration(target, env); }
+    catch (error) {
+      const diagnostic = redactDiagnosticText(error instanceof Error ? error.message : String(error));
+      options.failed?.(target, diagnostic);
+      throw new Error(`Migration ${target.service}/${target.database} (${target.app}); stack startup refused: ${diagnostic}. Inspect the migration ledger before retrying.`, { cause: error });
+    }
+    options.output?.(target, result.stdout);
   }
 }

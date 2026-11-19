@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - A failed Console startup preserves the controller recovery path. A cold rollback can verify ownership after the first controller exits, including the case where it exited before saving a recovery checkpoint.
+- A failed stack migration reports the affected database and a redacted PostgreSQL diagnostic. Operators can inspect the migration ledger before deciding whether to retry.
+- Release archive verification supports an empty npm user configuration in unattended builds.
 - An interrupted backup submission is followed by its original operation ID. Migration review accepts registered SDK dependencies used by nested workspace packages and verifies their installed contents.
 
 ## [0.4.13] - 2026-11-18

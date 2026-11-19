@@ -19,6 +19,7 @@ import { tmpdir } from 'node:os';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { defineEcosystem } from '../../src/config/define-ecosystem.js';
+import { vaultStore } from '../helpers/vault-store.js';
 import { ProjectService } from '../../src/services/project.service.js';
 
 const APPS = ['main', 'storage', 'quotes', 'payments', 'messaging', 'geo'];
@@ -38,6 +39,7 @@ function nodeAnswer(online: readonly string[]) {
 function remoteService(answer: () => Promise<unknown>) {
   const svc: any = Object.create(ProjectService.prototype);
   Object.assign(svc, {
+    daemonStateStore: vaultStore(),
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
     audit: { record: vi.fn(async () => {}) },
     registry: { get: () => ({ name: 'sample', path: tmpdir() }), list: () => [] },

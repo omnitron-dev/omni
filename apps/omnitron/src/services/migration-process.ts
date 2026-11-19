@@ -1,4 +1,6 @@
 import { ExecutionEngine } from '@xec-sh/core';
+import { redactDiagnosticText } from '@omnitron-dev/titan/diagnostics';
+import { commandFailure } from '../execution/command-failure.js';
 import { shellEscape } from '../shared/shell-escape.js';
 import type { LocalMigrationTarget } from './migration-target.js';
 import { prepareMigrationConfiguration } from '../migration/configuration.js';
@@ -58,9 +60,10 @@ export async function executeLocalMigration(target: LocalMigrationTarget, env: N
       }).filter((entry): entry is [string, string] => typeof entry[1] === 'string')),
     });
     if (signal.aborted) throw Error('Migration was interrupted');
-    if (result.exitCode !== 0) throw Object.assign(Error('Migration process failed; stack startup refused'), {
-      stderr: result.stderr, exitCode: result.exitCode,
-    });
+    if (result.exitCode !== 0) {
+      const diagnostic = commandFailure(redactDiagnosticText(result.stderr.trim()), 'Migration process failed');
+      throw Object.assign(new Error(diagnostic), { exitCode: result.exitCode });
+    }
     return { stdout: result.stdout, stderr: result.stderr };
   } catch (error) {
     if (signal.aborted) throw Error('Migration interrupted or timed out; outcome may be unknown. Inspect the migration ledger before retrying.', { cause: error });

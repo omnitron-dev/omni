@@ -35,8 +35,10 @@ export async function releasePreparation(root, commit, context) {
         try {
           const manifest = path.join(temporary, 'archives.json'), consumer = path.join(temporary, 'consumer');
           await fs.writeFile(manifest, JSON.stringify(artifacts), { flag: 'wx', mode: 0o600 });
-          await run(source, 'pnpm', releaseInstallArgs, { signal, timeoutMs: 600_000 });
-          const env = { ...context.env, OMNITRON_HOME: path.join(temporary, 'home') };
+          const globalConfig = path.join(temporary, 'global.npmrc');
+          await fs.writeFile(globalConfig, '', { flag: 'wx', mode: 0o600 });
+          const env = { ...context.env, OMNITRON_HOME: path.join(temporary, 'home'), NPM_CONFIG_GLOBALCONFIG: globalConfig };
+          await run(source, 'pnpm', releaseInstallArgs, { signal, env, timeoutMs: 600_000 });
           await run(source, process.execPath, [cli, 'check-packages', '--archives', manifest, '--install-consumer', consumer],
             { signal, env, timeoutMs: policy.preparation.consumerTimeoutMs });
           await run(source, process.execPath, ['scripts/ci/check-runtime-consumer.mjs', consumer],

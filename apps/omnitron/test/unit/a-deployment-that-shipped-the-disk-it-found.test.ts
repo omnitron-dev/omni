@@ -30,6 +30,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { describeWorkingTree, describeWorkingTrees, refusalForDirtyTree } from '../../src/project/working-tree.js';
+import { vaultStore } from '../helpers/vault-store.js';
 import { ProjectService } from '../../src/services/project.service.js';
 
 /** A real repository, because the subject is what git says. */
@@ -139,6 +140,7 @@ describe('a remote stack will not start from a tree that is not its commit', () 
     const warned: any[] = [];
     const svc: any = Object.create(ProjectService.prototype);
     Object.assign(svc, {
+      daemonStateStore: vaultStore(),
       logger: { info: vi.fn(), warn: (o: any) => warned.push(o), error: vi.fn(), debug: vi.fn() },
       registry: { get: () => ({ name: 'sample', path: dir }), list: () => [] },
       audit: { record: vi.fn(async () => {}) },

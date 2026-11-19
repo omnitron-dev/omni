@@ -28,6 +28,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
+import { vaultStore } from '../helpers/vault-store.js';
 import { ProjectService } from '../../src/services/project.service.js';
 import { AuditService, type AuditRow } from '../../src/services/audit.service.js';
 import { outcomeOf } from '../../src/shared/audit-outcome.js';
@@ -69,6 +70,7 @@ function service(stack: Record<string, unknown>, overrides: Record<string, unkno
   const { rows, audit } = trail();
   const svc: any = Object.create(ProjectService.prototype);
   Object.assign(svc, {
+    daemonStateStore: vaultStore(),
     logger,
     audit,
     registry: { get: () => null, list: () => [] },

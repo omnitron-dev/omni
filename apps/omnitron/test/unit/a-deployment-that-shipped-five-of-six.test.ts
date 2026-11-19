@@ -35,6 +35,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
+import { vaultStore } from '../helpers/vault-store.js';
 import { ProjectService } from '../../src/services/project.service.js';
 
 const buildAll = vi.fn();
@@ -55,6 +56,7 @@ const grantingLease = async (script: string) =>
 function remoteStackService(deployToStack: RemoteDeployer['deployToStack'] = vi.fn(async () => [])) {
   const svc: any = Object.create(ProjectService.prototype);
   Object.assign(svc, {
+    daemonStateStore: vaultStore(),
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
     registry: { get: () => ({ name: 'sample', path: '/tmp/sample' }), list: () => [] },
     deployer: {
@@ -145,6 +147,7 @@ describe('every start is recorded, and says who asked', () => {
   function startableService() {
     const svc: any = Object.create(ProjectService.prototype);
     Object.assign(svc, {
+      daemonStateStore: vaultStore(),
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
       audit: { record },
       // `startStackOnce` asks the registry where the project is, to ask git
@@ -262,6 +265,7 @@ describe('the row says what the deployment reached', () => {
   function remoteStartable(reach: { nodes: number; reached: number; skipped: string[] } | null) {
     const svc: any = Object.create(ProjectService.prototype);
     Object.assign(svc, {
+      daemonStateStore: vaultStore(),
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
       audit: { record },
       registry: { get: () => null, list: () => [] },

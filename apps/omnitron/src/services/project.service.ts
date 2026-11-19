@@ -5480,9 +5480,11 @@ export class ProjectService extends EventEmitter {
       await executeMigrationPlan(plan, { inspect, output: (target, stdout) => {
         for (const line of migrationOutput(stdout)) this.logger.info({ database: target.database, line: redactDiagnosticText(line) }, 'Migration said');
         this.logger.info({ database: target.database, attempts: 1 }, 'Migrations applied');
+      }, failed: (target, diagnostic) => {
+        this.logger.error({ database: target.database, stderr: diagnostic }, 'Migration failed — stack startup refused');
       } });
     } catch (error) {
-      throw new Error(`Migration failed for ${projectName}/${stackName}; inspect the migration ledger before retrying: ${describeFailure(error)}`, { cause: error });
+      throw new Error(`Migration failed for ${projectName}/${stackName}: ${describeFailure(error)}`, { cause: error });
     }
   }
 

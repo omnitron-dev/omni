@@ -228,6 +228,10 @@ else if (cmd === 'release' && op === 'view' && fs.readFileSync(state, 'utf8') ==
     "import assert from 'node:assert/strict'; import fs from 'node:fs'; import { verifyReleaseArtifact } from '@xec-sh/ops/release'; export async function checkPackageArchives(root, artifacts, {consumer}) { assert.equal(artifacts.length, 2); for (const a of artifacts) await verifyReleaseArtifact(a); fs.mkdirSync(consumer); fs.writeFileSync(consumer+'/audit-checked', 'checked'); }");
   await fs.writeFile(path.join(workspace, 'scripts/ci/check-runtime-consumer.mjs'),
     `import assert from 'node:assert/strict'; import fs from 'node:fs'; assert.equal(fs.readFileSync(process.argv[2]+'/audit-checked', 'utf8'), 'checked');
+assert.equal(fs.readFileSync(process.env.NPM_CONFIG_GLOBALCONFIG, 'utf8'), '');
+const { execFileSync } = await import('node:child_process');
+const { devNull } = await import('node:os');
+execFileSync('npm', ['config', 'get', 'registry'], { env: { ...process.env, NPM_CONFIG_USERCONFIG: devNull } });
 const record = ${JSON.stringify(acceptanceRecord)};
 if (!fs.existsSync(record)) { fs.writeFileSync(record, 'rejected'); throw Error('synthetic consumer rejection'); }
 fs.writeFileSync(record, 'archives, audit, runtime');`);

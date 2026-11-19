@@ -19,6 +19,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { provisioningVerdict, type ProvisioningOutcome } from '../../src/infrastructure/provisioning-outcome.js';
 import { defineEcosystem } from '../../src/config/define-ecosystem.js';
+import { vaultStore } from '../helpers/vault-store.js';
 import { ProjectService } from '../../src/services/project.service.js';
 
 const containersUp: ProvisioningOutcome = {
@@ -66,6 +67,7 @@ describe('the master carries «not ready» to the start\'s answer and its row', 
   function startable(reach: { nodes: number; reached: number; skipped: string[]; notReady: string[] }) {
     const svc: any = Object.create(ProjectService.prototype);
     Object.assign(svc, {
+      daemonStateStore: vaultStore(),
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
       audit: { record },
       registry: { get: () => null, list: () => [] },

@@ -106,7 +106,7 @@ describe('immutable releases preserve project identity', () => {
     const stack = { project: 'research-lab', stack: 'production', status: 'running', config: { type: 'local' } };
     const cache = new Map([['research-lab', { config: 'old' }]]);
     const service = Object.assign(Object.create(ProjectService.prototype), {
-      registry, logger, configRegistry: cache,
+      registry, logger, configRegistry: cache, daemonStateStore: store,
       stackStates: new Map([['research-lab/production', stack]]),
       toProjectInfo: (p: unknown) => p, emit: vi.fn(),
     }) as ProjectService;

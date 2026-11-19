@@ -147,8 +147,15 @@ describe('a master that stood still while it migrated', () => {
 
     const failed = said.find((s) => s.msg === 'Migration failed — stack startup refused');
     expect(failed?.level).toBe('error');
+    expect(failed?.fields['database']).toBe('main');
     expect(failed?.fields['stderr']).toBe('ERROR: relation "wallets" does not exist');
     expect(said.some((s) => s.msg === 'Migrations applied')).toBe(false);
+  });
+  it('keeps credentials out of diagnostics after a failed migration', async () => {
+    const root = project(`process.stderr.write('ERROR: cannot connect to postgresql://operator:fixture-private@localhost/main'); process.exit(1);`);
+    const { migrate, said } = service();
+    await expect(migrate(root)).rejects.toThrow(/ERROR: cannot connect to postgresql:\/\/\*\*\*@localhost/);
+    expect(JSON.stringify(said)).not.toContain('fixture-private');
   });
   it('does not probe or execute when databases were only inferred', async () => {
     const root = project("throw Error('must not execute');");

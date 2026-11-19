@@ -208,7 +208,10 @@ const builtins: FlowComponent[] = [
 /** Extensions are registered by trusted host code. Graphs select pinned component versions by name. */
 export class FlowRegistry {
   private readonly components = new Map<string, FlowComponent>();
-  constructor(components: readonly FlowComponent[] = builtins) {
+  constructor(
+    components: readonly FlowComponent[] = builtins,
+    readonly diagnostics: readonly string[] = []
+  ) {
     for (const component of components) this.register(component);
   }
   register(component: FlowComponent) {

@@ -53,6 +53,16 @@ pnpm test:browser
 
 `build` uses the Console publisher to validate a staged build before replacing `dist`. Browser tests use a private loopback fixture; install Playwright's Chromium first if it is unavailable, or set `PLAYWRIGHT_CHANNEL=chrome` to use an installed Chrome.
 
+## Agent Studio
+
+Open **Agent Studio** in the desired project and stack, or use the controller workspace for planning. A team address such as `/projects/sample/studio?stack=dev&team=<id>` opens that team's journal for the owning Console account. A room with a stack opens in its recorded stack. **Earlier messages** and browser Back restore the selected history page.
+
+To start a team, enter its name and choose the lead's name, responsibility, connected adapter and model. A lead needs a connector with Studio team tools. **Team limits** sets the allowed adapters, member and delegation limits, and cost tier. Creating the team leaves the journal empty. **Members** shows each person's role, adapter and selected model. Operators with the corresponding access can invite or retire participants and change limits.
+
+Choose the recipient in **Chat**. **Tasks** addresses work to a specific member and keeps its queued, running or final receipt. The journal shows who initiated each turn and who received it. Other members can receive messages while a task is active. Messages, attached text and shared memory may enter the assigned providers' context. A lost acknowledgement can be retried with the original request ID or withdrawn.
+
+**Memory** stores named, revisioned notes. **Flows** lists the team's proposals. **Open in flow editor** carries the team, proposal and current workspace to the editor for review. Existing individual conversations remain accessible. With a compatible lead connector, **Enable team** adds team collaboration to an individual conversation.
+
 ## Runtime operations
 
 **Nodes → Managed backend updates** prepares a rollout from selected catalog builds or an exact commit. Review the node checks, owner and rollback artifacts before applying the plan. **Stage from controller catalog** explicitly transfers missing runtimes; leaving it unchecked inspects already staged artifacts.

@@ -57,6 +57,26 @@ describe('exact and deep matching', () => {
     expect(active(item('/apps'), '/apps/main?tab=logs#top')).toBe(true);
   });
 
+  it('keeps a filtered section active on its list and child routes', () => {
+    const apps = item('/projects/reports/apps/?stack=dev#running');
+    expect(active(apps, '/projects/reports/apps?stack=prod')).toBe(true);
+    expect(active(apps, '/projects/reports/apps/dev/api')).toBe(true);
+    expect(active(apps, '/projects/reports/appstore')).toBe(false);
+    expect(active(apps, '/projects/billing/apps/dev/api')).toBe(false);
+  });
+
+  it('honours exact matching for a filtered workspace overview', () => {
+    const overview = item('/projects/reports?stack=dev', { deepMatch: false });
+    expect(active(overview, '/projects/reports/')).toBe(true);
+    expect(active(overview, '/projects/reports/apps')).toBe(false);
+    expect(active(item('/?view=all'), '/apps')).toBe(false);
+  });
+
+  it('does not treat a fragment-only or query-only href as the home page', () => {
+    expect(active(item('#activity'), '/')).toBe(false);
+    expect(active(item('?view=all'), '/')).toBe(false);
+  });
+
   it('ignores a trailing slash', () => {
     expect(active(item('/apps'), '/apps/')).toBe(true);
   });

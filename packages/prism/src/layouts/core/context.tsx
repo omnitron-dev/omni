@@ -48,6 +48,10 @@ export const LayoutContext = createContext<LayoutContextValue | null>(null);
 
 LayoutContext.displayName = 'LayoutContext';
 
+function navPathname(href: string): string {
+  return href.split(/[?#]/, 1)[0].replace(/\/+$/, '') || '/';
+}
+
 // =============================================================================
 // PROVIDER
 // =============================================================================
@@ -161,11 +165,11 @@ export function LayoutProvider({ children, initialConfig, persistKey }: LayoutPr
     // No path means not activatable
     if (!item.path) return false;
 
-    // Strip query params, hash, and trailing slash for comparison
-    const cleanPath = pathname.split(/[?#]/)[0].replace(/\/+$/, '') || '/';
+    const cleanPath = navPathname(pathname);
+    const itemPath = item.path.startsWith('/') ? navPathname(item.path) : item.path;
 
     // Exact match
-    if (item.path === cleanPath) return true;
+    if (itemPath === cleanPath) return true;
 
     // Selection prefix match. Accepts a single string or an array
     // — array form lets one nav item span disjoint URL spaces
@@ -179,17 +183,7 @@ export function LayoutProvider({ children, initialConfig, persistKey }: LayoutPr
       }
     }
 
-    // Deep match (default: true) — active if path is a prefix of pathname
-    // e.g., /admin/orgs stays highlighted when on /admin/orgs/list
-    // Set deepMatch: false to require exact match only
-    if (item.deepMatch !== false && cleanPath.startsWith(item.path)) {
-      // Ensure we're matching path segments, not partial strings
-      // e.g., /product should not match /products
-      const nextChar = cleanPath[item.path.length];
-      return !nextChar || nextChar === '/';
-    }
-
-    return false;
+    return item.deepMatch !== false && itemPath !== '/' && cleanPath.startsWith(itemPath + '/');
   }, []);
 
   // Check if any nested item is active (recursive)

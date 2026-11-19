@@ -103,7 +103,7 @@ export function AccessBoundary({ permission, children }: { permission: PagePermi
 }
 
 export function PageAccess({ children }: { children: ReactNode }) {
-  const { pathname } = useLocation();
-  const { permission } = consoleRoute(pathname);
+  const { pathname, search } = useLocation();
+  const { permission } = consoleRoute(pathname, search);
   return permission ? <AccessBoundary permission={permission}>{children}</AccessBoundary> : children;
 }

@@ -1,4 +1,5 @@
-import { useWorkspace } from 'src/routes/workspace';
+import { Link as RouterLink } from 'react-router-dom';
+import { flowHref, useWorkspace } from 'src/routes/workspace';
 import { useState, type ReactNode } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -180,6 +181,7 @@ function PipelineInventory({ workspace, section, setSection }: {
   section: string;
   setSection: (section: string) => void;
 }) {
+  const { can } = useAccess();
   const [editor, setEditor] = useState<Pipeline | 'new' | null>(null);
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
   const [runDefinition, setRunDefinition] = useState<Pipeline | null>(null);
@@ -306,6 +308,11 @@ function PipelineInventory({ workspace, section, setSection }: {
             <IconButton data-console-command="refresh" size="small" title="Refresh pipelines" onClick={refresh}>
               <RefreshIcon />
             </IconButton>
+            {(can('OmnitronFlows.list') || can('OmnitronFlows.catalog')) && (
+              <Button component={RouterLink} to={flowHref({ project: workspace?.project ?? null, stack: workspace?.stack })} size="small">
+                Flows
+              </Button>
+            )}
             <Can permission="OmnitronPipelines.createPipeline">
               <Button size="small" variant="contained" startIcon={<PlusIcon />} onClick={() => setEditor('new')}>
                 New automation

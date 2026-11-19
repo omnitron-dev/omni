@@ -26,6 +26,7 @@ export function StackSelector() {
     // A log handle may belong only to the stack being left.
     if (path === '/logs') { params.delete('app'); params.delete('node'); }
     if (path === '/studio') { params.delete('team'); params.delete('before'); }
+    if (path === '/flows') { for (const key of ['flow', 'team', 'proposal', 'new']) params.delete(key); }
     void navigate(workspaceHref({ project, stack: chosen }, path + '?' + params) + location.hash);
   }} />;
 }

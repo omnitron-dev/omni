@@ -25,6 +25,7 @@ import { ProjectSwitcher } from 'src/components/project-switcher';
 import { StackSelector } from 'src/components/stack-selector';
 import { useWorkspace } from 'src/routes/workspace';
 import { reportCrash } from 'src/utils/report-crash';
+import { FlowNotifications } from 'src/components/flow-notifications';
 import { useAlertNotifications } from 'src/hooks/use-alert-notifications';
 
 const TerminalPage = lazy(() => import('src/pages/terminal'));
@@ -105,7 +106,10 @@ export function ConsoleLayout() {
   const { project, stack, pagePath } = useWorkspace();
   const { can, snapshot } = useAccess();
   const location = useLocation();
-  const navData = useMemo(() => consoleNavigation({ project, stack }, can, location.pathname), [project, stack, can, location.pathname]);
+  const navData = useMemo(
+    () => consoleNavigation({ project, stack }, can, location.pathname, location.search),
+    [project, stack, can, location.pathname, location.search]
+  );
   const terminalVisible = location.pathname === '/terminal';
   const filesVisible = location.pathname === '/files';
   const [filesVisited, setFilesVisited] = useState(filesVisible);
@@ -129,6 +133,13 @@ export function ConsoleLayout() {
 
   return (
     <ConsoleKeyboard navigation={navData}>
+      {snapshot && can('OmnitronFlows.notifications') && (
+        <FlowNotifications
+          key={JSON.stringify([snapshot.userId, project, stack])}
+          workspace={{ project, ...(project && stack && { stack }) }}
+          mayOpen={can('OmnitronFlows.list')}
+        />
+      )}
       <DashboardLayout
         contentMode="workspace"
         footer={<StatusBar docked />}

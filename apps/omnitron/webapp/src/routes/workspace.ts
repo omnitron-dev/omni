@@ -48,3 +48,11 @@ export function appHref(project: string, stack: string, app: string) {
 export function releaseHref(project: string | null, id: string, stack: string | null = null) {
   return workspaceHref({ project, stack }, '/releases/' + encodeURIComponent(id));
 }
+
+export function flowHref(
+  workspace: { project: string | null; stack?: string | null },
+  params: Record<string, string> = {}
+): string {
+  const search = new URLSearchParams(params).toString();
+  return workspaceHref({ project: workspace.project, stack: workspace.stack ?? null }, '/flows' + (search ? '?' + search : ''));
+}

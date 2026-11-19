@@ -22,6 +22,7 @@ import type {
   IOmnitronStudioService,
   IOmnitronBackendService,
   IOmnitronFilesService,
+  IOmnitronFlowsService,
   IOmnitronTerminalService,
   IDaemonService,
   IOmnitronAuthService,
@@ -57,6 +58,7 @@ export interface OmnitronConsoleSchema extends BackendSchema {
     OmnitronStudio: IOmnitronStudioService;
     OmnitronBackend: IOmnitronBackendService;
     OmnitronFiles: IOmnitronFilesService;
+    OmnitronFlows: IOmnitronFlowsService;
     OmnitronTerminal: IOmnitronTerminalService;
     OmnitronDaemon: IDaemonService;
     OmnitronAuth: IOmnitronAuthService;
@@ -190,6 +192,8 @@ export const infra = daemonClient.daemon.OmnitronInfra;
 
 /** Deployment management */
 export const deploy = daemonClient.daemon.OmnitronDeploy;
+
+export const flows = daemonClient.daemon.OmnitronFlows;
 
 /** CI/CD pipelines */
 export const pipelines = daemonClient.daemon.OmnitronPipelines;

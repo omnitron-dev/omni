@@ -80,6 +80,7 @@ const sections: { title: string; items: Destination[] }[] = [
         permission: ['OmnitronProject.getDeployProgress', 'OmnitronRelease.deployments', 'OmnitronDeploy.getHistory'],
         stackFilter: true,
       },
+      { path: '/flows', title: 'Flows', icon: <TopologyIcon />, permission: ['OmnitronFlows.list', 'OmnitronFlows.catalog'], stackFilter: true },
       { path: '/pipelines', title: 'Pipelines', icon: <PipelineIcon />, permission: 'OmnitronPipelines.listPipelines', stackFilter: true },
     ],
   },
@@ -151,24 +152,30 @@ const sections: { title: string; items: Destination[] }[] = [
 
 const byPath = new Map(sections.flatMap((section) => section.items.map((item) => [item.path, item] as const)));
 
-export function consoleRoute(pathname: string) {
+export function consoleRoute(pathname: string, search = '') {
   const { pagePath, project, appDetail, stackDetail } = workspaceLocation({ pathname });
   const [page = '', detail] = pagePath.split('/').filter(Boolean);
   const process = page === 'processes' && !project && !!detail;
   const item = byPath.get('/' + page);
   const release = page === 'releases' && !!detail;
+  const params = new URLSearchParams(search);
+  const proposal = page === 'flows' && !!params.get('team') && !!params.get('proposal') && !params.has('flow') && !params.has('new');
+  let permission = item?.permission;
+  if (appDetail || process) permission = 'OmnitronDaemon.getApp';
+  else if (release) permission = 'OmnitronRelease.get';
+  else if (proposal) permission = 'OmnitronStudio.flowProposal';
   return {
-    permission: appDetail || process ? ('OmnitronDaemon.getApp' as const) : release ? ('OmnitronRelease.get' as const) : item?.permission,
+    permission,
     scope: item?.scope,
     stackFilter: Boolean(project && item?.stackFilter),
     appDetail, stackDetail,
   };
 }
 
-export function consoleNavigation(workspace: Workspace, can: (permission: RpcPermission) => boolean, pathname = '/'): LayoutNavData {
+export function consoleNavigation(workspace: Workspace, can: (permission: RpcPermission) => boolean, pathname = '/', search = ''): LayoutNavData {
   const { project } = workspace;
   const current = workspaceLocation({ pathname });
-  const detailGrant = consoleRoute(pathname).permission;
+  const detailGrant = consoleRoute(pathname, search).permission;
   return sections
     .map(({ title: sectionTitle, items }) => ({
       id: sectionTitle.toLowerCase(),
@@ -182,7 +189,7 @@ export function consoleNavigation(workspace: Workspace, can: (permission: RpcPer
           const mayReadDetail = selected && typeof detailGrant === 'string' && can(detailGrant);
           if (!mayList && !mayReadDetail) return [];
           return [{ id: path.slice(1) || 'dashboard', title, icon, deepMatch: path !== '/',
-            path: mayList ? workspaceHref(workspace, path) : pathname,
+            path: mayList ? workspaceHref(workspace, path) : pathname + search,
             ...(path === '/' && !project && { selectionPrefix: '/processes/' }),
           }];
         }),

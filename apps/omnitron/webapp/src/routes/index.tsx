@@ -20,6 +20,7 @@ const ContainersPage = lazy(() => import('src/pages/containers'));
 const DeploymentsPage = lazy(() => import('src/pages/deployments'));
 const MetricsPage = lazy(() => import('src/pages/metrics'));
 const SettingsPage = lazy(() => import('src/pages/settings'));
+const FlowsPage = lazy(() => import('src/pages/flows'));
 const PipelinesPage = lazy(() => import('src/pages/pipelines'));
 const TracesPage = lazy(() => import('src/pages/traces'));
 const DashboardBuilderPage = lazy(() => import('src/pages/dashboard-builder'));
@@ -45,6 +46,7 @@ const sharedPages = <>
   <Route path="deployments" element={<Page><DeploymentsPage /></Page>} />
   <Route path="logs" element={<Page><LogsPage /></Page>} />
   <Route path="pipelines" element={<Page><PipelinesPage /></Page>} />
+  <Route path="flows" element={<Page><FlowsPage /></Page>} />
   <Route path="releases" element={<Page><ReleasesPage /></Page>} />
   <Route path="topology" element={<Page><TopologyPage /></Page>} />
   <Route path="containers" element={<Page><ContainersPage /></Page>} />

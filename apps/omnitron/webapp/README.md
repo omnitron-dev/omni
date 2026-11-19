@@ -15,7 +15,7 @@ The address identifies the workspace. Open `/` for the controller overview or `/
 
 A local application's address is `/projects/<project>/apps/<stack>/<app>`. System Overview, Applications and the stack's runtime inventory link to the same card. The URL, header, sidebar and breadcrumbs use the public owner, including when an imported configuration retains a different runtime namespace. The card shows its exact controller handle. Read access to the card uses the daemon's `getApp` permission. Inventory, diagnostics, health and lifecycle controls use their respective permissions. A remote deployment links to its stack when the account can read it. A controller process without a known project opens at `/processes/<encoded-handle>`. A bare handle supports inspection of its exact process and has no lifecycle controls.
 
-**Stacks** and **Applications** belong to projects. **Projects**, **Nodes**, **SSH workspace**, **Files**, **Traces**, **Alerts**, **Access**, **Audit**, **System** and **Settings** belong to the controller. Overview, Agent Studio, Dashboard Builder, Logs, Metrics, Pipelines, Releases, Deployments, Topology and Containers support both workspaces. The sidebar follows the current workspace and account permissions. Project release catalogs stay available across stack selections. The selected stack narrows deployment observations and the proposed deployment target.
+**Stacks** and **Applications** belong to projects. **Projects**, **Nodes**, **SSH workspace**, **Files**, **Traces**, **Alerts**, **Access**, **Audit**, **System** and **Settings** belong to the controller. Overview, Agent Studio, Dashboard Builder, Flows, Logs, Metrics, Pipelines, Releases, Deployments, Topology and Containers support both workspaces. The sidebar follows the current workspace and account permissions. Project release catalogs stay available across stack selections. The selected stack narrows deployment observations and the proposed deployment target.
 
 **Pipelines** shows automations with a release or deployment step targeting the selected project or stack. A graph with several targets appears in each relevant workspace. **Runs** uses the targets and name saved when each request was prepared, including runs of a definition that has since moved. The **Omnitron** workspace also includes shell-only automations and older runs with no recorded targets. Older receipts with just a project name appear under **All stacks** for that project.
 
@@ -80,3 +80,17 @@ Use Prism and the shared theme for controls, visible focus and responsive layout
 ## License
 
 [MIT](../../../LICENSE).
+
+## Flows
+
+**Flows** opens the controller inventory at `/flows` or a project inventory at `/projects/<project>/flows`. A project's **All stacks** inventory includes its stack flows. Each saved link opens its owning stack with `?flow=<id>&stack=<stack>`. **Pipelines** links to Flows in the same workspace.
+
+Start with **New flow** or the **Disk space template**. Select a component from the controller's node library, add it, and configure its fields in the inspector. Drag a named output onto an input, or choose **Output port** and **Target node** and press **Connect nodes**. The editor lays out the saved graph by its connections when opened. Dragging a node moves it for the current view. Selecting **Inspect node** also works from the keyboard. The inspector lists each connection and can disconnect it or rename a node and its connected edges.
+
+**Preview event** evaluates sample fields through the controller's installed components. Highlighted branches show exactly where the sample went. Each expected output shows its configuration and event data. **Use previous preview state** tests stateful behavior such as a disk warning followed by recovery.
+
+**Save draft** writes a revision to the selected workspace. **Review activation** identifies the sources and outputs it will enable. An active revision keeps running when a newer draft is saved. A separate confirmation can send a previewed manual or incoming event to the active revision. **Recent events** contains the actual path, state, delivery statuses and native result IDs. An eligible delivery can be retried by its original account after review. **Review pause** stops the current activation. New local notifications appear on any open page in the current workspace and link back to their flow.
+
+Resending the same event ID and data returns its existing receipt. A disk source samples the current reading at its recorded deadline. Transient threshold crossings or stack broadcasts can go unobserved during downtime. A delivery dispatched before a pause can still receive its acknowledgement. Inspect the native command ID for an unconfirmed result.
+
+Studio's **Open in flow editor** opens the proposed graph with `?team=<id>&proposal=<id>` and the team's recorded stack. The team's readers can inspect the proposed graph and its fields. With catalog and preview access they can edit and simulate a local draft. Saving, activation and event delivery each require their corresponding permission.

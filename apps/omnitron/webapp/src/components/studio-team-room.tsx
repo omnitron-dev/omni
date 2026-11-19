@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
-import { useWorkspace, workspaceHref } from 'src/routes/workspace';
+import { flowHref, useWorkspace } from 'src/routes/workspace';
 import {
   Box,
   Button,
@@ -336,10 +336,7 @@ export function StudioTeamRoom({ room, history, account, catalogs, latest, refre
                       component={RouterLink}
                       size="small"
                       sx={{ alignSelf: 'start' }}
-                      to={workspaceHref(
-                        workspace,
-                        '/flows?' + new URLSearchParams({ team: room.threadId, proposal: proposal.id })
-                      )}
+                      to={flowHref(workspace, { team: room.threadId, proposal: proposal.id })}
                     >
                       Open in flow editor
                     </Button>

@@ -721,4 +721,21 @@ export class DaemonRpcService implements IDaemonService {
   async getWatchStatus(): ReturnType<IDaemonService['getWatchStatus']> {
     return this.daemon.getWatchStatus();
   }
+
+  @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
+  async inspectSourceWatch(data: { name: string }): ReturnType<IDaemonService['inspectSourceWatch']> {
+    return this.orchestrator.inspectSourceWatch(data?.name);
+  }
+
+  @Public({ auth: { roles: OPERATOR_ROLES } })
+  async suspendSourceWatch(data: Parameters<IDaemonService['suspendSourceWatch']>[0]): ReturnType<IDaemonService['suspendSourceWatch']> {
+    this.assertLifecycleMutable?.();
+    return this.orchestrator.suspendSourceWatch(data);
+  }
+
+  @Public({ auth: { roles: OPERATOR_ROLES } })
+  async resumeSourceWatch(data: Parameters<IDaemonService['resumeSourceWatch']>[0]): ReturnType<IDaemonService['resumeSourceWatch']> {
+    this.assertLifecycleMutable?.();
+    return this.orchestrator.resumeSourceWatch(data);
+  }
 }

@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
-import { fork } from 'node:child_process';
+import { execFile, fork } from 'node:child_process';
 import { once } from 'node:events';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { promisify } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
 import { cleanupFixture } from './fixture-cleanup.mjs';
 
@@ -22,6 +23,7 @@ const sdk = await fs.realpath(applicationSdkArg === -1 ? path.dirname(dist) : pr
 const titan = await resolveInstalledDependency(sdk, '@omnitron-dev/titan');
 assert.ok(titan, 'Application SDK must resolve its own Titan');
 const nextSdkArg = process.argv.indexOf('--next-application-sdk');
+const qualifySuspension = process.argv.includes('--source-watch-suspension');
 const nextSdk = nextSdkArg === -1 ? undefined : await fs.realpath(process.argv[nextSdkArg + 1]);
 const nextTitan = nextSdk && await resolveInstalledDependency(nextSdk, '@omnitron-dev/titan');
 if (nextSdk) {
@@ -97,7 +99,7 @@ const owner = fork(path.join(dist, 'daemon/execution-entry.js'), [boot], {
 await output.close();
 const exited = once(owner, 'exit');
 const logger = { trace() {}, debug() {}, info() {}, warn() {}, error() {}, fatal() {}, child() { return this; } };
-const client = new ExecutionClient(path.join(execution, 'owner.sock'), logger);
+let client = new ExecutionClient(path.join(execution, 'owner.sock'), logger);
 const rows = async () => { try { return (await fs.readFile(observed, 'utf8')).trim().split('\n').filter(Boolean).map(JSON.parse); }
   catch (error) { if (error.code === 'ENOENT') return []; throw error; } };
 async function until(check, label, timeout = 60_000) {
@@ -105,7 +107,7 @@ async function until(check, label, timeout = 60_000) {
   while (Date.now() < end) { const value = await check(); if (value) return value; await delay(100); }
   throw Error(label + '; inspect ' + directory);
 }
-let acquired = false, primaryFailure;
+let acquired = false, primaryFailure, controller, watchProof;
 try {
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(Error('Private owner boot timed out')), 30_000);
@@ -116,7 +118,7 @@ try {
   const snapshot = await client.connect();
   assert.equal(snapshot.ownerBuild.commit, OWN_BUILD.commit);
   assertExecutionCapabilities(snapshot.capabilities, {
-    applicationTopology: 1, ...(nextSdk && { applicationRuntimeResolution: 2 }),
+    applicationTopology: 1, ...(nextSdk && { applicationRuntimeResolution: 2 }), ...(qualifySuspension && { sourceWatchSuspension: 1 }),
   }, 'Development SDK qualification');
   await client.acquire();
   acquired = true;
@@ -125,6 +127,72 @@ try {
   const initial = {};
   for (const name of sources.keys()) initial[name] = await until(async () => (await rows()).find(row => row.value === name + '-initial'), name + ' initial RPC');
   await until(async () => { await client.refresh(); return client.orchestrator.getWatchedApps().length === 2; }, 'Both applications watched');
+  if (qualifySuspension) {
+    const { Netron } = await import('@omnitron-dev/titan/netron');
+    const { UnixSocketTransport } = await import('@omnitron-dev/titan/netron/transport/unix');
+    const { AuthenticationManager, AuthorizationManager } = await import('@omnitron-dev/titan/netron/auth');
+    const { DaemonRpcService } = await load('daemon/daemon.rpc-service');
+    const socket = path.join(directory, 'controller.sock');
+    const serveController = async () => {
+      controller = new Netron(logger);
+      controller.registerTransport('unix', () => new UnixSocketTransport());
+      controller.registerTransportServer('unix', { name: 'private-test-controller', options: { path: socket, mode: 0o600 } });
+      controller.configureAuth(new AuthenticationManager(logger, {
+        authenticate: async () => { throw Error('Private fixture socket required'); },
+        validateToken: async () => { throw Error('Private fixture socket required'); }, tokenCache: { enabled: false },
+      }), new AuthorizationManager(logger));
+      controller.setTransportAuthContext('unix', { userId: 'fixture-operator', roles: ['operator'], permissions: [] });
+      await controller.peer.exposeService(new DaemonRpcService(client.orchestrator, null, null, config, null));
+      await controller.start();
+    };
+    await serveController();
+    const command = async (action, ...args) => {
+      const result = await promisify(execFile)(process.execPath, [path.join(dist, 'cli/omnitron.js'), '--json', 'watch', action, ...args], {
+        cwd: directory, env: { PATH: process.env.PATH, TMPDIR: directory, OMNITRON_HOME: directory, OMNITRON_SOCKET: socket },
+        timeout: 30_000,
+      });
+      const resultData = JSON.parse(result.stdout); assert.equal(resultData.ok, true); return resultData.data;
+    };
+    const target = 'first/dev/probe', sibling = 'second/dev/probe';
+    const before = await command('status', target), other = await command('status', sibling);
+    const held = await command('suspend', target);
+    assert.equal(held.phase, 'suspended'); assert.equal(held.mechanism, 'esbuild'); assert.deepEqual(held.source, before.registration);
+    assert.deepEqual(await command('suspend', target), held);
+    assert.equal((await command('status', target)).registration, null);
+    const bundle = path.join(directory, 'first/apps/probe/.omnitron-build/provider.js');
+    const baseline = await fs.readFile(bundle, 'utf8');
+    await change('first', 'held-edit');
+    const observeUnchanged = async after => {
+      const latest = {};
+      for (const name of sources.keys()) {
+        latest[name] = await until(async () => (await rows()).find(row => row.observer === name && row.at > after), name + ' remained online');
+        for (const field of ['pid', 'consumerPid', 'value']) assert.equal(latest[name][field], initial[name][field]);
+      }
+      return latest;
+    };
+    await observeUnchanged(Date.now() + 1250);
+    assert.equal(await fs.readFile(bundle, 'utf8'), baseline);
+    const retired = client, replacement = new ExecutionClient(path.join(execution, 'owner.sock'), logger);
+    let handoff;
+    try {
+      await replacement.connect();
+      const prepared = await retired.prepare(replacement.controllerId);
+      await replacement.accept(prepared.ticket, prepared.snapshot.inventoryDigest);
+      client = replacement;
+      handoff = { from: prepared.ticket.from.epoch, to: prepared.ticket.to.epoch, owner: prepared.ticket.to.ownerId };
+    } catch (error) { await replacement.close(); throw error; }
+    await retired.close();
+    await controller.stop();
+    await serveController();
+    assert.deepEqual((await command('status', target)).receipt, held);
+    const resumed = await command('resume', target, held.id);
+    assert.equal(resumed.phase, 'resumed'); assert.deepEqual(resumed.source, before.registration);
+    assert.match(await fs.readFile(bundle, 'utf8'), /first-held-edit/);
+    const afterResume = await observeUnchanged(Date.now() + 4000);
+    assert.deepEqual((await command('status', target)).registration, before.registration);
+    assert.deepEqual(await command('status', sibling), other);
+    watchProof = { held, resumed, afterResume, handoff };
+  }
   await change('first', 'updated');
   const changed = await until(async () => (await rows()).find(row => row.value === 'first-updated'), 'Shared-library watch restart');
   assert.notEqual(changed.pid, initial.first.pid);
@@ -164,10 +232,11 @@ try {
   }
   console.log(JSON.stringify({ test: 'development-topology-watch', commit: OWN_BUILD.commit,
     applicationSdk: JSON.parse(await fs.readFile(path.join(sdk, 'dist/BUILD.json'), 'utf8')).commit,
-    ownerPid: owner.pid, initial, changed, survivor, sdkTransitions, sourceSymlinks: true, sameNamesIsolated: true, productionChanged: false }));
+    ownerPid: owner.pid, initial, changed, survivor, sdkTransitions, watchProof, sourceSymlinks: true, sameNamesIsolated: true, productionChanged: false }));
 } catch (error) { primaryFailure = { error }; }
 finally {
   await cleanupFixture(directory, primaryFailure, async attempt => {
+    if (controller) await attempt('private controller socket', () => controller.stop());
     if (acquired) await attempt('owned applications', async () => { await client.orchestrator.setWatchMode(false); await client.orchestrator.stopAll(false); await client.shutdownOwner(); });
     await attempt('client', () => client.close());
     if (owner.exitCode === null && owner.signalCode === null) owner.kill('SIGTERM');

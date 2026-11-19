@@ -39,7 +39,7 @@ import type { ProcessOutputContext } from '@omnitron-dev/titan-pm';
 
 import { ReadinessMonitor } from '../health/readiness.js';
 import { FileWatcher } from './file-watcher.js';
-import type { SourceRefreshReceipt, WatchedApplication } from '../shared/dto/services.js';
+import type { ResumeSourceWatch, SourceChangeRequest, SourceRefreshReceipt, SourceWatchObservation, SourceWatchReceipt, SuspendSourceWatch, WatchedApplication } from '../shared/dto/services.js';
 import fs from 'node:fs';
 import { readDeclaredConfig, withDeclaredConfig } from '../project/declared-config.js';
 import path from 'node:path';
@@ -281,11 +281,130 @@ export class OrchestratorService extends EventEmitter {
   private fileWatcher: FileWatcher | null = null;
   private watchDisabled = false;
   private watchSelection: Set<string> | null = null;
+  private readonly watchReceipts = new Map<string, SourceWatchReceipt>();
   private readonly bootstrapSources = new Map<string, { path: string; definition: IAppDefinition }>();
 
   private allowsWatch(entry: IEcosystemAppEntry): boolean {
+    const receipt = this.watchReceipts.get(entry.name);
+    if (receipt && receipt.phase !== 'resumed' && this.sameWatchBinding(receipt.source)) return false;
+    return this.watchPolicyAllows(entry);
+  }
+
+  private watchPolicyAllows(entry: IEcosystemAppEntry): boolean {
     return this.devMode && !this.watchDisabled && !entry.releaseRoot && entry.watch !== false &&
       (!this.watchSelection || this.watchSelection.has(entry.name));
+  }
+
+  private sameWatchBinding(source: SourceChangeRequest): boolean {
+    const handle = this.handles.get(source.name);
+    return Boolean(handle && handle.generation === source.generation && handle.definitionRevision === source.definitionRevision);
+  }
+
+  private activeWatchHandle(source: SourceChangeRequest): AppHandle {
+    const handle = this.handles.get(source.name);
+    const restart = this.restartCoalescer.get(source.name);
+    if (!handle || !this.sameWatchBinding(source) || handle.status !== 'online' || this.stoppingApps ||
+        this.appStopIntents.get(source.name)?.stopped || this.executionBusy(source.name) || this.lifecycleQueue.isBusy(source.name) ||
+        restart?.inFlight || (restart && restart.manualSerial > restart.firedSerial))
+      throw Errors.conflict('The observed watch binding is no longer online and idle. Inspect its current generation and definition.');
+    return handle;
+  }
+
+  async inspectSourceWatch(name: string): Promise<SourceWatchObservation> {
+    if (typeof name !== 'string' || !name || name.length > 1024 || name.trim() !== name)
+      throw Errors.badRequest('An exact registered application name is required');
+    const receipt = this.watchReceipts.get(name) ?? null;
+    return { name, online: this.handles.get(name)?.status === 'online', registration: this.getWatchedApps().find(app => app.name === name) ?? null,
+      receipt: structuredClone(receipt), sameBinding: Boolean(receipt && this.sameWatchBinding(receipt.source)) };
+  }
+
+  async suspendSourceWatch(request: SuspendSourceWatch): Promise<SourceWatchReceipt> {
+    this.validateWatchRequest(request);
+    if (!request.generation || typeof request.generation !== 'string' || request.generation.length > 128 ||
+        !Number.isSafeInteger(request.definitionRevision) || request.definitionRevision < 0 ||
+        (request.previousReceipt !== null && typeof request.previousReceipt !== 'string'))
+      throw Errors.badRequest('Suspension requires an observed generation, definition revision and previous receipt');
+    const last = this.watchReceipts.get(request.name);
+    if (last?.id === request.id) {
+      if (last.source.generation !== request.generation || last.source.definitionRevision !== request.definitionRevision)
+        throw Errors.conflict('The request ID belongs to another watch binding');
+      if (last.phase === 'suspended') this.activeWatchHandle(last.source);
+      return structuredClone(last);
+    }
+    if (request.previousReceipt !== (last?.id ?? null) || (last && last.phase !== 'resumed' && this.sameWatchBinding(last.source)))
+      throw Errors.conflict('A different watch suspension exists. Inspect the current receipt.');
+    const handle = this.activeWatchHandle(request);
+    const registrations = this.getWatchedApps().filter(app => app.name === request.name);
+    const source = registrations[0];
+    const bootstrap = handle.entry.bootstrap;
+    const matchesSource = bootstrap
+      ? this.bootstrapSources.get(request.name)?.path === path.resolve(handle.entry.cwd ?? this.cwd, bootstrap) && this.buildService?.isWatching(request.name)
+      : this.fileWatcher?.isWatching(handle.entry);
+    if (!source || registrations.length !== 1 || !matchesSource || !this.watchPolicyAllows(handle.entry))
+      throw Errors.conflict('Only one existing source registration matching the current launch entry can be suspended');
+    const receipt: SourceWatchReceipt = { id: request.id, source, mechanism: bootstrap ? 'esbuild' : 'filesystem', phase: 'suspending' };
+    this.watchReceipts.set(request.name, receipt);
+    try {
+      const restart = this.restartCoalescer.get(request.name);
+      if (restart) restart.watchSerial = 0;
+      await this.detachSourceWatch(receipt);
+      this.activeWatchHandle(source);
+      if (this.getWatchedApps().some(app => app.name === request.name)) throw Errors.conflict('Source registration is still active');
+      receipt.phase = 'suspended';
+      receipt.suspendedAt = new Date().toISOString();
+      return structuredClone(receipt);
+    } catch (error) {
+      receipt.phase = 'unconfirmed';
+      throw error;
+    }
+  }
+
+  async resumeSourceWatch(request: ResumeSourceWatch): Promise<SourceWatchReceipt> {
+    this.validateWatchRequest(request);
+    const receipt = this.watchReceipts.get(request.name);
+    if (!receipt || receipt.id !== request.id) throw Errors.conflict('No matching source watch receipt exists on this owner');
+    const handle = this.activeWatchHandle(receipt.source);
+    if (receipt.phase === 'resumed') {
+      if (!this.getWatchedApps().some(app => app.name === request.name && app.directory === receipt.source.directory))
+        throw Errors.conflict('This receipt was resumed but its original source watch is no longer registered');
+      return structuredClone(receipt);
+    }
+    if (receipt.phase !== 'suspended') throw Errors.conflict('Watch suspension has not been confirmed. Inspect its receipt.');
+    if (!this.watchPolicyAllows(handle.entry)) throw Errors.conflict('The current watch policy excludes the recorded binding');
+    receipt.phase = 'resuming';
+    try {
+      if (receipt.mechanism === 'esbuild') {
+        const saved = this.bootstrapSources.get(request.name);
+        if (!saved || !this.buildService) throw Errors.conflict('The retained source build is unavailable');
+        await this.registerBootstrapWatch(request.name, saved, 'baseline');
+      } else this.fileWatcher?.addApp(handle.entry);
+      this.activeWatchHandle(receipt.source);
+      const active = this.getWatchedApps().find(app => app.name === request.name);
+      if (!this.watchPolicyAllows(handle.entry) || !active || active.directory !== receipt.source.directory)
+        throw Errors.conflict('The owner could not restore the original source registration');
+      receipt.phase = 'resumed';
+      receipt.resumedAt = new Date().toISOString();
+      return structuredClone(receipt);
+    } catch (error) {
+      if (this.sameWatchBinding(receipt.source)) {
+        try {
+          await this.detachSourceWatch(receipt);
+          receipt.phase = 'suspended';
+        } catch { receipt.phase = 'unconfirmed'; }
+      } else receipt.phase = 'unconfirmed';
+      throw error;
+    }
+  }
+
+  private validateWatchRequest(request: ResumeSourceWatch): void {
+    if (!request || typeof request.name !== 'string' || !request.name || request.name.length > 1024 ||
+        typeof request.id !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(request.id))
+      throw Errors.badRequest('An exact registered application name and a UUID v4 for the watch receipt are required');
+  }
+
+  private async detachSourceWatch(receipt: SourceWatchReceipt): Promise<void> {
+    if (receipt.mechanism === 'filesystem') this.fileWatcher?.removeApp(receipt.source.name);
+    else await this.buildService?.unwatchApp(receipt.source.name);
   }
 
   /** One policy for both fs.watch and esbuild; disabling does not stop apps. */
@@ -345,11 +464,15 @@ export class OrchestratorService extends EventEmitter {
       return;
     }
     if (this.buildService.isWatching(name)) return;
-    await this.buildService.watchApp(name, source.path, source.definition, () => {
+    await this.registerBootstrapWatch(name, source, 'reconcile');
+  }
+
+  private async registerBootstrapWatch(name: string, source: { path: string; definition: IAppDefinition }, initialBuild: 'reconcile' | 'baseline'): Promise<void> {
+    await this.buildService!.watchApp(name, source.path, source.definition, () => {
       void this.restartAfterChange(name).catch((error) => {
         this.logger.error({ app: name, error: (error as Error).message }, 'Restart after source change failed');
       });
-    }, this.devMode);
+    }, this.devMode, initialBuild);
   }
 
   /** Automatic triggers remain revocable while queued; manual restart is independent. */

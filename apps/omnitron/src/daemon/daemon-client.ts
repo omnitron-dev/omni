@@ -268,6 +268,21 @@ export class DaemonClient implements IDaemonService {
     return this.proxy!.getWatchStatus();
   }
 
+  async inspectSourceWatch(data: { name: string }): ReturnType<IDaemonService['inspectSourceWatch']> {
+    await this.ensureConnected();
+    return this.proxy!.inspectSourceWatch(data);
+  }
+
+  async suspendSourceWatch(data: Parameters<IDaemonService['suspendSourceWatch']>[0]): ReturnType<IDaemonService['suspendSourceWatch']> {
+    await this.ensureConnected();
+    return this.proxy!.suspendSourceWatch(data);
+  }
+
+  async resumeSourceWatch(data: Parameters<IDaemonService['resumeSourceWatch']>[0]): ReturnType<IDaemonService['resumeSourceWatch']> {
+    await this.ensureConnected();
+    return this.proxy!.resumeSourceWatch(data);
+  }
+
   // ---------------------------------------------------------------------------
   // Connection management
   // ---------------------------------------------------------------------------

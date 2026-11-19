@@ -330,6 +330,7 @@ export class ExecutionClient {
   }
 
   private async submit(method: ExecutionMutation, args: unknown[]): Promise<unknown> {
+    if (method === 'suspendSourceWatch' || method === 'resumeSourceWatch') this.requireSourceWatchControl();
     if (method === 'restartAfterChange' && args[1] !== undefined && this.view().capabilities?.['sourceRefresh'] !== 1)
       throw new Error('Execution owner does not support confirmed source refresh; prepare an owner transition before refreshing the development SDK. Backend updates remain available.');
     if (method === 'reconcileStoppedStack' && this.view().capabilities?.['stoppedStackReconciliation'] !== 1)
@@ -367,12 +368,18 @@ export class ExecutionClient {
   }
 
   private async read(method: ExecutionRead, args: unknown[]): Promise<unknown> {
+    if (method === 'inspectSourceWatch') this.requireSourceWatchControl();
     if (method === 'inspectExecution') this.requireExecutionScopes();
     if (method === 'inspectInstalledStack') {
       this.requireInstalledStart();
       return this.rpc().read({ method, args });
     }
     return withControlDeadline(this.rpc().read({ method, args }), 15_000, `Execution read ${method} timed out; application state is unknown`);
+  }
+
+  private requireSourceWatchControl(): void {
+    if (this.view().capabilities?.['sourceWatchSuspension'] !== 1)
+      throw new Error('The execution owner does not support individual source watch suspension. A reviewed owner transition is required.');
   }
 
   private registeredApp(name: string) {

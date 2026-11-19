@@ -21,10 +21,10 @@ import type { WatchedApplication } from '../shared/dto/services.js';
 // backend authenticates end users with Omnitron RBAC before entering it.
 const OWNER_ROLES = ['execution-controller'];
 
-export const EXECUTION_READS = ['inspectExecution', 'inspectInstalledStack', 'inspectStackExecution', 'getDependencyGraph', 'getMetrics', 'getHealth', 'explainPortConflict'] as const;
+export const EXECUTION_READS = ['inspectExecution', 'inspectInstalledStack', 'inspectStackExecution', 'inspectSourceWatch', 'getDependencyGraph', 'getMetrics', 'getHealth', 'explainPortConflict'] as const;
 export const EXECUTION_MUTATIONS = [
   'reconcileStoppedStack', 'stopExecution', 'enableExecution', 'openInstalledStack', 'resumeInstalledApp', 'stopStackExecution', 'enableStackExecution', 'startAll', 'startApp', 'stopApp', 'stopAll', 'redefineApp', 'restartApp', 'startKnownApp',
-  'restartAfterChange', 'reloadApp', 'scaleApp', 'setWatchMode', 'setConfig',
+  'restartAfterChange', 'reloadApp', 'scaleApp', 'setWatchMode', 'suspendSourceWatch', 'resumeSourceWatch', 'setConfig',
   'configureReadiness', 'drainChildSamples', 'setMetricsEnabled',
 ] as const;
 export type ExecutionMutation = typeof EXECUTION_MUTATIONS[number] | 'setDevMode' | 'restartChild' | 'callService' | 'shutdownOwner';

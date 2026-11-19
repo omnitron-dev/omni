@@ -303,6 +303,7 @@ export class BuildService {
     definition: IAppDefinition,
     onChange: () => void,
     sourceMaps = this.isDev,
+    initialBuild: 'reconcile' | 'baseline' = 'reconcile',
   ): Promise<void> {
     // Publish ownership before the first await: unwatch must also cancel a
     // context that is still being created, not just one already watching.
@@ -336,7 +337,7 @@ export class BuildService {
         ];
         for (const [source, output] of entries) {
           if (session.closed) break;
-          session.handles.push(await this.createWatchContext(esbuild, source!, output!, debouncedOnChange, sourceMaps));
+          session.handles.push(await this.createWatchContext(esbuild, source!, output!, debouncedOnChange, sourceMaps, initialBuild));
         }
       });
     })();
@@ -442,6 +443,7 @@ export class BuildService {
     outPath: string,
     onRebuild: () => void,
     sourceMaps: boolean,
+    initialBuild: 'reconcile' | 'baseline',
   ): Promise<WatchHandle> {
     // Self-healing wrapper: when esbuild reports build errors that
     // reference lines past the current source's EOF, the watch
@@ -468,7 +470,7 @@ export class BuildService {
     // restart storms.
     // Re-enabling watch must reconcile changes made while watching was off.
     // Keep the previous executable fingerprint before the initial rebuild.
-    let lastBundleHash = hashFileSafe(outPath);
+    let lastBundleHash = initialBuild === 'baseline' ? null : hashFileSafe(outPath);
 
     const buildOptions = (): unknown => ({
       absWorkingDir: path.dirname(entryPath),
@@ -546,7 +548,11 @@ export class BuildService {
     };
 
     currentCtx = await esbuild.context(buildOptions());
-    try { await currentCtx.watch(); }
+    try {
+      // Establish the admitted baseline before reporting a live registration.
+      if (initialBuild === 'baseline') await currentCtx.rebuild();
+      await currentCtx.watch();
+    }
     catch (error) { disposed = true; await currentCtx.dispose(); throw error; }
 
     return {

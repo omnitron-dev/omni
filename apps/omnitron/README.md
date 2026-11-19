@@ -148,6 +148,18 @@ The first selection may ask pnpm to generate its package-manager metadata. That 
 
 In watch mode the SDK rebuilds changed packages. With `--stack dev`, Omnitron records the owner's receipt for each watched application that uses the changed SDK. An application such as a Vite server can declare `watch: false` and manage its own reloads. The CLI checks each binding against the stack declaration and reports applications that manage their own reloads separately.
 
+To edit the source of one running application while keeping its current generation online, suspend its existing owner registration. Use the full name reported by the owner.
+
+```sh
+omnitron --json watch status example/dev/worker
+omnitron --json watch suspend example/dev/worker
+omnitron --json watch resume example/dev/worker <receipt-id>
+```
+
+Suspension drains that application's filesystem or esbuild watcher and revokes queued source-triggered restarts. A lifecycle transition already in progress must settle first. A completed receipt records the exact generation, definition revision, watch directory and mechanism. Its latest phase can be read by name after a lost reply or a backend handoff. Resuming requires the same resident owner, binding and a watch policy that still permits the application. A new generation or definition supersedes the receipt. An unconfirmed phase requires inspection before further work.
+
+Resuming a native watch observes subsequent file events. Resuming an esbuild watch compiles the current source as its baseline and arms subsequent rebuild notifications. The running process continues serving its existing generation. Use a separately reviewed application action to activate code edited during the pause. Other watches, the project declaration and SDK selection keep their existing policies. This control requires the owner's `sourceWatchSuspension@1` capability. An older resident owner requires a reviewed owner transition to acquire it.
+
 The watcher uses Xec's polling API once per second over Turbo's task directories and declared shared input locations. This includes package-local generators and the first files added inside declared input glob directories. Dependency directories, build outputs and ignored artifacts are excluded unless Turbo explicitly declares them as inputs. File events trigger a debounced Turbo comparison; only changed task hashes are rebuilt, and idle polling does not launch Turbo. Watch roots must exist inside the SDK checkout; unsupported external or unbounded global patterns fail explicitly. Edits are coalesced, builds are serialized, and changes arriving during a build remain queued. A build whose inputs changed before completion cannot confirm application readiness; the queued edit is rebuilt. Successful completion is reported after application receipts and RPC cleanup settle. Interrupting the command closes its observers. The watcher is a foreground CLI process: the daemon does not supervise or restore it after the CLI exits. This requires `@xec-sh/loader` 0.12.0 or newer.
 
 Keep the consumer's `node_modules` directory physical. Standard pnpm `virtualStoreDir` configuration can place the store on another disk; a symlink replacing the entire directory is refused. Initial selection and registry restoration must satisfy the lifecycle and dependency admission checks. SDK selection does not activate a deployed release.

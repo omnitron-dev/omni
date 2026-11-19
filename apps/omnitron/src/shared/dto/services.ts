@@ -48,6 +48,27 @@ export interface WatchedApplication {
 
 export type SourceChangeRequest = Pick<WatchedApplication, 'name' | 'generation' | 'definitionRevision'>;
 
+/** An owner-lifetime receipt for the one physical registration observed before suspension. */
+export interface SourceWatchReceipt {
+  id: string;
+  source: WatchedApplication;
+  mechanism: 'filesystem' | 'esbuild';
+  phase: 'suspending' | 'suspended' | 'resuming' | 'resumed' | 'unconfirmed';
+  suspendedAt?: string;
+  resumedAt?: string;
+}
+
+export interface SourceWatchObservation {
+  name: string;
+  online: boolean;
+  registration: WatchedApplication | null;
+  receipt: SourceWatchReceipt | null;
+  sameBinding: boolean;
+}
+
+export type SuspendSourceWatch = SourceChangeRequest & { id: string; previousReceipt: string | null };
+export type ResumeSourceWatch = { name: string; id: string };
+
 /** Exact result of the admitted owner operation, independent of later observations. */
 export interface SourceRefreshReceipt {
   process: ProcessInfoDto;
@@ -122,6 +143,9 @@ export interface IDaemonService {
   enableWatch(data: { apps?: string[] }): Promise<{ watching: WatchedApplication[] }>;
   disableWatch(): Promise<{ success: boolean }>;
   getWatchStatus(): Promise<{ enabled: boolean; watching: boolean; reason?: string; apps: WatchedApplication[] }>;
+  inspectSourceWatch(data: { name: string }): Promise<SourceWatchObservation>;
+  suspendSourceWatch(data: SuspendSourceWatch): Promise<SourceWatchReceipt>;
+  resumeSourceWatch(data: ResumeSourceWatch): Promise<SourceWatchReceipt>;
 }
 
 // ============================================================================

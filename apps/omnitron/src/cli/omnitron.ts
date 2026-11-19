@@ -574,6 +574,17 @@ stack
 // App Management
 // ============================================================================
 
+const watch = program.command('watch').description('Control source refresh for one registered application');
+watch.command('status <app>').description('Inspect its current watch and last owner receipt').structuredAction(async (name: string) => {
+  await (await import('../commands/watch.js')).watchCommand('status', name);
+});
+watch.command('suspend <app>').description('Suspend its current watch while keeping the application online').structuredAction(async (name: string) => {
+  await (await import('../commands/watch.js')).watchCommand('suspend', name);
+});
+watch.command('resume <app> <receipt>').description('Restore the same source registration for future changes').structuredAction(async (name: string, id: string) => {
+  await (await import('../commands/watch.js')).watchCommand('resume', name, id);
+});
+
 program
   .command('start [app]')
   .description('Start a named app via RPC, or start all apps (can start the daemon)')

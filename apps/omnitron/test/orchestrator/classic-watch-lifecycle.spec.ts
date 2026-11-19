@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
+import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import { defineEcosystem } from '../../src/config/define-ecosystem.js';
@@ -10,6 +11,9 @@ import { DaemonStateStore } from '../../src/daemon/daemon-state-store.service.js
 import { StateStore } from '../../src/daemon/state-store.js';
 import { FileWatcher } from '../../src/orchestrator/file-watcher.js';
 import { OrchestratorService } from '../../src/orchestrator/orchestrator.service.js';
+import { DaemonRpcService } from '../../src/daemon/daemon.rpc-service.js';
+import { ExecutionClient } from '../../src/daemon/execution-client.js';
+import { changeSourceWatch } from '../../src/commands/watch.js';
 
 type Subscription = { directory: string; emit: (event: string, file: string) => void; close: ReturnType<typeof vi.fn> };
 type WatchFactory = { watchDirectory(directory: string, emit: Subscription['emit']): fs.FSWatcher };
@@ -94,6 +98,78 @@ async function fixture() {
 }
 
 describe('classic watches follow the authoritative application lifecycle', () => {
+  it('holds one observed registration, revokes queued events and resumes its same live generation', async () => {
+    const f = await fixture();
+    const target = f.application('target'), other = f.application('neighbour', 'docs/dev/neighbour');
+    const before = await f.owner.startApp(target);
+    const sibling = await f.owner.startApp(other);
+    const initial = await f.currentHttp(target), initialSibling = await f.currentHttp(other);
+    const fence = vi.fn();
+    const rpc = new DaemonRpcService(f.owner, {} as never, {} as never, { apps: [] } as never, {} as never, fence);
+    const previous = await rpc.inspectSourceWatch({ name: target.name });
+    const siblingWatch = await rpc.inspectSourceWatch({ name: other.name });
+    const request = { id: randomUUID(), ...previous.registration!, previousReceipt: null };
+    await expect(rpc.suspendSourceWatch({ ...request, generation: 'stale' })).rejects.toThrow(/binding/);
+    await expect(changeSourceWatch(rpc, 'suspend', 'site')).rejects.toThrow(/exact application/);
+    const subscription = f.subscriptions.find(item => item.directory === target.cwd)!;
+    subscription.emit('change', 'revision.json');
+    const held = await rpc.suspendSourceWatch(request);
+    expect(held).toEqual({ id: request.id, source: previous.registration, mechanism: 'filesystem', phase: 'suspended', suspendedAt: expect.any(String) });
+    expect(await rpc.suspendSourceWatch(request)).toEqual(held);
+    expect(await changeSourceWatch(rpc, 'suspend', target.name)).toEqual(held);
+    expect(await rpc.inspectSourceWatch({ name: target.name })).toEqual({ name: target.name, online: true, registration: null, receipt: held, sameBinding: true });
+    expect(await rpc.inspectSourceWatch({ name: other.name })).toEqual(siblingWatch);
+    await expect(changeSourceWatch(rpc, 'resume', target.name, randomUUID())).rejects.toThrow(/matching/);
+    await f.owner.setWatchMode(true, [other.name]);
+    await expect(changeSourceWatch(rpc, 'resume', target.name, held.id)).rejects.toThrow(/policy excludes/);
+    await f.owner.setWatchMode(true, [other.name, target.name]);
+    expect(await f.currentHttp(target)).toEqual(initial);
+    f.revise(target, 'written-while-held');
+    const resumed = await changeSourceWatch(rpc, 'resume', target.name, held.id);
+    expect(resumed).toEqual({ ...held, phase: 'resumed', resumedAt: expect.any(String) });
+    expect(held.phase).toBe('suspended');
+    expect((await rpc.inspectSourceWatch({ name: target.name })).registration).toEqual(previous.registration);
+    expect(await rpc.suspendSourceWatch(request)).toEqual(resumed);
+    expect(await rpc.inspectSourceWatch({ name: other.name })).toEqual(siblingWatch);
+    await expect(rpc.suspendSourceWatch({ ...request, id: randomUUID() })).rejects.toThrow(/different watch suspension/);
+    expect(await f.currentHttp(target)).toEqual(initial);
+    expect(await f.currentHttp(other)).toEqual(initialSibling);
+    expect(before.definitionRevision).toBe(previous.registration!.definitionRevision);
+    expect(sibling.generation).toBe(siblingWatch.registration!.generation);
+    const next = await changeSourceWatch(rpc, 'suspend', target.name);
+    await f.owner.redefineApp(target.name, { ...target, watch: false });
+    expect((await rpc.inspectSourceWatch({ name: target.name })).sameBinding).toBe(false);
+    await expect(changeSourceWatch(rpc, 'resume', target.name, next.id)).rejects.toThrow(/binding/);
+    const fresh = await fixture();
+    await expect(fresh.owner.resumeSourceWatch({ name: target.name, id: next.id })).rejects.toThrow(/No matching source watch receipt/);
+    expect(fence).toHaveBeenCalled();
+  });
+
+  it('exposes an uncertain disposal without promising suspension or arming a second registration', async () => {
+    const f = await fixture();
+    const target = f.application('target');
+    await f.owner.startApp(target);
+    const source = (await f.owner.inspectSourceWatch(target.name)).registration!;
+    const request = { ...source, id: randomUUID(), previousReceipt: null };
+    vi.spyOn(FileWatcher.prototype, 'removeApp').mockImplementationOnce(() => { throw new Error('Could not close registration'); });
+    await expect(f.owner.suspendSourceWatch(request)).rejects.toThrow(/Could not close/);
+    expect((await f.owner.inspectSourceWatch(target.name)).receipt?.phase).toBe('unconfirmed');
+    await expect(f.owner.resumeSourceWatch(request)).rejects.toThrow(/not been confirmed/);
+    expect(await f.currentHttp(target)).toMatchObject({ revision: 'target' });
+  });
+
+  it('rejects an older resident owner before dispatching a read or mutation', async () => {
+    const client = new ExecutionClient('/unused', createNullLogger());
+    const remote = { read: vi.fn(), mutate: vi.fn() };
+    Object.assign(client, { remote, inventory: { capabilities: { sourceRefresh: 1 } }, observedAt: performance.now() });
+    const name = 'sample/dev/site', id = randomUUID();
+    await expect(client.orchestrator.inspectSourceWatch(name)).rejects.toThrow(/owner transition/);
+    await expect(client.orchestrator.suspendSourceWatch({ name, id, generation: 'observed', definitionRevision: 1, previousReceipt: null })).rejects.toThrow(/owner transition/);
+    await expect(client.orchestrator.resumeSourceWatch({ name, id })).rejects.toThrow(/owner transition/);
+    expect(remote.read).not.toHaveBeenCalled();
+    expect(remote.mutate).not.toHaveBeenCalled();
+  });
+
   it('watches dynamically started apps even when autostart is disabled, and obeys global selection', async () => {
     const f = await fixture();
     const site = { ...f.application('site'), enabled: false };

@@ -88,7 +88,7 @@ runtimeCommand.command('verify <directory>').description('Verify every sealed ru
     const { runtimeVerifyCommand } = await import('../commands/runtime-update.js');
     await runtimeVerifyCommand(directory);
   });
-const runtimeUpdate = runtimeCommand.command('update').description('Review, apply and recover local supervision and application updates');
+const runtimeUpdate = runtimeCommand.command('update').description('Review, apply and recover updates to macOS user services and their applications');
 runtimeUpdate.command('prepare <runtime>').description('Install the candidate and record the exact local update plan')
   .structuredAction(async (directory: string) => {
     const { runtimeUpdateCommand } = await import('../commands/runtime-update.js');
@@ -905,7 +905,7 @@ release
   .option('--framework-ref <ref>', 'Require a full refs/heads/... or refs/tags/... in the selected SDK repository')
   .option('--keep-source', 'Keep the clones after a successful build')
   .option('--skip-gates', 'Record every gate as not-run instead of running them — a look, never a release for a stack')
-  .option('--for <stack>', "Also build the static bundle this stack's gateway serves, with its environment")
+  .option('--for <stack>', "Also build this stack's static gateway bundle. Application archives target the build host.")
   .structuredAction(
     async (
       projectName: string,

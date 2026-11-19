@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import { renderLaunchdPlist, renderSystemdUnit } from '../commands/service-units.js';
 import { BACKEND_ACTIVITY_COUNTERS } from '../shared/dto/backend.js';
-import { retainReviewedBackups } from '../shared/backup-admission.js';
+import { assertReviewableBackendActivity, retainReviewedBackups } from '../shared/backup-admission.js';
 import type { OperationReceipt } from '../shared/dto/execution-operations.js';
 import type { BackupRpcService } from '../services/backup.rpc-service.js';
 import { RuntimeInstallation, assertOrdinaryRecoveryAllowed } from './runtime-installation.js';
@@ -177,10 +177,7 @@ function guardianBackendSocket(state: Awaited<ReturnType<BackendControlService['
       typeof state.daemonSocket !== 'string' || !path.isAbsolute(state.daemonSocket) ||
       state.runtime.phase !== 'active' || state.runtime.connection?.status !== 'connected')
     throw Error('The serving backend cannot review backup admission for this guardian transition');
-  const counters = state.runtime.blockers;
-  if (!counters || ![...BACKEND_ACTIVITY_COUNTERS, 'backupOperations'].every(key => Object.hasOwn(counters, key)) ||
-      Object.entries(counters).some(([name, count]) => !Number.isSafeInteger(count) || count < 0 || name !== 'backupOperations' && count !== 0))
-    throw Error('Active or unknown backend operations block guardian transition');
+  assertReviewableBackendActivity(state.runtime.blockers, BACKEND_ACTIVITY_COUNTERS);
   return state.daemonSocket;
 }
 

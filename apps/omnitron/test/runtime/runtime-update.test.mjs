@@ -5,13 +5,25 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 import { register } from 'tsx/esm/api';
 const loader = register({ namespace: 'runtime-update-test' });
 const { runRuntimeUpdate, readRuntimeUpdateReceipt, readPreparedRuntimeUpdate } = await loader.import('../../src/daemon/runtime-update.ts', import.meta.url);
 const { assertLocalIdle, assertLocalReview, assertReviewedBoot, assertSameSavedSelection, assertLocalServiceTargets, assertRetainedRuntimeInfrastructure } = await loader.import('../../src/daemon/runtime-update-host.ts', import.meta.url);
-const { retainReviewedBackups } = await loader.import('../../src/shared/backup-admission.ts', import.meta.url);
+const { assertReviewableBackendActivity, retainReviewedBackups } = await loader.import('../../src/shared/backup-admission.ts', import.meta.url);
 const { RuntimeObservationTimeout, RuntimeObservationUnconfirmed } = await loader.import('../../src/daemon/runtime-observation.ts', import.meta.url);
 import { BACKEND_ACTIVITY_COUNTERS } from '../../src/shared/dto/backend.ts';
+
+test('local and standalone fleet review distinguish missing, invalid and active operations', () => {
+  const portable = runInNewContext('(' + assertReviewableBackendActivity.toString() + ')');
+  for (const review of [assertReviewableBackendActivity, portable]) {
+    const counters = Object.fromEntries(BACKEND_ACTIVITY_COUNTERS.map(name => [name, 0]));
+    assert.throws(() => review(counters, BACKEND_ACTIVITY_COUNTERS), /omitted required activity counters: backupOperations$/);
+    assert.throws(() => review({ ...counters, backupOperations: -1 }, BACKEND_ACTIVITY_COUNTERS), /invalid activity counter: backupOperations$/);
+    assert.throws(() => review({ ...counters, backupOperations: 1, kernelRollouts: 2 }, BACKEND_ACTIVITY_COUNTERS), /active: kernelRollouts=2$/);
+    assert.doesNotThrow(() => review({ ...counters, backupOperations: 1 }, BACKEND_ACTIVITY_COUNTERS));
+  }
+});
 
 test('only boots with the exact native admission and unchanged desired state', () => {
   const reviewed = 'a'.repeat(64);
@@ -189,7 +201,7 @@ test('an in-flight operation must be clear before a review can stop the private 
   assert.doesNotThrow(() => assertLocalReview(status), 'read-only review is not shutdown admission');
   await assert.rejects(runRuntimeUpdate({ ...config, operation: 'apply', digest }), /backupOperations=1/);
   delete blockers.backupOperations;
-  await assert.rejects(runRuntimeUpdate({ ...config, operation: 'apply', digest }), /activity counters/);
+  await assert.rejects(runRuntimeUpdate({ ...config, operation: 'apply', digest }), /omitted required activity counters: backupOperations$/);
   blockers.backupOperations = 0;
   assert.equal((await runRuntimeUpdate({ ...config, operation: 'prepare' })).digest, digest);
 });

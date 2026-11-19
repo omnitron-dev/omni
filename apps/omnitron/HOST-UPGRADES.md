@@ -107,6 +107,14 @@ healthy target uses a new plan for its retained previous artifact. Owner updates
 Node changes, schema changes and the first coupled-to-resident transition remain
 separate maintenance operations.
 
+If fleet planning reports a missing `backupOperations` counter, the serving
+backend cannot account for active backups. Waiting for a quiet interval cannot
+add that capability. The named counter identifies a protocol gap. A report such
+as `fileTransfers=1` identifies work the operator can observe to completion.
+For a protocol gap, retain the staged runtime and prepare a native maintenance
+transition with the service owner, including the exact previous role bindings
+and the recovery path for data written during the transition.
+
 ## Local development rollout
 
 Finish a reviewed batch on a macOS development machine from its clean main
@@ -144,8 +152,9 @@ operator authorizes and performs a stack start with the reviewed digest, run
 refusal, `--status` can still show an earlier plan. Check its target commit
 before reviewing a plan for application.
 
-An installed operator can use the same workflow with a sealed runtime and no
-source checkout.
+On macOS, an installed operator can run the same workflow against user services
+with a sealed runtime and no source checkout. For a registered Linux server,
+start with `omnitron fleet rollout plan <commit> <node>` on its controller.
 
 ```sh
 omnitron runtime verify <runtime-root>

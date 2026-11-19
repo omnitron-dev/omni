@@ -1,5 +1,5 @@
 // Executed with the verified Node binary of the OS-managed guardian over the pinned SSH connection.
-/* global commandFailure, targetRuntime -- shared readers supplied by managedHostCommand */
+/* global commandFailure, targetRuntime, assertReviewableBackendActivity -- supplied by managedHostCommand */
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -158,10 +158,7 @@ try {
     assertSelection();
     console.log(JSON.stringify({ bundle }));
   } else {
-    if (!live.blockers || !wanted.requiredCounters.every(key => Object.hasOwn(live.blockers, key)) ||
-        !Object.hasOwn(live.blockers, 'backupOperations') ||
-        Object.entries(live.blockers).some(([key, count]) => !Number.isSafeInteger(count) || count < 0 || key !== 'backupOperations' && count !== 0))
-      throw Error('Active or unknown backend operations block kernel qualification');
+    assertReviewableBackendActivity(live.blockers, wanted.requiredCounters);
     const { assertBackendHandoffReview, assertBackendHandoffAdmission, backendHandoffAdmissionForApply } = await sdk('daemon/backend-handoff-types');
     const address = await (await client.service('OmnitronBackend')).controlAddress();
     if (path.dirname(path.resolve(address.socket)) !== path.resolve(config.directory)) throw Error('Foreign backend control directory');

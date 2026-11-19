@@ -30,6 +30,11 @@ omnitron stop project/stack/app
 
 ## Runtime ownership and releases
 
+Build application releases on a host matching the execution owner's OS,
+architecture, Node binary, ABI and libc. The executable's SHA-256 is part of
+the release target. `omnitron release build <project> --for <stack>` also builds
+the static frontend with that stack's environment.
+
 On local cold updates, `omnitron backend select <sha256> --check` previews changes to the host database and stack containers. If the host PostgreSQL was created on a project bridge, the preview identifies its SQL cluster and the required PostgreSQL process restart. Moving the retained container to the platform bridge rebuilds host port forwarding. Startup checks the cluster through both the container and its published SQL port before applying migrations. The named volume and container ID survive this transition.
 
 The management backend and resident execution owner have separate identities. A backend handoff can retain the owner and application processes. Application release identity is distinct from either runtime's build commit. Status and operation receipts expose those identities; compare the actual target rather than assuming one commit describes the entire node.

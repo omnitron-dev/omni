@@ -6,7 +6,7 @@ import { inspectRuntimeArtifact, verifyRuntimeArtifact } from '../shared/runtime
 import { readBuildStamp } from '../shared/build-stamp.js';
 import { reviewedRuntimeConsole } from '../shared/dto/runtime-update.js';
 import { BACKEND_ACTIVITY_COUNTERS } from '../shared/dto/backend.js';
-import { retainReviewedBackups } from '../shared/backup-admission.js';
+import { assertReviewableBackendActivity, retainReviewedBackups } from '../shared/backup-admission.js';
 import { LAUNCHD_LABEL, OWNER_LAUNCHD_LABEL } from '../commands/service-units.js';
 import { localStackInventory } from '../project/local-stack-inventory.js';
 import { readRestartConfiguration, saveRestartConfiguration, restartConfigurationDigest, restartIntentDigest, restartLaunchIntent, assertRestartOwnerDefaults } from '../project/runtime-restart.js';
@@ -91,11 +91,7 @@ export function assertLocalReview(status: RuntimeUpdateStatusObservation) {
   if (execution?.mode !== 'resident' || execution.phase !== 'active' || execution.connection?.status !== 'connected' ||
       execution.supervision?.type !== 'independent' || !execution.owner?.id || !Number.isSafeInteger(execution.epoch))
     throw Error('Local admission requires a connected, independently supervised execution owner');
-  const counters = execution.blockers;
-  if (!counters || ![...BACKEND_ACTIVITY_COUNTERS, 'backupOperations'].every(name => Object.hasOwn(counters, name)) ||
-      Object.values(counters).some(n => !Number.isSafeInteger(n) || n < 0)) throw Error('Incomplete backend activity counters');
-  const busy = Object.entries(counters).filter(([name, n]) => n > 0 && name !== 'backupOperations');
-  if (busy.length) throw Error('Local update deferred while work is active: ' + busy.map(([name, n]) => `${name}=${n}`).join(', '));
+  assertReviewableBackendActivity(execution.blockers, BACKEND_ACTIVITY_COUNTERS);
 }
 
 export function assertLocalIdle(status: RuntimeUpdateStatusObservation) {
@@ -143,6 +139,11 @@ export function assertSameSavedSelection(prior: ReviewedRuntimeUpdateStack, now:
 export function assertLocalServiceTargets(config: ManagedRuntime | null): asserts config is ManagedRuntime {
   if (config?.scope !== 'user' || config.owner.label !== OWNER_LAUNCHD_LABEL || config.backend.label !== LAUNCHD_LABEL)
     throw Error('Local service commands address only the standard Omnitron user services');
+}
+
+function assertLocalUpdatePlatform(): void {
+  if (process.platform !== 'darwin')
+    throw Error('Local runtime updates require macOS user services. For a managed Linux server, run omnitron fleet rollout plan from its controller.');
 }
 
 /** Stopped stacks can disappear from boot declarations while their containers remain retained. */
@@ -262,7 +263,7 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
     const config = await readManagedRuntime(home);
     if (!config || execution?.mode !== 'resident' || execution.connection?.status !== 'connected' || execution.phase !== 'active' ||
         !Array.isArray(status.apps) || !execution.owner?.id || !Number.isSafeInteger(execution.supervision?.guardianPid)) throw Error('Live native execution identity is incomplete');
-    if (process.platform !== 'darwin' || config.scope !== 'user') throw Error('This development rollout requires a macOS user installation. Use the managed fleet workflow for servers');
+    assertLocalUpdatePlatform();
     assertLocalServiceTargets(config);
     const selection = await installationState(observation);
     const ownerPid = execution.owner.pid, guardianPid = execution.supervision!.guardianPid;
@@ -484,6 +485,7 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
   };
   return {
     async prepare(reviewed?: RuntimeUpdatePlan): Promise<RuntimeUpdatePlan> {
+      assertLocalUpdatePlatform();
       await inspectedRuntime(reference);
       const live = await call<RuntimeUpdateStatusObservation>(['status']);
       assertLocalReview(live);

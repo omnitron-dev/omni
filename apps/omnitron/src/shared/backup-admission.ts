@@ -1,6 +1,21 @@
 import { isDeepStrictEqual } from 'node:util';
 import type { OperationReceipt } from './dto/execution-operations.js';
 
+/** Shared with the standalone fleet probe. Owned backups are reviewed separately by receipt. */
+export function assertReviewableBackendActivity(counters: Readonly<Record<string, unknown>> | undefined, required: readonly string[]): void {
+  const reported = counters ?? {};
+  const missing = [...required, 'backupOperations'].filter(name => !Object.hasOwn(reported, name));
+  if (missing.length) throw Error('Serving backend omitted required activity counters: ' + missing.join(', '));
+
+  const active: string[] = [];
+  for (const [name, count] of Object.entries(reported)) {
+    if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0)
+      throw Error('Serving backend reported an invalid activity counter: ' + name);
+    if (name !== 'backupOperations' && count > 0) active.push(name + '=' + count);
+  }
+  if (active.length) throw Error('Backend work is active: ' + active.join(', '));
+}
+
 /** Completion must belong to the exact attempt the operator reviewed. */
 export function assertReviewedBackupCompletion(previous: OperationReceipt, actual: OperationReceipt | null): void {
   const intent = (receipt: OperationReceipt) => ({ protocol: receipt.protocol, id: receipt.id, kind: receipt.kind,

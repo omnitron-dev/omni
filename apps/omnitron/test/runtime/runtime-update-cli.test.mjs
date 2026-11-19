@@ -145,6 +145,15 @@ test('host preparation retains its live proof without rereading candidate bytes'
   await assert.rejects(runtimeUpdateActions({ ...options, runtime: JSON.parse(JSON.stringify(runtime)) }), /no in-process verification/);
 });
 
+test('the candidate directs Linux hosts to fleet before querying live services', { skip: process.platform !== 'linux' }, async t => {
+  const { home } = await instance(t);
+  const fixture = await candidate(home);
+  const actions = await runtimeUpdateActions({ runtime: await verifyRuntimeUpdateTarget(fixture.directory), instance: home,
+    call: () => assert.fail('Linux preparation must not query the serving controller'),
+    run: () => assert.fail('Linux preparation must not change services') });
+  await assert.rejects(actions.prepare(), /omnitron fleet rollout plan/);
+});
+
 test('host preparation rejects mutation and cannot revive a stale proof by restoring original bytes', async t => {
   const { home } = await instance(t), fixture = await candidate(home);
   const runtime = await verifyRuntimeUpdateTarget(fixture.directory);

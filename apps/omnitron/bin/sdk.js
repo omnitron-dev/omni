@@ -10,7 +10,8 @@ import { isDeepStrictEqual, parseArgs, promisify } from 'node:util';
 import { parseAllDocuments } from 'yaml';
 import { getWantedPackageManager } from '@pnpm/config.reader';
 import { frameworkPackage } from './pnpmfile-sdk.js';
-import { sdkTransitionStatus, prepareSdkTransition, beginSdkTransition, finishSdkTransition, recoverSdkTransition, saveSdkBuildCheckpoint } from './sdk-transition.js';
+import { sdkTransitionStatus, sdkTransitionSettled, sdkAdoptionTransition, supersedeSdkTransition,
+  prepareSdkTransition, beginSdkTransition, finishSdkTransition, recoverSdkTransition, saveSdkBuildCheckpoint } from './sdk-transition.js';
 import { sdkStatePath as statePath, prepareSdkState as prepareState, exclusively,
   assertSdkAvailable as assertSourceAvailable, clearSdkSelection as clearSourceSelection,
   sdkWorkspaceIdentity, withMigrationSdkLocks } from './sdk-operation.js';
@@ -20,6 +21,7 @@ const help = `omnitron sdk init [--project-dir PATH]
 omnitron sdk dev [SDK_CHECKOUT] [--project-dir PATH] [--stack NAME [--start-stopped --review DIGEST]] [--no-watch]
 omnitron sdk registry [--project-dir PATH]
 omnitron sdk recover [--project-dir PATH] [--stack NAME]
+omnitron sdk adopt --stack NAME [--project-dir PATH] (--check | --review DIGEST)
 omnitron sdk reconcile --stack NAME [--project-dir PATH] [--check]
 omnitron sdk status [--project-dir PATH] [--stack NAME]
 
@@ -35,6 +37,9 @@ Inspection never builds, installs dependencies or restarts applications.
 Selection retains a verified before-image in the development cache before building or installing.
 OMNITRON_DEV_CACHE overrides the shared XDG_CACHE_HOME/~/.cache/omnitron/development default.
 recover restores the last retained selection's bytes without rebuilding or installing.
+adopt reviews the verified current files of a recoverable selection without restoring its
+old dependencies. Application consumers must be stopped before --review; the original
+uncertain attempt and its rollback evidence remain in history, never marked successful.
 reconcile confirms a durably acknowledged start without starting or restoring anything.
 --check only observes its evidence, including legacy attempts with an unknown outcome.
 Affected source consumers must be stopped; uncertain interrupted writes are never overwritten.
@@ -1419,7 +1424,7 @@ export async function inspectSdk(projectDirectory = process.cwd(), stack) {
   await assertSourceAvailable(root);
   const dir = statePath(root);
   const transition = await sdkTransitionStatus(root);
-  if (transition && !['committed', 'restored'].includes(transition.phase))
+  if (transition && !sdkTransitionSettled(transition.phase))
     throw Error(`SDK transition ${transition.id} is ${transition.phase}; readiness is unconfirmed. Run sdk recover.`);
   const active = await profileStatus(root);
   if (active) await assertSourceAvailable(active.source);
@@ -1481,7 +1486,7 @@ async function observeAcknowledgedLaunch(root, stack, record, persist) {
   const { attempt, scope } = record;
   const launch = acknowledgedLaunch(root, stack, scope, attempt), profile = attempt.profile;
   const transition = await sdkTransitionStatus(root);
-  if (transition && !['committed', 'restored'].includes(transition.phase))
+  if (transition && !sdkTransitionSettled(transition.phase))
     throw Error('SDK file selection is unfinished; observing processes cannot commit or restore its bytes');
   await assertSourceAvailable(root); await assertSourceAvailable(profile.source);
   await verifySelectedProfile(profile);
@@ -1549,6 +1554,56 @@ export async function reconcileSdkLaunch(projectDirectory, stack) {
   });
 }
 
+/** Qualify present files independently of an earlier, no longer restorable SDK. */
+export async function inspectSdkAdoption(projectDirectory, stack) {
+  if (typeof stack !== 'string' || !stack.trim()) throw Error('Current SDK admission requires an explicit stack');
+  const root = await fs.realpath(projectDirectory);
+  const previous = await sdkAdoptionTransition(root), source = previous.transition.source;
+  await assertSourceAvailable(root);
+  await assertSourceAvailable(source, { root, id: previous.transition.id });
+  const workspaces = await Promise.all([root, source].map(sdkWorkspaceIdentity));
+  const profile = await profileStatus(root);
+  if (!profile || profile.source !== source) throw Error('Current SDK selection does not match the recoverable operation');
+  await verifySelectedProfile(profile);
+  const built = await reusableBuild(profile);
+  if (!built) throw Error('Current SDK inputs and outputs have no complete, unchanged build proof; adoption cannot rebuild or repair them');
+  const checkpoint = await fs.readFile(path.join(statePath(root), 'built.json'), 'utf8');
+  await verifySelectedProfile(profile);
+  const final = await sdkAdoptionTransition(root);
+  if (!isDeepStrictEqual(previous, final) || !isDeepStrictEqual(workspaces, await Promise.all([root, source].map(sdkWorkspaceIdentity))))
+    throw Error('SDK ownership or launch evidence changed during current-state inspection');
+  const plan = { protocol: 1, root, source, stack, workspaces, transition: previous.transition,
+    startAttemptsSha256: previous.startAttemptsSha256, profileSha256: sha256(JSON.stringify(profile)),
+    checkpointSha256: sha256(checkpoint), buildSha256: sha256(JSON.stringify(built)) };
+  return { digest: sha256(JSON.stringify(plan)), plan, launch: 'unconfirmed' };
+}
+
+export async function adoptSdk(projectDirectory, stack, review) {
+  if (!/^[a-f0-9]{64}$/.test(review)) throw Error('Current SDK admission requires the exact reviewed digest');
+  const root = await fs.realpath(projectDirectory);
+  return exclusively(await prepareState(root), async () => {
+    const previous = await sdkAdoptionTransition(root), source = previous.transition.source;
+    return exclusively(await prepareState(source), async () => {
+      await assertSourceAvailable(root);
+      await assertSourceAvailable(source, { root, id: previous.transition.id });
+      await requireSourceStopped(root, source, stack);
+      await requireSdkMutationAuthority();
+      const qualified = await inspectSdkAdoption(root, stack);
+      if (qualified.digest !== review) throw Error('Current SDK state changed; inspect its new admission before proceeding');
+      const revalidate = async () => {
+        if ((await inspectSdkAdoption(root, stack)).digest !== review) throw Error('Current SDK state changed during admission');
+        await requireSourceStopped(root, source, stack);
+        await requireSdkMutationAuthority();
+      };
+      await requireSourceStopped(root, source, stack);
+      await requireSdkMutationAuthority();
+      const admission = await supersedeSdkTransition(root, qualified.plan, review, revalidate);
+      await clearSourceSelection(root, source, previous.transition.id);
+      return { state: 'current-files-adopted', digest: review, source, stack, launch: 'unconfirmed', history: admission.history };
+    });
+  });
+}
+
 export async function sdkCommand(argv) {
   const { values, positionals } = parseArgs({
     args: argv,
@@ -1569,15 +1624,22 @@ export async function sdkCommand(argv) {
     console.log(help);
     return;
   }
-  if (!['init', 'dev', 'status', 'registry', 'recover', 'reconcile'].includes(action) || positionals.length > (action === 'dev' ? 2 : 1))
+  if (!['init', 'dev', 'status', 'registry', 'recover', 'reconcile', 'adopt'].includes(action) || positionals.length > (action === 'dev' ? 2 : 1))
     throw Error(help);
-  if (values.check && action !== 'reconcile' || action === 'reconcile' && !values.stack)
-    throw Error('Use sdk reconcile --stack NAME [--check]');
+  if (values.check && !['reconcile', 'adopt'].includes(action) || ['reconcile', 'adopt'].includes(action) && !values.stack)
+    throw Error('Use sdk reconcile --stack NAME [--check] or sdk adopt --stack NAME (--check | --review DIGEST)');
+  if (action === 'adopt' && (values['start-stopped'] || !!values.check === (values.review !== undefined) ||
+      values.review !== undefined && !/^[a-f0-9]{64}$/.test(values.review)))
+    throw Error('Use sdk adopt --stack NAME (--check | --review DIGEST)');
   if ((values['start-stopped'] || values.review !== undefined) &&
-      (action !== 'dev' || !values.stack || !values['start-stopped'] || !/^[a-f0-9]{64}$/.test(values.review ?? '')))
+      action !== 'adopt' && (action !== 'dev' || !values.stack || !values['start-stopped'] || !/^[a-f0-9]{64}$/.test(values.review ?? '')))
     throw Error('Use sdk dev --stack NAME --start-stopped --review DIGEST with the exact preservation review');
   const root = await fs.realpath(values['project-dir'] ?? process.cwd()),
     dir = statePath(root);
+  if (action === 'adopt') {
+    console.log(JSON.stringify(await (values.check ? inspectSdkAdoption(root, values.stack) : adoptSdk(root, values.stack, values.review)), null, 2));
+    return;
+  }
   if (action === 'reconcile') {
     console.log(JSON.stringify(await (values.check ? inspectSdkLaunch : reconcileSdkLaunch)(root, values.stack), null, 2));
     return;
@@ -1620,6 +1682,7 @@ export async function sdkCommand(argv) {
     const transition = await sdkTransitionStatus(root);
     if (action === 'recover') {
       if (!transition) throw Error('No retained SDK transition is available');
+      if (transition.phase === 'superseded') throw Error('The previous SDK attempt remains in history and cannot be restored after current-state admission');
       await sdkTransitionStatus(root, true);
       await exclusively(await prepareState(transition.source), async () => {
         await assertSourceAvailable(transition.source, { root, id: transition.id });
@@ -1630,7 +1693,7 @@ export async function sdkCommand(argv) {
       console.log('Previous SDK bytes and dependency bindings restored. This does not certify source or application readiness; run sdk status.');
       return;
     }
-    if (transition && !['committed', 'restored'].includes(transition.phase))
+    if (transition && !sdkTransitionSettled(transition.phase))
       throw Error('SDK transition is unfinished; run sdk recover before another selection');
     // A crash after committing the consumer receipt can precede releasing the
     // source fence. Clear that exact terminal fence before replacing history.

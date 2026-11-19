@@ -88,6 +88,18 @@ sdk.command('reconcile').description('Confirm an acknowledged SDK launch without
     if (!emitJson(result)) emitInfo(`${result.stack} · ${result.state} · stop ${result.stop ?? 'not recorded'}` +
       ('reason' in result && result.reason ? ` · ${result.reason}` : ''));
   });
+sdk.command('adopt').description('Review and accept verified current SDK files while preserving the former uncertain attempt')
+  .option('--project-dir <path>', 'Consumer workspace directory', process.cwd())
+  .requiredOption('--stack <name>', 'Local source stack whose consumers must be stopped before admission')
+  .option('--check', 'Qualify the current files without changing receipts or restoring dependencies')
+  .option('--review <digest>', 'Accept exactly the current-state review, preserving earlier history')
+  .structuredAction(async ({ projectDir, stack, check, review }) => {
+    if (!!check === (review !== undefined)) throw new Error('Use sdk adopt --stack NAME (--check | --review DIGEST)');
+    const { inspectSdkAdoption, adoptSdk } = await import('../../bin/sdk.js');
+    const { emitJson, emitInfo } = await import('../commands/output.js');
+    const result = check ? await inspectSdkAdoption(projectDir, stack) : await adoptSdk(projectDir, stack, review);
+    if (!emitJson(result)) emitInfo(`${stack} · ${result.digest} · current files ${check ? 'reviewed' : 'adopted'} · former launch unconfirmed`);
+  });
 
 // ============================================================================
 // Daemon Lifecycle

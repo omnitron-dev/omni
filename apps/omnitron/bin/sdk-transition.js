@@ -29,6 +29,7 @@ async function settledMap(items, concurrency, operation) {
 }
 export const developmentCacheDirectory = override => path.resolve(override ??
   path.join(process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache'), 'omnitron', 'development'));
+export const sdkTransitionSettled = phase => ['committed', 'restored', 'superseded'].includes(phase);
 
 export async function sdkDirectory(directory) {
   let prefix = path.parse(directory).root;
@@ -147,7 +148,7 @@ async function load(root) {
   const journal = JSON.parse(raw);
   if (journal.schema !== 1 || journal.root !== root || !/^[a-f0-9-]{36}$/.test(journal.id) ||
       !path.isAbsolute(journal.cache) || journal.snapshot !== path.join(journal.cache, 'sdk-transitions', journal.id) ||
-      !['prepared', 'mutating', 'recoverable', 'committed', 'restoring', 'restored'].includes(journal.phase))
+      !['prepared', 'mutating', 'recoverable', 'committed', 'restoring', 'restored', 'superseded'].includes(journal.phase))
     throw Error('Invalid SDK transition receipt');
   await owned(path.dirname(journal.snapshot), true); await owned(journal.snapshot, true);
   await owned(path.join(journal.snapshot, 'proof.json'), false);
@@ -159,13 +160,97 @@ async function load(root) {
       proof.entries.some(item => ![root, proof.source].some(base => inside(base, item.path)) ||
         item.path === root || item.path === proof.source || item.path.split(path.sep).includes('.git')))
     throw Error('SDK transition paths do not belong to the selected workspaces');
-  return { journal, proof };
+  return { journal, proof, raw };
 }
 
 export async function sdkTransitionStatus(root, verify = false) {
   const selected = await load(root);
   if (selected && verify) await verifyGuards(selected.proof);
-  return selected && { id: selected.journal.id, phase: selected.journal.phase, source: selected.proof.source };
+  if (selected?.journal.phase === 'superseded') await sdkAdoptionTransition(root);
+  return selected && { id: selected.journal.id, phase: selected.journal.phase, source: selected.proof.source,
+    ...(selected.journal.phase === 'superseded' && { adoption: { review: selected.journal.adoption.review,
+      launch: 'unconfirmed', history: selected.journal.adoption.history } }) };
+}
+
+async function attemptsBytes(root) {
+  const file = path.join(path.dirname(state(root)), 'start-attempts.json');
+  if (!await stat(file)) return null;
+  await owned(file, false);
+  return fs.readFile(file, 'utf8');
+}
+
+/** Current-state admission never relies on or changes the former rollback guards. */
+export async function sdkAdoptionTransition(root) {
+  const selected = await load(root);
+  if (!selected || !['recoverable', 'superseded'].includes(selected.journal.phase))
+    throw Error('Only a recoverable SDK selection can be superseded; an interrupted writer or restoration must be resolved first');
+  await verifyRoots(selected.proof);
+  const { journal } = selected;
+  let original = selected.raw;
+  if (journal.phase === 'superseded') {
+    const admission = journal.adoption;
+    const history = path.join(path.dirname(state(root)), 'history', journal.id + '-' + admission?.review + '.json');
+    if (admission?.protocol !== 1 || admission.history !== history || !/^[a-f0-9]{64}$/.test(admission.review) ||
+        hash(JSON.stringify(admission.evidence)) !== admission.review || admission.launch !== 'unconfirmed' ||
+        admission.evidence.protocol !== 1 || admission.evidence.root !== root || admission.evidence.source !== journal.source ||
+        admission.evidence.transition?.id !== journal.id || admission.evidence.transition.source !== journal.source ||
+        admission.evidence.transition.proofSha256 !== journal.proof) throw Error('Invalid SDK current-state admission');
+    await owned(path.dirname(history), true);
+    await owned(history, false);
+    const bytes = await fs.readFile(history, 'utf8');
+    if (hash(bytes) !== admission.historySha256) throw Error('Archived SDK transition history changed');
+    const record = JSON.parse(bytes);
+    original = record.journal;
+    if (record.schema !== 1 || typeof original !== 'string' || (record.attempts !== null && typeof record.attempts !== 'string') ||
+        hash(original) !== admission.evidence.transition.journalSha256 ||
+        (record.attempts === null ? null : hash(record.attempts)) !== admission.evidence.startAttemptsSha256)
+      throw Error('Archived SDK transition evidence changed');
+    const prior = JSON.parse(original);
+    if (prior.id !== journal.id || prior.root !== root || prior.source !== journal.source || prior.proof !== journal.proof || prior.phase !== 'recoverable')
+      throw Error('Archived SDK transition belongs to another selection');
+  }
+  return { transition: { id: journal.id, source: journal.source, journalSha256: hash(original), proofSha256: journal.proof },
+    startAttemptsSha256: await attemptsBytes(root).then(bytes => bytes === null ? null : hash(bytes)),
+    ...(journal.phase === 'superseded' && { adoption: journal.adoption }) };
+}
+
+/** Caller holds both workspace locks, verifies the current graph and proves stopped consumers. */
+export async function supersedeSdkTransition(root, evidence, review, revalidate) {
+  if (!/^[a-f0-9]{64}$/.test(review) || hash(JSON.stringify(evidence)) !== review || evidence?.protocol !== 1 || evidence.root !== root)
+    throw Error('Current SDK state requires its exact reviewed digest');
+  if (typeof revalidate !== 'function') throw Error('Current SDK admission requires independent revalidation');
+  const observed = await sdkAdoptionTransition(root);
+  if (!same(observed.transition, evidence.transition) || observed.startAttemptsSha256 !== evidence.startAttemptsSha256)
+    throw Error('SDK transition or launch attempts changed before current-state admission');
+  if (observed.adoption) {
+    if (observed.adoption.review !== review) throw Error('This SDK selection already has another current-state admission');
+    return observed.adoption;
+  }
+  const selected = await load(root);
+  if (hash(selected.raw) !== evidence.transition.journalSha256) throw Error('SDK transition changed before archiving');
+  const attempts = await attemptsBytes(root);
+  if ((attempts === null ? null : hash(attempts)) !== evidence.startAttemptsSha256) throw Error('SDK launch attempts changed before archiving');
+  const directory = path.join(path.dirname(state(root)), 'history');
+  await sdkDirectory(directory); await owned(directory, true);
+  const history = path.join(directory, selected.journal.id + '-' + review + '.json');
+  const bytes = JSON.stringify({ schema: 1, journal: selected.raw, attempts }) + '\n';
+  const temporary = history + '.' + randomUUID();
+  try {
+    const fd = await fs.open(temporary, 'wx', 0o600);
+    try { await fd.writeFile(bytes); await fd.sync(); } finally { await fd.close(); }
+    try { await fs.link(temporary, history); await sync(directory); }
+    catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      await owned(history, false);
+      if (await fs.readFile(history, 'utf8') !== bytes) throw Error('SDK history already contains different evidence');
+    }
+  } finally { await fs.rm(temporary, { force: true }); }
+  await revalidate();
+  if (await fs.readFile(state(root), 'utf8') !== selected.raw || await attemptsBytes(root) !== attempts)
+    throw Error('SDK selection changed during archival; current files were preserved');
+  const adoption = { protocol: 1, review, evidence, history, historySha256: hash(bytes), launch: 'unconfirmed' };
+  await atomic(state(root), { ...selected.journal, phase: 'superseded', adoption });
+  return adoption;
 }
 
 /**
@@ -174,7 +259,7 @@ export async function sdkTransitionStatus(root, verify = false) {
  */
 export async function prepareSdkTransition({ root, source, paths, guards, progress }) {
   const prior = await sdkTransitionStatus(root);
-  if (prior && !['committed', 'restored'].includes(prior.phase)) throw Error('SDK transition is unfinished; run sdk recover before another selection');
+  if (prior && !sdkTransitionSettled(prior.phase)) throw Error('SDK transition is unfinished; run sdk recover before another selection');
   const cache = developmentCacheDirectory(process.env.OMNITRON_DEV_CACHE);
   if ([root, source].some(base => inside(base, cache) || inside(cache, base))) throw Error('SDK transition cache must be separate from both workspaces');
   if (cache.startsWith('/Volumes/')) {
@@ -272,6 +357,7 @@ export async function recoverSdkTransition(root) {
   const selected = await load(root);
   if (!selected) throw Error('No retained SDK transition is available');
   const { journal, proof } = selected;
+  if (journal.phase === 'superseded') throw Error('This SDK transition was superseded without restoration; its uncertain attempt remains in history. Select a new SDK to retain a fresh before-image.');
   if (journal.phase === 'restored') {
     await verifyGuards(proof);
     if (!same(await measurements(proof), proof.entries.map(entry => entry.before)))

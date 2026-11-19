@@ -23,7 +23,7 @@ vi.mock('@omnitron-dev/omnitron/operations', async () => ({
     status: rpc.status, getWatchStatus: rpc.watch, restartAfterChange: rpc.automatic,
     restartApp: rpc.manual, disconnect: rpc.disconnect }),
 }));
-const { inspectSdk, inspectSdkLaunch, reconcileSdkLaunch, sdkCommand, watchSdk } = await import('../../bin/sdk.js');
+const { inspectSdk, inspectSdkLaunch, reconcileSdkLaunch, inspectSdkAdoption, adoptSdk, sdkCommand, watchSdk } = await import('../../bin/sdk.js');
 import { exclusively, prepareSdkState } from '../../bin/sdk-operation.js';
 import * as transitions from '../../bin/sdk-transition.js';
 const require = createRequire(import.meta.url);
@@ -197,6 +197,81 @@ async function coldFixture() {
   };
   return { ...f, apps, state, stop, target, digest, start, halt, command };
 }
+
+async function adoptionFixture() {
+  const f = await coldFixture();
+  await sdkCommand(['dev', f.source, '--project-dir', f.consumer, '--stack', 'dev', '--no-watch']);
+  const state = path.dirname(f.checkpoint), former = path.join(f.consumer, 'former-dependencies');
+  await fs.writeFile(former, 'old SDK dependency bytes');
+  const transition = await transitions.prepareSdkTransition({ root: f.consumer, source: f.source,
+    paths: [f.checkpoint], guards: [former] });
+  await transitions.beginSdkTransition(transition);
+  await transitions.finishSdkTransition(transition, false);
+  await fs.writeFile(former, 'later unrelated mutable SDK dependency bytes');
+  const attempts = JSON.stringify({ 'project/dev': f.stop.id }) + '\n';
+  await fs.writeFile(path.join(state, 'start-attempts.json'), attempts, { mode: 0o600 });
+  await fs.writeFile(path.join(f.source, '.omnitron/dev-sdk/pending-selection'), JSON.stringify({ root: f.consumer, id: transition.journal.id }), { mode: 0o600 });
+  const original = await fs.readFile(path.join(state, 'transition.json'), 'utf8');
+  return { ...f, transition, original, attempts, former };
+}
+
+it('public adoption admits only verified present SDK files, preserves an unconfirmed legacy start and never reinstalls or starts', async () => {
+  const f = await adoptionFixture();
+  try {
+    const commands = vi.mocked(childProcess.spawn); commands.mockClear(); rpc.start.mockClear(); rpc.automatic.mockClear();
+    await expect(transitions.recoverSdkTransition(f.consumer)).rejects.toThrow('inputs changed outside');
+    const before = await fs.readFile(f.checkpoint, 'utf8');
+    const review = await inspectSdkAdoption(f.consumer, 'dev');
+    expect(await fs.readFile(path.join(path.dirname(f.checkpoint), 'transition.json'), 'utf8')).toBe(f.original);
+    const receipt = await adoptSdk(f.consumer, 'dev', review.digest);
+    expect(receipt).toMatchObject({ state: 'current-files-adopted', launch: 'unconfirmed', digest: review.digest });
+    expect(JSON.parse(await fs.readFile(receipt.history, 'utf8'))).toEqual({ schema: 1, journal: f.original, attempts: f.attempts });
+    expect(await fs.readFile(f.checkpoint, 'utf8')).toBe(before);
+    expect(await fs.readFile(f.former, 'utf8')).toBe('later unrelated mutable SDK dependency bytes');
+    expect(await inspectSdk(f.consumer)).toMatchObject({ build: { status: 'current' }, transition: { phase: 'superseded' } });
+    expect(await inspectSdkLaunch(f.consumer, 'dev')).toMatchObject({ state: 'unconfirmed', reconcilable: false });
+    expect(rpc.start).not.toHaveBeenCalled(); expect(rpc.automatic).not.toHaveBeenCalled();
+    expect(commands.mock.calls.some(([, argv]) => argv?.includes('install') || argv?.includes('build') && !argv?.includes('--dry=json'))).toBe(false);
+    expect(await adoptSdk(f.consumer, 'dev', review.digest)).toEqual(receipt);
+    await expect(sdkCommand(['recover', '--project-dir', f.consumer, '--stack', 'dev'])).rejects.toThrow('cannot be restored');
+    await fs.writeFile(path.join(f.pkg, 'src/index.js'), 'export const version = 2;\n');
+    await sdkCommand(['dev', f.source, '--project-dir', f.consumer, '--stack', 'dev', '--no-watch']);
+    const next = await transitions.sdkTransitionStatus(f.consumer);
+    expect(next).toMatchObject({ phase: 'committed' }); expect(next!.id).not.toBe(f.transition.journal.id);
+    expect(JSON.parse(await fs.readFile(receipt.history, 'utf8')).journal).toBe(f.original);
+    expect(rpc.start).not.toHaveBeenCalled();
+  } finally { await f.close(); }
+}, 90_000);
+
+it('public current-state review may observe serving files but admission requires every source consumer stopped', async () => {
+  const f = await adoptionFixture();
+  try {
+    f.app.status = 'online';
+    const review = await inspectSdkAdoption(f.consumer, 'dev');
+    await expect(adoptSdk(f.consumer, 'dev', review.digest)).rejects.toThrow('Stop project/dev');
+    expect(await fs.readFile(path.join(path.dirname(f.checkpoint), 'transition.json'), 'utf8')).toBe(f.original);
+    expect(rpc.start).not.toHaveBeenCalled();
+  } finally { await f.close(); }
+}, 90_000);
+
+it.each(['source', 'outputs', 'profile', 'attempts', 'authority', 'source-lock'])('public adoption refuses changed %s without rewriting history or issuing a start', async failure => {
+  const f = await adoptionFixture();
+  try {
+    const review = await inspectSdkAdoption(f.consumer, 'dev');
+    if (failure === 'source') await fs.appendFile(path.join(f.pkg, 'src/index.js'), '// foreign change\n');
+    if (failure === 'outputs') await fs.appendFile(path.join(f.pkg, 'dist/index.js'), '// foreign change\n');
+    if (failure === 'profile') await fs.writeFile(path.join(path.dirname(f.checkpoint), 'install.json'), '{}');
+    if (failure === 'attempts') await fs.writeFile(path.join(path.dirname(f.checkpoint), 'start-attempts.json'), '{}\n', { mode: 0o600 });
+    if (failure === 'authority') rpc.mutable.mockRejectedValue(Error('role denied'));
+    const verify = async () => {
+      await expect(adoptSdk(f.consumer, 'dev', review.digest)).rejects.toThrow(/changed|build proof|role denied|operation is active/);
+    };
+    if (failure === 'source-lock') await exclusively(await prepareSdkState(f.source), verify);
+    else await verify();
+    expect(await fs.readFile(path.join(path.dirname(f.checkpoint), 'transition.json'), 'utf8')).toBe(f.original);
+    expect(rpc.start).not.toHaveBeenCalled();
+  } finally { await f.close(); }
+}, 90_000);
 
 it('verifies a current one-shot SDK while its stack runs and retains recovery before rebuilding stale outputs', async () => {
   const f = await coldFixture();

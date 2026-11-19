@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
-import { sdkDirectory, sdkTransitionStatus } from './sdk-transition.js';
+import { sdkDirectory, sdkTransitionStatus, sdkTransitionSettled } from './sdk-transition.js';
 
 export const sdkStatePath = root => path.join(root, '.omnitron', 'dev-sdk');
 const markerPath = root => path.join(sdkStatePath(root), 'pending-selection');
@@ -116,7 +116,7 @@ export async function assertSdkAvailable(root, ownedSelection) {
   if (ownedSelection && owner.root === ownedSelection.root && owner.id === ownedSelection.id) return;
   const selection = await sdkTransitionStatus(owner.root);
   if (!selection || selection.id !== owner.id || selection.source !== root ||
-      !['committed', 'restored'].includes(selection.phase))
+      !sdkTransitionSettled(selection.phase))
     throw Error('Shared SDK source has an unfinished selection; recover its consumer before another build: ' + owner.root);
 }
 

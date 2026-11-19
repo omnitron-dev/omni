@@ -3,7 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { prepareSdkTransition, beginSdkTransition, finishSdkTransition, recoverSdkTransition, sdkTransitionStatus, saveSdkBuildCheckpoint } from '../../bin/sdk-transition.js';
+import { prepareSdkTransition, beginSdkTransition, finishSdkTransition, recoverSdkTransition, sdkTransitionStatus,
+  saveSdkBuildCheckpoint, sdkAdoptionTransition, supersedeSdkTransition } from '../../bin/sdk-transition.js';
 import { sdkCommand, inspectSdk } from '../../bin/sdk.js';
 
 const rpc = vi.hoisted(() => ({ projects: vi.fn(), stacks: vi.fn(), status: vi.fn(), disconnect: vi.fn(), mutable: vi.fn() }));
@@ -74,6 +75,100 @@ it('refuses an unacknowledged interrupted writer and never declares readiness', 
   await expect(inspectSdk(root)).rejects.toThrow('readiness is unconfirmed');
   await expect(prepare()).rejects.toThrow('unfinished');
   expect(await fs.readFile(path.join(output, 'index.js'), 'utf8')).toBe('partially rebuilt');
+});
+
+async function adoption() {
+  const observed = await sdkAdoptionTransition(root);
+  const evidence = { protocol: 1, root, source, stack: 'dev', transition: observed.transition,
+    startAttemptsSha256: observed.startAttemptsSha256 };
+  return { evidence, review: createHash('sha256').update(JSON.stringify(evidence)).digest('hex') };
+}
+
+it('supersedes current files without restoring a changed old guard or rewriting the original uncertain history', async () => {
+  const transition = await prepare(); await beginSdkTransition(transition); await mutate(); await finishSdkTransition(transition, false);
+  const original = await fs.readFile(path.join(state, 'transition.json'), 'utf8');
+  const proof = await fs.readFile(path.join(transition.journal.snapshot, 'proof.json'), 'utf8');
+  const attempts = '{ "project/dev": "legacy-stop-id" }\n';
+  await fs.writeFile(path.join(state, 'start-attempts.json'), attempts, { mode: 0o600 });
+  await fs.writeFile(path.join(source, 'package.json'), '{"version":"later-current-dependencies"}');
+  await expect(recoverSdkTransition(root)).rejects.toThrow('inputs changed outside');
+  const plan = await adoption(), revalidate = vi.fn(async () => {});
+  const accepted = await supersedeSdkTransition(root, plan.evidence, plan.review, revalidate);
+  expect(revalidate).toHaveBeenCalledOnce();
+  expect(await json(accepted.history)).toEqual({ schema: 1, journal: original, attempts });
+  expect(await fs.readFile(path.join(transition.journal.snapshot, 'proof.json'), 'utf8')).toBe(proof);
+  expect(await fs.readFile(path.join(state, 'start-attempts.json'), 'utf8')).toBe(attempts);
+  expect(await fs.readFile(path.join(output, 'index.js'), 'utf8')).toBe('partially rebuilt');
+  expect(await fs.readFile(path.join(source, 'package.json'), 'utf8')).toBe('{"version":"later-current-dependencies"}');
+  expect(await sdkTransitionStatus(root)).toMatchObject({ phase: 'superseded', adoption: { review: plan.review, launch: 'unconfirmed' } });
+  await expect(recoverSdkTransition(root)).rejects.toThrow('superseded without restoration');
+  expect(await supersedeSdkTransition(root, plan.evidence, plan.review, revalidate)).toEqual(accepted);
+  const next = await prepare();
+  expect(next.journal.id).not.toBe(transition.journal.id);
+  expect(await fs.readFile(path.join(next.journal.snapshot, '0/index.js'), 'utf8')).toBe('partially rebuilt');
+  expect(await json(accepted.history)).toEqual({ schema: 1, journal: original, attempts });
+});
+
+it('refuses adoption while an interrupted writer or restoration is unresolved', async () => {
+  const transition = await prepare(); await beginSdkTransition(transition); await mutate();
+  await expect(sdkAdoptionTransition(root)).rejects.toThrow('interrupted writer or restoration');
+  expect(await sdkTransitionStatus(root)).toMatchObject({ phase: 'mutating' });
+});
+
+it('preserves current files and the old receipt if admission changes after its history was retained', async () => {
+  const transition = await prepare(); await beginSdkTransition(transition); await mutate(); await finishSdkTransition(transition, false);
+  const original = await fs.readFile(path.join(state, 'transition.json'), 'utf8'), plan = await adoption();
+  await expect(supersedeSdkTransition(root, plan.evidence, plan.review, async () => { throw Error('current graph changed'); }))
+    .rejects.toThrow('current graph changed');
+  expect(await fs.readFile(path.join(state, 'transition.json'), 'utf8')).toBe(original);
+  expect(await fs.readFile(path.join(output, 'index.js'), 'utf8')).toBe('partially rebuilt');
+  await fs.writeFile(path.join(state, 'start-attempts.json'), '{"project/dev":"another-stop"}\n', { mode: 0o600 });
+  const changed = await adoption();
+  expect(changed.review).not.toBe(plan.review);
+  await supersedeSdkTransition(root, changed.evidence, changed.review, async () => {});
+  expect(await fs.readdir(path.join(state, 'history'))).toHaveLength(2);
+});
+
+it('recovers an acknowledgement lost after the atomic admission write without restoring or replaying a start', async () => {
+  const transition = await prepare(); await beginSdkTransition(transition); await mutate(); await finishSdkTransition(transition, false);
+  const plan = await adoption(), rename = fs.rename;
+  const injected = vi.spyOn(fs, 'rename').mockImplementation(async (from, to) => {
+    await rename(from, to);
+    if (String(to) === path.join(state, 'transition.json')) throw Error('lost admission acknowledgement');
+  });
+  await expect(supersedeSdkTransition(root, plan.evidence, plan.review, async () => {})).rejects.toThrow('lost admission');
+  injected.mockRestore();
+  expect(await sdkTransitionStatus(root)).toMatchObject({ phase: 'superseded' });
+  await supersedeSdkTransition(root, plan.evidence, plan.review, async () => {});
+  expect(await fs.readdir(path.join(state, 'history'))).toHaveLength(1);
+  expect(await fs.readFile(path.join(output, 'index.js'), 'utf8')).toBe('partially rebuilt');
+});
+
+it.each(['bytes', 'permissions'])('rejects changed archived history %s without weakening recovery guards', async change => {
+  const transition = await prepare(); await beginSdkTransition(transition); await mutate(); await finishSdkTransition(transition, false);
+  const plan = await adoption();
+  const accepted = await supersedeSdkTransition(root, plan.evidence, plan.review, async () => {});
+  if (change === 'bytes') await fs.appendFile(accepted.history, ' ');
+  else await fs.chmod(path.dirname(accepted.history), 0o777);
+  await expect(sdkTransitionStatus(root)).rejects.toThrow(/history changed|protected path/);
+  await expect(prepare()).rejects.toThrow(/history changed|protected path/);
+});
+
+it('retains workspace identity and refuses adoption of a replaced source', async () => {
+  const transition = await prepare(); await beginSdkTransition(transition); await finishSdkTransition(transition, false);
+  await fs.rename(source, source + '-prior'); await fs.mkdir(source);
+  await expect(sdkAdoptionTransition(root)).rejects.toThrow('workspace directory was replaced');
+});
+
+it('does not leave a partial history record after a failed archive publication', async () => {
+  const transition = await prepare(); await beginSdkTransition(transition); await finishSdkTransition(transition, false);
+  const original = await fs.readFile(path.join(state, 'transition.json'), 'utf8'), plan = await adoption();
+  const injected = vi.spyOn(fs, 'link').mockRejectedValueOnce(Error('archive publication failed'));
+  await expect(supersedeSdkTransition(root, plan.evidence, plan.review, async () => {})).rejects.toThrow('archive publication');
+  injected.mockRestore();
+  expect(await fs.readdir(path.join(state, 'history'))).toEqual([]);
+  expect(await fs.readFile(path.join(state, 'transition.json'), 'utf8')).toBe(original);
+  await supersedeSdkTransition(root, plan.evidence, plan.review, async () => {});
 });
 
 it('retains recovery of SDK-owned application receipts without adopting foreign output bytes', async () => {

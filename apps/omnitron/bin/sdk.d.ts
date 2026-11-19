@@ -4,7 +4,8 @@ export interface DevelopmentSdkStatus {
   source?: string;
   distributionLock?: 'present' | 'absent' | 'manager-only';
   distributionLockChanged?: boolean;
-  transition?: { id: string; phase: 'committed' | 'restored'; source: string };
+  transition?: { id: string; phase: 'committed' | 'restored' | 'superseded'; source: string;
+    adoption?: { review: string; launch: 'unconfirmed'; history: string } };
   build?: { status: 'current'; packages: string[] };
   refresh?: { stack: string; confirmed: string[]; inactive: string[]; optedOut: string[]; unaffected: string[] };
 }
@@ -43,5 +44,17 @@ export interface DevelopmentSdkLaunchStatus {
 export function inspectSdkLaunch(projectDirectory: string, stack: string): Promise<DevelopmentSdkLaunchStatus>;
 export function reconcileSdkLaunch(projectDirectory: string, stack: string): Promise<{
   state: 'confirmed'; stop: string; stack: string; confirmed: string[]; inactive: string[]; optedOut: string[]; unaffected: string[];
+}>;
+export interface DevelopmentSdkAdoption {
+  digest: string;
+  plan: { protocol: 1; root: string; source: string; stack: string;
+    workspaces: import('./sdk-operation.js').SdkWorkspaceIdentity[];
+    transition: { id: string; source: string; journalSha256: string; proofSha256: string };
+    startAttemptsSha256: string | null; profileSha256: string; checkpointSha256: string; buildSha256: string };
+  launch: 'unconfirmed';
+}
+export function inspectSdkAdoption(projectDirectory: string, stack: string): Promise<DevelopmentSdkAdoption>;
+export function adoptSdk(projectDirectory: string, stack: string, review: string): Promise<{
+  state: 'current-files-adopted'; digest: string; source: string; stack: string; launch: 'unconfirmed'; history: string;
 }>;
 export function watchSdk(profile: DevelopmentSdkProfile, stack: string | undefined, signal: AbortSignal): Promise<void>;

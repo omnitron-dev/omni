@@ -77,6 +77,17 @@ sdk.command('status').description('Verify the workspace imports and report their
       }
     }
   });
+sdk.command('reconcile').description('Confirm an acknowledged SDK launch without starting, rebuilding or restoring applications')
+  .option('--project-dir <path>', 'Consumer workspace directory', process.cwd())
+  .requiredOption('--stack <name>', 'Local source stack with a recorded SDK start attempt')
+  .option('--check', 'Read the existing evidence and owner observation without writing receipts')
+  .structuredAction(async ({ projectDir, stack, check }) => {
+    const { inspectSdkLaunch, reconcileSdkLaunch } = await import('../../bin/sdk.js');
+    const { emitJson, emitInfo } = await import('../commands/output.js');
+    const result = check ? await inspectSdkLaunch(projectDir, stack) : await reconcileSdkLaunch(projectDir, stack);
+    if (!emitJson(result)) emitInfo(`${result.stack} · ${result.state} · stop ${result.stop ?? 'not recorded'}` +
+      ('reason' in result && result.reason ? ` · ${result.reason}` : ''));
+  });
 
 // ============================================================================
 // Daemon Lifecycle

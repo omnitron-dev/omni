@@ -23,7 +23,7 @@ vi.mock('@omnitron-dev/omnitron/operations', async () => ({
     status: rpc.status, getWatchStatus: rpc.watch, restartAfterChange: rpc.automatic,
     restartApp: rpc.manual, disconnect: rpc.disconnect }),
 }));
-const { inspectSdk, sdkCommand, watchSdk } = await import('../../bin/sdk.js');
+const { inspectSdk, inspectSdkLaunch, reconcileSdkLaunch, sdkCommand, watchSdk } = await import('../../bin/sdk.js');
 import { exclusively, prepareSdkState } from '../../bin/sdk-operation.js';
 import * as transitions from '../../bin/sdk-transition.js';
 const require = createRequire(import.meta.url);
@@ -250,7 +250,9 @@ it('reuses a verified build for its reviewed first start without another recover
     await f.command();
     expect(snapshots).not.toHaveBeenCalled();
     expect(writes()).toEqual([]);
-    expect(await fs.readFile(transition, 'utf8')).toBe(retained);
+    const { owned: _beforeOwned, ...beforeSelection } = JSON.parse(retained);
+    const { owned: _afterOwned, ...afterSelection } = JSON.parse(await fs.readFile(transition, 'utf8'));
+    expect(afterSelection).toEqual(beforeSelection);
     expect(f.messages.mock.calls.some(call => String(call[0]).startsWith('Reusing verified development SDK build'))).toBe(true);
     expect(rpc.start).toHaveBeenCalledExactlyOnceWith({ ...f.target, review: f.digest });
     expect(rpc.automatic).not.toHaveBeenCalled();
@@ -432,21 +434,93 @@ it.each(['stale-review', 'late-review', 'lost-reply', 'lost-online-reply', 'chan
         if (fault === 'stale-review') expect(await fs.stat(path.join(path.dirname(f.checkpoint), 'active.json')).catch(() => null)).toBeNull();
       } else {
         if (fault === 'lost-reply') {
-          // The owner still observes a stopped stack: selection recovery
-          // restores the original absence of a build, retaining launch intent.
-          expect(await fs.stat(f.checkpoint).catch(() => null)).toBeNull();
+          // Committed SDK bytes survive an unknown start outcome. An observed
+          // stopped stack does not authorize automatic restoration or a retry.
+          expect(JSON.parse(await fs.readFile(f.checkpoint, 'utf8')).applications).toEqual({});
+          expect(await transitions.sdkTransitionStatus(f.consumer)).toMatchObject({ phase: 'committed' });
           await expect(f.command()).rejects.toThrow('already had a start request');
         } else {
           expect(JSON.parse(await fs.readFile(f.checkpoint, 'utf8')).applications['project/dev'] ?? {}).toEqual({});
         }
         if (fault === 'lost-online-reply') {
-          await expect(f.command()).rejects.toThrow('SDK transition is unfinished');
+          await expect(f.command()).rejects.toThrow('fully stopped');
           await expect(sdkCommand(['recover', '--project-dir', f.consumer, '--stack', 'dev']))
             .rejects.toThrow('before switching its working-tree dependencies');
         }
         expect(rpc.start).toHaveBeenCalledTimes(1);
       }
     } finally { await f.close(); }
+  }, 120_000);
+
+it('commits SDK files before dispatch and reconciles only its acknowledged generations without another start', async () => {
+  const f = await coldFixture();
+  const recover = vi.spyOn(transitions, 'recoverSdkTransition'), snapshots = vi.spyOn(transitions, 'prepareSdkTransition');
+  const commands = vi.mocked(childProcess.spawn);
+  try {
+    rpc.start.mockImplementationOnce(async () => {
+      expect(await transitions.sdkTransitionStatus(f.consumer)).toMatchObject({ phase: 'committed' });
+      rpc.watch.mockRejectedValueOnce(Error('owner observation interrupted'));
+      return f.start();
+    });
+    await expect(f.command()).rejects.toThrow('owner observation interrupted');
+    expect(recover).not.toHaveBeenCalled();
+    const evidence = path.join(path.dirname(f.checkpoint), 'start-attempts.json');
+    const acknowledged = await fs.readFile(evidence, 'utf8');
+    expect(JSON.parse(acknowledged)['project/dev']).toMatchObject({ protocol: 1, state: 'acknowledged', stop: f.stop.id });
+    const built = await fs.readFile(f.checkpoint, 'utf8');
+    expect(await inspectSdkLaunch(f.consumer, 'dev')).toMatchObject({ state: 'unconfirmed', reconcilable: true });
+    expect(await fs.readFile(evidence, 'utf8')).toBe(acknowledged);
+    expect(await fs.readFile(f.checkpoint, 'utf8')).toBe(built);
+    snapshots.mockClear(); commands.mockClear();
+    expect(await reconcileSdkLaunch(f.consumer, 'dev')).toMatchObject({ state: 'confirmed', confirmed: f.apps.map(app => app.handleKey) });
+    expect(await inspectSdkLaunch(f.consumer, 'dev')).toMatchObject({ state: 'confirmed', reconcilable: true });
+    await reconcileSdkLaunch(f.consumer, 'dev');
+    expect(rpc.start).toHaveBeenCalledOnce(); expect(rpc.automatic).not.toHaveBeenCalled();
+    expect(snapshots).not.toHaveBeenCalled();
+    expect(commands.mock.calls.some(([, args]) => Array.isArray(args) &&
+      (args.includes('install') || args.includes('build') && !args.includes('--dry=json')))).toBe(false);
+    f.halt();
+    await sdkCommand(['recover', '--project-dir', f.consumer, '--stack', 'dev']);
+    expect(await transitions.sdkTransitionStatus(f.consumer)).toMatchObject({ phase: 'restored' });
+    expect(await fs.stat(f.checkpoint).catch(() => null)).toBeNull();
+  } finally { recover.mockRestore(); snapshots.mockRestore(); commands.mockClear(); await f.close(); }
+}, 120_000);
+
+it.each(['no-reply', 'legacy', 'generation', 'output', 'input', 'review', 'authority'] as const)(
+  'does not infer or mutate SDK launch evidence after %s', async fault => {
+    const f = await coldFixture();
+    const recover = vi.spyOn(transitions, 'recoverSdkTransition');
+    try {
+      rpc.start.mockImplementationOnce(async () => {
+        const result = f.start();
+        if (fault === 'no-reply' || fault === 'legacy') { f.apps[1]!.status = 'stopped'; f.state.status = 'degraded'; throw Error('inventory stale'); }
+        rpc.watch.mockRejectedValueOnce(Error('owner observation interrupted'));
+        return result;
+      });
+      await expect(f.command()).rejects.toThrow(/inventory stale|owner observation interrupted/);
+      expect(recover).not.toHaveBeenCalled();
+      const evidence = path.join(path.dirname(f.checkpoint), 'start-attempts.json');
+      if (fault === 'legacy') {
+        await fs.writeFile(evidence, JSON.stringify({ 'project/dev': f.stop.id }), { mode: 0o600 });
+        const file = path.join(path.dirname(f.checkpoint), 'transition.json'), journal = JSON.parse(await fs.readFile(file, 'utf8'));
+        await fs.writeFile(file, JSON.stringify({ ...journal, phase: 'recoverable' }));
+      }
+      if (fault === 'generation') f.app.generation = randomUUID();
+      if (fault === 'output') await fs.appendFile(path.join(f.pkg, 'dist/index.js'), '// foreign output\n');
+      if (fault === 'input') await fs.appendFile(path.join(f.pkg, 'src/index.js'), '// newer source\n');
+      if (fault === 'review') rpc.review.mockResolvedValue({ ...f.target, protocol: 1, selection: { workingTree: true }, digest: 'b'.repeat(64) });
+      if (fault === 'authority') rpc.mutable.mockRejectedValue(Error('SDK authority revoked'));
+      const before = await fs.readFile(evidence, 'utf8'), built = await fs.readFile(f.checkpoint, 'utf8');
+      const inspected = await inspectSdkLaunch(f.consumer, 'dev');
+      expect(inspected).toMatchObject({ state: 'unconfirmed', reconcilable: false });
+      if (fault === 'legacy') expect(inspected.reason).toContain('Legacy SDK attempt');
+      if (fault === 'no-reply') expect(inspected.reason).toContain('no durably acknowledged reply');
+      await expect(reconcileSdkLaunch(f.consumer, 'dev')).rejects.toThrow();
+      expect(await fs.readFile(evidence, 'utf8')).toBe(before);
+      expect(await fs.readFile(f.checkpoint, 'utf8')).toBe(built);
+      expect(rpc.start).toHaveBeenCalledOnce(); expect(rpc.automatic).not.toHaveBeenCalled();
+      expect(recover).not.toHaveBeenCalled();
+    } finally { recover.mockRestore(); await f.close(); }
   }, 120_000);
 
 it('records completed builds without inventing application receipts after a refused refresh', async () => {

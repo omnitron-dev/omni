@@ -243,6 +243,31 @@ export async function finishSdkTransition(transition, committed) {
   await atomic(state(transition.proof.root), transition.journal);
 }
 
+/** Application receipts may advance after the file selection committed. Keep
+ * only that owned metadata entry current; never adopt changed build outputs. */
+export async function saveSdkBuildCheckpoint(root, checkpoint) {
+  const selected = await load(root), file = path.join(root, '.omnitron/dev-sdk/built.json');
+  const index = selected?.proof.entries.findIndex(entry => entry.path === file) ?? -1;
+  let tracked = false;
+  if (selected?.journal.phase === 'committed' && index >= 0 && selected.journal.owned?.[index]) {
+    await verifyRoots(selected.proof);
+    const entry = selected.proof.entries[index];
+    await physical(path.dirname(file));
+    if (!same(identity(await stat(path.dirname(file))), entry.parent)) throw Error('SDK checkpoint parent was replaced');
+    if (!same(await measure(file), selected.journal.owned[index]))
+      throw Error('SDK checkpoint changed outside its committed selection; its recovery evidence was preserved');
+    tracked = true;
+  }
+  await atomic(file, checkpoint);
+  if (tracked) {
+    const bytes = Buffer.from(JSON.stringify(checkpoint) + '\n');
+    const expected = { digest: hash(JSON.stringify([['', 'file', 0o600, bytes.length, hash(bytes)]])), bytes: bytes.length, absent: false };
+    if (!same(await measure(file), expected)) throw Error('SDK checkpoint changed before its recovery receipt was saved');
+    selected.journal.owned[index] = expected;
+    await atomic(state(root), selected.journal);
+  }
+}
+
 export async function recoverSdkTransition(root) {
   const selected = await load(root);
   if (!selected) throw Error('No retained SDK transition is available');

@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { prepareSdkTransition, beginSdkTransition, finishSdkTransition, recoverSdkTransition, sdkTransitionStatus } from '../../bin/sdk-transition.js';
+import { prepareSdkTransition, beginSdkTransition, finishSdkTransition, recoverSdkTransition, sdkTransitionStatus, saveSdkBuildCheckpoint } from '../../bin/sdk-transition.js';
 import { sdkCommand, inspectSdk } from '../../bin/sdk.js';
 
 const rpc = vi.hoisted(() => ({ projects: vi.fn(), stacks: vi.fn(), status: vi.fn(), disconnect: vi.fn(), mutable: vi.fn() }));
@@ -74,6 +74,28 @@ it('refuses an unacknowledged interrupted writer and never declares readiness', 
   await expect(inspectSdk(root)).rejects.toThrow('readiness is unconfirmed');
   await expect(prepare()).rejects.toThrow('unfinished');
   expect(await fs.readFile(path.join(output, 'index.js'), 'utf8')).toBe('partially rebuilt');
+});
+
+it('retains recovery of SDK-owned application receipts without adopting foreign output bytes', async () => {
+  const transition = await prepare(); await beginSdkTransition(transition); await mutate(); await finishSdkTransition(transition, true);
+  const before = await json(path.join(state, 'transition.json'));
+  await fs.writeFile(path.join(output, 'index.js'), 'foreign output');
+  await saveSdkBuildCheckpoint(root, { schema: 3, applications: { observed: true } });
+  const after = await json(path.join(state, 'transition.json'));
+  const changed = after.owned.flatMap((entry: unknown, index: number) =>
+    JSON.stringify(entry) === JSON.stringify(before.owned[index]) ? [] : [transition.proof.entries[index]!.path]);
+  expect(changed).toEqual([path.join(state, 'built.json')]);
+  await expect(recoverSdkTransition(root)).rejects.toThrow('preserved files changed outside');
+  expect(await fs.readFile(path.join(output, 'index.js'), 'utf8')).toBe('foreign output');
+});
+
+it('preserves a foreign checkpoint instead of blessing it as owned metadata', async () => {
+  const transition = await prepare(); await beginSdkTransition(transition); await mutate(); await finishSdkTransition(transition, true);
+  const before = await fs.readFile(path.join(state, 'transition.json'), 'utf8');
+  await fs.writeFile(path.join(state, 'built.json'), '{"foreign":true}');
+  await expect(saveSdkBuildCheckpoint(root, { schema: 3 })).rejects.toThrow('changed outside its committed selection');
+  expect(await fs.readFile(path.join(state, 'transition.json'), 'utf8')).toBe(before);
+  expect(await fs.readFile(path.join(state, 'built.json'), 'utf8')).toBe('{"foreign":true}');
 });
 
 it('does not report successful recovery again after restored bytes change', async () => {

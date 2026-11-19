@@ -10,7 +10,7 @@ import { isDeepStrictEqual, parseArgs, promisify } from 'node:util';
 import { parseAllDocuments } from 'yaml';
 import { getWantedPackageManager } from '@pnpm/config.reader';
 import { frameworkPackage } from './pnpmfile-sdk.js';
-import { sdkTransitionStatus, prepareSdkTransition, beginSdkTransition, finishSdkTransition, recoverSdkTransition } from './sdk-transition.js';
+import { sdkTransitionStatus, prepareSdkTransition, beginSdkTransition, finishSdkTransition, recoverSdkTransition, saveSdkBuildCheckpoint } from './sdk-transition.js';
 import { sdkStatePath as statePath, prepareSdkState as prepareState, exclusively,
   assertSdkAvailable as assertSourceAvailable, clearSdkSelection as clearSourceSelection,
   sdkWorkspaceIdentity, withMigrationSdkLocks } from './sdk-operation.js';
@@ -20,6 +20,7 @@ const help = `omnitron sdk init [--project-dir PATH]
 omnitron sdk dev [SDK_CHECKOUT] [--project-dir PATH] [--stack NAME [--start-stopped --review DIGEST]] [--no-watch]
 omnitron sdk registry [--project-dir PATH]
 omnitron sdk recover [--project-dir PATH] [--stack NAME]
+omnitron sdk reconcile --stack NAME [--project-dir PATH] [--check]
 omnitron sdk status [--project-dir PATH] [--stack NAME]
 
 init installs the pnpm bridge without resolving registry dependencies.
@@ -34,6 +35,8 @@ Inspection never builds, installs dependencies or restarts applications.
 Selection retains a verified before-image in the development cache before building or installing.
 OMNITRON_DEV_CACHE overrides the shared XDG_CACHE_HOME/~/.cache/omnitron/development default.
 recover restores the last retained selection's bytes without rebuilding or installing.
+reconcile confirms a durably acknowledged start without starting or restoring anything.
+--check only observes its evidence, including legacy attempts with an unknown outcome.
 Affected source consumers must be stopped; uncertain interrupted writes are never overwritten.
 Protected selections require project-owned module directories and virtual stores.
 External stores remain inspectable, but cannot be changed without an ownership contract.
@@ -101,11 +104,17 @@ async function bootstrapPackageManager(root, original) {
   }
   return generated;
 }
-async function atomic(file, value) {
+async function atomic(file, value, durable = false) {
   const tmp = file + '.' + randomUUID() + '.tmp';
   try {
-    await fs.writeFile(tmp, value, { flag: 'wx', mode: 0o600 });
+    const fd = await fs.open(tmp, 'wx', 0o600);
+    try { await fd.writeFile(value); if (durable) await fd.sync(); }
+    finally { await fd.close(); }
     await fs.rename(tmp, file);
+    if (durable) {
+      const parent = await fs.open(path.dirname(file), 'r');
+      try { await parent.sync(); } finally { await parent.close(); }
+    }
   } finally {
     await fs.rm(tmp, { force: true });
   }
@@ -1131,7 +1140,7 @@ async function startStoppedStack(profile, stack, review, checkpoint, packages, p
     const stateDir = statePath(profile.root);
     const attemptFile = path.join(stateDir, 'start-attempts.json');
     const attempts = (await optionalJson(attemptFile)) ?? {};
-    if (attempts[scope] === launch.stop)
+    if ((typeof attempts[scope] === 'string' ? attempts[scope] : attempts[scope]?.stop) === launch.stop)
       throw Error('This stop already had a start request. Inspect stack status and existing SDK receipts for ' + scope);
     await verifySelectedProfile(profile);
     await verifyOutputs(profile, checkpoint.hashes);
@@ -1142,7 +1151,11 @@ async function startStoppedStack(profile, stack, review, checkpoint, packages, p
     await verifyOutputs(profile, checkpoint.hashes);
     signal?.throwIfAborted();
     // One request per durable stop, even after a crashed CLI or lost RPC reply.
-    await atomic(attemptFile, JSON.stringify({ ...attempts, [scope]: launch.stop }) + '\n');
+    const attempt = { protocol: 1, state: 'requested', stop: launch.stop, profile, target, digest,
+      build: { inputs: checkpoint.inputs, hashes: checkpoint.hashes },
+      launch: { ...launch, applications: [...launch.applications] } };
+    const saveAttempt = async () => atomic(attemptFile, JSON.stringify({ ...attempts, [scope]: attempt }) + '\n', true);
+    await saveAttempt();
     requested = true;
     const started = await service.startStack({ ...target, review: digest });
     assertLaunchedStack(started, launch);
@@ -1150,19 +1163,11 @@ async function startStoppedStack(profile, stack, review, checkpoint, packages, p
       if (review.priorReceipts?.[app.handleKey]?.generation === app.generation)
         throw Error('Owner returned the previously recorded generation for ' + app.handleKey);
     launch.generations = new Map(started.apps.map(app => [app.handleKey, app.generation]));
-    // Collect into memory; an incomplete launch certifies no application.
-    const result = await refresh(profile.root, stack, checkpoint, packages, undefined, signal, launch);
-    await verifySelectedProfile(profile);
-    await persist(async () => {
-      assertLaunchedStack(await service.getStack({ project, stack }), launch);
-      const observed = await client.getWatchStatus();
-      for (const name of result.confirmed) {
-        const receipt = checkpoint.applications[scope][name];
-        if (!observed.enabled || !observed.watching || !observed.apps.some(app => app.name === name &&
-            app.generation === receipt.generation && app.definitionRevision === receipt.definitionRevision))
-          throw Error('Source binding changed before recording ' + name);
-      }
-    });
+    attempt.state = 'acknowledged';
+    attempt.generations = [...launch.generations];
+    await saveAttempt();
+    const result = await confirmStartedStack(profile, stack, checkpoint, packages, launch, persist, signal);
+    attempt.state = 'confirmed'; await saveAttempt();
     console.log(`Development SDK start confirmed for ${scope}: ${result.confirmed.length} watched applications, ${result.optedOut.length} opted out of owner refresh`);
   } catch (error) {
     if (!requested) throw error;
@@ -1171,10 +1176,33 @@ async function startStoppedStack(profile, stack, review, checkpoint, packages, p
       const info = await client.service('OmnitronProject').then(service => service.getStack({ project, stack }));
       observed = info.status + ' (' + info.apps.map(app => app.name + ': ' + app.status).join(', ') + ')';
     } catch { observed = 'unavailable'; }
-    throw new Error(`Reviewed start was sent once to ${scope}. Current stack: ${observed}. SDK readiness is unconfirmed: ${error.message}`, { cause: error });
+    throw new Error(`Reviewed start was sent once to ${scope}. Current stack: ${observed}. SDK readiness is unconfirmed: ${error.message}. Inspect sdk reconcile --stack ${stack} --check; do not repeat the start.`, { cause: error });
   } finally {
     await client.disconnect();
   }
+}
+
+// A stored successful start reply is evidence of its exact generations. Merely
+// observing online processes after a lost reply cannot establish that identity.
+async function confirmStartedStack(profile, stack, checkpoint, packages, launch, persist, signal) {
+  const result = await refresh(profile.root, stack, checkpoint, packages, undefined, signal, launch);
+  await verifySelectedProfile(profile);
+  const { client, project } = await localStack(profile.root, stack);
+  try {
+    const confirm = async () => {
+      const service = await client.service('OmnitronProject');
+      assertLaunchedStack(await service.getStack({ project, stack }), launch);
+      const observed = await client.getWatchStatus();
+      for (const name of result.confirmed) {
+        const receipt = checkpoint.applications[project + '/' + stack][name];
+        if (!observed.enabled || !observed.watching || !observed.apps.some(app => app.name === name &&
+            app.generation === receipt.generation && app.definitionRevision === receipt.definitionRevision))
+          throw Error('Source binding changed before recording ' + name);
+      }
+    };
+    if (persist) await persist(confirm); else await confirm();
+    return result;
+  } finally { await client.disconnect(); }
 }
 
 async function verifyOutputs(profile, hashes) {
@@ -1221,7 +1249,7 @@ async function checkpointSdkBuild(profile, built, stack, signal, packages, revie
     }
     await verifyOutputs(profile, next);
     signal?.throwIfAborted();
-    await atomic(checkpoint, JSON.stringify(nextCheckpoint) + '\n');
+    await saveSdkBuildCheckpoint(profile.root, nextCheckpoint);
   };
   const save = () => locked ? persist() : exclusively(sourceState, persist, signal);
   // A completed build is a separate fact from any application's loaded modules.
@@ -1413,6 +1441,114 @@ export async function inspectSdk(projectDirectory = process.cwd(), stack) {
     : { mode: 'registry', verifiedImports: await verifyLinks(root, null), ...(transition && { transition }) };
 }
 
+async function startAttempt(root, stack) {
+  const file = path.join(statePath(root), 'start-attempts.json');
+  const stat = await fs.lstat(file).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
+  if (stat && (!stat.isFile() || stat.isSymbolicLink() || await fs.realpath(file) !== file ||
+      typeof process.getuid === 'function' && (stat.uid !== process.getuid() || stat.mode & 0o077)))
+    throw Error('SDK start attempts must be an owned, private regular file');
+  const attempts = (await optionalJson(file)) ?? {};
+  const matches = Object.entries(attempts).filter(([scope]) => scope.endsWith('/' + stack));
+  if (matches.length > 1) throw Error('Several SDK start scopes match this stack; inspect its registered project');
+  return { file, attempts, scope: matches[0]?.[0], attempt: matches[0]?.[1] };
+}
+
+function acknowledgedLaunch(root, stack, scope, attempt) {
+  if (typeof attempt === 'string')
+    throw Error('Legacy SDK attempt retains only its stop ID, without an acknowledged launch proof. Observe the owner; do not repeat the start or fabricate SDK receipts. Recovery requires a reviewed stop of its consumers.');
+  if (attempt?.protocol !== 1 || !['acknowledged', 'confirmed'].includes(attempt.state) || !attempt.generations)
+    throw Error('The SDK start has no durably acknowledged reply. Its outcome remains unconfirmed; observe the owner before reviewed recovery. No start will be replayed.');
+  if (attempt.profile?.root !== root || !path.isAbsolute(attempt.profile?.source ?? '') ||
+      attempt.target?.project + '/' + attempt.target?.stack !== scope || attempt.target.stack !== stack ||
+      attempt.target.workingTree !== true || attempt.target.infrastructure !== 'preserve' ||
+      !/^[a-f0-9]{64}$/.test(attempt.digest ?? '') || attempt.launch?.stack !== stack ||
+      attempt.launch?.scope?.project + '/' + attempt.launch?.scope?.stack !== scope ||
+      attempt.launch?.stop !== attempt.stop || typeof attempt.stop !== 'string' || !attempt.stop ||
+      !Array.isArray(attempt.launch?.applications) || !attempt.launch.applications.length ||
+      attempt.launch.applications.some(row => !Array.isArray(row) || row.length !== 2 ||
+        typeof row[0] !== 'string' || !Array.isArray(row[1]) || row[1].length !== 2 || typeof row[1][0] !== 'string') ||
+      !Array.isArray(attempt.generations) || attempt.generations.length !== attempt.launch.applications.length ||
+      attempt.generations.some(row => !Array.isArray(row) || row.length !== 2 || typeof row[0] !== 'string' ||
+        typeof row[1] !== 'string' || !row[1])) throw Error('Invalid SDK acknowledged launch evidence');
+  const launch = { ...attempt.launch, applications: new Map(attempt.launch.applications), generations: new Map(attempt.generations) };
+  if (launch.applications.size !== attempt.launch.applications.length || launch.generations.size !== launch.applications.size ||
+      [...launch.generations.keys()].some(name => !launch.applications.has(name)))
+    throw Error('SDK acknowledged launch membership differs');
+  return launch;
+}
+
+async function observeAcknowledgedLaunch(root, stack, record, persist) {
+  const { attempt, scope } = record;
+  const launch = acknowledgedLaunch(root, stack, scope, attempt), profile = attempt.profile;
+  const transition = await sdkTransitionStatus(root);
+  if (transition && !['committed', 'restored'].includes(transition.phase))
+    throw Error('SDK file selection is unfinished; observing processes cannot commit or restore its bytes');
+  await assertSourceAvailable(root); await assertSourceAvailable(profile.source);
+  await verifySelectedProfile(profile);
+  const file = path.join(statePath(root), 'built.json'), checkpoint = await optionalJson(file);
+  if (!completeBuildCheckpoint(profile, checkpoint) || !isDeepStrictEqual(attempt.build, {
+    inputs: checkpoint.inputs, hashes: checkpoint.hashes,
+  })) throw Error('SDK build differs from the acknowledged start');
+  const verify = async () => {
+    await verifySelectedProfile(profile);
+    await verifyInputs(profile, checkpoint.inputs); await verifyOutputs(profile, checkpoint.hashes);
+    const { client } = await localStack(root, stack);
+    try { await verifyLaunchReview(await client.service('OmnitronProject'), attempt.target, attempt.digest); }
+    finally { await client.disconnect(); }
+    if (!isDeepStrictEqual(await optionalJson(record.file), record.attempts)) throw Error('SDK launch evidence changed during reconciliation');
+  };
+  await verify();
+  const next = structuredClone(checkpoint), packages = new Map([...(await inventory(profile.source)), ...(await inventory(root))]);
+  const result = await confirmStartedStack(profile, stack, next, packages, launch, async confirm => {
+    await verify(); await confirm(); await verify();
+    if (!isDeepStrictEqual(await optionalJson(file), checkpoint)) throw Error('SDK checkpoint changed during reconciliation');
+    if (persist) {
+      await saveSdkBuildCheckpoint(root, next);
+      await atomic(record.file, JSON.stringify({ ...record.attempts, [scope]: { ...attempt, state: 'confirmed' } }) + '\n', true);
+    }
+  });
+  return result;
+}
+
+/** Read-only observation is also available for legacy/unknown outcomes. It
+ * never upgrades a missing start reply into an application receipt. */
+export async function inspectSdkLaunch(projectDirectory, stack) {
+  const root = await fs.realpath(projectDirectory), record = await startAttempt(root, stack);
+  const { attempt, scope } = record;
+  const result = { stack: scope ?? stack, stop: typeof attempt === 'string' ? attempt : attempt?.stop ?? null,
+    state: attempt ? 'unconfirmed' : 'absent', reconcilable: false,
+    transition: await sdkTransitionStatus(root) };
+  let client;
+  try {
+    const connection = await localStack(root, stack); client = connection.client;
+    result.observation = { status: connection.state.status,
+      apps: connection.state.apps.map(app => ({ name: app.name, status: app.status, generation: app.generation })) };
+    if (scope && scope !== connection.project + '/' + stack) throw Error('Registered SDK project differs from the recorded start');
+  } catch (error) { result.observation = { status: 'unavailable', reason: error.message }; }
+  finally { await client?.disconnect(); }
+  if (!attempt) { result.reason = 'No SDK start attempt is recorded for this stack'; return result; }
+  try {
+    await observeAcknowledgedLaunch(root, stack, record, false);
+    result.reconcilable = true;
+    if (attempt.state === 'confirmed') result.state = 'confirmed';
+    else result.reason = 'The acknowledged generations are serving the unchanged SDK; explicit reconciliation can record their receipts';
+  } catch (error) { result.reason = error.message; }
+  return result;
+}
+
+export async function reconcileSdkLaunch(projectDirectory, stack) {
+  const root = await fs.realpath(projectDirectory);
+  return exclusively(await prepareState(root), async () => {
+    const record = await startAttempt(root, stack);
+    acknowledgedLaunch(root, stack, record.scope, record.attempt);
+    return exclusively(await prepareState(record.attempt.profile.source), async () => {
+      await requireSdkMutationAuthority();
+      const result = await observeAcknowledgedLaunch(root, stack, record, true);
+      return { state: 'confirmed', stop: record.attempt.stop, ...result };
+    });
+  });
+}
+
 export async function sdkCommand(argv) {
   const { values, positionals } = parseArgs({
     args: argv,
@@ -1424,6 +1560,7 @@ export async function sdkCommand(argv) {
       review: { type: 'string' },
       'no-watch': { type: 'boolean' },
       json: { type: 'boolean' },
+      check: { type: 'boolean' },
       help: { type: 'boolean', short: 'h' },
     },
   });
@@ -1432,13 +1569,19 @@ export async function sdkCommand(argv) {
     console.log(help);
     return;
   }
-  if (!['init', 'dev', 'status', 'registry', 'recover'].includes(action) || positionals.length > (action === 'dev' ? 2 : 1))
+  if (!['init', 'dev', 'status', 'registry', 'recover', 'reconcile'].includes(action) || positionals.length > (action === 'dev' ? 2 : 1))
     throw Error(help);
+  if (values.check && action !== 'reconcile' || action === 'reconcile' && !values.stack)
+    throw Error('Use sdk reconcile --stack NAME [--check]');
   if ((values['start-stopped'] || values.review !== undefined) &&
       (action !== 'dev' || !values.stack || !values['start-stopped'] || !/^[a-f0-9]{64}$/.test(values.review ?? '')))
     throw Error('Use sdk dev --stack NAME --start-stopped --review DIGEST with the exact preservation review');
   const root = await fs.realpath(values['project-dir'] ?? process.cwd()),
     dir = statePath(root);
+  if (action === 'reconcile') {
+    console.log(JSON.stringify(await (values.check ? inspectSdkLaunch : reconcileSdkLaunch)(root, values.stack), null, 2));
+    return;
+  }
   const bridge = path.join(root, '.pnpmfile.mjs');
   const template = await fs.readFile(new URL('./pnpmfile-sdk.js', import.meta.url), 'utf8');
   if (action === 'init') {
@@ -1535,9 +1678,8 @@ export async function sdkCommand(argv) {
           ownDistribution(prepared);
           desired = { ...desired, lockSha256: lockIdentity(prepared) };
           await installDevelopment(root, desired);
-          if (!launch) await checkpointSdkBuild(desired, built, undefined, controller.signal, undefined, undefined, true);
+          await checkpointSdkBuild(desired, built, undefined, controller.signal, undefined, undefined, true);
           await atomic(selection, JSON.stringify(desired, null, 2) + '\n');
-          if (launch) await checkpointSdkBuild(desired, built, values.stack, controller.signal, undefined, launch, true);
           if (prepared !== distribution)
             console.log('Accepted pnpm package-manager metadata in the distribution lock; the application dependency graph is unchanged.');
         });
@@ -1557,7 +1699,6 @@ export async function sdkCommand(argv) {
             if (!current) return false;
             await verifySelectedProfile(desired);
             console.log('Reusing verified development SDK build; no snapshot or rebuild is required');
-            if (launch) await checkpointSdkBuild(desired, current, values.stack, controller.signal, undefined, launch, true);
             return true;
           }, controller.signal);
           // A stale build can overwrite shared outputs. changeSelection requires
@@ -1567,11 +1708,21 @@ export async function sdkCommand(argv) {
             if (!isDeepStrictEqual(await desiredProfile(root, source, distribution), desired))
               throw Error('Consumer or SDK inputs changed while building; run sdk dev again');
             await verifyLinks(root, desired);
-            if (!launch) await checkpointSdkBuild(desired, built, values.stack, controller.signal, undefined, undefined, true);
-            else await checkpointSdkBuild(desired, built, values.stack, controller.signal, undefined, launch, true);
+            await checkpointSdkBuild(desired, built, launch ? undefined : values.stack, controller.signal, undefined, undefined, true);
           });
         }
       }
+      // Commit the verified files before crossing the process-start boundary.
+      // A lost start reply can never authorize restoring those files underneath
+      // partially running applications, even if they still appear stopped.
+      if (launch) await exclusively(await prepareState(source), async () => {
+        await assertSourceAvailable(root); await assertSourceAvailable(source);
+        await requireSourceStopped(root, source, values.stack);
+        await verifySelectedProfile(desired);
+        const current = await reusableBuild(desired, controller.signal);
+        if (!current) throw Error('SDK build changed before reviewed start; no start was sent');
+        await checkpointSdkBuild(desired, current, values.stack, controller.signal, undefined, launch, true);
+      }, controller.signal);
       if (!values['no-watch']) await watchSdk(desired, values.stack, controller.signal);
     } finally {
       process.off('SIGINT', stop);

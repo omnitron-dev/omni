@@ -31,4 +31,17 @@ export function withMigrationSdk<T>(projectDirectory: string, reference: import(
   body: (hold: import('./sdk-operation.js').MigrationSdkHold) => Promise<T>): Promise<T>;
 export function sdkCommand(args: string[]): Promise<void>;
 export function inspectSdk(projectDirectory?: string, stack?: string): Promise<DevelopmentSdkStatus>;
+export interface DevelopmentSdkLaunchStatus {
+  stack: string;
+  stop: string | null;
+  state: 'absent' | 'unconfirmed' | 'confirmed';
+  reconcilable: boolean;
+  reason?: string;
+  transition: { id: string; phase: string; source: string } | null;
+  observation: { status: string; reason?: string; apps?: Array<{ name: string; status: string; generation?: string }> };
+}
+export function inspectSdkLaunch(projectDirectory: string, stack: string): Promise<DevelopmentSdkLaunchStatus>;
+export function reconcileSdkLaunch(projectDirectory: string, stack: string): Promise<{
+  state: 'confirmed'; stop: string; stack: string; confirmed: string[]; inactive: string[]; optedOut: string[]; unaffected: string[];
+}>;
 export function watchSdk(profile: DevelopmentSdkProfile, stack: string | undefined, signal: AbortSignal): Promise<void>;

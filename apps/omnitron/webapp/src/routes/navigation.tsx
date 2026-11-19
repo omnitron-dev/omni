@@ -164,6 +164,7 @@ export function consoleRoute(pathname: string, search = '') {
   if (appDetail || process) permission = 'OmnitronDaemon.getApp';
   else if (release) permission = 'OmnitronRelease.get';
   else if (proposal) permission = 'OmnitronStudio.flowProposal';
+  else if (page === 'flows' && params.get('flow')) permission = 'OmnitronFlows.get';
   return {
     permission,
     scope: item?.scope,

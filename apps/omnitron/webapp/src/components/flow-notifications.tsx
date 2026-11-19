@@ -3,13 +3,15 @@ import { Link as RouterLink } from 'react-router-dom';
 import Button from '@mui/material/Button';
 import { SnackbarProvider, useSnackbar } from '@omnitron-dev/prism/components/snackbar';
 import type { FlowWorkspace } from '@omnitron-dev/omnitron/dto/services';
+import { useAccess } from 'src/auth/access';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { flows } from 'src/netron/client';
 import { flowHref } from 'src/routes/workspace';
 
 const position = { vertical: 'top', horizontal: 'right' } as const;
 
-function NotificationReader({ workspace, mayOpen }: { workspace: FlowWorkspace; mayOpen: boolean }) {
+function NotificationReader({ workspace }: { workspace: FlowWorkspace }) {
+  const { can } = useAccess();
   const cursor = useRef<number | undefined>(undefined);
   const snackbar = useSnackbar();
   const { data } = usePolledResource(
@@ -25,34 +27,35 @@ function NotificationReader({ workspace, mayOpen }: { workspace: FlowWorkspace; 
     if (!fresh.length) return;
     const first = fresh[0]!;
     const oneFlow = fresh.every((item) => item.flowId === first.flowId);
+    const openSingle = oneFlow && can('OmnitronFlows.get');
     const titles = fresh
       .slice(0, 3)
       .map((item) => item.title)
       .join(' · ');
     snackbar.info(titles + (fresh.length > 3 ? ' · +' + (fresh.length - 3) : ''), {
       key: first.id,
-      ...(mayOpen && {
+      ...((openSingle || can('OmnitronFlows.list')) && {
         action: (
           <Button
             size="small"
             color="inherit"
             component={RouterLink}
-            to={flowHref(workspace, oneFlow ? { flow: first.flowId } : {})}
+            to={flowHref(workspace, openSingle ? { flow: first.flowId } : {})}
           >
-            {oneFlow ? 'Open flow' : 'Open flows'}
+            {openSingle ? 'Open flow' : 'Open flows'}
           </Button>
         ),
       }),
     });
-  }, [data, mayOpen, snackbar, workspace]);
+  }, [data, can, snackbar, workspace]);
   return null;
 }
 
 /** The layout keys this notification region by its account and workspace, including its visible message. */
-export function FlowNotifications({ workspace, mayOpen }: { workspace: FlowWorkspace; mayOpen: boolean }) {
+export function FlowNotifications({ workspace }: { workspace: FlowWorkspace }) {
   return (
     <SnackbarProvider defaultPosition={position}>
-      <NotificationReader workspace={workspace} mayOpen={mayOpen} />
+      <NotificationReader workspace={workspace} />
     </SnackbarProvider>
   );
 }

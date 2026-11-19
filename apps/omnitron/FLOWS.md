@@ -48,6 +48,8 @@ An event has an idempotency key, a graph source, an event type and bounded named
 
 The controller commits the event receipt, next condition and intended deliveries together. An external delivery has its own durable ID. Recovery checks the receiving service with that ID. A component revision change requires review before an active flow can use the new behavior.
 
+**Flows** lists names and status across a project or within a selected stack. Its Netron `list` method returns a bounded page and a continuation cursor. Opening a saved link fetches that one definition, its active revision and its source health using `get`. A project link can resolve a flow in any of its stacks. Changes always name the flow's exact workspace.
+
 ## Extend the palette
 
 For reusable controls on a running distribution, place a JSON component pack at `$OMNITRON_HOME/flow-components.json`. The controller reads it on startup. On POSIX the service user owns the regular file and group and other users must lack write access. Each pack can provide up to 64 versioned components. It composes built-in transformations and an optional final decision. Its branches, field labels and constraints appear in the editor and in the Studio catalog.

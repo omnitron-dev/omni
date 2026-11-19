@@ -31,7 +31,14 @@ function controller(options = {}) {
     previews,
     dispose: () => db.close(),
     readings: {
-      'OmnitronFlows.list': ({ workspace }) => ledger.list(workspace),
+      'OmnitronFlows.list': (data) => ledger.list(data),
+      'OmnitronFlows.get': (data) => {
+        try {
+          return ledger.get(data, { includeProjectStacks: true });
+        } catch (failure) {
+          return failure;
+        }
+      },
       'OmnitronFlows.catalog': () => ({ nodes: registry.catalog(), diagnostics: registry.diagnostics }),
       'OmnitronFlows.preview': ({ definition, event, state }) => {
         try {
@@ -139,8 +146,8 @@ for (const width of [1440, 360]) {
         await expect(lowBranch).toHaveCSS('stroke-width', '1.5px');
         expect(host.changes).toEqual([]);
         await page.getByRole('button', { name: 'Save draft' }).click();
-        await expect.poll(() => host.ledger.list(project).length).toBe(1);
-        const saved = host.ledger.list(project)[0];
+        await expect.poll(() => host.ledger.list({ workspace: project }).items.length).toBe(1);
+        const saved = host.ledger.list({ workspace: project }).items[0];
         await expect(page).toHaveURL(url + '/projects/sample/flows?flow=' + saved.id + '&stack=dev');
         await expect(page.getByText('Paused', { exact: true })).toBeVisible();
         await page.getByRole('button', { name: 'Review activation' }).click();
@@ -289,7 +296,7 @@ test('proposal and saved links resolve their owning stack in a new tab and with 
     expect(host.changes).toEqual([]);
     await external.getByRole('button', { name: 'Save draft' }).click();
     await expect(external.getByRole('button', { name: 'Review activation' })).toBeVisible();
-    const [saved] = host.ledger.list(project);
+    const [saved] = host.ledger.list({ workspace: project }).items;
     const sameName = host.ledger.save(
       {
         id: randomUUID(),
@@ -311,10 +318,160 @@ test('proposal and saved links resolve their owning stack in a new tab and with 
     await external.goto(url + '/projects/sample/flows?flow=' + saved.id);
     await expect(external).toHaveURL(url + '/projects/sample/flows?flow=' + saved.id + '&stack=dev');
     await external.goto(url + '/projects/sample/flows?flow=' + saved.id + '&stack=other');
-    await expect(external.getByText('This flow is unavailable in the selected workspace.')).toBeVisible();
+    await expect(external.getByRole('alert').filter({ hasText: 'Flow not found in this workspace' })).toBeVisible();
     await expect(external.getByRole('button', { name: 'Save draft' })).toHaveCount(0);
     expect(host.changes.map((e) => e.method)).toEqual(['save']);
     await external.close();
+  } finally {
+    host.dispose();
+  }
+});
+
+test('paging reads summaries and an open flow polls only its own graph and receipts', async ({
+  page,
+  context,
+  url,
+}) => {
+  const host = controller();
+  const queries = [];
+  context.on('request', (request) => {
+    if (!request.url().endsWith('/netron/invoke')) return;
+    const { service, method, input } = request.postDataJSON();
+    if (service === 'OmnitronFlows' && ['list', 'get', 'history'].includes(method))
+      queries.push({ method, input: input[0] });
+  });
+  const definition = diskSpaceFlow('/volume', 100, 200);
+  const store = (workspace, name) =>
+    host.ledger.save(
+      {
+        workspace,
+        id: randomUUID(),
+        expectedRevision: null,
+        definition: { ...definition, name },
+      },
+      binding
+    );
+  try {
+    for (let i = 1; i <= 28; i++) store(project, 'Recorded flow ' + i);
+    store({ ...project, stack: 'other' }, 'Other stack only');
+    store({ project: 'outside', stack: 'dev' }, 'Other project only');
+    const first = host.ledger.list({ workspace: project });
+    const second = host.ledger.list({ workspace: project, before: first.next });
+    let unavailable = false;
+    await stubInventory(context, {
+      ...host.readings,
+      'OmnitronFlows.get': (ref) =>
+        unavailable ? Error('The controller cannot be reached') : host.readings['OmnitronFlows.get'](ref),
+    });
+    await page.clock.install();
+    const base = url + '/projects/sample/flows';
+    await page.goto(base + '?stack=dev');
+    await expect(page.getByRole('link', { name: /^Recorded flow / })).toHaveCount(25);
+    expect(queries.map((q) => q.method)).toEqual(['list']);
+    const older = page.getByRole('link', { name: 'Older flows' });
+    const href = new URL(await older.getAttribute('href'), url);
+    expect(href.searchParams.get('before')).toBe(first.next.updatedAt + ',' + first.next.id);
+    expect(href.searchParams.get('stack')).toBe('dev');
+    await older.click();
+    await expect(page.getByRole('link', { name: /^Recorded flow / })).toHaveCount(3);
+    await expect(page.getByRole('link', { name: 'Latest flows' })).toHaveAttribute(
+      'href',
+      '/projects/sample/flows?stack=dev'
+    );
+    await page.reload();
+    await expect(page.getByRole('link', { name: second.items[0].name, exact: true })).toBeVisible();
+    expect(queries.every((q) => q.method === 'list')).toBe(true);
+    expect(queries.at(-1).input).toEqual({ workspace: project, before: first.next });
+    const selected = second.items[0];
+    const listCount = queries.length;
+    await page.getByRole('link', { name: selected.name, exact: true }).click();
+    const name = page.getByRole('textbox', { name: 'Flow name' });
+    await expect(name).toHaveValue(selected.name);
+    await page.clock.runFor(10_100);
+    await expect.poll(() => queries.filter((q) => q.method === 'get').length).toBeGreaterThan(1);
+    await page.clock.runFor(10_100);
+    await expect.poll(() => queries.filter((q) => q.method === 'history').length).toBeGreaterThan(2);
+    await name.fill('Unsaved local edit');
+    unavailable = true;
+    await page.clock.runFor(10_100);
+    await expect(page.getByRole('alert').filter({ hasText: 'The controller cannot be reached' })).toBeVisible();
+    await expect(name).toHaveValue('Unsaved local edit');
+    await expect(page.getByRole('button', { name: 'Save draft' })).toBeDisabled();
+    unavailable = false;
+    await page.getByRole('button', { name: 'Retry', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Save draft' })).toBeEnabled();
+    await expect(name).toHaveValue('Unsaved local edit');
+    await page.reload();
+    await expect(name).toHaveValue(selected.name);
+    const whileOpen = queries.slice(listCount);
+    expect(whileOpen.length).toBeGreaterThan(5);
+    expect(
+      whileOpen.every(
+        (q) => ['get', 'history'].includes(q.method) && q.input.id === selected.id && q.input.workspace.stack === 'dev'
+      )
+    ).toBe(true);
+    await page.goBack();
+    await expect(page).toHaveURL(href.href);
+    await expect(page.getByRole('link', { name: /^Recorded flow / })).toHaveCount(3);
+    await page.getByRole('link', { name: 'Latest flows' }).click();
+    await expect(page.getByRole('link', { name: /^Recorded flow / })).toHaveCount(25);
+    await expect(page.getByText('Other stack only')).toHaveCount(0);
+    const prior = queries.length;
+    await page.goto(base + '?before=invalid&stack=dev');
+    await expect(page.getByText('This inventory page has an invalid cursor.')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Latest flows' })).toBeVisible();
+    await page.goto(base + '?new=disk&stack=dev');
+    await expect(name).toHaveValue('Disk space');
+    await page.clock.runFor(10_100);
+    expect(queries).toHaveLength(prior);
+  } finally {
+    host.dispose();
+  }
+});
+
+test('a detail-only flow reader opens a direct project link with just the selected graph', async ({
+  page,
+  context,
+  url,
+}) => {
+  const host = controller();
+  const entry = host.ledger.save(
+    {
+      workspace: project,
+      id: randomUUID(),
+      expectedRevision: null,
+      definition: diskSpaceFlow('/dev-work', 10, 20),
+    },
+    binding
+  );
+  const queries = [];
+  context.on('request', (request) => {
+    if (!request.url().endsWith('/netron/invoke')) return;
+    const { service, method, input } = request.postDataJSON();
+    if (service === 'OmnitronFlows') queries.push({ method, input: input[0] });
+  });
+  try {
+    await stubInventory(context, host.readings, 'online', { grants: ['OmnitronFlows.get'] });
+    await page.clock.install();
+    const path = '/projects/sample/flows?flow=' + entry.id;
+    const canonical = path + '&stack=dev';
+    await page.goto(url + path);
+    await expect(page).toHaveURL(url + canonical);
+    await expect(page.getByRole('textbox', { name: 'Flow name' })).toHaveValue('Disk space');
+    await expect(page.getByRole('region', { name: 'Flow graph' }).locator('.react-flow__edge')).toHaveCount(3);
+    await expect(page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Flows' })).toHaveCount(
+      0
+    );
+    await expect(page.getByRole('link', { name: 'Flows', exact: true })).toHaveAttribute('href', canonical);
+    await expect(page.getByRole('button', { name: /Save draft|Review activation|Preview event/ })).toHaveCount(0);
+    await page.clock.runFor(10_100);
+    await expect.poll(() => queries.filter((q) => q.input.workspace.stack === 'dev').length).toBeGreaterThan(1);
+    await page.reload();
+    await expect(page.getByRole('textbox', { name: 'Flow name' })).toHaveValue('Disk space');
+    await page.goto(url + path + '&stack=other');
+    await expect(page.getByRole('alert').filter({ hasText: 'Flow not found in this workspace' })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: 'Flow name' })).toHaveCount(0);
+    expect(queries.every((q) => q.method === 'get' && q.input.id === entry.id)).toBe(true);
   } finally {
     host.dispose();
   }

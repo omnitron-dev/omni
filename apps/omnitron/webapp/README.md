@@ -83,7 +83,7 @@ Use Prism and the shared theme for controls, visible focus and responsive layout
 
 ## Flows
 
-**Flows** opens the controller inventory at `/flows` or a project inventory at `/projects/<project>/flows`. A project's **All stacks** inventory includes its stack flows. Each saved link opens its owning stack with `?flow=<id>&stack=<stack>`. **Pipelines** links to Flows in the same workspace.
+**Flows** opens the controller inventory at `/flows` or a project inventory at `/projects/<project>/flows`. A project's **All stacks** inventory includes its stack flows. The inventory shows 25 summaries per page. **Older flows** and **Latest flows** preserve the selected workspace in the URL. Opening a flow reads and refreshes its own graph and its recent events. Each saved link opens its owning stack with `?flow=<id>&stack=<stack>`. **Pipelines** links to Flows in the same workspace.
 
 Start with **New flow** or the **Disk space template**. Select a component from the controller's node library, add it, and configure its fields in the inspector. Drag a named output onto an input, or choose **Output port** and **Target node** and press **Connect nodes**. The editor lays out the saved graph by its connections when opened. Dragging a node moves it for the current view. Selecting **Inspect node** also works from the keyboard. The inspector lists each connection and can disconnect it or rename a node and its connected edges.
 

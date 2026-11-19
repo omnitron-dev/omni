@@ -137,7 +137,6 @@ export function ConsoleLayout() {
         <FlowNotifications
           key={JSON.stringify([snapshot.userId, project, stack])}
           workspace={{ project, ...(project && stack && { stack }) }}
-          mayOpen={can('OmnitronFlows.list')}
         />
       )}
       <DashboardLayout

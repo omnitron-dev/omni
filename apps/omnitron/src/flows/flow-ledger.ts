@@ -17,6 +17,8 @@ import type {
   FlowActivation,
   FlowChange,
   FlowDelivery,
+  FlowList,
+  FlowPage,
   FlowNotificationPage,
   FlowReceipt,
   FlowRef,
@@ -92,7 +94,7 @@ export function checkFlowWorkspace(workspace: FlowWorkspace) {
   )
     throw Error('Select a flow workspace');
 }
-const workspaceOf = (row: Stored): FlowWorkspace => ({
+const workspaceOf = (row: Pick<Stored, 'project' | 'stack'>): FlowWorkspace => ({
   project: row.project || null,
   ...(row.stack && { stack: row.stack }),
 });
@@ -125,7 +127,9 @@ export class FlowLedger {
         id TEXT PRIMARY KEY, project TEXT NOT NULL, stack TEXT NOT NULL, definition TEXT NOT NULL, revision TEXT NOT NULL,
         updated INTEGER NOT NULL, active TEXT, session TEXT, binding TEXT, state TEXT NOT NULL DEFAULT '{}'
       );
-      CREATE INDEX IF NOT EXISTS flow_workspace ON flow_definitions(project, stack);
+      CREATE INDEX IF NOT EXISTS flow_project_page ON flow_definitions(project,updated DESC,id,stack,json_extract(definition,'$.name'),active IS NOT NULL);
+      CREATE INDEX IF NOT EXISTS flow_stack_page ON flow_definitions(project,stack,updated DESC,id,json_extract(definition,'$.name'),active IS NOT NULL);
+      DROP INDEX IF EXISTS flow_workspace;
       CREATE TABLE IF NOT EXISTS flow_sources (
         flow_id TEXT NOT NULL, activation TEXT NOT NULL, node TEXT NOT NULL, path TEXT NOT NULL,
         interval_ms INTEGER NOT NULL, due INTEGER NOT NULL, error TEXT, PRIMARY KEY(flow_id,node)
@@ -198,10 +202,15 @@ export class FlowLedger {
       definition: active.definition,
     };
   }
-  private scoped(ref: FlowRef): Stored {
+  private scoped(ref: FlowRef, includeProjectStacks = false): Stored {
     checkFlowWorkspace(ref.workspace);
     const row = this.byId(ref.id);
-    if (!row || row.project !== (ref.workspace.project ?? '') || row.stack !== (ref.workspace.stack ?? ''))
+    const entireProject = includeProjectStacks && ref.workspace.stack === undefined;
+    if (
+      !row ||
+      row.project !== (ref.workspace.project ?? '') ||
+      (!entireProject && row.stack !== (ref.workspace.stack ?? ''))
+    )
       throw Error('Flow not found in this workspace');
     return row;
   }
@@ -219,16 +228,39 @@ export class FlowLedger {
       sources,
     };
   }
-  list(workspace: FlowWorkspace): SavedFlow[] {
+  list({ workspace, limit = 25, before }: FlowList): FlowPage {
     checkFlowWorkspace(workspace);
-    return (
-      this.db
-        .prepare('SELECT * FROM flow_definitions WHERE project=? AND (? IS NULL OR stack=?) ORDER BY updated DESC,id')
-        .all(workspace.project ?? '', workspace.stack ?? null, workspace.stack ?? null) as Stored[]
-    ).map((row) => this.saved(row));
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw Error('Select between 1 and 100 flows');
+    if (
+      before !== undefined &&
+      (!before || !isFlowId(before.id) || !Number.isSafeInteger(before.updatedAt) || before.updatedAt < 0)
+    )
+      throw Error('Invalid flow list cursor');
+    const scope = [workspace.project ?? ''];
+    if (workspace.stack !== undefined) scope.push(workspace.stack);
+    const select =
+      "SELECT id,project,stack,updated,json_extract(definition,'$.name') AS name, active IS NOT NULL AS active " +
+      'FROM flow_definitions WHERE project=?' +
+      (workspace.stack === undefined ? '' : ' AND stack=?');
+    // Separate index ranges also start at the cursor when thousands of saves share a timestamp.
+    const query = before ? select + ' AND updated=? AND id>? UNION ALL ' + select + ' AND updated<?' : select;
+    const args = before ? [...scope, before.updatedAt, before.id, ...scope, before.updatedAt] : scope;
+    const rows = this.db.prepare(query + ' ORDER BY updated DESC,id LIMIT ?').all(...args, limit + 1) as (Pick<
+      Stored,
+      'id' | 'project' | 'stack' | 'updated'
+    > & { name: string; active: number })[];
+    const items = rows.slice(0, limit).map((row) => ({
+      id: row.id,
+      workspace: workspaceOf(row),
+      updatedAt: row.updated,
+      name: row.name,
+      active: Boolean(row.active),
+    }));
+    const last = items.at(-1);
+    return { items, next: last && rows.length > limit ? { updatedAt: last.updatedAt, id: last.id } : null };
   }
-  get(ref: FlowRef) {
-    return this.saved(this.scoped(ref));
+  get(ref: FlowRef, { includeProjectStacks = false } = {}) {
+    return this.saved(this.scoped(ref, includeProjectStacks));
   }
   save(data: FlowSave, binding: FlowBinding): SavedFlow {
     checkFlowWorkspace(data.workspace);

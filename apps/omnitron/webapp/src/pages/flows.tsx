@@ -6,6 +6,7 @@ import {
   diskSpaceFlow,
   type FlowDefinition,
   type FlowNodeDescriptor,
+  type FlowListCursor,
   type FlowWorkspace,
   type SavedFlow,
 } from '@omnitron-dev/omnitron/dto/services';
@@ -24,6 +25,12 @@ const panel = { p: { xs: 1.5, sm: 2 }, minWidth: 0 };
 const groupNames = { source: 'Event sources', transform: 'Transforms', decision: 'Decisions', output: 'Outputs' };
 const diskTemplate = () => diskSpaceFlow('/', 10 * 1024 ** 3, 15 * 1024 ** 3);
 const blankTemplate = (): FlowDefinition => ({ version: 1, name: '', nodes: [], edges: [] });
+
+function readCursor(value: string | null): FlowListCursor | undefined {
+  const match = value?.match(/^(\d{1,16}),([a-f\d]{8}-[a-f\d]{4}-4[a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12})$/i);
+  const updatedAt = Number(match?.[1]);
+  return match && Number.isSafeInteger(updatedAt) ? { updatedAt, id: match[2]! } : undefined;
+}
 
 export default function FlowsPage() {
   const { project, stack } = useWorkspace();
@@ -44,14 +51,30 @@ function FlowWorkspacePage({ workspace }: { workspace: FlowWorkspace }) {
     };
   }, [locationKey]);
   const navigate = useNavigate();
-  const [confirmed, setConfirmed] = useState<{ entry: SavedFlow; priorList: SavedFlow[] | null } | null>(null);
+  const [confirmed, setConfirmed] = useState<{ entry: SavedFlow; prior: SavedFlow | null; location: string } | null>(
+    null
+  );
   const id = search.get('flow'),
     seed = search.get('new'),
     team = search.get('team'),
     proposal = search.get('proposal');
-  const inventory = usePolledResource(() => flows.list({ workspace }), {
+  const editing = !!(id || seed || team || proposal);
+  const ambiguous = [!!id, !!seed, !!team || !!proposal].filter(Boolean).length > 1;
+  const rawCursor = search.get('before');
+  const before = readCursor(rawCursor);
+  const invalidCursor = rawCursor !== null && !before;
+  const mayList = can('OmnitronFlows.list');
+  const mayRead = can('OmnitronFlows.get');
+  const inventory = usePolledResource(() => flows.list({ workspace, ...(before && { before }) }), {
     intervalMs: 10000,
-    enabled: can('OmnitronFlows.list'),
+    enabled: !editing && !invalidCursor && mayList,
+    paused: !!before,
+    resourceKey: rawCursor,
+  });
+  const detail = usePolledResource(() => flows.get({ workspace, id: id! }), {
+    intervalMs: 10000,
+    enabled: !!id && !ambiguous && mayRead,
+    resourceKey: id,
   });
   const library = usePolledResource(() => flows.catalog(), {
     intervalMs: 0,
@@ -65,25 +88,22 @@ function FlowWorkspacePage({ workspace }: { workspace: FlowWorkspace }) {
       intervalMs: 0,
       paused: true,
       resourceKey: JSON.stringify([team, proposal]),
-      enabled: !!team && !!proposal && proposalAccess,
+      enabled: !!team && !!proposal && !ambiguous && proposalAccess,
     }
   );
-  const list = inventory.data ?? [];
-  const fromList = id && list.find((item) => item.id === id);
+  const lastSave =
+    confirmed && (id ? confirmed.entry.id === id : !mayRead && confirmed.location === locationKey) ? confirmed : null;
   const saved =
-    confirmed &&
-    confirmed.entry.id === id &&
-    (!fromList || confirmed.priorList === inventory.data || confirmed.entry.updatedAt > fromList.updatedAt)
-      ? confirmed.entry
-      : fromList || null;
+    lastSave && (!detail.data || lastSave.prior === detail.data || lastSave.entry.updatedAt > detail.data.updatedAt)
+      ? lastSave.entry
+      : detail.data;
   const catalog = library.data?.nodes ?? [];
   const hasTemplate = diskTemplate().nodes.every((n) => catalog.some((item) => item.type === n.type));
   const canEdit = can('OmnitronFlows.catalog') && (can('OmnitronFlows.preview') || can('OmnitronFlows.save'));
   const home = flowHref(workspace);
   let issue = '';
   let definition: FlowDefinition | null = null;
-  if ([!!id, !!seed, !!team || !!proposal].filter(Boolean).length > 1)
-    issue = 'Choose one saved flow, template or team proposal.';
+  if (ambiguous) issue = 'Choose one saved flow, template or team proposal.';
   else if (id) {
     if (saved) {
       if (
@@ -92,7 +112,7 @@ function FlowWorkspacePage({ workspace }: { workspace: FlowWorkspace }) {
       )
         return <Navigate replace to={flowHref(saved.workspace, { flow: saved.id })} />;
       definition = saved.definition;
-    } else if (!can('OmnitronFlows.list') || (!inventory.loading && !inventory.error))
+    } else if (!mayRead || (!detail.loading && !detail.error))
       issue = 'This flow is unavailable in the selected workspace.';
   } else if (team || proposal) {
     if (!team || !proposal || !proposalAccess)
@@ -116,15 +136,15 @@ function FlowWorkspacePage({ workspace }: { workspace: FlowWorkspace }) {
     else if (seed === 'disk' && hasTemplate) definition = diskTemplate();
     else if (!library.loading) issue = 'This template is unavailable in the controller catalog.';
   }
-  const editing = !!(id || seed || team || proposal);
   const record = (next: SavedFlow) => {
     if (editorLocation.current !== locationKey) return;
-    setConfirmed({ entry: next, priorList: inventory.data });
-    if (can('OmnitronFlows.list')) void inventory.refresh();
-    if (next.id !== id) void navigate(flowHref(next.workspace, { flow: next.id }), { replace: true });
+    setConfirmed({ entry: next, prior: detail.data, location: locationKey });
+    if (next.id === id && mayRead) void detail.refresh();
+    else if (mayRead) void navigate(flowHref(next.workspace, { flow: next.id }), { replace: true });
   };
   const errors = [
-    [inventory.error, inventory.refresh],
+    [!editing && inventory.error, inventory.refresh],
+    [id && detail.error, detail.refresh],
     [library.error, library.refresh],
     [proposal && proposed.error, proposed.refresh],
   ] as const;
@@ -171,6 +191,7 @@ function FlowWorkspacePage({ workspace }: { workspace: FlowWorkspace }) {
             catalog={catalog}
             record={record}
             canEdit={canEdit}
+            readFailed={!!id && !!detail.error}
             proposalLink={
               team && proposal && can('OmnitronStudio.thread')
                 ? workspaceHref(
@@ -187,7 +208,7 @@ function FlowWorkspacePage({ workspace }: { workspace: FlowWorkspace }) {
         <>
           <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap', alignItems: 'center' }}>
             <Typography variant="h6" sx={{ flex: 1 }}>
-              {can('OmnitronFlows.list') ? 'Saved flows' : 'Node library'}
+              {mayList ? 'Saved flows' : 'Node library'}
             </Typography>
             {canEdit && (
               <>
@@ -212,7 +233,7 @@ function FlowWorkspacePage({ workspace }: { workspace: FlowWorkspace }) {
               </>
             )}
           </Stack>
-          {!can('OmnitronFlows.list') && catalog.length > 0 && (
+          {!mayList && catalog.length > 0 && (
             <Paper variant="outlined" sx={panel}>
               <Stack spacing={1}>
                 {Object.entries(groupNames).map(([group, label]) => (
@@ -229,15 +250,18 @@ function FlowWorkspacePage({ workspace }: { workspace: FlowWorkspace }) {
               </Stack>
             </Paper>
           )}
-          {can('OmnitronFlows.list') && (
+          {mayList && (
             <Paper variant="outlined" sx={panel}>
-              {inventory.loading && !inventory.data && <LinearProgress aria-label="Loading flow inventory" />}
-              {inventory.data?.length === 0 && (
+              {invalidCursor && <Alert severity="warning">This inventory page has an invalid cursor.</Alert>}
+              {!invalidCursor && inventory.loading && !inventory.data && (
+                <LinearProgress aria-label="Loading flow inventory" />
+              )}
+              {inventory.data?.items.length === 0 && (
                 <Typography variant="body2" color="text.secondary">
-                  No saved flows in this workspace.
+                  {before ? 'No older flows in this workspace.' : 'No saved flows in this workspace.'}
                 </Typography>
               )}
-              {list.map((item) => (
+              {inventory.data?.items.map((item) => (
                 <Stack
                   key={item.id}
                   direction="row"
@@ -245,14 +269,20 @@ function FlowWorkspacePage({ workspace }: { workspace: FlowWorkspace }) {
                   useFlexGap
                   sx={{ alignItems: 'center', flexWrap: 'wrap', py: 0.5 }}
                 >
-                  <Button
-                    component={RouterLink}
-                    to={flowHref(item.workspace, { flow: item.id })}
-                    size="small"
-                    sx={{ overflowWrap: 'anywhere', textAlign: 'start' }}
-                  >
-                    {item.definition.name}
-                  </Button>
+                  {mayRead ? (
+                    <Button
+                      component={RouterLink}
+                      to={flowHref(item.workspace, { flow: item.id })}
+                      size="small"
+                      sx={{ overflowWrap: 'anywhere', textAlign: 'start' }}
+                    >
+                      {item.name}
+                    </Button>
+                  ) : (
+                    <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>
+                      {item.name}
+                    </Typography>
+                  )}
                   <Chip size="small" label={item.active ? 'Active' : 'Paused'} />
                   <Typography variant="caption" color="text.secondary">
                     {item.workspace.stack && item.workspace.stack + ' · '}
@@ -260,6 +290,31 @@ function FlowWorkspacePage({ workspace }: { workspace: FlowWorkspace }) {
                   </Typography>
                 </Stack>
               ))}
+              {(rawCursor !== null || inventory.data?.next) && (
+                <Stack
+                  component="nav"
+                  aria-label="Flow inventory pages"
+                  direction="row"
+                  useFlexGap
+                  spacing={1}
+                  sx={{ flexWrap: 'wrap', mt: 1 }}
+                >
+                  {rawCursor !== null && (
+                    <Button size="small" component={RouterLink} to={home}>
+                      Latest flows
+                    </Button>
+                  )}
+                  {inventory.data?.next && (
+                    <Button
+                      size="small"
+                      component={RouterLink}
+                      to={flowHref(workspace, { before: inventory.data.next.updatedAt + ',' + inventory.data.next.id })}
+                    >
+                      Older flows
+                    </Button>
+                  )}
+                </Stack>
+              )}
             </Paper>
           )}
         </>
@@ -275,6 +330,7 @@ function FlowEditor({
   catalog,
   record,
   canEdit,
+  readFailed,
   proposalLink,
 }: {
   workspace: FlowWorkspace;
@@ -283,6 +339,7 @@ function FlowEditor({
   catalog: FlowNodeDescriptor[];
   record(flow: SavedFlow): void;
   canEdit: boolean;
+  readFailed: boolean;
   proposalLink: string | null;
 }) {
   const { can } = useAccess();
@@ -389,7 +446,7 @@ function FlowEditor({
                 variant="contained"
                 size="small"
                 sx={{ whiteSpace: 'nowrap', alignSelf: { xs: 'start', sm: 'center' } }}
-                disabled={!!changed || busy}
+                disabled={readFailed || !!changed || busy}
                 onClick={() => void save()}
               >
                 {busy ? 'Saving…' : 'Save draft'}
@@ -505,7 +562,7 @@ function FlowEditor({
           />
         </Paper>
       )}
-      {saved && (
+      {saved && !readFailed && (
         <Paper variant="outlined" sx={panel}>
           <FlowOperations
             saved={saved}

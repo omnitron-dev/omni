@@ -138,6 +138,7 @@ describe('local flow runtime', () => {
       expect((await rpc.preview({ definition, event })).effects).toMatchObject([{ kind: 'notification' }]);
       for (const call of [
         () => rpc.list({ workspace }),
+        () => rpc.get(ref),
         () => rpc.history(ref),
         () => rpc.notifications({ workspace }),
         () => rpc.save(ref),
@@ -151,6 +152,44 @@ describe('local flow runtime', () => {
     expect(admit).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();
     expect(ledger.history(ref)).toEqual([]);
+  });
+
+  it('pages summaries across a project and reads just the addressed graph without widening mutation scope', async () => {
+    let now = 100;
+    const ledger = new FlowLedger(newDb(), defaultFlowRegistry, () => now);
+    const scope = async () => binding;
+    const admit = async () => {};
+    const runtime = new FlowRuntime(ledger, { scope, admit, deliver: vi.fn(), report: vi.fn() });
+    clean.push(() => runtime.dispose());
+    const rpc = new FlowsRpcService(runtime, { validateSession: async () => user }, { record: vi.fn() }, scope, admit);
+    const project = { project: workspace.project };
+    await runWithAuth(session('reviewer'), async () => {
+      const older = await rpc.save(request(manual()));
+      now++;
+      const local = await rpc.save(request(manual()));
+      const remote = await rpc.save({ ...request(manual()), workspace: { ...workspace, stack: 'edge' } });
+      await rpc.activate({ ...local, revision: local.revision, activation: null });
+      await rpc.save({ ...request(manual()), workspace: { project: 'unrelated' } });
+      const newest = [local.id, remote.id].sort();
+      const first = await rpc.list({ workspace: project, limit: 1 });
+      const second = await rpc.list({ workspace: project, limit: 1, before: first.next! });
+      const third = await rpc.list({ workspace: project, limit: 1, before: second.next! });
+      expect([first, second, third].map((page) => page.items[0]!.id)).toEqual([...newest, older.id]);
+      expect(third.next).toBeNull();
+      const exact = await rpc.list({ workspace, limit: 2 });
+      expect(exact.items[0]).toEqual({ id: local.id, workspace, name: 'Publication', active: true, updatedAt: now });
+      expect(exact.items[1]?.id).toBe(older.id);
+      expect(exact.next).toBeNull();
+      expect(await rpc.get({ id: remote.id, workspace: project })).toEqual(remote);
+      await expect(rpc.get({ id: remote.id, workspace })).rejects.toThrow('not found');
+      await expect(rpc.get({ id: remote.id, workspace: { project: 'unrelated' } })).rejects.toThrow('not found');
+      await expect(
+        rpc.deactivate({ id: local.id, workspace: project, revision: local.revision, activation: null })
+      ).rejects.toThrow('not found');
+      await expect(rpc.list({ workspace, limit: 101 })).rejects.toThrow('100');
+      await expect(rpc.list({ workspace, before: { id: remote.id, updatedAt: -1 } })).rejects.toThrow('cursor');
+      expect(await rpc.list({ workspace: { project: null } })).toEqual({ items: [], next: null });
+    });
   });
 
   it('reopens disk state, retries a failed sample, and stores one notification at each crossing', async () => {

@@ -1,13 +1,7 @@
 import { Public, Service } from '@omnitron-dev/titan/decorators';
 import { ADMIN_ROLES, OPERATOR_ROLES } from '../shared/roles.js';
 import { evaluateFlow } from '../shared/dto/flows.js';
-import type {
-  FlowChange,
-  FlowRef,
-  FlowSave,
-  FlowWorkspace,
-  IOmnitronFlowsService,
-} from '../shared/dto/flow-runtime.js';
+import type { FlowChange, FlowRef, FlowSave, IOmnitronFlowsService } from '../shared/dto/flow-runtime.js';
 import type { AuditService } from '../services/audit.service.js';
 import type { AuthService } from '../services/auth.service.js';
 import { daemonPrincipal } from '../services/daemon-principal.js';
@@ -45,11 +39,16 @@ export class FlowsRpcService implements IOmnitronFlowsService {
     return evaluateFlow(data.definition, data.event, data.state, this.runtime.ledger.registry);
   }
   @Public({ auth: { roles: ADMIN_ROLES } })
-  async list({ workspace }: { workspace: FlowWorkspace }) {
+  async list(data: Parameters<IOmnitronFlowsService['list']>[0]) {
     await this.authorize();
-    checkFlowWorkspace(workspace);
-    await this.scope(workspace);
-    return this.runtime.ledger.list(workspace);
+    checkFlowWorkspace(data.workspace);
+    await this.scope(data.workspace);
+    return this.runtime.ledger.list(data);
+  }
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async get(data: FlowRef) {
+    await this.authorize(data);
+    return this.runtime.ledger.get(data, { includeProjectStacks: true });
   }
   @Public({ auth: { roles: ADMIN_ROLES } })
   async save(data: FlowSave) {

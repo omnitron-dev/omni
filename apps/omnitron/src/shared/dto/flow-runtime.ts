@@ -8,6 +8,24 @@ export interface FlowRef {
   workspace: FlowWorkspace;
   id: string;
 }
+export interface FlowListCursor {
+  updatedAt: number;
+  id: string;
+}
+export interface FlowSummary extends FlowRef {
+  name: string;
+  active: boolean;
+  updatedAt: number;
+}
+export interface FlowList {
+  workspace: FlowWorkspace;
+  limit?: number;
+  before?: FlowListCursor;
+}
+export interface FlowPage {
+  items: FlowSummary[];
+  next: FlowListCursor | null;
+}
 export interface FlowActivation {
   id: string;
   revision: string;
@@ -56,7 +74,8 @@ export interface FlowChange extends FlowRef {
 export interface IOmnitronFlowsService {
   catalog(): Promise<{ nodes: FlowNodeDescriptor[]; diagnostics: readonly string[] }>;
   preview(data: { definition: FlowDefinition; event: FlowEvent; state?: FlowState }): Promise<FlowPreview>;
-  list(data: { workspace: FlowWorkspace }): Promise<SavedFlow[]>;
+  list(data: FlowList): Promise<FlowPage>;
+  get(data: FlowRef): Promise<SavedFlow>;
   save(data: FlowSave): Promise<SavedFlow>;
   activate(data: FlowChange): Promise<SavedFlow>;
   deactivate(data: FlowChange): Promise<SavedFlow>;

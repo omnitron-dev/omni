@@ -10,8 +10,8 @@
   "extends": ["./tsconfig.json", "../../tsconfig.vitest.json"],
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.typecheck.tsbuildinfo",
-    // The build pins rootDir to `src`; including `test` needs it widened.
-    "rootDir": "."
+    // The no-emit test project includes the shared source-level model checker.
+    "rootDir": "../.."
   },
   "include": ["src/**/*.ts", "test/**/*.ts"],
   // `test/runtime/**` holds the Bun and Deno runners, which import `bun:test`

@@ -22,3 +22,4 @@ export {
   type TraceBounds,
   type TraceReport,
 } from './finite-traces.js';
+export { recordTraceReceipt } from './trace-receipt.js';

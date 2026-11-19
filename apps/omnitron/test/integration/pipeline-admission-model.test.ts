@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { readTraceBounds, verifyFiniteTraces, type FiniteTraceModel } from '@omnitron-dev/testing/helpers';
+import { readTraceBounds, recordTraceReceipt, verifyFiniteTraces, type FiniteTraceModel } from '@omnitron-dev/testing/helpers';
 import {
   lanes, openPipelineTrace, type Lane, type Operation, type PipelineAction, type PipelineObservation,
 } from '../fixtures/pipeline-model-driver.js';
@@ -55,7 +55,7 @@ const model: FiniteTraceModel<State, PipelineAction, PipelineObservation> = {
 it('matches the reviewed agent request against run history, audit rows and local child effects', async () => {
   const options = readTraceBounds(process.env['OMNITRON_MODEL_OPTIONS'], { depth: 3, maxTraces: 200 });
   const report = await verifyFiniteTraces(model, openPipelineTrace, options);
-  const receipt = JSON.stringify({ profile: 'pipeline', ...report });
+  const receipt = await recordTraceReceipt('pipeline', report);
   console.log(receipt);
   expect(report.verdict, receipt).toBe('matched');
 }, 120_000);

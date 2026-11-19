@@ -1,5 +1,7 @@
 # Bounded model verification
 
+The full workspace CI job retains both profiles' JSON receipts in the `verification-receipts` artifact. Each receipt identifies the checked commit, Node runtime, bounds and verdict. To retain receipts locally, set `OMNITRON_TEST_EVIDENCE_DIR` to a private directory. Concurrent runs write separate files. Include only public or synthetic observations in a model.
+
 Run a profile from the repository root with Xec. The same test runs in its owning package's Vitest suite.
 
 The platform assurance design sets out the evidence required for agent actions, circuit equivalence, contract state and typed transformations. [Assurance design](ASSURANCE.md)

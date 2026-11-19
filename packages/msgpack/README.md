@@ -28,6 +28,12 @@ Plain objects encode their own enumerable string keys as standard MessagePack ma
 
 `decode` and `tryDecode` accept a `Buffer`, a `Uint8Array` view, or a `SmartBuffer` from `@omnitron-dev/msgpack/smart-buffer`. Both helpers read from the current `SmartBuffer` cursor and leave it in place. Use `serializer.decode(buffer)` to advance past a value. With chunked input, keep the unread bytes when `tryDecode` returns `null` and retry after appending the next chunk.
 
+## Verification
+
+From the repository root, `pnpm exec xec verify-model msgpack` checks a finite model of two ordinary messages sent through a fragmented stream. A separate encoder supplies the reference frame lengths. The profile compares delivery order, visible bytes, peek results and cursor position after each operation. Its JSON receipt records the depth, observations and outcome. [Stream model](test/stream-model.test.ts) · [Run and replay a profile](../../tests/verification/README.md)
+
+Map-format tests cover cardinality thresholds, legal wider headers, independent decoding and adjacent frames. Keep these wire-format cases alongside the stream model when changing the codec. [Map framing tests](test/map-framing.test.ts)
+
 ## Documentation
 
 [Public API](src/index.ts) · [Package exports](package.json) · [Omni](../../README.md)

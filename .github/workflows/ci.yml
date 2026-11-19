@@ -249,6 +249,16 @@ jobs:
       - run: pnpm test:ci --only
         env:
           OMNITRON_HOME: ${{ runner.temp }}/omnitron-test-home
+          OMNITRON_TEST_EVIDENCE_DIR: ${{ runner.temp }}/omnitron-verification
+          OMNITRON_TEST_SOURCE_COMMIT: ${{ github.sha }}
+      - name: Preserve bounded verification receipts
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: verification-receipts
+          path: ${{ runner.temp }}/omnitron-verification/*.json
+          if-no-files-found: error
+          retention-days: 14
 
   lint:
     name: Workspace lint

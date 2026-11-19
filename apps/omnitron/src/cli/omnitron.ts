@@ -305,6 +305,37 @@ service
     await serviceInstall({ ...(options.scope ? { scope: options.scope as 'user' | 'system' } : {}), ...(options.prepare ? { prepare: true } : {}), ...(options.ownerRuntime !== undefined ? { ownerRuntime: options.ownerRuntime } : {}) });
   });
 
+service.command('publish-system-plan <previous-record> <target-record>')
+  .description('As the dedicated Linux instance account, publish a checked cold supervision record and retain its predecessor')
+  .option('--restore', 'Read the exact retained target record for rollback')
+  .structuredAction(async (previous: string, target: string, options: { restore?: boolean }) => {
+    const { publishSystemServicePlan } = await import('../commands/service-resident.js');
+    const { emitInfo, emitJson } = await import('../commands/output.js');
+    const result = await publishSystemServicePlan(previous, target, options.restore);
+    if (!emitJson(result)) emitInfo(`Active supervision record ${result.active}. Retained predecessor ${result.previous}.`);
+  });
+
+service.command('system-pair <action>')
+  .description('Review, install or start an existing dedicated Linux systemd pair as its root operator')
+  .requiredOption('--account <name>', 'Dedicated service account')
+  .requiredOption('--instance <path>', 'Absolute instance home as seen by both services')
+  .requiredOption('--state <path>', 'Physical backing directory on the host')
+  .requiredOption('--from-owner <hash>', 'Original owner runtime SHA-256')
+  .requiredOption('--from-guardian <hash>', 'Original guardian runtime SHA-256')
+  .requiredOption('--to-owner <hash>', 'Target owner runtime SHA-256')
+  .requiredOption('--to-guardian <hash>', 'Target guardian runtime SHA-256')
+  .requiredOption('--record <hash>', 'SHA-256 of the published private supervision record')
+  .option('--review <digest>', 'Exact native review required by install and start')
+  .structuredAction(async (action: string, options: { account: string; instance: string; state: string; fromOwner: string;
+    fromGuardian: string; toOwner: string; toGuardian: string; record: string; review?: string }) => {
+    const { systemPairCommand } = await import('../commands/systemd-pair.js');
+    const { emitInfo, emitJson } = await import('../commands/output.js');
+    const result = systemPairCommand(action, { account: options.account, home: options.instance, state: options.state,
+      from: { owner: options.fromOwner, backend: options.fromGuardian }, to: { owner: options.toOwner, backend: options.toGuardian },
+      record: options.record }, options.review);
+    if (!emitJson(result)) emitInfo(`System pair ${action}: ${result.review}. Owner PID ${result.native[0]?.mainPid ?? 'stopped'}, guardian PID ${result.native[1]?.mainPid ?? 'stopped'}.`);
+  });
+
 service
   .command('uninstall')
   .description('Stop the supervised daemon and remove the OS service')

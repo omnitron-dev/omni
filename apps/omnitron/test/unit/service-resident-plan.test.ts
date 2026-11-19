@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({ home: '', directory: '', artifact: '', pid: 123 as number | null,
@@ -13,7 +14,8 @@ vi.mock('node:child_process', async importOriginal => ({
 }));
 vi.mock('../../src/daemon/runtime-installation.js', () => ({ RuntimeInstallation: {
   open: async () => ({ directory: path.join(state.home, 'runtime'), activation: () => null,
-    selection: () => ({ current: state.hash }), exclusive: async (work: () => unknown) => {
+    selection: () => ({ current: state.hash, revision: 2 }), releasePath: (id: string) => path.join(state.home, 'runtime/releases', id),
+    exclusive: async (work: () => unknown) => {
       if (state.leaseHeld) throw new Error('Another runtime operation');
       state.leaseHeld = true;
       try { return await work(); } finally { state.leaseHeld = false; }
@@ -73,6 +75,34 @@ beforeEach(async () => {
 afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllEnvs(); await fs.rm(root, { recursive: true, force: true }); });
 const inputs = () => ({ recoveryWaitMs: 0, scope: 'user' as const, execPath: '/fixture/node', entryPath: '/fixture/entry',
   workdir: root, path: '/usr/bin:/bin', stderrLog: path.join(root, 'stderr.log') });
+
+it.skipIf(!process.getuid?.())('publishes and exactly restores a stopped dedicated pair under the instance lease', async () => {
+  const { prepareResidentService, publishSystemServicePlan } = await import('../../src/commands/service-resident.js');
+  const plan = await prepareResidentService({ ...inputs(), scope: 'system', identity: { user: 'resident', home: '/var/lib/sample' } });
+  const active = path.join(state.home, 'runtime/supervision.json'), proposed = path.join(plan.planDirectory, 'supervision.json');
+  const makeRecord = (id: string) => JSON.stringify({ ...plan.config, cwd: path.join(state.home, 'runtime/releases', id, 'packages/0'),
+    owner: { ...plan.config.owner, artifact: id }, backend: { ...plan.config.backend, artifact: id } }, null, 2) + '\n';
+  const old = makeRecord(state.oldHash), next = makeRecord(state.hash);
+  const sha = (value: string) => createHash('sha256').update(value).digest('hex');
+  await fs.writeFile(active, old, { mode: 0o600 });
+  await fs.writeFile(proposed, next);
+  const platform = process.platform;
+  try {
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+    await expect(publishSystemServicePlan(sha(old), sha(next))).rejects.toThrow('running');
+    state.pid = null;
+    await expect(publishSystemServicePlan(sha(old), '0'.repeat(64))).rejects.toThrow('changed');
+    expect(await fs.readFile(active, 'utf8')).toBe(old);
+    await publishSystemServicePlan(sha(old), sha(next));
+    await publishSystemServicePlan(sha(old), sha(next));
+    expect(await fs.readFile(active, 'utf8')).toBe(next);
+    expect(await fs.readFile(path.join(plan.planDirectory, 'retained-' + sha(old) + '.json'), 'utf8')).toBe(old);
+    state.hash = state.oldHash;
+    await publishSystemServicePlan(sha(next), sha(old), true);
+    expect(await fs.readFile(active, 'utf8')).toBe(old);
+    expect(vi.mocked(execFileSync).mock.calls.every(call => call[1]?.includes('show'))).toBe(true);
+  } finally { Object.defineProperty(process, 'platform', { value: platform, configurable: true }); }
+});
 
 it('preserves the certified daemon environment across the controlled initial pause', async () => {
   const { prepareResidentService, installResidentService } = await import('../../src/commands/service-resident.js');

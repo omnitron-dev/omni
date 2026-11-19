@@ -3,6 +3,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
+import { readOwnedServiceBytes } from './service-record.js';
 import { setTimeout as delay } from 'node:timers/promises';
 import { OMNITRON_HOME, DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
 import { RuntimeInstallation } from '../daemon/runtime-installation.js';
@@ -229,4 +232,50 @@ export async function installResidentService(inputs: ResidentServiceInputs): Pro
     }
     return plan.planDirectory;
   });
+}
+
+/** The instance account owns its record and retained predecessor. It writes no system units. */
+export async function publishSystemServicePlan(before: string, after: string, restore = false) {
+  if (process.platform !== 'linux' || !process.getuid?.() || process.geteuid?.() !== process.getuid() ||
+      ![before, after].every(id => /^[a-f0-9]{64}$/.test(id))) throw Error('A dedicated instance account and two full supervision record hashes are required');
+  const installation = await RuntimeInstallation.open(undefined, { existing: true });
+  if (!installation) throw Error('A registered runtime installation is required');
+  const directory = path.join(installation.directory, 'supervision-plan');
+  const retained = (id: string) => path.join(directory, 'retained-' + id + '.json');
+  const read = (file: string) => {
+    const bytes = readOwnedServiceBytes(file, process.getuid!(), 1024 * 1024, true);
+    const config: unknown = JSON.parse(bytes.toString('utf8'));
+    assertManagedRuntime(config);
+    if (config.scope !== 'system' || config.owner.unit !== OWNER_SYSTEMD_UNIT || config.backend.unit !== SYSTEMD_UNIT ||
+        config.owner.label !== OWNER_LAUNCHD_LABEL || config.backend.label !== LAUNCHD_LABEL)
+      throw Error('The record belongs to another native role pair');
+    return { bytes, config, sha: createHash('sha256').update(bytes).digest('hex') };
+  };
+  try {
+    return await installation.exclusive(async () => {
+      const selected = installation.selection();
+      if (!selected || installation.activation()) throw Error('A settled installation selection is required');
+      const target = read(restore ? retained(after) : path.join(directory, 'supervision.json'));
+      const activeFile = managedRuntimeFile(), active = read(activeFile);
+      if (target.sha !== after || ![before, after].includes(active.sha) || selected.current !== target.config.backend.artifact)
+        throw Error('The active record, proposed record or selected runtime changed');
+      const options = { ...DEFAULT_DAEMON_CONFIG, ...savedDaemonOverrides(readSavedDaemonConfig()) };
+      if (!options.executionHost?.enabled || target.config.directory !== executionDirectory(options) ||
+          target.config.cwd !== path.join(installation.releasePath(selected.current), 'packages/0') ||
+          !isDeepStrictEqual({ ...active.config, owner: target.config.owner, backend: target.config.backend, cwd: target.config.cwd }, target.config))
+        throw Error('The prepared role change must retain the instance, supervision policy and private environment');
+      for (const id of new Set([target.config.owner.artifact, target.config.backend.artifact])) await installation.artifact(id);
+      assertResidentServicesStopped('system');
+      if (new PidManager(expandPath(options.pidFile)).isRunning() || new PidManager(path.join(target.config.directory, 'owner.pid')).isRunning())
+        throw Error('The instance still has a running owner or backend');
+      if (active.sha === before && before !== after) {
+        await writePrivateFile(retained(before), active.bytes);
+        if (read(activeFile).sha !== before) throw Error('The active private record changed before publication');
+        await writePrivateFile(activeFile, target.bytes);
+      }
+      if (read(activeFile).sha !== after || before !== after && read(retained(before)).sha !== before)
+        throw Error('The exact active record and retained predecessor could not be confirmed');
+      return { previous: before, active: after, owner: target.config.owner.artifact, guardian: target.config.backend.artifact, selectionRevision: selected.revision };
+    });
+  } finally { await installation.close(); }
 }

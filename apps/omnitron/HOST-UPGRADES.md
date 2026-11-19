@@ -127,12 +127,10 @@ Automatic guardian replacement currently supports a Linux system instance only
 when its private state and running guardian belong to root. The coordinator
 checks the real and effective operator UID, the guardian's four kernel UID and
 GID values, its sealed executable, and the loaded unit's stop effects.
-For a dedicated service account, the private socket, journal and candidate
-verification require that account, while replacing the root-owned unit and
-controlling systemd require an administrator. This installation still needs a
-privileged coordinator that independently verifies the reviewed unit, process
-and stop boundary before applying the native changes. Keep guardian replacement
-as a separate maintenance operation for this layout.
+For a dedicated system account, use the cold procedure below. The private
+socket, runtime registry, candidate verification and supervision record belong
+to the service account. The host administrator owns the two unit files and
+dispatches the native start.
 
 When moving an existing instance to a different account, retain the original
 units and a consistent copy of its private state. Verify the runtime selections,
@@ -140,6 +138,80 @@ absolute paths, node identity, application registrations, and recovery history
 under the new account before enabling the services. Stop the original writers
 before taking the final copy. Rehearse how the previous runtime will read any
 records accepted after activation.
+
+For the first change of Unix account, prepare both native definitions in the
+new account's view of the instance. Install the reviewed private
+`runtime/supervision-plan/supervision.json` byte-for-byte at
+`runtime/supervision.json` under that account with mode 0600. This file binds
+the two roles to their releases and carries the retained private environment.
+The administrator installs both reviewed definitions and reloads systemd.
+Check each kernel UID, GID, process, cgroup and serving backend reply. A
+rollback also needs the previous private record and the data accepted since
+the cutover. A renamed directory can invalidate absolute paths in the registry.
+
+#### Cold maintenance of a registered dedicated system pair
+
+Use a root-owned CLI installation and Node executable for the administrative
+commands. Run the instance commands as its dedicated account inside the same
+mount view as both services. The runtime selected by that account remains
+eligible for a native start through its existing sealed `managed-entry.js`.
+The administrative commands verify the Linux host locally and require
+`systemctl`, `busctl`, `flock`, cgroup v2 and native process evidence.
+
+1. Retain both role hashes, root-owned unit files, the active record SHA-256
+   and a consistent private backup. Review application and infrastructure
+   retention separately. Drain the instance and stop its two native services
+   in the approved maintenance window.
+2. In the service account, use the normal `backend select` and
+   `service install --scope system --prepare --owner-runtime <target-owner>`.
+   Inspect the active and prepared record hashes with `sha256sum` in that
+   account's view. Publish the exact proposed record with
+   `omnitron service publish-system-plan <active-sha256> <prepared-sha256>`.
+   This acquires the installation lease, checks the selected artifacts and
+   stopped processes, and retains the previous bytes under
+   `runtime/supervision-plan/retained-<active-sha256>.json`.
+3. As the host administrator, run the following three commands with the same
+   account, paths, role hashes and record SHA-256. Take the review digest
+   from the first command. `install` rebinds the registered units while they
+   are stopped. `start` checks the loaded commands, starts the owner then
+   the guardian, and confirms their kernel credentials and executables.
+
+```bash
+pair=(--account "$service_account" --instance "$instance_home" --state "$backing_directory"
+      --from-owner "$original_owner" --from-guardian "$original_guardian"
+      --to-owner "$target_owner" --to-guardian "$target_guardian" --record "$prepared_record_sha")
+"$admin_omnitron" --json service system-pair review "${pair[@]}"
+"$admin_omnitron" --json service system-pair install "${pair[@]}" --review "$review"
+"$admin_omnitron" --json service system-pair start "${pair[@]}" --review "$review"
+```
+
+The host path and the path seen by the services can be identical. The
+supported separate view uses both `TemporaryFileSystem=<logical-parent>:mode=0755`
+and one `BindPaths=<backing-directory>:<instance-home>` inside each trusted
+fragment. Both roles use the generated Omnitron unit format and the same
+dedicated account. Existing application copies may have separate
+`BindReadOnlyPaths=<physical-copy>:<original-directory>` entries under
+`/opt`, `/srv` or `/var/lib` in the service view. Use a physical directory
+under administrator-owned parents. The review pins each source inode. Start
+checks the mount seen by the process and its read-only flags. Verify each
+package's contents and the service account's access to its entry point and
+required data separately. The administrator independently supplies the role hashes.
+The tool changes the existing `ExecStart`, `WorkingDirectory` and
+`OMNITRON_CWD` for each role. An unknown directive, drop-in, pending job,
+different private record, changed inode or changed loaded command stops the
+operation. The service account receives no systemd administration grant.
+
+After an interrupted unit replacement, repeat `install` with the same
+review while the pair is still cold. After a lost start response, repeat
+`start` with that review to observe the exact active roles and start a
+remaining stopped role. Confirm the public backend PID and application
+readiness through the instance CLI. For rollback, stop the pair, select the
+retained previous runtime as the service account and run
+`omnitron service publish-system-plan <current-record-sha256> <original-record-sha256> --restore`.
+Review the inverse role bindings and original record SHA-256, then run the
+native install and start for that review. This restores the native pair and
+its supervision record. Data-format compatibility and the retained application
+inventory still require their own checks.
 
 Review container permissions separately. Access to a rootful Docker socket
 grants host administration to its clients, including processes that inherit

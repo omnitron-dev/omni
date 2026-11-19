@@ -45,7 +45,7 @@ export async function writePrivateRecord(file: string, record: unknown): Promise
   await writePrivateFile(file, JSON.stringify(record));
 }
 
-export async function writePrivateFile(file: string, contents: string, mode: 0o600 | 0o700 = 0o600): Promise<void> {
+export async function writePrivateFile(file: string, contents: string | Uint8Array, mode: 0o600 | 0o700 = 0o600): Promise<void> {
   const directory = path.dirname(file);
   await fs.mkdir(directory, { recursive: true, mode: 0o700 });
   const stat = await fs.lstat(directory);

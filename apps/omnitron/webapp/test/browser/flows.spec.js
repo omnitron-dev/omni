@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { openSqliteDatabase } from '@omnitron-dev/titan-database/sqlite';
 import { FlowLedger } from '../../../src/flows/flow-ledger.ts';
 import { FlowRuntime } from '../../../src/flows/flow-runtime.ts';
 import { diskSpaceFlow, evaluateFlow, FlowRegistry } from '../../../src/shared/dto/flows.ts';
@@ -9,7 +8,9 @@ const project = { project: 'sample', stack: 'dev' };
 const actor = { actor: 'reader', session: 'fixture-session' };
 const binding = { identity: 'sample', target: null };
 const diagnostic = 'An optional component pack could not be read.';
-function controller(options = {}) {
+async function controller(options = {}) {
+  // Playwright collects these tests before workspace packages are built.
+  const { openSqliteDatabase } = await import('@omnitron-dev/titan-database/sqlite');
   const db = openSqliteDatabase(':memory:');
   const registry = new FlowRegistry(undefined, [diagnostic]);
   const ledger = new FlowLedger(db, registry, options.now);
@@ -85,7 +86,7 @@ for (const width of [1440, 360]) {
   test(
     'disk template edits fields and branches and previews low/recovery at ' + width + 'px',
     async ({ page, context, url }) => {
-      const host = controller();
+      const host = await controller();
       try {
         await stubInventory(context, host.readings);
         await page.setViewportSize({ width, height: 900 });
@@ -172,7 +173,7 @@ test('assemble a manual graph in the editor and review its active event and pers
   context,
   url,
 }) => {
-  const host = controller({ loseSubmission: true });
+  const host = await controller({ loseSubmission: true });
   try {
     await stubInventory(context, host.readings);
     await page.goto(url + '/flows');
@@ -241,7 +242,7 @@ test('proposal and saved links resolve their owning stack in a new tab and with 
   context,
   url,
 }) => {
-  const host = controller();
+  const host = await controller();
   const definition = diskSpaceFlow('/example', 100, 200);
   definition.name = 'Disk review';
   const team = randomUUID(),
@@ -333,7 +334,7 @@ test('paging reads summaries and an open flow polls only its own graph and recei
   context,
   url,
 }) => {
-  const host = controller();
+  const host = await controller();
   const queries = [];
   context.on('request', (request) => {
     if (!request.url().endsWith('/netron/invoke')) return;
@@ -435,7 +436,7 @@ test('a detail-only flow reader opens a direct project link with just the select
   context,
   url,
 }) => {
-  const host = controller();
+  const host = await controller();
   const entry = host.ledger.save(
     {
       workspace: project,
@@ -483,7 +484,7 @@ test('local notifications follow the signed-in workspace while browsing another 
   context,
   url,
 }) => {
-  const host = controller();
+  const host = await controller();
   const readings = [];
   const sample = host.ledger.save(
     {
@@ -698,7 +699,7 @@ test('an operator explicitly shares a private Studio graph for independent admin
     hasActiveTurns: false,
     proposals: [proposal],
   };
-  const host = controller({ authority: { actor: adminId, session: 'admin-fixture' } });
+  const host = await controller({ authority: { actor: adminId, session: 'admin-fixture' } });
   const source = { actor: operatorId, threadId, proposalId };
   const calls = [];
   let unknown = true;
@@ -819,7 +820,7 @@ test('mesh disk observations keep their enrolled peer and exact mount through si
     local = randomUUID();
   const selectedBinding = { ...binding, mesh: { [second]: 'second-registration' } };
   let sampleTime = Date.now();
-  const host = controller({ binding: selectedBinding, now: () => sampleTime });
+  const host = await controller({ binding: selectedBinding, now: () => sampleTime });
   const snapshotCalls = [];
   let releaseFormer;
   const formerReply = new Promise((resolve) => {

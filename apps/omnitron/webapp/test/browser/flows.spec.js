@@ -12,7 +12,7 @@ const diagnostic = 'An optional component pack could not be read.';
 function controller(options = {}) {
   const db = openSqliteDatabase(':memory:');
   const registry = new FlowRegistry(undefined, [diagnostic]);
-  const ledger = new FlowLedger(db, registry);
+  const ledger = new FlowLedger(db, registry, options.now);
   const scopeBinding = options.binding ?? binding;
   const authority = options.authority ?? actor;
   const changes = [],
@@ -818,7 +818,8 @@ test('mesh disk observations keep their enrolled peer and exact mount through si
     second = randomUUID(),
     local = randomUUID();
   const selectedBinding = { ...binding, mesh: { [second]: 'second-registration' } };
-  const host = controller({ binding: selectedBinding });
+  let sampleTime = Date.now();
+  const host = controller({ binding: selectedBinding, now: () => sampleTime });
   const snapshotCalls = [];
   let releaseFormer;
   const formerReply = new Promise((resolve) => {
@@ -912,6 +913,7 @@ test('mesh disk observations keep their enrolled peer and exact mount through si
         identity: (id) => selectedBinding.mesh[id],
         snapshot: async (id) => {
           actualReads.push(id);
+          if (actualReads.length === 1) throw Error('Enrolled peer disconnected during sampling');
           return answer(['/data']);
         },
       },
@@ -925,13 +927,31 @@ test('mesh disk observations keep their enrolled peer and exact mount through si
         throw error;
       },
     });
+    const interrupted = page
+      .locator('details')
+      .filter({ has: page.locator('summary', { hasText: 'Sampling interrupted' }) });
+    const resumed = page.locator('details').filter({ has: page.locator('summary', { hasText: 'Sampling resumed' }) });
     try {
+      await runtime.tick();
+      await page.reload();
+      await interrupted.locator('summary').click();
+      await expect(interrupted.getByText('reason · Enrolled peer disconnected during sampling')).toBeVisible();
+      await expect(interrupted.getByText('nodeId · ' + second)).toBeVisible();
+      await expect(interrupted.getByText('mount · /data')).toBeVisible();
+      await expect(page.getByText(/disk · mesh.disk.sample/)).toHaveCount(0);
+      await interrupted.getByText('reason · Enrolled peer disconnected during sampling').scrollIntoViewIfNeeded();
+      await page.screenshot({ path: test.info().outputPath('mesh-sampling-interrupted.png') });
+      sampleTime = host.ledger.nextDue();
       await runtime.tick();
     } finally {
       await runtime.dispose();
     }
-    expect(actualReads).toEqual([second]);
+    expect(actualReads).toEqual([second, second]);
     await page.reload();
+    await expect(interrupted.locator('summary')).toBeVisible();
+    await resumed.locator('summary').click();
+    await expect(resumed.getByText('nodeId · ' + second)).toBeVisible();
+    await expect(resumed.getByText('mount · /data')).toBeVisible();
     await page.getByText(/disk · mesh.disk.sample · 1 effect/).click();
     await expect(
       page.getByText('Disk observation from /data on enrolled node ' + second + '. Recorded by this controller.')

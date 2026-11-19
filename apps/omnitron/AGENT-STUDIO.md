@@ -1,6 +1,35 @@
 # Agent Studio
 
-Agent Studio connects a Console operator to a model available through their local Codex or Antigravity subscription. Use it to choose a starter, discuss an existing project or review a proposed change. The operator can inspect each result and record an acceptance decision.
+A Studio team owns a chat, its task history and shared notes in one project or planning workspace. Choose the lead model, add members from connected local adapters and address work to a person in the roster. The lead collects results across adapters. An operator can review a result or open a proposed automation in the flow editor.
+
+## Start a team
+
+1. Run `omnitron studio doctor` on the controller to see which installed adapters can accept a turn and which support the room's MCP tools. Open **Agent Studio → New team**, select a lead with room tools and choose its model.
+2. Name the room and set the allowed providers, maximum active members, per-request delegation limit and cost tier. The first operator message starts model work. Opening an empty team has no inference cost.
+3. Add a member with its own name, adapter, model and responsibility, or let the lead call `team_catalog`, `team_invite` and `team_assign`. For automatic selection each connector supplies qualified capability and cost data. Within the approved budget the controller picks a compatible model using comparable quotes or declared tiers.
+4. Use **Chat** to address the lead or a named member. **Tasks** follows dispatched assignments. In **Memory**, named notes carry an author and revision. An outdated edit asks the writer to reread the current entry.
+5. Ask the lead to propose a flow. **Open in flow editor** opens its versioned graph in the room's originating workspace. Preview an event and review the effects before saving and activating it. [Event flows](./FLOWS.md)
+
+Two connected providers can work simultaneously. A connector can opt into up to eight concurrent provider turns with `--jobs`. Studio serializes work for each individual member's provider conversation. Workers return their own results. After the lead and its assigned workers finish, the controller queues one synthesis for that delegation group, including incomplete outcomes. A retired member's prior work remains in the journal.
+
+The connector owns its subscription. A provider receives the addressed task, instructions and any room material that the authorized member reads or shares. Room tools can read explicitly shared turns, notes and proposals. Provider conversation identifiers, workspace credentials and the local operator's session stay within their authentication boundaries. When an individual conversation becomes a team, its lead starts a fresh provider session. The operator retains the original private journal. Team members can read the new shared turns and notes.
+
+| Adapter | Available participation |
+| --- | --- |
+| Codex | Member or lead when the installed CLI exposes the isolated room MCP toolset. |
+| Claude Code | Member or lead with a signed-in supported restricted CLI. Check the installed profile with `studio doctor`. |
+| Antigravity | Member through strict headless execution. Completed answers feed back to the lead. |
+| Kimi | The doctor reports local availability. Execution requires a qualified adapter that isolates the room's tools. |
+
+Read the journal after a dropped connection. A claimed turn with an unknown provider outcome remains interrupted. Cancelling a request closes outstanding descendants. A model with an uncertain conversation receives a fresh provider context on its next team turn. A connector rechecks operator authority before dispatch and before accepting output.
+
+## Coordination choices
+
+T3 Code separates the application thread from provider sessions and keeps execution on the workspace host. Studio uses a room identity, member identity and a separate provider continuation for each member. Claude Code teams and the OpenAI Agents SDK distinguish conversation ownership from delivery of delegated results. In Studio the lead stays identifiable across all adapters. [T3 Code architecture](https://github.com/pingdotgg/t3code/blob/main/docs/internals/overview.md) · [T3 Code V2 lifecycle design](https://github.com/pingdotgg/t3code/blob/main/docs/orchestration-v2/feature-lifecycles.md) · [Claude Code teams](https://code.claude.com/docs/en/agent-teams) · [OpenAI agent orchestration](https://openai.github.io/openai-agents-python/multi_agent/)
+
+AutoGen documents explicit group termination. Google ADK and CrewAI describe role-based orchestration. Studio makes role eligibility, provider access and the limit on delegation enforceable in the controller. A cheaper model needs declared qualifications, and a team message uses part of the same dispatch budget as an assignment. [AutoGen selector teams](https://microsoft.github.io/autogen/stable/user-guide/agentchat-user-guide/selector-group-chat.html) · [ADK multi-agent systems](https://google.github.io/adk-docs/agents/multi-agents/) · [CrewAI crews](https://docs.crewai.com/en/concepts/crews)
+
+MCP serves the tools of a single active turn. ACP and A2A distinguish protocol capabilities, sessions and tasks. A connector advertising a model and a connector able to isolate room tools are distinct observations. The controller verifies the selected capability before starting the lead. [MCP lifecycle](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle) · [ACP initialization](https://agentclientprotocol.com/protocol/v1/initialization) · [A2A specification](https://a2a-protocol.org/latest/specification/)
 
 ## Plan a first project
 
@@ -64,7 +93,7 @@ Choose a registered project in the Console. Select a stack to bind a new convers
 omnitron studio connect reports --account ACCOUNT_ID --provider agy
 ```
 
-Before the first project exists, use `omnitron studio connect --planning --account ACCOUNT_ID --provider codex`. If several CLI installations exist, select the executable with `--binary /absolute/path/to/codex`. Model discovery uses `codex debug models` or `agy models` from that executable.
+Before the first project exists, use `omnitron studio connect --planning --account ACCOUNT_ID --provider codex`. If several CLI installations exist, select the executable with `--binary /absolute/path/to/codex`. Use `omnitron studio doctor --provider codex` to check discovery through the selected installation.
 
 Use **Attach text** to read a small UTF-8 file into the editable message. Inspect or remove any part before sending. The message limit is 32 KiB. The adapter starts the provider in a private temporary working directory and passes the selected model, role instructions, explicit message and provider conversation identifier. The provider handles its own authentication and can identify its subscriber. The local Console account ID, registered project path and filename stay in Omnitron unless included in the message itself.
 
@@ -96,7 +125,7 @@ The local ledger retains the request, response, outcome, reported usage and oper
 
 ## Recover an interrupted conversation
 
-The daemon admits each turn by a stable request ID and rechecks the sending user's session before dispatch. A connector claims one turn at a time and has capacity for 16 queued and running turns. **Stop turn** cancels queued or running work. Losing the connector marks in-flight work interrupted and preserves the last recorded response. After a lost acknowledgment, **Retry same request** uses the original ID. **Withdraw request** cancels an admitted turn or records a withdrawal that also applies if the original request arrives later. A completed result remains available. Start a fresh conversation for an interrupted turn whose provider outcome is unknown.
+The daemon admits each turn by a stable request ID and rechecks the sending user's session before dispatch. A connector defaults to one active turn and has capacity for 16 queued and running turns. **Stop turn** cancels queued or running work. Losing the connector marks in-flight work interrupted and preserves the last recorded response. After a lost acknowledgment, **Retry same request** uses the original ID. **Withdraw request** cancels an admitted turn or records a withdrawal that also applies if the original request arrives later. A completed result remains available. In an individual conversation, start a fresh conversation after an unknown provider outcome. A team retains its member and journal while starting a fresh provider context for the next assignment.
 
 ## Verification
 

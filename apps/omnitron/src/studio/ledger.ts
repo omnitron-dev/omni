@@ -167,7 +167,7 @@ export class StudioLedger {
       .get(threadId, ...scopeValues(scope)) as StoredThread | undefined;
   }
 
-  thread(scope: StudioScope, id: string, before?: string) {
+  thread(scope: StudioScope, id: string, before?: string, includeTasks = true) {
     this.reap();
     const thread = this.owned(scope, id);
     if (!thread) throw Error('Conversation unavailable in this workspace');
@@ -193,7 +193,7 @@ export class StudioLedger {
       thread: threadView(thread),
       beforeTurn: rows.length > turnPageSize ? turns[0]!.id : null,
       turns: turns.map(publicTurn),
-      team: this.teams.snapshot(id),
+      team: this.teams.snapshot(id, includeTasks),
     };
   }
 

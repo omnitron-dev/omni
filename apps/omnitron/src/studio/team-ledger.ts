@@ -89,6 +89,9 @@ export class StudioTeamLedger {
         CREATE UNIQUE INDEX IF NOT EXISTS studio_running_member ON studio_turns(threadId,COALESCE(memberId,threadId)) WHERE status='running';
         CREATE INDEX IF NOT EXISTS studio_round ON studio_turns(rootId,kind);
         CREATE INDEX IF NOT EXISTS studio_children ON studio_turns(originId,kind,status);
+        CREATE INDEX IF NOT EXISTS studio_shared_history ON studio_turns(threadId, seq) WHERE shared=1;
+        CREATE INDEX IF NOT EXISTS studio_task_history ON studio_turns(threadId, seq) WHERE kind='task';
+        CREATE INDEX IF NOT EXISTS studio_outstanding ON studio_turns(threadId) WHERE status IN ('queued','running');
         CREATE TABLE IF NOT EXISTS studio_peers (
           threadId TEXT NOT NULL REFERENCES studio_threads(id), id TEXT NOT NULL, name TEXT NOT NULL, provider TEXT NOT NULL,
           assignment TEXT NOT NULL, conversation TEXT, active INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(threadId,id)
@@ -200,7 +203,12 @@ export class StudioTeamLedger {
         this.db.prepare('SELECT 1 FROM studio_gathers WHERE threadId=?').get(id)
       )
         throw Error('Wait for outstanding team work before changing the policy');
-      this.db.prepare('UPDATE studio_threads SET policy=?,updatedAt=? WHERE id=?').run(json, this.clock(), id);
+      // Sharing starts a new provider context. The operator retains the individual transcript.
+      this.db
+        .prepare(
+          'UPDATE studio_threads SET conversation=CASE WHEN policy IS NULL THEN NULL ELSE conversation END,policy=?,updatedAt=? WHERE id=?'
+        )
+        .run(json, this.clock(), id);
     });
   }
   members(id: string): StudioMember[] {
@@ -264,27 +272,52 @@ export class StudioTeamLedger {
       this.touch(id);
     });
   }
-  snapshot(id: string): StudioTeam {
-    const row = this.db.prepare('SELECT policy FROM studio_threads WHERE id=?').get(id) as { policy: string | null };
+  private roomDetails(id: string) {
     return {
-      policy: row.policy ? JSON.parse(row.policy) : null,
       members: this.members(id),
       notes: this.db
         .prepare('SELECT key,text,revision,authorId,updatedAt FROM studio_notes WHERE threadId=? ORDER BY key')
         .all(id) as StudioNote[],
-      // The inbox is bounded; all older assignments remain in the paginated transcript.
-      tasks: (
-        this.db
-          .prepare(
-            'SELECT ' + turnColumns + " FROM studio_turns WHERE threadId=? AND kind='task' ORDER BY seq DESC LIMIT 32"
-          )
-          .all(id) as StoredTurn[]
-      ).map(publicTurn),
       proposals: this.db
         .prepare(
           'SELECT id,name,authorId,createdAt FROM studio_flow_proposals WHERE threadId=? ORDER BY createdAt DESC,id DESC LIMIT 32'
         )
         .all(id) as StudioFlowProposal[],
+    };
+  }
+  snapshot(id: string, includeTasks: boolean): StudioTeam {
+    const row = this.db.prepare('SELECT policy FROM studio_threads WHERE id=?').get(id) as { policy: string | null };
+    return {
+      ...this.roomDetails(id),
+      policy: row.policy ? JSON.parse(row.policy) : null,
+      hasActiveTurns: Boolean(
+        this.db
+          .prepare("SELECT 1 FROM studio_turns WHERE threadId=? AND status IN ('queued','running') LIMIT 1")
+          .get(id)
+      ),
+      tasks: includeTasks
+        ? (
+            this.db
+              .prepare(
+                'SELECT ' +
+                  turnColumns +
+                  " FROM studio_turns WHERE threadId=? AND kind='task' ORDER BY seq DESC LIMIT 32"
+              )
+              .all(id) as StoredTurn[]
+          ).map(publicTurn)
+        : [],
+    };
+  }
+  /** Bodies are available by shared turn ID. Routine polling reads only the inbox index and summaries. */
+  sharedOverview(id: string) {
+    return {
+      ...this.roomDetails(id),
+      tasks: this.db
+        .prepare(
+          "SELECT id,memberId,status,substr(prompt,1,160) AS title FROM studio_turns WHERE threadId=? AND kind='task' AND shared=1 ORDER BY seq DESC LIMIT 32"
+        )
+        .all(id),
+      messages: this.recentShared(id),
     };
   }
   note(id: string, authorId: string | null, input: StudioNoteInput): StudioNote {
@@ -391,39 +424,49 @@ export class StudioTeamLedger {
       return result;
     });
   }
-  enqueue(scope: StudioScope, post: StudioPost, session: string | null, origin?: StudioPrincipalTurn) {
+  /** An admission belongs to the original room and command even after the member leaves. */
+  addressedPost(scope: StudioScope, post: StudioPost, origin?: StudioPrincipalTurn) {
+    const row = this.db
+      .prepare(
+        `SELECT room.stack, t.id, (t.shared=1 AND t.memberId=? AND t.authorId IS ? AND
+          t.originId IS ? AND t.kind=? AND t.prompt=?) AS matches
+         FROM studio_threads room LEFT JOIN studio_turns t ON t.threadId=room.id AND t.id=?
+         WHERE room.id=? AND room.account=? AND room.project=? AND room.directory=?`
+      )
+      .get(
+        post.memberId,
+        origin?.memberId ?? null,
+        origin?.id ?? null,
+        post.kind,
+        post.text,
+        post.turnId,
+        post.threadId,
+        scope.account,
+        scope.project,
+        scope.directory
+      ) as { stack: string | null; id: string | null; matches: number | null } | undefined;
+    if (!row) throw Error('Conversation unavailable in this workspace');
+    if (row.id !== null && !row.matches) throw Error('Turn identity already used for a different request');
+    return {
+      stack: row.stack,
+      receipt: row.id === null ? null : { threadId: post.threadId, turnId: post.turnId },
+    };
+  }
+  enqueue(
+    scope: StudioScope,
+    post: StudioPost,
+    session: string | null,
+    origin?: StudioPrincipalTurn,
+    beforeEnqueue?: () => void
+  ) {
     return this.transaction(() => {
-      this.room(scope, post.threadId);
+      const { receipt } = this.addressedPost(scope, post, origin);
+      if (receipt) return receipt;
       const policy = this.policy(post.threadId);
       const target = this.member(post.threadId, post.memberId);
       const authorId = origin?.memberId ?? null;
       const originId = origin?.id ?? null;
       const rootId = origin?.rootId ?? post.turnId;
-      const existing = this.db
-        .prepare('SELECT threadId,memberId,authorId,originId,kind,prompt FROM studio_turns WHERE id=?')
-        .get(post.turnId) as
-        | {
-            threadId: string;
-            memberId: string;
-            authorId: string | null;
-            originId: string | null;
-            kind: string;
-            prompt: string;
-          }
-        | undefined;
-      const receipt = { threadId: post.threadId, turnId: post.turnId };
-      if (existing) {
-        if (
-          existing.threadId !== post.threadId ||
-          existing.memberId !== post.memberId ||
-          existing.authorId !== authorId ||
-          existing.originId !== originId ||
-          existing.kind !== post.kind ||
-          existing.prompt !== post.text
-        )
-          throw Error('Turn identity already used for a different request');
-        return receipt;
-      }
       if (
         this.db
           .prepare(
@@ -456,9 +499,10 @@ export class StudioTeamLedger {
         ).n >= 16
       )
         throw Error('The connector queue is full');
-      this.db
+      beforeEnqueue?.();
+      const added = this.db
         .prepare(
-          "INSERT INTO studio_turns(id,threadId,memberId,authorId,originId,rootId,kind,shared,connection,session,prompt,status,createdAt) VALUES(?,?,?,?,?,?,?,1,?,?,?,'queued',?)"
+          "INSERT INTO studio_turns(id,threadId,memberId,authorId,originId,rootId,kind,shared,connection,session,prompt,status,createdAt) VALUES(?,?,?,?,?,?,?,1,?,?,?,'queued',?) ON CONFLICT(id) DO NOTHING"
         )
         .run(
           post.turnId,
@@ -473,12 +517,13 @@ export class StudioTeamLedger {
           post.text,
           this.clock()
         );
+      if (!added.changes) throw Error('Turn identity already used for a different request');
       if (origin && post.kind === 'task')
         this.db
           .prepare('INSERT OR IGNORE INTO studio_gathers VALUES(?,?,?,?)')
           .run(origin.id, rootId, post.threadId, session);
       this.touch(post.threadId);
-      return receipt;
+      return { threadId: post.threadId, turnId: post.turnId };
     });
   }
   /** Enqueue one synthesis after the lead and all of its assigned workers reach a terminal state. */
@@ -486,7 +531,7 @@ export class StudioTeamLedger {
     this.transaction(() => {
       this.db
         .prepare(
-          "DELETE FROM studio_gathers WHERE originId IN (SELECT id FROM studio_turns WHERE status IN ('failed','cancelled','interrupted'))"
+          "DELETE FROM studio_gathers WHERE EXISTS(SELECT 1 FROM studio_turns t WHERE t.id=studio_gathers.originId AND t.status IN ('failed','cancelled','interrupted'))"
         )
         .run();
       const ready = this.db

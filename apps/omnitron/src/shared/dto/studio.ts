@@ -109,6 +109,7 @@ export interface StudioTeam {
   members: StudioMember[];
   notes: StudioNote[];
   tasks: StudioTurn[];
+  hasActiveTurns: boolean;
   proposals: StudioFlowProposal[];
 }
 export interface StudioFlowProposal {
@@ -172,7 +173,12 @@ export type StudioResult =
 
 export interface IOmnitronStudioService {
   workspace(data: { project: string | null; stack?: string; before?: StudioThreadCursor }): Promise<StudioWorkspace>;
-  thread(data: { project: string | null; threadId: string; before?: string }): Promise<StudioHistory>;
+  thread(data: {
+    project: string | null;
+    threadId: string;
+    before?: string;
+    includeTasks?: boolean;
+  }): Promise<StudioHistory>;
   createTeam(
     data: StudioRoomRef &
       StudioMemberInput & {
@@ -186,7 +192,9 @@ export interface IOmnitronStudioService {
   retireMember(data: StudioRoomRef & { memberId: string }): Promise<void>;
   post(data: StudioPost): Promise<{ threadId: string; turnId: string }>;
   writeNote(data: StudioRoomRef & StudioNoteInput): Promise<StudioNote>;
-  flowProposal(data: StudioRoomRef & { proposalId: string }): Promise<{ definition: FlowDefinition; stack: string | null }>;
+  flowProposal(
+    data: StudioRoomRef & { proposalId: string }
+  ): Promise<{ definition: FlowDefinition; stack: string | null }>;
   send(data: StudioSend): Promise<{ threadId: string; turnId: string }>;
   cancel(data: {
     project: string | null;

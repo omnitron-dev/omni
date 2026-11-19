@@ -7,7 +7,7 @@ import { StudioLedger } from '../../src/studio/ledger.js';
 import { StudioRpcService } from '../../src/studio/studio.rpc-service.js';
 import { diskSpaceFlow } from '../../src/shared/dto/flows.js';
 import { studioCatalogFromListing, type StudioModelCatalog } from '../../src/shared/dto/studio-policy.js';
-import type { IOmnitronStudioService, StudioTeamTool } from '../../src/shared/dto/studio.js';
+import type { StudioTeamTool } from '../../src/shared/dto/studio.js';
 import type { OmnitronAuthUser } from '../../src/shared/dto/services.js';
 
 const directory = process.cwd();
@@ -41,7 +41,7 @@ function catalog(
 const preferences = { role: 'analyst', result: 'analysis', model: 'lead-model', requirements: {} } as const;
 const project = 'reports';
 describe('Studio runs a mixed-provider team through the operator and connector APIs', () => {
-  let db: Database.Database, rpc: IOmnitronStudioService, lead: string, worker: string, room: string, revoked: boolean;
+  let db: Database.Database, rpc: StudioRpcService, lead: string, worker: string, room: string, revoked: boolean;
   const base = () => ({ project, threadId: room });
   const tool = (connection: string, turnId: string, name: StudioTeamTool, args: Record<string, unknown> = {}) =>
     localCall(() => rpc.teamTool({ connection, turnId, name, arguments: args }));
@@ -102,6 +102,30 @@ describe('Studio runs a mixed-provider team through the operator and connector A
   });
   afterEach(() => db.close());
 
+  it('confirms only the exact admitted room command after its member and connector leave', async () => {
+    const memberId = randomUUID();
+    await asUser(() => rpc.addMember({ ...base(), memberId, name: 'Editor', provider: 'codex', preferences }));
+    const message = { ...base(), turnId: randomUUID(), memberId, kind: 'task' as const, text: 'Review the table' };
+    expect(await asUser(() => rpc.postReceipt(message))).toBeNull();
+    const receipt = await asUser(() => rpc.post(message));
+    await asUser(() => rpc.retireMember({ ...base(), memberId }));
+    await localCall(() => rpc.disconnectAdapter({ connection: lead }));
+    expect(await asUser(() => rpc.postReceipt(message))).toEqual(receipt);
+    expect(await asUser(() => rpc.post(message))).toEqual(receipt);
+    const turns = (await asUser(() => rpc.thread(base()))).turns;
+    expect(turns).toMatchObject([{ id: message.turnId, status: 'cancelled' }]);
+    for (const change of [{ text: 'Changed' }, { memberId: room }, { kind: 'message' as const }])
+      await expect(asUser(() => rpc.postReceipt({ ...message, ...change }))).rejects.toThrow('identity');
+    await expect(asUser(() => rpc.postReceipt(message, 'other-stack'))).rejects.toThrow('stack');
+    await expect(asUser(() => rpc.postReceipt(message), 'another-user')).rejects.toThrow('workspace');
+    await expect(asUser(() => rpc.postReceipt({ ...message, project: 'another-project' }))).rejects.toThrow(
+      'workspace'
+    );
+    await expect(asUser(() => rpc.post({ ...message, turnId: randomUUID() }))).rejects.toThrow('Member is unavailable');
+    revoked = true;
+    await expect(asUser(() => rpc.postReceipt(message))).rejects.toThrow('Session');
+  });
+
   it('enlists by role and cost, runs two workers concurrently, exchanges data, and synthesises once on the original lead session', async () => {
     const parent = (await post(room, 'Compare the two approaches')).turnId;
     expect((await claim(lead))?.teamTools).toBe(true);
@@ -131,6 +155,9 @@ describe('Studio runs a mixed-provider team through the operator and connector A
     };
     expect(state.members.find((m) => m.id === reviewer)).toMatchObject({ provider: 'agy', model: 'compact' });
     expect(state.lead).toBe(room);
+    const inbox = await asUser(() => rpc.thread({ ...base(), includeTasks: false }));
+    expect(inbox.team.hasActiveTurns).toBe(true);
+    expect(inbox.team.tasks).toEqual([]);
     expect(
       await tool(worker, a.turnId, 'team_note', { key: 'invariant', text: 'Use the registered project.', revision: 0 })
     ).toMatchObject({ authorId: reviewer, revision: 1 });
@@ -190,11 +217,52 @@ describe('Studio runs a mixed-provider team through the operator and connector A
     });
     const proposal = (await tool(lead, job, 'flow_propose', { definition })) as { id: string };
     expect(await tool(lead, job, 'flow_propose', { definition })).toEqual(proposal);
-    expect(await asUser(() => rpc.flowProposal({ ...base(), proposalId: proposal.id }))).toEqual({definition,stack:null});
+    expect(await asUser(() => rpc.flowProposal({ ...base(), proposalId: proposal.id }))).toEqual({
+      definition,
+      stack: null,
+    });
     await expect(asUser(() => rpc.flowProposal({ ...base(), proposalId: proposal.id }), 'b')).rejects.toThrow(
       'unavailable'
     );
     expect((await asUser(() => rpc.thread(base()))).team.proposals).toHaveLength(1);
+  });
+
+  it('starts the first shared turn in a fresh provider conversation and keeps the private journal with its owner', async () => {
+    const threadId = randomUUID();
+    const address = { project, threadId };
+    const privateId = randomUUID();
+    await asUser(() =>
+      rpc.send({
+        ...address,
+        turnId: privateId,
+        provider: 'codex',
+        preferences,
+        after: null,
+        prompt: 'A private draft',
+      })
+    );
+    expect((await claim(lead))?.turnId).toBe(privateId);
+    await finish(lead, privateId, 'An individual response', 'individual-session');
+    const policy = (await asUser(() => rpc.thread(base()))).team.policy!;
+    await asUser(() => rpc.configureTeam({ ...address, previous: null, policy }));
+    const share = async (text: string) => {
+      const turnId = randomUUID();
+      await asUser(() => rpc.post({ ...address, turnId, memberId: threadId, text, kind: 'message' }));
+      const dispatched = await claim(lead);
+      expect(dispatched?.turnId).toBe(turnId);
+      return { turnId, conversation: dispatched!.conversation };
+    };
+    const first = await share('Start a joint review');
+    expect(first.conversation).toBeNull();
+    await expect(tool(lead, first.turnId, 'team_state', { turnId: privateId })).rejects.toThrow('outside');
+    const overview = await tool(lead, first.turnId, 'team_state');
+    expect(JSON.stringify(overview)).not.toContain('A private draft');
+    await finish(lead, first.turnId, 'Shared result', 'team-session');
+    await asUser(() => rpc.configureTeam({ ...address, previous: policy, policy: { ...policy, maxDelegations: 5 } }));
+    expect((await share('Continue together')).conversation).toBe('team-session');
+    expect((await asUser(() => rpc.thread(address))).turns.find((t) => t.id === privateId)?.answer).toBe(
+      'An individual response'
+    );
   });
 
   it('enforces the root budget even when the last worker messages a different adapter', async () => {

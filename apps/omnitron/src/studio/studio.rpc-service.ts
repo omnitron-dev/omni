@@ -24,6 +24,7 @@ import {
   STUDIO_TEAM_TOOLS,
   type StudioMemberInput,
   type StudioNoteInput,
+  type StudioPost,
   projectInterview,
   type IOmnitronStudioService,
   type StudioSend,
@@ -123,7 +124,9 @@ export class StudioRpcService implements IOmnitronStudioService {
   async thread(data: Parameters<IOmnitronStudioService['thread']>[0]) {
     const { context } = await daemonPrincipal(this.auth, 'operator');
     if (!uuid(data.threadId) || (data.before !== undefined && !uuid(data.before))) throw Error('Invalid conversation');
-    return this.ledger.thread(this.scope(data.project, context.userId!), data.threadId, data.before);
+    if (data.includeTasks !== undefined && typeof data.includeTasks !== 'boolean')
+      throw Error('Invalid task projection');
+    return this.ledger.thread(this.scope(data.project, context.userId!), data.threadId, data.before, data.includeTasks);
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
@@ -229,14 +232,34 @@ export class StudioRpcService implements IOmnitronStudioService {
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
-  async post(data: Parameters<IOmnitronStudioService['post']>[0]) {
-    const { scope, session, room } = await this.roomPrincipal(data);
-    if (!uuid(data.turnId) || !uuid(data.memberId) || !['task', 'message'].includes(data.kind))
+  async post(data: StudioPost) {
+    return this.postIfNew(data);
+  }
+
+  private async addressedPost(data: StudioPost, expectedStack?: string) {
+    const { context, sessionId } = await daemonPrincipal(this.auth, 'operator');
+    if (!uuid(data.threadId) || !uuid(data.turnId) || !uuid(data.memberId) || !['task', 'message'].includes(data.kind))
       throw Error('Invalid addressed turn');
     boundedText(data.text, 32768, 'message');
-    if (room.stack) await this.requireStack(data.project, room.stack);
+    const scope = this.scope(data.project, context.userId!);
+    const { stack, receipt } = this.ledger.teams.addressedPost(scope, data);
+    if (expectedStack !== undefined && expectedStack !== stack) throw Error('The Studio room belongs to another stack');
+    return { scope, stack, receipt, session: sessionId ?? null };
+  }
+
+  /** Controller-local reconciliation uses the current account and only returns the original admission IDs. */
+  async postReceipt(data: StudioPost, expectedStack?: string) {
+    return (await this.addressedPost(data, expectedStack)).receipt;
+  }
+
+  async postIfNew(data: StudioPost, expectedStack?: string, beforeEnqueue?: () => void) {
+    const { scope, stack, receipt, session } = await this.addressedPost(data, expectedStack);
+    if (receipt) return receipt;
+    if (stack) await this.requireStack(data.project, stack);
     await this.auditTeam('team.post', data.turnId);
-    return this.ledger.teams.enqueue(scope, data, session);
+    if (this.scope(data.project, scope.account).directory !== scope.directory)
+      throw Error('Workspace directory changed');
+    return this.ledger.teams.enqueue(scope, data, session, undefined, beforeEnqueue);
   }
 
   private noteInput(args: Partial<StudioNoteInput>): StudioNoteInput {
@@ -261,9 +284,9 @@ export class StudioRpcService implements IOmnitronStudioService {
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async flowProposal(data: Parameters<IOmnitronStudioService['flowProposal']>[0]) {
-    const {room}=await this.roomPrincipal(data);
+    const { room } = await this.roomPrincipal(data);
     if (!uuid(data.proposalId)) throw Error('Invalid proposal identity');
-    return {definition:this.ledger.teams.proposal(data.threadId, data.proposalId),stack:room.stack};
+    return { definition: this.ledger.teams.proposal(data.threadId, data.proposalId), stack: room.stack };
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
@@ -313,7 +336,7 @@ export class StudioRpcService implements IOmnitronStudioService {
             failure: t.failure,
           };
         }
-        const snapshot = teams.snapshot(room.id);
+        const snapshot = teams.sharedOverview(room.id);
         return {
           self: me.id,
           lead: room.id,
@@ -328,13 +351,8 @@ export class StudioRpcService implements IOmnitronStudioService {
             })),
           policy,
           notes: snapshot.notes,
-          tasks: snapshot.tasks.map((t) => ({
-            id: t.id,
-            memberId: t.memberId,
-            status: t.status,
-            title: t.prompt.slice(0, 160),
-          })),
-          messages: teams.recentShared(room.id),
+          tasks: snapshot.tasks,
+          messages: snapshot.messages,
           proposals: snapshot.proposals,
         };
       }

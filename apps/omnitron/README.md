@@ -5,7 +5,8 @@ Omnitron runs and manages classic Node applications and Titan services. Its CLI 
 ## Capabilities
 
 - Projects, stacks, application processes and worker pools.
-- Project interviews, scoped conversations and model selection with local subscriptions. [Agent Studio](AGENT-STUDIO.md)
+- Project interviews, multi-provider team rooms, shared memory and delegated work through local subscriptions. [Agent Studio](AGENT-STUDIO.md)
+- Visual event flows for host observations, notifications, project pipelines and Studio assignments. [Event flows](FLOWS.md)
 - Logs, health, metrics, pipelines and operational receipts.
 - Immutable application releases with verified runtime provenance.
 - Independent backend and resident-owner upgrades.

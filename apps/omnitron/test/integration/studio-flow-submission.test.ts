@@ -80,7 +80,6 @@ it('hands one private proposal to a different administrator for review and retai
       report: vi.fn(),
       pipelines: {
         getPipeline: vi.fn(),
-        listWorkspace: vi.fn(),
         prepareRun: vi.fn(),
         startRun: vi.fn(),
         getRunStatus: vi.fn(),

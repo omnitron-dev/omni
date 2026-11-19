@@ -12,6 +12,7 @@ import { useAccess } from 'src/auth/access';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { flows } from 'src/netron/client';
 import { formatDate } from 'src/utils/formatters';
+import { meshDisk } from './flow-disk-source';
 import { FlowEffects, type ReviewedEvent } from './flow-sample';
 
 export const describeFlowError = (failure: unknown) => (failure instanceof Error ? failure.message : String(failure));
@@ -50,11 +51,19 @@ function Receipt({
         <Typography variant="caption">
           Event {receipt.event.id} · activation {receipt.activation} · revision {receipt.revision}
         </Typography>
-        {Object.entries(receipt.event.data).map(([key, value]) => (
-          <Typography key={key} variant="body2">
-            {key} · {fmt(value)}
+        {receipt.event.type === 'mesh.disk.sample' && (
+          <Typography variant="body2">
+            Disk observation from {String(receipt.event.data['mount'])} on enrolled node{' '}
+            {String(receipt.event.data['nodeId'])}. Recorded by this controller.
           </Typography>
-        ))}
+        )}
+        {Object.entries(receipt.event.data)
+          .filter(([key]) => receipt.event.type !== 'mesh.disk.sample' || !['nodeId', 'mount'].includes(key))
+          .map(([key, value]) => (
+            <Typography key={key} variant="body2">
+              {key} · {fmt(value)}
+            </Typography>
+          ))}
         <Typography variant="body2">Visited · {receipt.visited.join(', ')}</Typography>
         {receipt.traversed.map((edge) => (
           <Typography variant="caption" key={[edge.from, edge.port, edge.to].join(':')}>
@@ -122,7 +131,7 @@ export function FlowOperations({
   const liveEvent =
     eligible?.type === 'input.manual@1' ||
     (eligible?.type === 'input.event@1' &&
-      !['host.disk.sample', 'stack.started', 'stack.stopped'].includes(sample!.event.type));
+      !['host.disk.sample', 'mesh.disk.sample', 'stack.started', 'stack.stopped'].includes(sample!.event.type));
   const open = (command: Review) => {
     setReview(command);
     setError('');
@@ -193,11 +202,19 @@ export function FlowOperations({
           {formatDate(new Date(saved.active.startedAt))}
         </Typography>
       )}
-      {saved.sources.map((source) => (
-        <Typography key={source.nodeId} variant="body2" color={source.error ? 'warning.main' : 'text.secondary'}>
-          {source.nodeId} · {source.error ?? 'Next sample ' + formatDate(new Date(source.dueAt))}
-        </Typography>
-      ))}
+      {saved.sources.map((source) => {
+        const input = saved.active?.definition.nodes.find((n) => n.id === source.nodeId);
+        const location =
+          input?.type === meshDisk
+            ? String(input.config['mount']) + ' on enrolled node ' + String(input.config['nodeId'])
+            : null;
+        return (
+          <Typography key={source.nodeId} variant="body2" color={source.error ? 'warning.main' : 'text.secondary'}>
+            {source.nodeId}
+            {location && ' · ' + location} · {source.error ?? 'Next sample ' + formatDate(new Date(source.dueAt))}
+          </Typography>
+        );
+      })}
       {notice && <Alert severity="success">{notice}</Alert>}
       {mayRead && (
         <>
@@ -261,6 +278,12 @@ export function FlowOperations({
                         <Typography variant="subtitle2">
                           {catalog.find((item) => item.type === n.type)?.label ?? n.type} · {n.id}
                         </Typography>
+                        {n.type === meshDisk && (
+                          <Typography variant="caption" component="div">
+                            This node supplies disk readings. This controller records events and dispatches the reviewed
+                            outputs.
+                          </Typography>
+                        )}
                         {Object.entries(n.config).map(([key, value]) => (
                           <Typography key={key} component="div" variant="caption">
                             {key} · {String(value)}

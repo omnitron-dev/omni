@@ -18,6 +18,8 @@ import {
 import '@xyflow/react/dist/style.css';
 import type { FlowDefinition, FlowNodeDescriptor, FlowPreview } from '@omnitron-dev/omnitron/dto/services';
 
+import { meshDisk } from './flow-disk-source';
+
 type Wire = FlowDefinition['edges'][number];
 type VisualNode = Node<{
   id: string;
@@ -26,6 +28,7 @@ type VisualNode = Node<{
   ports: string[];
   compact: boolean;
   visited: boolean;
+  mount?: string;
 }>;
 export const edgeKey = (edge: Wire) => [edge.from, edge.port, edge.to].join(':');
 
@@ -82,6 +85,11 @@ const NodeCard = memo(function ComponentNode({ data, selected }: NodeProps<Visua
       <Typography component="div" variant="subtitle2" noWrap>
         {data.id}
       </Typography>
+      {data.mount && (
+        <Typography component="div" variant="caption" noWrap title={data.mount}>
+          Mesh · {data.mount}
+        </Typography>
+      )}
       {ports.length > 1 && (
         <Stack direction="row" spacing={1} sx={{ justifyContent: 'space-around', pt: 0.25 }}>
           {ports.map((port) => (
@@ -170,7 +178,7 @@ export function FlowGraph({
         id: node.id,
         type: 'component',
         width: compact ? 152 : 172,
-        height: ports.length > 1 ? 74 : 55,
+        height: ports.length > 1 || node.type === meshDisk ? 74 : 55,
         position,
         selected: node.id === selected,
         ariaLabel: 'Flow node ' + node.id,
@@ -179,6 +187,7 @@ export function FlowGraph({
           label: item?.label ?? node.type,
           group,
           compact,
+          ...(node.type === meshDisk && { mount: String(node.config['mount'] || 'Select a mount') }),
           ports,
           visited: !!preview?.visited.includes(node.id),
         },

@@ -7,6 +7,7 @@ import type {
   FlowNodeDescriptor,
   FlowScalar,
 } from '@omnitron-dev/omnitron/dto/services';
+import { FlowDiskSource, controllerDisk, meshDisk } from './flow-disk-source';
 import { canWire, edgeKey } from './flow-graph';
 
 const fieldName = /^[A-Za-z][A-Za-z0-9_.-]{0,79}$/;
@@ -149,6 +150,12 @@ export function FlowInspector({
   const outlets = descriptor?.ports ?? [];
   const available = definition.nodes.filter((item) => canWire(definition, catalog, node.id, port, item.id));
   const destination = available.some((item) => item.id === target) ? target : '';
+  const updateNode = (next: FlowNode) =>
+    change({ ...definition, nodes: definition.nodes.map((item) => (item.id === node.id ? next : item)) });
+  const diskSource =
+    descriptor &&
+    (node.type === controllerDisk || node.type === meshDisk) &&
+    catalog.some((item) => item.type === meshDisk);
   const wires = definition.edges.filter((edge) => edge.from === node.id || edge.to === node.id);
   const rename = () => {
     if (id === node.id) return;
@@ -196,21 +203,17 @@ export function FlowInspector({
         )}
       </Stack>
       {!descriptor && <Alert severity="warning">This node type is unavailable in the controller catalog.</Alert>}
-      {descriptor?.fields.map((field) => (
-        <ConfigField
-          key={field.key}
-          field={field}
-          node={node}
-          update={(value) =>
-            change({
-              ...definition,
-              nodes: definition.nodes.map((item) =>
-                item.id !== node.id ? item : { ...item, config: { ...item.config, [field.key]: value } }
-              ),
-            })
-          }
-        />
-      ))}
+      {diskSource && <FlowDiskSource node={node} catalog={catalog} update={updateNode} />}
+      {descriptor?.fields
+        .filter((field) => node.type !== meshDisk || !['nodeId', 'mount'].includes(field.key))
+        .map((field) => (
+          <ConfigField
+            key={field.key}
+            field={field}
+            node={node}
+            update={(value) => updateNode({ ...node, config: { ...node.config, [field.key]: value } })}
+          />
+        ))}
       {!!outlets.length && (
         <>
           <Typography variant="subtitle2">Connect output</Typography>

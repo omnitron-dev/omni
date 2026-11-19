@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { openSqliteDatabase } from '@omnitron-dev/titan-database/sqlite';
 import { FlowLedger } from '../../../src/flows/flow-ledger.ts';
+import { FlowRuntime } from '../../../src/flows/flow-runtime.ts';
 import { diskSpaceFlow, evaluateFlow, FlowRegistry } from '../../../src/shared/dto/flows.ts';
 import { expect, stubInventory, test } from './fixtures.mjs';
 
@@ -12,6 +13,7 @@ function controller(options = {}) {
   const db = openSqliteDatabase(':memory:');
   const registry = new FlowRegistry(undefined, [diagnostic]);
   const ledger = new FlowLedger(db, registry);
+  const scopeBinding = options.binding ?? binding;
   const changes = [],
     previews = [];
   let lost = !!options.loseSubmission;
@@ -41,8 +43,8 @@ function controller(options = {}) {
         }
       },
       'OmnitronFlows.history': (ref) => ledger.history(ref, ref.limit),
-      'OmnitronFlows.save': invoke('save', (data) => ledger.save(data, binding)),
-      'OmnitronFlows.activate': invoke('activate', (data) => ledger.change(data, actor, binding)),
+      'OmnitronFlows.save': invoke('save', (data) => ledger.save(data, scopeBinding)),
+      'OmnitronFlows.activate': invoke('activate', (data) => ledger.change(data, actor, scopeBinding)),
       'OmnitronFlows.deactivate': invoke('deactivate', (data) => ledger.change(data, actor, null)),
       'OmnitronFlows.submit': invoke('submit', (data) => {
         const receipt = ledger.submit(data, data.activation, data.event);
@@ -204,14 +206,14 @@ test('assemble a manual graph in the editor and review its active event and pers
     const receipts = host.ledger.history(ref);
     expect(receipts).toHaveLength(1);
     const delivery = receipts[0].deliveries[0];
-    host.ledger.finish(delivery.id, null, 'Adapter requires a new session');
+    host.ledger.finish(host.ledger.delivery(delivery.id).row, null, 'Adapter requires a new session');
     await page.reload();
     await page.getByText(/manual · manual · 1 effect/).click();
     await expect(page.getByText('example-pipeline · needs-review')).toBeVisible();
     await page.getByRole('button', { name: 'Review delivery retry' }).click();
     await page.getByRole('dialog', { name: 'Retry delivery' }).getByRole('button', { name: 'Retry delivery' }).click();
     await expect(page.getByText('example-pipeline · pending')).toBeVisible();
-    host.ledger.finish(delivery.id, delivery.id, 'Check the existing native command', true);
+    host.ledger.finish(host.ledger.delivery(delivery.id).row, delivery.id, 'Check the existing native command', true);
     await page.reload();
     await page.getByText(/manual · manual · 1 effect/).click();
     await expect(page.getByText('Result · ' + delivery.id)).toBeVisible();
@@ -504,5 +506,142 @@ test('a Studio operator opens a proposal, edits its sample and previews it witho
     expect(calls.filter((method) => method === 'preview')).toHaveLength(2);
   } finally {
     releaseOld();
+  }
+});
+
+test('mesh disk observations keep their enrolled peer and exact mount through simulation, approval and history', async ({
+  page,
+  context,
+  url,
+}) => {
+  const first = randomUUID(),
+    second = randomUUID(),
+    local = randomUUID();
+  const selectedBinding = { ...binding, mesh: { [second]: 'second-registration' } };
+  const host = controller({ binding: selectedBinding });
+  const snapshotCalls = [];
+  let releaseFormer;
+  const formerReply = new Promise((resolve) => {
+    releaseFormer = resolve;
+  });
+  let response = 'offline';
+  const answer = (mounts, unanswered = {}) => ({
+    timestamp: Date.now(),
+    unanswered,
+    disks: mounts.map((mount) => ({ mount, fs: 'filesystem', size: 100 * 1024 ** 3, available: 8 * 1024 ** 3 })),
+    daemon: { role: 'slave' },
+  });
+  const directory = [
+    { id: local, name: 'Controller', host: 'localhost', isLocal: true },
+    { id: first, name: 'Worker', host: 'first.example', isLocal: false },
+    { id: second, name: 'Worker', host: 'second.example', isLocal: false },
+  ];
+  try {
+    await stubInventory(context, {
+      ...host.readings,
+      'OmnitronNodes.listNodes': directory,
+      'OmnitronNodes.getNodeSystemSnapshot': async ({ nodeId }) => {
+        snapshotCalls.push(nodeId);
+        if (nodeId === first) return formerReply;
+        if (nodeId !== second) return new Error('Unexpected node');
+        if (response === 'offline') return new Error('Selected mesh peer is offline');
+        if (response === 'partial') return answer(['/stale'], { disks: 'Remote storage collection timed out' });
+        return answer(['/data', '/ambiguous', '/ambiguous']);
+      },
+    });
+    await page.goto(url + '/projects/sample/flows?new=disk&stack=dev');
+    await page.getByRole('combobox', { name: 'Disk location' }).click();
+    await page.getByRole('option', { name: 'Enrolled node', exact: true }).click();
+    const peer = page.getByRole('combobox', { name: 'Enrolled node' });
+    await expect(peer.getByRole('option', { name: /Controller/ })).toHaveCount(0);
+    await expect(peer.getByRole('option', { name: /second.example/ })).toHaveAttribute('value', second);
+    await peer.selectOption(first);
+    await expect.poll(() => snapshotCalls).toContain(first);
+    await peer.selectOption(second);
+    await expect(page.getByText(/Mount inventory unavailable.*Selected mesh peer is offline/)).toBeVisible();
+    const previousSnapshot = page.waitForResponse((r) => {
+      if (!r.url().endsWith('/netron/invoke')) return false;
+      const body = r.request().postDataJSON();
+      return body.method === 'getNodeSystemSnapshot' && body.input[0].nodeId === first;
+    });
+    releaseFormer(answer(['/first-only']));
+    await previousSnapshot;
+    const mounts = page.getByRole('combobox', { name: 'Mounted filesystem' });
+    await expect(mounts.getByRole('option', { name: /first-only/ })).toHaveCount(0);
+    response = 'partial';
+    await page.getByRole('button', { name: 'Retry mounts' }).click();
+    await expect(page.getByText(/Mount inventory unavailable.*Remote storage collection timed out/)).toBeVisible();
+    await expect(mounts.getByRole('option', { name: '/stale' })).toHaveCount(0);
+    response = 'online';
+    await page.getByRole('button', { name: 'Retry mounts' }).click();
+    await expect(mounts.getByRole('option', { name: /ambiguous mount/ })).toBeDisabled();
+    await mounts.selectOption('/data');
+    await expect(page.getByText('Mesh · /data')).toBeVisible();
+    await page.setViewportSize({ width: 360, height: 850 });
+    await mounts.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: test.info().outputPath('mesh-mount-mobile.png') });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByRole('button', { name: 'Preview event' }).click();
+    await expect(page.getByText('Path · disk → threshold → low')).toBeVisible();
+    expect(host.previews.at(-1).effects[0].data).toMatchObject({
+      nodeId: second,
+      mount: '/data',
+      freeBytes: 5 * 1024 ** 3,
+      totalBytes: 100 * 1024 ** 3,
+    });
+    expect(host.changes).toEqual([]);
+    expect(snapshotCalls).toEqual([first, second, second, second]);
+    await page.getByRole('button', { name: 'Save draft' }).click();
+    await page.getByRole('button', { name: 'Review activation' }).click();
+    const review = page.getByRole('dialog', { name: 'Activate flow' });
+    await expect(review.getByText('nodeId · ' + second)).toBeVisible();
+    await expect(review.getByText('mount · /data')).toBeVisible();
+    await expect(review.getByText(/This controller records events and dispatches/)).toBeVisible();
+    await review.getByRole('button', { name: 'Activate flow' }).click();
+    await expect(page.getByText('Active', { exact: true })).toBeVisible();
+    const actualReads = [];
+    const runtime = new FlowRuntime(host.ledger, {
+      admit: async () => {},
+      scope: async (workspace, ids) => {
+        expect(workspace).toEqual(project);
+        expect(ids).toEqual([second]);
+        return selectedBinding;
+      },
+      mesh: {
+        identity: (id) => selectedBinding.mesh[id],
+        snapshot: async (id) => {
+          actualReads.push(id);
+          return answer(['/data']);
+        },
+      },
+      readDisk: async () => {
+        throw Error('Unexpected controller disk read');
+      },
+      deliver: async () => {
+        throw Error('This flow only records local notifications');
+      },
+      report: (error) => {
+        throw error;
+      },
+    });
+    try {
+      await runtime.tick();
+    } finally {
+      await runtime.dispose();
+    }
+    expect(actualReads).toEqual([second]);
+    await page.reload();
+    await page.getByText(/disk · mesh.disk.sample · 1 effect/).click();
+    await expect(
+      page.getByText('Disk observation from /data on enrolled node ' + second + '. Recorded by this controller.')
+    ).toBeVisible();
+    await expect(page.getByText('Disk space is low · delivered')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Review live event' })).toHaveCount(0);
+    await page.getByText('Disk space is low · delivered').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: test.info().outputPath('mesh-receipt.png') });
+  } finally {
+    releaseFormer(answer([]));
+    host.dispose();
   }
 });

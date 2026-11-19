@@ -10,6 +10,7 @@ import type {
   FlowScalar,
 } from '@omnitron-dev/omnitron/dto/services';
 import { flows } from 'src/netron/client';
+import { controllerDisk, meshDisk } from './flow-disk-source';
 import { ScalarInput, validFlowKey } from './flow-inspector';
 
 export interface ReviewedEvent {
@@ -17,14 +18,15 @@ export interface ReviewedEvent {
   result: FlowPreview;
 }
 const newField = (name = '', value: FlowScalar = '') => ({ id: crypto.randomUUID(), name, value });
-const sampleType = (source?: FlowNode) =>
-  source?.type === 'host.disk@1'
-    ? 'host.disk.sample'
-    : source?.type === 'input.manual@1'
-      ? 'manual'
-      : String(source?.config['eventType'] ?? '');
+const sampleType = (source?: FlowNode) => {
+  if (source?.type === meshDisk) return 'mesh.disk.sample';
+  if (source?.type === controllerDisk) return 'host.disk.sample';
+  return source?.type === 'input.manual@1' ? 'manual' : String(source?.config['eventType'] ?? '');
+};
 const initialFields = (source?: FlowNode) =>
-  source?.type === 'host.disk@1' ? [newField('freeBytes', 5 * 1024 ** 3), newField('totalBytes', 100 * 1024 ** 3)] : [];
+  source?.type === controllerDisk || source?.type === meshDisk
+    ? [newField('freeBytes', 5 * 1024 ** 3), newField('totalBytes', 100 * 1024 ** 3)]
+    : [];
 const effectLabel = {
   notification: 'Local notification',
   'pipeline-review': 'Request pipeline review',
@@ -93,6 +95,7 @@ export function FlowSample({
   );
   const [selected, setSelected] = useState(sources[0]?.id ?? '');
   const source = sources.find((item) => item.id === selected) ?? sources[0];
+  const remote = source?.type === meshDisk;
   const [type, setType] = useState(() => sampleType(source));
   const [fields, setFields] = useState(() => initialFields(source));
   const [carryFrom, setCarryFrom] = useState<FlowDefinition | null>(null);
@@ -130,11 +133,19 @@ export function FlowSample({
         throw Error('Every sample field needs a unique name starting with a letter.');
       if (fields.some((field) => typeof field.value === 'number' && !Number.isFinite(field.value)))
         throw Error('Enter a finite number for each numeric field.');
+      const data = Object.fromEntries(fields.map((field) => [field.name, field.value]));
+      if (remote) {
+        if (!source.config['nodeId'] || !source.config['mount'])
+          throw Error('Choose an enrolled node and its mount in the inspector.');
+        if ('nodeId' in data || 'mount' in data) throw Error('The selected source supplies nodeId and mount.');
+        data.nodeId = String(source.config['nodeId']);
+        data.mount = String(source.config['mount']);
+      }
       const event: FlowEvent = {
         id: crypto.randomUUID(),
         source: source.id,
         type,
-        data: Object.fromEntries(fields.map((field) => [field.name, field.value])),
+        data,
       };
       const result = await flows.preview({ definition, event, ...(carry && previous && { state: previous }) });
       if (request === version.current && prior === latest.current) {
@@ -192,6 +203,12 @@ export function FlowSample({
               }}
             />
           </Stack>
+          {remote && (
+            <Typography variant="caption" color="text.secondary">
+              Test observation · {String(source.config['mount'] || 'Select a mount')} on{' '}
+              {String(source.config['nodeId'] || 'an enrolled node')}
+            </Typography>
+          )}
           {fields.map((field, index) => (
             <Stack
               key={field.id}
@@ -232,7 +249,7 @@ export function FlowSample({
           <Stack direction="row" useFlexGap spacing={1} sx={{ flexWrap: 'wrap', alignItems: 'center' }}>
             <Button
               size="small"
-              disabled={fields.length >= 32}
+              disabled={fields.length >= (remote ? 30 : 32)}
               onClick={() => {
                 invalidate();
                 setFields([...fields, newField()]);

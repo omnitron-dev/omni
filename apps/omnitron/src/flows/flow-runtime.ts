@@ -6,13 +6,24 @@ import type { EventBroadcasterService } from '../services/event-broadcaster.serv
 import type { FlowAuthority, FlowBinding, FlowLedger } from './flow-ledger.js';
 import type { FlowDefinition } from '../shared/dto/flows.js';
 import type { FlowWorkspace } from '../shared/dto/flow-runtime.js';
+import { readMeshDisk, type FlowMesh } from './mesh-disk.js';
 
 export type OutgoingFlowDelivery = ReturnType<FlowLedger['delivery']>;
+export type FlowScopeReader = (workspace: FlowWorkspace, nodes?: readonly string[]) => Promise<FlowBinding>;
+
+export async function verifyFlowScope(ledger: FlowLedger, scope: FlowScopeReader, flowId: string, activation: string) {
+  const reviewed = ledger.verifyActivation(flowId, activation);
+  const current = await scope(reviewed.workspace, Object.keys(reviewed.binding.mesh ?? {}));
+  if (!isDeepStrictEqual(reviewed.binding, current))
+    throw Error('The registered workspace or stack changed, or its mesh node was replaced. Review the activation.');
+  return reviewed;
+}
 export class UnconfirmedDelivery extends Error {}
 const MAX_PENDING_STACK_EVENTS = 128;
 interface Dependencies {
   admit(): Promise<void>;
-  scope(workspace: FlowWorkspace): Promise<FlowBinding>;
+  scope: FlowScopeReader;
+  mesh?: FlowMesh;
   review?(definition: FlowDefinition, binding: FlowBinding, authority: FlowAuthority): Promise<void>;
   deliver(entry: OutgoingFlowDelivery, check: (dispatch?: boolean) => void): Promise<string>;
   report(error: unknown): void;
@@ -22,6 +33,8 @@ interface Dependencies {
 export class FlowRuntime {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private running: Promise<void> | undefined;
+  private delivering: Promise<void> | undefined;
+  private deliveryRequested = false;
   private received: Promise<void> = Promise.resolve();
   private pendingStackEvents = 0;
   private droppedStackEvents = 0;
@@ -32,9 +45,7 @@ export class FlowRuntime {
     private readonly deps: Dependencies
   ) {}
   async checkWorkspace(id: string, activation: string) {
-    const before = this.ledger.verifyActivation(id, activation);
-    if (!isDeepStrictEqual(before.binding, await this.deps.scope(before.workspace)))
-      throw Error('The registered workspace or stack changed. Review the activation.');
+    return verifyFlowScope(this.ledger, this.deps.scope, id, activation);
   }
   async review(definition: FlowDefinition, binding: FlowBinding, authority: FlowAuthority) {
     await this.deps.review?.(definition, binding, authority);
@@ -93,17 +104,20 @@ export class FlowRuntime {
       });
   }
   wake(delay = 0) {
-    if (this.closed || this.running) return;
+    if (this.closed) return;
+    if (this.running) {
+      if (delay === 0) void this.flushDeliveries().catch((error) => this.deps.report(error));
+      return;
+    }
     clearTimeout(this.timer);
     const due = this.ledger.nextDue();
     if (due === null) return;
     this.timer = setTimeout(
       () => {
         this.timer = undefined;
-        this.running = this.tick()
+        void this.tick()
           .catch((error) => this.deps.report(error))
           .finally(() => {
-            this.running = undefined;
             this.wake(1000);
           });
       },
@@ -111,26 +125,84 @@ export class FlowRuntime {
     );
     this.timer.unref();
   }
-  async tick() {
+  tick(): Promise<void> {
+    this.running ??= this.runDue().finally(() => {
+      this.running = undefined;
+    });
+    return this.running;
+  }
+  private async runDue() {
+    if (this.closed) return;
     await this.deps.admit();
     if (this.closed) return;
-    const reader = this.deps.readDisk ?? readDiskSpace;
-    for (const source of this.ledger.due()) {
+    const due = this.ledger.due();
+    // A slow peer must not hold up the other disks. Bound concurrent work and reuse its snapshot for every mount.
+    const snapshots = new Map<string, ReturnType<FlowMesh['snapshot']>>();
+    const mesh = this.deps.mesh;
+    const batchMesh: FlowMesh | undefined = mesh && {
+      identity: (id) => mesh.identity(id),
+      snapshot(id) {
+        const key = id + ':' + mesh.identity(id);
+        let snapshot = snapshots.get(key);
+        if (!snapshot) {
+          snapshot = mesh.snapshot(id);
+          snapshots.set(key, snapshot);
+        }
+        return snapshot;
+      },
+    };
+    const sampleOne = async (source: (typeof due)[number]) => {
       let sample;
       try {
-        await this.checkWorkspace(source.flow_id, source.activation);
-        sample = await reader(source.path);
+        const { binding, definition } = await this.checkWorkspace(source.flow_id, source.activation);
+        const node = definition.nodes.find((n) => n.id === source.node);
+        if (!node) throw Error('Disk source no longer exists in the active graph');
+        if (node.type === 'mesh.disk@1') {
+          const id = String(node.config['nodeId']);
+          sample = await readMeshDisk(batchMesh, id, source.path, binding.mesh?.[id]);
+        } else {
+          sample = await (this.deps.readDisk ?? readDiskSpace)(source.path);
+        }
       } catch (error) {
         sample = error instanceof Error ? error : Error('Disk sample failed');
       }
       if (this.closed) return;
       try {
-        this.ledger.settleSample(source, sample);
+        const receipt = this.ledger.settleSample(source, sample);
+        if (receipt?.deliveries.some((row) => row.status === 'pending'))
+          void this.flushDeliveries().catch((error) => this.deps.report(error));
       } catch (error) {
         this.ledger.settleSample(source, error instanceof Error ? error : Error('Flow evaluation failed'));
       }
-    }
-    for (const { id } of this.ledger.pending()) {
+    };
+    let next = 0;
+    const workers = Array.from({ length: Math.min(4, due.length) }, async () => {
+      while (!this.closed && next < due.length) await sampleOne(due[next++]!);
+    });
+    await Promise.all([this.flushDeliveries(), ...workers]);
+    await this.flushDeliveries();
+  }
+  /** Persisted commands can make progress while a peer is still answering an unrelated sample. */
+  private flushDeliveries(): Promise<void> {
+    this.deliveryRequested = true;
+    this.delivering ??= Promise.resolve()
+      .then(async () => {
+        while (!this.closed && this.deliveryRequested) {
+          this.deliveryRequested = false;
+          await this.deliverBatch();
+        }
+      })
+      .finally(() => {
+        this.delivering = undefined;
+        if (this.deliveryRequested && !this.closed) this.wake();
+      });
+    return this.delivering;
+  }
+  private async deliverBatch() {
+    const pending = this.ledger.pending();
+    if (!pending.length) return;
+    await this.deps.admit();
+    for (const { id } of pending) {
       if (this.closed) return;
       const entry = this.ledger.delivery(id);
       const check = (dispatch = false) => {
@@ -138,11 +210,12 @@ export class FlowRuntime {
         if (
           this.closed ||
           current.active?.id !== entry.row.activation ||
+          current.row.attempt !== entry.row.attempt ||
           current.session !== entry.session ||
           current.public.status !== 'pending'
         )
           throw Error('The flow activation changed before delivery');
-        if (dispatch) this.ledger.markDispatch(id, entry.row.activation, entry.session);
+        if (dispatch) this.ledger.markDispatch(entry.row, entry.session);
       };
       let result: string;
       try {
@@ -152,21 +225,23 @@ export class FlowRuntime {
       } catch (error) {
         const unknown = error instanceof UnconfirmedDelivery;
         this.ledger.finish(
-          id,
+          entry.row,
           unknown ? id : null,
           error instanceof Error ? error.message.slice(0, 512) : 'Delivery needs review',
           unknown
         );
         continue;
       }
-      this.ledger.finish(id, result, null);
+      this.ledger.finish(entry.row, result, null);
     }
+    if (pending.length === 32) this.deliveryRequested = true;
   }
   async dispose() {
     this.closed = true;
     clearTimeout(this.timer);
     if (this.subscription) this.subscription.broadcaster.unsubscribe(this.subscription.id);
     await this.running;
+    await this.delivering;
     await this.received;
   }
 }

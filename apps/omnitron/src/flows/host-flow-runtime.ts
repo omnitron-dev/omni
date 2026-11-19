@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto';
 import { realpath } from 'node:fs/promises';
-import { isDeepStrictEqual } from 'node:util';
 import type { FlowWorkspace } from '../shared/dto/flow-runtime.js';
 import type { FlowDefinition } from '../shared/dto/flows.js';
 import type { StudioPost } from '../shared/dto/studio.js';
@@ -10,17 +9,27 @@ import type { AuthService } from '../services/auth.service.js';
 import type { ProjectService } from '../services/project.service.js';
 import { runWithAuth } from '../services/auth-context.js';
 import { pipelineAdmissionCheck } from '../services/pipeline-admission.js';
-import { FlowRuntime, UnconfirmedDelivery, type OutgoingFlowDelivery } from './flow-runtime.js';
+import {
+  FlowRuntime,
+  UnconfirmedDelivery,
+  verifyFlowScope,
+  type FlowScopeReader,
+  type OutgoingFlowDelivery,
+} from './flow-runtime.js';
+import type { FlowMesh } from './mesh-disk.js';
 import { FlowLedger, type FlowAuthority, type FlowBinding } from './flow-ledger.js';
 
 export function flowWorkspaceReader(
   projects: Pick<
     ProjectService,
     'getWorkspaceDirectory' | 'resolveProjectStack' | 'configuredStackType' | 'projectConfigurations'
-  >
+  >,
+  mesh?: Pick<FlowMesh, 'identity'>
 ) {
-  return async (workspace: FlowWorkspace): Promise<FlowBinding> => {
-    if (workspace.project === null) return { identity: 'controller', target: null };
+  return async (workspace: FlowWorkspace, nodes: readonly string[] = []): Promise<FlowBinding> => {
+    if (nodes.length && !mesh) throw Error('This controller has no mesh registry');
+    const peers = nodes.length ? { mesh: Object.fromEntries(nodes.map((id) => [id, mesh!.identity(id)])) } : {};
+    if (workspace.project === null) return { identity: 'controller', target: null, ...peers };
     const directory = await realpath(projects.getWorkspaceDirectory(workspace.project));
     const registrations = projects.projectConfigurations(workspace.project);
     const registration = registrations.find((r) => r.name === workspace.project);
@@ -47,6 +56,7 @@ export function flowWorkspaceReader(
         )
         .digest('hex'),
       target: target && type ? { ...target, type } : null,
+      ...peers,
     };
   };
 }
@@ -57,7 +67,8 @@ interface Host {
     'getPipeline' | 'listWorkspace' | 'prepareRun' | 'startRun' | 'getRunStatus'
   >;
   studio: Pick<StudioRpcService, 'postReceipt' | 'postIfNew'>;
-  scope(workspace: FlowWorkspace): Promise<FlowBinding>;
+  scope: FlowScopeReader;
+  mesh?: FlowMesh;
   admit(): Promise<void>;
   report(error: unknown): void;
 }
@@ -115,9 +126,7 @@ export function hostFlowRuntime(ledger: FlowLedger, host: Host) {
       throw Error('The activating session expired or its role changed. Sign in and retry this delivery.');
     const admit = async () => {
       await host.admit();
-      const current = await host.scope(workspace);
-      if (!isDeepStrictEqual(ledger.verifyActivation(row.flow_id, row.activation).binding, current))
-        throw Error('The registered flow target changed');
+      await verifyFlowScope(ledger, host.scope, row.flow_id, row.activation);
       check();
     };
     await admit();
@@ -207,5 +216,12 @@ export function hostFlowRuntime(ledger: FlowLedger, host: Host) {
       }
     );
   }
-  return new FlowRuntime(ledger, { admit: host.admit, scope: host.scope, review, deliver, report: host.report });
+  return new FlowRuntime(ledger, {
+    admit: host.admit,
+    scope: host.scope,
+    ...(host.mesh && { mesh: host.mesh }),
+    review,
+    deliver,
+    report: host.report,
+  });
 }

@@ -12,7 +12,14 @@ import { hostFlowRuntime } from '../../src/flows/host-flow-runtime.js';
 import { FlowsRpcService } from '../../src/flows/flows.rpc-service.js';
 import { EventBroadcasterService } from '../../src/services/event-broadcaster.service.js';
 import { getCurrentAuth, runWithAuth } from '../../src/services/auth-context.js';
-import { defaultFlowRegistry, diskSpaceFlow, FlowRegistry, type FlowDefinition } from '../../src/shared/dto/flows.js';
+import {
+  defaultFlowRegistry,
+  diskSpaceFlow,
+  FlowRegistry,
+  type FlowComponent,
+  type FlowDefinition,
+  type FlowEvent,
+} from '../../src/shared/dto/flows.js';
 import { studioCatalogFromListing } from '../../src/shared/dto/studio-policy.js';
 import { StudioLedger } from '../../src/studio/ledger.js';
 import { StudioRpcService } from '../../src/studio/studio.rpc-service.js';
@@ -68,6 +75,52 @@ const session = (id: string) => ({
 const user = { id: authority.actor, role: 'admin' } as OmnitronAuthUser;
 
 describe('local flow runtime', () => {
+  it('delivers a newly admitted command while another disk source is still waiting', async () => {
+    const ledger = new FlowLedger(newDb());
+    let release!: () => void;
+    let started!: () => void;
+    const observed = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const readDisk = vi.fn(async () => {
+      started();
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return { freeBytes: 100, totalBytes: 200 };
+    });
+    const deliver = vi.fn(async ({ row }: { row: { id: string } }) => row.id);
+    const runtime = new FlowRuntime(ledger, {
+      scope: async () => binding,
+      admit: async () => {},
+      deliver,
+      readDisk,
+      report: vi.fn(),
+    });
+    active(ledger, diskSpaceFlow('/observed', 10, 20));
+    const task = active(
+      ledger,
+      manual('output.studio@1', { threadId: randomUUID(), memberId: randomUUID(), task: 'Review the report' })
+    );
+    const tick = runtime.tick();
+    await observed;
+    try {
+      const receipt = ledger.submit(task.ref, task.active.id, {
+        id: 'operator-request',
+        source: 'signal',
+        type: 'manual',
+        data: {},
+      });
+      runtime.wake();
+      await vi.waitFor(() => expect(ledger.delivery(receipt.deliveries[0]!.id).public.status).toBe('delivered'));
+      expect(readDisk).toHaveBeenCalledOnce();
+      expect(deliver).toHaveBeenCalledOnce();
+    } finally {
+      release();
+      await tick;
+      await runtime.dispose();
+    }
+  });
   it('lets operators preview a proposed graph while restricting saved state and mutations to administrators', async () => {
     const ledger = new FlowLedger(newDb());
     const admit = vi.fn(async () => {});
@@ -225,6 +278,33 @@ describe('local flow runtime', () => {
     expect(() => ledger.get({ ...ref, workspace: { project: 'other' } })).toThrow('not found');
   });
 
+  it('returns the recorded event without invoking a stateful component again', async () => {
+    const registry = new FlowRegistry();
+    const evaluate = vi.fn<FlowComponent['evaluate']>((_config, _data, previous) => {
+      if (previous) throw Error('This observation was already consumed');
+      return { state: true, effect: 'notification' };
+    });
+    registry.register({ ...registry.get('output.notify@1'), type: 'example.once@1', evaluate });
+    const ledger = new FlowLedger(newDb(), registry);
+    const { ref, active: activation } = active(ledger, manual('example.once@1', { title: 'First observation' }));
+    const scope = async () => binding,
+      admit = async () => {};
+    const host = new FlowRuntime(ledger, { scope, admit, deliver: vi.fn(), report: vi.fn() });
+    clean.push(() => host.dispose());
+    const rpc = new FlowsRpcService(host, { validateSession: async () => user }, { record: vi.fn() }, scope, admit);
+    const event = { id: 'reading-1', source: 'signal', type: 'manual', data: { name: 'one', count: 1 } };
+    const submit = (input: FlowEvent) =>
+      runWithAuth(session(authority.session), () => rpc.submit({ ...ref, activation: activation.id, event: input }));
+    const first = await submit(event);
+    expect(await submit({ ...event, data: { count: 1, name: 'one' } })).toEqual(first);
+    await expect(submit({ ...event, data: { count: 2 } })).rejects.toThrow('different input');
+    await expect(submit({ ...event, data: { name: 'x'.repeat(4097) } })).rejects.toThrow('scalar fields');
+    expect(evaluate).toHaveBeenCalledTimes(1);
+    await expect(submit({ ...event, id: 'reading-2' })).rejects.toThrow('already consumed');
+    expect(evaluate).toHaveBeenCalledTimes(2);
+    expect(ledger.history(ref)).toEqual([first]);
+  });
+
   it('refuses to resume a running definition when an installed component changes under its version', () => {
     const db = newDb(),
       one = new FlowRegistry(),
@@ -304,7 +384,9 @@ describe('local flow runtime', () => {
       ledger.change({ ...ref, revision, activation: deployment.id }, authority, change === 'pause' ? null : binding);
       expect(ledger.delivery(first.id).public).toMatchObject({ status: 'unconfirmed', result: first.id });
       expect(ledger.delivery(queued.id).public).toMatchObject({ status: 'needs-review', result: null });
-      expect(() => ledger.markDispatch(queued.id, deployment.id, authority.session)).toThrow('activation changed');
+      expect(() => ledger.markDispatch(ledger.delivery(queued.id).row, authority.session)).toThrow(
+        'activation changed'
+      );
       acknowledge(first.id);
       await tick;
       await runtime.dispose();
@@ -340,7 +422,7 @@ describe('local flow runtime', () => {
     );
     const event = { id: 'signal', source: 'signal', type: 'manual', data: {} };
     const original = ledger.submit(ref, deployment.id, event).deliveries[0]!;
-    ledger.markDispatch(original.id, deployment.id, authority.session);
+    ledger.markDispatch(ledger.delivery(original.id).row, authority.session);
     const afterCrash = new FlowLedger(db);
     const receiver = vi.fn(async (entry: ReturnType<FlowLedger['delivery']>) => {
       expect(entry.row.status).toBe('dispatching');
@@ -411,26 +493,34 @@ describe('local flow runtime', () => {
     expect(committed).toEqual(Array.from({ length: 128 }, (_, i) => i));
   });
 
-  it('keeps an expired Studio task pending human review and uses the original account and delivery ID after authorization', async () => {
-    const ledger = new FlowLedger(newDb()),
-      graph = manual('output.studio@1', { threadId: randomUUID(), memberId: 'reviewer', task: 'Review the report' });
+  it('grants each reviewed Studio delivery its own session while queued and future deliveries keep the activation authority', async () => {
+    const db = newDb(),
+      ledger = new FlowLedger(db),
+      memberId = randomUUID();
+    const graph = manual('output.studio@1', { threadId: randomUUID(), memberId, task: 'Review the report' });
     const { ref, active: deployment } = active(ledger, graph);
-    const { deliveries } = ledger.submit(ref, deployment.id, {
-      id: 'event-1',
-      source: 'signal',
-      type: 'manual',
-      data: { unselected: 'private field' },
-    });
+    const submit = (id: string) =>
+      ledger.submit(ref, deployment.id, {
+        id,
+        source: 'signal',
+        type: 'manual',
+        data: { unselected: 'private field' },
+      }).deliveries[0]!;
+    const first = submit('event-1');
+    const admittedSessions: unknown[] = [];
     const post = vi.fn(
       async (message: Parameters<IOmnitronStudioService['post']>[0], stack?: string, beforeEnqueue?: () => void) => {
         expect(getCurrentAuth()?.userId).toBe(authority.actor);
         expect(message.text).toBe('Review the report');
         expect(stack).toBe(workspace.stack);
         beforeEnqueue?.();
+        admittedSessions.push(getCurrentAuth()?.metadata?.['sessionId']);
         return { threadId: message.threadId, turnId: message.turnId };
       }
     );
-    const auth = { validateSession: vi.fn(async (id: string) => (id === 'fresh-session' ? user : null)) };
+    const auth = {
+      validateSession: vi.fn(async (id: string) => (['fresh-session', 'second-session'].includes(id) ? user : null)),
+    };
     const host = hostFlowRuntime(ledger, {
       scope: async () => binding,
       admit: async () => {},
@@ -443,9 +533,13 @@ describe('local flow runtime', () => {
     await host.tick();
     expect(ledger.history(ref)[0]?.deliveries[0]?.status).toBe('needs-review');
     expect(post).not.toHaveBeenCalled();
-    expect(() =>
-      ledger.retry(ref, deployment.id, deliveries[0]!.id, { actor: 'different', session: 'fresh-session' })
-    ).toThrow('original account');
+    expect(() => ledger.retry(ref, deployment.id, first.id, { actor: 'different', session: 'fresh-session' })).toThrow(
+      'original account'
+    );
+    expect(() => ledger.retry(ref, deployment.id, first.id, { actor: authority.actor, session: null })).toThrow(
+      'Sign in'
+    );
+    const queued = submit('event-2');
     const rpc = new FlowsRpcService(
       host,
       auth,
@@ -454,23 +548,134 @@ describe('local flow runtime', () => {
       async () => {}
     );
     await runWithAuth(session('fresh-session'), () =>
-      rpc.retryDelivery({ ...ref, activation: deployment.id, delivery: deliveries[0]!.id })
+      rpc.retryDelivery({ ...ref, activation: deployment.id, delivery: first.id })
     );
-    await vi.waitFor(() => expect(ledger.history(ref)[0]?.deliveries[0]?.status).toBe('delivered'));
+    await vi.waitFor(() => expect(ledger.delivery(queued.id).public.status).toBe('needs-review'));
+    expect(ledger.delivery(first.id).public.status).toBe('delivered');
     expect(post).toHaveBeenCalledExactlyOnceWith(
       {
         project: workspace.project,
         threadId: graph.nodes[1]!.config['threadId'],
-        memberId: 'reviewer',
+        memberId,
         kind: 'task',
-        turnId: deliveries[0]!.id,
+        turnId: first.id,
         text: 'Review the report',
       },
       workspace.stack,
       expect.any(Function)
     );
-    expect(JSON.stringify(ledger.get(ref)) + JSON.stringify(ledger.history(ref))).not.toContain('fresh-session');
+    const future = submit('event-3');
+    await runWithAuth(session('second-session'), () =>
+      rpc.retryDelivery({ ...ref, activation: deployment.id, delivery: queued.id })
+    );
+    await vi.waitFor(() => expect(ledger.delivery(future.id).public.status).toBe('needs-review'));
+    expect(ledger.delivery(queued.id).public.status).toBe('delivered');
+    expect(admittedSessions).toEqual(['fresh-session', 'second-session']);
+    expect(db.prepare('SELECT 1 FROM flow_deliveries WHERE retry_session IS NOT NULL').get()).toBeUndefined();
+    expect(JSON.stringify(ledger.get(ref)) + JSON.stringify(ledger.history(ref))).not.toMatch(
+      /fresh-session|second-session/
+    );
   });
+
+  it('opens an existing outbox and retains only its selected retry grant across controller restarts', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'flow-retry-grant-'));
+    clean.push(() => rm(dir, { recursive: true, force: true }));
+    const file = join(dir, 'state.sqlite');
+    let db = new Database(file);
+    clean.push(() => {
+      if (db.open) db.close();
+    });
+    const older = new FlowLedger(db);
+    const graph = manual('output.studio@1', {
+      threadId: randomUUID(),
+      memberId: randomUUID(),
+      task: 'Review the table',
+    });
+    const { ref, active: deployment } = active(older, graph);
+    const event = { id: 'one', source: 'signal', type: 'manual', data: {} };
+    const first = older.submit(ref, deployment.id, event).deliveries[0]!;
+    const other = older.submit(ref, deployment.id, { ...event, id: 'two' }).deliveries[0]!;
+    older.finish(older.delivery(first.id).row, null, 'Review required');
+    db.exec('ALTER TABLE flow_deliveries DROP COLUMN retry_session');
+    db.exec('ALTER TABLE flow_deliveries DROP COLUMN attempt');
+    db.close();
+    db = new Database(file);
+    const migrated = new FlowLedger(db);
+    expect(migrated.history(ref)).toHaveLength(2);
+    migrated.retry(ref, deployment.id, first.id, { actor: authority.actor, session: 'one-delivery-session' });
+    migrated.retry(ref, deployment.id, first.id, { actor: authority.actor, session: 'late-duplicate' });
+    db.close();
+    db = new Database(file);
+    const reopened = new FlowLedger(db);
+    expect(reopened.delivery(first.id).session).toBe('one-delivery-session');
+    expect(reopened.delivery(other.id).session).toBe(authority.session);
+    const authorized = reopened.delivery(first.id).row;
+    expect(() => reopened.markDispatch(authorized, authority.session)).toThrow('changed');
+    reopened.markDispatch(authorized, 'one-delivery-session');
+    reopened.change({ ...ref, activation: deployment.id, revision: deployment.revision }, authority, null);
+    expect(reopened.delivery(first.id).public.status).toBe('unconfirmed');
+    expect(db.prepare('SELECT 1 FROM flow_deliveries WHERE retry_session IS NOT NULL').get()).toBeUndefined();
+  });
+
+  it.each(['late refusal', 'late dispatch', 'exact receipt'] as const)(
+    'keeps the reviewed retry distinct from the preceding attempt when a controller returns a %s',
+    async (outcome) => {
+      const ledger = new FlowLedger(newDb());
+      const { ref, active: deployment } = active(
+        ledger,
+        manual('output.studio@1', {
+          threadId: randomUUID(),
+          memberId: randomUUID(),
+          task: 'Review this receipt',
+        })
+      );
+      const { id } = ledger.submit(ref, deployment.id, { id: 'one', source: 'signal', type: 'manual', data: {} })
+        .deliveries[0]!;
+      const started = Promise.withResolvers<void>(),
+        resume = Promise.withResolvers<void>();
+      const attempts: number[] = [],
+        dispatched: number[] = [];
+      const deps = { admit: async () => {}, scope: async () => binding, report: vi.fn() };
+      const delayed = new FlowRuntime(ledger, {
+        ...deps,
+        async deliver(entry, check) {
+          attempts.push(entry.row.attempt);
+          if (entry.row.attempt === 0) {
+            started.resolve();
+            await resume.promise;
+            if (outcome === 'late refusal') throw Error('Earlier refusal');
+            if (outcome === 'exact receipt') return entry.row.id;
+          }
+          check(true);
+          dispatched.push(entry.row.attempt);
+          return entry.row.id;
+        },
+      });
+      const other = new FlowRuntime(ledger, {
+        ...deps,
+        deliver: async () => {
+          throw Error('Receiver unavailable');
+        },
+      });
+      clean.push(
+        () => delayed.dispose(),
+        () => other.dispose()
+      );
+      const waiting = delayed.tick();
+      await started.promise;
+      try {
+        await other.tick();
+        expect(ledger.delivery(id).public.status).toBe('needs-review');
+        ledger.retry(ref, deployment.id, id, authority);
+      } finally {
+        resume.resolve();
+        await waiting;
+      }
+      expect(ledger.delivery(id).public).toMatchObject({ status: 'delivered', result: id });
+      expect(attempts).toEqual(outcome === 'exact receipt' ? [0] : [0, 1]);
+      expect(dispatched).toEqual(outcome === 'exact receipt' ? [] : [1]);
+    }
+  );
 
   it('recovers the exact Studio admission after a restart, a retired target and a disconnected connector', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'flow-studio-receipt-'));

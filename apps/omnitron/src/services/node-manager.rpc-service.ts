@@ -648,7 +648,7 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
 
     if (!this.slaveConnector) return { ok: false, error: 'This daemon has no mesh connector' };
     try {
-      const value = (await this.slaveConnector.invokeOnSlave(node.host, node.daemonPort, service, method, args)) as T;
+      const value = (await this.slaveConnector.invokeOnSlave(node.host, node.daemonPort, service, method, args, { expectedNodeId: nodeId })) as T;
       return { ok: true, value };
     } catch (err) {
       return { ok: false, error: (err as Error).message };

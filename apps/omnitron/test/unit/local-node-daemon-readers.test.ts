@@ -28,7 +28,7 @@ describe('local node daemon readers', () => {
     const invokeOnSlave = vi.fn(async () => ({ apps: [] }));
     service.setSlaveConnector({ invokeOnSlave } as never);
     expect(await service.getNodeDaemonStatus({ nodeId: 'remote' })).toMatchObject({ reachable: true, answer: { apps: [] } });
-    expect(invokeOnSlave).toHaveBeenCalledWith('remote', 9700, 'OmnitronDaemon', 'status', []);
+    expect(invokeOnSlave).toHaveBeenCalledWith('remote', 9700, 'OmnitronDaemon', 'status', [], { expectedNodeId: 'remote' });
     expect(daemon.status).not.toHaveBeenCalled();
   });
 
@@ -38,7 +38,7 @@ describe('local node daemon readers', () => {
     const invokeOnSlave = vi.fn().mockResolvedValueOnce(snapshot).mockRejectedValueOnce(new Error('peer disconnected'));
     service.setSlaveConnector({ invokeOnSlave } as never);
     expect(await service.getNodeSystemSnapshot({ nodeId: 'remote' })).toEqual(snapshot);
-    expect(invokeOnSlave).toHaveBeenCalledWith('remote', 9700, 'OmnitronSystemInfo', 'getSnapshot', [{ fresh: true }]);
+    expect(invokeOnSlave).toHaveBeenCalledWith('remote', 9700, 'OmnitronSystemInfo', 'getSnapshot', [{ fresh: true }], { expectedNodeId: 'remote' });
     await expect(service.getNodeSystemSnapshot({ nodeId: 'remote' })).rejects.toThrow(/remote.*peer disconnected/);
     invokeOnSlave.mockRejectedValueOnce(new Error('Missing required role'));
     await expect(service.getNodeSystemSnapshot({ nodeId: 'remote' })).rejects.toThrow(/selected node refused the mesh credential/);

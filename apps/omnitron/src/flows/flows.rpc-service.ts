@@ -11,8 +11,9 @@ import type {
 import type { AuditService } from '../services/audit.service.js';
 import type { AuthService } from '../services/auth.service.js';
 import { daemonPrincipal } from '../services/daemon-principal.js';
-import { checkFlowWorkspace, type FlowBinding } from './flow-ledger.js';
-import type { FlowRuntime } from './flow-runtime.js';
+import { checkFlowWorkspace } from './flow-ledger.js';
+import type { FlowRuntime, FlowScopeReader } from './flow-runtime.js';
+import { meshSourceIds } from './mesh-disk.js';
 
 @Service({ name: 'OmnitronFlows' })
 export class FlowsRpcService implements IOmnitronFlowsService {
@@ -20,7 +21,7 @@ export class FlowsRpcService implements IOmnitronFlowsService {
     private readonly runtime: FlowRuntime,
     private readonly auth: Pick<AuthService, 'validateSession'>,
     private readonly audit: Pick<AuditService, 'record'>,
-    private readonly scope: (workspace: FlowWorkspace) => Promise<FlowBinding>,
+    private readonly scope: FlowScopeReader,
     private readonly admit: () => Promise<void>
   ) {}
   private async authorize(ref?: FlowRef, action?: string) {
@@ -53,15 +54,15 @@ export class FlowsRpcService implements IOmnitronFlowsService {
   @Public({ auth: { roles: ADMIN_ROLES } })
   async save(data: FlowSave) {
     await this.authorize(data, 'save');
-    const binding = await this.scope(data.workspace);
+    const binding = await this.scope(data.workspace, meshSourceIds(data.definition));
     return this.runtime.ledger.save(data, binding);
   }
   @Public({ auth: { roles: ADMIN_ROLES } })
   async activate(data: FlowChange) {
     const actor = await this.authorize(data, 'activate');
-    const binding = await this.scope(data.workspace);
     const draft = this.runtime.ledger.get(data);
     if (draft.revision !== data.revision) throw Error('The flow draft changed. Review the new revision.');
+    const binding = await this.scope(data.workspace, meshSourceIds(draft.definition));
     await this.runtime.review(draft.definition, binding, actor);
     const result = this.runtime.ledger.change(data, actor, binding);
     this.runtime.wake();

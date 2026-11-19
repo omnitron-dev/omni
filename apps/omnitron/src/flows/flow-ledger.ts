@@ -1,10 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { stableJson as canonical } from '../shared/canonical-json.js';
+import { meshSourceIds } from './mesh-disk.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import {
   compileFlow,
   defaultFlowRegistry,
   validateFlow,
+  validateFlowEvent,
   type FlowData,
   type FlowDefinition,
   type FlowEffect,
@@ -31,6 +33,7 @@ export interface FlowAuthority {
 export interface FlowBinding {
   identity: string;
   target: { project: string; stack: string; type: string } | null;
+  mesh?: Record<string, string>;
 }
 interface Stored {
   id: string;
@@ -64,6 +67,8 @@ interface OutboxRow {
   title: string;
   effect: string;
   status: FlowDelivery['status'] | 'dispatching';
+  retry_session: string | null;
+  attempt: number;
   result: string | null;
   error: string | null;
 }
@@ -93,7 +98,8 @@ const workspaceOf = (row: Stored): FlowWorkspace => ({
 });
 const activeOf = (row: Stored): FlowActivation | null =>
   row.active ? (JSON.parse(row.active) as FlowActivation) : null;
-const publicDelivery = (row: OutboxRow): FlowDelivery => ({
+type DeliverySummary = Pick<OutboxRow, 'id' | 'kind' | 'node' | 'title' | 'status' | 'result' | 'error'>;
+const publicDelivery = (row: DeliverySummary): FlowDelivery => ({
   id: row.id,
   nodeId: row.node,
   kind: row.kind,
@@ -135,12 +141,19 @@ export class FlowLedger {
       CREATE TABLE IF NOT EXISTS flow_deliveries (
         sequence INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, flow_id TEXT NOT NULL, activation TEXT NOT NULL, event_id TEXT NOT NULL,
         node TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, effect TEXT NOT NULL,
-        status TEXT NOT NULL, result TEXT, error TEXT,
+        status TEXT NOT NULL, result TEXT, error TEXT, retry_session TEXT, attempt INTEGER NOT NULL DEFAULT 0,
         UNIQUE(flow_id,activation,event_id,node)
       );
       CREATE INDEX IF NOT EXISTS flow_delivery_status ON flow_deliveries(status);
       CREATE INDEX IF NOT EXISTS flow_notification_seq ON flow_deliveries(kind,sequence);
     `);
+    db.transaction(() => {
+      const columns = db.prepare("SELECT name FROM pragma_table_info('flow_deliveries')").all() as { name: string }[];
+      if (!columns.some((c) => c.name === 'retry_session'))
+        db.exec('ALTER TABLE flow_deliveries ADD COLUMN retry_session TEXT');
+      if (!columns.some((c) => c.name === 'attempt'))
+        db.exec('ALTER TABLE flow_deliveries ADD COLUMN attempt INTEGER NOT NULL DEFAULT 0');
+    }).immediate();
   }
 
   private byId(id: string): Stored | undefined {
@@ -149,6 +162,8 @@ export class FlowLedger {
   }
   private revision(definition: FlowDefinition, binding: FlowBinding) {
     validateFlow(definition, this.registry);
+    if (meshSourceIds(definition).some((id) => !binding.mesh?.[id]))
+      throw Error('The flow requires a reviewed mesh node');
     return createHash('sha256')
       .update(canonical({ definition, binding, components: this.registry.dependencies(definition) }))
       .digest('hex');
@@ -177,7 +192,11 @@ export class FlowLedger {
         evaluate: compileFlow(active.definition, this.registry),
       });
     }
-    return { workspace: workspaceOf(row), binding: JSON.parse(row.binding!) as FlowBinding };
+    return {
+      workspace: workspaceOf(row),
+      binding: JSON.parse(row.binding!) as FlowBinding,
+      definition: active.definition,
+    };
   }
   private scoped(ref: FlowRef): Stored {
     checkFlowWorkspace(ref.workspace);
@@ -257,12 +276,12 @@ export class FlowLedger {
       this.compiled.delete(row.id);
       this.db
         .prepare(
-          "UPDATE flow_deliveries SET status='needs-review',error='Activation ended' WHERE flow_id=? AND status='pending'"
+          "UPDATE flow_deliveries SET status='needs-review',retry_session=NULL,error='Activation ended' WHERE flow_id=? AND status='pending'"
         )
         .run(row.id);
       this.db
         .prepare(
-          "UPDATE flow_deliveries SET status='unconfirmed',result=id,error='Activation ended during delivery. Inspect the original command.' WHERE flow_id=? AND status='dispatching'"
+          "UPDATE flow_deliveries SET status='unconfirmed',retry_session=NULL,result=id,error='Activation ended during delivery. Inspect the original command.' WHERE flow_id=? AND status='dispatching'"
         )
         .run(row.id);
       this.db
@@ -275,14 +294,14 @@ export class FlowLedger {
           row.id
         );
       if (active)
-        for (const node of definition.nodes.filter((n) => n.type === 'host.disk@1')) {
+        for (const node of definition.nodes.filter((n) => n.type === 'host.disk@1' || n.type === 'mesh.disk@1')) {
           this.db
             .prepare('INSERT INTO flow_sources(flow_id,activation,node,path,interval_ms,due) VALUES(?,?,?,?,?,?)')
             .run(
               row.id,
               active.id,
               node.id,
-              String(node.config['path']),
+              String(node.config[node.type === 'mesh.disk@1' ? 'mount' : 'path']),
               Number(node.config['intervalMs']),
               this.now()
             );
@@ -299,14 +318,15 @@ export class FlowLedger {
     const active = activeOf(row);
     if (!active || active.id !== activation) throw Error('Flow activation changed');
     this.verifyActivation(row.id, activation);
-    const source = active.definition.nodes.find((n) => n.id === event?.source);
+    validateFlowEvent(event);
+    const source = active.definition.nodes.find((n) => n.id === event.source);
     if (
       !source ||
-      (origin === 'host') !== (source.type === 'host.disk@1') ||
-      (origin === 'input' && ['host.disk.sample', 'stack.started', 'stack.stopped'].includes(event.type))
+      (origin === 'host') !== (source.type === 'host.disk@1' || source.type === 'mesh.disk@1') ||
+      (origin === 'input' &&
+        ['host.disk.sample', 'mesh.disk.sample', 'stack.started', 'stack.stopped'].includes(event.type))
     )
       throw Error('This source only accepts observations from its registered provider');
-    const result = this.compiled.get(row.id)!.evaluate(event, JSON.parse(row.state) as FlowState);
     const stored = this.db.prepare('SELECT * FROM flow_events WHERE flow_id=? AND activation=? AND event_id=?');
     const previous = stored.get(row.id, activation, event.id) as EventRow | undefined;
     const payload = canonical(event);
@@ -314,6 +334,7 @@ export class FlowLedger {
       if (previous.event !== payload) throw Error('This event ID already belongs to different input');
       return this.receipt(row.id, previous);
     }
+    const result = this.compiled.get(row.id)!.evaluate(event, JSON.parse(row.state) as FlowState);
     const state = JSON.stringify(result.state);
     this.db
       .prepare(
@@ -368,7 +389,7 @@ export class FlowLedger {
       .all(this.now()) as DiskSource[];
   }
   settleSample(source: DiskSource, observation: { freeBytes: number; totalBytes: number } | Error) {
-    this.commit(() => {
+    return this.commit(() => {
       const advanced = this.db
         .prepare('UPDATE flow_sources SET due=?,error=? WHERE flow_id=? AND activation=? AND node=? AND due=?')
         .run(
@@ -380,17 +401,18 @@ export class FlowLedger {
           source.due
         );
       if (advanced.changes && !(observation instanceof Error))
-        this.handleEvent(
+        return this.handleEvent(
           this.byId(source.flow_id)!,
           source.activation,
           {
             id: 'sample:' + source.node + ':' + source.due,
             source: source.node,
-            type: 'host.disk.sample',
+            type: Object.hasOwn(observation, 'nodeId') ? 'mesh.disk.sample' : 'host.disk.sample',
             data: observation,
           },
           'host'
         );
+      return undefined;
     });
   }
   stackSources(type: string, project: string, stack: string) {
@@ -426,8 +448,10 @@ export class FlowLedger {
   }
   private receipt(flow: string, row: EventRow): FlowReceipt {
     const parts = this.db
-      .prepare('SELECT * FROM flow_deliveries WHERE flow_id=? AND activation=? AND event_id=? ORDER BY rowid')
-      .all(flow, row.activation, row.event_id) as OutboxRow[];
+      .prepare(
+        'SELECT id,kind,node,title,status,result,error FROM flow_deliveries WHERE flow_id=? AND activation=? AND event_id=? ORDER BY rowid'
+      )
+      .all(flow, row.activation, row.event_id) as DeliverySummary[];
     return {
       event: JSON.parse(row.event),
       activation: row.activation,
@@ -498,44 +522,44 @@ export class FlowLedger {
       public: publicDelivery(row),
       active: activeOf(flow),
       workspace: workspaceOf(flow),
-      session: flow.session,
+      session: row.retry_session ?? flow.session,
       effect: JSON.parse(row.effect) as FlowEffect,
     };
   }
-  markDispatch(id: string, activation: string, session: string | null) {
+  markDispatch(row: Pick<OutboxRow, 'id' | 'activation' | 'attempt'>, session: string | null) {
     const claim = () => {
       const updated = this.db
         .prepare(
           `UPDATE flow_deliveries SET status='dispatching'
-        WHERE id=? AND activation=? AND status IN ('pending','dispatching')
+        WHERE id=? AND activation=? AND attempt=? AND status IN ('pending','dispatching')
         AND EXISTS (SELECT 1 FROM flow_definitions f WHERE f.id=flow_deliveries.flow_id
-          AND json_extract(f.active,'$.id')=? AND f.session IS ?)`
+          AND json_extract(f.active,'$.id')=? AND COALESCE(flow_deliveries.retry_session,f.session) IS ?)`
         )
-        .run(id, activation, activation, session);
+        .run(row.id, row.activation, row.attempt, row.activation, session);
       if (!updated.changes) throw Error('The flow activation changed before dispatch');
     };
     // A local receiver can journal this mark in the same transaction that admits its command.
     if (this.db.inTransaction) claim();
     else this.commit(claim);
   }
-  finish(id: string, result: string | null, error: string | null, unconfirmed = false) {
+  finish(row: Pick<OutboxRow, 'id' | 'attempt'>, result: string | null, error: string | null, unconfirmed = false) {
     this.commit(() => {
       if (error === null) {
         // A receiver's exact receipt can arrive after pause, replacement or uncertain transport.
         this.db
           .prepare(
-            "UPDATE flow_deliveries SET status='delivered',result=?,error=NULL WHERE id=? AND status IN ('pending','dispatching','unconfirmed')"
+            "UPDATE flow_deliveries SET status='delivered',retry_session=NULL,result=?,error=NULL WHERE id=? AND status IN ('pending','dispatching','unconfirmed','needs-review')"
           )
-          .run(result, id);
+          .run(result, row.id);
       } else {
         this.db
           .prepare(
             `UPDATE flow_deliveries SET
-          result=CASE WHEN status='dispatching' OR ? THEN id ELSE NULL END,
+          retry_session=NULL,result=CASE WHEN status='dispatching' OR ? THEN id ELSE NULL END,
           status=CASE WHEN status='dispatching' OR ? THEN 'unconfirmed' ELSE 'needs-review' END, error=?
-          WHERE id=? AND status IN ('pending','dispatching')`
+          WHERE id=? AND attempt=? AND status IN ('pending','dispatching')`
           )
-          .run(Number(unconfirmed), Number(unconfirmed), error, id);
+          .run(Number(unconfirmed), Number(unconfirmed), error, row.id, row.attempt);
       }
     });
   }
@@ -553,8 +577,12 @@ export class FlowLedger {
       )
         throw Error('Review the delivery in its original account and active workspace');
       if (delivery.public.status === 'needs-review') {
-        this.db.prepare('UPDATE flow_definitions SET session=? WHERE id=?').run(authority.session, ref.id);
-        this.db.prepare("UPDATE flow_deliveries SET status='pending',error=NULL WHERE id=?").run(id);
+        if (!authority.session) throw Error('Sign in to authorize this delivery');
+        this.db
+          .prepare(
+            "UPDATE flow_deliveries SET status='pending',retry_session=?,attempt=attempt+1,error=NULL WHERE id=?"
+          )
+          .run(authority.session, id);
       }
       return this.delivery(id).public;
     });

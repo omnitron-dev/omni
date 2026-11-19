@@ -1,4 +1,5 @@
 /** A flow is data. Installed node implementations stay on the controller. */
+export const maxFlowNodes = 64;
 export type FlowScalar = string | number | boolean | null;
 export type FlowData = Record<string, FlowScalar>;
 export interface FlowNode {
@@ -97,6 +98,20 @@ function dataFields(data: unknown): asserts data is FlowData {
   )
     throw Error('An event must contain at most 32 named scalar fields and 16 KiB of data');
 }
+export function validateFlowEvent(event: unknown): asserts event is FlowEvent {
+  if (
+    !record(event) ||
+    !exact(event, ['id', 'source', 'type', 'data']) ||
+    typeof event['id'] !== 'string' ||
+    !event['id'].trim() ||
+    event['id'].length > 160 ||
+    !validKey(event['source']) ||
+    typeof event['type'] !== 'string' ||
+    event['type'].length > 160
+  )
+    throw Error('Invalid flow event identity');
+  dataFields(event['data']);
+}
 const source = (
   type: string,
   label: string,
@@ -133,6 +148,24 @@ const builtins: FlowComponent[] = [
     (c) => {
       if (!/^(?:\/|[A-Za-z]:[\\/])/.test(String(c['path'])) || !Number.isSafeInteger(c['intervalMs']))
         throw Error('Choose an absolute volume path and a whole sampling interval');
+    }
+  ),
+  source(
+    'mesh.disk@1',
+    'Disk space on enrolled node',
+    [
+      textField('nodeId', 'Enrolled node'),
+      textField('mount', 'Mounted volume'),
+      numericField('intervalMs', 'Sample interval (ms)', 5000, 86400000),
+    ],
+    (_c, t) => t === 'mesh.disk.sample',
+    (c) => {
+      if (
+        !/^[a-f\d]{8}-(?:[a-f\d]{4}-){3}[a-f\d]{12}$/i.test(String(c['nodeId'])) ||
+        !/^(?:\/|[A-Za-z]:[\\/])/.test(String(c['mount'])) ||
+        !Number.isSafeInteger(c['intervalMs'])
+      )
+        throw Error('Select an enrolled node, an absolute mount and a whole sampling interval');
     }
   ),
   {
@@ -289,7 +322,7 @@ export function validateFlow(value: unknown, registry = defaultFlowRegistry): as
     value['name'].length > 120 ||
     !Array.isArray(value['nodes']) ||
     !value['nodes'].length ||
-    value['nodes'].length > 64 ||
+    value['nodes'].length > maxFlowNodes ||
     !Array.isArray(value['edges']) ||
     value['edges'].length > 128
   )
@@ -349,23 +382,12 @@ export function compileFlow(input: FlowDefinition, registry = defaultFlowRegistr
     outputs.set(edge.from, ports);
   }
   return (event: FlowEvent, state: FlowState = {}): FlowPreview => {
-    if (
-      !record(event) ||
-      !exact(event, ['id', 'source', 'type', 'data']) ||
-      typeof event.id !== 'string' ||
-      !event.id.trim() ||
-      event.id.length > 160 ||
-      !validKey(event.source) ||
-      typeof event.type !== 'string' ||
-      event.type.length > 160
-    )
-      throw Error('Invalid flow event identity');
-    dataFields(event.data);
+    validateFlowEvent(event);
     const first = byId.get(event.source);
     if (!first || !registry.get(first.type).accepts?.(first.config, event.type))
       throw Error('Event does not match this source');
     if (
-      first.type === 'host.disk@1' &&
+      (first.type === 'host.disk@1' || first.type === 'mesh.disk@1') &&
       (!Number.isSafeInteger(event.data['freeBytes']) ||
         !Number.isSafeInteger(event.data['totalBytes']) ||
         Number(event.data['freeBytes']) < 0 ||
@@ -373,8 +395,13 @@ export function compileFlow(input: FlowDefinition, registry = defaultFlowRegistr
     )
       throw Error('Invalid disk observation');
     if (
+      first.type === 'mesh.disk@1' &&
+      (event.data['nodeId'] !== first.config['nodeId'] || event.data['mount'] !== first.config['mount'])
+    )
+      throw Error('The disk observation belongs to another node or mount');
+    if (
       !record(state) ||
-      Object.keys(state).length > 64 ||
+      Object.keys(state).length > maxFlowNodes ||
       Object.entries(state).some(([name, value]) => !byId.has(name) || typeof value !== 'boolean')
     )
       throw Error('Invalid state for this flow revision');

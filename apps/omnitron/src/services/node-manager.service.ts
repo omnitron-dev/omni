@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { EventEmitter } from 'node:events';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import {
   RemoteOpsService,
@@ -218,6 +218,15 @@ export class NodeManagerService extends EventEmitter {
     const node = this.nodes.get(id);
     if (!node) return null;
     return { ...toWireNode(node), status: this.statusFor(id) };
+  }
+
+  /** Pin reviewed mesh observations to the registered machine and its approved host key. */
+  meshIdentity(id: string): string {
+    const node = this.nodes.get(id);
+    if (!node || node.isLocal || this.changingNodes.has(id)) throw new Error('Select an enrolled remote node');
+    const fingerprint = nodeHostFingerprint(this.store, node);
+    if (!fingerprint) throw new Error('Verify the SSH host key for the selected mesh node');
+    return createHash('sha256').update(JSON.stringify([id, node.createdAt, nodeSshIdentity(node), node.daemonPort, fingerprint])).digest('hex');
   }
 
   /**

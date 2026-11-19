@@ -1621,7 +1621,13 @@ export class OmnitronDaemon {
         const { FlowLedger } = await import('../flows/flow-ledger.js');
         const { FlowsRpcService } = await import('../flows/flows.rpc-service.js');
         const { hostFlowRuntime, flowWorkspaceReader } = await import('../flows/host-flow-runtime.js');
-        const scope = flowWorkspaceReader(projectService);
+        const nodeRegistry = this.nodeManagerService;
+        const nodeReader = this.nodeManagerRpcService;
+        const mesh = nodeRegistry && nodeReader ? {
+          identity: (id: string) => nodeRegistry.meshIdentity(id),
+          snapshot: (nodeId: string) => nodeReader.getNodeSystemSnapshot({ nodeId }),
+        } : undefined;
+        const scope = flowWorkspaceReader(projectService, mesh);
         const admit = async () => {
           const execution = this.execution;
           const check = () => {
@@ -1633,7 +1639,7 @@ export class OmnitronDaemon {
           check();
         };
         const runtime = hostFlowRuntime(new FlowLedger(fileState.initSync(), flowRegistry), {
-          auth: authService, pipelines: pipelineRpcService, studio, scope, admit,
+          auth: authService, pipelines: pipelineRpcService, studio, scope, admit, ...(mesh && { mesh }),
           report: error => loggerModule.logger.warn({ error: String(error) }, 'Flow source evaluation failed'),
         });
         await this.app.netron.peer.exposeService(new FlowsRpcService(runtime, authService, audit, scope, admit));

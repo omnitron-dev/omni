@@ -464,10 +464,12 @@ export class SlaveConnector {
       retryOnDisconnect?: boolean;
       /** Require authenticated evidence when a public ping informs a release decision. */
       requireCredential?: boolean;
+      /** Pin calls about a registry node to that registration across every await and reconnect. */
+      expectedNodeId?: string;
     },
   ): Promise<unknown> {
     try {
-      return await this.callOnSlave(host, port, service, method, args, options?.requireCredential);
+      return await this.callOnSlave(host, port, service, method, args, options?.requireCredential, options?.expectedNodeId);
     } catch (err) {
       if (!options?.retryOnDisconnect || !isConnectionGone(err)) throw err;
 
@@ -477,6 +479,8 @@ export class SlaveConnector {
       );
       const key = `${host}:${port}`;
       const conn = this.connections.get(key);
+      if (options.expectedNodeId && conn?.config.nodeId !== options.expectedNodeId)
+        throw new Error('Registered mesh identity changed before reconnect', { cause: err });
       if (conn) await this.connectionLost(key, conn, err);
       else await this.addSlave({ host, port });
       if (!(await this.waitUntilConnected(host, port, 60_000))) {
@@ -487,25 +491,34 @@ export class SlaveConnector {
           cause: err,
         });
       }
-      return await this.callOnSlave(host, port, service, method, args, options?.requireCredential);
+      return await this.callOnSlave(host, port, service, method, args, options?.requireCredential, options?.expectedNodeId);
     }
   }
 
-  private async callOnSlave(host: string, port: number, service: string, method: string, args: unknown[], requireCredential = false): Promise<unknown> {
+  private async callOnSlave(host: string, port: number, service: string, method: string, args: unknown[], requireCredential = false, expectedNodeId?: string): Promise<unknown> {
     const key = `${host}:${port}`;
     const conn = this.connections.get(key);
     if (conn?.status !== 'connected' || !conn.peer) {
       throw new Error(`Slave ${key} not connected${conn?.lastError ? `: ${conn.lastError}` : ''}`);
     }
     const peer = conn.peer;
+    const checkRegistration = () => {
+      if (expectedNodeId !== undefined &&
+          (conn.config.nodeId !== expectedNodeId || conn.peer !== peer || this.connections.get(key) !== conn))
+        throw new Error('Registered mesh identity changed during the request');
+    };
     try {
+      checkRegistration();
       const publicPing = !requireCredential && service === 'OmnitronDaemon' && method === 'ping' && args.length === 0;
       await this.ensureCredential(conn, peer, publicPing);
       const proxy = await peer.queryInterface(service);
       await this.ensureCredential(conn, peer, publicPing);
+      checkRegistration();
       const fn = (proxy as any)[method];
       if (typeof fn !== 'function') throw new Error(`Method ${method} not found on service ${service}`);
-      return await fn.call(proxy, ...args);
+      const result = await fn.call(proxy, ...args);
+      checkRegistration();
+      return result;
     } catch (error) {
       if (conn.peer === peer && isConnectionGone(error)) void this.connectionLost(key, conn, error);
       throw error;

@@ -75,6 +75,12 @@ A graph using this component exposes the `low` and `recovered` ports. Its revisi
 
 Custom hosts can register typed components with `FlowRegistry` from `@omnitron-dev/omnitron/flows`. Register the component in the controller, then pass that registry to `compileFlow` for repeated evaluation of a revision, or to `evaluateFlow` for one preview. A program carries names, parameters and connections. Trusted code and I/O drivers belong to the host. Integrate a new external input through the existing authenticated event source or provide a controller-owned source driver.
 
+## Read a disk across the mesh
+
+Use **Enrolled node** to monitor an exact mount on a registered peer. The same node registry and authenticated Netron reader power **Fleet**. A reviewed revision pins the peer ID, endpoint and trusted SSH host key. The controller admits the peer's reading to its own journal with its node ID, mount and measurement time. A missing mount, stale snapshot, lost connection or replaced peer is a source error. The controller keeps the last decision and samples again on schedule. Re-enrolling the target requires reviewing a new revision.
+
+Machine-local outputs run under the authority of the controller hosting the flow. For lifecycle broadcasts the source is live. The controller reports overload before admission. For a submitted event the durable guarantee starts when the controller commits the input, branch state and delivery IDs.
+
 ## Design references
 
 Node-RED's message ports and subflows make connections understandable in the editor. n8n distinguishes triggers from actions and supports human review before a tool acts. Omnitron applies both ideas to the same project-scoped definition and puts effect authority in the receiving service. [Node-RED concepts](https://nodered.org/docs/user-guide/concepts) · [n8n nodes](https://docs.n8n.io/workflows/components/nodes/) · [n8n approvals](https://docs.n8n.io/advanced-ai/human-in-the-loop-tools/)

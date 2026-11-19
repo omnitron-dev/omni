@@ -27,7 +27,7 @@
  *     on the wrapped `IMultiBackendClient`, and reconnect events
  *     are forwarded from there.
  *
- * `MultiBackendProvider` instantiates one per mount and parks it
+ * `MultiBackendProvider` creates one for its current client and provides it
  * in `NetronContext` so downstream hooks read it via the standard
  * `useNetronClient()` path — no special-case branches in the
  * hooks themselves.
@@ -72,7 +72,6 @@ export class MultiBackendQueryEngine<T extends BackendSchema = BackendSchema> {
       defaultCacheTime: config.defaultCacheTime ?? 5 * 60 * 1000,
     });
     this.mutationCache = new MutationCache();
-    this.wireTransportEvents();
   }
 
   // --------------------------------------------------------------------
@@ -151,19 +150,23 @@ export class MultiBackendQueryEngine<T extends BackendSchema = BackendSchema> {
    * re-broadcast here so every cached query can revalidate.
    */
   on(event: EngineEvent, handler: EventHandler): () => void {
+    const first = this.listeners.size === 0;
     let set = this.listeners.get(event);
     if (!set) {
       set = new Set();
       this.listeners.set(event, set);
     }
     set.add(handler);
-    return () => {
-      this.listeners.get(event)?.delete(handler);
-    };
+    if (first) this.wireTransportEvents();
+    return () => this.off(event, handler);
   }
 
   off(event: EngineEvent, handler: EventHandler): void {
-    this.listeners.get(event)?.delete(handler);
+    const handlers = this.listeners.get(event);
+    if (handlers?.delete(handler) && handlers.size === 0) {
+      this.listeners.delete(event);
+      if (!this.listeners.size) this.unwireTransportEvents();
+    }
   }
 
   emit(event: EngineEvent): void {
@@ -210,6 +213,10 @@ export class MultiBackendQueryEngine<T extends BackendSchema = BackendSchema> {
     this.queryCache.destroy();
     this.mutationCache.clear();
     this.listeners.clear();
+    this.unwireTransportEvents();
+  }
+
+  private unwireTransportEvents(): void {
     for (const unsub of this.transportUnsubs) {
       try {
         unsub();

@@ -44,7 +44,9 @@ export function App() {
 
 The endpoint must publish the `Users` service. Keep the client stable across renders. In a React Server Component application, create the client and render the provider within a client component; use `@omnitron-dev/netron-react/cache` for server-side cache operations.
 
-`MultiBackendProvider` uses a shared query and mutation cache across routed backends. Pass query cancellation signals to RPC calls. Mutations are not automatically cancelled on unmount, and local cancellation does not roll back server work.
+`MultiBackendProvider` shares a query and mutation cache across routes that use the same client. React Strict Mode reuses the current connection attempt and cache when it replays effects. Replacing the `client` prop starts a fresh cache and binds connection state and reconnect listeners to the new backend pool. The caller owns the supplied client and can dispose of it with `client.destroy()` when finished.
+
+Query callbacks run for the mounted observer and its current request. Pass query cancellation signals to RPC calls. Mutations are not automatically cancelled on unmount, and local cancellation does not roll back server work.
 
 ## Documentation
 

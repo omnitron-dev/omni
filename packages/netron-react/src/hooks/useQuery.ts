@@ -261,11 +261,9 @@ export function useQuery<TData = unknown, TError = NetronError>(
         setStatus('success');
         setDataUpdatedAt(timeUtils.now());
         dataKeyRef.current = queryKeyHash; // data now belongs to this key
+        onSuccess?.(result);
+        onSettled?.(result, null);
       }
-
-      // Callbacks
-      onSuccess?.(result);
-      onSettled?.(result, null);
 
       return result;
     } catch (err) {
@@ -275,11 +273,9 @@ export function useQuery<TData = unknown, TError = NetronError>(
         setError(typedError);
         setStatus('error');
         setErrorUpdatedAt(timeUtils.now());
+        onError?.(typedError);
+        onSettled?.(undefined, typedError);
       }
-
-      // Callbacks
-      onError?.(typedError);
-      onSettled?.(undefined, typedError);
 
       throw typedError;
     } finally {

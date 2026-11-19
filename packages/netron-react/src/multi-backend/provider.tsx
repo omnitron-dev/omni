@@ -7,7 +7,7 @@
  * @module multi-backend/provider
  */
 
-import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { useEffect, useLayoutEffect, useState, useMemo, useCallback, useRef } from 'react';
 import type { BackendSchema, IBackendClient } from '@omnitron-dev/netron-browser';
 import { MultiBackendContext, MultiBackendConnectionContext } from './context.js';
 import { NetronContext, DefaultsContext, type DefaultsContextValue } from '../core/context.js';
@@ -18,6 +18,8 @@ import type {
   MultiBackendConnectionState,
   BackendConnectionState,
 } from './types.js';
+
+const useCommitEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
 // ============================================================================
 // MultiBackendProvider Component
@@ -67,30 +69,28 @@ export function MultiBackendProvider<T extends BackendSchema = BackendSchema>({
   defaultOptions,
   cacheOptions,
 }: MultiBackendProviderProps<T>): React.JSX.Element {
-  // Track mount state
-  const isMounted = useRef(true);
-
-  // Query engine owns the QueryCache + MutationCache for the whole
-  // multi-backend app. One per mount; torn down on unmount so HMR
-  // doesn't leak cache instances across React fast-refresh cycles.
-  // We DO NOT recreate it on `client` reference changes — the
-  // engine is bound to the client only via `wireTransportEvents`,
-  // and recreating it would silently flush cached data on every
-  // re-render where the parent reconstructs the client. If the
-  // calling code legitimately wants a fresh cache (e.g. after
-  // logout) it should remount this provider.
-  const engineRef = useRef<MultiBackendQueryEngine<T> | null>(null);
-  if (engineRef.current === null) {
-    engineRef.current = new MultiBackendQueryEngine<T>(client, {
-      maxEntries: cacheOptions?.maxEntries,
-      defaultCacheTime: cacheOptions?.defaultCacheTime,
-    });
-  }
-  const engine = engineRef.current;
-  useEffect(() => () => {
-    engineRef.current?.destroy();
-    engineRef.current = null;
-  }, []);
+  const [cacheConfig] = useState(() => ({
+    maxEntries: cacheOptions?.maxEntries,
+    defaultCacheTime: cacheOptions?.defaultCacheTime,
+  }));
+  const { engine, pendingConnections } = useMemo(
+    () => ({
+      engine: new MultiBackendQueryEngine<T>(client, cacheConfig),
+      pendingConnections: new Map<string, Promise<void>>(),
+    }),
+    [client, cacheConfig]
+  );
+  const activeEngine = useRef<MultiBackendQueryEngine<T> | null>(engine);
+  useCommitEffect(() => {
+    activeEngine.current = engine;
+    return () => {
+      activeEngine.current = null;
+      // StrictMode reconnects effects in this commit. Keep its live cache through the replay.
+      queueMicrotask(() => {
+        if (activeEngine.current !== engine) engine.destroy();
+      });
+    };
+  }, [engine]);
 
   // Defaults context value — mirrors `<NetronProvider defaultOptions>`
   // so a multi-backend app gets the same staleTime/cacheTime knobs
@@ -117,7 +117,7 @@ export function MultiBackendProvider<T extends BackendSchema = BackendSchema>({
   }, [client]);
 
   // Initialize connection states
-  const [connectionStates, setConnectionStates] = useState<Map<string, BackendConnectionState>>(() => {
+  const initialStates = useMemo(() => {
     const states = new Map<string, BackendConnectionState>();
     for (const name of backendNames) {
       states.set(name, {
@@ -128,14 +128,21 @@ export function MultiBackendProvider<T extends BackendSchema = BackendSchema>({
       });
     }
     return states;
-  });
+  }, [backendNames, client]);
+  const [observedClient, setObservedClient] = useState(client);
+  const [connectionStates, setConnectionStates] = useState(initialStates);
 
   // Global error state
   const [globalError, setGlobalError] = useState<Error | null>(null);
+  if (observedClient !== client) {
+    setObservedClient(client);
+    setConnectionStates(initialStates);
+    setGlobalError(null);
+  }
 
   // Update connection state for a specific backend
   const updateBackendState = useCallback((backend: string, update: Partial<BackendConnectionState>) => {
-    if (!isMounted.current) return;
+    if (activeEngine.current !== engine) return;
 
     setConnectionStates((prev: Map<string, BackendConnectionState>) => {
       const newStates = new Map(prev);
@@ -148,36 +155,43 @@ export function MultiBackendProvider<T extends BackendSchema = BackendSchema>({
       newStates.set(backend, { ...current, ...update });
       return newStates;
     });
-  }, []);
+  }, [engine]);
 
   // Connect to a specific backend with timeout
   const connectBackend = useCallback(
-    async (backend: string): Promise<void> => {
+    (backend: string): Promise<void> => {
+      const pending = pendingConnections.get(backend);
+      if (pending) return pending;
       updateBackendState(backend, { isConnecting: true, error: null });
-
-      try {
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(() => {
-            reject(new Error(`Connection timeout for backend '${backend}' after ${connectTimeout}ms`));
-          }, connectTimeout);
+      let timer: ReturnType<typeof setTimeout>;
+      const request = new Promise<void>((resolve, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error(`Connection timeout for backend '${backend}' after ${connectTimeout}ms`));
+        }, connectTimeout);
+        client.connect(backend).then(resolve, reject);
+      })
+        .then(() => {
+          if (activeEngine.current === engine) {
+            updateBackendState(backend, { isConnected: true, isConnecting: false });
+            onConnect?.(backend);
+          }
+        })
+        .catch((error: unknown) => {
+          if (activeEngine.current === engine) {
+            const err = error as Error;
+            updateBackendState(backend, { isConnected: false, isConnecting: false, error: err });
+            onError?.(backend, err);
+          }
+          throw error;
+        })
+        .finally(() => {
+          clearTimeout(timer);
+          pendingConnections.delete(backend);
         });
-
-        await Promise.race([client.connect(backend), timeoutPromise]);
-
-        if (isMounted.current) {
-          updateBackendState(backend, { isConnected: true, isConnecting: false });
-          onConnect?.(backend);
-        }
-      } catch (error) {
-        if (isMounted.current) {
-          const err = error as Error;
-          updateBackendState(backend, { isConnected: false, isConnecting: false, error: err });
-          onError?.(backend, err);
-        }
-        throw error;
-      }
+      pendingConnections.set(backend, request);
+      return request;
     },
-    [client, connectTimeout, updateBackendState, onConnect, onError]
+    [client, engine, pendingConnections, connectTimeout, updateBackendState, onConnect, onError]
   );
 
   // Disconnect from a specific backend
@@ -186,12 +200,12 @@ export function MultiBackendProvider<T extends BackendSchema = BackendSchema>({
       try {
         await client.disconnect(backend);
 
-        if (isMounted.current) {
+        if (activeEngine.current === engine) {
           updateBackendState(backend, { isConnected: false, isConnecting: false });
           onDisconnect?.(backend);
         }
       } catch (error) {
-        if (isMounted.current) {
+        if (activeEngine.current === engine) {
           const err = error as Error;
           updateBackendState(backend, { error: err });
           onError?.(backend, err);
@@ -199,7 +213,7 @@ export function MultiBackendProvider<T extends BackendSchema = BackendSchema>({
         throw error;
       }
     },
-    [client, updateBackendState, onDisconnect, onError]
+    [client, engine, updateBackendState, onDisconnect, onError]
   );
 
   // Connect/disconnect wrapper that handles single or all backends
@@ -212,13 +226,13 @@ export function MultiBackendProvider<T extends BackendSchema = BackendSchema>({
         const connectPromises = backendNames.map((name: string) =>
           connectBackend(name).catch((error: Error) => {
             // Don't throw, just log - we want to try all backends
-            console.error(`Failed to connect to backend '${name}':`, error);
+            if (activeEngine.current === engine) console.error(`Failed to connect to backend '${name}':`, error);
           })
         );
         await Promise.all(connectPromises);
       }
     },
-    [backendNames, connectBackend]
+    [backendNames, connectBackend, engine]
   );
 
   const disconnect = useCallback(
@@ -229,13 +243,13 @@ export function MultiBackendProvider<T extends BackendSchema = BackendSchema>({
         // Disconnect all backends in parallel
         const disconnectPromises = backendNames.map((name: string) =>
           disconnectBackend(name).catch((error: Error) => {
-            console.error(`Failed to disconnect from backend '${name}':`, error);
+            if (activeEngine.current === engine) console.error(`Failed to disconnect from backend '${name}':`, error);
           })
         );
         await Promise.all(disconnectPromises);
       }
     },
-    [backendNames, disconnectBackend]
+    [backendNames, disconnectBackend, engine]
   );
 
   // Check connection status
@@ -261,20 +275,12 @@ export function MultiBackendProvider<T extends BackendSchema = BackendSchema>({
 
     if (needsConnect) {
       connect().catch((error) => {
-        if (isMounted.current) {
+        if (activeEngine.current === engine) {
           setGlobalError(error as Error);
         }
       });
     }
-  }, [autoConnect, backendNames, client, connect]);
-
-  // Cleanup on unmount
-  useEffect(
-    () => () => {
-      isMounted.current = false;
-    },
-    []
-  );
+  }, [autoConnect, backendNames, client, connect, engine]);
 
   // Compute aggregated connection state
   const connectionState = useMemo<MultiBackendConnectionState>(() => {

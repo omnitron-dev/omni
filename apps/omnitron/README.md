@@ -31,13 +31,26 @@ install dependencies and run the generated commands.
 | Need | Generated program | Operation |
 | --- | --- | --- |
 | Automation | Xec task | `npm run automation` checks the syntax of each program using the local Node runtime and runs the database command if selected. |
-| Persistence | Kysera with SQLite, PostgreSQL or MySQL | `npm run data` creates `starter_events` if needed, inserts an event and reads it back. SQLite uses a project-local file. PostgreSQL and MySQL use the operator's `DATABASE_URL`. |
+| Persistence | Kysera with SQLite, PostgreSQL or MySQL | `npm run data` creates `starter_events` if needed, inserts an event and reads it back. SQLite uses a project-local file. For external databases, the generated README names the project's connection variable. |
 | Service | Node or Titan worker | `npm start` starts the worker directly. Its **dev** stack can supervise the same entry and observe its IPC readiness. With persistence, startup also records one event. |
 
 The generated `omnitron.starter.json` records the selected composition and the
 README lists its commands. Xec and Kysera standalone projects work with their
 own dependencies and commands. Run `npm install` in the project directory when
 the manifest lists dependencies. The default Node worker uses the standard library.
+
+An automation or database project also includes `npm run --silent pipeline`.
+It prints a manual Pipeline definition for the working directory on the
+controller. The generated README walks through checking it, saving it and
+starting the reviewed run. Its receipts appear in the system workspace's
+Pipelines page, including for projects without a supervised application.
+
+When asking Agent Studio about a project, describe the intended operation, the
+database it may use and an observable success condition. A SQLite starter
+records a single local event. Existing-schema migrations, tenant isolation,
+schedules and business rules each need their own implementation and acceptance
+checks. If a starter covers part of the request, the agent should identify the
+remaining work and ask whether to create that starting point.
 
 `omnitron init` generates the same starter locally. For example, from an empty
 directory run `omnitron init --name notes --automation --database sqlite --service none`

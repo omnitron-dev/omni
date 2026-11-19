@@ -4,6 +4,8 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createRequire } from 'node:module';
+import { randomUUID } from 'node:crypto';
+import { sql } from 'kysely';
 import { afterAll, expect, it, vi } from 'vitest';
 import { METADATA_KEYS } from '@omnitron-dev/titan/decorators';
 import { validateAccessRequirements } from '@omnitron-dev/titan/netron/auth';
@@ -13,6 +15,12 @@ import { DaemonStateStore } from '../../src/daemon/daemon-state-store.service.js
 import { OrchestratorService } from '../../src/orchestrator/orchestrator.service.js';
 import { ProjectService } from '../../src/services/project.service.js';
 import { ProjectRpcService } from '../../src/services/project.rpc-service.js';
+import { PipelineService } from '../../src/services/pipeline.service.js';
+import { PipelineRpcService } from '../../src/services/pipeline.rpc-service.js';
+import { AuditService } from '../../src/services/audit.service.js';
+import { runWithAuth } from '../../src/services/auth-context.js';
+import { createPipelineTestDatabase } from '../fixtures/pipeline-database.js';
+import { testExecution } from '../fixtures/execution.js';
 import { initCommand } from '../../src/commands/init.js';
 import { planStarter } from '../../src/project/starter-plan.js';
 import { defaultProjectStarterNeeds as defaultNeeds, type ProjectStarterNeeds } from '../../src/shared/dto/project.js';
@@ -129,9 +137,11 @@ it.each(['postgresql', 'mysql'] as const)('loads the %s driver and requires a se
   const review = await rpc.reviewProjectCreation(input);
   await rpc.createProject({ ...input, digest: review.digest });
   installFixtureDependencies(review.path, review.manifest.dependencies);
-  const env = { ...process.env }; delete env['DATABASE_URL'];
+  const connectionVariable = 'PROJECT_EXTERNAL_' + persistence.toUpperCase() + '_DATABASE_URL';
+  const env: NodeJS.ProcessEnv = { ...process.env, DATABASE_URL: 'unrelated ambient setting' };
+  delete env[connectionVariable];
   await expect(execute(process.execPath, ['starter-data.js'], { cwd: review.path, env, timeout: 10_000 }))
-    .rejects.toThrow('Set DATABASE_URL for the selected ' + persistence + ' database');
+    .rejects.toThrow('Set ' + connectionVariable + ' for the selected ' + persistence + ' database');
 });
 
 it.each([
@@ -181,4 +191,47 @@ it.each([
       expect(stack.apps).toMatchObject([{ name: 'worker', status: 'online', pid: expect.any(Number) }]);
     } finally { await owner.stopAll(); }
   }
+}, 120_000);
+
+it('runs the standalone Xec/Kysera program via a reviewed controller Pipeline and records one durable event', async () => {
+  const name = 'job-project';
+  const needs = { automation: true, persistence: 'sqlite', service: 'none' } as const;
+  const review = await rpc.reviewProjectCreation({ name, needs });
+  const project = await rpc.createProject({ name, needs, digest: review.digest });
+  expect(project.totalStacks).toBe(0);
+  installFixtureDependencies(project.path, review.manifest.dependencies);
+  const { stdout } = await execute('npm', ['run', '--silent', 'pipeline'], { cwd: project.path, timeout: 45_000 });
+  const definition = JSON.parse(stdout);
+  expect(definition.steps).toMatchObject([{ kind: 'xec', cwd: project.path, retries: 0 }]);
+  const applicationDatabase = path.join(project.path, 'starter.sqlite');
+  const catalogue = createPipelineTestDatabase();
+  const engine = new PipelineService(catalogue, logger, testExecution);
+  try {
+    await sql`CREATE TABLE omnitron_audit_log (
+      id INTEGER PRIMARY KEY, action TEXT NOT NULL, actorId TEXT, actorType TEXT NOT NULL,
+      resourceType TEXT NOT NULL, resourceId TEXT, details TEXT, ipAddress TEXT)`.execute(catalogue);
+    const pipelines = new PipelineRpcService(engine, { validateSession: async () => null }, new AuditService(logger, catalogue));
+    await runWithAuth({ userId: 'omnitron-local', roles: ['admin'], permissions: [], metadata: { source: 'local-unix-socket' } }, async () => {
+      const saved = await pipelines.createPipeline(definition);
+      const runId = randomUUID();
+      const prepared = await pipelines.prepareRun({ runId, id: saved.id, expectedRevision: saved.revision });
+      expect(prepared.review!.projects).toEqual([]);
+      await expect(pipelines.startRun({ runId, expectedDigest: '0'.repeat(64) })).rejects.toThrow('Review the exact pipeline admission');
+      expect(fs.existsSync(applicationDatabase)).toBe(false);
+      const request = { runId, expectedDigest: prepared.review!.digest };
+      await pipelines.startRun(request);
+      await vi.waitFor(async () => {
+        expect((await pipelines.getRunStatus({ runId }))?.status).toBe('success');
+      }, { timeout: 60_000, interval: 100 });
+      const replay = await pipelines.startRun(request);
+      expect(await pipelines.listPipelines()).toMatchObject([{ id: saved.id }]);
+      expect(await pipelines.listRuns({ pipelineId: saved.id })).toMatchObject([{ id: runId, status: 'success' }]);
+      const output = JSON.parse(replay.steps[0]!.output!);
+      expect(output.event).toMatchObject({ source: 'command', id: expect.any(String) });
+      const { openSqliteDatabase } = await import('@omnitron-dev/titan-database/sqlite');
+      const db = openSqliteDatabase(applicationDatabase, { readonly: true, fileMustExist: true });
+      try { expect(db.prepare('SELECT id, source FROM starter_events').all()).toEqual([output.event]); }
+      finally { db.close(); }
+    });
+  } finally { await engine.dispose(); await catalogue.destroy(); }
 }, 120_000);

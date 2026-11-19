@@ -1,4 +1,5 @@
 import { isProjectStarterNeeds, type ProjectStarterNeeds, type ProjectStarterManifest } from '../shared/dto/project.js';
+import type { PipelineDef } from '../shared/dto/pipelines.js';
 
 export const starterConfig = 'omnitron.config.ts';
 const databaseDrivers = {
@@ -11,12 +12,12 @@ const databaseDrivers = {
     imports: "import mysql from 'mysql2';", options: '{ pool: mysql.createPool(databaseUrl) }' },
 } as const;
 
-function databaseModule(engine: keyof typeof databaseDrivers): string {
+function databaseModule(engine: keyof typeof databaseDrivers, connectionVariable: string): string {
   const driver = databaseDrivers[engine];
   const connection = engine === 'sqlite' ? '' : `
-  const databaseUrl = process.env.DATABASE_URL;
+  const databaseUrl = process.env[${JSON.stringify(connectionVariable)}];
   if (!databaseUrl || !URL.canParse(databaseUrl) || !${JSON.stringify(engine === 'mysql' ? ['mysql:'] : ['postgres:', 'postgresql:'])}.includes(new URL(databaseUrl).protocol))
-    throw Error('Set DATABASE_URL for the selected ${engine} database');`;
+    throw Error('Set ${connectionVariable} for the selected ${engine} database');`;
   return `import { randomUUID } from 'node:crypto';
 import { Kysely, ${driver.dialect} } from 'kysely';
 import { createExecutor } from '@kysera/executor';
@@ -34,6 +35,26 @@ export async function recordEvent(source) {${connection}
     return await executor.selectFrom('starter_events').selectAll().where('id', '=', id).executeTakeFirstOrThrow();
   } finally { await db.destroy(); }
 }
+`;
+}
+
+/** Keep the program portable and resolve its directory when the operator generates a definition. */
+function pipelineProgram(name: string, entry: 'starter-task.js' | 'starter-data.js') {
+  const definition: PipelineDef = {
+    name: name + '-task',
+    steps: [{
+      name: 'run-task',
+      kind: 'xec',
+      retries: 0,
+      timeout: 60_000,
+      run: `const result = await $.exec(process.execPath, { args: ['${entry}'], shell: false });\nprocess.stdout.write(result.stdout);`,
+    }],
+  };
+  return `import { realpathSync } from 'node:fs';
+
+const definition = ${JSON.stringify(definition, null, 2)};
+definition.steps[0].cwd = realpathSync(new URL('.', import.meta.url));
+console.log(JSON.stringify(definition, null, 2));
 `;
 }
 
@@ -61,10 +82,12 @@ export function planStarter(name: string, input: ProjectStarterNeeds) {
   const manifest: ProjectStarterManifest = { version: 1, name, needs, dependencies: {}, commands: {}, app: null, stack: null };
   const files: Array<{ path: string; content: string }> = [];
   const effects = ['Create a new directory and register the project.'];
+  const finiteTask = needs.automation || needs.persistence !== 'none';
+  const connectionVariable = 'PROJECT_' + name.toUpperCase().replaceAll('-', '_') + '_DATABASE_URL';
   if (needs.automation) {
     manifest.dependencies['@xec-sh/core'] = '0.13.2';
     manifest.commands['automation'] = 'node starter-task.js';
-    const programs = ['starter-task.js', ...(needs.persistence === 'none' ? [] : ['starter-database.js', 'starter-data.js']),
+    const programs = ['starter-task.js', 'starter-pipeline.js', ...(needs.persistence === 'none' ? [] : ['starter-database.js', 'starter-data.js']),
       ...(needs.service === 'none' ? [] : ['omnitron-worker.js'])];
     files.push({ path: 'starter-task.js', content: `import { $ } from '@xec-sh/core';
 
@@ -84,10 +107,10 @@ ${needs.persistence === 'none' ? '  console.log(JSON.stringify({ checked, node: 
     const driver = databaseDrivers[needs.persistence];
     Object.assign(manifest.dependencies, { '@kysera/executor': '0.10.2', kysely: '0.29.8', [driver.dependency]: driver.version });
     manifest.commands['data'] = 'node starter-data.js';
-    files.push({ path: 'starter-database.js', content: databaseModule(needs.persistence) },
+    files.push({ path: 'starter-database.js', content: databaseModule(needs.persistence, connectionVariable) },
       { path: 'starter-data.js', content: "import { recordEvent } from './starter-database.js';\nconsole.log(JSON.stringify(await recordEvent('command')));\n" });
     effects.push(needs.persistence === 'sqlite' ? 'The data command opens starter.sqlite in this project.'
-      : `Set DATABASE_URL to your ${needs.persistence} database before running its commands.`);
+      : `Set ${connectionVariable} to your project's ${needs.persistence} database before running its commands.`);
     effects.push('A data command or service start creates starter_events if needed, writes one event and reads it back.');
   }
   if (needs.service !== 'none') {
@@ -97,6 +120,11 @@ ${needs.persistence === 'none' ? '  console.log(JSON.stringify({ checked, node: 
     manifest.commands['start'] = 'node omnitron-worker.js';
     files.push({ path: 'omnitron-worker.js', content: workerProgram(needs) });
     effects.push(`Start the ${needs.service === 'titan' ? 'Titan' : 'Node'} worker directly or from the dev stack. It reports uptime and IPC readiness.`);
+  }
+  if (finiteTask) {
+    manifest.commands['pipeline'] = 'node starter-pipeline.js';
+    files.push({ path: 'starter-pipeline.js', content: pipelineProgram(name, needs.automation ? 'starter-task.js' : 'starter-data.js') });
+    effects.push('The pipeline command prints a manual, one-step definition for review in the controller workspace.');
   }
   const config = manifest.app ? {
     apps: [{ name: manifest.app, script: './omnitron-worker.js' }],
@@ -108,7 +136,17 @@ ${needs.persistence === 'none' ? '  console.log(JSON.stringify({ checked, node: 
   files.push({ path: 'package.json', content: json({ name, private: true, type: 'module', scripts: manifest.commands, dependencies: manifest.dependencies }) },
     { path: 'omnitron.starter.json', content: json(manifest) },
     { path: 'README.md', content: ['# ' + name, '', ...effects.slice(1).map(effect => effect + '\n'), '## Run', '',
-      '```sh', ...(install ? ['npm install'] : []), ...Object.keys(manifest.commands).map(command => 'npm run ' + command), '```', ''].join('\n') },
+      '```sh', ...(install ? ['npm install'] : []), ...Object.keys(manifest.commands).filter(command => command !== 'pipeline').map(command => 'npm run ' + command), '```', '',
+      ...(finiteTask ? ['## Run the task through Omnitron', '',
+        'On the controller host, review the project source and its installed dependencies. Generate the definition from this directory.', '',
+        '```sh', 'npm run --silent pipeline > starter.pipeline.json', 'omnitron pipeline check starter.pipeline.json --json',
+        'omnitron pipeline save starter.pipeline.json --json', '```', '',
+        'Use `data.id` from save as PIPELINE_ID. In the prepared response, `data.id` is RUN_ID and `data.review.digest` is DIGEST. Check the command and working directory before starting it.', '',
+        '```sh', 'omnitron pipeline run PIPELINE_ID --prepare --json',
+        'omnitron pipeline start RUN_ID --expected-digest DIGEST', 'omnitron pipeline status RUN_ID --output', '```', '',
+        'The system workspace lists this task under Pipelines, including its status and output. The review pins the graph and the local directory. Source and dependencies are read from the working tree at run time.',
+        ...(needs.persistence !== 'none' && needs.persistence !== 'sqlite' ? ['',
+          `Supply ${connectionVariable} through an operator-controlled runtime environment. Keep its value out of the pipeline definition.`] : []), ''] : [])].join('\n') },
     { path: starterConfig, content: 'export default ' + JSON.stringify(config, null, 2) + ';\n' });
   const names = new Set(files.map(file => file.path));
   if (names.size !== files.length || files.some(file => !/^[a-z0-9][a-z0-9.-]*$/i.test(file.path)) ||

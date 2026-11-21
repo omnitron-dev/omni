@@ -29,7 +29,7 @@ import type { InfrastructureConfig, ResolvedContainer } from './types.js';
 import { copyInfrastructureDefinition, resolveInfrastructureDefinition, type InfrastructureDefinition } from './infrastructure-definition.js';
 import type { IStackConfig, IStackSettings } from '../config/types.js';
 import { InfrastructureService, type InfrastructureStartMode } from './infrastructure.service.js';
-import { reviewExistingContainers } from './existing-containers.js';
+import { preservationFailure, reviewExistingContainers } from './existing-containers.js';
 import type { ExistingInfrastructureReview } from '../shared/dto/project.js';
 import { setContainerPrefix, setStackLabels, gatewayHostPort } from './service-resolver.js';
 import { gatewayRedisDb as gatewayRedisDbOf } from './gateway-redis-db.js';
@@ -186,7 +186,7 @@ export class StackInfrastructureManager {
     const definition = retained?.getDefinition() ?? await withInfrastructureScope(project, stack,
       () => this.resolveStackDefinition(project, stack, config, infrastructure, allocation, definitions, directory));
     const review = await reviewExistingContainers([...definition.containers], undefined, { project, stack });
-    if (!review.digest) throw Error('Preserved stack connection bindings could not be verified; no migration was executed');
+    if (!review.digest) throw preservationFailure('Preserved stack connection bindings could not be verified; no migration was executed', review);
     return { allocation, definition, review };
   }
 

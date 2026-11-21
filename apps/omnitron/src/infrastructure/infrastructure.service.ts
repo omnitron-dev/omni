@@ -35,7 +35,7 @@ import { copyInfrastructureDefinition, type InfrastructureDefinition } from './i
 import type { PresetRegistry } from './presets/registry.js';
 import { createDefaultRegistry } from './presets/index.js';
 import { PhantomEndpointJanitor } from './phantom-endpoint-janitor.js';
-import { inspectExistingInfrastructure, planLegacyContainer, preservationIssues, reviewExistingContainers } from './existing-containers.js';
+import { inspectExistingInfrastructure, planLegacyContainer, preservationFailure, preservationIssues, reviewExistingContainers } from './existing-containers.js';
 import type { ExistingInfrastructureReview } from '../shared/dto/project.js';
 import { LOCAL_INFRA_HOST } from '../shared/local-infra-host.js';
 import {
@@ -407,7 +407,7 @@ export class InfrastructureService {
   async verifyPreservation(): Promise<ExistingInfrastructureReview> {
     if (!this.preservation?.digest) throw new Error('Infrastructure has no preserved native binding');
     const observed = await reviewExistingContainers(this.desiredContainers, undefined, this.preservation.scope);
-    if (observed.digest !== this.preservation.digest) throw new Error('Preserved native infrastructure changed');
+    if (observed.digest !== this.preservation.digest) throw preservationFailure('Preserved native infrastructure changed', observed, this.preservation);
     return observed;
   }
 
@@ -520,7 +520,8 @@ export class InfrastructureService {
   }> {
     if (snapshot.preservation) {
       const { review, state } = await inspectExistingInfrastructure(snapshot.containers, undefined, snapshot.preservation.scope);
-      if (!review.digest || review.digest !== snapshot.preservation.digest) throw new Error('Preserved infrastructure changed during handoff');
+      if (!review.digest || review.digest !== snapshot.preservation.digest)
+        throw preservationFailure('Preserved infrastructure changed during handoff', review, snapshot.preservation);
       return { state, observations: review.containers.map(container => ({ name: container.name, containerId: container.id })) };
     }
     const state = structuredClone(snapshot.state);

@@ -6,6 +6,7 @@ import { containerObservation, containerResources, containerSpecHash, inspectSta
 import { DEFAULT_PORT_BIND_HOST, type ContainerState, type InfrastructureState, type ResolvedContainer } from './types.js';
 import { stackDefinitionFingerprint } from '../project/node-stack-stop.js';
 import type { ExistingInfrastructureReview } from '../shared/dto/project.js';
+import { reviewCheckFailures } from '../shared/command-result.js';
 
 /** Private native input. Environment and commands must never leave this reader. */
 type Native = Record<string, any>;
@@ -225,6 +226,12 @@ export function preservationIssues(approved: ExistingInfrastructureReview, obser
     state: 'unknown', message: 'The current observation does not confirm the approved preservation review.' });
   const scope = approved.scope ?? observed.scope;
   return scope ? issues.map(check => ({ ...check, scope })) : issues;
+}
+
+/** A handoff also checks for a new generation that independently satisfies the declaration. */
+export function preservationFailure(summary: string, observed: ExistingInfrastructureReview, approved?: ExistingInfrastructureReview): Error {
+  const checks = approved ? preservationIssues(approved, observed) : observed.checks;
+  return new Error([summary, ...reviewCheckFailures(checks)].join('\n'));
 }
 
 /** Project the receipt and service states from a single complete Docker observation. */

@@ -247,6 +247,10 @@ to inspect the full report while applications are serving. For a service
 with mounted configuration, the running container records the specification it
 was created with. Editing a mounted file changes the desired specification.
 After deploying the changed service, obtain a fresh review before updating the host.
+Migration admission and backend handoff also report the affected resource.
+If its replacement satisfies today's declaration, a handoff can still refuse
+because the running controller recorded the previous container ID. Compare
+the new review with the controller's recorded identity before selecting a recovery path.
 
 Stack review reads the Docker ownership labels and full container IDs in one
 listing. It inspects the declared containers by name and verifies each ID against

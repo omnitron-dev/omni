@@ -79,6 +79,26 @@ describe('stack preservation admission', () => {
     manager.dispose();
   });
 
+  it('identifies a changed resource during migration admission and backend handoff', async () => {
+    const manager = new StackInfrastructureManager(logger);
+    const approved = observation();
+    approved.containers.push({ name: 'sample-dev-gateway', id: '1'.repeat(64), fingerprint: 'a'.repeat(64) });
+    native.review.mockResolvedValue(approved);
+    await manager.preserveStack(scope.project, scope.stack, { type: 'local' }, {}, approved.digest!);
+    const service = manager.getInstance(scope.project, scope.stack)!;
+    const snapshot = service.captureRecoveryState();
+    const issue = { code: 'infrastructure.preservation-blocked', resource: 'sample-dev-gateway', state: 'unknown',
+      message: 'Mounted configuration cannot be confirmed.', native: { env: 'private-native-state' } };
+    native.review.mockResolvedValue({ ...approved, digest: null, checks: [issue] });
+    await expect(manager.inspectPreservedBindings(scope.project, scope.stack, { type: 'local' }, {}))
+      .rejects.toThrow(/no migration was executed\nsample-dev-gateway: Mounted configuration cannot be confirmed\.$/);
+    const next = { ...approved, digest: 'b'.repeat(64), containers: [{ ...approved.containers[0]!, id: '2'.repeat(64) }] };
+    native.review.mockResolvedValue(next);
+    await expect(InfrastructureService.validateHandoff(snapshot))
+      .rejects.toThrow(/changed during handoff\nsample-dev-gateway: Container identity differs from the preservation review\.$/);
+    manager.dispose();
+  });
+
   it('reviews desired infrastructure before a stop, without executing application declarations or migrations', async () => {
     const f = fixture();
     const review = await f.service.reviewStackStart('sample', 'dev', { infrastructure: 'preserve' });

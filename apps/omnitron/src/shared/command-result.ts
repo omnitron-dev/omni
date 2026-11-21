@@ -3,6 +3,18 @@ type RecordValue = Record<string, unknown>;
 const record = (value: unknown): value is RecordValue => value !== null && typeof value === 'object' && !Array.isArray(value);
 const message = (value: unknown): string | undefined => typeof value === 'string' && value.trim() ? value : undefined;
 
+/** Render public check fields only. Native probes can also produce private diagnostic state. */
+export function reviewCheckFailures(checks: unknown): string[] {
+  if (!Array.isArray(checks)) return [];
+  const failures: string[] = [];
+  for (const check of checks) {
+    if (!record(check) || (check['state'] !== 'blocked' && check['state'] !== 'unknown' && check['state'] !== 'change')) continue;
+    const resource = message(check['resource']), detail = message(check['message']);
+    if (resource && detail) failures.push(resource + ': ' + detail);
+  }
+  return failures;
+}
+
 /** Only diagnostics declared by the review are safe to propagate across CLI and RPC boundaries. */
 export function reviewTargetFailures(targets: unknown): string[] {
   if (!Array.isArray(targets)) return [];
@@ -13,13 +25,7 @@ export function reviewTargetFailures(targets: unknown): string[] {
     const reason = message(target['reason']);
     const failures = reason ? [at + reason] : [];
     const infrastructure = target['infrastructure'];
-    if (record(infrastructure) && Array.isArray(infrastructure['checks'])) {
-      for (const check of infrastructure['checks']) {
-        if (!record(check) || (check['state'] !== 'blocked' && check['state'] !== 'unknown' && check['state'] !== 'change')) continue;
-        const resource = message(check['resource']), detail = message(check['message']);
-        if (resource && detail) failures.push(at + resource + ': ' + detail);
-      }
-    }
+    if (record(infrastructure)) failures.push(...reviewCheckFailures(infrastructure['checks']).map(failure => at + failure));
     return failures;
   });
 }

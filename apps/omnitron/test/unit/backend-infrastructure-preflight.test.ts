@@ -16,12 +16,12 @@ import { backendInfrastructureInput, backendInfrastructureIntentDigest, backendI
 import { createDefaultRegistry } from '../../src/infrastructure/presets/index.js';
 import { normalizeInfraConfig } from '../../src/infrastructure/config-normalizer.js';
 import { withInfrastructureScope } from '../../src/infrastructure/service-resolver.js';
-import { containerSpecHash } from '../../src/infrastructure/container-runtime.js';
+import { containerSpecHash, planContainerAction } from '../../src/infrastructure/container-runtime.js';
 
 beforeEach(() => vi.clearAllMocks());
 
-function fixture(name: string) {
-  const desired: ResolvedContainer = { name, image: 'postgres:17', ports: [], volumes: [], environment: {},
+function fixture(name: string, image = 'postgres:17') {
+  const desired: ResolvedContainer = { name, image, ports: [], volumes: [], environment: {},
     labels: { 'omnitron.managed': 'true', 'omnitron.project': 'tenant', 'omnitron.stack': 'prod', 'omnitron.service': name },
     restart: 'unless-stopped', shmSize: '256m', critical: false };
   const observed: ContainerState = { name, image: desired.image, status: 'running', containerId: '1'.repeat(64),
@@ -34,6 +34,18 @@ function fixture(name: string) {
   service.dispose();
   return { snapshot, observed };
 }
+
+it('predicts replacement from a retained gateway declaration even when the running gateway matches the current stack spec', async () => {
+  const { snapshot, observed } = fixture('sample-dev-gateway', 'nginx:stable');
+  const retained = snapshot.containers[0]!;
+  const current = { ...retained, environment: { UPSTREAM: 'api' } };
+  const running = { ...observed, specHash: containerSpecHash(current), mounts: [] };
+  expect(planContainerAction(current, running).type).toBe('noop');
+  runtime.inspect.mockResolvedValue(running);
+  const preview = await previewColdInfrastructure(Buffer.from(JSON.stringify({ protocol: 1, infrastructure: [snapshot] })));
+  expect(preview.containers).toEqual([expect.objectContaining({ name: current.name, action: 'replace', id: observed.containerId })]);
+  expect(runtime.start).not.toHaveBeenCalled(); expect(runtime.create).not.toHaveBeenCalled(); expect(runtime.remove).not.toHaveBeenCalled();
+});
 
 it('separates exact snapshot evidence from stable intent while health observations advance', async () => {
   const { snapshot, observed } = fixture('postgres');

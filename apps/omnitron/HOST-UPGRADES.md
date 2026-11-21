@@ -500,12 +500,14 @@ ownership; a late reply cannot publish acceptance.
 
 For one application outage, review and perform `stack stop <project> <stack> --keep-infrastructure`, then prepare a fresh host update. Confirm the stopped stack appears in `excluded` with reason `disabled`, the host plan has the intended empty local application and watch lists, and the reviewed container IDs are retained. After host acceptance, SDK selection, migrations and the single reviewed stack start each use their own receipts.
 
-For an application-only stop followed by a local native update, stage the exact runtime artifact and use a foreground backup window. This requires a serving backend with `applicationStopBackupWindowProtocol@1` and the local administrator socket. The command verifies the installed artifact and requires backup and restore operations to settle while the applications are still running. An unconfirmed operation needs its ordinary reconciliation.
+For an application-only stop followed by a local native update, stage the exact runtime artifact and use a foreground backup window. This requires a serving backend with `applicationStopBackupWindowProtocol@1` and the local administrator socket. Use a CLI with cold infrastructure review for both commands below. With an older CLI on `PATH`, invoke the staged release's `node` and `packages/0/dist/cli/omnitron.js` directly.
 
 ```sh
-omnitron stack stop <project> <stack> --keep-infrastructure --dry-run
+omnitron stack stop <project> <stack> --keep-infrastructure --for-runtime <artifact-sha256> --dry-run
 omnitron stack stop <project> <stack> --keep-infrastructure --review <stop-digest> --for-runtime <artifact-sha256> --backup-window-minutes 15
 ```
+
+Both commands run the installed candidate's `backend select <artifact-sha256> --check` against the serving controller's infrastructure declarations. They also check the selected rollback runtime when its SHA differs. A stack start dry-run can accept the current gateway while the controller still holds its previous declaration. If either preview predicts `replace` for that gateway, the stop reports its name and action before opening the backup window. The detailed preview lists every container. Review the controller's retained infrastructure and rerun the dry-run after resolving the difference. Once the previews confirm retention, execution requires backup and restore operations to settle while the applications are still running. An unconfirmed operation needs its ordinary reconciliation.
 
 Keep the second command running. In another terminal, confirm the stack's stopped receipt and its `backupWindow`, then prepare and apply the new host plan. The backend transfers backup admission to the native update when its durable `draining` receipt matches the artifact, serving controller and excluded local stack. The foreground command returns that receipt's digest. Backup schedules remain subject to the ordinary native update until it reaches a terminal phase.
 

@@ -166,6 +166,21 @@ test('native lifecycle children use human output even when the parent is in JSON
   assert.equal(called, true);
 });
 
+test('native shutdown admission names each resource the cold candidate would change', async t => {
+  const { home } = await instance(t), runtime = await candidate(home);
+  const actions = await runtimeUpdateActions({ runtime: await verifyRuntimeUpdateTarget(runtime.directory), instance: home,
+    call: async args => {
+      assert.deepEqual(args, ['backend', 'select', runtime.artifact, '--check']);
+      return { checked: true, candidate: runtime.artifact, schemaScope: 'all', infrastructure: {
+        coverage: 'reviewed-declarations', intentDigest: 'd'.repeat(64),
+        containers: [{ name: 'sample-dev-gateway', action: 'replace', id: 'a'.repeat(64) }],
+        controlPlaneDatabase: { action: 'move-network', id: 'b'.repeat(64) },
+      } };
+    }, run: () => assert.fail('cold preview must not operate native services') });
+  await assert.rejects(actions.validateStop({ backendPid: 123 }, { target: { artifact: runtime.artifact } }),
+    /sample-dev-gateway: replace, Control-plane PostgreSQL: move-network/);
+});
+
 test('host preparation retains its live proof without rereading candidate bytes', async t => {
   const { home } = await instance(t), fixture = await candidate(home);
   const runtime = await verifyRuntimeUpdateTarget(fixture.directory);

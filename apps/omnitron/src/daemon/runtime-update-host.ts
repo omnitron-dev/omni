@@ -36,10 +36,16 @@ import type { RuntimeRestartConfiguration, RuntimeRestartReview, RuntimeUpdateId
 
 export type RuntimeUpdateCall = <T>(argv: readonly string[], options?: { timeoutMs?: number; signal?: AbortSignal }) => Promise<T>;
 interface ColdStartObservation {
-  checked: boolean; candidate: string; schemaScope: 'node' | 'all'; coldStackAdmissionProtocol?: number | null;
+  checked: boolean; candidate: string; current: string | null; schemaScope: 'node' | 'all'; coldStackAdmissionProtocol?: number | null;
   runtimeRestartProtocol?: number | null;
   coldConsoleProtocol?: number | null;
-  infrastructure: { coverage: string; intentDigest: string; containers: Array<{ name: string; id: string; action: string }>; controlPlaneDatabase?: { id: string; action: string } };
+  infrastructure: {
+    coverage: string;
+    reason?: string;
+    intentDigest?: string;
+    containers?: Array<{ name: string; id?: string; action: string }>;
+    controlPlaneDatabase?: { id?: string; action: string };
+  };
 }
 
 const hash = /^[a-f0-9]{64}$/;
@@ -48,6 +54,37 @@ const cleanBuild = (stamp: Pick<BuildStamp, 'dirty' | 'commit'> | null | undefin
 const projectKey = (stack: { project: string; stack: string }) => JSON.stringify([stack.project, stack.stack]);
 const cliDist = 'packages/0/dist';
 const runtimeInspections = new WeakMap<VerifiedRuntimeReference, Awaited<ReturnType<typeof inspectRuntimeArtifact>>>();
+
+/** Both the foreground stack stop and native restart use the candidate's own cold-start prediction. */
+export async function reviewRuntimeInfrastructure(artifact: string, call: RuntimeUpdateCall,
+  { requireLive = false, separateConsole = false } = {}): Promise<{ current: string | null; infrastructure: RuntimeUpdateInfrastructure }> {
+  const response = await call<ColdStartObservation>(['backend', 'select', artifact, '--check']);
+  const infra = response.infrastructure;
+  if (separateConsole && response.coldConsoleProtocol !== 1)
+    throw Error('The cold controller cannot restore the independently selected Console');
+  const coverage = infra?.coverage;
+  const inspect = `Inspect omnitron backend select ${artifact} --check`;
+  if (response.checked !== true || response.candidate !== artifact ||
+      !(coverage === 'reviewed-declarations' || (!requireLive && coverage === 'certified-declarations')) ||
+      !Array.isArray(infra?.containers) || !infra.intentDigest || !hash.test(infra.intentDigest))
+    throw Error(`Cannot verify retained infrastructure for the cold start (${infra?.reason ?? coverage ?? 'missing preview'}). ${inspect}`);
+  const database = infra.controlPlaneDatabase;
+  const resources = database ? [...infra.containers, { ...database, name: 'Control-plane PostgreSQL' }] : infra.containers;
+  const changes = resources.filter(item => item.action !== 'retain' || !item.id || !hash.test(item.id))
+    .map(item => `${item.name}: ${item.action === 'retain' ? 'retain (unverified container ID)' : item.action}`);
+  if (changes.length) throw Error(`Cold start requires retained infrastructure. ${changes.join(', ')}. ${inspect}`);
+  return {
+    current: response.current,
+    infrastructure: {
+      schemaScope: response.schemaScope,
+      ...(response.coldStackAdmissionProtocol === 1 && { coldStackAdmissionProtocol: 1 }),
+      ...(response.runtimeRestartProtocol === 1 && { runtimeRestartProtocol: 1 }),
+      digest: infra.intentDigest,
+      containers: infra.containers.map(({ name, id }) => ({ name, id: id! })).sort((a, b) => a.name.localeCompare(b.name)),
+      database: database?.id ?? null,
+    },
+  };
+}
 
 async function runtimeBuildCommit(runtimeRoot: string, console = false): Promise<string> {
   const value = JSON.parse(await fs.readFile(path.join(runtimeRoot, 'packages/0', console ? 'webapp/dist' : 'dist', 'BUILD.json'), 'utf8')) as BuildStamp;
@@ -426,18 +463,8 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
     else throw Error('Saved launch and reviewed release disagree for ' + projectKey(stack));
     return { digest: review.digest, selection };
   };
-  const coldPreview = async (artifact: string, observation?: RuntimeObservation, separateConsole = false): Promise<RuntimeUpdateInfrastructure> => {
-    const response = await observeCall<ColdStartObservation>(['backend', 'select', artifact, '--check'], observation);
-    const infra = response.infrastructure;
-    if (separateConsole && response.coldConsoleProtocol !== 1)
-      throw Error('The cold controller cannot restore the independently selected Console');
-    if (!response.checked || response.candidate !== artifact || !['certified-declarations', 'reviewed-declarations'].includes(infra?.coverage ?? '') || !Array.isArray(infra?.containers) ||
-        !hash.test(infra.intentDigest) || infra.containers.some(v => v.action !== 'retain' || !hash.test(v.id)) ||
-        (infra.controlPlaneDatabase && infra.controlPlaneDatabase.action !== 'retain')) throw Error('Automatic local restart requires verified retained infrastructure; inspect backend select ' + artifact + ' --check for the proposed changes');
-    return { schemaScope: response.schemaScope, ...(response.coldStackAdmissionProtocol === 1 && { coldStackAdmissionProtocol: 1 as const }),
-      ...(response.runtimeRestartProtocol === 1 && { runtimeRestartProtocol: 1 as const }), digest: infra.intentDigest, containers: infra.containers.map(({ name, id }) => ({ name, id })).sort((a, b) => a.name.localeCompare(b.name)),
-      database: infra.controlPlaneDatabase?.id ?? null };
-  };
+  const coldPreview = async (artifact: string, observation?: RuntimeObservation, separateConsole = false) =>
+    (await reviewRuntimeInfrastructure(artifact, args => observeCall(args, observation), { separateConsole })).infrastructure;
   const stopped = async (previous: RuntimeUpdateRetiringIdentity) => {
     const config = await readManagedRuntime(home);
     if (!config || config.scope !== previous.scope) throw Error('Native service instance changed');

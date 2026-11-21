@@ -572,7 +572,7 @@ stack
   .command('stop <project> <stack>')
   .description('Stop a stack and verify each target')
   .option('--keep-infrastructure', 'Stop applications and disable automatic resume while preserving infrastructure')
-  .option('--for-runtime <artifact>', 'Hold host backup admission until native apply claims this runtime SHA-256 (local admin)')
+  .option('--for-runtime <artifact>', 'Verify cold infrastructure retention and hold backups for this runtime SHA-256 (local admin)')
   .option('--backup-window-minutes <minutes>', 'Maximum foreground hold for --for-runtime, 1 to 60 minutes (default 15)')
   .option('--dry-run', 'Inspect applications, containers and unresolved targets without creating a stop operation')
   .option('--review <digest>', 'Stop only if the inventory matches the inspected digest')

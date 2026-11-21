@@ -7,6 +7,7 @@ import * as privateControl from '../../src/daemon/private-control-client.js';
 import { stackStopCommand } from '../../src/commands/stack.js';
 import * as managedRuntime from '../../src/daemon/managed-runtime.js';
 import * as runtimeHost from '../../src/daemon/runtime-update-host.js';
+import * as output from '../../src/commands/output.js';
 import { OWNER_LAUNCHD_LABEL, LAUNCHD_LABEL } from '../../src/commands/service-units.js';
 import os from 'node:os';
 import path from 'node:path';
@@ -36,7 +37,8 @@ import * as runtimeUpdate from '../../src/daemon/runtime-update.js';
 import { writePrivateRecord } from '../../src/daemon/execution-journal.js';
 import type { RuntimeUpdatePhase, RuntimeUpdatePlan } from '../../src/shared/dto/runtime-update.js';
 
-const fixture = vi.hoisted(() => ({ home: '' }));
+const fixture = vi.hoisted(() => ({ home: '', runCandidate: vi.fn() }));
+vi.mock('@xec-sh/ops/release', async original => ({ ...await original<Record<string, unknown>>(), releaseCommand: fixture.runCandidate }));
 vi.mock('../../src/config/defaults.js', async original => ({
   ...await original<Record<string, unknown>>(), get OMNITRON_HOME() { return fixture.home; },
 }));
@@ -85,6 +87,7 @@ async function liveControllerFixture() {
 }
 
 beforeEach(() => {
+  fixture.runCandidate.mockReset();
   fixture.home = fs.mkdtempSync(path.join(os.tmpdir(), 'backup-operation-'));
   store = new DaemonStateStore(logger, path.join(fixture.home, 'state.sqlite'));
   executor = new ExecutionService(logger); mode = 'complete'; submitted = [];
@@ -140,6 +143,15 @@ async function maintenanceTarget() {
   return { id: randomUUID(), review: 'e'.repeat(64), target, project: 'one', stack: 'dev', callerPid: process.ppid, minutes: 1 };
 }
 
+function candidatePreview(target: string, action = 'retain', coverage = 'reviewed-declarations', current = target) {
+  const infrastructure = { coverage, intentDigest: 'd'.repeat(64), containers: [{ name: 'sample-dev-gateway', action, id: 'c'.repeat(64) }] };
+  return JSON.stringify({ ok: true, data: { checked: true, candidate: target, current, schemaScope: 'all', infrastructure } });
+}
+
+function localStopStatus() {
+  return { applicationStopBackupWindowProtocol: 1, instanceHome: fixture.home, daemonSocket: path.join(fixture.home, 'daemon.sock') };
+}
+
 describe('foreground backup window before a reviewed application stop', () => {
   it('releases a pending acquisition during artifact verification without pausing schedules later', async () => {
     const request = await maintenanceTarget(), window = new RuntimeBackupWindow(fixture.home, backups);
@@ -172,8 +184,54 @@ describe('foreground backup window before a reviewed application stop', () => {
     } finally { process.exitCode = previous; }
   });
 
+  it('checks the staged candidate in dry-run and refuses a later gateway replacement before backup or stop admission', async () => {
+    const { target, project, stack, review } = await maintenanceTarget();
+    const window = { status: localStopStatus, backupWindowAcquire: vi.fn(), backupWindowRelease: vi.fn() };
+    const stop = vi.fn(), ordinaryStop = vi.fn(), close = vi.fn(), disconnect = vi.fn();
+    vi.spyOn(daemonClient, 'createDaemonClient').mockReturnValue({ service: async (name: string) =>
+      name === 'OmnitronBackend' ? { controlAddress: async () => ({ socket: 'fixture-private-control' }) } : {
+        reviewStackStop: async () => ({ digest: review, keepInfrastructure: true, targets: [] }), stopStack: ordinaryStop, stopStackForRuntime: stop,
+      }, disconnect } as never);
+    vi.spyOn(privateControl, 'privateControlClient').mockResolvedValue({ service: window, close } as never);
+    const rollback = 'a'.repeat(64);
+    const candidate = fixture.runCandidate.mockResolvedValueOnce(candidatePreview(target))
+      .mockResolvedValueOnce(candidatePreview(target, 'replace')).mockResolvedValueOnce(candidatePreview(target, 'replace'))
+      .mockResolvedValueOnce(candidatePreview(target, 'retain', 'historical-declarations'))
+      .mockResolvedValueOnce(candidatePreview(target, 'retain', 'reviewed-declarations', rollback)).mockResolvedValueOnce(candidatePreview(rollback, 'start'));
+    const result = vi.spyOn(output, 'emitJson').mockReturnValue(true);
+    const error = vi.spyOn(output, 'emitError').mockReturnValue(true);
+    const options = { keepInfrastructure: true, forRuntime: target };
+    const previous = process.exitCode;
+    try {
+      await stackStopCommand(project, stack, { ...options, dryRun: true });
+      expect(result).toHaveBeenCalledWith(expect.objectContaining({ digest: review, backupWindow: expect.objectContaining({ target,
+        infrastructure: expect.objectContaining({ containers: [{ name: 'sample-dev-gateway', id: 'c'.repeat(64) }] }) }) }));
+      expect(error).not.toHaveBeenCalled();
+      for (const mode of [{ review }, { dryRun: true }]) {
+        await stackStopCommand(project, stack, { ...options, ...mode });
+        expect(error).toHaveBeenLastCalledWith(expect.stringContaining('sample-dev-gateway: replace'), expect.anything());
+        expect(process.exitCode).toBe(1);
+      }
+      await stackStopCommand(project, stack, { ...options, review });
+      expect(error).toHaveBeenLastCalledWith(expect.stringContaining('historical-declarations'), expect.anything());
+      await stackStopCommand(project, stack, { ...options, review });
+      expect(error).toHaveBeenLastCalledWith(expect.stringContaining(`sample-dev-gateway: start. Inspect omnitron backend select ${rollback} --check`), expect.anything());
+      const directory = path.join(fixture.home, 'runtime/releases', target);
+      expect(candidate.mock.calls.map(([, , args]) => args[4])).toEqual([target, target, target, target, target, rollback]);
+      for (const [cwd, node, args] of candidate.mock.calls) {
+        expect(cwd).toBe(fixture.home);
+        expect(node).toBe(path.join(directory, 'node'));
+        expect(args).toEqual([path.join(directory, 'packages/0/dist/cli/omnitron.js'), '--json', 'backend', 'select', expect.any(String), '--check']);
+      }
+      expect(window.backupWindowAcquire).not.toHaveBeenCalled(); expect(window.backupWindowRelease).not.toHaveBeenCalled();
+      expect(stop).not.toHaveBeenCalled(); expect(ordinaryStop).not.toHaveBeenCalled();
+      expect(close).toHaveBeenCalledTimes(5); expect(disconnect).toHaveBeenCalledTimes(5);
+    } finally { process.exitCode = previous; }
+  });
+
   it('moves the same admission from the CLI stop into the durable native update while a scheduled tick is due', async () => {
     const request = await maintenanceTarget();
+    fixture.runCandidate.mockResolvedValue(candidatePreview(request.target));
     const window = new RuntimeBackupWindow(fixture.home, backups);
     if (process.platform !== 'darwin') vi.spyOn(runtimeHost, 'assertLocalUpdatePlatform').mockImplementation(() => {});
     vi.spyOn(managedRuntime, 'readManagedRuntime').mockResolvedValue({ scope: 'user', owner: { label: OWNER_LAUNCHD_LABEL }, backend: { label: LAUNCHD_LABEL } } as never);
@@ -196,7 +254,7 @@ describe('foreground backup window before a reviewed application stop', () => {
     };
     const control = {
       service: {
-        status: async () => ({ applicationStopBackupWindowProtocol: 1 }),
+        status: localStopStatus,
         // CLI and daemon share this test worker; use the actual separate vitest parent lifetime.
         backupWindowAcquire: (input: BackupWindowRequest) => native.acquireBackupWindow({ ...input, callerPid: process.ppid }),
         backupWindowWait: ({ id }: { id: string }) => window.wait(id),
@@ -244,6 +302,7 @@ describe('foreground backup window before a reviewed application stop', () => {
 
   it('refuses a newly scheduled database backup before any stop and preserves its original receipt', async () => {
     const request = await maintenanceTarget(), window = new RuntimeBackupWindow(fixture.home, backups);
+    fixture.runCandidate.mockResolvedValue(candidatePreview(request.target));
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
     try {
       store.kvSetSync('backup:schedules', { 'one/dev/ledger': 'hourly' });
@@ -263,7 +322,7 @@ describe('foreground backup window before a reviewed application stop', () => {
         stopStackForRuntime: stop, stopStack: ordinary,
       }, disconnect: vi.fn() } as never);
     vi.spyOn(privateControl, 'privateControlClient').mockResolvedValue({ service: {
-      status: async () => ({ applicationStopBackupWindowProtocol: 1 }),
+      status: localStopStatus,
       backupWindowAcquire: (input: BackupWindowRequest) => window.acquire({ ...input, callerPid: process.ppid }),
       backupWindowRelease: ({ id }: { id: string }) => window.release(id),
     }, close: vi.fn() } as never);

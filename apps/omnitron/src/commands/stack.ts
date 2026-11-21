@@ -459,6 +459,7 @@ export async function stackStopCommand(projectName: string, stackName: string, o
   dryRun?: boolean; review?: string; keepInfrastructure?: boolean; forRuntime?: string; backupWindowMinutes?: string;
 } = {}): Promise<void> {
   const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
+  let control: Awaited<ReturnType<typeof privateControlClient<BackendControlService>>> | undefined;
   try {
     const svc = await client.service<IProjectRpcService>('OmnitronProject');
     const target = options.forRuntime;
@@ -472,9 +473,21 @@ export async function stackStopCommand(projectName: string, stackName: string, o
     const report = options.dryRun || options.keepInfrastructure ? await svc.reviewStackStop(scope) : null;
     if (options.keepInfrastructure && report?.keepInfrastructure !== true)
       throw new Error('The controller did not confirm infrastructure preservation; no stop was requested. Update the controller before using --keep-infrastructure.');
+    if (!options.dryRun && options.keepInfrastructure && (!report?.digest || (options.review !== undefined && options.review !== report.digest)))
+      throw new Error('The current application-only stop could not be confirmed against the reviewed footprint; no stop was requested. Inspect the stack again.');
+    let infrastructure;
+    if (target) {
+      const { socket } = await (await client.service<BackendRpcService>('OmnitronBackend')).controlAddress();
+      control = await privateControlClient<BackendControlService>(socket, 'OmnitronBackendControl', (minutes + 1) * 60_000);
+      const status = await control.service.status();
+      if (status.applicationStopBackupWindowProtocol !== 1) throw Error('Update the serving backend to support the reviewed backup window before stopping applications');
+      const { reviewStackStopRuntime } = await import('./runtime-update.js');
+      infrastructure = await reviewStackStopRuntime(target, status);
+    }
     if (options.dryRun && report) {
       if (!report.digest) process.exitCode = 1;
-      if (emitJson(target ? { ...report, backupWindow: { target, minutes } } : report)) return;
+      if (emitJson(target ? { ...report, backupWindow: { target, minutes, infrastructure } } : report)) return;
+      if (infrastructure) emitInfo(`Cold-start preview confirmed ${infrastructure.containers.length} retained containers for runtime ${target}`);
       if (target) emitInfo(`Host backups will be held for runtime ${target} for up to ${minutes} minutes after admission`);
       for (const item of report.targets) {
         emitInfo(item.reason ? `${item.node} · ${item.reason}` :
@@ -483,35 +496,27 @@ export async function stackStopCommand(projectName: string, stackName: string, o
       if (report.digest) emitInfo(`Review digest: ${report.digest}`);
       return;
     }
-    if (options.keepInfrastructure && (!report?.digest || (options.review !== undefined && options.review !== report.digest)))
-      throw new Error('The current application-only stop could not be confirmed against the reviewed footprint; no stop was requested. Inspect the stack again.');
     const review = options.review ?? report?.digest;
     emitStep(`Stopping ${options.keepInfrastructure ? 'applications in' : 'stack'} ${projectName}/${stackName}...`);
     let transferred: { id: string; target: string; digest: string } | undefined;
-    const stopForRuntime = async () => {
-      const { socket } = await (await client.service<BackendRpcService>('OmnitronBackend')).controlAddress();
-      const control = await privateControlClient<BackendControlService>(socket, 'OmnitronBackendControl', (minutes + 1) * 60_000);
+    const stopForRuntime = async (service: BackendControlService) => {
       const id = randomUUID();
-      let requested = false;
       try {
-        const status = await control.service.status();
-        if (status.applicationStopBackupWindowProtocol !== 1) throw Error('Update the serving backend to support the reviewed backup window before stopping applications');
-        requested = true;
-        await control.service.backupWindowAcquire({ id, callerPid: process.pid, project: projectName, stack: stackName, review: options.review!, target: target!, minutes });
+        await service.backupWindowAcquire({ id, callerPid: process.pid, project: projectName, stack: stackName, review: options.review!, target: target!, minutes });
         const stopped = await svc.stopStackForRuntime({ project: projectName, stack: stackName, review: options.review!, backupWindowId: id });
         if (stopped.status !== 'stopped' || stopped.stopOperation?.phase !== 'stopped' || !stopped.stopOperation.keepInfrastructure ||
             stopped.stopOperation.backupWindow?.id !== id || stopped.stopOperation.backupWindow.target !== target)
           throw Error('The serving controller did not confirm the reviewed application stop');
         emitStep('Applications stopped. Keep this command running while preparing and applying the reviewed native update in another terminal.');
-        const window = await control.service.backupWindowWait({ id });
+        const window = await service.backupWindowWait({ id });
         if (window.state !== 'transferred') throw Error(`Applications stopped. The backup window ended (${window.state}) before native admission. Inspect stack and update status.`);
         transferred = { id, target: target!, digest: window.digest };
         return stopped;
       } finally {
-        try { if (requested && !transferred) await control.service.backupWindowRelease({ id }); } finally { await control.close(); }
+        if (!transferred) await service.backupWindowRelease({ id });
       }
     };
-    const result = target ? await stopForRuntime() : await svc.stopStack({ ...scope, ...(review !== undefined && review !== null && { review }) });
+    const result = control ? await stopForRuntime(control.service) : await svc.stopStack({ ...scope, ...(review !== undefined && review !== null && { review }) });
     if (result.status !== 'stopped' || result.stopOperation?.phase !== 'stopped') throw new Error('Daemon did not confirm the complete stack stop');
     if (options.keepInfrastructure && result.stopOperation.keepInfrastructure !== true)
       throw new Error('Daemon did not confirm infrastructure preservation. Inspect the stop operation before retrying.');
@@ -524,7 +529,7 @@ export async function stackStopCommand(projectName: string, stackName: string, o
       stack: stackName,
     });
   } finally {
-    await client.disconnect();
+    try { await control?.close(); } finally { await client.disconnect(); }
   }
 }
 

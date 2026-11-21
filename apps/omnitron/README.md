@@ -174,6 +174,8 @@ omnitron stack start acme prod --release <release-id> --infrastructure preserve 
 
 The review requires existing, running resources whose native identities and specification match the declaration. It cannot provision, recreate or restart infrastructure, run post-provision setup or framework migrations. Changed presets or unverifiable resource receipts require a separate reconcile.
 
+In preserve mode, a healthy Docker probe can coexist with a degraded stack. For example, restarting a container keeps its ID but changes its generation. `omnitron stack status acme prod --json` lists the affected resources and reasons in `infrastructure.preservationIssues`, alongside their native health. A fresh dry run checks the current declaration, including the creation receipt for mounted configuration. Reading status or running a dry run leaves the existing approval in place.
+
 An enabled-stack reconciler tick with no eligible launch leaves a recovery review valid. Actual configuration loads, launch attempts and retry bookkeeping invalidate recovery before they change state; a stack waiting for its retry deadline does not invalidate a review merely because its timer ran.
 
 Infrastructure planning resolves one complete data definition: presets, application containers, overrides and mounted configuration. Local, CLI and remote paths use that same resolver. A preview does not create a resource owner, reserve ports or invalidate recovery. Applying a definition acquires ownership and rechecks native identities; conflicting container declarations are rejected before provisioning. Handoff restores the recorded definition without resolving it against a newer preset implementation.

@@ -140,7 +140,7 @@ export function StackInfrastructure({ stack }: { stack: IStackInfo }) {
           </Typography>}
           {infra && Object.keys(infra.services).length ? <Services services={infra.services} label={`Services on ${label}`} />
             : <Typography variant="body2" sx={secondary}>{infra ? 'No services reported.' : 'Infrastructure inventory unavailable.'}</Typography>}
-          {!infra && node.errors.length > 0 && <Typography variant="caption" sx={secondary}>{node.errors.join(' · ')}</Typography>}
+          {node.errors.map(reason => <Typography key={reason} variant="caption" sx={secondary}>{reason}</Typography>)}
         </Box>;
       }) : qualified.size ? [...qualified].map(([node, rows]) => <Box key={node} sx={{ mt: 1 }}>
         {stack.type !== 'local' && <Typography component="h3" variant="subtitle2">{node}</Typography>}

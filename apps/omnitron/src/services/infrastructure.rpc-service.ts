@@ -694,7 +694,9 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     const states = hosted.map(({ infra }) => infra.getState());
     if (state) states.push(state);
     const lastReconciled = states.flatMap(item => item.lastReconciled ? [item.lastReconciled] : []).sort().at(-1);
+    const preservationIssues = states.flatMap(item => item.preservationIssues ?? []);
     return { services: Object.assign({}, ...states.map(item => item.services)), ready: states.every(item => item.ready),
+      ...(preservationIssues.length && { preservationIssues }),
       ...(lastReconciled && { lastReconciled }) };
   }
 

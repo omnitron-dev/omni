@@ -38,7 +38,7 @@ export function nodePlacement(
     const process = processes?.find((p) => p.name === qualified) ?? processes?.find((p) => p.name === legacy) ?? null;
     return selected.has(app.name) || process ? [{ name: app.name, expected: selected.has(app.name), process }] : [];
   });
-  const errors: string[] = [];
+  const errors = (infrastructure?.preservationIssues ?? []).map(issue => issue.resource + ': ' + issue.message);
   if (!processes) errors.push('Application inventory unavailable; placement state is unknown');
   if (!infrastructure) errors.push('Infrastructure inventory unavailable; service state is unknown');
   if (apps.some((app) => !app.expected && app.process))
@@ -106,6 +106,7 @@ export function observeStack(info: IStackInfo, placements: IStackPlacement[], no
       };
     }
   const online = apps.filter((app) => app.status === 'online').length;
+  const preservationIssues = placements.flatMap(node => node.infrastructure?.preservationIssues ?? []);
   const unknown = apps.some((app) => app.status === 'unknown');
   const partial = placements.some((node) => !node.appsObserved);
   const status: StackStatus =
@@ -128,11 +129,13 @@ export function observeStack(info: IStackInfo, placements: IStackPlacement[], no
     apps,
     placements,
     status: !info.stopOperation?.supersededAt && info.stopOperation?.intentCommitted && info.stopOperation.phase !== 'stopped'
-      ? info.stopOperation.phase === 'failed' ? 'error' : 'stopping' : status,
+      ? info.stopOperation.phase === 'failed' ? 'error' : 'stopping'
+      : status === 'running' && preservationIssues.length ? 'degraded' : status,
     uptime,
     startedAt: uptime > 0 ? new Date(now - uptime).toISOString() : null,
     infrastructure: {
       ready: placements.length > 0 && placements.every((node) => node.infrastructure?.ready === true),
+      ...(preservationIssues.length && { preservationIssues }),
       services,
     },
     nodes: info.nodes.map((node) => {

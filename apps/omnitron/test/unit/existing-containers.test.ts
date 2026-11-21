@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { existingContainerMismatch, inspectExistingInfrastructure, reconcileLegacyContainer, reviewExistingContainers } from '../../src/infrastructure/existing-containers.js';
+import { existingContainerMismatch, inspectExistingInfrastructure, preservationIssues, reconcileLegacyContainer, reviewExistingContainers } from '../../src/infrastructure/existing-containers.js';
 import type { ResolvedContainer } from '../../src/infrastructure/types.js';
 import { containerSpecHash } from '../../src/infrastructure/container-runtime.js';
 
@@ -42,9 +42,24 @@ describe('preservation from actual Docker resources', () => {
     native.State.Status = 'exited';
     const second = await inspectExistingInfrastructure([desired], probes);
     expect(second.review.digest).toBeNull();
-    expect(second.state.services[desired.name]).toMatchObject({ status: 'unknown', error: 'container is not running' });
+    expect(second.state.services[desired.name]).toMatchObject({ status: 'exited', health: 'none', error: 'container is not running' });
     expect(second.state.ready).toBe(false);
     expect(JSON.stringify(first.review)).not.toContain('private-password');
+  });
+
+  it('distinguishes a healthy new generation from the approved generation and a replaced container', async () => {
+    const { desired, native, probes } = fixture();
+    const approved = await reviewExistingContainers([desired], probes);
+    native.State.StartedAt = '2026-11-11T00:00:00Z';
+    const current = await inspectExistingInfrastructure([desired], probes);
+    expect(current.state.services[desired.name]).toMatchObject({ status: 'running', health: 'healthy' });
+    expect(current.review.digest).toBeTruthy();
+    expect(preservationIssues(approved, current.review)).toEqual([expect.objectContaining({
+      resource: desired.name, scope: { project: 'sample', stack: 'dev' }, message: expect.stringContaining('generation'), state: 'blocked',
+    })]);
+    expect(preservationIssues(current.review, current.review)).toEqual([]);
+    native.Id = 'f'.repeat(64);
+    expect(preservationIssues(approved, await reviewExistingContainers([desired], probes))[0]?.message).toContain('identity');
   });
 
   it('uses the same command and entrypoint semantics as docker run', () => {
@@ -200,13 +215,18 @@ describe('preservation from actual Docker resources', () => {
 
   it('refuses replacement between ownership inventory and native inspection', async () => {
     const f = fixture(); f.probes.inventory.mockResolvedValue([{ name: f.desired.name, id: 'e'.repeat(64) }]);
-    expect((await reviewExistingContainers([f.desired], f.probes)).digest).toBeNull();
+    const { state, review } = await inspectExistingInfrastructure([f.desired], f.probes);
+    expect(review.digest).toBeNull();
+    expect(state.services[f.desired.name]?.status).toBe('unknown');
+    expect(state.services[f.desired.name]).not.toHaveProperty('containerId');
   });
 
   it('requires evidence for configuration bytes consumed by an existing container', async () => {
     const f = fixture(); f.desired.configDigest = 'mounted-configuration';
-    const unknown = await reviewExistingContainers([f.desired], f.probes);
+    const { review: unknown, state } = await inspectExistingInfrastructure([f.desired], f.probes);
     expect(unknown.digest).toBeNull(); expect(unknown.checks[0]?.state).toBe('unknown');
+    expect(state.services[f.desired.name]).toMatchObject({ status: 'running', health: 'healthy', error: expect.stringContaining('mounted configuration') });
+    expect(state.services[f.desired.name]).not.toHaveProperty('mounts');
     f.native.Config.Labels['omnitron.spec-hash'] = containerSpecHash(f.desired);
     expect((await reviewExistingContainers([f.desired], f.probes)).digest).toMatch(/^[a-f0-9]{64}$/);
     f.desired.configDigest = 'changed-configuration';

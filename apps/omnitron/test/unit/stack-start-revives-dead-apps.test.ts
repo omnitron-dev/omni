@@ -157,6 +157,19 @@ describe('local startup observations', () => {
     expect(svc.getStack('demo', 'dev').status).toBe('running');
   });
 
+  it('names preservation drift while reporting healthy running services and online applications', async () => {
+    const { svc } = configured([{ name: 'worker', script: 'worker.cjs' }]);
+    await svc.startStack('demo', 'dev');
+    const issue = { resource: 'demo-dev-db', message: 'Container identity differs from the preservation review.',
+      code: 'infrastructure.preservation-drift', state: 'blocked', scope: { project: 'demo', stack: 'dev' } };
+    svc.infraManager.getInstance = () => ({ getState: () => ({ ready: false, preservationIssues: [issue],
+      services: { 'demo-dev-db': { name: 'demo-dev-db', status: 'running', health: 'healthy', image: 'db' } } }) });
+    expect(svc.getStack('demo', 'dev')).toMatchObject({ status: 'degraded', apps: [{ status: 'online' }],
+      notUp: [issue.resource + ': ' + issue.message],
+      infrastructure: { ready: false, preservationIssues: [issue], services: { db: { status: 'running', health: 'healthy' } } },
+    });
+  });
+
   it('keeps arbitrary application output out of the public diagnosis', async () => {
     const { svc, start } = configured([{ name: 'api', script: 'api.cjs' }]);
     start.mockRejectedValueOnce(new Error('opaque-test-credential in /private/installation'));

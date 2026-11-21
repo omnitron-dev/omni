@@ -6172,8 +6172,9 @@ export class ProjectService extends EventEmitter {
 
       // Without the node's own verdict, "ready" is what the containers say:
       // every one of them running.
-      const ready = Object.values(services).every(svc => svc.status === 'running' && svc.health !== 'unhealthy' && svc.health !== 'starting' && !svc.error && (!svc.provisioning || svc.provisioning === 'ready'));
-      return { ready, services };
+      const preservationIssues = state?.preservationIssues?.filter(issue => issue.scope?.project === projectName && issue.scope.stack === stackName);
+      const ready = !preservationIssues?.length && Object.values(services).every(svc => svc.status === 'running' && svc.health !== 'unhealthy' && svc.health !== 'starting' && !svc.error && (!svc.provisioning || svc.provisioning === 'ready'));
+      return { ready, services, ...(preservationIssues?.length && { preservationIssues }) };
     } catch (err) {
       this.logger.warn(
         { project: projectName, stack: stackName, node: node.host, error: (err as Error).message },
@@ -6311,6 +6312,7 @@ export class ProjectService extends EventEmitter {
     const infrastructure: IStackInfraStatus = {
       ready: infraState?.ready ?? false,
       services: infraServices,
+      ...(infraState?.preservationIssues?.length && { preservationIssues: infraState.preservationIssues }),
     };
 
     // A remote stack's applications run on its nodes, and when they started
@@ -6331,7 +6333,9 @@ export class ProjectService extends EventEmitter {
         const reason = errors && Object.hasOwn(errors, app.name) ? errors[app.name] : undefined;
         notUp.push(`${app.name} (${app.status})${reason ? ': ' + reason : ''}`);
       }
-      if (!infrastructure.ready && (state?.infrastructureStartFailed || state?.infraService?.getDesiredServices().length)) {
+      if (infrastructure.preservationIssues?.length) {
+        for (const issue of infrastructure.preservationIssues) notUp.push(issue.resource + ': ' + issue.message);
+      } else if (!infrastructure.ready && (state?.infrastructureStartFailed || state?.infraService?.getDesiredServices().length)) {
         notUp.push('infrastructure: required services are not ready (see daemon log)');
       }
       if (notUp.length === 0) status = 'running';

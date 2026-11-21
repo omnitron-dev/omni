@@ -208,6 +208,25 @@ export async function reviewExistingContainers(desired: readonly ResolvedContain
   return (await inspectExistingInfrastructure(desired, probes, scope)).review;
 }
 
+/** Compare a monitoring observation with the approved receipt, using only its public evidence. */
+export function preservationIssues(approved: ExistingInfrastructureReview, observed: ExistingInfrastructureReview):
+  NonNullable<InfrastructureState['preservationIssues']> {
+  if (approved.digest && approved.digest === observed.digest) return [];
+  const issues = observed.checks.filter(check => check.state !== 'pass');
+  const previous = new Map(approved.containers.map(container => [container.name, container]));
+  for (const container of observed.containers) {
+    const prior = previous.get(container.name);
+    if (prior?.id === container.id && prior.fingerprint === container.fingerprint) continue;
+    issues.push({ code: 'infrastructure.preservation-drift', resource: container.name, state: 'blocked',
+      message: prior?.id === container.id ? 'Container generation or configuration changed since the preservation review.'
+        : 'Container identity differs from the preservation review.' });
+  }
+  if (!issues.length) issues.push({ code: 'infrastructure.preservation-unconfirmed', resource: 'Infrastructure',
+    state: 'unknown', message: 'The current observation does not confirm the approved preservation review.' });
+  const scope = approved.scope ?? observed.scope;
+  return scope ? issues.map(check => ({ ...check, scope })) : issues;
+}
+
 /** Project the receipt and service states from a single complete Docker observation. */
 export async function inspectExistingInfrastructure(desired: readonly ResolvedContainer[], probes = existingContainerProbes,
   scope?: { project: string; stack: string }): Promise<{ review: ExistingInfrastructureReview; state: InfrastructureState }> {
@@ -230,15 +249,24 @@ export async function inspectExistingInfrastructure(desired: readonly ResolvedCo
     const observed = desired.length ? await probes.inspect(desired.map(c => c.name)) : [];
     for (const declaration of [...desired].sort((a, b) => a.name.localeCompare(b.name))) {
       const candidates = observed.filter(item => item['Name'] === '/' + declaration.name);
-      const native = candidates.length === 1 ? candidates[0] : undefined;
-      const mismatch = !native || !inventory.some(item => item.name === declaration.name && item.id === native['Id']) ? 'native container is missing, replaced or ambiguous' :
-        existingContainerMismatch(declaration, native, await probes.image(declaration.image));
+      const candidate = candidates.length === 1 ? candidates[0] : undefined;
+      const native = candidate && inventory.some(item => item.name === declaration.name && item.id === candidate['Id'])
+        ? candidate : undefined;
+      const mismatch = native ? existingContainerMismatch(declaration, native, await probes.image(declaration.image))
+        : 'native container is missing, replaced or ambiguous';
       review.checks.push({ code: mismatch ? 'infrastructure.preservation-blocked' : 'infrastructure.preserved', resource: declaration.name,
         state: mismatch?.includes('cannot be proved') ? 'unknown' : mismatch ? 'blocked' : 'pass', message: mismatch ? `Cannot preserve: ${mismatch}.` : 'Existing native identity and specification verified; no infrastructure changes permitted.' });
-      if (mismatch) state.services[declaration.name]!.error = mismatch;
-      else {
-        review.containers.push({ name: declaration.name, id: native!['Id'], fingerprint: nativeFingerprint(native!) });
-        state.services[declaration.name] = containerObservation(native!, declaration.name, true);
+      if (mismatch) {
+        const service = state.services[declaration.name]!;
+        service.error = mismatch;
+        const labels = native?.['Config']?.Labels;
+        if (native && labels?.['omnitron.project'] === project && labels?.['omnitron.stack'] === stack) {
+          const { status, health, containerId, startedAt } = containerObservation(native, declaration.name, true);
+          Object.assign(service, { status, health, containerId, startedAt });
+        }
+      } else if (native) {
+        review.containers.push({ name: declaration.name, id: native['Id'], fingerprint: nativeFingerprint(native) });
+        state.services[declaration.name] = containerObservation(native, declaration.name, true);
       }
     }
     if (review.checks.every(check => check.state === 'pass')) review.digest = stackDefinitionFingerprint([

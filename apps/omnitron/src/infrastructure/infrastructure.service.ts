@@ -35,7 +35,7 @@ import { copyInfrastructureDefinition, type InfrastructureDefinition } from './i
 import type { PresetRegistry } from './presets/registry.js';
 import { createDefaultRegistry } from './presets/index.js';
 import { PhantomEndpointJanitor } from './phantom-endpoint-janitor.js';
-import { inspectExistingInfrastructure, planLegacyContainer, reviewExistingContainers } from './existing-containers.js';
+import { inspectExistingInfrastructure, planLegacyContainer, preservationIssues, reviewExistingContainers } from './existing-containers.js';
 import type { ExistingInfrastructureReview } from '../shared/dto/project.js';
 import { LOCAL_INFRA_HOST } from '../shared/local-infra-host.js';
 import {
@@ -192,7 +192,11 @@ export class InfrastructureService {
       if (definition) throw new Error('Infrastructure provisioning is already in progress; retry the new declaration after it finishes');
       return this.provisioning;
     }
-    if (mode === 'reconcile') { this.preservation = undefined; this.preservationPending = false; }
+    if (mode === 'reconcile') {
+      this.preservation = undefined;
+      this.preservationPending = false;
+      delete this.state.preservationIssues;
+    }
     const task = this.provisionDefinition(definition && copyInfrastructureDefinition(definition), mode);
     this.provisioning = task;
     try { return await task; }
@@ -389,6 +393,7 @@ export class InfrastructureService {
       this.replaceDefinitionFrom(candidate);
       this.preservation = observed;
       this.preservationPending = false;
+      delete this.state.preservationIssues;
       Object.assign(this.state, state);
       this.startHealthMonitor();
       return structuredClone(observed);
@@ -1198,11 +1203,11 @@ export class InfrastructureService {
     if (this.preservation) {
       const { review, state } = await inspectExistingInfrastructure(this.desiredContainers, undefined, this.preservation.scope);
       if (this.ownershipFrozen || this.definitionChanging) return;
-      Object.assign(this.state, state);
-      if (!review.digest || review.digest !== this.preservation.digest) {
-        this.state.ready = false;
-        this.logger.warn('Preserved native infrastructure observation is unavailable; repair authority remains disabled');
+      const issues = preservationIssues(this.preservation, review);
+      if (issues.length && !isDeepStrictEqual(issues, this.state.preservationIssues)) {
+        this.logger.warn({ scope: this.preservation.scope, issues }, 'Infrastructure differs from the approved preservation review');
       }
+      Object.assign(this.state, state, { ready: !issues.length, preservationIssues: issues });
       return; // Observation never promotes itself to repair authority.
     }
     // The control-plane database alongside the app containers, where this

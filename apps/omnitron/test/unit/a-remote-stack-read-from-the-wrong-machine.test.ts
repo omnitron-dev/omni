@@ -304,4 +304,19 @@ describe('a remote stack is read from the machines it runs on', () => {
 
     expect(calls[3]).toBe('37.27.130.185:9700 OmnitronInfra.listContainers');
   });
+
+  it('applies only the requested stack’s preservation verdict from a shared node inventory', async () => {
+    const current = { scope: { project: 'sample', stack: 'test' }, resource: 'sample-test-postgres',
+      code: 'infrastructure.preservation-drift', state: 'blocked', message: 'Approved generation changed.' };
+    const foreign = { ...current, scope: { project: 'other', stack: 'test' }, resource: 'other-test-postgres' };
+    const issues = [foreign];
+    const svc = service(async (_host, _port, name) => name === 'OmnitronInfra'
+      ? { ...nodeInfra(), ready: false, preservationIssues: issues } : nodeStatus([]));
+    expect(await svc.withRemoteAppStatuses('sample', info('remote'))).toMatchObject({ infrastructure: { ready: true } });
+    issues.push(current);
+    const reading = await svc.withRemoteAppStatuses('sample', info('remote'));
+    expect(reading).toMatchObject({ infrastructure: { ready: false, preservationIssues: [current] },
+      placements: [{ errors: [current.resource + ': ' + current.message] }] });
+    expect(JSON.stringify(reading)).not.toContain(foreign.resource);
+  });
 });

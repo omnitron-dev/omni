@@ -63,3 +63,16 @@ it('shows observed-only stack containers and preserves node attribution from old
   expect(screen.getByText('stopped')).toBeInTheDocument();
   expect(screen.queryByText('Not observed')).not.toBeInTheDocument();
 });
+
+it('shows the preservation finding beside the reporting node’s healthy service', () => {
+  const infrastructure: IStackInfraStatus = { ready: false, services: {
+    proxy: { containerName: 'sample-test-proxy', status: 'running', health: 'healthy', port: 8080 },
+  } };
+  const reason = 'sample-test-proxy: Container identity differs from the preservation review.';
+  const reporting = { ...placement('worker-a', infrastructure), errors: [reason] };
+  render(<StackInfrastructure stack={stackFixture('test', { type: 'remote', placements: [reporting, placement('worker-b', null)] })} />);
+  const first = within(screen.getByRole('region', { name: 'worker-a:9700' }));
+  expect(first.getByText(reason)).toBeInTheDocument();
+  expect(first.getByText('healthy')).toBeInTheDocument();
+  expect(within(screen.getByRole('region', { name: 'worker-b:9700' })).queryByText(reason)).not.toBeInTheDocument();
+});

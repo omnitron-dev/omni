@@ -13,7 +13,8 @@ import * as runtime from '../../src/infrastructure/container-runtime.js';
 import type { ExistingInfrastructureReview } from '../../src/shared/dto/project.js';
 
 const native = vi.hoisted(() => ({ review: vi.fn() }));
-vi.mock('../../src/infrastructure/existing-containers.js', () => ({
+vi.mock('../../src/infrastructure/existing-containers.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../src/infrastructure/existing-containers.js')>(),
   reviewExistingContainers: native.review,
   inspectExistingInfrastructure: async (...args: unknown[]) => {
     const review = await native.review(...args);
@@ -175,7 +176,13 @@ describe('recipient preservation uses the existing infrastructure lifecycle', ()
     await expect(next.provision()).rejects.toThrow('explicit reconcile');
     native.review.mockResolvedValue({ ...observation(), digest: null });
     await (next as any).healthSweep();
-    expect(next.getState().ready).toBe(false);
+    expect(next.getState()).toMatchObject({ ready: false, preservationIssues: [{ code: 'infrastructure.preservation-unconfirmed', scope }] });
+    const warnings = logger.warn.mock.calls.length;
+    await (next as any).healthSweep();
+    expect(logger.warn.mock.calls).toHaveLength(warnings);
+    native.review.mockResolvedValue(observation());
+    await (next as any).healthSweep();
+    expect(next.getState()).toMatchObject({ ready: true, preservationIssues: [] });
     next.dispose();
     for (const effect of spies) expect(effect).not.toHaveBeenCalled();
   });

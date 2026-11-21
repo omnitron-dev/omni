@@ -309,6 +309,10 @@ export interface InfrastructureState {
   services: Record<string, ContainerState>;
   ready: boolean;
   lastReconciled?: string;
+  /** Failed checks against the reviewed native generation, independent of Docker health. */
+  preservationIssues?: (import('../shared/dto/stack-diagnosis.js').StackDiagnosisCheck & {
+    scope?: import('../shared/dto/stack-execution.js').StackExecutionScope;
+  })[];
 }
 
 // =============================================================================

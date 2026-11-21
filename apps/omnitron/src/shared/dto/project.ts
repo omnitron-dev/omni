@@ -508,6 +508,7 @@ export interface IProjectAppStatus extends IStackAppStatus {
 export interface IStackInfraStatus {
   /** Whether infrastructure is provisioned and healthy */
   ready: boolean;
+  preservationIssues?: import('../../infrastructure/types.js').InfrastructureState['preservationIssues'];
   /** Individual service statuses */
   services: Record<
     string,

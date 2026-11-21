@@ -58,6 +58,17 @@ const node = (index: number, processes: ProcessInfoDto[] | null) =>
   nodePlacement('sample', base, base.config.nodes![index]!, processes, infra, at);
 
 describe('node-qualified stack observations', () => {
+  it('reports preserved infrastructure drift on its node while the application stays online', () => {
+    const issue = { code: 'infrastructure.preservation-drift', state: 'blocked' as const, resource: 'sample-prod-queue',
+      message: 'Container identity differs from the preservation review.', scope: { project: 'sample', stack: 'prod' } };
+    const changed = nodePlacement('sample', base, base.config.nodes![0]!, [process()], { ...infra, ready: false, preservationIssues: [issue] }, at);
+    const result = observeStack(base, [changed, node(1, [process()])]);
+    expect(result).toMatchObject({ status: 'degraded', apps: [{ status: 'online' }],
+      infrastructure: { ready: false, preservationIssues: [issue] },
+      placements: [{ errors: [issue.resource + ': ' + issue.message] }, { errors: [] }] });
+    expect(observeStack(result, [node(0, [process()]), node(1, [process()])])).toMatchObject({ status: 'running', infrastructure: { ready: true } });
+  });
+
   it('keeps launch identity on physical replicas and never carries a stale aggregate receipt', () => {
     const release = { state: 'confirmed' as const, releaseId: 'sample-release', manifestSha256: 'a'.repeat(64),
       artifactSha256: 'b'.repeat(64), launchId: 'launch-1', observedAt: at, basis: 'verified-launch' as const };

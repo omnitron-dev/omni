@@ -6,6 +6,9 @@ import { UserError } from '@xec-sh/ops';
 import { releaseCommand, ReleaseCommandError } from '@xec-sh/ops/release';
 import { qualifiedRuntimes } from '../qualification.mjs';
 import { withLocalRuntime, verifyLocalRuntime } from '../local-runtime.mjs';
+import { localCleanup, physicalCache } from '../local-runtime-cleanup.mjs';
+import { developmentCacheDirectory } from '../../apps/omnitron/bin/sdk-transition.js';
+import { getExecutionSignal } from '@xec-sh/core';
 import { CommandResultError, readCommandResult } from '../../apps/omnitron/src/shared/command-result.ts';
 import { withRuntimeUpdateProgress } from '../../apps/omnitron/src/shared/runtime-update-progress.ts';
 
@@ -26,6 +29,15 @@ async function runUpdate(operation, target, values, options) {
   if (operation === 'local-sync' && target) throw new UserError('local-sync finalizes the current clean checkout');
   if ((values.rollback || values.reconcile) && values.cacheDir) throw new UserError('Recovery uses the reviewed installed runtime; inspect local-sync --status');
   const cache = values.cacheDir ?? process.env.OMNITRON_DEV_CACHE;
+  if (operation === 'local-cleanup') {
+    const requested = developmentCacheDirectory(cache && path.resolve(root, cache));
+    const directory = await physicalCache(requested);
+    const report = await localCleanup(directory, { status: values.status, run, signal: getExecutionSignal() });
+    output(JSON.stringify(report, null, 2));
+    if (!values.status && !report.busy && report.jobs.some(job => ['failed', 'invalid'].includes(job.state)))
+      throw new UserError('Some build workspaces still require cleanup. Inspect xec update local-cleanup --status.');
+    return report;
+  }
   const invoke = async (executable, prefix, argv, signal) => {
     let response, failure;
     const observe = operation === 'local-sync' && argv[2] !== 'status';
@@ -119,7 +131,7 @@ async function runUpdate(operation, target, values, options) {
     result = await execute(path.join(runtime.directory, 'packages/0/dist'));
   } else if (local && !inspection && !target) {
     result = await withLocalRuntime(root, cache && path.resolve(root, cache), run, progress, execute,
-      { prepareWhileCleaning: operation === 'local-sync' });
+      { deferCleanup: operation === 'local-sync' || operation === 'local-stage', schedule: options.scheduleCleanup });
   } else {
     result = await execute(local && !inspection ? path.resolve(root, target) : null);
   }
@@ -160,6 +172,10 @@ operation inspect status; use reconciliation/recovery instead of replaying apply
   ]) operation(`${name} [dist]`, description)
     .option('--cache-dir <directory>', 'Private retained build directory for the current local revision')
     .action((dist, values) => runUpdate(name, dist, values, options));
+  update.command('local-cleanup').description('Retry registered private build workspace cleanup').allowExcessArguments(false)
+    .option('--cache-dir <directory>', 'Private retained build directory')
+    .option('--status', 'Show workspace receipts without running cleanup')
+    .action(values => runUpdate('local-cleanup', undefined, values, options));
   operation('local-sync', 'Prepare or apply a reviewed local batch, including Console and selected stacks')
     .option('--cache-dir <directory>', 'Private retained build directory for the current local revision')
     .option('--review <sha256>', 'Apply or recover exactly this reviewed local plan')

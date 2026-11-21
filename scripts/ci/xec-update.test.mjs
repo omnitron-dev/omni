@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { localCleanup, scheduleLocalCleanup } from '../../.xec/local-runtime-cleanup.mjs';
 import { withLocalRuntime } from '../../.xec/local-runtime.mjs';
 import { within } from '@xec-sh/core';
 import test from 'node:test';
@@ -211,7 +212,7 @@ test('check builds one isolated local revision and apply consumes the same verif
     return '';
   } };
   await runUpdate(['local-check', '--cache-dir', cache], options);
-  assert(!(await fs.readdir(cache)).some(entry => entry.startsWith('.build-')), 'isolated source cleanup must finish before admission');
+  assert.deepEqual((await localCleanup(cache, { status: true })).jobs.map(job => job.state), ['cleaned']);
   await runUpdate(['local-apply', '--cache-dir', cache], options);
   assert.deepEqual(events.filter(([command]) => command === 'pnpm'), [
     ['pnpm', 'install', '--frozen-lockfile'],
@@ -327,9 +328,13 @@ async function finalizationFixture(t, hooks = {}) {
   const commit = 'd'.repeat(40);
   const run = async (root, executable, args, options) => {
     if (executable === '/bin/rm') {
-      await hooks.cleanup?.(options);
+      await hooks.cleanup?.(options, args.at(-1));
       await fs.rm(args.at(-1), { recursive: true, force: true });
       return '';
+    }
+    if (args.includes('--json')) {
+      const command = args.slice(args.indexOf('--json') + 1);
+      return JSON.stringify({ ok: true, data: await hooks.native?.(command) ?? { command } });
     }
     if (args[0] === 'rev-parse') return commit;
     if (args[0] === 'status') return '';
@@ -362,78 +367,166 @@ test('refuses an unsuitable Node producer before creating a checkout or installi
   });
   await assert.rejects(withLocalRuntime(process.cwd(), fixture.cache, fixture.run, () => {}, () => assert.fail('Prepared a runtime')),
     /Standalone Node required/);
-  assert(!(await fs.readdir(fixture.cache)).some(entry => entry.startsWith('.build-')));
+  assert.deepEqual((await localCleanup(fixture.cache, { status: true })).jobs, []);
 });
 
-test('Xec prepares the published runtime while joining checkout cleanup', finalizationOptions, async t => {
-  let release, started;
-  const gate = new Promise(resolve => { release = resolve; }), cleaning = new Promise(resolve => { started = resolve; });
-  let cleaned = false;
-  const fixture = await finalizationFixture(t, { cleanup: async options => {
-    assert(options.signal instanceof AbortSignal); started(); await gate; cleaned = true;
-  } });
-  const value = await withLocalRuntime(process.cwd(), fixture.cache, fixture.run, () => {}, async (dist, signal) => {
-    assert(signal instanceof AbortSignal);
-    await cleaning;
-    assert.equal(cleaned, false);
-    assert.equal(dist, path.join(fixture.directory, 'packages/0/dist'));
-    await verifyRuntimeArtifact(fixture.directory);
-    release(); return 'prepared';
-  }, { prepareWhileCleaning: true });
-  assert.equal(value, 'prepared'); assert.equal(cleaned, true);
-  assert(!(await fs.readdir(fixture.cache)).some(file => file.startsWith('.build-')));
+const pending = cache => localCleanup(cache, { status: true });
+const defer = { deferCleanup: true, schedule: async () => {} };
+const fixtureOptions = fixture => ({ root: process.cwd(), run: fixture.run, scheduleCleanup: defer.schedule });
+const cleanupOptions = { ...finalizationOptions, timeout: 30_000 };
+
+test('public stage and sync deliver the verified bytes and release the revision lock while recursive removal is blocked', cleanupOptions, async t => {
+  let builds = 0, installations = 0;
+  const entered = Promise.withResolvers(), release = Promise.withResolvers();
+  const installing = Promise.withResolvers(), finishInstall = Promise.withResolvers();
+  t.after(() => { release.resolve(); finishInstall.resolve(); });
+  const fixture = await finalizationFixture(t, {
+    build: () => { builds++; },
+    cleanup: async (_options, tree) => { entered.resolve(tree); await release.promise; },
+    native: async command => {
+      if (command.includes('install')) { installations++; installing.resolve(); await finishInstall.promise; }
+      return { command };
+    },
+  });
+  let removing;
+  const options = { ...fixtureOptions(fixture), scheduleCleanup: async base => {
+    removing ??= localCleanup(base, { run: fixture.run });
+    await entered.promise;
+  } };
+  const staging = runUpdate(['local-stage', '--cache-dir', fixture.cache], options);
+  await installing.promise;
+  assert.equal((await pending(fixture.cache)).jobs[0].state, 'removing');
+  const sync = await runUpdate(['local-sync', '--cache-dir', fixture.cache], options);
+  assert.deepEqual(sync.command, ['runtime', 'update', 'prepare', fixture.directory]);
+  finishInstall.resolve();
+  assert.deepEqual((await staging).command, ['backend', 'install', fixture.directory]);
+  assert.equal(builds, 1); assert.equal(installations, 1);
+  await verifyRuntimeArtifact(fixture.directory);
+  const concurrent = await localCleanup(fixture.cache, { run: fixture.run });
+  assert.equal(concurrent.busy, true);
+  release.resolve();
+  assert.equal((await removing).jobs[0].state, 'cleaned');
 });
 
-test('a prepare refusal still joins cleanup and preserves both failures', finalizationOptions, async t => {
-  let release, refused;
-  const gate = new Promise(resolve => { release = resolve; }), preparation = new Promise(resolve => { refused = resolve; });
-  const fixture = await finalizationFixture(t, { cleanup: async () => { await gate; throw Error('cleanup failure'); } });
-  let finished = false;
-  const result = withLocalRuntime(process.cwd(), fixture.cache, fixture.run, () => {}, async () => {
-    refused(); throw Error('prepare refusal');
-  }, { prepareWhileCleaning: true });
-  const observed = result.then(() => { finished = true; }, error => { finished = true; return error; });
-  await preparation; await new Promise(resolve => setImmediate(resolve));
-  assert.equal(finished, false); release();
-  const error = await observed;
-  assert(error instanceof AggregateError);
-  assert.deepEqual(error.errors.map(item => item.message).sort(), ['cleanup failure', 'prepare refusal']);
+test('partial removal and an expired deadline retain a separate cleanup receipt and retry without another build or install', cleanupOptions, async t => {
+  let builds = 0, calls = 0, removals = 0;
+  const fixture = await finalizationFixture(t, {
+    build: () => { builds++; },
+    native: () => ({ installed: ++calls }),
+    cleanup: async (_options, tree) => {
+      if (++removals === 1) { await fs.rm(path.join(tree, 'source'), { recursive: true }); throw Error('native timeout after 300000ms'); }
+    },
+  });
+  const options = fixtureOptions(fixture), cleanup = ['local-cleanup', '--cache-dir', fixture.cache];
+  assert.deepEqual(await runUpdate(['local-stage', '--cache-dir', fixture.cache], options), { installed: 1 });
+  await assert.rejects(runUpdate(cleanup, options), /still require cleanup/);
+  const failed = (await runUpdate([...cleanup, '--status'], options)).jobs[0];
+  assert.equal(failed.state, 'failed'); assert.equal(failed.attempts, 1); assert.match(failed.error, /300000ms/);
+  assert.equal((await verifyRuntimeArtifact(fixture.directory)).sha256.length, 64);
+  const retried = (await runUpdate(cleanup, options)).jobs[0];
+  assert.equal(retried.state, 'cleaned'); assert.equal(retried.id, failed.id); assert.equal(retried.attempts, 2);
+  await runUpdate(cleanup, options);
+  assert.equal(builds, 1); assert.equal(calls, 1); assert.equal(removals, 2);
+});
+
+test('a live producer is never collected and an interrupted worker can resume from its receipt', cleanupOptions, async t => {
+  const entered = Promise.withResolvers(), release = Promise.withResolvers();
+  t.after(() => release.resolve());
+  const fixture = await finalizationFixture(t, { build: async () => { entered.resolve(); await release.promise; } });
+  const building = withLocalRuntime(process.cwd(), fixture.cache, fixture.run, () => {}, async () => 'staged', defer);
+  await entered.promise;
+  const active = (await runUpdate(['local-cleanup', '--cache-dir', fixture.cache], fixtureOptions(fixture))).jobs[0];
+  assert.equal(active.state, 'building'); assert.equal(active.attempts, 0);
+  release.resolve(); assert.equal(await building, 'staged');
+  const file = path.join(fixture.cache, '.runtime-workspaces', active.id, 'job.json');
+  await fs.writeFile(file, JSON.stringify({ ...active, state: 'removing', attempts: 1 }));
+  const retry = (await localCleanup(fixture.cache, { run: fixture.run })).jobs[0];
+  assert.equal(retry.state, 'cleaned'); assert.equal(retry.attempts, 2);
+});
+
+test('a cache hit recovers a dead producer and confirms a completed native removal after a worker crash', cleanupOptions, async t => {
+  let builds = 0, removals = 0;
+  const fixture = await finalizationFixture(t, { build: () => { builds++; }, cleanup: () => { removals++; } });
+  const options = fixtureOptions(fixture), stage = ['local-stage', '--cache-dir', fixture.cache];
+  await runUpdate(stage, options);
+  const [job] = (await pending(fixture.cache)).jobs;
+  const file = path.join(fixture.cache, '.runtime-workspaces', job.id, 'job.json');
+  await fs.writeFile(file, JSON.stringify({ ...job, state: 'building' }));
+  let draining;
+  await runUpdate(stage, { ...options, scheduleCleanup: base => { draining = localCleanup(base, { run: fixture.run }); } });
+  assert.equal((await draining).jobs[0].state, 'cleaned');
+  await fs.writeFile(file, JSON.stringify({ ...job, state: 'removing', attempts: 1 }));
+  assert.equal((await localCleanup(fixture.cache, { run: fixture.run })).jobs[0].state, 'cleaned');
+  assert.equal(builds, 1); assert.equal(removals, 1);
+});
+
+test('cleanup refuses a substituted tree and leaves unrelated, unregistered and legacy files untouched', cleanupOptions, async t => {
+  const fixture = await finalizationFixture(t);
+  await withLocalRuntime(process.cwd(), fixture.cache, fixture.run, () => {}, async () => 'staged', defer);
+  const [job] = (await pending(fixture.cache)).jobs;
+  const tree = path.join(fixture.cache, '.runtime-workspaces', job.id, 'tree'), original = tree + '-held';
+  const legacy = path.join(fixture.cache, '.build-existing');
+  await fs.mkdir(legacy); await fs.writeFile(path.join(legacy, 'keep'), 'retained');
+  await fs.rename(tree, original); await fs.symlink(legacy, tree);
+  assert.equal((await localCleanup(fixture.cache, { run: fixture.run })).jobs[0].state, 'failed');
+  assert.equal(await fs.readFile(path.join(legacy, 'keep'), 'utf8'), 'retained');
+  await fs.unlink(tree); await fs.mkdir(tree);
+  assert.match((await localCleanup(fixture.cache, { run: fixture.run })).jobs[0].error, /replaced/);
+  await fs.rmdir(tree); await fs.rename(original, tree);
+  assert.equal((await localCleanup(fixture.cache, { run: fixture.run })).jobs[0].state, 'cleaned');
+  assert.equal(await fs.readFile(path.join(legacy, 'keep'), 'utf8'), 'retained');
   await verifyRuntimeArtifact(fixture.directory);
 });
 
-test('cleanup failure cannot silently turn a prepared receipt into success or delete its runtime', finalizationOptions, async t => {
-  let preparations = 0;
-  const fixture = await finalizationFixture(t, { cleanup: async () => { throw Error('cleanup failure'); } });
-  await assert.rejects(withLocalRuntime(process.cwd(), fixture.cache, fixture.run, () => {}, async () => {
-    preparations++; return { digest: 'e'.repeat(64) };
-  }, { prepareWhileCleaning: true }), error => error instanceof AggregateError && error.errors[0].message === 'cleanup failure');
-  assert.equal(preparations, 1); await verifyRuntimeArtifact(fixture.directory);
+test('public status reports an invalid receipt while another registered checkout can still be reclaimed', cleanupOptions, async t => {
+  const fixture = await finalizationFixture(t);
+  await runUpdate(['local-stage', '--cache-dir', fixture.cache], fixtureOptions(fixture));
+  const [job] = (await pending(fixture.cache)).jobs;
+  const invalid = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const directory = path.join(fixture.cache, '.runtime-workspaces', invalid);
+  await fs.mkdir(directory, { mode: 0o700 });
+  await fs.writeFile(path.join(directory, 'job.json'), '{', { mode: 0o600 });
+  await fs.mkdir(path.join(directory, 'tree'));
+  const args = ['local-cleanup', '--cache-dir', fixture.cache], options = fixtureOptions(fixture);
+  await assert.rejects(runUpdate(args, options), /still require cleanup/);
+  const status = await runUpdate([...args, '--status'], options);
+  assert.equal(status.jobs.find(record => record.id === job.id).state, 'cleaned');
+  assert.equal(status.jobs.find(record => record.id === invalid).state, 'invalid');
+  assert((await fs.stat(path.join(directory, 'tree'))).isDirectory());
 });
 
-test('build failure never starts preparation and retains a cleanup failure as a separate cause', finalizationOptions, async t => {
-  const fixture = await finalizationFixture(t, { build: async () => { throw Error('build failure'); },
-    cleanup: async () => { throw Error('cleanup failure'); } });
-  await assert.rejects(withLocalRuntime(process.cwd(), fixture.cache, fixture.run, () => {}, async () => assert.fail('unbuilt runtime'),
-    { prepareWhileCleaning: true }), error => error instanceof AggregateError &&
-      error.errors.map(item => item.message).join(',') === 'build failure,cleanup failure');
+test('delivery, build and cancellation keep their own outcome when cleanup is a separate job', cleanupOptions, async t => {
+  const fixture = await finalizationFixture(t);
+  await assert.rejects(withLocalRuntime(process.cwd(), fixture.cache, fixture.run, () => {}, async () => { throw Error('installation rejected'); }, defer), /installation rejected/);
+  const controller = new AbortController();
+  await assert.rejects(within({ signal: controller.signal }, () => withLocalRuntime(process.cwd(), fixture.cache, fixture.run, () => {}, async (_dist, signal) => {
+    assert.equal(signal, controller.signal); controller.abort(Error('operator cancelled')); return 'unobserved';
+  }, defer)), /operator cancelled/);
+  const broken = await finalizationFixture(t, { build: () => { throw Error('build rejected'); } });
+  await assert.rejects(withLocalRuntime(process.cwd(), broken.cache, broken.run, () => {}, async () => assert.fail('unbuilt runtime'), defer), /build rejected/);
+  assert.equal((await pending(broken.cache)).jobs[0].state, 'queued');
+  await assert.rejects(fs.stat(broken.directory), { code: 'ENOENT' });
 });
 
-test('effecting consumers wait for cleanup and do not run if it fails', finalizationOptions, async t => {
-  const fixture = await finalizationFixture(t, { cleanup: async () => { throw Error('cleanup failure'); } });
-  await assert.rejects(withLocalRuntime(process.cwd(), fixture.cache, fixture.run, () => {}, async () => assert.fail('activation must wait')),
-    /cleanup failure/);
+test('blocking activation still refuses a failed cleanup while stage reports an unavailable worker separately', cleanupOptions, async t => {
+  const fixture = await finalizationFixture(t, { cleanup: async () => { throw Error('native permission failure'); } });
+  await assert.rejects(withLocalRuntime(process.cwd(), fixture.cache, fixture.run, () => {}, async () => assert.fail('activation must wait')), /native permission failure/);
+  const calls = []; const clean = await finalizationFixture(t);
+  const stage = await withLocalRuntime(process.cwd(), clean.cache, clean.run, message => calls.push(message), async () => 'staged',
+    { deferCleanup: true, schedule: async () => { throw Error('worker unavailable'); } });
+  assert.equal(stage, 'staged'); assert(calls.some(message => message.includes('worker unavailable')));
+  assert.equal((await pending(clean.cache)).jobs[0].state, 'queued');
 });
 
-test('cancellation after a callback retains the pipeline outcome even without a callback exception', finalizationOptions, async t => {
-  const fixture = await finalizationFixture(t), controller = new AbortController();
-  await assert.rejects(within({ signal: controller.signal }, () =>
-    withLocalRuntime(process.cwd(), fixture.cache, fixture.run, () => {}, async () => {
-      controller.abort(new Error('operator cancelled preparation')); return 'observed';
-    }, { prepareWhileCleaning: true })), error => {
-      assert(error instanceof AggregateError);
-      assert.equal(error.cause.status, 'cancelled');
-      assert(error.cause.steps.some(step => step.cancelled && step.error));
-      return true;
-    });
+test('the independent worker reclaims a registered checkout after the staging process returns', cleanupOptions, async t => {
+  const fixture = await finalizationFixture(t);
+  await withLocalRuntime(process.cwd(), fixture.cache, fixture.run, () => {}, async () => 'staged', defer);
+  const [job] = (await pending(fixture.cache)).jobs;
+  await scheduleLocalCleanup(fixture.cache, job.id);
+  const until = Date.now() + 20_000;
+  while (!(await pending(fixture.cache)).jobs.some(job => job.state === 'cleaned')) {
+    if (Date.now() >= until) assert.fail('independent worker did not finish');
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
   await verifyRuntimeArtifact(fixture.directory);
 });

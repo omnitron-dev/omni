@@ -315,16 +315,23 @@ durability, fsync failure, cleanup ordering and independently corrupted copies.
 The existing same-size rewrite, restored mtime, link and physical-root replacement
 tests in `runtime-artifact-snapshot.test.ts` remain applicable.
 
-This does not remove all duplicate work. The seal still hashes before and after
-writing its manifest, staging is verified again after its own rename, and checkout
-cleanup previously blocked preparation. Xec now overlaps read-only preparation
-with cleanup only after publishing and verifying the runtime outside its checkout.
-Both steps are joined before success; build, preparation and cleanup failures
-retain their causes and do not delete the published runtime or its receipt.
-Mutation paths remain sequential. The final command output follows the join,
-so a successful receipt cannot hide a failed cleanup. Tests in
-`scripts/ci/xec-update.test.mjs` cover overlap, independent failures, failure drain,
-retained runtime and the absence of activation after failed cleanup.
+The revision and producer lock serializes cache verification and atomic publication.
+After publication, `xec update local-stage` can install the verified bytes and
+`xec update local-sync` can prepare its native plan while the temporary source
+checkout is reclaimed. Each operation keeps its native delivery receipt.
+
+A private workspace receipt records the checkout inode and each removal attempt.
+Its kernel lock protects an active producer. A separate worker clears only the
+recorded tree, and can resume a partial deletion. Inspect cleanup with
+`xec update local-cleanup --status` and retry it with `xec update local-cleanup`.
+Use the same `--cache-dir` or `OMNITRON_DEV_CACHE` as the original command.
+The report retains the job ID, source commit, attempt count and any removal
+error. The recorded state is the last durable observation. A retry acquires the
+job lock before reclaiming an interrupted build or removal. Older unregistered `.build-*` directories remain outside this queue.
+A sealed historical candidate can be installed with `xec update local-stage
+<runtime>/packages/0/dist`. Xec verifies its bytes from the trusted checkout
+and invokes the candidate's own Node and CLI. When a direct local check or
+activation creates its own checkout, it waits for that checkout's cleanup.
 
 Eliminating the remaining seal/rename rehashes requires ownership of the exact
 manifest write/rename. A persistent "already verified" flag would not satisfy

@@ -122,8 +122,8 @@ it('previews the actual development selection while the installed SDK still serv
   const cli = path.resolve(import.meta.dirname, '../../src/cli/omnitron.ts');
   const run = (...args: string[]) => exec(process.execPath, ['--import', pathToFileURL(require.resolve('tsx/esm')).href, cli, ...args],
     { cwd: consumer, timeout: 60_000 });
-  const request = ['--json', 'sdk', 'prepare', source, '--project-dir', consumer, '--check'];
-  const reviewed = JSON.parse((await run(...request)).stdout).data;
+  const prepare = ['--json', 'sdk', 'prepare', '--project-dir', consumer];
+  const reviewed = JSON.parse((await run(...prepare, '--check')).stdout).data;
   expect(reviewed).toMatchObject({ action: 'reuse', snapshotRequired: false, reuseDigest: expect.stringMatching(/^[a-f0-9]{64}$/) });
   const args = ['dev', source, '--project-dir', consumer, '--no-watch', '--reuse-only', reviewed.reuseDigest];
   const strict = () => sdkCommand(args);
@@ -134,7 +134,7 @@ it('previews the actual development selection while the installed SDK still serv
   await write(manifestPath, { ...manifest, scripts: { ...manifest.scripts, inspect: 'node --version' }, exports: './build.js' });
   await expect(inspectSdk(consumer)).resolves.toMatchObject({ build: { status: 'current' }, distributionLockChanged: false });
   const changed = await filesystemSnapshot(root);
-  const response = await run(...request);
+  const response = await run(...prepare, '--check');
   expect(JSON.parse(response.stdout)).toEqual({ ok: true, data: {
     root: consumer, source, action: 'rebind', snapshotRequired: true, reason: expect.stringContaining('consumer profile input digest'),
   } });
@@ -145,7 +145,12 @@ it('previews the actual development selection while the installed SDK still serv
     expect(reads.mock.calls.some(([file]) => String(file).endsWith('/dist'))).toBe(false);
   } finally { reads.mockRestore(); }
   expect(await filesystemSnapshot(root)).toEqual(changed);
-  await select();
+  await expect(inspectMigrationSdk(consumer)).rejects.toThrow('Development SDK inputs differ from the selected profile');
+  const { token } = JSON.parse((await run(...prepare)).stdout).data;
+  expect(await json(active())).toEqual(original);
+  await expect(inspectMigrationSdk(consumer)).rejects.toThrow('Development SDK inputs differ from the selected profile');
+  await sdkCommand(['dev', '--project-dir', consumer, '--no-watch', '--prepared', token]);
+  await expect(inspectMigrationSdk(consumer)).resolves.toMatchObject({ root: consumer, source });
   expect((await json(active())).inputSha256).not.toBe(original.inputSha256);
   expect(await fs.readFile(journal, 'utf8')).not.toBe(prior);
   expect(await distribution()).toBe(lock);

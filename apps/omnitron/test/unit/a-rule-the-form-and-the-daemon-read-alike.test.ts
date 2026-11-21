@@ -97,13 +97,23 @@ describe('each field', () => {
 
 describe('what a rule watches', () => {
   it('is read off its expression, for every form the evaluator reads', () => {
-    expect(alertRuleTypeOf('app.*.cpu > 90')).toBe('metric');
-    expect(alertRuleTypeOf('app.main.memory >= 1024')).toBe('metric');
-    expect(alertRuleTypeOf('app.*.status == crashed')).toBe('health');
-    expect(alertRuleTypeOf('infra.*.health != healthy')).toBe('health');
-    expect(alertRuleTypeOf('host.disk.free < 53687091200')).toBe('metric');
+    const examples = [
+      ['app.*.cpu > 90', 'metric'],
+      ['app.main.memory >= 1024', 'metric'],
+      ['app.*.status == crashed', 'health'],
+      ['infra.*.health != healthy', 'health'],
+      ['host.disk.free < 53687091200', 'metric'],
+      ['host.storage.health == degraded', 'health'],
+    ] as const;
+    for (const [expression, type] of examples) {
+      expect(ALERT_EXPRESSION_FORMS.filter((form) => form.test(expression))).toHaveLength(1);
+      expect(alertRuleTypeOf(expression)).toBe(type);
+      expect(create({ name: 'Example', expression, severity: 'critical' }).problems).toEqual([]);
+    }
+    const uncovered = ALERT_EXPRESSION_FORMS.filter((form) => !examples.some(([expression]) => form.test(expression)));
+    expect(uncovered).toEqual([]);
+    expect(alertRuleTypeOf('host.storage.health == healthy')).toBeNull();
     expect(alertRuleTypeOf('log.error.count > 10')).toBeNull();
-    expect(ALERT_EXPRESSION_FORMS).toHaveLength(4);
   });
 });
 

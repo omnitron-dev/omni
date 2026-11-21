@@ -124,15 +124,8 @@ export class NodeUpgradeService {
   /**
    * What a rollout would do to each node, without doing any of it.
    *
-   * The version comes from a BUILD: a plan that cannot name the target
-   * cannot say «already on it», and «already on it» is half the value —
-   * without it an operator sees twelve rows saying `upgrade` where two need
-   * upgrading. So this is expensive on purpose, and the console is told to
-   * expect that rather than given a cheap answer that means less.
-   *
-   * The decision itself is `planUpgrade` in `node-upgrade.ts`, unchanged and
-   * still pure: this method's whole job is to gather what that function
-   * needs and to throw the bundle away afterwards.
+   * Any installed controller can report inventory and transport eligibility.
+   * An explicit version comparison builds and releases a temporary source bundle.
    */
   async plan(
     only?: readonly string[],
@@ -147,18 +140,6 @@ export class NodeUpgradeService {
         steps: [],
         toUpgrade: [],
         refusal: 'This daemon cannot list its fleet, so it cannot plan a rollout',
-        compared: false,
-      };
-    }
-
-    const workspace = this.workspaceRoot();
-    if (!workspace) {
-      return {
-        targetVersion: '',
-        steps: [],
-        toUpgrade: [],
-        refusal:
-          'This daemon does not run from an omnitron workspace, so it has no source to build a bundle from',
         compared: false,
       };
     }
@@ -182,6 +163,17 @@ export class NodeUpgradeService {
     if (!options.build) {
       const plan = planUpgrade(candidates, UNKNOWN_TARGET, only ? { only } : {});
       return { ...plan, targetVersion: UNKNOWN_TARGET, compared: false };
+    }
+
+    const workspace = this.workspaceRoot();
+    if (!workspace) {
+      return {
+        targetVersion: '',
+        steps: [],
+        toUpgrade: [],
+        refusal: 'This daemon does not run from an omnitron workspace, so it has no source to build a bundle from',
+        compared: false,
+      };
     }
 
     // Built in a child process, like a rollout's bundle: the in-process

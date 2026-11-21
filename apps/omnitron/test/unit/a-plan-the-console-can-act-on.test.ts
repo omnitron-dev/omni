@@ -52,23 +52,24 @@ describe('a plan the console can act on', () => {
     expect(plan.steps).toEqual([]);
   });
 
-  it('refuses when the daemon has nothing to build from', async () => {
-    // A daemon installed from a bundle — which is every node — has no
-    // workspace. It must say that rather than produce a plan with an empty
-    // target version, which would compare every node against nothing and
-    // call them all out of date.
+  it('lists candidates on an installed controller and requires source for an explicit build', async () => {
     const service = new NodeUpgradeService(
       silent as never,
       { getNode: () => null, listCandidates: () => [candidate()] } as never,
       (async () => ({})) as never,
       (() => ({})) as never,
     );
-    vi.spyOn(service as unknown as { workspaceRoot(): string | null }, 'workspaceRoot').mockReturnValue(null as never);
+    const workspace = vi.spyOn(service as unknown as { workspaceRoot(): string | null }, 'workspaceRoot').mockReturnValue(null);
 
-    const plan = await service.plan();
+    const inventory = await service.plan(['n1'], { build: false });
+    expect(workspace).not.toHaveBeenCalled();
+    expect(inventory.refusal).toBeFalsy();
+    expect(inventory.compared).toBe(false);
+    expect(inventory.toUpgrade.map((node) => node.nodeId)).toEqual(['n1']);
 
-    expect(plan.refusal).toMatch(/no source to build a bundle from/);
-    expect(plan.targetVersion, 'no version invented').toBe('');
+    const comparison = await service.plan(['n1'], { build: true });
+    expect(comparison.refusal).toMatch(/no source to build a bundle from/);
+    expect(comparison.targetVersion).toBe('');
   });
 
   it('answers without building, and says it did not compare', async () => {

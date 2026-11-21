@@ -11,6 +11,10 @@ workflow described below. They do not substitute for a managed backend handoff.
 The [operator procedure](https://omnitron.dev/docs/omnitron/backend-handoff)
 contains the operation table, exact commands and review steps.
 
+`fleet upgrade --dry-run <node>` lists transport eligibility using the controller's
+registered inventory, including when the controller runs from an installed runtime.
+An explicit source-version comparison requires a build workspace.
+
 A standalone controller can update up to 128 registered remote Linux servers.
 Each target needs an enrolled, independently verified SSH host key, a healthy
 resident owner and an independently stoppable guardian. The controller excludes

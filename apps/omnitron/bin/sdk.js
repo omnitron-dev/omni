@@ -214,6 +214,11 @@ async function consumerInputs(root, consumers) {
     await fs.readFile(path.join(root, file), 'utf8').catch(error => { if (error.code === 'ENOENT') return null; throw error; })]);
   return { manifests, settings };
 }
+async function consumerInputDigest(root, consumers) {
+  // Effective pnpm configuration can change module placement independently of workspace files.
+  const [inputs, installation] = await Promise.all([consumerInputs(root, consumers), moduleConfiguration(root)]);
+  return sha256(JSON.stringify({ ...inputs, installation }));
+}
 async function desiredProfile(root, source, distribution) {
   const packages = await inventory(source), consumers = await inventory(root);
   for (const { directory } of consumers.values()) {
@@ -237,12 +242,8 @@ async function desiredProfile(root, source, distribution) {
     select(name);
   }
   if (!Object.keys(links).length) throw Error('The project declares no framework SDK dependencies');
-  const { manifests, settings } = await consumerInputs(root, consumers);
-  // Environment interpolation and global pnpm configuration can change module
-  // placement without changing either workspace file. Bind the effective layout.
-  const installation = await moduleConfiguration(root);
   const names = Object.keys(links).sort();
-  return { schema: 1, root, source, lockSha256: lockIdentity(distribution), inputSha256: sha256(JSON.stringify({ manifests, settings, installation })),
+  return { schema: 1, root, source, lockSha256: lockIdentity(distribution), inputSha256: await consumerInputDigest(root, consumers),
     links: Object.fromEntries(names.map(name => [name, links[name]])), versions: Object.fromEntries(names.map(name => [name, versions[name]])) };
 }
 
@@ -394,8 +395,8 @@ async function installedWorkspacePackage(root, importer, name) {
   throw Error('Workspace dependency ' + name + ' is not installed for ' + importer);
 }
 
-async function verifyLinks(root, profile) {
-  const importers = await inventory(root);
+async function verifyLinks(root, profile, importers) {
+  importers ??= await inventory(root);
   const locked = profile ? null : await registryBaseline(root, await distributionLock(root), importers);
   const installed = profile ? null : await registryInstallation(root);
   let verified = 0;
@@ -1673,18 +1674,23 @@ export async function inspectSdk(projectDirectory = process.cwd(), stack) {
   const selected = await optionalJson(path.join(dir, 'install.json'));
   if (JSON.stringify(selected) !== JSON.stringify(active))
     throw Error('An SDK switch was interrupted. Run sdk dev to complete it, or sdk registry if a current registry lock is available.');
-  if (stack && !active) throw Error('Inspecting application refresh requires a local development SDK');
-  return active
-    ? {
-        mode: 'development',
-        source: active.source,
-        verifiedImports: await verifyLinks(root, active),
-        distributionLock: distribution === null ? 'absent' : applicationDocument(distribution) === null ? 'manager-only' : 'present',
-        distributionLockChanged: lockIdentity(distribution) !== active.lockSha256,
-        ...(transition && { transition }),
-        ...await inspectBuild(active, stack),
-      }
-    : { mode: 'registry', verifiedImports: await verifyLinks(root, null), ...(transition && { transition }) };
+  if (!active) {
+    if (stack) throw Error('Inspecting application refresh requires a local development SDK');
+    return { mode: 'registry', verifiedImports: await verifyLinks(root, null), ...(transition && { transition }) };
+  }
+  const consumers = await inventory(root);
+  const [verifiedImports, digest] = await Promise.all([
+    verifyLinks(root, active, consumers),
+    typeof active.inputSha256 === 'string' ? consumerInputDigest(root, consumers) : null,
+  ]);
+  return {
+    mode: 'development', source: active.source, verifiedImports,
+    consumerProfileChanged: digest === null ? null : digest !== active.inputSha256,
+    distributionLock: distribution === null ? 'absent' : applicationDocument(distribution) === null ? 'manager-only' : 'present',
+    distributionLockChanged: lockIdentity(distribution) !== active.lockSha256,
+    ...(transition && { transition }),
+    ...await inspectBuild(active, stack),
+  };
 }
 
 async function startAttempt(root, stack) {

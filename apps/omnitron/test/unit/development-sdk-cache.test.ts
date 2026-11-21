@@ -90,7 +90,9 @@ await fs.writeFile('dist/index.js','export const value=1;\\n');\n`);
     const updated = JSON.parse(await fs.readFile(path.join(state, 'built.json'), 'utf8'));
     expect(updated.inputs['@omnitron-dev/other']).toEqual(initial.inputs['@omnitron-dev/other']);
     expect(updated.inputs['@omnitron-dev/probe']).not.toEqual(initial.inputs['@omnitron-dev/probe']);
-    expect((await inspectSdk(consumer)).build).toEqual({ status: 'current',
+    const status = await inspectSdk(consumer);
+    expect(status.consumerProfileChanged).toBeNull();
+    expect(status.build).toEqual({ status: 'current',
       packages: ['@omnitron-dev/other', '@omnitron-dev/probe'] });
   } finally {
     controller.abort();

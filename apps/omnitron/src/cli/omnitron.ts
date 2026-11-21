@@ -93,7 +93,11 @@ sdk.command('status').description('Verify the currently installed SDK and its wo
         ...(status.distributionLock === 'absent' ? ['no distribution lock'] : []),
         ...(status.distributionLock === 'manager-only' ? ['package-manager metadata only'] : []),
         ...(status.distributionLockChanged ? ['distribution lock changed'] : [])].filter(Boolean).join(' · '));
-      if (status.build) emitInfo('Installed build current. Use sdk prepare [checkout] --check to plan the next sdk dev selection.');
+      if (status.build) emitInfo('Installed SDK build is current.');
+      if (status.consumerProfileChanged === true)
+        emitInfo('Consumer manifests or pnpm settings changed. Run sdk prepare --check before stopping applications.');
+      if (status.consumerProfileChanged === null)
+        emitInfo('This SDK selection has no recorded consumer input digest. Run sdk prepare --check before stopping applications.');
       if (status.refresh) {
         const { confirmed, inactive, optedOut, unaffected } = status.refresh;
         emitInfo(`${status.refresh.stack} · ${confirmed.length} owner receipts · ${inactive.length} inactive · ${unaffected.length} unaffected`);

@@ -202,6 +202,8 @@ omnitron sdk status --project-dir /path/to/project
 
 Changing an SDK selection retains the affected dependency directories, generated outputs and selection metadata in the development cache before writing them. At each phase the CLI reports the duration of the completed phase, total elapsed time and the size of the retained files once known. `retain` copies and checks those files. `verify` rechecks the source and records the recovery proof. Set `OMNITRON_DEV_CACHE` to the mounted development volume to keep the snapshot there. Application database backups follow their own schedule.
 
+`sdk status` reports whether the installed SDK build is current and whether the consumer's package manifests or effective pnpm settings have changed. In JSON, `consumerProfileChanged` is `true` for a changed profile and `null` for an older selection that never recorded its inputs. A project can need a rebind while its installed build and distribution lock are both current.
+
 Before stopping any consumers, check the exact SDK checkout that the next `sdk dev --no-watch` or reviewed `--start-stopped` will use.
 
 ```sh

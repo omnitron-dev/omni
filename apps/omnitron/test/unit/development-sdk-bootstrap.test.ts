@@ -132,7 +132,8 @@ it('previews the actual development selection while the installed SDK still serv
 
   const manifestPath = path.join(consumer, 'package.json'), manifest = await json(manifestPath);
   await write(manifestPath, { ...manifest, scripts: { ...manifest.scripts, inspect: 'node --version' }, exports: './build.js' });
-  await expect(inspectSdk(consumer)).resolves.toMatchObject({ build: { status: 'current' }, distributionLockChanged: false });
+  const observed = JSON.parse((await run('--json', 'sdk', 'status', '--project-dir', consumer)).stdout).data;
+  expect(observed).toMatchObject({ build: { status: 'current' }, distributionLockChanged: false, consumerProfileChanged: true });
   const changed = await filesystemSnapshot(root);
   const response = await run(...prepare, '--check');
   expect(JSON.parse(response.stdout)).toEqual({ ok: true, data: {
@@ -151,6 +152,7 @@ it('previews the actual development selection while the installed SDK still serv
   await expect(inspectMigrationSdk(consumer)).rejects.toThrow('Development SDK inputs differ from the selected profile');
   await sdkCommand(['dev', '--project-dir', consumer, '--no-watch', '--prepared', token]);
   await expect(inspectMigrationSdk(consumer)).resolves.toMatchObject({ root: consumer, source });
+  await expect(inspectSdk(consumer)).resolves.toMatchObject({ consumerProfileChanged: false });
   expect((await json(active())).inputSha256).not.toBe(original.inputSha256);
   expect(await fs.readFile(journal, 'utf8')).not.toBe(prior);
   expect(await distribution()).toBe(lock);

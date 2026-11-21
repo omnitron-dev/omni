@@ -16,14 +16,18 @@ const encode = value => Buffer.from(JSON.stringify(value)).toString('base64');
 const directory = value => typeof value === 'string' && /^\/[A-Za-z0-9_. /-]{1,1023}$/.test(value) &&
   value === path.posix.resolve(value) && value !== '/';
 
-export function validateSpec(spec) {
-  if (!spec || Object.keys(spec).sort().join() !== [...fields].sort().join() || !uuid.test(spec.id) ||
+export function validEndpoints(spec) {
+  return spec && uuid.test(spec.id) && !(
       ![spec.sourceNode, spec.receiverNode].every(id => typeof id === 'string' && node.test(id) && id !== 'local') ||
       spec.sourceNode === spec.receiverNode || ![spec.sourceFingerprint, spec.receiverFingerprint].every(x => typeof x === 'string' && pin.test(x)) ||
       spec.sourceFingerprint === spec.receiverFingerprint || ![spec.sourceIp, spec.receiverIp].every(unicast) ||
-      spec.sourceIp === spec.receiverIp || !directory(spec.blocks) || path.posix.basename(spec.blocks) !== 'blocks' ||
-      !directory(spec.stageParent) || !bounded(spec.firstActive, 1, 99999) || !bounded(spec.receiverPort, 1, 65535) ||
-      !bounded(spec.rateKiB, 1, 1048576) || !bounded(spec.ttlMinutes, 1, 1440))
+      spec.sourceIp === spec.receiverIp || !directory(spec.stageParent) || !bounded(spec.receiverPort, 1, 65535) ||
+      !bounded(spec.ttlMinutes, 1, 1440));
+}
+
+export function validateSpec(spec) {
+  if (!validEndpoints(spec) || Object.keys(spec).sort().join() !== [...fields].sort().join() || !directory(spec.blocks) ||
+      path.posix.basename(spec.blocks) !== 'blocks' || !bounded(spec.firstActive, 1, 99999) || !bounded(spec.rateKiB, 1, 1048576))
     throw Error('Invalid block preseed specification. Supply distinct registered nodes, pinned IPv4 endpoints, absolute directories and bounded integers.');
 }
 
@@ -54,19 +58,28 @@ print('Both registered SSH identities match the review.')`;
 export async function blockPreseedDefinition(phase, spec, offer) {
   validateSpec(spec);
   if (!['offer', 'copy', 'revoke'].includes(phase)) throw Error('Use offer, copy or revoke.');
-  const program = await fs.readFile(helper, 'utf8');
+  return preseedGraph(phase, spec, phase === 'copy' ? publicOffer(offer, spec) : null, await fs.readFile(helper, 'utf8'),
+    'block-preseed', 'Direct transfer of reviewed closed public block and undo segments.');
+}
+
+export function preseedGraph(phase, spec, offer, program, name, description, tool) {
   const loader = 'import sys; s=sys.stdin.read(); exec(compile(s,"block-preseed","exec"),{"__name__":"__main__","SELF":s})';
   const endpoint = (name, role, dependsOn) => ({
     name, nodeId: spec[role + 'Node'], ...(dependsOn && { dependsOn }), retries: 0, timeout: 86400000,
-    run: 'python3 -I -c ' + quote(loader) + ' ' + name + ' ' + encode(spec) + ' ' +
-      encode(phase === 'copy' ? publicOffer(offer, spec) : null) + " <<'OMNITRON_PRESEED_PY'\n" + program + '\nOMNITRON_PRESEED_PY',
+    run: typeof program === 'function' ? program(name, encode(spec), encode(offer)) :
+      'python3 -I -c ' + quote(loader) + ' ' + name + ' ' + encode(spec) + ' ' +
+        encode(offer) + " <<'OMNITRON_PRESEED_PY'\n" + program + '\nOMNITRON_PRESEED_PY',
   });
   const steps = [{ name: 'registered-pins', run: 'python3 -I -c ' + quote(inspectPins) + ' ' + encode(spec), timeout: 90000 }];
-  if (phase === 'offer') steps.push(endpoint('offer', 'source', ['registered-pins']));
-  if (phase === 'copy') steps.push(endpoint('grant', 'receiver', ['registered-pins']), endpoint('send', 'source', ['grant']),
+  for (const part of tool || []) steps.push({ ...part, nodeId: spec[(phase === 'offer' ? 'source' : 'receiver') + 'Node'],
+    retries: 0, timeout: 120000, dependsOn: [steps.at(-1).name] });
+  const checked = [tool ? 'checked-helper' : 'registered-pins'];
+  if (phase === 'offer') steps.push(endpoint('offer', 'source', checked));
+  if (phase === 'copy') steps.push(endpoint('grant', 'receiver', checked), endpoint('send', 'source', ['grant']),
     endpoint('seal', 'receiver', ['send']), endpoint('forget', 'source', ['seal']));
+  if (phase === 'accept') steps.push(endpoint('seal', 'receiver', checked), endpoint('forget', 'source', ['seal']));
   if (phase === 'revoke') steps.push(endpoint('revoke', 'receiver', ['registered-pins']), endpoint('forget', 'source', ['registered-pins']));
-  return { name: 'block-preseed-' + spec.id + '-' + phase, description: 'Direct transfer of reviewed closed public block and undo segments.',
+  return { name: name + '-' + spec.id + '-' + phase, description,
     triggers: [{ type: 'manual', config: {} }], steps };
 }
 

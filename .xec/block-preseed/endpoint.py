@@ -242,6 +242,10 @@ def offered(spec, state):
     raw = manifest_file.read_bytes()
     require(len(raw) <= FRAME_MAX, 'Segment manifest is too large.')
     rows = json.loads(raw)
+    return issue_offer(spec, state, {'manifest': digest(raw), 'files': len(rows), 'bytes': sum(row[1] for row in rows)})
+
+
+def issue_offer(spec, state, payload):
     key = state / 'identity'
     receipt = state / 'offer.json'
     now = int(time.time())
@@ -262,8 +266,7 @@ def offered(spec, state):
         for item in (new, pub):
             item.unlink(missing_ok=True)
     result = {'protocol': 1, 'id': spec['id'], 'spec': digest(canonical(spec)), 'publicKey': public,
-              'manifest': digest(raw), 'files': len(rows), 'bytes': sum(row[1] for row in rows),
-              'issued': now, 'expires': now + spec['ttlMinutes'] * 60}
+              **payload, 'issued': now, 'expires': now + spec['ttlMinutes'] * 60}
     write_record(receipt, result)
     return result
 
@@ -318,15 +321,19 @@ def write_keys(state, value, group):
     write_file(directory / 'authorized_keys', value.encode('ascii'), 0o640, group)
 
 
-def grant(spec, offer, state):
+def matches_seal(sealed, offer):
+    return sealed['manifest'] == offer['manifest'] and ('offer' not in sealed or sealed['offer'] == digest(canonical(offer)))
+
+
+def grant(spec, offer, state, validate=check_offer, remember=False):
     stage = stage_path(spec)
     journal = state / 'stage.json'
     if (state / 'sealed.json').exists():
         sealed = record(state / 'sealed.json')
         same_stage(stage, record(journal))
-        require(offer['spec'] == digest(canonical(spec)) and sealed['manifest'] == offer['manifest'], 'Stage was sealed for another offer.')
+        require(offer['spec'] == digest(canonical(spec)) and matches_seal(sealed, offer), 'Stage was sealed for another offer.')
         return sealed
-    check_offer(spec, offer)
+    validate(spec, offer)
     if not journal.exists():
         require(not os.path.lexists(stage) and account(spec, state) is None, 'The initial stage or account already exists.')
         stage.mkdir(mode=0o700)
@@ -350,6 +357,8 @@ def grant(spec, offer, state):
         os.chown(stage, user.pw_uid, user.pw_gid)
         os.chmod(stage, 0o700)
         token = digest(canonical(offer))
+        if remember:
+            write_record(state / ('approved-' + token + '.json'), {'offer': token})
         write_record(state / 'permit.json', {'spec': spec, 'offer': offer, 'token': token, 'identity': binding['identity']}, 0o640, user.pw_gid)
         expiry = datetime.datetime.fromtimestamp(offer['expires'], datetime.timezone.utc).strftime('%Y%m%d%H%M%SZ')
         line = 'restrict,from="{}",expiry-time="{}",command="/usr/bin/python3 -I {} receive {} {}" {}\n'.format(
@@ -441,7 +450,7 @@ def receive_stream(stage, spec, offer, incoming, outgoing, still_authorized=lamb
     reply(outgoing, b'D')
 
 
-def receive(op_id, token):
+def receive(op_id, token, validate=check_offer, consume=receive_stream):
     require(os.geteuid() != 0 and ID.fullmatch(op_id) and re.fullmatch(r'[a-f0-9]{64}', token) and
             os.environ.get('SSH_ORIGINAL_COMMAND') == SSH_COMMAND, 'Restricted preseed admission failed.')
     state = ROOT / op_id
@@ -451,7 +460,7 @@ def receive(op_id, token):
         spec, offer = permit['spec'], permit['offer']
         require(os.environ.get('SSH_CONNECTION', '').split()[:1] == [spec['sourceIp']] and
                 pwd.getpwuid(os.geteuid()).pw_name == account_name(spec), 'Unexpected SSH source or identity.')
-        check_offer(spec, offer)
+        validate(spec, offer)
         # Covers idle, stalled and already-authenticated sessions until the same absolute expiry.
         signal.alarm(max(1, offer['expires'] - int(time.time())))
         stage = stage_path(spec)
@@ -464,7 +473,24 @@ def receive(op_id, token):
                 require(record(state / 'permit.json').get('token') == token, 'The transfer credential was revoked.')
                 next_check = time.monotonic() + 1
 
-        receive_stream(stage, spec, offer, sys.stdin.buffer, sys.stdout.buffer, still_authorized)
+        consume(stage, spec, offer, sys.stdin.buffer, sys.stdout.buffer, still_authorized)
+
+
+def ssh_command(spec, state):
+    host, port = str(ipaddress.IPv4Address(spec['receiverIp'])), str(spec['receiverPort'])
+    scanned = run(['/usr/bin/ssh-keyscan', '-4', '-T', '8', '-t', 'ed25519', '-p', port, host]).decode()
+    keys = {' '.join(line.split()[1:3]) for line in scanned.splitlines() if not line.startswith('#') and len(line.split()) == 3}
+    keys = [key for key in keys if fingerprint(key) == spec['receiverFingerprint']]
+    require(len(keys) == 1, 'The direct receiver SSH fingerprint differs from review.')
+    known = state / 'known_hosts'
+    write_file(known, ('omnitron-block-peer ' + keys[0] + '\n').encode('ascii'))
+    return ['/usr/bin/ssh', '-4', '-F', '/dev/null', '-T', '-o', 'BatchMode=yes', '-o', 'IdentitiesOnly=yes',
+            '-o', 'IdentityAgent=none', '-o', 'StrictHostKeyChecking=yes', '-o', 'UpdateHostKeys=no',
+            '-o', 'HostKeyAlias=omnitron-block-peer', '-o', 'HostKeyAlgorithms=ssh-ed25519',
+            '-o', 'UserKnownHostsFile=' + str(known), '-o', 'GlobalKnownHostsFile=/dev/null', '-o', 'ForwardAgent=no',
+            '-o', 'ClearAllForwardings=yes', '-o', 'ConnectTimeout=15', '-o', 'ServerAliveInterval=15',
+            '-o', 'ServerAliveCountMax=3', '-b', str(ipaddress.IPv4Address(spec['sourceIp'])), '-p', port,
+            '-i', str(state / 'identity'), account_name(spec) + '@' + host, SSH_COMMAND]
 
 
 def send(spec, offer, state):
@@ -476,20 +502,7 @@ def send(spec, offer, state):
     require(record(state / 'offer.json') == offer and (state / 'identity').is_file(), 'The source credential differs from the public offer.')
     raw = (state / 'manifest.json').read_bytes()
     rows = checked_manifest(raw, spec, offer)
-    host, port = str(ipaddress.IPv4Address(spec['receiverIp'])), str(spec['receiverPort'])
-    scanned = run(['/usr/bin/ssh-keyscan', '-4', '-T', '8', '-t', 'ed25519', '-p', port, host]).decode()
-    keys = {' '.join(line.split()[1:3]) for line in scanned.splitlines() if not line.startswith('#') and len(line.split()) == 3}
-    keys = [key for key in keys if fingerprint(key) == spec['receiverFingerprint']]
-    require(len(keys) == 1, 'The direct receiver SSH fingerprint differs from review.')
-    known = state / 'known_hosts'
-    write_file(known, ('omnitron-block-peer ' + keys[0] + '\n').encode('ascii'))
-    args = ['/usr/bin/ssh', '-4', '-F', '/dev/null', '-T', '-o', 'BatchMode=yes', '-o', 'IdentitiesOnly=yes',
-            '-o', 'IdentityAgent=none', '-o', 'StrictHostKeyChecking=yes', '-o', 'UpdateHostKeys=no',
-            '-o', 'HostKeyAlias=omnitron-block-peer', '-o', 'HostKeyAlgorithms=ssh-ed25519',
-            '-o', 'UserKnownHostsFile=' + str(known), '-o', 'GlobalKnownHostsFile=/dev/null', '-o', 'ForwardAgent=no',
-            '-o', 'ClearAllForwardings=yes', '-o', 'ConnectTimeout=15', '-o', 'ServerAliveInterval=15',
-            '-o', 'ServerAliveCountMax=3', '-b', str(ipaddress.IPv4Address(spec['sourceIp'])), '-p', port,
-            '-i', str(state / 'identity'), account_name(spec) + '@' + host, SSH_COMMAND]
+    args = ssh_command(spec, state)
     child = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     sent = retained = 0
     rate = spec['rateKiB'] * 1024
@@ -533,7 +546,16 @@ def send(spec, offer, state):
         child.wait()
 
 
-def revoke(spec, state, offer=None):
+def verify_block_stage(stage, spec, offer):
+    with directory_fd(stage) as directory:
+        names = sorted(os.listdir(directory))
+        require(len(names) == offer['files'] and all(NAME.fullmatch(name) for name in names), 'Staged inventory differs from the offer.')
+        rows = [inspect_file(directory, name) for name in names]
+        checked_manifest(canonical(rows), spec, offer)
+    return {'files': offer['files'], 'bytes': offer['bytes']}
+
+
+def revoke(spec, state, offer=None, verify=verify_block_stage, allowed=lambda name: NAME.fullmatch(name) or name == '.part', mode=0o444):
     journal = state / 'stage.json'
     if not journal.exists():
         require(offer is None, 'The destination stage was never created.')
@@ -543,7 +565,7 @@ def revoke(spec, state, offer=None):
     same_stage(stage, binding)
     if (state / 'sealed.json').exists():
         sealed = record(state / 'sealed.json')
-        require(offer is None or sealed['manifest'] == offer['manifest'], 'Unexpected sealed receipt.')
+        require(offer is None or matches_seal(sealed, offer), 'Unexpected sealed receipt.')
         return sealed
     user = account(spec, state)
     # Disable both new SSH authentication and any further channels on an existing connection.
@@ -556,37 +578,36 @@ def revoke(spec, state, offer=None):
         if offer is not None:
             require(offer['spec'] == digest(canonical(spec)) and offer['manifest'] == binding['manifest'],
                     'The stage does not belong to this reviewed offer.')
-            with directory_fd(stage) as directory:
-                names = sorted(os.listdir(directory))
-                require(len(names) == offer['files'] and all(NAME.fullmatch(name) for name in names), 'Staged inventory differs from the offer.')
-                rows = [inspect_file(directory, name) for name in names]
-                checked_manifest(canonical(rows), spec, offer)
+            accepted = verify(stage, spec, offer)
         if user:
             # A partial retained stage can be resumed later under a freshly allocated operation UID.
             for item in stage.iterdir():
                 st = item.lstat()
-                require((NAME.fullmatch(item.name) or item.name == '.part') and stat.S_ISREG(st.st_mode) and st.st_nlink == 1,
+                require(allowed(item.name) and stat.S_ISREG(st.st_mode) and st.st_nlink == 1,
                         'Unexpected entry in the retained private stage.')
                 os.chown(item, 0, 0, follow_symlinks=False)
-                os.chmod(item, 0o444)
+                os.chmod(item, mode)
             run(['/usr/sbin/userdel', user.pw_name])
         if offer is None:
             return {'revoked': True, 'stage': str(stage)}
-        result = {'sealed': True, 'stage': str(stage), 'manifest': offer['manifest'], 'files': offer['files'], 'bytes': offer['bytes']}
+        result = {'sealed': True, 'stage': str(stage), 'manifest': offer['manifest'], **accepted}
         write_record(state / 'sealed.json', result)
         return result
 
 
-def entry(args):
+def entry(args, profile=None):
     os.umask(0o077)
     if len(args) == 3 and args[0] == 'receive':
-        receive(args[1], args[2])
+        if profile:
+            receive(args[1], args[2], profile.validate_offer, profile.receive)
+        else:
+            receive(args[1], args[2])
         return
     require(len(args) == 3 and args[0] in ('offer', 'grant', 'send', 'seal', 'revoke', 'forget') and
             sys.platform == 'linux' and os.geteuid() == 0, 'A registered Linux management endpoint with root access is required.')
     action, encoded, receipt = args
     spec, offer = [json.loads(base64.b64decode(item, validate=True)) for item in (encoded, receipt)]
-    endpoint_spec(spec)
+    (profile.validate_spec if profile else endpoint_spec)(spec)
     side = 'source' if action in ('offer', 'send', 'forget') else 'receiver'
     require(fingerprint(key_text(HOST_KEY)) == spec[side + 'Fingerprint'], 'The endpoint host identity differs from review.')
     if action in ('offer', 'send'):
@@ -604,13 +625,14 @@ def entry(args):
         else:
             write_record(config, spec)
         if action == 'offer':
-            result = offered(spec, state)
+            result = (profile.offer if profile else offered)(spec, state)
         elif action == 'grant':
-            result = grant(spec, offer, state)
+            result = grant(spec, offer, state, profile.validate_offer if profile else check_offer, remember=bool(profile))
         elif action == 'send':
-            result = send(spec, offer, state)
+            result = (profile.send if profile else send)(spec, offer, state)
         elif action in ('seal', 'revoke'):
-            result = revoke(spec, state, offer if action == 'seal' else None)
+            reviewed = offer if action == 'seal' else None
+            result = revoke(spec, state, reviewed, profile.verify, profile.allowed, 0o400) if profile else revoke(spec, state, reviewed)
         else:
             for item in ('identity', 'identity.next', 'identity.next.pub'):
                 (state / item).unlink(missing_ok=True)

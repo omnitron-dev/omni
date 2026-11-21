@@ -11,7 +11,12 @@ export interface ExecutionJournalRecord {
 
 /** An owner writes its fence durably before a new backend may mutate anything. */
 export class ExecutionJournal {
-  constructor(readonly file: string) {}
+  // Xec also reads private records from this module through Node's native TypeScript loader.
+  readonly file: string;
+
+  constructor(file: string) {
+    this.file = file;
+  }
 
   async read(): Promise<ExecutionJournalRecord | null> {
     const record = await readPrivateRecord<ExecutionJournalRecord>(this.file);

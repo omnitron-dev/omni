@@ -2,7 +2,6 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { once } from 'node:events';
-import { createRequire } from 'node:module';
 import type { ChildProcess } from 'node:child_process';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { DomainError } from '@omnitron-dev/titan/errors';
@@ -79,9 +78,6 @@ async function fixture(restoreReady = true, candidateReady = false) {
     await fs.mkdir(path.dirname(entry), { recursive: true });
     await fs.mkdir(path.join(directory, 'cli'));
     await fs.writeFile(path.join(directory, 'cli/installed.js'), 'export {};');
-    await fs.mkdir(path.join(directory, '../node_modules'));
-    const require = createRequire(import.meta.url);
-    await fs.symlink(path.dirname(require.resolve('tsx/package.json')), path.join(directory, '../node_modules/tsx'), 'dir');
     await fs.writeFile(path.join(directory, '../package.json'), '{"type":"module"}');
     const build = { commit: String(index + 1).repeat(40), dirty: false, builtAt: owner.startedAt, timeBasis: 'source' as const };
     // A real fork uses the ordinary IPC readiness boundary. No application,

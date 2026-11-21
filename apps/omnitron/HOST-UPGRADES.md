@@ -131,6 +131,13 @@ Automatic guardian replacement currently supports a Linux system instance only
 when its private state and running guardian belong to root. The coordinator
 checks the real and effective operator UID, the guardian's four kernel UID and
 GID values, its sealed executable, and the loaded unit's stop effects.
+The sealed guardian and backend load compiled JavaScript directly. Project
+TypeScript configuration is evaluated by a separate reader. An older guardian
+can retain an `esbuild --service` child from its TypeScript loader. The extra
+process blocks a hot guardian replacement. A backend-only rollout can retain
+that guardian when its usual admission checks pass. To replace a guardian
+whose stop group stays occupied, use a reviewed cold transition.
+
 For a dedicated system account, use the cold procedure below. The private
 socket, runtime registry, candidate verification and supervision record belong
 to the service account. The host administrator owns the two unit files and

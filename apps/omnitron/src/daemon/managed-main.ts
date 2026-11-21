@@ -20,7 +20,7 @@ const manifest = await verifyRuntimeArtifact(root, id);
 if (manifest.nodeVersion !== process.version || await fs.realpath(process.execPath) !== path.join(await fs.realpath(root), 'node')) {
   throw new Error('The OS service must use the Node binary sealed with its pinned runtime');
 }
-// Configuration files can be TypeScript. Install the verified loader only
-// after integrity validation, never through an unverified --import preload.
-(await import('tsx/esm/api')).register();
+// The guardian imports sealed JavaScript. A tsx hook can leave its compiler in
+// the guardian's native stop group. Application execution belongs to the owner.
+if (mode === 'owner') (await import('tsx/esm/api')).register();
 await import(pathToFileURL(path.join(root, 'packages/0/dist/daemon', mode === 'owner' ? 'managed-owner-entry.js' : 'backend-supervisor-entry.js')).href);

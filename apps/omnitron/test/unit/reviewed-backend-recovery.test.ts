@@ -4,7 +4,6 @@ import path from 'node:path';
 import os from 'node:os';
 import { once } from 'node:events';
 import { createHash, randomUUID } from 'node:crypto';
-import { createRequire } from 'node:module';
 import type { ChildProcess } from 'node:child_process';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ControllerHandoff, type ControllerGrant, type HandoffTicket } from '@omnitron-dev/titan-pm';
@@ -83,9 +82,6 @@ async function fixture() {
   const instance = (await RuntimeInstallation.open(home))!; instances.push(instance);
   const runtime = 'a'.repeat(64), runtimeRoot = instance.releasePath(runtime), dist = path.join(runtimeRoot, 'packages/0/dist');
   await fs.mkdir(path.join(dist, 'daemon'), { recursive: true });
-  await fs.mkdir(path.join(dist, '../node_modules'));
-  const require = createRequire(import.meta.url);
-  await fs.symlink(path.dirname(require.resolve('tsx/package.json')), path.join(dist, '../node_modules/tsx'), 'dir');
   await fs.writeFile(path.join(dist, '../package.json'), '{"type":"module"}');
   const entry = path.join(dist, 'daemon/daemon-entry.js');
   const build = { commit: 'a'.repeat(40), dirty: false, builtAt: '2026-01-01T00:00:00.000Z' };

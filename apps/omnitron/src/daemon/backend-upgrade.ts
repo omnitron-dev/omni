@@ -85,11 +85,11 @@ export async function spawnReplacement(artifact: BackendArtifact, file: string, 
   let execution: BackendRuntimeStatus;
   try {
     await beforeSpawn?.();
-    // Resolve tsx from the candidate installation, not the operator's cwd.
+    // The controller is sealed JavaScript. TypeScript project files use the isolated configuration reader.
     child = fork(artifact.entry, ['--backend-handoff', file], {
       cwd: path.dirname(artifact.directory), env: record.environment, detached: !supervisesBackendChildren(),
       execPath: artifact.execPath,
-      execArgv: ['--import', 'tsx/esm'], stdio: ['ignore', log.fd, log.fd, 'ipc'],
+      execArgv: [], stdio: ['ignore', log.fd, log.fd, 'ipc'],
     });
     // Node emits a failed spawn as an error before the next I/O turn.
     await once(child, 'spawn');

@@ -201,7 +201,7 @@ export class BackendSupervisorService {
     let child: ChildProcess;
     try {
       child = fork(artifact.entry, [], { execPath: artifact.execPath, cwd: path.dirname(artifact.directory),
-        detached: false, execArgv: ['--import', 'tsx/esm'],
+        detached: false, execArgv: [],
         env: { ...process.env, ...this.config.environment, OMNITRON_CWD: this.config.cwd }, stdio: ['ignore', output.fd, output.fd, 'ipc'] });
       await once(child, 'spawn');
       this.observe(child);

@@ -127,9 +127,11 @@ export function registerDaemonJobs(
 
   // The admitted backend owns evaluation and sink delivery. A replacement first samples when it takes ownership.
   let evaluating: Promise<void> | undefined;
+  let alertAdmission = new AbortController();
   const evaluateAlerts = () => {
-    if (alertService && !metricsPaused) evaluating ??= alertService.evaluate().then(
-      () => { recovered('alert-evaluation'); },
+    const { signal } = alertAdmission;
+    if (alertService && !metricsPaused) evaluating ??= alertService.evaluate(Date.now(), signal).then(
+      () => { if (!signal.aborted) recovered('alert-evaluation'); },
       err => {
         // At `error`, with its cause. This is the loop whose whole job is to
         // notice that something is wrong: its own failure is the one no alert
@@ -212,16 +214,41 @@ export function registerDaemonJobs(
   if (skipped.length > 0) {
     logger.info({ skipped }, `${skipped.length} daemon job(s) not registered — their service is absent`);
   }
+  let handoffFlushes = 0;
+  const flushAcceptedSamples = async () => {
+    await sampling;
+    handoffFlushes++;
+    try { await metricsService.flush(); }
+    finally { handoffFlushes--; }
+  };
+  const pause = () => {
+    metricsPaused = true;
+    alertAdmission.abort();
+  };
   return {
+    pause,
     async pauseAndFlush(): Promise<void> {
-      metricsPaused = true;
-      await Promise.all([sampling, evaluating]);
-      await metricsService.flush();
+      pause();
+      await Promise.all([flushAcceptedSamples(), evaluating]);
+    },
+    describeDrain(): string {
+      const alertStage = alertService?.evaluationStage;
+      const active = [
+        ...(sampling ? ['child metric sampling'] : []),
+        ...(evaluating ? [alertStage ?? 'alert evaluation or delivery'] : []),
+        ...(handoffFlushes ? ['metric storage flush'] : []),
+      ];
+      const storage = metricsService.getStorageStatus();
+      return `${active.join(', ') || 'no pending stage'} (pendingSamples=${storage.pendingSamples}, writing=${storage.writing})`;
     },
     resume(): void {
       const wasPaused = metricsPaused;
       metricsPaused = false;
-      if (wasPaused) void evaluateAlerts();
+      if (wasPaused) {
+        alertAdmission = new AbortController();
+        if (evaluating) void evaluating.then(evaluateAlerts);
+        else void evaluateAlerts();
+      }
     },
   };
 }

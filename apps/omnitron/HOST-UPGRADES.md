@@ -600,6 +600,16 @@ For a backend-only handoff with resident applications running, use
 `pnpm exec xec update local-check` followed by `pnpm exec xec update local-apply`.
 An explicit sealed `<dist>` is supported for this pair.
 
+During a hot handoff the serving backend pauses metric pulls and alert evaluations.
+It persists samples from any outstanding child pull while finishing the alert rule
+or sink transition already in progress. The next admitted backend resumes pending
+deliveries from their database receipts, including accepted events whose rule has
+since been disabled. If the 30-second deadline expires, the incumbent resumes
+service. The error reports the active stages and the metric queue at the deadline.
+An alert stage identifies the rule, project configuration, sink transition or
+delivery receipt in progress. An older incumbent can report a generic metric
+timeout for any of these stages, including alert delivery.
+
 The infrastructure preflight reports the container and the first mismatch in
 identity, ownership, enforced limits or specification. A saved Docker label
 does not establish that a memory limit is enforced. Preservation also checks

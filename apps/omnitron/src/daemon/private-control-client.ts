@@ -4,11 +4,12 @@ import { Netron, type RemotePeer } from '@omnitron-dev/titan/netron';
 import { UnixSocketTransport } from '@omnitron-dev/titan/netron/transport/unix';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 
-export async function withControlDeadline<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
+export async function withControlDeadline<T>(work: Promise<T>, ms: number, message: string | (() => string)): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
+  const deadline = new Promise<void>(resolve => { timer = setTimeout(resolve, ms); });
   try {
-    return await Promise.race([work, new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => reject(new Error(message)), ms);
+    return await Promise.race([work, deadline.then(() => {
+      throw new Error(typeof message === 'function' ? message() : message);
     })]);
   } finally { if (timer) clearTimeout(timer); }
 }

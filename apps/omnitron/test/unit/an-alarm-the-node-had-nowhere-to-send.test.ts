@@ -97,10 +97,10 @@ describe('the node’s engine, with the sink and without it', () => {
       };
     },
   };
-  const engine = (sink?: typeof SINK) =>
+  const engine = (sink?: typeof SINK, loadProjectConfig = async () => ({ monitoring: sink ? { alertSink: sink } : {} }),
+    listWorkspaceNames = () => ['sample']) =>
     new AlertService({ logger } as never, db, orchestrator as never, {
-      listWorkspaceNames: () => ['sample'],
-      loadProjectConfig: async () => ({ monitoring: sink ? { alertSink: sink } : {} }),
+      listWorkspaceNames, loadProjectConfig,
     } as never);
 
   beforeAll(async () => {
@@ -110,6 +110,15 @@ describe('the node’s engine, with the sink and without it', () => {
   afterAll(async () => {
     await db?.destroy();
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('leaves project configuration alone when there is no critical event to deliver', async () => {
+    const load = vi.fn(async () => ({ monitoring: { alertSink: SINK } }));
+    const list = vi.fn(() => ['sample']);
+    await engine(SINK, load, list).evaluate();
+    expect(await db.selectFrom('alert_events').select('id').execute()).toEqual([]);
+    expect(list).not.toHaveBeenCalled();
+    expect(load).not.toHaveBeenCalled();
   });
 
   it('with no sink, says so on the event instead of saying nothing', async () => {
@@ -131,5 +140,69 @@ describe('the node’s engine, with the sink and without it', () => {
     expect(event!['deliveredAt']).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(event!['deliveryError']).toBeNull();
     await sql`DELETE FROM alert_events`.execute(db);
+  });
+
+  it('completes an accepted sink transition and leaves its next transition for the successor', async () => {
+    await sql`DELETE FROM alert_events`.execute(db);
+    raised.length = 0;
+    apps[1]!.status = 'crashed';
+    await engine().evaluate();
+    apps[1]!.status = 'online';
+    await engine().evaluate();
+    const stop = new AbortController();
+    const stages: Array<string | undefined> = [];
+    const handle = orchestrator.getHandle(apps[0]!.name)!;
+    const observer = { ...orchestrator, getHandle: () => ({ ...handle, supervisor: {
+      ...handle.supervisor,
+      getChildProxy: async () => {
+        const proxy = await handle.supervisor.getChildProxy();
+        return { ...proxy, callExposedService: async (...args: Parameters<typeof proxy.callExposedService>) => {
+          stages.push(source.evaluationStage);
+          const reply = await proxy.callExposedService(...args);
+          stop.abort();
+          return reply;
+        } };
+      },
+    } }) };
+    const source = new AlertService({ logger } as never, db, observer as never, {
+      listWorkspaceNames: () => ['sample'],
+      loadProjectConfig: async () => ({ monitoring: { alertSink: SINK } }),
+    } as never);
+    await source.evaluate(Date.now(), stop.signal);
+    const event = await db.selectFrom('alert_events').selectAll().executeTakeFirstOrThrow();
+    expect(stages).toEqual([`delivering firing for ${event['id']}`]);
+    expect(source.evaluationStage).toBeUndefined();
+    expect(raised.map(value => value['status'])).toEqual(['firing']);
+    expect(event['deliveredAt']).toBeTruthy();
+    expect(event['resolveDeliveredAt']).toBeNull();
+    await engine(SINK).evaluate();
+    expect(raised.map(value => [value['eventId'], value['status']])).toEqual([[event['id'], 'firing'], [event['id'], 'resolved']]);
+  });
+
+  it('delivers both recorded transitions once after the last enabled rule is disabled', async () => {
+    await sql`DELETE FROM alert_events`.execute(db);
+    raised.length = 0;
+    apps[1]!.status = 'crashed';
+    const incumbent = engine();
+    await incumbent.evaluate();
+    apps[1]!.status = 'online';
+    await incumbent.evaluate();
+    const event = await db.selectFrom('alert_events').selectAll().executeTakeFirstOrThrow();
+    expect(event).toMatchObject({ status: 'resolved', deliveredAt: null, resolveDeliveredAt: null });
+    const enabled = await db.selectFrom('alert_rules').select('id').where('enabled', '=', true).execute();
+    for (const rule of enabled) await incumbent.updateRule(rule['id'], { enabled: false });
+    try {
+      const successor = engine(SINK);
+      await successor.evaluate();
+      await successor.evaluate();
+      expect(raised.map(value => [value['eventId'], value['status']])).toEqual([
+        [event['id'], 'firing'], [event['id'], 'resolved'],
+      ]);
+      const receipt = await db.selectFrom('alert_events').selectAll().where('id', '=', event['id']).executeTakeFirstOrThrow();
+      expect(receipt['deliveredAt']).toBeTruthy();
+      expect(receipt['resolveDeliveredAt']).toBeTruthy();
+    } finally {
+      for (const rule of enabled) await incumbent.updateRule(rule['id'], { enabled: true });
+    }
   });
 });

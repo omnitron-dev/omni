@@ -215,6 +215,9 @@ export class AlertService {
    */
   private readonly pendingSince = new Map<string, number>();
   private evaluation?: Promise<void> | undefined;
+  private stage: string | undefined;
+
+  get evaluationStage(): string | undefined { return this.stage; }
 
   constructor(
     @Inject(LOGGER_SERVICE_TOKEN) loggerModule: ILoggerModule,
@@ -246,8 +249,11 @@ export class AlertService {
    * Evaluate all enabled alert rules — once per scheduler tick. `now` is a
    * parameter for the court that walks a rule through its wait.
    */
-  evaluate(now: number = Date.now()): Promise<void> {
-    this.evaluation ??= this.evaluateOnce(now).finally(() => { this.evaluation = undefined; });
+  evaluate(now: number = Date.now(), signal?: AbortSignal): Promise<void> {
+    this.evaluation ??= this.evaluateOnce(now, signal).finally(() => {
+      this.evaluation = undefined;
+      this.stage = undefined;
+    });
     return this.evaluation;
   }
 
@@ -262,15 +268,28 @@ export class AlertService {
     return true;
   }
 
-  private async evaluateOnce(now: number): Promise<void> {
+  private async evaluateOnce(now: number, signal?: AbortSignal): Promise<void> {
+    await this.evaluateRules(now, signal);
+    if (signal?.aborted) return;
+    // A transition already accepted for delivery outlives its rule's evaluation schedule.
+    try {
+      await this.deliverPending(now, signal);
+    } catch (err) {
+      this.logger.warn({ err }, 'Alert sink delivery failed this tick — tried again on the next');
+    }
+  }
+
+  private async evaluateRules(now: number, signal?: AbortSignal): Promise<void> {
+    this.stage = 'reading enabled rules';
     const rules = await this.db
       .selectFrom('alert_rules')
       .selectAll()
       .where('enabled', '=', true)
       .execute();
 
-    if (rules.length === 0) return;
+    if (signal?.aborted || rules.length === 0) return;
 
+    this.stage = 'reading host observations';
     // Build evaluation context
     const apps = this.orchestrator.list();
     const infra = this.infraState();
@@ -284,8 +303,11 @@ export class AlertService {
         : null,
     };
 
+    if (signal?.aborted) return;
     const storage = rules.some(r => ALERT_EXPRESSION_FORMS[4].test(r.expression.trim())) ? await readHostStorage() : null;
     for (const rule of rules) {
+      if (signal?.aborted) return;
+      this.stage = `evaluating rule ${rule.id}`;
       if (storage && ALERT_EXPRESSION_FORMS[4].test(rule.expression.trim())) {
         const change = await reconcileStorageAlert(this.db, rule, storage, now, firing => this.held(rule, firing, now), this.sync);
         if (change && rule.severity === 'critical') this.sayOnDesktop(rule, change.status, change.value);
@@ -359,24 +381,18 @@ export class AlertService {
         .where('id', '=', rule.id)
         .execute();
     }
-
-    // After the rules, and never in their way: a sink that cannot be reached
-    // this tick is tried again on the next.
-    try {
-      await this.deliverPending(now);
-    } catch (err) {
-      this.logger.warn({ err }, 'Alert sink delivery failed this tick — tried again on the next');
-    }
   }
 
   /** Each project's alert sink, read from its config at most once a minute. */
   private sinkCache: { at: number; sinks: Array<IAlertSink & { project: string }> } | null = null;
 
-  private async alertSinks(now: number): Promise<Array<IAlertSink & { project: string }>> {
+  private async alertSinks(now: number, signal?: AbortSignal): Promise<Array<IAlertSink & { project: string }>> {
     if (this.sinkCache && now - this.sinkCache.at < SINK_TTL_MS) return this.sinkCache.sinks;
     const sinks: Array<IAlertSink & { project: string }> = [];
     for (const project of this.projects?.listWorkspaceNames?.() ?? []) {
+      if (signal?.aborted) return [];
       try {
+        this.stage = `loading sink configuration for ${project}`;
         const config = await this.projects!.loadProjectConfig!(project);
         const sink = config.monitoring?.alertSink;
         if (sink) sinks.push({ project, ...sink });
@@ -397,27 +413,13 @@ export class AlertService {
    * The call takes `exec`'s road — the supervisor's socket into the process —
    * and only into an app in bootstrap mode.
    */
-  private async deliverPending(now: number): Promise<void> {
-    const sinks = await this.alertSinks(now);
-    const targets = sinks.flatMap((sink) => this.sinkTargets(sink).map((name) => ({ sink, name })));
-    if (targets.length === 0) {
-      // Said on the event, once, rather than returned from in silence. The test
-      // node ran without a sink for a release: its alerts fired, resolved, and
-      // kept `deliveryError` empty — nothing anywhere said they went nowhere.
-      await this.db
-        .updateTable('alert_events')
-        .set({ deliveryError: NO_SINK } as any)
-        .where(localAlert)
-        .where('deliveredAt', 'is', null)
-        .where('deliveryError', 'is', null)
-        .where('firedAt', '>', new Date(now - DELIVERY_WINDOW_MS))
-        .where('ruleId', 'in', (eb: any) =>
-          eb.selectFrom('alert_rules').select('id').where('severity', '=', 'critical')
-        )
-        .execute();
+  private async deliverPending(now: number, signal?: AbortSignal): Promise<void> {
+    if (!this.projects?.listWorkspaceNames) {
+      await this.markMissingSink(now);
       return;
     }
 
+    this.stage = 'reading pending critical alerts';
     const pending = await this.db
       .selectFrom('alert_events')
       .innerJoin('alert_rules', 'alert_rules.id', 'alert_events.ruleId')
@@ -447,16 +449,30 @@ export class AlertService {
       .limit(20)
       .execute();
 
+    // Loading a registered project may start its configuration reader process.
+    if (!pending.length || signal?.aborted) return;
+    const sinks = await this.alertSinks(now, signal);
+    if (signal?.aborted) return;
+    const targets = sinks.flatMap((sink) => this.sinkTargets(sink).map((name) => ({ sink, name })));
+    if (!targets.length) {
+      await this.markMissingSink(now);
+      return;
+    }
+
     for (const event of pending) {
       // The firing before its end: a resolve nobody saw fire says nothing.
       const transitions: Array<'firing' | 'resolved'> = [];
       if (!event.deliveredAt) transitions.push('firing');
       if (event.status === 'resolved' && !event.resolveDeliveredAt) transitions.push('resolved');
       for (const status of transitions) {
+        // Once sent, finish every target and its database receipt before yielding ownership.
+        if (signal?.aborted) return;
         const annotations = typeof event.eventAnnotations === 'string' ? JSON.parse(event.eventAnnotations) : event.eventAnnotations;
         const fault = (annotations?.['storage'] as { lastFault?: unknown } | undefined)?.lastFault;
         const value = status === 'firing' && typeof fault === 'string' ? fault : event.value;
+        this.stage = `delivering ${status} for ${event.id}`;
         const failure = await this.deliverTo(targets, { ...event, value }, status);
+        this.stage = `writing the ${status} delivery receipt for ${event.id}`;
         await this.db
           .updateTable('alert_events')
           .set(
@@ -472,6 +488,22 @@ export class AlertService {
         if (failure) break;
       }
     }
+  }
+
+  /** Keep the reason visible on every recent undelivered local critical event. */
+  private async markMissingSink(now: number): Promise<void> {
+    this.stage = 'recording missing alert sinks';
+    await this.db
+      .updateTable('alert_events')
+      .set({ deliveryError: NO_SINK } as any)
+      .where(localAlert)
+      .where('deliveredAt', 'is', null)
+      .where('deliveryError', 'is', null)
+      .where('firedAt', '>', new Date(now - DELIVERY_WINDOW_MS))
+      .where('ruleId', 'in', (eb: any) =>
+        eb.selectFrom('alert_rules').select('id').where('severity', '=', 'critical')
+      )
+      .execute();
   }
 
   /** The apps a sink names on the stacks of its project this daemon runs. */

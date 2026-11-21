@@ -661,6 +661,7 @@ export class OmnitronDaemon {
     const gate = this.app.netron.inbound;
     let projects: ProjectService | undefined;
     try {
+      this.metricSampling?.pause();
       await this.backupService?.prepareHandoff(backups);
       projects = await this.app.container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
       await this.drainControllerWriters();
@@ -668,8 +669,9 @@ export class OmnitronDaemon {
       assertIdle();
       const projectState = await projects.prepareHandoff();
       const infrastructure = await this.infraService?.prepareHandoff() ?? null;
-      if (this.metricSampling) await withControlDeadline(this.metricSampling.pauseAndFlush(), 30_000,
-        'Metric collection has not drained to storage; the current backend will remain active');
+      const sampling = this.metricSampling;
+      if (sampling) await withControlDeadline(sampling.pauseAndFlush(), 30_000,
+        () => `Backend handoff timed out waiting for ${sampling.describeDrain()}. The current backend will remain active.`);
       const prepared = await withControlDeadline(this.execution.prepare(candidateId), 30_000,
         'Execution mutations have not drained; the current backend will remain active');
       if (configuration && projects.recoveryRegistryDigest() !== configuration.registryDigest)

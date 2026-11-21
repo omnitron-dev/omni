@@ -111,6 +111,15 @@ try {
   assert.equal(capture.filter(item => item.value.record.message === largeMessage).length, 1, 'Exact JSON startup record must become durable once');
   assert.equal(capture.filter(item => item.value.record.message === 'Error: fixture boot detail\n    at fixture').length, 1, 'Complete multiline startup record must become durable once');
   assert.equal(capture.length, 2, 'Startup output must neither split nor duplicate records');
+  const full = await first.remote.snapshot();
+  const compact = await first.controlledOwnerSnapshot();
+  assert.equal(compact.appLogTails, 'on-demand');
+  assert.equal(Object.hasOwn(compact.apps[0], 'logs'), false);
+  assert.equal(compact.inventoryDigest, full.inventoryDigest);
+  const tails = await first.orchestrator.getLogs('counter', 3);
+  assert.deepEqual(tails, [{ app: 'fixture/local/counter', lines: full.apps[0].logs.slice(-3) }]);
+  assert.deepEqual(await first.orchestrator.getLogs(undefined, 3), tails);
+  assert.ok(tails[0].lines.some(line => line.includes('fixture boot detail')));
   // Commit, then deliberately lose its acknowledgment. The ordinary poll replays it.
   await collector.persistCaptured(capture.map(item => logEntryOf(item.value.app, item.value.record)));
   await first.activateObservations();

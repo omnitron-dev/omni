@@ -24,6 +24,7 @@ import { observeBackendChild, supervisesBackendChildren } from './backend-child.
 import { readManagedRuntime, managedSupervisorSocket } from './managed-runtime.js';
 import type { BackendSupervisorService } from './backend-supervisor.js';
 import type { ExecutionHostService } from './execution-host.js';
+import { EXECUTION_INVENTORY } from '../orchestrator/execution-contract.js';
 import { assertExecutionCapabilities } from './execution-capabilities.js';
 import { describeError } from '../shared/describe-error.js';
 import { retainReviewedBackups } from '../shared/backup-admission.js';
@@ -228,7 +229,7 @@ export async function replaceBackend(directory: string, options: {
       if (!fence && !Object.keys(artifact.executionRequirements ?? {}).length) return;
       const owner = await privateControlClient<ExecutionHostService>(path.join(path.dirname(address.socket), 'owner.sock'), 'OmnitronExecution');
       try {
-        const snapshot = await owner.service.snapshot();
+        const snapshot = await owner.service.snapshot(EXECUTION_INVENTORY);
         if (snapshot.protocol !== 1 || !previous.runtime?.owner ||
             snapshot.status.owner.id !== previous.runtime.owner.id || snapshot.status.owner.pid !== previous.runtime.owner.pid) {
           throw new Error('Execution owner identity changed; backend activation is refused');

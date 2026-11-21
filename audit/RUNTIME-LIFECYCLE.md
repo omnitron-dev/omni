@@ -113,6 +113,49 @@ delayed the native start. The controller accepted the same full ID and
 verified the new HTTP BUILD and entry JavaScript bytes. Retiring the previous
 test container through HTTP and asset acceptance took a further 75.988 seconds.
 
+### Owner polling and update admission repeatedly transferred historical log lines
+
+The resident owner used to copy up to 1,000 raw lines per application into
+each execution snapshot. The controller polls every second. Recovery,
+handoff, process inventory checks and mutation replies also used this snapshot.
+A read on 21 November 2026 with seven serving applications took 25 ms. Its
+UTF-8 JSON projection occupied 1,253,659 bytes, including 1,227,699 bytes of
+raw log tails spanning 3,528 lines. The live transport uses MessagePack.
+
+These readers now request `appLogTails: 'on-demand'`. A supporting owner omits
+the raw ring property from each application and identifies the representation
+in the response. It still reports the worker and application identities,
+inventory digest, stderr evidence from the last exit, persistence and log-sink
+health, outstanding events, dropped-event count, cursors and journal status.
+An explicit private ring read asks the owner for the selected application
+and line count. Public `omnitron logs` continues to query captured records
+and stored history through the daemon.
+
+Durable delivery still reads pending journal records and acknowledges their
+IDs and digests after the controller persists them. Owners without a journal
+send log events through the event cursor. The controller reports their legacy
+delivery semantics and withholds acknowledgment when persistence fails.
+An older controller receives the full snapshot by default. An older owner
+ignores the new request and returns its rings, which the new controller can
+read synchronously. The transfer saving begins when both parties support the
+request. The request adds no owner-upgrade prerequisite to recovery.
+
+An isolated measurement seeded seven real `AppHandle` rings with 504 test
+lines of 344 bytes each and retained one pending log and one event. Across 25
+interleaved pairs of private Unix RPC calls, Netron serialized 1,228,763
+MessagePack payload bytes for the full snapshot and 4,513 for the inventory.
+A proxy counted 1,228,772 and 4,522 response bytes on the socket. The median
+round trips were 26.27 ms and 0.85 ms. With the staged d52ccdde owner, both
+request forms transferred 1,228,878 bytes. Each pairing of old and new owners
+and controllers returned the two requested historical lines. An independent
+run with the older 1ff20dd5 release also passed all four pairings.
+
+`test/unit/execution-inventory.test.ts` covers both response forms, explicit
+raw tails, public log reads without a journal, gaps in the bounded event
+history, missing legacy rings, failed persistence and replay.
+`test/runtime/execution-host.mjs` exercises the ordinary resident owner,
+native Unix transport, stored durable records and handoff fencing.
+
 ### Observation metadata was treated as authorization
 
 `project/runtime-restart.ts` previously used the complete serialized snapshot

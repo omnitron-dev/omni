@@ -7,6 +7,9 @@ import type { BootstrapMetadata } from '../project/bootstrap-metadata.js';
 
 type ExecutionTopology = Array<Pick<IProcessEntry, 'name' | 'instances' | 'transports'>> | null;
 
+/** Owners predating this request ignore the field and return their ordinary full snapshot. */
+export const EXECUTION_INVENTORY = { appLogTails: 'on-demand' } as const;
+
 /** Controller-facing inventory. Native process and Worker handles stay with their owner. */
 export interface AppExecutionView extends Pick<AppHandle,
   'entry' | 'name' | 'mode' | 'pid' | 'status' | 'startedAt' | 'restarts' | 'port' |
@@ -21,10 +24,12 @@ export interface AppExecutionView extends Pick<AppHandle,
 }
 
 type HandleMethods = 'startApp' | 'startKnownApp' | 'restartApp' | 'reloadApp' | 'scaleApp';
-type Methods = Omit<OrchestratorService, HandleMethods | 'getHandle' | 'getWorkerHandle' | 'getChildProcessInfo' | 'setConfig' | 'configureReadiness'>;
+type Methods = Omit<OrchestratorService, HandleMethods | 'getHandle' | 'getWorkerHandle' | 'getChildProcessInfo' | 'getLogs' | 'setConfig' | 'configureReadiness'>;
 
 /** The backend has no direct access to ProcessManager, forks or threads. */
 export interface OrchestratorControl extends Methods {
+  /** Local handles have their ring in memory. A resident owner reads the requested tail on demand. */
+  getLogs(...args: Parameters<OrchestratorService['getLogs']>): ReturnType<OrchestratorService['getLogs']> | Promise<ReturnType<OrchestratorService['getLogs']>>;
   /** Fresh owner inventory for explicit diagnostics; supported without an owner upgrade. */
   refreshObservation?(): Promise<void>;
   /** PID from the authenticated resident owner; in-process supervisors do not implement this. */

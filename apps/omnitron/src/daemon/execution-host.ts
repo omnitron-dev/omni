@@ -8,7 +8,7 @@ import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { ControllerHandoff } from '@omnitron-dev/titan-pm';
 import type { ControllerGrant, ControllerHandoffStatus, HandoffTicket, IProcessInfo } from '@omnitron-dev/titan-pm';
 import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
-import type { ExecutionAppSnapshot } from '../orchestrator/execution-contract.js';
+import { EXECUTION_INVENTORY, type ExecutionAppSnapshot } from '../orchestrator/execution-contract.js';
 import { callExposedService, type ExposingProcess } from '../orchestrator/call-exposed-service.js';
 import type { ExecutionJournal } from './execution-journal.js';
 import type { ExecutionMetricsSink } from '../observability/metrics-bridge.js';
@@ -21,7 +21,7 @@ import type { WatchedApplication } from '../shared/dto/services.js';
 // backend authenticates end users with Omnitron RBAC before entering it.
 const OWNER_ROLES = ['execution-controller'];
 
-export const EXECUTION_READS = ['inspectExecution', 'inspectInstalledStack', 'inspectStackExecution', 'inspectSourceWatch', 'getDependencyGraph', 'getMetrics', 'getHealth', 'explainPortConflict'] as const;
+export const EXECUTION_READS = ['inspectExecution', 'inspectInstalledStack', 'inspectStackExecution', 'inspectSourceWatch', 'getDependencyGraph', 'getMetrics', 'getHealth', 'getLogs', 'explainPortConflict'] as const;
 export const EXECUTION_MUTATIONS = [
   'reconcileStoppedStack', 'stopExecution', 'enableExecution', 'openInstalledStack', 'resumeInstalledApp', 'stopStackExecution', 'enableStackExecution', 'startAll', 'startApp', 'stopApp', 'stopAll', 'redefineApp', 'restartApp', 'startKnownApp',
   'restartAfterChange', 'reloadApp', 'scaleApp', 'setWatchMode', 'suspendSourceWatch', 'resumeSourceWatch', 'setConfig',
@@ -40,7 +40,7 @@ export interface ExecutionEvent {
   detail: string | number | null | MetricObservation;
 }
 
-export interface ExecutionSnapshot {
+interface ExecutionSnapshotState {
   protocol: 1;
   ownerBuild?: BuildStamp | null;
   runtime?: NonNullable<BackendRuntimeStatus['ownerRuntime']>;
@@ -50,7 +50,6 @@ export interface ExecutionSnapshot {
   logs?: { protocol: 1; journal: LogJournalStats };
   revision: number;
   status: ControllerHandoffStatus;
-  apps: ExecutionAppSnapshot[];
   workers: Array<{ info: IProcessInfo; pid?: number; serviceName?: string; serviceVersion?: string }>;
   devMode: boolean;
   watchedApps: WatchedApplication[];
@@ -61,6 +60,15 @@ export interface ExecutionSnapshot {
   droppedEvents: number;
   inventoryDigest: string;
 }
+
+type SnapshotRequest = { afterEvent?: number; appLogTails?: 'on-demand' };
+interface FullExecutionSnapshot extends ExecutionSnapshotState {
+  appLogTails?: never;
+  apps: ExecutionAppSnapshot[];
+}
+export type ExecutionSnapshot = FullExecutionSnapshot | (ExecutionSnapshotState & typeof EXECUTION_INVENTORY & {
+  apps: Array<Omit<ExecutionAppSnapshot, 'logs'>>;
+});
 
 /** Native handles, supervisors and pools never leave this resident owner. */
 @Service({ name: 'OmnitronExecution' })
@@ -94,8 +102,10 @@ export class ExecutionHostService {
     orchestrator.setMetricsBridge(sink);
   }
 
+  async snapshot(data?: { afterEvent?: number; appLogTails?: never }): Promise<FullExecutionSnapshot>;
+  async snapshot(data: SnapshotRequest): Promise<ExecutionSnapshot>;
   @Public({ auth: { roles: OWNER_ROLES } })
-  async snapshot(data: { afterEvent?: number } = {}): Promise<ExecutionSnapshot> {
+  async snapshot(data: SnapshotRequest = {}): Promise<ExecutionSnapshot> {
     const afterEvent = data.afterEvent ?? this.acknowledgedEvent;
     if (!Number.isSafeInteger(afterEvent) || afterEvent < 0 || afterEvent > this.lastEvent) throw new Error('Invalid execution event cursor');
     const ids = new Set<string>();
@@ -122,9 +132,9 @@ export class ExecutionHostService {
           name: item.name, ...(item.instances !== undefined && { instances: item.instances }),
           ...(item.transports?.http && { transports: { http: item.transports.http } }),
         })) ?? null,
-        children, pools, logs: handle.getLogs(1000),
+        children, pools,
         declaredReadiness: this.orchestrator.hasDeclaredReadiness(info.name),
-      } satisfies ExecutionAppSnapshot;
+      } satisfies Omit<ExecutionAppSnapshot, 'logs'>;
     });
     const workers: ExecutionSnapshot['workers'] = [];
     for (const id of ids) {
@@ -140,11 +150,11 @@ export class ExecutionHostService {
       entry: app.entry }));
     const workerIdentities = workers.map(worker => ({ id: worker.info.id, pid: worker.pid,
       startedAt: worker.info.startTime, restarts: worker.info.restartCount }));
-    return {
+    const state: ExecutionSnapshotState = {
       ...(this.hooks.logs?.journal ? { logs: { protocol: 1 as const, journal: this.hooks.logs.journalStats()! } } : {}),
       ...(this.hooks.statePersistence ? { statePersistence: this.hooks.statePersistence() } : {}),
       ...(this.hooks.loggerHealth ? { logSinks: this.hooks.loggerHealth() } : {}),
-      protocol: 1, ownerBuild: OWN_BUILD, capabilities: OWNER_CAPABILITIES, revision: ++this.revision, status: this.fence.status(), apps, workers,
+      protocol: 1, ownerBuild: OWN_BUILD, capabilities: OWNER_CAPABILITIES, revision: ++this.revision, status: this.fence.status(), workers,
       runtime: { node: process.version, abi: process.versions.modules, platform: process.platform, arch: process.arch },
       devMode: this.orchestrator.devMode, watchEnabled: this.orchestrator.devMode,
       watchedApps: this.orchestrator.getWatchedApps(),
@@ -153,6 +163,8 @@ export class ExecutionHostService {
       droppedEvents: Math.max(0, oldest - afterEvent - 1),
       inventoryDigest: createHash('sha256').update(JSON.stringify({ apps: inventory, workers: workerIdentities })).digest('hex'),
     };
+    if (data.appLogTails === 'on-demand') return { ...state, ...EXECUTION_INVENTORY, apps };
+    return { ...state, apps: apps.map(app => ({ ...app, logs: this.orchestrator.getHandle(app.info.name)!.getLogs(1000) })) };
   }
 
   @Public({ auth: { roles: OWNER_ROLES } })
@@ -197,24 +209,24 @@ export class ExecutionHostService {
   }
 
   @Public({ auth: { roles: OWNER_ROLES } })
-  async mutate(data: { grant: ControllerGrant; sequence: number; method: ExecutionMutation; args: unknown[] }): Promise<{ value: unknown; snapshot: ExecutionSnapshot }> {
+  async mutate(data: { grant: ControllerGrant; sequence: number; method: ExecutionMutation; args: unknown[]; appLogTails?: 'on-demand' }): Promise<{ value: unknown; snapshot: ExecutionSnapshot }> {
     if (!Array.isArray(data.args)) throw new Error('Execution arguments must be an array');
     const fingerprint = createHash('sha256').update(JSON.stringify([data.method, data.args])).digest('hex');
     // The receipt holds the outcome, not a snapshot that becomes stale while
     // a caller is retrying a lost response.
     const value = await this.fence.run(data.grant, data.sequence, fingerprint, () => this.invoke(data.method, data.args));
-    return { value, snapshot: await this.snapshot() };
+    return { value, snapshot: await this.snapshot(data.appLogTails === 'on-demand' ? EXECUTION_INVENTORY : {}) };
   }
 
   @Public({ auth: { roles: OWNER_ROLES } })
-  async prepare(data: { grant: ControllerGrant; candidateId: string }): Promise<{ ticket: HandoffTicket; snapshot: ExecutionSnapshot }> {
+  async prepare(data: { grant: ControllerGrant; candidateId: string; appLogTails?: 'on-demand' }): Promise<{ ticket: HandoffTicket; snapshot: ExecutionSnapshot }> {
     const ticket = await this.fence.prepare(data.grant, data.candidateId);
-    return { ticket, snapshot: await this.snapshot() };
+    return { ticket, snapshot: await this.snapshot(data.appLogTails === 'on-demand' ? EXECUTION_INVENTORY : {}) };
   }
 
   @Public({ auth: { roles: OWNER_ROLES } })
   async commit(data: { ticket: HandoffTicket; inventoryDigest: string }): Promise<ControllerGrant> {
-    const current = await this.snapshot();
+    const current = await this.snapshot(EXECUTION_INVENTORY);
     const alreadyCommitted = current.status.controller.controllerId === data.ticket.to.controllerId &&
       current.status.controller.epoch === data.ticket.to.epoch;
     if (!alreadyCommitted && data.inventoryDigest !== current.inventoryDigest) throw new Error('Execution inventory changed; reconcile the owner before committing');

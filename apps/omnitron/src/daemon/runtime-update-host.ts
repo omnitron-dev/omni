@@ -24,6 +24,7 @@ import { PROCESS_REVIEW_WAIT_MS, readRetiringRuntimeProcesses } from './runtime-
 import type { BackendControlService } from './backend-control.js';
 import type { BackendRpcService } from './backend.rpc-service.js';
 import type { ExecutionHostService } from './execution-host.js';
+import { EXECUTION_INVENTORY } from '../orchestrator/execution-contract.js';
 import type { BackupRpcService } from '../services/backup.rpc-service.js';
 import type { OperationReceipt } from '../shared/dto/execution-operations.js';
 
@@ -379,7 +380,7 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
     const owner = await privateControlClient<ExecutionHostService>(path.join(config.directory, 'owner.sock'), 'OmnitronExecution',
       preparing ? PROCESS_REVIEW_WAIT_MS : observation?.remaining());
     try {
-      const processes = await readRetiringRuntimeProcesses(() => owner.service.snapshot(), status, guardianPid, preparing ? 'prepare' : 'verify', progress);
+      const processes = await readRetiringRuntimeProcesses(() => owner.service.snapshot(EXECUTION_INVENTORY), status, guardianPid, preparing ? 'prepare' : 'verify', progress);
       return { backend: selection.current, owner: config.owner.artifact, guardian: config.backend.artifact,
         backendCommit: status.build.commit, ownerCommit: execution.ownerBuild.commit, scope: config.scope, ownerId: execution.owner.id,
         ownerPid, ownerLifetime: life.identity, guardianPid, backendPid: status.pid, revision: selection.revision,
@@ -450,7 +451,7 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
     if (!managed) throw Error('Retained launch verification requires managed execution');
     const owner = await privateControlClient<ExecutionHostService>(path.join(managed.directory, 'owner.sock'), 'OmnitronExecution', observation?.remaining());
     try {
-      const snapshot = await owner.service.snapshot();
+      const snapshot = await owner.service.snapshot(EXECUTION_INVENTORY);
       if (snapshot.status.owner.id !== ownerId) throw new RuntimeObservationConflict('Replacement owner changed during application observation');
       if (snapshot.status.phase !== 'active') throw new RuntimeObservationConflict('Replacement owner is no longer active');
       if (snapshot.status.inFlight !== 0) throw new RuntimeObservationPending('applications', 'Replacement owner has unsettled applications');

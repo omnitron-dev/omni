@@ -8,7 +8,7 @@ import { UnixSocketTransport } from '@omnitron-dev/titan/netron/transport/unix';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import type { ControllerGrant, HandoffTicket } from '@omnitron-dev/titan-pm';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
-import type { OrchestratorControl, AppExecutionView } from '../orchestrator/execution-contract.js';
+import { EXECUTION_INVENTORY, type OrchestratorControl, type AppExecutionView } from '../orchestrator/execution-contract.js';
 import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
 import type { ExecutionHostService, ExecutionSnapshot, ExecutionMutation, ExecutionRead } from './execution-host.js';
 import { EXECUTION_MUTATIONS, EXECUTION_READS, EXECUTION_METRICS } from './execution-host.js';
@@ -59,7 +59,7 @@ export class ExecutionClient {
         const owner = await peer.queryInterface<ExecutionHostService>('OmnitronExecution');
         // Check identity before sending a cursor, acknowledgment or mutation
         // retained from an earlier connection. A different owner is not adopted.
-        this.validateOwner(await owner.snapshot());
+        this.validateOwner(await owner.snapshot(EXECUTION_INVENTORY));
       },
     });
     this.connection = channel(LONG_REQUEST_TIMEOUT);
@@ -75,7 +75,7 @@ export class ExecutionClient {
   async connect(): Promise<ExecutionSnapshot> {
     if (this.closed) throw new Error('Execution client has been closed');
     this.remote = await this.connection.service<ExecutionHostService>('OmnitronExecution');
-    const snapshot = await withControlDeadline(this.remote.snapshot(), 4000, 'Execution owner observation timed out');
+    const snapshot = await withControlDeadline(this.remote.snapshot(EXECUTION_INVENTORY), 4000, 'Execution owner observation timed out');
     this.apply(snapshot);
     this.eventCursor = snapshot.acknowledgedEvent;
     return snapshot;
@@ -91,7 +91,7 @@ export class ExecutionClient {
   async recoverySnapshot(): Promise<ExecutionSnapshot> {
     if (this.closed || this.ownerChanged) throw new Error('Execution observation is unavailable');
     const remote = await this.observations.service<ExecutionHostService>('OmnitronExecution');
-    const snapshot = await remote.snapshot({ afterEvent: this.eventCursor });
+    const snapshot = await remote.snapshot({ ...EXECUTION_INVENTORY, afterEvent: this.eventCursor });
     this.apply(snapshot);
     return snapshot;
   }
@@ -116,15 +116,15 @@ export class ExecutionClient {
 
   /** A private-socket administrator explicitly replaces a dead or retiring controller. */
   async acquire(): Promise<ControllerGrant> {
-    const snapshot = await this.rpc().snapshot();
-    const prepared = await this.rpc().prepare({ grant: snapshot.status.controller, candidateId: this.controllerId });
+    const snapshot = await this.rpc().snapshot(EXECUTION_INVENTORY);
+    const prepared = await this.rpc().prepare({ ...EXECUTION_INVENTORY, grant: snapshot.status.controller, candidateId: this.controllerId });
     this.apply(prepared.snapshot);
     return this.accept(prepared.ticket, prepared.snapshot.inventoryDigest);
   }
 
   async prepare(candidateId: string): Promise<{ ticket: HandoffTicket; snapshot: ExecutionSnapshot }> {
     await this.flushSetup();
-    return this.rpc().prepare({ grant: this.currentGrant(), candidateId });
+    return this.rpc().prepare({ ...EXECUTION_INVENTORY, grant: this.currentGrant(), candidateId });
   }
 
   async accept(ticket: HandoffTicket, inventoryDigest: string): Promise<ControllerGrant> {
@@ -143,7 +143,7 @@ export class ExecutionClient {
   }
 
   async abortCandidate(candidateId: string): Promise<void> {
-    const state = (await this.rpc().snapshot()).status;
+    const state = (await this.rpc().snapshot(EXECUTION_INVENTORY)).status;
     if (state.pending?.to.controllerId === candidateId && (state.phase === 'draining' || state.phase === 'prepared')) {
       await this.abort(state.pending);
     }
@@ -155,23 +155,23 @@ export class ExecutionClient {
 
   /** Local administrator recovery, used only after the failed controller is confirmed dead. */
   async prepareReplacement(expectedOwnerId: string, candidateId: string): Promise<HandoffTicket> {
-    let snapshot = await this.rpc().snapshot();
+    let snapshot = await this.rpc().snapshot(EXECUTION_INVENTORY);
     if (snapshot.status.owner.id !== expectedOwnerId) throw new Error('Execution owner changed; recovery is refused');
     if (snapshot.status.phase === 'uncertain') {
       await this.rpc().reconcileCommit();
-      snapshot = await this.rpc().snapshot();
+      snapshot = await this.rpc().snapshot(EXECUTION_INVENTORY);
     }
     if (snapshot.status.pending && ['draining', 'prepared'].includes(snapshot.status.phase)) {
       await this.rpc().abort({ grant: snapshot.status.controller, ticket: snapshot.status.pending });
-      snapshot = await this.rpc().snapshot();
+      snapshot = await this.rpc().snapshot(EXECUTION_INVENTORY);
     }
-    return (await this.rpc().prepare({ grant: snapshot.status.controller, candidateId })).ticket;
+    return (await this.rpc().prepare({ ...EXECUTION_INVENTORY, grant: snapshot.status.controller, candidateId })).ticket;
   }
 
   /** Reviewed recovery submits exactly the approved grant. Never repairs a
    * pending handoff or substitutes a newer grant observed after approval. */
   async prepareReviewedReplacement(expectedGrant: ControllerGrant, candidateId: string): Promise<{ ticket: HandoffTicket; snapshot: ExecutionSnapshot }> {
-    return this.rpc().prepare({ grant: expectedGrant, candidateId });
+    return this.rpc().prepare({ ...EXECUTION_INVENTORY, grant: expectedGrant, candidateId });
   }
 
   /** Undo an uncommitted local recovery when its journal could not be persisted. */
@@ -233,7 +233,7 @@ export class ExecutionClient {
     try {
       if (this.ownerChanged) throw new Error('Execution owner identity changed; automatic process adoption is refused');
       const remote = await this.observations.service<ExecutionHostService>('OmnitronExecution');
-      this.apply(await remote.snapshot({ afterEvent: this.eventCursor }));
+      this.apply(await remote.snapshot({ ...EXECUTION_INVENTORY, afterEvent: this.eventCursor }));
       observed = true;
       runtimeDiagnostics.resolve('execution.observation-unavailable');
       const persistence = this.inventory?.statePersistence;
@@ -347,7 +347,7 @@ export class ExecutionClient {
   }
 
   private async submitMutation(method: ExecutionMutation, args: unknown[]): Promise<unknown> {
-    const reply = await this.rpc().mutate({ grant: this.currentGrant(), sequence: ++this.sequence, method, args });
+    const reply = await this.rpc().mutate({ ...EXECUTION_INVENTORY, grant: this.currentGrant(), sequence: ++this.sequence, method, args });
     this.apply(reply.snapshot);
     if (['startApp', 'startKnownApp', 'restartApp', 'reloadApp', 'scaleApp'].includes(method)) {
       return reply.value ? this.handle((reply.value as { appName: string }).appName) : undefined;
@@ -439,8 +439,16 @@ export class ExecutionClient {
       getAppStatus: (name: string) => this.registeredApp(name)?.info.status,
       getWatchedApps: () => this.view().watchedApps,
       getLogs: (name?: string, lines = 100) => {
-        const measured = name === undefined ? this.view().apps : [this.registeredApp(name)];
-        return measured.flatMap(app => app ? [{ app: app.info.name, lines: app.logs.slice(-lines) }] : []);
+        const inventory = this.view();
+        const canonical = name === undefined ? undefined : this.registeredApp(name)?.info.name;
+        if (name !== undefined && canonical === undefined) return [];
+        if (inventory.appLogTails === 'on-demand') return this.read('getLogs', [canonical, lines]);
+        // A legacy owner already returned its rings. Keep that synchronous
+        // contract and never ask it for a read method it does not support.
+        return inventory.apps.filter(app => canonical === undefined || app.info.name === canonical).map(app => {
+          if (!Array.isArray(app.logs)) throw Error('The execution owner omitted the requested log tail for ' + app.info.name);
+          return { app: app.info.name, lines: app.logs.slice(-lines) };
+        });
       },
       hasDeclaredReadiness: (name: string) => this.registeredApp(name)?.declaredReadiness ?? false,
       onAppLog: (handler: (name: string, line: string, context?: ProcessOutputContext) => void) => { this.logHandlers.push(handler); },
@@ -451,7 +459,7 @@ export class ExecutionClient {
         bridge.attachOrchestrator(this.orchestrator);
       },
     };
-    for (const method of EXECUTION_READS) local[method] = (...args: unknown[]) => this.read(method, args);
+    for (const method of EXECUTION_READS) if (method !== 'getLogs') local[method] = (...args: unknown[]) => this.read(method, args);
     for (const method of EXECUTION_MUTATIONS) local[method] = (...args: unknown[]) => this.mutate(method, args);
     Object.defineProperty(local, 'devMode', {
       get: () => this.view().devMode,

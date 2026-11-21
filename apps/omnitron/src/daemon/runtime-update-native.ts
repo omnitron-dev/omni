@@ -11,6 +11,7 @@ import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
 import { expandPath } from '../shared/paths.js';
 import { readSavedDaemonConfig, savedDaemonOverrides } from '../config/saved.js';
 import type { ExecutionHostService, ExecutionSnapshot } from './execution-host.js';
+import { EXECUTION_INVENTORY } from '../orchestrator/execution-contract.js';
 import type { BackendSupervisorService, SupervisorStatus } from './backend-supervisor.js';
 import type { NativeEmptyRuntimeIdentity, RuntimeUpdatePlan, RuntimeUpdateReference } from '../shared/dto/runtime-update.js';
 
@@ -86,7 +87,7 @@ async function observe(home: string, plan?: RuntimeUpdatePlan): Promise<NativeEm
     try {
       const owner = await privateControlClient<ExecutionHostService>(path.join(config.directory, 'owner.sock'), 'OmnitronExecution', 5000);
       try {
-        const [ownerState, guardianState] = await Promise.all([owner.service.snapshot(), guardian.service.status()]);
+        const [ownerState, guardianState] = await Promise.all([owner.service.snapshot(EXECUTION_INVENTORY), guardian.service.status()]);
         const dc = { ...DEFAULT_DAEMON_CONFIG, ...savedDaemonOverrides(readSavedDaemonConfig()) };
         const marker = await fs.readFile(expandPath(dc.pidFile), 'utf8').catch(error => {
           if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;

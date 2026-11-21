@@ -42,7 +42,7 @@ export async function reconcileStorageAlert(
       .where('enabled', '=', true)
       .where('expression', '=', rule.expression)
       .executeTakeFirst();
-    if (!Number(locked.numUpdatedRows)) return;
+    if (!Number(locked.numUpdatedRows)) return undefined;
     const current = await trx
       .selectFrom('alert_events')
       .selectAll()
@@ -60,11 +60,11 @@ export async function reconcileStorageAlert(
       throw Error('Storage alert has no retained fault evidence to reconcile');
     }
     const decision = storageDecision(observation, prior?.subjects ?? []);
-    if (!current && !held(decision.firing)) return;
+    if (!current && !held(decision.firing)) return undefined;
     const status = decision.firing ? 'firing' : 'resolved';
     const value = decision.firing ? decision.value : decision.restored.join(' · ');
     if (current && decision.firing && value === current.value && isDeepStrictEqual(decision.subjects, prior!.subjects))
-      return;
+      return undefined;
     const revision = (prior?.revision ?? 0) + 1;
     const eventId = current?.id ?? randomUUID();
     const firedAt = current ? new Date(current.firedAt).toISOString() : new Date(now).toISOString();
@@ -101,8 +101,7 @@ export async function reconcileStorageAlert(
       };
       await sync.bufferBatch([{ category: 'alerts', payload: { ...entry } }], trx);
     }
-    if (!current || !decision.firing) return { status, value } as const;
-    return;
+    return !current || !decision.firing ? { status, value } as const : undefined;
   });
 }
 

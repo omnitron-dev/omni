@@ -268,7 +268,7 @@ function StorageDetails({ data }: { data: SystemSnapshot }) {
         {storage && !data.unanswered.storage ? (
           <Stack spacing={1}>
             <Typography variant="body2" color={storage.status === 'degraded' ? 'error.main' : 'text.primary'}>
-              {storageHealthLabels[storage.status]}
+              {storage.status === 'healthy' ? 'All reported devices are healthy.' : storageHealthLabels[storage.status]}
             </Typography>
             {resources.length > 0 && (
               <Stack component="ul" aria-label="Storage devices" spacing={1.5} sx={{ listStyle: 'none', m: 0, p: 0 }}>

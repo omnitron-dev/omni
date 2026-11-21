@@ -30,7 +30,7 @@ export async function readRetiringRuntimeProcesses(read: () => Promise<Execution
   guardianPid: number, mode: 'prepare' | 'verify', progress: (message: string) => void = () => {}) {
   const generations = new Map(status.apps.map(app => [app.name, app.generation]));
   let firstInventory: string | undefined;
-  const snapshot = mode === 'verify' ? await read() : await observeRuntimeUntil(async () => {
+  const settled = mode === 'verify' ? await read() : await observeRuntimeUntil(async () => {
     const snapshot = await read().catch((error: unknown) => {
       if (error instanceof RuntimeObservationPending)
         throw new RuntimeObservationUnconfirmed('The private owner read did not report its activity', error);
@@ -45,8 +45,8 @@ export async function readRetiringRuntimeProcesses(read: () => Promise<Execution
     firstInventory = snapshot.inventoryDigest;
     throw new RuntimeObservationPending('applications', 'Waiting for admitted execution-owner work to finish');
   }, PROCESS_REVIEW_WAIT_MS, 'Execution owner did not settle during runtime update preparation', 500, progress);
-  return { retiredPids: retiringRuntimePids(snapshot, status.pid, guardianPid, status),
-    processInventory: { epoch: snapshot.status.controller.epoch, digest: snapshot.inventoryDigest } };
+  return { retiredPids: retiringRuntimePids(settled, status.pid, guardianPid, status),
+    processInventory: { epoch: settled.status.controller.epoch, digest: settled.inventoryDigest } };
 }
 
 /** Protocol 1 lists every pool member by PM id. A status row prints one representative. */

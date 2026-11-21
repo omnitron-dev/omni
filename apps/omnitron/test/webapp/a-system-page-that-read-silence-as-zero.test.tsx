@@ -103,6 +103,25 @@ describe('a system page that read silence as zero', () => {
     expect(screen.getByText('Mount inventory unavailable.')).toBeVisible();
   });
 
+  it('limits the healthy summary to the devices the node currently reports', async () => {
+    vi.mocked(systemInfo.getSnapshot).mockResolvedValueOnce({
+      ...snapshot,
+      storage: {
+        status: 'healthy',
+        resources: [{ kind: 'controller', name: 'nvme0', health: 'healthy', detail: 'live' }],
+        issues: [],
+      },
+    });
+    const { default: SystemInfoPage } = await import('../../webapp/src/pages/system-info.js');
+    render(
+      <ThemeProvider theme={createTheme()}>
+        <MemoryRouter initialEntries={['/system?view=storage']}><SystemInfoPage /></MemoryRouter>
+      </ThemeProvider>
+    );
+    expect(await screen.findByText('All reported devices are healthy.')).toBeVisible();
+    expect(screen.getByText('nvme0')).toBeVisible();
+  });
+
   it('identifies an older daemon that only reports filesystem capacity', async () => {
     const { default: SystemInfoPage } = await import('../../webapp/src/pages/system-info.js');
     render(

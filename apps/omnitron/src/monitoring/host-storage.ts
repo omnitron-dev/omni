@@ -49,8 +49,8 @@ function count(value: string | null): number | null {
 function token(value: string | null) {
   return value && /^[a-z0-9_-]{1,32}$/.test(value) ? value : null;
 }
-function privateKey(kind: string, identity: string) {
-  return `${kind}/${createHash('sha256').update(identity).digest('hex')}`;
+function privateKey(kind: string, identifier: string) {
+  return `${kind}/${createHash('sha256').update(identifier).digest('hex')}`;
 }
 function usableUuid(value: string | null): value is string {
   return !!value && uuid.test(value) && /[1-9a-f]/i.test(value);

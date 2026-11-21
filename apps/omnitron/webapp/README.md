@@ -13,6 +13,8 @@ The management UI for Omnitron. This private workspace application uses React, V
 
 The address identifies the workspace. Open `/` for the controller overview or `/projects/<project>` for a project. Choose a project in the header, then select **All stacks** or a stack. A filtered list has an address such as `/projects/sample/apps?stack=research`. Only an explicit workspace switch uses the last page visited in that workspace. Bookmarks, new tabs, reload, Back and Forward use the address of the selected history entry.
 
+Console remembers workspace routes separately for each signed-in account. When it first verifies an account after an upgrade, it discards bookmarks saved without an account ID. Changing accounts or losing stack inventory access clears pending stack actions and notices. An action already submitted to the daemon may still finish. The new reader sees its outcome through their own authorized inventory.
+
 **Projects** lists the workspaces registered with the connected controller. Each card counts stacks in the primary configuration and its imports, including stopped stacks. The active count includes stacks that are starting. In **Stacks**, expand **Imported stacks** to see stopped imports. A selected stack opens directly, including when its project was imported.
 
 In **Nodes**, open **Applications** to see the processes reported by a particular node. The address is `/nodes?node=<registry-id>`. The inventory requires `OmnitronNodes.getNodeDaemonStatus`. Health and logs use their respective read permissions. A log link carries the application handle and node ID. Back returns to that node's inventory.

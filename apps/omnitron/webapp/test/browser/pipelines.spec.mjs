@@ -169,7 +169,7 @@ for (const width of [1440, 360]) {
     });
     await page.addInitScript(() => {
       localStorage.setItem('omnitron_active_project', 'example');
-      localStorage.setItem('omnitron_workspace_routes', JSON.stringify({ example: '/projects/example/pipelines', other: '/projects/other/pipelines' }));
+      localStorage.setItem('omnitron_workspace_routes:reader', JSON.stringify({ example: '/projects/example/pipelines', other: '/projects/other/pipelines' }));
     });
     await page.route('**/pipelines', async route => {
       if (route.request().resourceType() !== 'document') return route.continue();

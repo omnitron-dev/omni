@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { BrowserRouter, useLocation } from 'react-router-dom';
 
 import { PrismProvider } from '@omnitron-dev/prism/core';
@@ -11,21 +10,11 @@ import { ErrorBoundary } from '@omnitron-dev/prism/components/error-boundary';
 import { MultiBackendProvider } from '@omnitron-dev/prism/netron';
 import { daemonClient } from 'src/netron/client';
 import { Router } from 'src/routes';
-import { useProjectStore } from 'src/stores/project.store';
 import { reportCrash } from 'src/utils/report-crash';
 import { omnitronTheme } from '@omnitron-dev/prism/identity';
 
 function AppContent() {
-  const { pathname, search, hash } = useLocation();
-  const saveCurrentRoute = useProjectStore((s) => s.saveCurrentRoute);
-
-  // Track route changes — save current path for workspace restore on switch
-  useEffect(() => {
-    // Don't save auth routes
-    if (!pathname.startsWith('/auth')) {
-      saveCurrentRoute(pathname + search + hash);
-    }
-  }, [pathname, search, hash, saveCurrentRoute]);
+  const { pathname } = useLocation();
 
   return (
     <>

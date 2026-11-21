@@ -32,6 +32,7 @@ const Context = createContext<AccessState>({
 /** Session-keyed provider. A failed refresh clears effective grants; the server remains authoritative. */
 export function ConsoleAccessProvider({ children }: { children: ReactNode }) {
   const user = useAuthStore((s) => s.user);
+  const { pathname, search, hash } = useLocation();
   const { data, error, refresh } = usePolledResource(() => access.describe(), {
     intervalMs: 15_000,
     enabled: Boolean(user),
@@ -60,10 +61,14 @@ export function ConsoleAccessProvider({ children }: { children: ReactNode }) {
   }, [snapshot, user, error, refresh]);
   const stackReader = value.can('OmnitronProject.listStacks') ? snapshot?.userId ?? null : null;
   const projectReader = value.can('OmnitronProject.listProjects') ? snapshot?.userId ?? null : null;
+  const account = snapshot?.userId ?? null;
   useLayoutEffect(() => {
-    useProjectStore.getState().setInventoryReaders(projectReader, stackReader);
-  }, [projectReader, stackReader]);
+    useProjectStore.getState().setInventoryReaders(projectReader, stackReader, account);
+  }, [projectReader, stackReader, account]);
   useLayoutEffect(() => () => useProjectStore.getState().setInventoryReaders(null, null), []);
+  useEffect(() => {
+    if (account) useProjectStore.getState().saveCurrentRoute(pathname + search + hash, account);
+  }, [account, pathname, search, hash]);
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 export const useAccess = () => useContext(Context);

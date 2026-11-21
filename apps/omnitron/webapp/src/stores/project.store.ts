@@ -7,14 +7,12 @@ import { isRpcTimeout } from '../utils/rpc-error';
 export { isRpcTimeout } from '../utils/rpc-error';
 import { useShallow } from 'zustand/shallow';
 import { invokeStackLifecycle, project as projectRpc } from '../netron/client';
-import { readStoredJson, writeStoredJson } from '../utils/storage';
+import { readStoredJson, removeStored, writeStoredJson } from '../utils/storage';
 import { stacksInScope } from '../utils/stack-inventory';
 import { useWorkspace, workspaceHref, workspaceLocation } from '../routes/workspace';
 import type {
   IProjectInfo,
   IStackInfo,
-  StackRuntime,
-  StackStatus,
 } from '@omnitron-dev/omnitron/dto/services';
 
 // =============================================================================
@@ -33,7 +31,6 @@ interface ProjectState {
   stackReadErrors: Record<string, string | null>;
   stackNotices: Record<string, string>;
   clearStackNotice(key: string): void;
-  stackRuntimes: Record<string, StackRuntime>;
   /** In-flight operations keyed by "project/stack" */
   pendingOps: Record<string, PendingOp>;
   /** Saved route per workspace (key = project name or '__omnitron__') */
@@ -42,10 +39,9 @@ interface ProjectState {
   error: string | null;
 
   fetchProjects: (afterChange?: boolean) => Promise<void>;
-  setInventoryReaders: (projects: string | null, stacks: string | null) => void;
+  setInventoryReaders: (projects: string | null, stacks: string | null, account?: string | null) => void;
   fetchStacks: (project: string) => Promise<IStackInfo[] | null>;
-  fetchStackStatus: (project: string, stack: string) => Promise<StackRuntime | null>;
-  saveCurrentRoute: (path: string) => void;
+  saveCurrentRoute: (path: string, owner: string) => void;
   addProject: (name: string, path: string) => Promise<void>;
   updateProject: (name: string, data: { path?: string }) => Promise<void>;
   removeProject: (name: string) => Promise<void>;
@@ -62,8 +58,6 @@ interface ProjectState {
   stopStack: (project: string, stack: string, review: string, keepInfrastructure?: boolean) => Promise<void>;
   createStack: (project: string, data: { name: string; type: 'local' | 'remote' | 'cluster'; apps: string[] | 'all'; nodeIds?: string[] }) => Promise<IStackInfo>;
   deleteStack: (project: string, stack: string) => Promise<void>;
-  /** Check if a stack has a pending operation */
-  getStackPendingOp: (project: string, stack: string) => PendingOp | null;
   /** Clear error message */
   clearError: () => void;
 }
@@ -73,6 +67,12 @@ interface ProjectState {
 // =============================================================================
 
 const STORAGE_KEY_ROUTES = 'omnitron_workspace_routes';
+const accessChanged = 'Console access changed before the operation completed.';
+
+function routesForAccount(account: string): Record<string, string> {
+  const routes = readStoredJson<Record<string, string> | null>(`${STORAGE_KEY_ROUTES}:${account}`, null);
+  return routes && typeof routes === 'object' && !Array.isArray(routes) ? routes : {};
+}
 
 export function workspaceBookmark(routes: Record<string, string>, project: string | null): string {
   const saved = routes[project ?? '__omnitron__'];
@@ -93,6 +93,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
   let projectRequest: Promise<void> | null = null;
   let stackReader: string | null = null;
   let projectReader: string | null = null;
+  let account: string | null = null;
+  let projectAccessGeneration = 0;
   let projectGeneration = 0;
   let inventoryGeneration = 0;
 
@@ -103,18 +105,78 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     return { stackNotices: next };
   });
 
-  const finishOperation = async (key: string, project: string) => {
+  const refreshAfterStackChange = async (project: string, generation: number) => {
+    if (generation !== inventoryGeneration) return;
+    // A poll already in flight can have sampled the stack before this change.
+    await stackRequests.get(project);
+    if (generation === inventoryGeneration) await get().fetchStacks(project);
+  };
+
+  const runStackOperation = async (project: string, stack: string, op: PendingOp,
+    execute: () => Promise<StackActionResult>, missingAcknowledgement: string): Promise<StackActionResult> => {
+    const key = `${project}/${stack}`;
+    if (get().pendingOps[key]) return { state: 'busy', message: `An operation is already pending for ${key}.` };
+    const generation = inventoryGeneration;
+    set(state => {
+      const stackNotices = { ...state.stackNotices };
+      delete stackNotices[key];
+      return {
+        stackNotices, pendingOps: { ...state.pendingOps, [key]: op },
+        stacksByProject: op === 'resuming' ? state.stacksByProject : patchStackStatus(state.stacksByProject, project, stack, op),
+      };
+    });
+    let result: StackActionResult;
     try {
-      // A poll already in flight may have sampled the stack before the command finished.
-      await stackRequests.get(project);
-      await get().fetchStacks(project);
-    } finally {
-      set(state => {
-        const pendingOps = { ...state.pendingOps };
-        delete pendingOps[key];
-        return { pendingOps };
-      });
+      result = await execute();
+    } catch (error) {
+      result = isRpcTimeout(error) || isLostRpcAcknowledgement(error)
+        ? { state: 'unconfirmed', message: missingAcknowledgement }
+        : { state: 'failed', message: error instanceof Error ? error.message : String(error) };
     }
+    if (generation === inventoryGeneration) {
+      if (result.state !== 'confirmed') notice(key, result.message);
+      try {
+        await refreshAfterStackChange(project, generation);
+      } finally {
+        if (generation === inventoryGeneration) set(state => {
+          const pendingOps = { ...state.pendingOps };
+          delete pendingOps[key];
+          return { pendingOps };
+        });
+      }
+    }
+    return generation === inventoryGeneration ? result : { state: 'unconfirmed', message: accessChanged };
+  };
+
+  const changeProject = async (execute: () => Promise<unknown>) => {
+    const generation = projectAccessGeneration;
+    set({ loading: Boolean(projectReader), error: null });
+    try {
+      await execute();
+      if (generation === projectAccessGeneration) await get().fetchProjects(true);
+    } catch (error) {
+      if (generation === projectAccessGeneration) {
+        set({ error: error instanceof Error ? error.message : String(error), loading: false });
+        throw error;
+      }
+    }
+    if (generation !== projectAccessGeneration) throw new Error(accessChanged);
+  };
+
+  const changeStack = async <T>(project: string, execute: () => Promise<T>, noticeKey?: string): Promise<T> => {
+    const generation = inventoryGeneration;
+    if (noticeKey) notice(noticeKey);
+    try {
+      const result = await execute();
+      await refreshAfterStackChange(project, generation);
+      if (generation === inventoryGeneration) return result;
+    } catch (error) {
+      if (generation === inventoryGeneration) {
+        if (noticeKey) notice(noticeKey, error instanceof Error ? error.message : String(error));
+        throw error;
+      }
+    }
+    throw new Error(accessChanged);
   };
 
   return {
@@ -124,9 +186,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
   stackReadErrors: {},
   stackNotices: {},
   clearStackNotice: key => notice(key),
-  stackRuntimes: {},
   pendingOps: {},
-  workspaceRoutes: readStoredJson<Record<string, string>>(STORAGE_KEY_ROUTES, {}),
+  workspaceRoutes: {},
   loading: false,
   error: null,
 
@@ -149,18 +210,29 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     }
   },
 
-  setInventoryReaders: (projects, stacks) => {
-    if (projectReader !== projects) {
+  setInventoryReaders: (projects, stacks, nextAccount = projects ?? stacks) => {
+    const accountChanged = account !== nextAccount;
+    const changeProjects = accountChanged || projectReader !== projects;
+    const changeStacks = accountChanged || stackReader !== stacks;
+    if (!changeProjects && !changeStacks) return;
+    account = nextAccount;
+    if (changeProjects) {
       projectReader = projects;
       projectGeneration++;
+      projectAccessGeneration++;
       projectRequest = null;
-      set({ projects: [], hasProjectSnapshot: false, loading: false, error: null });
     }
-    if (stackReader === stacks) return;
-    stackReader = stacks;
-    inventoryGeneration++;
-    stackRequests.clear();
-    set({ stacksByProject: {}, stackReadErrors: {} });
+    if (changeStacks) {
+      stackReader = stacks;
+      inventoryGeneration++;
+      stackRequests.clear();
+    }
+    if (accountChanged) removeStored(STORAGE_KEY_ROUTES);
+    set({
+      ...(changeProjects && { projects: [], hasProjectSnapshot: false, loading: false, error: null }),
+      ...(changeStacks && { stacksByProject: {}, stackReadErrors: {}, stackNotices: {}, pendingOps: {} }),
+      ...(accountChanged && { workspaceRoutes: account ? routesForAccount(account) : {} }),
+    });
   },
 
   fetchStacks: async (projectName: string) => {
@@ -191,166 +263,54 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     }
   },
 
-  fetchStackStatus: async (projectName: string, stackName: string) => {
-    try {
-      const runtime = await projectRpc.getStackStatus({ project: projectName, stack: stackName });
-      set((state) => ({
-        stackRuntimes: { ...state.stackRuntimes, [`${projectName}/${stackName}`]: runtime },
-      }));
-      return runtime;
-    } catch (err) {
-      set({ error: (err as Error).message });
-      return null;
-    }
-  },
-
-  saveCurrentRoute: (path) => {
+  saveCurrentRoute: (path, owner) => {
+    if (account !== owner) return;
     const { project } = workspaceLocation({ pathname: path.split(/[?#]/)[0]! });
     const key = project ?? '__omnitron__';
     if (get().workspaceRoutes[key] === path) return;
     const routes = { ...get().workspaceRoutes, [key]: path };
+    writeStoredJson(`${STORAGE_KEY_ROUTES}:${account}`, routes);
     set({ workspaceRoutes: routes });
-    writeStoredJson(STORAGE_KEY_ROUTES, routes);
   },
 
-  addProject: async (name: string, path: string) => {
-    try {
-      set({ loading: true, error: null });
-      await projectRpc.addProject({ name, path });
-      await get().fetchProjects(true);
-    } catch (err) {
-      set({ error: (err as Error).message, loading: false });
-      throw err;
-    }
-  },
+  addProject: (name, path) => changeProject(() => projectRpc.addProject({ name, path })),
+  updateProject: (name, data) => changeProject(() => projectRpc.updateProject({ name, ...data })),
+  removeProject: name => changeProject(() => projectRpc.removeProject({ name })),
 
-  updateProject: async (name: string, data: { path?: string }) => {
-    try {
-      set({ loading: true, error: null });
-      await projectRpc.updateProject({ name, ...data });
-      await get().fetchProjects(true);
-    } catch (err) {
-      set({ error: (err as Error).message, loading: false });
-      throw err;
-    }
-  },
-
-  removeProject: async (name: string) => {
-    try {
-      set({ loading: true, error: null });
-      await projectRpc.removeProject({ name });
-      await get().fetchProjects(true);
-    } catch (err) {
-      set({ error: (err as Error).message, loading: false });
-      throw err;
-    }
-  },
-
-  startStack: async (projectName: string, stackName: string, opts?: { release?: string; allowDirty?: boolean; workingTree?: boolean }) => {
-    const opKey = `${projectName}/${stackName}`;
-    if (get().pendingOps[opKey]) return { state: 'busy', message: `An operation is already pending for ${opKey}.` };
-
-    // Optimistic: mark as starting immediately
-    notice(opKey);
-    set((s) => ({
-      pendingOps: { ...s.pendingOps, [opKey]: 'starting' as PendingOp },
-      stacksByProject: patchStackStatus(s.stacksByProject, projectName, stackName, 'starting'),
-    }));
-
-    try {
-      const stack = await invokeStackLifecycle('startStack', {
-        project: projectName,
-        stack: stackName,
-        ...(opts?.release ? { release: opts.release } : {}),
-        ...(opts?.workingTree ? { workingTree: true } : {}),
-        ...(opts?.allowDirty ? { allowDirty: true } : {}),
-      });
-      const { outcome, issues, online, total } = readStackStart(stack);
-      if (outcome === 'confirmed') return { state: outcome };
-      const message = `${opKey}: ${online}/${total} apps online. ${issues.join('; ')}.`;
-      notice(opKey, message);
-      return { state: outcome, message };
-    } catch (err) {
-      const unconfirmed = isRpcTimeout(err) || isLostRpcAcknowledgement(err);
-      const message = unconfirmed
-        ? `No start acknowledgement for ${opKey}. Inspect the stack and deployment history before retrying.`
-        : err instanceof Error ? err.message : String(err);
-      notice(opKey, message);
-      return { state: unconfirmed ? 'unconfirmed' : 'failed', message };
-    } finally {
-      await finishOperation(opKey, projectName);
-    }
-  },
+  startStack: (project, stack, opts) => runStackOperation(project, stack, 'starting', async () => {
+    const reply = await invokeStackLifecycle('startStack', { project, stack,
+      ...(opts?.release && { release: opts.release }), ...(opts?.workingTree && { workingTree: true }),
+      ...(opts?.allowDirty && { allowDirty: true }),
+    });
+    const { outcome, issues, online, total } = readStackStart(reply);
+    return outcome === 'confirmed' ? { state: outcome }
+      : { state: outcome, message: `${project}/${stack}: ${online}/${total} apps online. ${issues.join('; ')}.` };
+  }, `No start acknowledgement for ${project}/${stack}. Inspect the stack and deployment history before retrying.`),
 
   resumeInstalledStack: async (project, stack) => {
-    const key = `${project}/${stack}`;
-    if (get().pendingOps[key]) return;
-    notice(key);
-    set(state => ({ pendingOps: { ...state.pendingOps, [key]: 'resuming' } }));
-    try {
+    await runStackOperation(project, stack, 'resuming', async () => {
       const result = await invokeStackLifecycle('resumeInstalledStack', { project, stack });
-      if (result.outcome !== 'running') {
-        const issues = result.nodes.filter(node => node.outcome !== 'running')
-          .map(node => [node.node, node.outcome, node.reason].filter(Boolean).join(' · '));
-        notice(key, [`Resume ${result.outcome}`, ...issues, result.operationId].join(' · '));
-      }
-    } catch (error) {
-      notice(key, isRpcTimeout(error) || isLostRpcAcknowledgement(error)
-        ? 'Resume acknowledgement unavailable. Check the stack and each recipient before another recovery.'
-        : error instanceof Error ? error.message : String(error));
-    } finally {
-      await finishOperation(key, project);
-    }
+      if (result.outcome === 'running') return { state: 'confirmed' };
+      const issues = result.nodes.filter(node => node.outcome !== 'running')
+        .map(node => [node.node, node.outcome, node.reason].filter(Boolean).join(' · '));
+      return { state: 'unconfirmed', message: [`Resume ${result.outcome}`, ...issues, result.operationId].join(' · ') };
+    }, 'Resume acknowledgement unavailable. Check the stack and each recipient before another recovery.');
   },
 
-  stopStack: async (projectName: string, stackName: string, review: string, keepInfrastructure = false) => {
-    const opKey = `${projectName}/${stackName}`;
-    if (get().pendingOps[opKey]) return;
-
-    notice(opKey);
-    set((s) => ({
-      pendingOps: { ...s.pendingOps, [opKey]: 'stopping' as PendingOp },
-      stacksByProject: patchStackStatus(s.stacksByProject, projectName, stackName, 'stopping'),
-    }));
-
-    try {
-      const result = await invokeStackLifecycle('stopStack', { project: projectName, stack: stackName, review,
-        ...(keepInfrastructure && { keepInfrastructure: true }) });
+  stopStack: async (project, stack, review, keepInfrastructure = false) => {
+    await runStackOperation(project, stack, 'stopping', async () => {
+      const result = await invokeStackLifecycle('stopStack', { project, stack, review, ...(keepInfrastructure && { keepInfrastructure: true }) });
       if (result.status !== 'stopped' || result.stopOperation?.phase !== 'stopped') throw new Error('Daemon did not confirm the complete stack stop');
       if (keepInfrastructure && result.stopOperation.keepInfrastructure !== true)
         throw new Error('Daemon did not confirm infrastructure preservation. Inspect the stop operation before retrying.');
-    } catch (err) {
-      notice(opKey, isRpcTimeout(err) || isLostRpcAcknowledgement(err)
-        ? 'Stop acknowledgement has not arrived. Check the stack operation before retrying; applications may still be running.'
-        : (err as Error).message);
-    } finally {
-      await finishOperation(opKey, projectName);
-    }
+      return { state: 'confirmed' };
+    }, 'Stop acknowledgement has not arrived. Check the stack operation before retrying; applications may still be running.');
   },
 
-  createStack: async (projectName: string, data: { name: string; type: 'local' | 'remote' | 'cluster'; apps: string[] | 'all'; nodeIds?: string[] }) => {
-    try {
-      set({ error: null });
-      const result = await projectRpc.createStack({ project: projectName, ...data });
-      await get().fetchStacks(projectName);
-      return result;
-    } catch (err) {
-      set({ error: (err as Error).message });
-      throw err;
-    }
+  createStack: (project, data) => changeStack(project, () => projectRpc.createStack({ project, ...data })),
+  deleteStack: async (project, stack) => {
+    await changeStack(project, () => projectRpc.deleteStack({ project, stack }), `${project}/${stack}`);
   },
-  deleteStack: async (projectName: string, stackName: string) => {
-    try {
-      notice(`${projectName}/${stackName}`);
-      await projectRpc.deleteStack({ project: projectName, stack: stackName });
-      await get().fetchStacks(projectName);
-    } catch (err) {
-      notice(`${projectName}/${stackName}`, (err as Error).message);
-      throw err;
-    }
-  },
-
-  getStackPendingOp: (projectName: string, stackName: string) => get().pendingOps[`${projectName}/${stackName}`] ?? null,
 
   clearError: () => set({ error: null }),
   };
@@ -365,7 +325,7 @@ function patchStackStatus(
   byProject: Record<string, IStackInfo[]>,
   project: string,
   stack: string,
-  status: StackStatus,
+  status: IStackInfo['status'],
 ): Record<string, IStackInfo[]> {
   const stacks = byProject[project];
   if (!stacks) return byProject;

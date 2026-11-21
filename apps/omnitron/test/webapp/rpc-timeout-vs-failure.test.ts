@@ -24,7 +24,6 @@ vi.mock('../../webapp/src/netron/client', () => ({
   project: {
     listProjects: vi.fn(async () => []),
     listStacks: vi.fn(async () => []),
-    getStackStatus: vi.fn(async () => null),
   },
 }));
 

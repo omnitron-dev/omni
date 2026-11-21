@@ -1,16 +1,3 @@
-import { Can, useAccess } from 'src/auth/access';
-/**
- * ProjectsPage — Project management in the Omnitron system workspace
- *
- * Card grid showing all registered projects with:
- * - Status indicator (running stacks / total)
- * - Path, registration date, enabled stacks
- * - Edit dialog to change project path
- * - Add / Remove project actions
- *
- * Available in the INFRASTRUCTURE sidebar (no active project required).
- */
-
 import { useId, useState, useEffect, useCallback } from 'react';
 import { Link as RouterLink, useSearchParams } from 'react-router-dom';
 import Box from '@mui/material/Box';
@@ -33,6 +20,7 @@ import TextField from '@mui/material/TextField';
 import Divider from '@mui/material/Divider';
 
 import { Alert } from '@omnitron-dev/prism/components/alert';
+import { Can, useAccess } from 'src/auth/access';
 import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import { EmptyContent } from '@omnitron-dev/prism/components/empty-content';
 import { Label } from '@omnitron-dev/prism/components/label';
@@ -91,7 +79,7 @@ function ProjectCard({
             </Box>
           </Stack>
           <Label color={hasRunning ? 'success' : 'default'}>
-            {project.runningStacks} of {project.totalStacks} {project.totalStacks === 1 ? 'stack' : 'stacks'} active
+            {project.runningStacks} of {project.totalStacks} registered {project.totalStacks === 1 ? 'stack' : 'stacks'} active
           </Label>
           {imported > 0 && imported <= project.totalStacks && (
             <Typography component="p" variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
@@ -346,6 +334,7 @@ function AddProjectDialog({
 
 export default function ProjectsPage() {
   const projects = useProjectStore((s) => s.projects);
+  const hasProjectSnapshot = useProjectStore((s) => s.hasProjectSnapshot);
   const loading = useProjectStore((s) => s.loading);
   const error = useProjectStore((s) => s.error);
   const clearError = useProjectStore((s) => s.clearError);
@@ -469,17 +458,16 @@ export default function ProjectsPage() {
 
       {projects.length > 0 && can('OmnitronNodes.listNodes') && can('OmnitronNodes.getNodeDaemonStatus') && (
         <Typography variant="body2" color="text.secondary">
-          Stacks registered with this controller.{' '}
           <Link component={RouterLink} to="/nodes">View applications by node</Link>
         </Typography>
       )}
       {error && (
-        <Alert closable severity="error" onClose={clearError}>
+        <Alert closable={projects.length > 0} severity="error" onClose={clearError}>
           {error}
         </Alert>
       )}
 
-      {loading && projects.length === 0 ? (
+      {projects.length === 0 && error ? null : projects.length === 0 && !hasProjectSnapshot ? (
         <Grid container spacing={3}>
           {[1, 2, 3].map((i) => (
             <Grid key={i} size={{ xs: 12, sm: 6, md: 4 }}>
@@ -487,7 +475,7 @@ export default function ProjectsPage() {
             </Grid>
           ))}
         </Grid>
-      ) : error && projects.length === 0 ? null : projects.length === 0 ? (
+      ) : projects.length === 0 ? (
         <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300 }}>
           <EmptyContent
             title="No projects"

@@ -28,6 +28,7 @@ export type StackActionResult = { state: 'confirmed' } | { state: 'partial' | 'u
 
 interface ProjectState {
   projects: IProjectInfo[];
+  hasProjectSnapshot: boolean;
   stacksByProject: Record<string, IStackInfo[]>;
   stackReadErrors: Record<string, string | null>;
   stackNotices: Record<string, string>;
@@ -118,6 +119,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
 
   return {
   projects: [],
+  hasProjectSnapshot: false,
   stacksByProject: {},
   stackReadErrors: {},
   stackNotices: {},
@@ -137,7 +139,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     const generation = ++projectGeneration;
     set({ loading: true, error: null });
     const request = projectRpc.listProjects().then(projects => {
-      if (generation === projectGeneration) set({ projects, loading: false });
+      if (generation === projectGeneration) set({ projects, hasProjectSnapshot: true, loading: false });
     }).catch((err: Error) => {
       if (generation === projectGeneration) set({ error: err.message, loading: false });
     });
@@ -152,7 +154,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       projectReader = projects;
       projectGeneration++;
       projectRequest = null;
-      set({ projects: [], loading: false, error: null });
+      set({ projects: [], hasProjectSnapshot: false, loading: false, error: null });
     }
     if (stackReader === stacks) return;
     stackReader = stacks;

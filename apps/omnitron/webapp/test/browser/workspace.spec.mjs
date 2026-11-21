@@ -18,7 +18,7 @@ test('the project directory identifies a workspace once and explains its registe
   const card = page.getByRole('article', { name: 'Catalog', exact: true });
   const link = card.getByRole('link', { name: 'Catalog', exact: true });
   await expect(card.getByText(/^catalog$/i)).toHaveCount(1);
-  await expect(card.getByText('1 of 9 stacks active')).toBeVisible();
+  await expect(card.getByText('1 of 9 registered stacks active')).toBeVisible();
   await expect(card.getByText('1 in primary configuration · 8 imported')).toBeVisible();
   await expect(card.getByText('dev', { exact: true })).toHaveCount(1);
   await expect(link).toHaveAttribute('href', '/projects/catalog');
@@ -26,7 +26,7 @@ test('the project directory identifies a workspace once and explains its registe
   await expect(link.getByRole('button')).toHaveCount(0);
   const billing = page.getByRole('article', { name: 'Billing', exact: true });
   await expect(billing.getByText('billing-api', { exact: true })).toBeVisible();
-  await expect(billing.getByText('1 of 1 stack active')).toBeVisible();
+  await expect(billing.getByText('1 of 1 registered stack active')).toBeVisible();
   await expect(billing.getByText(/imported/)).toHaveCount(0);
   await card.getByRole('button', { name: 'Settings for catalog' }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
@@ -41,11 +41,26 @@ test('the project directory identifies a workspace once and explains its registe
 });
 
 test('project catalogue failure offers a refresh without claiming that the registry is empty', async ({ page, url }) => {
-  await stubInventory(page, { 'OmnitronProject.listProjects': new Error('Catalogue unavailable') });
+  let received;
+  let respond;
+  const firstRead = new Promise(resolve => { received = resolve; });
+  const pending = new Promise(resolve => { respond = resolve; });
+  let available = false;
+  await stubInventory(page, { 'OmnitronProject.listProjects': () => {
+    received();
+    return available ? [] : pending;
+  } });
   await page.goto(url + '/projects');
+  await firstRead;
+  await expect(page.getByText('No projects', { exact: true })).toHaveCount(0);
+  respond(new Error('Catalogue unavailable'));
   await expect(page.getByText('Catalogue unavailable')).toBeVisible();
   await expect(page.getByText('No projects', { exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toBeEnabled();
+  await expect(page.getByRole('alert').getByRole('button')).toHaveCount(0);
+  available = true;
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await expect(page.getByText('No projects', { exact: true })).toBeVisible();
+  await expect(page.getByText('Catalogue unavailable')).toHaveCount(0);
 });
 
 test('stopped imports are grouped and direct stack filters always reveal the selected deployment', async ({ page, url }) => {

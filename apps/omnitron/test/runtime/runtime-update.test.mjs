@@ -12,7 +12,7 @@ const { runRuntimeUpdate, readRuntimeUpdateReceipt, readPreparedRuntimeUpdate } 
 const { assertLocalIdle, assertLocalReview, assertReviewedBoot, assertSameSavedSelection, assertLocalServiceTargets, assertRetainedRuntimeInfrastructure, assertRollbackStackScope, withServingRollbackAdmission } = await loader.import('../../src/daemon/runtime-update-host.ts', import.meta.url);
 const { readRetiringRuntimeProcesses } = await loader.import('../../src/daemon/runtime-update-processes.ts', import.meta.url);
 const { assertReviewableBackendActivity, retainReviewedBackups } = await loader.import('../../src/shared/backup-admission.ts', import.meta.url);
-const { RuntimeObservationTimeout, RuntimeObservationUnconfirmed } = await loader.import('../../src/daemon/runtime-observation.ts', import.meta.url);
+const { RuntimeObservationPending, RuntimeObservationTimeout, RuntimeObservationUnconfirmed } = await loader.import('../../src/daemon/runtime-observation.ts', import.meta.url);
 import { BACKEND_ACTIVITY_COUNTERS } from '../../src/shared/dto/backend.ts';
 
 test('local and standalone fleet review distinguish missing, invalid and active operations', () => {
@@ -690,7 +690,11 @@ test('reconciliation confirms a serving candidate after a lost result without re
   assert.equal(starts, 1); assert.equal(stops, 1);
 });
 
-for (const error of [new RuntimeObservationTimeout('acceptance pending'), new RuntimeObservationUnconfirmed('RPC result lost')])
+for (const error of [
+  new RuntimeObservationTimeout('Acceptance remains unconfirmed', 1000,
+    new RuntimeObservationPending('console', 'Waiting for the serving Console', 73)),
+  new RuntimeObservationUnconfirmed('RPC result lost'),
+])
 test(`${error.code} retains the serving candidate without starting an automatic rollback`, async t => {
   const directory = await privateInstance(t);
   const plan = planFor(directory, { pid: process.pid, generation: 'original' });
@@ -708,7 +712,9 @@ test(`${error.code} retains the serving candidate without starting an automatic 
   };
   const review = await runRuntimeUpdate({ actions, directory, operation: 'prepare' });
   await assert.rejects(runRuntimeUpdate({ actions, directory, operation: 'apply', digest: review.digest }), cause => cause === error);
-  assert.equal((await readRuntimeUpdateReceipt(directory)).phase, 'recovery-required');
+  const receipt = await readRuntimeUpdateReceipt(directory);
+  assert.equal(receipt.phase, 'recovery-required');
+  assert.equal(receipt.error, error.message);
   assert.equal(stops, 1); assert.equal(starts, 1);
   ready = true;
   assert.equal((await runRuntimeUpdate({ actions, directory, operation: 'reconcile', digest: review.digest })).phase, 'accepted');

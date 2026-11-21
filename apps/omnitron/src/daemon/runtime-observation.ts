@@ -38,6 +38,15 @@ export class RuntimeObservationUnconfirmed extends Error {
 
 export class RuntimeObservationTimeout extends RuntimeObservationUnconfirmed {
   override readonly code = 'RUNTIME_OBSERVATION_TIMEOUT';
+  readonly details?: { timeoutMs: number; lastObservation?: { stage: string; pid?: number; reason: string } };
+
+  constructor(label: string, timeoutMs?: number, pending?: RuntimeObservationPending) {
+    const limit = timeoutMs === undefined ? label : `${label} after ${timeoutMs} ms`;
+    const last = pending && { ...pending.details, reason: pending.message };
+    const pid = last?.pid === undefined ? '' : ` (PID ${last.pid})`;
+    super(last ? `${limit}. Last pending observation in ${last.stage}${pid} — ${last.reason}` : limit, pending);
+    if (timeoutMs !== undefined) this.details = { timeoutMs, ...(last && { lastObservation: last }) };
+  }
 }
 
 /** A complete observation contradicts the reviewed intent. */
@@ -53,23 +62,24 @@ export interface RuntimeObservation {
 /** One deadline covers the entire read-only observation, including its leaf
  * calls. An expired observation cannot publish success or authorize recovery. */
 export async function withRuntimeObservation<T>(observe: (observation: RuntimeObservation) => Promise<T>,
-  budget: number, label: string): Promise<T> {
+  budget: number, label: string, lastPending?: () => RuntimeObservationPending | undefined): Promise<T> {
   if (!Number.isFinite(budget) || budget <= 0) throw Error('Invalid runtime observation budget');
   const deadline = performance.now() + budget;
   const controller = new AbortController();
+  const timeout = () => new RuntimeObservationTimeout(label, budget, lastPending?.());
   const observation: RuntimeObservation = {
     signal: controller.signal,
     remaining(maximum = budget) {
       controller.signal.throwIfAborted();
       const left = Math.ceil(deadline - performance.now());
-      if (left <= 0) throw new RuntimeObservationTimeout(label);
+      if (left <= 0) throw timeout();
       return Math.max(1, Math.min(left, maximum));
     },
   };
   let timer: ReturnType<typeof setTimeout> | undefined;
   const expired = new Promise<never>((_resolve, reject) => {
     timer = setTimeout(() => {
-      const error = new RuntimeObservationTimeout(label);
+      const error = timeout();
       controller.abort(error);
       reject(error);
     }, budget);
@@ -86,8 +96,8 @@ export async function withRuntimeObservation<T>(observe: (observation: RuntimeOb
 
 export function observeRuntimeUntil<T>(observe: (observation: RuntimeObservation) => Promise<T>,
   budget: number, label: string, interval = 2000, progress: (message: string) => void = () => {}): Promise<T> {
+  let pending: RuntimeObservationPending | undefined;
   return withRuntimeObservation(async observation => {
-    let pending: RuntimeObservationPending | undefined;
     for (;;) {
       observation.remaining();
       try { return await observe(observation); }
@@ -99,5 +109,5 @@ export function observeRuntimeUntil<T>(observe: (observation: RuntimeObservation
       }
       await delay(Math.min(interval, observation.remaining()), undefined, { signal: observation.signal });
     }
-  }, budget, label);
+  }, budget, label, () => pending);
 }

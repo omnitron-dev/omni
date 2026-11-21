@@ -482,6 +482,11 @@ infrastructure as one observation. Its 15-minute deadline covers the complete
 check, including the remaining budgets passed to CLI and RPC reads. Only an
 explicit pending observation is retried: for example, the serving controller's
 own startup lease, an unsettled recovery certificate or application readiness.
+If the deadline expires, the CLI reports `RUNTIME_OBSERVATION_TIMEOUT` and the
+budget in `details.timeoutMs`. When a subsystem reported a pending state,
+`details.lastObservation` includes its stage, reason and any reported PID.
+The update journal preserves that last observation in `receipt.error` for
+offline inspection.
 A foreign lease, changed intent or invalid evidence cannot become a retry by
 matching an error message. An accepted digest can be checked again without
 restarting a stack. The instance keeps the previous receipt when a new reviewed

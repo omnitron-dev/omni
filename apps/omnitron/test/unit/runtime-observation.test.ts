@@ -60,7 +60,10 @@ describe('runtime acceptance observation', () => {
       observation.remaining();
       return 'late success';
     }, 25, 'acceptance');
-    await expect(attempt).rejects.toBeInstanceOf(RuntimeObservationTimeout);
+    await expect(attempt).rejects.toMatchObject({
+      code: 'RUNTIME_OBSERVATION_TIMEOUT', details: { timeoutMs: 25 },
+    });
+    await expect(attempt).rejects.not.toHaveProperty('details.lastObservation');
     expect(signal?.aborted).toBe(true);
     complete();
     await new Promise(resolve => setTimeout(resolve, 0));
@@ -77,12 +80,19 @@ describe('runtime acceptance observation', () => {
     expect(budgets[1]).toBeLessThan(budgets[0]!);
   });
 
-  it('keeps timeout identity when the deadline interrupts a pending delay', async () => {
+  it('reports the last confirmed wait reason when the deadline interrupts a retry delay', async () => {
     let attempts = 0;
-    await expect(observeRuntimeUntil(async () => {
+    const pending = new RuntimeObservationPending('console', 'Waiting for the reviewed Console startup observation', 73);
+    const attempt = observeRuntimeUntil(async () => {
       attempts++;
-      throw new RuntimeObservationPending('controller', 'startup has not settled');
-    }, 25, 'acceptance', 1000)).rejects.toBeInstanceOf(RuntimeObservationTimeout);
+      throw pending;
+    }, 25, 'acceptance', 1000);
+    await expect(attempt).rejects.toBeInstanceOf(RuntimeObservationTimeout);
+    await expect(attempt).rejects.toMatchObject({
+      cause: pending,
+      message: expect.stringContaining('console (PID 73) — Waiting for the reviewed Console startup observation'),
+      details: { timeoutMs: 25, lastObservation: { stage: 'console', pid: 73, reason: pending.message } },
+    });
     expect(attempts).toBe(1);
   });
 });

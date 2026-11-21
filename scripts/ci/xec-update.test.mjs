@@ -213,7 +213,10 @@ test('check builds one isolated local revision and apply consumes the same verif
   await runUpdate(['local-check', '--cache-dir', cache], options);
   assert(!(await fs.readdir(cache)).some(entry => entry.startsWith('.build-')), 'isolated source cleanup must finish before admission');
   await runUpdate(['local-apply', '--cache-dir', cache], options);
-  assert.equal(events.filter(([command, arg]) => command === 'pnpm' && arg === 'install').length, 1);
+  assert.deepEqual(events.filter(([command]) => command === 'pnpm'), [
+    ['pnpm', 'install', '--frozen-lockfile'],
+    ['pnpm', 'exec', 'turbo', 'run', 'build', '--filter=@omnitron-dev/omnitron', '--filter=@omnitron/console'],
+  ]);
   assert.equal(events.filter(call => call.includes('upgrade')).length, 2);
   assert.ok(!events.some(call => call.includes('test') || call.includes('publish')));
   await runUpdate(['local-sync', '--cache-dir', cache], options);

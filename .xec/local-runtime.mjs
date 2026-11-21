@@ -81,8 +81,9 @@ export async function withLocalRuntime(root, cache, run, progress, use, { prepar
       await command('pnpm', ['install', '--frozen-lockfile']);
       await command(process.execPath, ['--input-type=module', '--eval',
         "import { assertBuildDependencies } from './.xec/release-policy.mjs'; await assertBuildDependencies(process.cwd());"]);
-      progress('Building backend, SDK dependencies and Console');
-      await command('pnpm', ['run', 'build']);
+      progress('Building backend, Console and their dependencies');
+      await command('pnpm', ['exec', 'turbo', 'run', 'build',
+        '--filter=@omnitron-dev/omnitron', '--filter=@omnitron/console']);
       // Turbo can correctly reuse identical output across source commits. Bind both public entry points to this checkout.
       for (const outputDir of ['apps/omnitron/dist', 'apps/omnitron/webapp/dist'])
         await command(process.execPath, ['apps/omnitron/scripts/stamp-build.mjs', outputDir]);

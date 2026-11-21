@@ -222,8 +222,9 @@ verify the permitted operations against the retained containers and volumes.
 ## Local development rollout
 
 Finish a reviewed batch on a macOS development machine from its clean main
-checkout. The build uses local Git, frozen pnpm dependencies and the Turbo
-cache. `OMNITRON_DEV_CACHE` selects a private build cache on the development
+checkout. Xec builds the backend, Console and their transitive build dependencies
+from local Git using the frozen pnpm lockfile and the Turbo cache.
+`OMNITRON_DEV_CACHE` selects a private build cache on the development
 volume. During preparation, Xec reuses the sealed runtime for the same commit,
 platform and Node version. Omnitron installs that runtime and records its identity
 in the plan. Applying a reviewed plan resolves the installed runtime by digest

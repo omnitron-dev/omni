@@ -6,7 +6,7 @@ import { OMNITRON_HOME } from '../config/defaults.js';
 import { verifyRuntimeArtifact } from '../shared/runtime-artifact.js';
 import { readPreparedRuntimeUpdate, readRuntimeUpdateReceipt, runRuntimeUpdate } from '../daemon/runtime-update.js';
 import { reviewRuntimeInfrastructure, runtimeUpdateActions, verifyRuntimeUpdateTarget } from '../daemon/runtime-update-host.js';
-import { emitError, emitInfo, emitJson, emitStep } from './output.js';
+import { emitError, emitInfo, emitJson, emitStep, isJsonMode } from './output.js';
 import { readCommandResult } from '../shared/command-result.js';
 import { UPDATE_PROGRESS_ENV, withRuntimeUpdateProgress, writeRuntimeProgress } from '../shared/runtime-update-progress.js';
 import type { RuntimeUpdateCall } from '../daemon/runtime-update-host.js';
@@ -40,15 +40,22 @@ export async function reviewStackStopRuntime(artifact: string, controller: { ins
   return infrastructure;
 }
 
-async function inspect(digest?: string): Promise<RuntimeUpdateStatus> {
+async function readJournal(digest?: string): Promise<Pick<RuntimeUpdateStatus, 'prepared' | 'receipt'>> {
   const prepared = await readPreparedRuntimeUpdate(directory);
   const receipt = await readRuntimeUpdateReceipt(directory, digest);
-  const selected = digest ? receipt ?? (prepared?.digest === digest ? prepared : null) : prepared ?? receipt;
-  if (digest && !selected) throw Error('No local update has the requested plan digest');
-  if (selected && selected.plan.instance !== OMNITRON_HOME) throw Error('The local update belongs to another instance');
+  const reviewed = !digest || prepared?.digest === digest ? prepared : null;
+  if (digest && !reviewed && !receipt) throw Error('No local update has the requested plan digest');
+  if ([reviewed, receipt].some(entry => entry && entry.plan.instance !== OMNITRON_HOME))
+    throw Error('The local update belongs to another instance');
+  return { prepared: reviewed, receipt };
+}
+
+async function inspect(digest?: string): Promise<RuntimeUpdateStatus> {
+  const journal = await readJournal(digest);
+  const selected = digest ? journal.receipt ?? journal.prepared : journal.prepared ?? journal.receipt;
   const runtime = selected ? await verifyRuntimeUpdateTarget(path.join(OMNITRON_HOME, 'runtime', 'releases', selected.plan.target.artifact), selected.plan.target.artifact) : null;
   if (runtime && runtime.commit !== selected!.plan.target.commit) throw Error('Installed runtime revision differs from the reviewed plan');
-  return { prepared: !digest || prepared?.digest === digest ? prepared : null, receipt, runtime };
+  return { ...journal, runtime };
 }
 
 async function runsTarget(runtime: VerifiedRuntimeReference): Promise<boolean> {
@@ -64,9 +71,9 @@ export async function runtimeVerifyCommand(runtime: string): Promise<void> {
   } catch (error) { emitError(error); process.exitCode = 1; }
 }
 
-export async function runtimeUpdateStatusCommand(digest?: string): Promise<void> {
+export async function runtimeUpdateStatusCommand(digest?: string, journalOnly = false): Promise<void> {
   try {
-    const status = await inspect(digest);
+    const status = journalOnly || (!digest && !isJsonMode()) ? await readJournal(digest) : await inspect(digest);
     if (!emitJson(status)) emitInfo(JSON.stringify(status, null, 2));
   } catch (error) { emitError(error); process.exitCode = 1; }
 }
@@ -80,7 +87,7 @@ export async function runtimeUpdateCommand(operation: 'prepare' | 'apply' | 'rec
       // Its receipt still pins every role and effect; do not delegate recovery
       // back to the old interpreter whose defect may have caused the failure.
       const ownRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
-      if (path.dirname(ownRoot) === path.join(OMNITRON_HOME, 'runtime', 'releases'))
+      if (runtime?.directory !== ownRoot && path.dirname(ownRoot) === path.join(OMNITRON_HOME, 'runtime', 'releases'))
         runtime = await verifyRuntimeUpdateTarget(ownRoot, path.basename(ownRoot));
     }
     if (!runtime) throw Error('No verified candidate is available for this local update');

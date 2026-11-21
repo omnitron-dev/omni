@@ -635,6 +635,12 @@ test('native recovery records backend absence before stopping and resumes a lost
   const recovered = await runRuntimeUpdate({ actions, directory, operation: 'recover', digest: review.digest });
   assert.equal(recovered.phase, 'rolled-back');
   assert.equal(captures, 1, 'a clean native shutdown reuses its durable identity');
+  const timings = recovered.phaseEnteredAt;
+  for (const phase of ['draining', 'stopping', 'starting', 'verifying', 'recovery-required', 'restoring', 'rolled-back']) {
+    assert.ok(Number.isFinite(Date.parse(timings[phase])), 'missing first observation for ' + phase);
+  }
+  assert.equal(timings.accepted, undefined);
+  assert.equal(timings['rolled-back'], recovered.updatedAt);
   assert.equal(stops, 2, 'original and candidate each stopped once');
   assert.equal(starts, 2, 'candidate and restoration each started once');
   assert.deepEqual(await runRuntimeUpdate({ actions, directory, operation: 'recover', digest: review.digest }), recovered);
@@ -765,6 +771,7 @@ test('a lost rollback acknowledgement is inspected without a second cold start',
   const recovered = await runRuntimeUpdate({ actions, directory, operation: 'recover', digest: prepared.digest });
   assert.equal(recovered.phase, 'rolled-back');
   assert.equal(inspectOnly, true);
+  assert.equal(recovered.phaseEnteredAt.restoring, interrupted.phaseEnteredAt.restoring);
   assert.equal(completed, true);
   assert.equal(starts, 2);
   assert.deepEqual(await readRuntimeUpdateReceipt(directory, prepared.digest), recovered);

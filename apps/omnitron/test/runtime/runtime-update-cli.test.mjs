@@ -291,8 +291,14 @@ test('status exposes verified candidate paths and refuses a mismatching private 
     node: path.join(runtime.directory, 'node'), cli: path.join(runtime.directory, 'packages/0/dist/cli/omnitron.js'),
     nodeVersion: process.version, platform: process.platform, arch: process.arch });
   await assert.rejects(fs.access(runtime.called));
+  // An operator can still read the failure after the target becomes unavailable.
+  await fs.rename(runtime.directory, runtime.directory + '-unavailable');
+  const { data: journal } = JSON.parse((await invoke('runtime', 'update', 'status', prepared.digest, '--journal')).stdout);
+  assert.deepEqual(journal, { prepared, receipt: null });
+  await assert.rejects(invoke('runtime', 'update', 'status', prepared.digest));
   prepared.plan.target.commit = 'd'.repeat(40);
   await fs.writeFile(path.join(records, 'prepared.json'), JSON.stringify(prepared), { mode: 0o600 });
+  await assert.rejects(invoke('runtime', 'update', 'status', '--journal'), error => /does not match its reviewed plan/.test(error.stderr));
   await assert.rejects(invoke('runtime', 'update', 'apply', prepared.digest), error => /does not match its reviewed plan/.test(error.stderr));
   await assert.rejects(fs.access(runtime.called));
 });

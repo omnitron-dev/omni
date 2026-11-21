@@ -211,6 +211,8 @@ export interface RuntimeUpdateAcceptance {
 export interface RuntimeUpdateReceipt extends PreparedRuntimeUpdate {
   phase: RuntimeUpdatePhase;
   updatedAt: string;
+  /** First UTC entry recorded for each phase. Older attempts may have only partial timing. */
+  phaseEnteredAt?: Partial<Record<RuntimeUpdatePhase, string>>;
   rollbackOwner?: RuntimeUpdateRetiringIdentity;
   restoreAttempted?: true;
   /** Existing guardian transaction, retained before its first effect. */

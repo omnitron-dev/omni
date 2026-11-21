@@ -151,10 +151,11 @@ runtimeUpdate.command('apply <digest>').description('Apply the unchanged reviewe
     const { runtimeUpdateCommand } = await import('../commands/runtime-update.js');
     await runtimeUpdateCommand('apply', digest);
   });
-runtimeUpdate.command('status [digest]').description('Inspect the durable receipt and its verified candidate without connecting to the daemon')
-  .structuredAction(async (digest?: string) => {
+runtimeUpdate.command('status [digest]').description('Read the update journal and inspect the candidate for an exact plan')
+  .option('--journal', 'Read the private plan and phase receipt without opening the candidate runtime')
+  .structuredAction(async (digest: string | undefined, options: { journal?: boolean }) => {
     const { runtimeUpdateStatusCommand } = await import('../commands/runtime-update.js');
-    await runtimeUpdateStatusCommand(digest);
+    await runtimeUpdateStatusCommand(digest, options.journal);
   });
 runtimeUpdate.command('recover <digest>').description('Restore the reviewed previous installation or inspect its attempted recovery')
   .structuredAction(async (digest: string) => {

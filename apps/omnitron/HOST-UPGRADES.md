@@ -312,6 +312,15 @@ the reason it is waiting on stderr. The final receipt remains available on stdou
 opt into newline-delimited progress events on stderr with `OMNITRON_UPDATE_PROGRESS=1`.
 An older installed operator may report only the final result.
 
+For a quick progress check, run `omnitron runtime update status`. Agents can
+read the same private records with `omnitron --json runtime update status --journal`,
+optionally supplying a plan digest. This read works while the daemon is down or
+the candidate is unavailable. The journal validates the plan digest and records
+when the updater first entered each phase in `receipt.phaseEnteredAt`. For example,
+the interval from `stopping` to `accepted` includes shutdown, startup and the
+final service checks. Older receipts can have partial timing. For the verified
+executable path, use `omnitron --json runtime update status <plan-sha256>`.
+
 `verify` checks the artifact without executing it. Preparation and application
 run through the verified candidate's own Node and CLI. `status` returns the
 prepared plan, current or requested receipt, and verified candidate paths. It
@@ -843,33 +852,33 @@ digests, the installation receipt and the schema plan through the rollback windo
 alert provenance and their evaluators can close and deliver a replicated firing alert.
 
 On the master, use the bridge or expanded release's CLI against the intended instance.
-In the commands below, `$bridge_dist` and `$target_dist` refer to the sealed
-`packages/0/dist` directories. Capture the private file returned by schema preparation
+In the commands below, `$bridge_root` and `$target_root` are the sealed runtime roots.
+Use their `packages/0/dist` directories for backend handoff. Capture the private file returned by schema preparation
 as `$plan`. Review each check before the corresponding operation.
 
 ```sh
-omnitron --json backend upgrade "$bridge_dist" --check
-omnitron --json backend upgrade "$bridge_dist"
-omnitron --json backend schema prepare "$target_dist"
+omnitron --json backend upgrade "$bridge_root/packages/0/dist" --check
+omnitron --json backend upgrade "$bridge_root/packages/0/dist"
+omnitron --json backend schema prepare "$target_root"
 omnitron --json backend schema apply "$plan"
-omnitron --json backend upgrade "$target_dist" --schema-plan "$plan" --check
-omnitron --json backend upgrade "$target_dist" --schema-plan "$plan"
+omnitron --json backend upgrade "$target_root/packages/0/dist" --schema-plan "$plan" --check
+omnitron --json backend upgrade "$target_root/packages/0/dist" --schema-plan "$plan"
 ```
 
 The bridge must be the selected and serving backend for schema preparation and application.
 Application requires a current recovery certificate. The master records the exact old history,
 new migration checksum, runtime digests and database identity. PostgreSQL 018 preserves ambiguous
 historical `annotations.node` as an unverified report and keeps it outside automated delivery.
-The master can roll its backend back with `backend upgrade "$bridge_dist" --schema-plan "$plan" --check`
+The master can roll its backend back with `backend upgrade "$bridge_root/packages/0/dist" --schema-plan "$plan" --check`
 and then the same command without `--check`. Keep the expanded schema and the receipt.
 The bridge continues distinguishing local, authenticated and historically unverified alerts.
 
 On each SQLite node first select the same platform's bridge through the ordinary backend
 handoff. A managed node needs a guardian advertising `nodeStorageExpansion: 1`.
-Use `backend guardian prepare "$bridge_dist"`, check the resulting guardian plan, then apply it
-if the current guardian lacks that capability. Run `backend upgrade "$target_dist" --check`
-and `backend upgrade "$target_dist"`. Local startup applies SQLite 002. To return use
-`backend upgrade "$bridge_dist" --check` and `backend upgrade "$bridge_dist"`.
+Use `backend guardian prepare "$bridge_root"`, check the resulting guardian plan, then apply it
+if the current guardian lacks that capability. Run `backend upgrade "$target_root/packages/0/dist" --check`
+and `backend upgrade "$target_root/packages/0/dist"`. Local startup applies SQLite 002. To return use
+`backend upgrade "$bridge_root/packages/0/dist" --check` and `backend upgrade "$bridge_root/packages/0/dist"`.
 The bridge recognizes only the reviewed future SQLite checksum and preserves events and their rule.
 The enrolled-node comparison also checks the controller ledger migration bodies.
 The mesh sender retains storage entries while the receiving master lacks the storage alert capability,

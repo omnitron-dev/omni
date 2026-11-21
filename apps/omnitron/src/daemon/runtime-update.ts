@@ -120,6 +120,9 @@ export async function runRuntimeUpdate({ actions, directory, operation, digest: 
     const save = async (phase: RuntimeUpdatePhase, details: Partial<RuntimeUpdateReceipt> = {}) => {
       if (!record) throw Error('No local update intent exists');
       const next = { ...record, ...details, phase, updatedAt: new Date().toISOString() };
+      if (phase !== record.phase && !next.phaseEnteredAt?.[phase]) {
+        next.phaseEnteredAt = { ...next.phaseEnteredAt, [phase]: next.updatedAt };
+      }
       await writePrivateRecord(path.join(directory, 'current.json'), next);
       record = next;
       progress(phase);
@@ -191,7 +194,7 @@ export async function runRuntimeUpdate({ actions, directory, operation, digest: 
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (accepted && !retirementIssued && !record.restoreAttempted) {
-          record = accepted;
+          record = { ...accepted, ...(record.phaseEnteredAt && { phaseEnteredAt: record.phaseEnteredAt }) };
           await save('accepted', { recoveryError: message });
           throw Error('Local rollback refused before retirement: ' + message, { cause: error });
         }
@@ -254,7 +257,8 @@ export async function runRuntimeUpdate({ actions, directory, operation, digest: 
       throw Error('Local update plan changed (' + changed.join(', ') + '). No processes were stopped. Inspect the current plan ' + digest);
     }
     if (record) await writePrivateRecord(path.join(directory, record.digest + '.json'), record);
-    record = { protocol: 1, digest, plan, phase: 'draining', updatedAt: new Date().toISOString() };
+    const startedAt = new Date().toISOString();
+    record = { protocol: 1, digest, plan, phase: 'draining', updatedAt: startedAt, phaseEnteredAt: { draining: startedAt } };
     // Prior operator mutations finish before this receipt excludes new ones. Release before calling the daemon.
     await withInstancePolicy(plan.instance, () => save('draining'));
     try {

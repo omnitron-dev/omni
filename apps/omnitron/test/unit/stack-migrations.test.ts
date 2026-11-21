@@ -5,6 +5,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { syncBuiltinESMExports } from 'node:module';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import { ProjectService } from '../../src/services/project.service.js';
@@ -92,6 +93,35 @@ async function request(f: Awaited<ReturnType<typeof fixture>>): Promise<StackMig
   const review = await f.service.reviewStackMigrations(scope); expect(review.digest).toMatch(/^[a-f0-9]{64}$/);
   return { ...scope, review: review.digest!, operationId: randomUUID() };
 }
+it('reviews a working tree that keeps reading migration sources beyond the first minute', async () => {
+  const f = await fixture();
+  const files = new Set<string>();
+  for (const name of ['a', 'b', 'c', 'd']) {
+    const directory = path.join(f.cwd, 'src', name);
+    await fs.mkdir(directory);
+    const file = path.join(directory, 'query.sql');
+    await fs.writeFile(file, name); files.add(file);
+  }
+  const original = await f.service.reviewStackMigrations(scope);
+  const start = Date.now(), open = fs.open.bind(fs);
+  let elapsed = 0;
+  const wall = vi.spyOn(Date, 'now').mockImplementation(() => start + elapsed);
+  const monotonic = vi.spyOn(performance, 'now').mockImplementation(() => elapsed);
+  const slow = vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+    const fd = await open(...args);
+    if (files.has(String(args[0]))) elapsed += 20_000;
+    return fd;
+  });
+  syncBuiltinESMExports();
+  try {
+    const reviewed = await f.service.reviewStackMigrations(scope);
+    expect(elapsed).toBe(80_000);
+    expect(reviewed.digest).toBe(original.digest);
+    expect(reviewed.digest).toMatch(/^[a-f0-9]{64}$/);
+    expect(sql).not.toHaveBeenCalled(); expect(readiness).not.toHaveBeenCalled();
+  } finally { slow.mockRestore(); monotonic.mockRestore(); wall.mockRestore(); syncBuiltinESMExports(); }
+});
+
 it('reviews owner ports and vault references without imports, DB access or persistent mutation', async () => {
   const f = await fixture(), before = recoveryState.token();
   f.execution.phase = 'running'; f.app.status = 'online';

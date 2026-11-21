@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { syncBuiltinESMExports } from 'node:module';
+import { createHash } from 'node:crypto';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { releaseTreeDigest, frameworkDependencyDigest, RELEASE_RECEIPT, verifyLaunchRelease, type ReleaseArtifactOrigin } from '../../src/release/runtime-provenance.js';
 import { AppHandle } from '../../src/orchestrator/app-handle.js';
@@ -26,11 +27,11 @@ it('refuses a working package file replaced after opening it', async () => {
     return fd;
   });
   syncBuiltinESMExports();
-  try { await expect(releaseTreeDigest(root, true, true, [], undefined, true)).rejects.toThrow('changed during verification'); }
+  try { await expect(releaseTreeDigest(root, true, true)).rejects.toThrow('changed during verification'); }
   finally { changed.mockRestore(); syncBuiltinESMExports(); }
 });
 
-it('preserves the serial tree digest across working file batches, references and streamed outputs', async () => {
+it('preserves the canonical digest across file windows, references and streamed outputs', async () => {
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'migration-tree-')));
   directories.push(root);
   const nested = path.join(root, 'nested');
@@ -42,14 +43,96 @@ it('preserves the serial tree digest across working file batches, references and
   await fs.symlink('nested', path.join(root, 'alias-directory'), 'dir');
   await fs.mkdir(path.join(root, 'node_modules'));
   await fs.writeFile(path.join(root, 'node_modules/excluded'), 'ignored');
-  for (const portable of [false, true]) {
-    const serial = await releaseTreeDigest(root, portable, true, ['item-2']);
-    expect(await releaseTreeDigest(root, portable, true, ['item-2'], undefined, true)).toBe(serial);
-  }
-  const before = await releaseTreeDigest(root, true, true, [], undefined, true);
+  expect(await releaseTreeDigest(root, true, true, ['item-2'])).toBe('028a8793138ef62e0ac3577bfc9d212af55ea3a4dfcf4c0c1a7a2440016cfc9a');
+  const before = await releaseTreeDigest(root, true, true);
   await fs.appendFile(path.join(nested, 'large'), 'changed');
   expect(await releaseTreeDigest(root, true, true)).not.toBe(before);
-  expect(await releaseTreeDigest(root, true, true, [], undefined, true)).toBe(await releaseTreeDigest(root, true, true));
+});
+
+it('retains the exact executable bits in local receipts and the portable executable marker in archives', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'release-tree-mode-')); directories.push(root);
+  const file = path.join(root, 'run');
+  await fs.writeFile(file, 'tool'); await fs.chmod(file, 0o740);
+  for (const [portable, executable] of [[false, '64'], [true, '73']] as const) {
+    const expected = createHash('sha256').update(['directory', '.', 'file', './run', executable, 'tool', ''].join('\0')).digest('hex');
+    expect(await releaseTreeDigest(root, portable)).toBe(expected);
+  }
+});
+
+it('rejects writable files and oversized files before reading their contents', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'release-tree-capacity-')); directories.push(root);
+  const file = path.join(root, 'package');
+  await fs.writeFile(file, 'content'); await fs.chmod(file, 0o666);
+  await expect(releaseTreeDigest(root)).rejects.toThrow('writable by another user');
+  await fs.chmod(file, 0o600); await fs.truncate(file, 256 * 1024 * 1024 + 1);
+  await expect(releaseTreeDigest(root)).rejects.toThrow('exceeds verification capacity');
+});
+
+it.each([
+  { chunks: 4, succeeds: true },
+  { chunks: 25, succeeds: false },
+])('bounds continuously progressing reads of $chunks chunks by the total time limit', async ({ chunks, succeeds }) => {
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'release-tree-progress-'))); directories.push(root);
+  const file = path.join(root, 'data');
+  const contents = Buffer.alloc(chunks * 64 * 1024, 0x61);
+  await fs.writeFile(file, contents);
+  const digest = createHash('sha256').update(['directory', '.', 'file', './data', '0', ''].join('\0')).update(contents).update('\0').digest('hex');
+  let elapsed = 0, reads = 0;
+  const time = vi.spyOn(performance, 'now').mockImplementation(() => elapsed);
+  const open = fs.open.bind(fs);
+  const spy = vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+    const fd = await open(...args);
+    if (args[0] === file) {
+      const read = fd.read.bind(fd);
+      vi.spyOn(fd, 'read').mockImplementation(async (...params: Parameters<typeof read>) => {
+        const received = await read(...params);
+        elapsed += 25_000; reads++;
+        return received;
+      });
+    }
+    return fd;
+  });
+  syncBuiltinESMExports();
+  try {
+    if (succeeds) {
+      await expect(releaseTreeDigest(root, true)).resolves.toBe(digest);
+      expect(reads).toBe(chunks);
+    } else {
+      await expect(releaseTreeDigest(root, true)).rejects.toThrow('verification deadline exceeded');
+      expect(reads).toBe(24);
+    }
+  } finally { time.mockRestore(); spy.mockRestore(); syncBuiltinESMExports(); }
+});
+
+it('times out a pending pathname check and closes its pinned descriptor', async () => {
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'release-tree-stall-'))); directories.push(root);
+  const file = path.join(root, 'data');
+  await fs.writeFile(file, 'bytes');
+  let entered!: () => void, resume!: () => void;
+  const waiting = new Promise<void>(resolve => { entered = resolve; });
+  const gate = new Promise<void>(resolve => { resume = resolve; });
+  const open = fs.open.bind(fs), lstat = fs.lstat.bind(fs);
+  let descriptor: Awaited<ReturnType<typeof open>> | undefined;
+  const pinned = vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+    const fd = await open(...args);
+    if (args[0] === file) descriptor = fd;
+    return fd;
+  });
+  const stalled = vi.spyOn(fs, 'lstat').mockImplementation(async (...args: Parameters<typeof lstat>) => {
+    if (args[0] === file) { entered(); await gate; }
+    return lstat(...args);
+  });
+  syncBuiltinESMExports();
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+  try {
+    const result = expect(releaseTreeDigest(root, true)).rejects.toThrow('verification stalled without progress');
+    await waiting;
+    await vi.advanceTimersByTimeAsync(60_000);
+    await result;
+    expect(descriptor?.fd).toBe(-1);
+  } finally {
+    resume(); vi.useRealTimers(); stalled.mockRestore(); pinned.mockRestore(); syncBuiltinESMExports();
+  }
 });
 
 // pnpm can set NODE_PATH for Vitest. Fixtures represent a clean execution owner.

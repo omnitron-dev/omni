@@ -26,7 +26,7 @@ export async function planLocalMigrations(requests: readonly MigrationRequest[],
     if (!target.sealed && target.source.split('/').some(part => ['.git', '.omnitron', 'node_modules'].includes(part)))
       throw Error('A source migration must belong to application sources, outside Git, operation state and dependency directories');
     if (!trees.has(target.cwd)) trees.set(target.cwd, releaseTreeDigest(target.cwd, !target.sealed, !target.sealed,
-      target.sealed ? [] : ['.git', '.omnitron'], undefined, !target.sealed));
+      target.sealed ? [] : ['.git', '.omnitron']));
     return { target, env: { ...env, ...database.env }, database, program: await trees.get(target.cwd)! };
   }));
   validateMigrationDestinations(plan.map(({ target, database }) => ({ app: target.app, database })));
@@ -70,7 +70,7 @@ export async function inspectMigrationDependencies(plan: LocalMigrationPlan, sdk
     const results = await Promise.allSettled(graph.map(async item => {
       if (!cache.has(item.root)) cache.set(item.root, measure(async () => {
         if (failure) throw failure;
-        try { return await releaseTreeDigest(item.root, true, true, ['.git', '.omnitron'], inspect, !sealed.has(root)); }
+        try { return await releaseTreeDigest(item.root, true, true, ['.git', '.omnitron'], inspect); }
         catch (cause) {
           failure ??= new Error(`Migration dependency ${item.metadata.name} at ${item.root}: ${(cause as Error).message}`, { cause });
           throw failure;

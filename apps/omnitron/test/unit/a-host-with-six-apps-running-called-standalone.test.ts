@@ -12,25 +12,25 @@
  *
  * Without a reconciler, Docker knows what is there. These cases run the
  * indicator's real default path — `listManagedContainers({ orThrow: true })`
- * — against a stand-in Docker: the adapter it lists with, and the
- * `docker inspect` it describes with.
+ * — against the managed ownership rows from `docker ps` and the
+ * `docker inspect` response for the listed container IDs.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-let listContainers: () => Promise<string[]> = async () => [];
-let inspect: (names: string[]) => { error?: Error; stdout: string } = () => ({ stdout: '[]' });
+const dockerPs = vi.hoisted(() => vi.fn());
+let inspect: (ids: string[]) => { error?: Error; stdout: string } = () => ({ stdout: '[]' });
 
 vi.mock('@xec-sh/core', () => ({
-  DockerAdapter: class {
-    listContainers() {
-      return listContainers();
-    }
+  ExecutionEngine: class {
+    execute = dockerPs;
+    dispose() {}
   },
 }));
 vi.mock('node:child_process', async (importOriginal) => ({
   ...(await importOriginal<typeof import('node:child_process')>()),
-  execFile: (_cmd: string, args: string[], _opts: unknown, cb: (err: Error | null, out?: { stdout: string; stderr: string }) => void) => {
+  execFile: (cmd: string, args: string[], _opts: unknown, cb: (err: Error | null, out?: { stdout: string; stderr: string }) => void) => {
+    if (cmd !== 'docker' || args[0] !== 'inspect') throw new Error('Expected docker inspect');
     const r = inspect(args.slice(1));
     if (r.error) cb(Object.assign(r.error, { stdout: r.stdout }));
     else cb(null, { stdout: r.stdout, stderr: '' });
@@ -43,9 +43,9 @@ import { listManagedContainers } from '../../src/infrastructure/container-runtim
 const APPS = ['postgres', 'redis', 'minio', 'gateway', 'tor', 'bitcoin'];
 
 /** What `docker inspect` says about a managed container of sample/test. */
-const described = (service: string, state: { Status: string; Health?: { Status: string } }) => ({
+const described = (service: string, state: { Status: string; Health?: { Status: string } }, index: number) => ({
   Name: `/sample-test-${service}`,
-  Id: `${service}000000000000`,
+  Id: (index + 1).toString(16).padStart(64, '0'),
   Config: {
     Image: `${service}:latest`,
     Labels: { 'omnitron.managed': 'true', 'omnitron.service': service, 'omnitron.project': 'sample', 'omnitron.stack': 'test' },
@@ -55,15 +55,23 @@ const described = (service: string, state: { Status: string; Health?: { Status: 
 });
 
 const host = (states: Record<string, { Status: string; Health?: { Status: string } }>) => {
-  listContainers = async () => Object.keys(states).map((s) => `sample-test-${s}`);
-  inspect = () => ({ stdout: JSON.stringify(Object.entries(states).map(([s, st]) => described(s, st))) });
+  const containers = Object.entries(states).map(([service, state], index) => described(service, state, index));
+  const rows = containers.map(({ Id, Name, Config: { Labels } }) => JSON.stringify({
+    id: Id,
+    name: Name.slice(1),
+    managed: Labels['omnitron.managed'],
+    project: Labels['omnitron.project'],
+    stack: Labels['omnitron.stack'],
+  }));
+  dockerPs.mockResolvedValue({ stdout: rows.join('\n') });
+  inspect = (ids) => ({ stdout: JSON.stringify(containers.filter(container => ids.includes(container.Id))) });
 };
 
 /** No reconciler in this daemon: a node since its restart, a master in project mode. */
 const indicator = () => new DockerHealthIndicator(() => null);
 
 beforeEach(() => {
-  listContainers = async () => [];
+  dockerPs.mockReset().mockResolvedValue({ stdout: '' });
   inspect = () => ({ stdout: '[]' });
 });
 
@@ -73,15 +81,16 @@ describe('a host with no reconciler in its daemon', () => {
 
     const result = await indicator().check();
 
+    expect(dockerPs).toHaveBeenCalledWith(expect.objectContaining({
+      command: 'docker', args: expect.arrayContaining(['ps', '--no-trunc', 'label=omnitron.managed=true']),
+    }));
     expect(result.status).toBe('healthy');
     expect(result.message).toBe('All 6 managed containers running (read from Docker: no reconciler in this daemon since its start)');
     expect(result.details).toMatchObject({ source: 'docker', total: 6, running: 6 });
   });
 
   it('says so, unhealthy, when Docker does not answer', async () => {
-    listContainers = async () => {
-      throw new Error('Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?');
-    };
+    dockerPs.mockRejectedValue(new Error('Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?'));
 
     const result = await indicator().check();
 
@@ -90,7 +99,7 @@ describe('a host with no reconciler in its daemon', () => {
   });
 
   it('says so when Docker names containers and then describes none of them', async () => {
-    listContainers = async () => ['sample-test-postgres', 'sample-test-redis'];
+    host({ postgres: { Status: 'running' }, redis: { Status: 'running' } });
     inspect = () => ({ error: new Error('Error response from daemon: context deadline exceeded'), stdout: '' });
 
     const result = await indicator().check();
@@ -136,9 +145,7 @@ describe('a host with a reconciler in its daemon', () => {
 
 describe('the listing the console reads', () => {
   it('still answers an empty list when Docker cannot be asked', async () => {
-    listContainers = async () => {
-      throw new Error('Cannot connect to the Docker daemon at unix:///var/run/docker.sock.');
-    };
+    dockerPs.mockRejectedValue(new Error('Cannot connect to the Docker daemon at unix:///var/run/docker.sock.'));
 
     await expect(listManagedContainers()).resolves.toEqual([]);
     await expect(listManagedContainers({ orThrow: true })).rejects.toThrow(/Cannot connect to the Docker daemon/);

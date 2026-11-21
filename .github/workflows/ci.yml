@@ -209,6 +209,28 @@ jobs:
         run: |
           pnpm --filter @omnitron-dev/omnitron exec vitest run --maxWorkers 2 test/unit/remote-deployer-probe.test.ts test/unit/stack-progress-cli.test.ts test/webapp webapp/src/utils/audit-actor.test.ts
           pnpm --filter @omnitron-dev/prism exec vitest run src/blocks/auth-block/role-guard-revocation.test.tsx src/theme/__tests__/component-style-composition.test.tsx src/components/admin-filters/filter-toolbar.test.tsx
+      - name: Isolated test orchestration
+        run: node --test scripts/ci/workspace-test.test.mjs
+      - name: Pure access policy and browser bundle boundary
+        run: |
+          pnpm --filter @omnitron-dev/access test
+          pnpm --filter @omnitron-dev/access check:bundle
+
+  console-browser:
+    name: Console browser tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      # The Console uses Prism's browser packages. The flow tests open an in-memory SQLite ledger.
+      - name: Build browser and flow test dependencies
+        run: pnpm exec turbo run build --filter=@omnitron-dev/prism --filter=@omnitron-dev/titan-database
       - name: Console chart loading and topology in Chromium
         working-directory: apps/omnitron/webapp
         run: |
@@ -218,12 +240,6 @@ jobs:
           # through APT. Browser launch still validates all required libraries.
           pnpm exec playwright install --only-shell chromium
           pnpm run test:browser
-      - name: Isolated test orchestration
-        run: node --test scripts/ci/workspace-test.test.mjs
-      - name: Pure access policy and browser bundle boundary
-        run: |
-          pnpm --filter @omnitron-dev/access test
-          pnpm --filter @omnitron-dev/access check:bundle
 
   workspace-tests:
     name: Full workspace tests

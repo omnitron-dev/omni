@@ -1,25 +1,59 @@
 import type { ProcessInfoDto } from '../config/types.js';
 import type { RuntimeUpdateStatusObservation } from '../shared/dto/runtime-update.js';
 import type { ExecutionSnapshot } from './execution-host.js';
-import { RuntimeObservationConflict, RuntimeObservationPending } from './runtime-observation.js';
+import { observeRuntimeUntil, RuntimeObservationConflict, RuntimeObservationPending, RuntimeObservationUnconfirmed } from './runtime-observation.js';
 
 const validPid = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
 function unsettled(reason: string): never { throw new RuntimeObservationPending('applications', reason); }
 
-/** Protocol 1 lists every pool member by PM id. A status row prints one representative. */
-export function retiringRuntimePids(snapshot: ExecutionSnapshot, backendPid: number, guardianPid: number,
-  publicStatus?: RuntimeUpdateStatusObservation): number[] {
+function assertProcessOwner(snapshot: ExecutionSnapshot, publicStatus?: RuntimeUpdateStatusObservation): void {
+  const actual = snapshot.status;
   if (snapshot.protocol !== 1 || !Array.isArray(snapshot.apps) || !Array.isArray(snapshot.workers) ||
-      !validPid(backendPid) || !validPid(guardianPid) || !validPid(snapshot.status?.owner?.pid) ||
-      !Number.isSafeInteger(snapshot.status.controller?.epoch) || !/^[a-f0-9]{64}$/.test(snapshot.inventoryDigest)) throw Error('Invalid native process inventory');
+      !validPid(actual?.owner?.pid) || !Number.isSafeInteger(actual.controller?.epoch) ||
+      !Number.isSafeInteger(actual.inFlight) || actual.inFlight < 0 || !/^[a-f0-9]{64}$/.test(snapshot.inventoryDigest))
+    throw Error('Invalid native process inventory');
   if (publicStatus) {
-    const reported = publicStatus.execution, actual = snapshot.status;
+    const reported = publicStatus.execution;
     if (!reported?.owner || reported.owner.id !== actual.owner.id || reported.owner.pid !== actual.owner.pid ||
         reported.owner.startedAt !== actual.owner.startedAt || actual.controller.ownerId !== actual.owner.id ||
         actual.controller.epoch !== reported.epoch || !actual.controller.controllerId ||
         actual.controller.controllerId === 'unclaimed' || actual.phase !== 'active')
       throw new RuntimeObservationConflict('Execution owner or controller changed during native process observation');
   }
+}
+
+export const PROCESS_REVIEW_WAIT_MS = 15_000;
+
+/** A new plan may wait for admitted work to finish. Keep the original public
+ * status and the first private inventory throughout this read-only observation. */
+export async function readRetiringRuntimeProcesses(read: () => Promise<ExecutionSnapshot>, status: RuntimeUpdateStatusObservation,
+  guardianPid: number, mode: 'prepare' | 'verify', progress: (message: string) => void = () => {}) {
+  const generations = new Map(status.apps.map(app => [app.name, app.generation]));
+  let firstInventory: string | undefined;
+  const snapshot = mode === 'verify' ? await read() : await observeRuntimeUntil(async () => {
+    const snapshot = await read().catch((error: unknown) => {
+      if (error instanceof RuntimeObservationPending)
+        throw new RuntimeObservationUnconfirmed('The private owner read did not report its activity', error);
+      throw error;
+    });
+    assertProcessOwner(snapshot, status);
+    const generationsChanged = snapshot.apps.length !== generations.size || snapshot.apps.some(({ info }) =>
+      !generations.has(info.name) || generations.get(info.name) !== info.generation);
+    if (generationsChanged || firstInventory !== undefined && firstInventory !== snapshot.inventoryDigest)
+      throw new RuntimeObservationConflict('Application process inventory or generation changed while preparing the runtime update');
+    if (snapshot.status.inFlight === 0) return snapshot;
+    firstInventory = snapshot.inventoryDigest;
+    throw new RuntimeObservationPending('applications', 'Waiting for admitted execution-owner work to finish');
+  }, PROCESS_REVIEW_WAIT_MS, 'Execution owner did not settle during runtime update preparation', 500, progress);
+  return { retiredPids: retiringRuntimePids(snapshot, status.pid, guardianPid, status),
+    processInventory: { epoch: snapshot.status.controller.epoch, digest: snapshot.inventoryDigest } };
+}
+
+/** Protocol 1 lists every pool member by PM id. A status row prints one representative. */
+export function retiringRuntimePids(snapshot: ExecutionSnapshot, backendPid: number, guardianPid: number,
+  publicStatus?: RuntimeUpdateStatusObservation): number[] {
+  if (!validPid(backendPid) || !validPid(guardianPid)) throw Error('Invalid native process inventory');
+  assertProcessOwner(snapshot, publicStatus);
   if (snapshot.status.inFlight !== 0) unsettled('Application ownership is changing during native process observation');
 
   const pids = new Set([backendPid, guardianPid]);

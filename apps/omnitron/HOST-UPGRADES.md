@@ -371,6 +371,13 @@ the snapshot to the public owner and controller epoch, checks it again before
 shutdown and checks the candidate under the rollback hold. Prepare a fresh
 plan if an earlier CLI recorded only the representative PID from a pool.
 
+When preparing a fresh plan, each owner-snapshot check waits up to 15 seconds
+for admitted work to finish. The owner's activity count includes scheduled
+child-metrics drains. During this wait the CLI repeats only the private
+snapshot read and checks the same owner, controller epoch, application
+generations and inventory digest. Applying a reviewed plan requires an idle
+owner and the identities recorded in that plan.
+
 Infrastructure preview reads the live controller through authenticated private
 RPC, including while its owned backups run. The response marks this observation
 as `reviewed-declarations`; it does not publish a recovery certificate. Offline

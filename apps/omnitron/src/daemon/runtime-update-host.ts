@@ -19,7 +19,7 @@ import { RuntimeObservationPending, RuntimeObservationConflict, RuntimeObservati
   observeRuntimeUntil, observeStartingController, withRuntimeObservation, type RuntimeObservation } from './runtime-observation.js';
 import { CommandResultError, reviewTargetFailures } from '../shared/command-result.js';
 import { captureNativeEmptyRuntime } from './runtime-update-native.js';
-import { retiringRuntimePids } from './runtime-update-processes.js';
+import { PROCESS_REVIEW_WAIT_MS, readRetiringRuntimeProcesses } from './runtime-update-processes.js';
 import type { BackendControlService } from './backend-control.js';
 import type { BackendRpcService } from './backend.rpc-service.js';
 import type { ExecutionHostService } from './execution-host.js';
@@ -341,8 +341,10 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
     if (state.directory !== installation || (!state.selection || !hash.test(state.selection.current)) || state.activation) throw Error('Local native installation is unsettled or belongs to another instance');
     return state.selection;
   };
-  const identity = async (status: RuntimeUpdateStatusObservation, idle = true, observation?: RuntimeObservation): Promise<RuntimeUpdateIdentity> => {
-    if (idle) assertLocalIdle(status);
+  const identity = async (status: RuntimeUpdateStatusObservation, { requireIdle = true, observation, preparing = false }: {
+    requireIdle?: boolean; observation?: RuntimeObservation | undefined; preparing?: boolean;
+  } = {}): Promise<RuntimeUpdateIdentity> => {
+    if (requireIdle) assertLocalIdle(status);
     const execution = status.execution;
     const config = await readManagedRuntime(home);
     if (!config || execution?.mode !== 'resident' || execution.connection?.status !== 'connected' || execution.phase !== 'active' ||
@@ -360,14 +362,14 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
     if (life.state !== 'alive') throw Error('Cannot establish execution owner process lifetime');
     if (!cleanBuild(status.build) || await runtimeBuildCommit(installed(selection.current)) !== status.build.commit ||
         !cleanBuild(execution.ownerBuild) || await runtimeBuildCommit(installed(config.owner.artifact)) !== execution.ownerBuild.commit) throw Error('Native roles disagree with the serving backend or owner');
-    const owner = await privateControlClient<ExecutionHostService>(path.join(config.directory, 'owner.sock'), 'OmnitronExecution', observation?.remaining());
+    const owner = await privateControlClient<ExecutionHostService>(path.join(config.directory, 'owner.sock'), 'OmnitronExecution',
+      preparing ? PROCESS_REVIEW_WAIT_MS : observation?.remaining());
     try {
-      const snapshot = await owner.service.snapshot();
-      const retiredPids = retiringRuntimePids(snapshot, status.pid, guardianPid, status);
+      const processes = await readRetiringRuntimeProcesses(() => owner.service.snapshot(), status, guardianPid, preparing ? 'prepare' : 'verify', progress);
       return { backend: selection.current, owner: config.owner.artifact, guardian: config.backend.artifact,
         backendCommit: status.build.commit, ownerCommit: execution.ownerBuild.commit, scope: config.scope, ownerId: execution.owner.id,
         ownerPid, ownerLifetime: life.identity, guardianPid, backendPid: status.pid, revision: selection.revision,
-        retiredPids, processInventory: { epoch: snapshot.status.controller.epoch, digest: snapshot.inventoryDigest } };
+        ...processes };
     } finally { await owner.close(); }
   };
   const inventory = async (status: RuntimeUpdateStatusObservation, observation?: RuntimeObservation) => {
@@ -482,7 +484,7 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
     const target = direction === 'target', expect = target || interim ? plan.target.artifact : plan.before.backend;
     const observe = async (observation?: RuntimeObservation) => {
       const status = await observeStartingController(() => observeCall<RuntimeUpdateStatusObservation>(['status'], observation));
-      const roles = await identity(status, false, observation);
+      const roles = await identity(status, { requireIdle: false, observation });
       if (roles.backend !== expect || roles.guardian !== (target || interim ? expect : plan.before.guardian) ||
           roles.owner !== (target ? expect : plan.before.owner) || roles.ownerId === plan.before.ownerId)
         throw new RuntimeObservationConflict('The reviewed roles have not taken ownership');
@@ -568,7 +570,8 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
       await inspectedRuntime(reference);
       const live = await call<RuntimeUpdateStatusObservation>(['status']);
       assertLocalReview(live);
-      const [before, stacks, web] = await Promise.all([identity(live, false), inventory(live), consoleState()]);
+      const observeIdentity = (status: RuntimeUpdateStatusObservation) => identity(status, { requireIdle: false, preparing: reviewed === undefined });
+      const [before, stacks, web] = await Promise.all([observeIdentity(live), inventory(live), consoleState()]);
       const existing = await fs.lstat(installed(manifest.sha256)).catch(error => { if (error.code !== 'ENOENT') throw error; return null; });
       let candidate;
       if (existing) {
@@ -607,7 +610,7 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
       }
       const finalStatus = await call<RuntimeUpdateStatusObservation>(['status']);
       assertLocalReview(finalStatus);
-      const after = await identity(finalStatus, false);
+      const after = await observeIdentity(finalStatus);
       if (!isDeepStrictEqual(before, after)) throw Error('Local execution changed during preparation. Inspect the current plan');
       const sha256 = reviewed && await sameRetainedIntent(reviewed, configuration)
         ? reviewed.configuration!.sha256 : await saveRestartConfiguration(home, configuration);

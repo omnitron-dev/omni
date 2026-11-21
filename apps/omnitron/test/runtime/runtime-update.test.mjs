@@ -10,6 +10,7 @@ import { register } from 'tsx/esm/api';
 const loader = register({ namespace: 'runtime-update-test' });
 const { runRuntimeUpdate, readRuntimeUpdateReceipt, readPreparedRuntimeUpdate } = await loader.import('../../src/daemon/runtime-update.ts', import.meta.url);
 const { assertLocalIdle, assertLocalReview, assertReviewedBoot, assertSameSavedSelection, assertLocalServiceTargets, assertRetainedRuntimeInfrastructure, assertRollbackStackScope, withServingRollbackAdmission } = await loader.import('../../src/daemon/runtime-update-host.ts', import.meta.url);
+const { readRetiringRuntimeProcesses } = await loader.import('../../src/daemon/runtime-update-processes.ts', import.meta.url);
 const { assertReviewableBackendActivity, retainReviewedBackups } = await loader.import('../../src/shared/backup-admission.ts', import.meta.url);
 const { RuntimeObservationTimeout, RuntimeObservationUnconfirmed } = await loader.import('../../src/daemon/runtime-observation.ts', import.meta.url);
 import { BACKEND_ACTIVITY_COUNTERS } from '../../src/shared/dto/backend.ts';
@@ -322,6 +323,39 @@ test('an apply mismatch saves the exact fresh review and reports the changed fie
   const current = await readPreparedRuntimeUpdate(directory);
   assert.deepEqual(current.plan, plan);
   assert.notEqual(current.digest, reviewed.digest);
+  assert.equal(await readRuntimeUpdateReceipt(directory), null);
+});
+
+test('a fresh review waits for its owner but apply checks once and refuses a stale inventory even with identical PIDs', { skip: !native }, async t => {
+  const directory = await privateInstance(t);
+  const owner = { id: 'original', pid: 101, startedAt: '2026-01-01T00:00:00Z' };
+  const status = { pid: 103, execution: { owner, epoch: 1 }, apps: [] };
+  const snapshot = { protocol: 1, apps: [], workers: [], inventoryDigest: '1'.repeat(64),
+    status: { owner, phase: 'active', inFlight: 1, controller: { ownerId: owner.id, controllerId: 'serving', epoch: 1 } } };
+  let preparations = 0, reads = 0;
+  const actions = {
+    async prepare(approved) {
+      preparations++;
+      const plan = planFor(directory, { pid: owner.pid, generation: owner.id });
+      const processes = await readRetiringRuntimeProcesses(async () => { reads++; return snapshot; }, status, 102,
+        approved === undefined ? 'prepare' : 'verify', () => { snapshot.status.inFlight = 0; });
+      Object.assign(plan.before, processes);
+      return plan;
+    },
+    async admit() { assert.fail('busy or replaced owners cannot enter update admission'); },
+    async stop() { assert.fail('busy or replaced owners cannot be stopped'); },
+  };
+  const { digest } = await runRuntimeUpdate({ actions, directory, operation: 'prepare' });
+  assert.equal(preparations, 1);
+  assert.equal(reads, 2);
+  snapshot.status.inFlight = 1;
+  await assert.rejects(runRuntimeUpdate({ actions, directory, operation: 'apply', digest }), { code: 'RUNTIME_OBSERVATION_PENDING' });
+  assert.equal(reads, 3);
+  assert.equal((await readPreparedRuntimeUpdate(directory)).digest, digest);
+  snapshot.status.inFlight = 0;
+  snapshot.inventoryDigest = '2'.repeat(64);
+  await assert.rejects(runRuntimeUpdate({ actions, directory, operation: 'apply', digest }), /plan changed \(before\)/);
+  assert.equal(reads, 4);
   assert.equal(await readRuntimeUpdateReceipt(directory), null);
 });
 

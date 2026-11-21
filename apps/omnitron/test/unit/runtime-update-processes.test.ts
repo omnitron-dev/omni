@@ -1,10 +1,13 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
+import { ControllerHandoff } from '@omnitron-dev/titan-pm';
 import { ExecutionHostService } from '../../src/daemon/execution-host.js';
-import { retiringRuntimePids } from '../../src/daemon/runtime-update-processes.js';
+import { PROCESS_REVIEW_WAIT_MS, readRetiringRuntimeProcesses, retiringRuntimePids } from '../../src/daemon/runtime-update-processes.js';
+import { RuntimeObservationConflict, RuntimeObservationPending, RuntimeObservationTimeout } from '../../src/daemon/runtime-observation.js';
 import type { RuntimeUpdateStatusObservation } from '../../src/shared/dto/runtime-update.js';
 
-async function fixture() {
+async function fixture(drainChildSamples: () => Promise<unknown> = async () => []) {
   const owner = { id: 'fixture-owner', pid: 40, startedAt: '2026-01-01T00:00:00Z' };
+  const fence = new ControllerHandoff(owner, { ownerId: owner.id, controllerId: 'active-backend', epoch: 3 }, async () => {});
   const rows = [
     { name: 'catalog', generation: 'launch', pid: 200, status: 'online', processes: [
       { name: 'transform', status: 'online', instances: 2, declaredInstances: 2, pid: 202 },
@@ -16,7 +19,7 @@ async function fixture() {
   // Exercise the same protocol-1 producer that existing resident owners expose.
   const host = Object.assign(Object.create(ExecutionHostService.prototype), {
     orchestrator: {
-      list: () => rows, getWatchedApps: () => [],
+      list: () => rows, getWatchedApps: () => [], getHealth: async () => ({}), drainChildSamples,
       getHandle: (name: string) => ({
         entry: { name }, startedAt: 1000, childMetrics: [], getLogs: () => [],
         supervisor: name === 'catalog' ? { getChildNames: () => ['catalog/http'], getChildProcessId: () => 'http' } : null,
@@ -25,12 +28,12 @@ async function fixture() {
       getChildProcessInfo: (id: string) => ({ id, startTime: 1000, pid: workers.get(id) }),
       getWorkerHandle: (id: string) => ({ pid: workers.get(id) }), hasDeclaredReadiness: () => false,
     },
-    fence: { status: () => ({ owner, phase: 'active', inFlight: 0, controller: { ownerId: owner.id, controllerId: 'active-backend', epoch: 3 } }) },
+    fence,
     hooks: {}, acknowledgedEvent: 0, events: [], revision: 0,
   }) as ExecutionHostService;
   const snapshot = await host.snapshot();
-  const status = { execution: { owner, epoch: 3 }, apps: structuredClone(rows) } as unknown as RuntimeUpdateStatusObservation;
-  return { snapshot, status };
+  const status = { pid: 42, execution: { owner, epoch: 3 }, apps: structuredClone(rows) } as unknown as RuntimeUpdateStatusObservation;
+  return { snapshot, status, host, fence };
 }
 
 it('captures both pool workers, the supervisor and a classic process from an existing owner', async () => {
@@ -88,3 +91,63 @@ it.each(['missing worker', 'missing PID', 'conflicting PID', 'partial group', 'm
     expect(() => retiringRuntimePids(snapshot, 42, 41, status)).toThrow();
   }
 );
+
+it('waits out one admitted metrics drain while independent health and inventory reads complete', async () => {
+  const gate = Promise.withResolvers<void>();
+  const drain = vi.fn(() => gate.promise);
+  const { host, fence, status } = await fixture(drain);
+  const mutation = host.mutate({ grant: fence.status().controller, sequence: 1, method: 'drainChildSamples', args: [] });
+  const concurrent = await Promise.all([host.snapshot(), host.read({ method: 'getHealth', args: [] })]);
+  expect(concurrent[0].status.inFlight).toBe(1);
+  expect(() => retiringRuntimePids(concurrent[0], 42, 41, status)).toThrow(RuntimeObservationPending);
+  const read = vi.fn(() => host.snapshot());
+  const progress = vi.fn(() => gate.resolve());
+  try {
+    const settled = await readRetiringRuntimeProcesses(read, status, 41, 'prepare', progress);
+    expect(settled.retiredPids).toEqual([41, 42, 200, 201, 202, 300]);
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(progress).toHaveBeenCalledOnce();
+    expect(drain).toHaveBeenCalledOnce();
+  } finally { gate.resolve(); await mutation; }
+});
+
+it('ends a persistently busy preparation at its deadline', async () => {
+  const { snapshot, status } = await fixture();
+  snapshot.status.inFlight = 1;
+  let elapsed = 0;
+  const time = vi.spyOn(performance, 'now').mockImplementation(() => elapsed);
+  const read = vi.fn(async () => {
+    if (read.mock.calls.length > 1) elapsed = PROCESS_REVIEW_WAIT_MS;
+    return snapshot;
+  });
+  try {
+    await expect(readRetiringRuntimeProcesses(read, status, 41, 'prepare')).rejects.toBeInstanceOf(RuntimeObservationTimeout);
+    expect(read).toHaveBeenCalledTimes(2);
+  } finally { time.mockRestore(); }
+});
+
+it.each(['inventory', 'generation', 'epoch'] as const)('refuses a changed %s during the preparation wait', async change => {
+  const { snapshot, status } = await fixture();
+  const busy = structuredClone(snapshot);
+  busy.status.inFlight = 1;
+  if (change === 'inventory') snapshot.inventoryDigest = '0'.repeat(64);
+  if (change === 'generation') snapshot.apps[0]!.info.generation = 'replacement';
+  if (change === 'epoch') snapshot.status.controller.epoch++;
+  const read = vi.fn().mockResolvedValueOnce(busy).mockResolvedValue(snapshot);
+  await expect(readRetiringRuntimeProcesses(read, status, 41, 'prepare')).rejects.toBeInstanceOf(RuntimeObservationConflict);
+  expect(read).toHaveBeenCalledTimes(2);
+});
+
+it('refuses malformed activity and transport errors on the first preparation read', async () => {
+  const { snapshot, status } = await fixture();
+  snapshot.status.inFlight = -1;
+  const malformed = vi.fn(async () => snapshot);
+  await expect(readRetiringRuntimeProcesses(malformed, status, 41, 'prepare')).rejects.toThrow('Invalid native process inventory');
+  expect(malformed).toHaveBeenCalledOnce();
+  const failed = vi.fn(async () => { throw Error('private socket disconnected'); });
+  await expect(readRetiringRuntimeProcesses(failed, status, 41, 'prepare')).rejects.toThrow('private socket disconnected');
+  expect(failed).toHaveBeenCalledOnce();
+  const unavailable = vi.fn(async () => { throw new RuntimeObservationPending('controller', 'controller starting'); });
+  await expect(readRetiringRuntimeProcesses(unavailable, status, 41, 'prepare')).rejects.toThrow('did not report its activity');
+  expect(unavailable).toHaveBeenCalledOnce();
+});

@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { compileTypst } from '@omnitron-dev/lumen-ast/typst';
 import { Command, CommanderError, InvalidArgumentError, Option } from 'commander';
 /**
  * Lumen SSG CLI dispatcher
@@ -9,26 +8,18 @@ import { Command, CommanderError, InvalidArgumentError, Option } from 'commander
 import { existsSync, lstatSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, watch } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { parseDocument, type LumenNode } from '@omnitron-dev/lumen-ast';
-import { withLumenProject, type LumenProject } from '../config/project.js';
+import type { LumenNode } from '@omnitron-dev/lumen-ast';
+import { withLumenConfig, withLumenProject, type LumenProject } from '../config/project.js';
 import type { LumenConfig } from '../config/schema.js';
 import { CorpusGraph } from '../corpus/graph.js';
-import { projectCorpus } from '../corpus/projection.js';
 import type { CorpusDocument, CorpusHeader, CorpusMathObject } from '../corpus/types.js';
 import { runCorpusGates } from '../gates/runner.js';
 import type { CorpusGate, LumenGateDiagnostic } from '../gates/types.js';
-import {
-  linksGate,
-  anchorsGate,
-  codeDefaultsGate,
-  codeExamplesGate,
-  undocumentedExportsGate,
-  mathKernelGate,
-} from '../gates/builtins/index.js';
+import { linksGate } from '../gates/builtins/links.js';
+import { anchorsGate } from '../gates/builtins/anchors.js';
 import { computeContentHash } from '../manifest/hashing.js';
 import { captureGeneration, publishGeneration, recoverGeneration, type StaticFile } from '../ssg/publish-generation.js';
 import { directoryRouteRedirects } from '../ssg/serve-routes.js';
-import { runLumenMcpServer } from '../ai/mcp-server.js';
 import { documentRoute } from '../corpus/routes.js';
 import { createRequire } from 'node:module';
 
@@ -115,6 +106,7 @@ export async function loadCorpusFromDirectory(
     ...(pagesDir === undefined ? [] : scanDocFilesRecursively(pagesDir)),
   ];
   const routes = new Set<string>();
+  const { parseDocument } = await import('@omnitron-dev/lumen-ast');
   for (const fullPath of docFiles) {
     const raw = readFileSync(fullPath, 'utf8');
     const relFromDocs = relative(docsDir, fullPath).replace(/\\/g, '/');
@@ -387,6 +379,10 @@ export async function runLumenCli(argv: string[] = process.argv.slice(2)): Promi
         host: values.host ?? '127.0.0.1', port: values.port ?? 4173,
         gatesFilter: values.gates?.split(',').map((value: string) => value.trim()).filter(Boolean),
       };
+      if (name === 'serve') {
+        await withLumenConfig(options.rootDir, config => serveGeneration(options, config));
+        return;
+      }
       await withLumenProject(options.rootDir, project => executeLumenCommand(name, options, project), {
         logLevel: options.json || name === 'mcp' ? 'silent' : 'info',
       });
@@ -399,6 +395,36 @@ export async function runLumenCli(argv: string[] = process.argv.slice(2)): Promi
     if (!(error instanceof CommanderError)) throw error;
     if (error.exitCode !== 0) process.exitCode = error.exitCode;
   }
+}
+
+async function serveGeneration(cliOpts: ParsedCliOptions, config: LumenConfig): Promise<void> {
+  console.log(`Lumen CLI v${VERSION} (command: serve)`);
+  const outDir = resolve(cliOpts.rootDir, cliOpts.outDir ?? config.outDir);
+  recoverGeneration(outDir);
+  if (!existsSync(outDir)) throw new Error(`Build output does not exist: ${outDir}. Run lumen build first.`);
+  const snapshot = captureGeneration(outDir);
+  const { preview } = await import('vite');
+  const server = await preview({
+    configFile: false,
+    root: cliOpts.rootDir,
+    appType: 'mpa',
+    base: config.baseUrl,
+    plugins: [config.trailingSlash && directoryRouteRedirects(snapshot.directory), {
+      name: 'lumen-preview-generation',
+      closePreviewServer() {
+        process.removeListener('SIGINT', interrupt);
+        snapshot.release();
+      },
+    }],
+    build: { outDir: snapshot.directory },
+    preview: { host: cliOpts.host, port: cliOpts.port, strictPort: true },
+  }).catch(error => { snapshot.release(); throw error; });
+  function interrupt() {
+    void server.close().catch(error => { console.error(error); process.exitCode = 1; });
+  }
+  // Vite handles SIGTERM and awaits closePreviewServer after closing its connections.
+  process.once('SIGINT', interrupt);
+  server.printUrls();
 }
 
 async function executeLumenCommand(command: string, cliOpts: ParsedCliOptions, project: LumenProject): Promise<void> {
@@ -508,41 +534,13 @@ async function executeLumenCommand(command: string, cliOpts: ParsedCliOptions, p
       break;
     }
 
-    case 'serve': {
-      console.log(`Lumen CLI v${VERSION} (command: serve)`);
-      const config = initialConfig;
-      const outDir = resolve(cliOpts.rootDir, cliOpts.outDir ?? config.outDir);
-      recoverGeneration(outDir);
-      if (!existsSync(outDir)) throw new Error(`Build output does not exist: ${outDir}. Run lumen build first.`);
-      const snapshot = captureGeneration(outDir);
-      const { preview } = await import('vite');
-      const server = await preview({
-        configFile: false,
-        root: cliOpts.rootDir,
-        appType: 'mpa',
-        base: config.baseUrl,
-        plugins: [config.trailingSlash && directoryRouteRedirects(snapshot.directory)],
-        build: { outDir: snapshot.directory },
-        preview: { host: cliOpts.host, port: cliOpts.port, strictPort: true },
-      }).catch(error => { snapshot.release(); throw error; });
-      const shutdown = () => { server.httpServer.close(); if ('closeIdleConnections' in server.httpServer) server.httpServer.closeIdleConnections(); };
-      process.once('SIGINT', shutdown);
-      process.once('SIGTERM', shutdown);
-      server.httpServer.once('close', () => {
-        process.removeListener('SIGINT', shutdown);
-        process.removeListener('SIGTERM', shutdown);
-        snapshot.release();
-      });
-      server.printUrls();
-      break;
-    }
-
     case 'check': {
       if (!cliOpts.json) {
         console.log(`Lumen CLI v${VERSION} (command: check)`);
       }
 
       const { config, graph, astDiagnostics } = await loadCorpusFromDirectory(cliOpts.rootDir, initialConfig);
+      const { codeDefaultsGate, codeExamplesGate, undocumentedExportsGate, mathKernelGate } = await import('../gates/builtins/index.js');
       const builtinGates: CorpusGate[] = [
         linksGate,
         anchorsGate,
@@ -601,6 +599,7 @@ async function executeLumenCommand(command: string, cliOpts: ParsedCliOptions, p
       const pdfOutDir = exportDirectory(cliOpts.rootDir, cliOpts.outDir, initialConfig);
       const { config, graph, astDiagnostics } = await loadCorpusFromDirectory(cliOpts.rootDir, initialConfig);
       assertParsedCorpus(astDiagnostics);
+      const { projectCorpus } = await import('../corpus/projection.js');
       const projectedGraph = projectCorpus(graph, { roles: ['anonymous'] });
       const allDocs = projectedGraph.getAllDocuments();
       const paperSections = config.pdf?.paperSections ?? [];
@@ -612,6 +611,7 @@ async function executeLumenCommand(command: string, cliOpts: ParsedCliOptions, p
           : allDocs;
 
       if (!selectedDocs.length) throw new Error('No public documents selected for PDF export');
+      const { compileTypst } = await import('@omnitron-dev/lumen-ast/typst');
       const files = new Map<string, StaticFile>();
       for (const doc of selectedDocs) {
         if (!doc.ast) throw new Error(`PDF document has no parsed content: ${doc.id}`);
@@ -626,6 +626,7 @@ async function executeLumenCommand(command: string, cliOpts: ParsedCliOptions, p
 
       const { graph, astDiagnostics } = await loadCorpusFromDirectory(cliOpts.rootDir, initialConfig);
       assertParsedCorpus(astDiagnostics);
+      const { runLumenMcpServer } = await import('../ai/mcp-server.js');
       await runLumenMcpServer(graph);
       break;
     }
@@ -636,6 +637,7 @@ async function executeLumenCommand(command: string, cliOpts: ParsedCliOptions, p
       const typesOutDir = exportDirectory(cliOpts.rootDir, cliOpts.outDir, initialConfig);
       const { graph, astDiagnostics } = await loadCorpusFromDirectory(cliOpts.rootDir, initialConfig);
       assertParsedCorpus(astDiagnostics);
+      const { projectCorpus } = await import('../corpus/projection.js');
       const projectedGraph = projectCorpus(graph, { roles: ['anonymous'] });
       const dtsContent = generateCorpusTypesDeclaration(projectedGraph);
       publishGeneration(typesOutDir, new Map([['lumen-corpus.d.ts', dtsContent]]));

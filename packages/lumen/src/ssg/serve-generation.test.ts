@@ -1,7 +1,7 @@
-import { it, expect, vi } from 'vitest';
+import { it, expect } from 'vitest';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { createServer, type AddressInfo } from 'node:net';
+import { connect, createServer, type AddressInfo, type Socket } from 'node:net';
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -25,22 +25,25 @@ it.each(['0', '1'])('the ordinary serve CLI retains its generation and releases 
   await new Promise<void>((resolve, reject) => reserve.close(error => error ? reject(error) : resolve()));
   const cli = new URL('../cli/index.ts', import.meta.url).href;
   const child = spawn(process.execPath, ['--import', import.meta.resolve('tsx'), '--input-type=module', '-e',
-    `import { runLumenCli } from ${JSON.stringify(cli)}; await runLumenCli(${JSON.stringify(['serve', '--root', root, '--host', '127.0.0.1', '--port', String(port)])});`],
-  { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NO_COLOR: undefined, FORCE_COLOR: color } });
+    `import { runLumenCli } from ${JSON.stringify(cli)}; await runLumenCli(${JSON.stringify(['serve', '--root', root, '--host', '127.0.0.1', '--port', String(port)])}); process.send('listening'); process.disconnect();`],
+  { stdio: ['ignore', 'pipe', 'pipe', 'ipc'], timeout: 15_000, killSignal: 'SIGKILL', env: { ...process.env, NO_COLOR: undefined, FORCE_COLOR: color } });
+  const exited = once(child, 'exit');
+  let openRequest: Socket | undefined;
   let log = '';
   child.stdout.on('data', chunk => { log += String(chunk); });
   child.stderr.on('data', chunk => { log += String(chunk); });
   try {
     const origin = `http://127.0.0.1:${port}/manual`;
-    // Human-readable URLs contain ANSI sequences under Turbo/CI. Readiness is
-    // the served generation, independently of terminal formatting.
-    await vi.waitFor(async () => {
-      expect(child.exitCode, log).toBeNull();
-      expect(child.signalCode, log).toBeNull();
-      const response = await fetch(origin, { signal: AbortSignal.timeout(1000) });
-      expect(response.status, log).toBe(200);
-      expect(await response.text(), log).toContain('Previous generation');
-    }, { timeout: 10000, interval: 50 });
+    // The public command resolves after Vite listens. Verify its real HTTP
+    // response separately from startup, independently of terminal formatting.
+    const [ready] = await Promise.race([
+      once(child, 'message', { signal: AbortSignal.timeout(10_000) }),
+      exited.then(([code, signal]) => { throw Error(`CLI exited (${code ?? signal})`); }),
+    ]).catch(error => { throw Error(`Preview did not start.\n${log}`, { cause: error }); });
+    expect(ready).toBe('listening');
+    const response = await fetch(origin, { signal: AbortSignal.timeout(1000) });
+    expect(response.status, log).toBe(200);
+    expect(await response.text(), log).toContain('Previous generation');
     for (const method of ['GET', 'HEAD']) {
       const response = await fetch(`${origin}/docs/api?q=typed%20value`, { method, redirect: 'manual' });
       expect(response.status).toBe(308);
@@ -59,17 +62,25 @@ it.each(['0', '1'])('the ordinary serve CLI retains its generation and releases 
     expect(await (await fetch(origin)).text()).toContain('Previous generation');
     expect(await (await fetch(`${origin}/previous.js`)).text()).toBe('previous asset');
     expect((await fetch(`${origin}/next.js`)).status).toBe(404);
-    const ended = once(child, 'exit');
-    child.kill('SIGTERM');
-    const [code] = await ended;
-    // The TSX source loader reports conventional 128 + SIGTERM on shutdown.
-    expect([0, 143], log).toContain(code);
+    openRequest = connect(port, '127.0.0.1');
+    await once(openRequest, 'connect');
+    openRequest.on('error', () => {}); // Closing the preview can reset this incomplete request.
+    const accepted = once(openRequest, 'data', { signal: AbortSignal.timeout(1_000) });
+    // The first reply proves Vite accepted this socket. The next request has no final CRLF.
+    openRequest.write('HEAD /manual/ HTTP/1.1\r\nHost: localhost\r\n\r\nGET /manual/ HTTP/1.1\r\nHost: localhost\r\n');
+    const [headers] = await accepted;
+    expect(String(headers)).toMatch(/^HTTP\/1\.1 200\b/);
+    const closed = once(child, 'close', { signal: AbortSignal.timeout(3_000) });
+    const signal = color === '0' ? 'SIGINT' : 'SIGTERM';
+    child.kill(signal);
+    const [code] = await closed;
+    expect([0, signal === 'SIGINT' ? 130 : 143], log).toContain(code);
     expect(readdirSync(root).filter(name => name.startsWith('.out-preview-'))).toEqual([]);
   } finally {
+    openRequest?.destroy();
     if (child.exitCode === null && child.signalCode === null) {
-      const ended = once(child, 'exit');
       child.kill('SIGKILL');
-      await ended;
+      await exited;
     }
     rmSync(root, { recursive: true, force: true });
   }

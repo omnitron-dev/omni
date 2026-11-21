@@ -32,10 +32,26 @@ export interface LumenProject {
  * lazy islands keep the same React context until the callback has completed.
  * Do not retain executable configuration or the build function after it returns.
  */
-export async function withLumenProject<T>(
+export function withLumenProject<T>(
   rootDir: string,
   run: (project: LumenProject) => Promise<T>,
   options: { logLevel?: LogLevel } = {}
+): Promise<T> {
+  return evaluateProject(rootDir, { run }, options);
+}
+
+/** A preview needs the same executable configuration but never renders a document. */
+export function withLumenConfig<T>(
+  rootDir: string, readConfig: (config: LumenConfig) => Promise<T>,
+  options: { logLevel?: LogLevel } = {}
+): Promise<T> {
+  return evaluateProject(rootDir, { readConfig }, options);
+}
+
+async function evaluateProject<T>(
+  rootDir: string,
+  action: { run: (project: LumenProject) => Promise<T> } | { readConfig: (config: LumenConfig) => Promise<T> },
+  options: { logLevel?: LogLevel }
 ): Promise<T> {
   const directory = await mkdtemp(join(tmpdir(), 'lumen-ssr-'));
   let server: ViteDevServer | undefined;
@@ -84,12 +100,10 @@ export async function withLumenProject<T>(
         },
         load(id) {
           if (id !== `\0${entry}`) return null;
-          return [
-            configFile
-              ? `import * as project from ${JSON.stringify(configFile)}; export const config = Reflect.get(project, "default") ?? Reflect.get(project, "config") ?? project;`
-              : 'export const config = { title: "Documentation" };',
-            `export { buildStaticSite } from ${JSON.stringify(engine)};`,
-          ].join('\n');
+          const config = configFile
+            ? `import * as project from ${JSON.stringify(configFile)}; export const config = Reflect.get(project, "default") ?? Reflect.get(project, "config") ?? project;`
+            : 'export const config = { title: "Documentation" };';
+          return 'readConfig' in action ? config : config + `\nexport { buildStaticSite } from ${JSON.stringify(engine)};`;
         },
         async transform(code, id) {
           if (!isAbsolute(id) || !/\.[cm]?[jt]sx?$/.test(id) ||
@@ -185,12 +199,15 @@ export async function withLumenProject<T>(
     });
     const compiledModule = await server.ssrLoadModule(file) as {
       config: LumenUserConfig;
-      buildStaticSite: typeof buildStaticSite;
+      buildStaticSite?: typeof buildStaticSite;
     };
     const config = defineLumenConfig(expandEnvVariables(compiledModule.config));
-    return await run({
+    if ('readConfig' in action) return await action.readConfig(config);
+    const renderSite = compiledModule.buildStaticSite;
+    if (typeof renderSite !== 'function') throw new Error('Lumen SSR build did not export its renderer');
+    return await action.run({
       config,
-      build: (corpus, selectedConfig, buildOptions) => compiledModule.buildStaticSite(corpus, selectedConfig, {
+      build: (corpus, selectedConfig, buildOptions) => renderSite(corpus, selectedConfig, {
         ...buildOptions, serverAssets, serverStyles,
       }),
     });

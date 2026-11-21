@@ -262,7 +262,8 @@ jobs:
       # Owns a unique Compose project and tears it down on success or failure.
       # The Console test command selects UI tests already included by the Omnitron suite.
       # Packages are already built; keep forced tests without rebuilding prerequisites.
-      - run: pnpm test:ci --only --filter='!@omnitron/console'
+      # Keep the last observation from unfinished suites when the job times out.
+      - run: pnpm test:ci --only --filter='!@omnitron/console' --log-order=stream --log-prefix=task
         env:
           OMNITRON_HOME: ${{ runner.temp }}/omnitron-test-home
           OMNITRON_TEST_EVIDENCE_DIR: ${{ runner.temp }}/omnitron-verification

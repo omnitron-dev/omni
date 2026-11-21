@@ -32,10 +32,10 @@ export async function reviewStackStopRuntime(artifact: string, controller: { ins
   if (controller.instanceHome !== OMNITRON_HOME || controller.daemonSocket !== path.join(OMNITRON_HOME, 'daemon.sock'))
     throw Error('The runtime target and application stop must use the same local controller');
   const runtime = await verifyRuntimeUpdateTarget(path.join(OMNITRON_HOME, 'runtime', 'releases', artifact), artifact);
-  const inspect = (id: string) => reviewRuntimeInfrastructure(id, args => callRuntime(runtime, args), { requireLive: true });
-  const { current, infrastructure } = await inspect(artifact);
+  const reviewInfrastructure = (id: string) => reviewRuntimeInfrastructure(id, args => callRuntime(runtime, args), { requireLive: true });
+  const { current, infrastructure } = await reviewInfrastructure(artifact);
   if (!current || !/^[a-f0-9]{64}$/.test(current)) throw Error('The cold-start review did not identify the installed rollback runtime');
-  if (current !== artifact && (await inspect(current)).current !== current)
+  if (current !== artifact && (await reviewInfrastructure(current)).current !== current)
     throw Error('The installed rollback runtime changed during the cold-start review');
   return infrastructure;
 }

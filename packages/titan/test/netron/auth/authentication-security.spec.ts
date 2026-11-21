@@ -967,19 +967,23 @@ describe('AuthenticationManager Security Tests', () => {
         expect(auditCalls[1][0].success).toBe(false);
       });
 
-      it('should include duration metadata for performance monitoring', async () => {
+      it.each([50, 125])('should record an authentication duration of %i ms in the audit event', async (duration) => {
+        vi.useFakeTimers();
         authManager.configure({
-          authenticate: vi.fn().mockImplementation(async () => {
-            await new Promise((resolve) => setTimeout(resolve, 50));
+          authenticate: async () => {
+            await new Promise((resolve) => setTimeout(resolve, duration));
             return { userId: 'test', roles: [], permissions: [] };
-          }),
+          },
         });
 
-        await authManager.authenticate({ username: 'test', password: 'test' });
+        const result = authManager.authenticate({ username: 'test', password: 'test' });
+        await vi.advanceTimersByTimeAsync(duration);
 
-        const auditCalls = mockAuditLogger.logAuth.mock.calls;
-        expect(auditCalls[0][0].metadata).toHaveProperty('duration');
-        expect(auditCalls[0][0].metadata.duration).toBeGreaterThanOrEqual(50);
+        await expect(result).resolves.toMatchObject({ success: true });
+        expect(mockAuditLogger.logAuth).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+          success: true,
+          metadata: expect.objectContaining({ duration }),
+        }));
       });
 
       it('should handle audit logger failure without affecting authentication', async () => {

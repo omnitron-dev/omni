@@ -1,4 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+const home = await vi.hoisted(async () => {
+  const fs = await import('node:fs'), os = await import('node:os'), path = await import('node:path');
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'ownership-refresh-'));
+});
+vi.mock('../../src/config/defaults.js', async original => ({
+  ...await original<typeof import('../../src/config/defaults.js')>(), OMNITRON_HOME: home,
+}));
+afterAll(() => fs.rmSync(home, { recursive: true, force: true }));
 const runtime = vi.hoisted(() => ({ get: vi.fn(), create: vi.fn(), remove: vi.fn(), start: vi.fn(), restart: vi.fn() }));
 vi.mock('../../src/infrastructure/container-runtime.js', async original => ({
   ...(await original<Record<string, unknown>>()), getContainerState: runtime.get,
@@ -301,14 +311,60 @@ describe('native monitoring ownership refresh', () => {
 
 import { ProjectService } from '../../src/services/project.service.js';
 import { ProjectRpcService } from '../../src/services/project.rpc-service.js';
-it('project refresh rereads validated config and refuses absent or remote stacks', async () => {
-  const svc: any = new ProjectService(logger, { list: () => [] } as any, { selectProjectsSync: () => [], kvGetSync: () => null } as any);
-  svc.registry = { get: () => ({ path: '/immutable/release' }) };
-  svc.configRegistry.set('tenant', { stale: true });
-  svc.loadProjectConfig = vi.fn(async () => { expect(svc.configRegistry.has('tenant')).toBe(false); return {}; });
-  svc.resolveStacks = () => ({ prod: { type: 'remote', apps: [] } });
-  await expect(svc.refreshInfrastructureOwnership('tenant', 'prod')).rejects.toThrow('declared local stack');
-  expect(svc.loadProjectConfig).toHaveBeenCalledWith('tenant');
+import * as loader from '../../src/config/loader.js';
+it('refreshes a stopped project through the public operation while excluding competing configuration writes', async () => {
+  const directory = fs.mkdtempSync(path.join(home, 'project-'));
+  const file = path.join(directory, 'omnitron.config.mjs');
+  const scope = { project: 'tenant', stack: 'prod' };
+  const store = { selectProjectsSync: () => [{ name: scope.project, path: directory, added_at: '2026-01-01' }], kvGetSync: () => null };
+  const owner = { list: () => [], startApp: vi.fn() };
+  const project = new ProjectService(logger, owner as never, store as never);
+  const rpc = new ProjectRpcService(project);
+  const manager = (project as unknown as { infraManager: StackInfrastructureManager }).infraManager;
+  const container = (image: string) => ({ docker: { image }, env: {}, ports: {} });
+  const origin = container('nginx:1.27');
+  const initial = { origin, retired: container('nginx:1.27') };
+  const write = (services: Record<string, typeof origin>) => fs.writeFileSync(file, 'export default ' + JSON.stringify({
+    apps: [], stacks: { prod: { type: 'local', apps: [] } }, infrastructure: { services },
+  }));
+  const provision = vi.spyOn(InfrastructureService.prototype, 'provision').mockResolvedValue({ services: {}, ready: true });
+  const read = loader.loadEcosystemConfig;
+  const source = vi.spyOn(loader, 'loadEcosystemConfig');
+  const entered = deferred<void>(), resume = deferred<void>();
+  try {
+    write(initial);
+    const cached = await project.loadProjectConfig(scope.project);
+    const monitored = await manager.provisionStack(scope.project, scope.stack, { type: 'local' }, { services: initial });
+    write({ origin });
+    source.mockImplementationOnce(async (...args) => { entered.resolve(); await resume.promise; return read(...args); });
+    const refreshing = rpc.refreshInfrastructureOwnership(scope);
+    try {
+      await entered.promise;
+      await expect(project.loadProjectConfig(scope.project)).rejects.toThrow('Project ownership or cached configuration changed');
+      expect(project.getLoadedConfig(scope.project)).toBe(cached);
+      await expect(rpc.refreshInfrastructureOwnership(scope)).rejects.toThrow('lifecycle ownership is changing');
+      await expect(project.prepareHandoff()).rejects.toThrow('stack lifecycle operation');
+    } finally { resume.resolve(); }
+    await expect(refreshing).resolves.toEqual({ released: ['tenant-prod-retired'], adopted: [] });
+    const refreshed = project.getLoadedConfig(scope.project);
+    expect(refreshed?.infrastructure).toEqual({ services: { origin } });
+    fs.writeFileSync(file, 'throw Error("unreadable project configuration")');
+    await expect(rpc.refreshInfrastructureOwnership(scope)).rejects.toThrow('unreadable project configuration');
+    expect(project.getLoadedConfig(scope.project)).toBe(refreshed);
+    write({ origin: container('nginx:other') });
+    await expect(rpc.refreshInfrastructureOwnership(scope)).rejects.toThrow('Ownership refresh cannot change retained service spec: tenant-prod-origin');
+    expect(monitored.getDesiredContainers().map(({ name, image }) => [name, image])).toEqual([['tenant-prod-origin', 'nginx:1.27']]);
+    write({ origin });
+    await expect(rpc.refreshInfrastructureOwnership(scope)).resolves.toEqual({ released: [], adopted: [] });
+    fs.writeFileSync(file, 'export default { apps: [], stacks: { prod: { type: "remote" } } }');
+    await expect(rpc.refreshInfrastructureOwnership(scope)).rejects.toThrow('declared local stack');
+    expect(owner.startApp).not.toHaveBeenCalled();
+    expect(provision).toHaveBeenCalledOnce();
+    for (const effect of [runtime.create, runtime.remove, runtime.start, runtime.restart]) expect(effect).not.toHaveBeenCalled();
+  } finally {
+    resume.resolve(); source.mockRestore(); provision.mockRestore();
+    await project.dispose();
+  }
 });
 it('native project RPC forwards the qualified identity and records released/adopted names', async () => {
   const refresh = vi.fn().mockResolvedValue({ released: ['tenant-prod-origin'], adopted: [] });

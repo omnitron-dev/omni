@@ -259,6 +259,9 @@ it('restarts the retained release after unused imported source changes, restages
   await expect(f.service.admitRelease(f.scope.project, f.scope.stack, f.config.stacks!['dev'], f.config, f.release.id, 'check')).rejects.toThrow('differ from its commit');
   expect((await f.service.reviewStackStart(f.scope.project, f.scope.stack)).digest).toBeNull();
   await f.boot(configuration);
+  const retained = f.service.getLoadedConfig(f.scope.project);
+  await expect(f.service.refreshInfrastructureOwnership(f.scope.project, f.scope.stack)).rejects.toThrow('held by the local platform update');
+  expect(f.service.getLoadedConfig(f.scope.project)).toBe(retained);
   await expect(f.service.startStack(f.scope.project, f.scope.stack, { source: 'operator' })).rejects.toThrow('held');
   await f.service.startStack(f.scope.project, f.scope.stack, { source: 'boot' });
   const launched = f.owner.startApp.mock.calls[0]![0];

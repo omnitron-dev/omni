@@ -1018,7 +1018,8 @@ export class ProjectService extends EventEmitter {
   @RecoveryMutation()
   async refreshInfrastructureOwnership(projectName: string, stackName: string): Promise<{ released: string[]; adopted: string[] }> {
     this.migrations.assertIdle();
-    if (this.ownershipFrozen || this.resumingInstalled || this.startsInFlight.size || this.stopsInFlight.size || this.reconcilingStacks)
+    if (this.ownershipFrozen || this.resumingInstalled || this.rereading?.size || this.incomingReleases?.size ||
+        this.startsInFlight.size || this.stopsInFlight.size || this.nodeStackStop.busy || this.reconcilingStacks)
       throw new Error('Project lifecycle ownership is changing; retry the infrastructure refresh after it settles');
     this.ownershipFrozen = true;
     try { return await this.refreshInfrastructureOwnershipOnce(projectName, stackName); }
@@ -1026,10 +1027,10 @@ export class ProjectService extends EventEmitter {
   }
 
   private async refreshInfrastructureOwnershipOnce(projectName: string, stackName: string): Promise<{ released: string[]; adopted: string[] }> {
+    await this.requireNoColdBatch();
     const project = this.registry.get(projectName);
     if (!project) throw new Error(`Project '${projectName}' not found`);
-    this.configRegistry.delete(projectName);
-    const config = await this.loadProjectConfig(projectName);
+    const config = await this.loadRegisteredProjectConfig(projectName, 'ownership-refresh');
     const stack = this.resolveStacks(config, projectName)[stackName];
     if (!stack || stack.type !== 'local') throw new Error('Ownership refresh requires a declared local stack');
     if (!ownsStackInfrastructure(stack)) {
@@ -3835,6 +3836,10 @@ export class ProjectService extends EventEmitter {
       if (!loaded) throw Error('Project is absent from the retained runtime configuration');
       return loaded.config;
     }
+    return this.loadRegisteredProjectConfig(projectName, 'ordinary');
+  }
+
+  private async loadRegisteredProjectConfig(projectName: string, caller: 'ordinary' | 'ownership-refresh'): Promise<IEcosystemConfig> {
     const project = this.registry.get(projectName);
     if (!project) throw new Error(`Project '${projectName}' not found`);
 
@@ -3846,12 +3851,13 @@ export class ProjectService extends EventEmitter {
       throw new Error('Project registration changed while loading configuration');
     const current = this.configRegistry.get(projectName);
     this.migrations.assertIdle();
-    // An explicit reload is the boundary back to mutable project declarations.
-    delete this.retainedConfiguration;
-    if (current && isDeepStrictEqual(current.config, config)) return current.config;
-    if (this.ownershipFrozen || current !== before)
+    if (current && !this.retainedConfiguration && isDeepStrictEqual(current.config, config)) return current.config;
+    const ownsWrite = caller === 'ownership-refresh' ? this.ownershipFrozen : !this.ownershipFrozen;
+    if (!ownsWrite || current !== before)
       throw new RecoveryBusyError('Project ownership or cached configuration changed while loading; retry on the current backend');
     return recoveryState.run('loadProjectConfig', () => {
+      // Publishing mutable project declarations also releases the retained configuration.
+      delete this.retainedConfiguration;
       this.configRegistry.set(projectName, { config, loadedAt: Date.now() });
       return config;
     });

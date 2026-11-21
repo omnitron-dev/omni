@@ -739,6 +739,10 @@ resolves the fresh validated stack through the same container resolver and
 requirements merge as stack startup. It returns exact `released` and `adopted`
 container names. It does not create, remove, stop, or restart containers.
 
+The project lifecycle lock covers both the source read and the monitoring
+handoff. A failed source read preserves the last validated configuration.
+An active local runtime update retains its configuration until that update ends.
+
 The operation freezes new monitoring/reconcile work and drains existing work
 before changing ownership. Removed services leave the desired set; delayed
 health snapshots cannot revive them after the operation returns. Retained

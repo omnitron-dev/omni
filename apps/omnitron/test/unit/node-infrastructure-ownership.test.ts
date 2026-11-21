@@ -137,7 +137,8 @@ describe('node allocations do not acquire infrastructure ownership from bootstra
   it('fences concurrent starts and handoffs while relinquishing stale monitoring', async () => {
     const stack = delegated(), { service, config } = harness(stack);
     service.startsInFlight = new Map(); service.stopsInFlight = new Map(); service.reconcilingStacks = false;
-    service.loadProjectConfig = vi.fn(async () => config);
+    service.nodeStackStop = { busy: false };
+    service.loadRegisteredProjectConfig = vi.fn(async () => config);
     const state = service.stackStates.get('sample/deployed'); state.infraService = { stale: true };
     let complete!: () => void;
     const draining = new Promise<void>(resolve => { complete = resolve; });

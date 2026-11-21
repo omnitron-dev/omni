@@ -20,7 +20,8 @@ export interface InstalledPackage {
 }
 const validName = (name: string) => /^(?:@[\w.-]+\/)?[\w.-]+$/.test(name) &&
   name.split('/').every(part => part !== '.' && part !== '..' && !part.startsWith('.'));
-const readManifest = async (root: string): Promise<PackageInfo> => {
+const readManifest = async (root: string, inspectPackage?: (root: string) => Promise<void>): Promise<PackageInfo> => {
+  if (inspectPackage) await inspectPackage(root);
   const meta = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8')) as PackageInfo;
   if (!meta || !validName(meta.name) || typeof meta.version !== 'string' || !meta.version)
     throw Error('Invalid installed package at ' + root);
@@ -29,17 +30,18 @@ const readManifest = async (root: string): Promise<PackageInfo> => {
 
 /** Resolve the installed *production* graph. Real paths distinguish different peer
  * bindings of the same version; discovery order is stable and cycles are finite. */
-export async function installedGraph(source: string, overlays: ReadonlyMap<string, string> = new Map(), allowedRoots?: readonly string[]): Promise<InstalledPackage[]> {
+export async function installedGraph(source: string, overlays: ReadonlyMap<string, string> = new Map(), allowedRoots?: readonly string[],
+  inspectPackage?: (root: string) => Promise<void>): Promise<InstalledPackage[]> {
   const packages: InstalledPackage[] = [], known = new Map<string, number>();
   async function visit(directory: string): Promise<number> {
     let root = await fs.realpath(directory);
     if (allowedRoots && !allowedRoots.some(parent => root === parent || root.startsWith(parent + path.sep)))
       throw Error('Installed dependency escapes the frozen checkouts: ' + root);
     let id = known.get(root); if (id !== undefined) return id;
-    let metadata = await readManifest(root);
+    let metadata = await readManifest(root, inspectPackage);
     const overlay = overlays.get(metadata.name);
     if (overlay && root !== overlay) {
-      const replacement = await readManifest(overlay);
+      const replacement = await readManifest(overlay, inspectPackage);
       if (replacement.name !== metadata.name || replacement.version !== metadata.version)
         throw Error('Overlay changes installed package identity: ' + metadata.name);
       root = overlay; metadata = replacement;

@@ -236,6 +236,10 @@ For a fresh build, run Xec with a standalone Node distribution such as the
 official Node binary. Xec checks the producer before creating the build
 checkout or installing dependencies. A verified cached runtime uses its own Node.
 
+When repacking an installed runtime, the build tool verifies the input with its
+own verifier. It checks the same filesystem snapshot again after copying the
+packages and records the digest of the new runtime.
+
 ```sh
 pnpm exec xec update local-sync
 pnpm exec xec update local-sync --review <plan-sha256>

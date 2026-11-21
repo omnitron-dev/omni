@@ -308,6 +308,32 @@ export async function isDockerAvailable(): Promise<boolean> {
   }
 }
 
+/** Read ownership without locking each container for a full native inspection. */
+async function managedContainerInventory(expected?: ReadonlySet<string>, scope?: { project: string; stack: string }): Promise<Array<{ id: string; name: string }>> {
+  const format = '{"id":{{json .ID}},"name":{{json .Names}},"managed":{{json (.Label "omnitron.managed")}},"project":{{json (.Label "omnitron.project")}},"stack":{{json (.Label "omnitron.stack")}}}';
+  const args = ['ps', '-a', '--no-trunc', '--format', format];
+  // An expected name can be occupied by an unmanaged container. Include it in the ownership check.
+  if (!expected?.size) {
+    args.push('--filter', 'label=omnitron.managed=true');
+    if (scope) args.push('--filter', 'label=omnitron.project=' + scope.project, '--filter', 'label=omnitron.stack=' + scope.stack);
+  }
+  const { stdout } = await executeDocker(args, 32 * 1024 * 1024);
+  const entries: Array<{ id: string; name: string }> = [];
+  for (const line of stdout.trim().split('\n').filter(Boolean)) {
+    const entry = JSON.parse(line);
+    if (typeof entry?.name !== 'string' || !entry.name || typeof entry.id !== 'string' || !/^[a-f0-9]{64}$/.test(entry.id))
+      throw Error('Container inventory has no immutable identity');
+    if (entry.managed !== 'true') {
+      if (expected?.has(entry.name)) throw Error('A declared container name is occupied by an unmanaged container');
+    } else if (scope && (entry.project !== scope.project || entry.stack !== scope.stack)) {
+      if (expected?.has(entry.name)) throw Error(`Container '${entry.name}' belongs to another allocation`);
+    } else {
+      entries.push({ id: entry.id, name: entry.name });
+    }
+  }
+  return entries;
+}
+
 /**
  * List all Omnitron-managed containers.
  *
@@ -317,22 +343,13 @@ export async function isDockerAvailable(): Promise<boolean> {
  */
 export async function listManagedContainers(options: { orThrow?: boolean; checkNames?: ReadonlySet<string> } = {}): Promise<ContainerState[]> {
   try {
-    const names = await withAdapter((adapter) => adapter.listContainers(true) as Promise<string[]>);
-    if (names.length === 0) return [];
-
-    // One `docker inspect` for every container, not one per container.
-    //
-    // The per-container loop this replaces issued a subprocess each: on a host
-    // with 28 containers that is 28 spawns, and the console polls this every
-    // ten seconds. Measured on that host: 0.042s for one inspect, 0.225s for
-    // all 28 in a single call — so the loop cost roughly 1.2s of process
-    // churn per poll when it was working, and under load it stopped returning
-    // at all, leaving the containers page in its loading state indefinitely.
-    const inspected = await inspectContainers(names, options.orThrow);
-    // Named and then not described: `inspectContainers` swallows its own
-    // failure, and an empty answer here is Docker going away mid-question.
-    if (options.orThrow && inspected.length === 0) {
-      throw new Error(`docker listed ${names.length} container(s) and then described none of them`);
+    const ownership = await managedContainerInventory(options.checkNames);
+    if (!ownership.length) return [];
+    const inspected = await inspectContainers(ownership.map(container => container.id), options.orThrow);
+    if (options.orThrow) {
+      const names = new Map(inspected.map(container => [container.Id, container.Name]));
+      if (ownership.some(container => names.get(container.id) !== '/' + container.name))
+        throw Error('Container inventory changed during native inspection');
     }
 
     const managed: ContainerState[] = [];
@@ -371,16 +388,8 @@ export async function listManagedContainers(options: { orThrow?: boolean; checkN
 
 /** Native IDs are the authority for destructive operations. Never follow a reused name. */
 export async function inspectStackContainers(scope: { project: string; stack: string }, names: readonly string[] = []) {
-  const expected = new Set(names);
-  const actual = await listManagedContainers({ orThrow: true, checkNames: expected });
-  return actual.flatMap(container => {
-    if (container.project !== scope.project || container.stack !== scope.stack) {
-      if (expected.has(container.name)) throw new Error(`Container '${container.name}' belongs to another allocation`);
-      return [];
-    }
-    if (!container.containerId || !/^[a-f0-9]{64}$/.test(container.containerId)) throw new Error('Container inventory has no immutable identity');
-    return [{ id: container.containerId, name: container.name }];
-  }).sort((a, b) => a.id.localeCompare(b.id));
+  const owned = await managedContainerInventory(new Set(names), scope);
+  return owned.sort((a, b) => a.id.localeCompare(b.id));
 }
 
 /**
@@ -899,12 +908,12 @@ export async function startContainer(nameOrId: string): Promise<void> {
   await adapter.startContainer(nameOrId);
 }
 
-async function executeDocker(args: string[]) {
+async function executeDocker(args: string[], maxBuffer = 1024 * 1024) {
   const { ExecutionEngine } = await import('@xec-sh/core');
   const engine = new ExecutionEngine({ defaultShell: false, enableEvents: false });
   try {
     return await engine.execute({ command: 'docker', args, shell: false, adapter: 'local',
-      timeout: 60_000, maxBuffer: 1024 * 1024, throwOnNonZeroExit: true });
+      timeout: 60_000, maxBuffer, throwOnNonZeroExit: true });
   } finally { await engine.dispose(); }
 }
 

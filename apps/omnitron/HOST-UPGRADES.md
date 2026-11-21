@@ -248,6 +248,11 @@ with mounted configuration, the running container records the specification it
 was created with. Editing a mounted file changes the desired specification.
 After deploying the changed service, obtain a fresh review before updating the host.
 
+Stack review reads the Docker ownership labels and full container IDs in one
+listing. It inspects the declared containers by name and verifies each ID against
+that listing. An unrelated container waiting on its own native operation does
+not have to answer an inspection for the stack review to proceed.
+
 ### Studio and Flows when returning to an earlier backend
 
 Run the capable manager's `omnitron --json backend upgrade <retained-runtime>/packages/0/dist --check` against the exact recovery target. The check opens the controller's SQLite journal read-only. The serving controller stops admitting new public requests and Flow work, waits for admitted requests, disk samples and deliveries, then checks the journal again before releasing ownership. A drain timeout resumes that controller. A new manager carries the verified target digest through the private guardian request.

@@ -3,6 +3,7 @@ import { ClassNames } from '@emotion/react';
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { setImmediate as nextEventLoopTurn } from 'node:timers/promises';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseDocument } from '@omnitron-dev/lumen-ast';
 import { renderDocumentHtml } from './render-html.js';
@@ -257,6 +258,32 @@ describe('complete static React rendering', () => {
     expect(Object.keys(manifest).filter(key => key.startsWith('routes/'))).toEqual([
       'routes/first.html', 'routes/second.html', 'routes/third.html',
     ]);
+  });
+
+  it('lets a suspended page resume while other pages are still queued', async () => {
+    const graph = new CorpusGraph();
+    const ids = ['preview', ...Array.from({ length: 8 }, (_, index) => `article-${index}`)];
+    const ast = await parseDocument('# Publishing');
+    for (const id of ids) {
+      graph.addDocument({ id, path: `${id}.md`, title: id, hash: id, anchors: [], mathObjects: [], backlinks: [], ast });
+    }
+
+    const events: string[] = [];
+    const Preview = lazy(async () => {
+      await nextEventLoopTurn();
+      events.push('module ready');
+      return { default: () => React.createElement('output', null, 'Loaded preview') };
+    });
+    const config = defineLumenConfig({ title: 'Async preview', renderConcurrency: 2, theme: {
+      layout: ({ document, children }) => {
+        events.push(document.id);
+        return document.id === 'preview' ? React.createElement(Preview) : children;
+      },
+    } });
+    const result = await buildStaticSite(graph, config, { clientAssets: new Map() });
+    expect(result.pages.get('/preview')).toContain('Loaded preview');
+    expect(events.indexOf('module ready')).toBeLessThan(events.indexOf('article-7'));
+    expect([...result.pages.keys()]).toEqual(ids.map(id => `/${id}`));
   });
 
   it.each([0, 1.5, Infinity])('rejects invalid render concurrency %s in site configuration', value => {

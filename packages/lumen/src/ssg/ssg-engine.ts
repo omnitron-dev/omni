@@ -5,6 +5,7 @@ import { resolveExampleSources } from '../corpus/examples.js';
 import { buildClientAssets } from './client-build.js';
 import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
+import { setImmediate as nextEventLoopTurn } from 'node:timers/promises';
 import type { LumenNode } from '@omnitron-dev/lumen-ast';
 import { BASE_LUMEN_THEME_CSS } from './emotion-extractor.js';
 import { FILE_TREE_CSS } from './file-tree-styles.js';
@@ -240,7 +241,10 @@ export async function buildStaticSite(
   const renderPromises = documents.map(doc => limitRender(async () => {
     renderSignal.throwIfAborted();
     try {
-      return await renderPage(doc);
+      const page = await renderPage(doc);
+      // Let pending module reads and sibling deadlines run before this slot starts another page.
+      await nextEventLoopTurn();
+      return page;
     } catch (error) {
       renderController.abort(error);
       throw error;

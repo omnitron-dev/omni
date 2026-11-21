@@ -59,7 +59,7 @@ Under a deployment prefix such as `/manual/`, pass `pagefindUrl="/manual/pagefin
 
 ## Build and publication
 
-Lumen renders up to four documents at once. Set `renderConcurrency` in the site configuration to a positive integer to fit the available memory and I/O. A document's 30-second render deadline starts when it gets a slot. A failed page cancels active siblings and leaves queued documents unstarted. Routes and manifest entries retain corpus order across different completion times.
+Lumen renders up to four documents at once. Set `renderConcurrency` in the site configuration to a positive integer to fit the available memory and I/O. A document's 30-second render deadline starts when it gets a slot. Between pages the renderer yields to Node's event loop so suspended pages can receive module reads and timers can fire. A failed page cancels active siblings and leaves queued documents unstarted. Routes and manifest entries retain corpus order across different completion times.
 
 The builder validates a staged generation before publishing it. Failed rebuilds retain the last verified generation; the publisher owns output consistency and durability. Serve or deploy the resulting directory through your hosting system. `lumen serve` is a local preview server.
 

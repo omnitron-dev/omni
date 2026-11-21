@@ -117,7 +117,7 @@ it('recovers a signed source-stack stop through its imported allocation and veri
     await fs.writeFile(path.join(allocationDir, 'omnitron.stacks.json'), JSON.stringify({ standby: { type: 'local', apps: [] } }));
     await service.addProject(source.project, projectDir);
     await service.importProjectConfiguration({ project: source.project, name: 'edge', path: allocationDir,
-      stacks: { deployed: 'worker', standby: 'spare' }, expectedRevision: service.listProjects()[0]!.catalogRevision! });
+      stacks: { deployed: 'worker', standby: 'spare' }, expectedRevision: (await service.getProject(source.project)).catalogRevision! });
     const runtime = { project: service.projectConfigurations('sample').find(record => record.configuration)!.name, stack: 'deployed' };
     expect(runtime.project).not.toBe(source.project);
     name = runtime.project + '/' + runtime.stack + '/api';

@@ -220,7 +220,7 @@ export class AlertService {
     // `infra.…` rule — which the console's form accepts as supported — was
     // evaluated against no containers at all and could never fire.
     @Optional() @Inject(PROJECT_SERVICE_TOKEN)
-    private readonly projects?: Partial<Pick<ProjectService, 'getInfraManager' | 'listProjects' | 'loadProjectConfig'>>,
+    private readonly projects?: Partial<Pick<ProjectService, 'getInfraManager' | 'listWorkspaceNames' | 'loadProjectConfig'>>,
   ) {
     this.logger = loggerModule.logger;
   }
@@ -352,13 +352,13 @@ export class AlertService {
   private async alertSinks(now: number): Promise<Array<IAlertSink & { project: string }>> {
     if (this.sinkCache && now - this.sinkCache.at < SINK_TTL_MS) return this.sinkCache.sinks;
     const sinks: Array<IAlertSink & { project: string }> = [];
-    for (const project of this.projects?.listProjects?.() ?? []) {
+    for (const project of this.projects?.listWorkspaceNames?.() ?? []) {
       try {
-        const config = await this.projects!.loadProjectConfig!(project.name);
+        const config = await this.projects!.loadProjectConfig!(project);
         const sink = config.monitoring?.alertSink;
-        if (sink) sinks.push({ project: project.name, ...sink });
+        if (sink) sinks.push({ project, ...sink });
       } catch (err) {
-        this.logger.warn({ err, project: project.name }, 'A project config could not be read for its alert sink');
+        this.logger.warn({ err, project }, 'A project config could not be read for its alert sink');
       }
     }
     this.sinkCache = { at: now, sinks };

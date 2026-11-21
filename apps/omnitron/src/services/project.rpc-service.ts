@@ -141,7 +141,7 @@ export class ProjectRpcService {
     const result: import('../shared/dto/project.js').ProjectTopology = {
       version: 1, generatedAt: new Date().toISOString(), dependencies: [], warnings: [], scopes: [], coverage: [],
     };
-    const projects = data.project ? [data.project] : this.projectService.listProjects().map(project => project.name);
+    const projects = data.project ? [data.project] : this.projectService.listWorkspaceNames();
     for (const project of projects) {
       const selected = data.stack ? await this.projectService.resolveProjectStack({ project, stack: data.stack }) : null;
       for (const record of this.projectService.projectConfigurations(project)) {

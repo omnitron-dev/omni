@@ -86,9 +86,9 @@ describe('RPC authorization metadata', () => {
     expect(fromDecorators.METHOD_AUTH).toBe('method:auth');
   });
 
-  it('makes topology reads available to viewers and target mutations administrator-only', async () => {
+  it('makes project and topology reads available to viewers and target mutations administrator-only', async () => {
     const { ProjectRpcService } = await import('../../src/services/project.rpc-service.js');
-    for (const method of ['getTopology', 'getTopologyInventory', 'getTopologyWorkspace'])
+    for (const method of ['listProjects', 'getProject', 'listStacks', 'getTopology', 'getTopologyInventory', 'getTopologyWorkspace'])
       expect(Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, ProjectRpcService.prototype, method))
         .toEqual({ roles: ['admin', 'operator', 'viewer'] });
     for (const method of ['saveTopologyDraft', 'planTopology', 'applyTopologyPlan', 'importConfiguration', 'detachConfiguration'])

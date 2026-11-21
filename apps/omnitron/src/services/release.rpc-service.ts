@@ -141,7 +141,7 @@ export class ReleaseRpcService implements IOmnitronReleaseService {
     if (data.publish && this.storeStatus && this.storeStatus().state !== 'configured')
       throw new Error('Publishing requires a valid releaseStore in the controller configuration');
     const actor = currentActor();
-    this.projects?.getProject(data.project);
+    this.projects?.projectConfigurations(data.project);
     const auth = this.auth;
     const role = frameworkSource || envKeys.length ? 'admin' : 'operator';
     if (data.publish && !auth) throw Errors.forbidden('Artifact publication requires authenticated operator access');

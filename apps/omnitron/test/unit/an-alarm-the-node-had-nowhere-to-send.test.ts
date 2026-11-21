@@ -99,7 +99,7 @@ describe('the node’s engine, with the sink and without it', () => {
   };
   const engine = (sink?: typeof SINK) =>
     new AlertService({ logger } as never, db, orchestrator as never, {
-      listProjects: () => [{ name: 'sample' }],
+      listWorkspaceNames: () => ['sample'],
       loadProjectConfig: async () => ({ monitoring: sink ? { alertSink: sink } : {} }),
     } as never);
 

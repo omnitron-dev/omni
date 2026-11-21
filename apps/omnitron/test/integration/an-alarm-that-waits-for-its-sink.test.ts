@@ -92,7 +92,7 @@ describe.skipIf(!testPg.ok)('an alarm that waits for its sink', () => {
       },
     };
     const projects = {
-      listProjects: () => [{ name: 'sample' }],
+      listWorkspaceNames: () => ['sample'],
       loadProjectConfig: async () => ({
         monitoring: { alertSink: { app: 'main', service: 'OpsAlerts', method: 'raise' } },
       }),

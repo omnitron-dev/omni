@@ -750,20 +750,48 @@ export class ProjectService extends EventEmitter {
     return readDeploymentProgress(records, { name: scope.project, configurations }, scope.stack).transfers;
   }
 
-  listProjects(): IProjectInfo[] {
+  listWorkspaceNames(): string[] {
+    return this.registry.list().filter(project => !isControlPlaneWorkspace(project.path)).map(project => project.name);
+  }
+
+  listProjects(): Promise<IProjectInfo[]> {
+    return this.readProjectCatalog(this.listWorkspaceNames());
+  }
+
+  private async readProjectCatalog(names: string[]): Promise<IProjectInfo[]> {
     const revision = this.registry.catalogRevision();
-    return this.registry.list().filter(project => !isControlPlaneWorkspace(project.path)).map(project => {
-      const records = this.registry.registrations(project.name);
-      const infos = records.map(record => this.toProjectInfo(record));
-      return {
-        ...this.toProjectInfo(project),
+    const projects: IProjectInfo[] = [];
+    let loadedConfiguration = false;
+    for (const name of names) {
+      const records = this.registry.registrations(name);
+      const infos: IProjectInfo[] = [];
+      for (const record of records) {
+        let config = this.getLoadedConfig(record.name);
+        if (!config) {
+          // Each cold declaration may start a reader process. Concurrent
+          // catalogue requests share each sequential load through ensureConfig.
+          loadedConfiguration = true;
+          try {
+            config = await this.ensureConfig(record.name);
+          } catch (cause) {
+            throw new Error(`Cannot load configuration '${record.configuration?.name ?? 'default'}' for project '${name}'`, { cause });
+          }
+        }
+        infos.push(this.toProjectInfo(record, config));
+      }
+      projects.push({
+        ...infos.find(info => info.name === name)!,
         enabledStacks: records.flatMap(record => (record.enabledStacks ?? []).map(stack => publicStackName(record, stack))),
         runningStacks: infos.reduce((count, info) => count + info.runningStacks, 0),
         totalStacks: infos.reduce((count, info) => count + info.totalStacks, 0),
         configurations: records.map(configurationInfo),
         catalogRevision: revision,
-      };
-    });
+      });
+    }
+    if (loadedConfiguration && revision !== this.registry.catalogRevision()) {
+      throw new Error('Project catalogue changed while loading configurations. Retry the read.');
+    }
+    return projects;
   }
 
   /** Read local stack declarations once per workspace-aware daemon inventory, without contacting workers. */
@@ -867,10 +895,12 @@ export class ProjectService extends EventEmitter {
     this.emit('project:updated', data.project, {});
   }
 
-  getProject(name: string): IProjectInfo {
-    const project = this.registry.get(name);
-    if (!project) throw new Error(`Project '${name}' not found`);
-    return this.listProjects().find(record => record.name === (project.configuration?.project ?? name))!;
+  async getProject(name: string): Promise<IProjectInfo> {
+    const record = this.registry.get(name);
+    const owner = record?.configuration ? this.registry.get(record.configuration.project) : record;
+    if (!owner || isControlPlaneWorkspace(owner.path)) throw new Error(`Project '${name}' not found`);
+    const [project] = await this.readProjectCatalog([owner.name]);
+    return project!;
   }
 
   /** Resolve one user workspace without materializing every stack and its runtime inventory. */
@@ -899,8 +929,7 @@ export class ProjectService extends EventEmitter {
       throw error;
     }
     try {
-      await this.ensureConfig(name);
-      return this.getProject(name);
+      return await this.getProject(name);
     } catch (cause) {
       throw Error(`Project '${name}' was registered at ${created.path}, but its configuration could not be loaded`, { cause });
     }
@@ -6019,8 +6048,7 @@ export class ProjectService extends EventEmitter {
     this.registry.setStackEnabled(projectName, stackName, enabled);
   }
 
-  private toProjectInfo(project: ISeedProject): IProjectInfo {
-    const config = this.configRegistry.get(project.name)?.config;
+  private toProjectInfo(project: ISeedProject, config = this.getLoadedConfig(project.name)): IProjectInfo {
     const stacks = config ? this.resolveStacks(config, project.name) : {};
     const runningStacks = this.getRunningStacks(project.name);
 

@@ -74,7 +74,7 @@ describe('a node’s own alarms, on its SQLite', () => {
       },
     };
     const projects = {
-      listProjects: () => [{ name: 'sample' }],
+      listWorkspaceNames: () => ['sample'],
       loadProjectConfig: async () => ({
         monitoring: { alertSink: { app: 'main', service: 'OpsAlerts', method: 'raise' } },
       }),

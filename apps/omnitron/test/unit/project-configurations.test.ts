@@ -142,6 +142,66 @@ describe('one repository owns many stacks', () => {
 });
 
 
+describe('the public project catalogue on first read', () => {
+  let service: ProjectService;
+  let rpc: ProjectRpcService;
+  beforeEach(() => {
+    registry.importConfiguration(input());
+    const owner = { list: () => [], getHealth: async () => ({}) };
+    service = new ProjectService(createNullLogger(), owner as never, db);
+    rpc = new ProjectRpcService(service);
+  });
+  afterEach(() => service.dispose());
+
+  it('counts all configured public stacks before opening their inventory', async () => {
+    fs.writeFileSync(path.join(root, 'repo/omnitron.stacks.json'), JSON.stringify({
+      local: { type: 'local' }, edge: { type: 'remote', nodes: [{ host: 'edge.example', role: 'app' }] },
+    }));
+    const load = vi.spyOn(service, 'loadProjectConfig');
+    const observe = vi.spyOn(service, 'withRemoteAppStatuses');
+    const [first, second] = await Promise.all([rpc.listProjects(), rpc.listProjects()]);
+    expect(second).toEqual(first);
+    expect(load.mock.calls.map(([name]) => name).sort()).toEqual(['another', 'sample', 'sample-research']);
+    expect(observe).not.toHaveBeenCalled();
+    const project = first.find(row => row.name === 'sample')!;
+    expect(project).toMatchObject({ totalStacks: 3, runningStacks: 0, enabledStacks: ['research'] });
+    expect(first.find(row => row.name === 'another')?.totalStacks).toBe(1);
+    const stacks = await rpc.listStacks({ project: project.name });
+    expect(stacks.map(stack => stack.name).sort()).toEqual(['edge', 'local', 'research']);
+    expect(project.totalStacks).toBe(stacks.length);
+    expect(stacks.find(stack => stack.name === 'research')?.runtimeScope).toEqual({ project: 'sample-research', stack: 'local' });
+    expect(load).toHaveBeenCalledTimes(3);
+  });
+
+  it('identifies an unreadable imported configuration and retries after repair', async () => {
+    const config = path.join(root, 'repo/research/omnitron.config.mjs');
+    fs.renameSync(config, config + '.saved');
+    await expect(rpc.listProjects()).rejects.toThrow(/research/);
+    expect(await rpc.getProject({ name: 'another' })).toMatchObject({ totalStacks: 1 });
+    fs.renameSync(config + '.saved', config);
+    expect(await rpc.getProject({ name: 'sample-research' })).toMatchObject({ name: 'sample', totalStacks: 2 });
+  });
+
+  it('rejects a catalogue whose ownership changed during a cold load', async () => {
+    let resume!: () => void;
+    const gate = new Promise<void>(resolve => { resume = resolve; });
+    const load = service.loadProjectConfig.bind(service);
+    vi.spyOn(service, 'loadProjectConfig').mockImplementationOnce(async name => {
+      await gate;
+      return load(name);
+    });
+    const reading = rpc.listProjects();
+    try {
+      await service.detachProjectConfiguration({ project: 'sample', name: 'research', expectedRevision: registry.catalogRevision() });
+    } finally { resume(); }
+    await expect(reading).rejects.toThrow('Project catalogue changed');
+    const next = await rpc.listProjects();
+    expect(next.map(project => project.name).sort()).toEqual(['another', 'sample', 'sample-research']);
+    expect(next.every(project => project.totalStacks === 1)).toBe(true);
+  });
+});
+
+
 describe('public configuration import admission', () => {
   const rpc = () => new ProjectRpcService(Object.assign(Object.create(ProjectService.prototype), {
     registry, daemonStateStore: db, configRegistry: new Map(), stackStates: new Map(), logger: createNullLogger(),

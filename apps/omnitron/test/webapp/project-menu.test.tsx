@@ -69,10 +69,10 @@ describe('workspace menu commands', () => {
     }));
     mount('/projects/beta');
     fireEvent.click(screen.getByRole('button', { name: 'Switch workspace: beta' }));
-    const current = screen.getByRole('menuitem', { name: 'beta 0/1 stacks' });
+    const current = screen.getByRole('menuitem', { name: 'beta 0/1 stack' });
     await waitFor(() => expect(document.activeElement).toBe(current));
     fireEvent.keyDown(current, { key: 'ArrowUp' });
-    expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'alpha 1 stacks' }));
+    expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'alpha 1 stack' }));
   });
   it('reviews the starter through the workspace menu and registers the exact reviewed project', async () => {
     const needs = { automation: false, persistence: 'none', service: 'node' };

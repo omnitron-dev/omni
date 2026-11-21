@@ -1,5 +1,76 @@
 import { test, expect, stubInventory } from './fixtures.mjs';
 
+test('the project directory identifies a workspace once and explains its registered stacks', async ({ page, url }) => {
+  const project = {
+    name: 'catalog', displayName: 'Catalog', path: '/workspace/catalog', registeredAt: '2026-01-01T00:00:00Z',
+    totalStacks: 9, runningStacks: 1, enabledStacks: ['dev'],
+    configurations: [
+      { name: 'default', runtimeProject: 'catalog', stacks: {}, path: '/workspace/catalog' },
+      { name: 'archive', runtimeProject: 'catalog-archive', stacks: Object.fromEntries(
+        Array.from({ length: 8 }, (_, number) => ['source-' + number, 'archive-' + number])), path: '/workspace/archive' },
+    ],
+  };
+  await stubInventory(page, { 'OmnitronProject.listProjects': [
+    project,
+    { ...project, name: 'billing-api', displayName: 'Billing', totalStacks: 1, configurations: undefined },
+  ], 'OmnitronProject.updateProject': {}, 'OmnitronNodes.listNodes': [], 'OmnitronNodes.getNodeDaemonStatus': {} });
+  await page.goto(url + '/projects');
+  const card = page.getByRole('article', { name: 'Catalog', exact: true });
+  const link = card.getByRole('link', { name: 'Catalog', exact: true });
+  await expect(card.getByText(/^catalog$/i)).toHaveCount(1);
+  await expect(card.getByText('1 of 9 stacks active')).toBeVisible();
+  await expect(card.getByText('1 in primary configuration · 8 imported')).toBeVisible();
+  await expect(card.getByText('dev', { exact: true })).toHaveCount(1);
+  await expect(link).toHaveAttribute('href', '/projects/catalog');
+  await expect(page.getByRole('link', { name: 'View applications by node' })).toHaveAttribute('href', '/nodes');
+  await expect(link.getByRole('button')).toHaveCount(0);
+  const billing = page.getByRole('article', { name: 'Billing', exact: true });
+  await expect(billing.getByText('billing-api', { exact: true })).toBeVisible();
+  await expect(billing.getByText('1 of 1 stack active')).toBeVisible();
+  await expect(billing.getByText(/imported/)).toHaveCount(0);
+  await card.getByRole('button', { name: 'Settings for catalog' }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page).toHaveURL(url + '/projects');
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await page.setViewportSize({ width: 320, height: 720 });
+  await expect(card).toBeInViewport();
+  expect(await card.evaluate(el => el.getBoundingClientRect().right <= innerWidth)).toBe(true);
+  await link.focus();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(url + '/projects/catalog');
+});
+
+test('project catalogue failure offers a refresh without claiming that the registry is empty', async ({ page, url }) => {
+  await stubInventory(page, { 'OmnitronProject.listProjects': new Error('Catalogue unavailable') });
+  await page.goto(url + '/projects');
+  await expect(page.getByText('Catalogue unavailable')).toBeVisible();
+  await expect(page.getByText('No projects', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toBeEnabled();
+});
+
+test('stopped imports are grouped and direct stack filters always reveal the selected deployment', async ({ page, url }) => {
+  const names = ['dev', 'analysis'];
+  await stubInventory(page, {
+    'OmnitronProject.listProjects': [{ name: 'sample', displayName: 'Sample', path: '/sample', totalStacks: 2, runningStacks: 0 }],
+    'OmnitronProject.listStacks': names.map(name => ({
+      name, type: 'local', config: { type: 'local' }, status: 'stopped', nodes: [], apps: [],
+      runtimeScope: { project: name === 'dev' ? 'sample' : 'old-research', stack: 'local' },
+    })),
+  });
+  await page.goto(url + '/projects/sample/stacks');
+  await expect(page.getByRole('link', { name: 'dev', exact: true })).toBeVisible();
+  const group = page.getByRole('button', { name: 'Imported stacks (1)' });
+  await expect(group).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByRole('link', { name: 'analysis', exact: true })).not.toBeVisible();
+  await group.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('link', { name: 'analysis', exact: true })).toHaveAttribute('href', '/projects/sample/stacks/analysis');
+  await page.goto(url + '/projects/sample/stacks?stack=analysis');
+  await expect(page.getByRole('article', { name: 'analysis' }).getByRole('link', { name: 'analysis', exact: true })).toBeVisible();
+  await expect(group).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'dev', exact: true })).toHaveCount(0);
+});
+
 test('a project stack selection filters inventory, follows details and survives history and reload', async ({ page, url }) => {
   const stacks = ['dev', 'test'].map(name => ({
     name, type: name === 'dev' ? 'local' : 'remote', status: 'running', uptime: 60_000,
@@ -57,7 +128,7 @@ test('a project stack selection filters inventory, follows details and survives 
   await page.reload();
   await expect(filter).toHaveText('Stack: test');
   await expect(card('dev')).toHaveCount(0);
-  const detailLink = card('test').getByRole('link', { name: 'test', exact: true });
+  const detailLink = page.getByRole('article', { name: 'test', exact: true }).getByRole('link', { name: 'test', exact: true });
   await detailLink.focus();
   await detailLink.press('Enter');
   await expect(page).toHaveURL(url + '/projects/sample/stacks/test');

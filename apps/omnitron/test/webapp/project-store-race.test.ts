@@ -39,6 +39,43 @@ beforeEach(() => {
 });
 
 describe('fetchStacks arriving late', () => {
+  it('keeps the registered catalogue separate from cached stack observations', async () => {
+    const store = await freshStore();
+    const { project } = await import('../../webapp/src/netron/client.js');
+    const first = { name: 'sample', displayName: 'Sample', path: '/sample', registeredAt: '',
+      enabledStacks: [], runningStacks: 0, totalStacks: 2 };
+    vi.mocked(project.listProjects).mockResolvedValueOnce([first]);
+    await store.getState().fetchProjects();
+    const observe = store.getState().fetchStacks('sample');
+    pending.get('sample')!([stack('one')]);
+    await observe;
+    expect(store.getState().projects[0]?.totalStacks).toBe(2);
+    vi.mocked(project.listProjects).mockResolvedValueOnce([{ ...first, totalStacks: 3 }]);
+    await store.getState().fetchProjects();
+    expect(store.getState().projects[0]?.totalStacks).toBe(3);
+    expect(store.getState().stacksByProject.sample).toHaveLength(1);
+  });
+
+  it('shares concurrent catalogue reads and keeps the result requested after a change', async () => {
+    const store = await freshStore();
+    const { project } = await import('../../webapp/src/netron/client.js');
+    const list = vi.mocked(project.listProjects);
+    list.mockClear();
+    let finish!: (value: Awaited<ReturnType<typeof project.listProjects>>) => void;
+    list.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+    const old = store.getState().fetchProjects();
+    const shared = store.getState().fetchProjects();
+    expect(list).toHaveBeenCalledTimes(1);
+    const added = { name: 'added', displayName: 'Added', path: '/added', registeredAt: '',
+      enabledStacks: [], runningStacks: 0, totalStacks: 1 };
+    list.mockResolvedValueOnce([added]);
+    await store.getState().fetchProjects(true);
+    finish([]);
+    await Promise.all([old, shared]);
+    expect(store.getState().projects).toEqual([added]);
+    expect(list).toHaveBeenCalledTimes(2);
+  });
+
   it('discards in-flight data and cached inventories when the reader changes', async () => {
     const store = await freshStore();
     const read = store.getState().fetchStacks('alpha');

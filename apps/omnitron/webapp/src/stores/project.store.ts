@@ -8,7 +8,7 @@ export { isRpcTimeout } from '../utils/rpc-error';
 import { useShallow } from 'zustand/shallow';
 import { invokeStackLifecycle, project as projectRpc } from '../netron/client';
 import { readStoredJson, writeStoredJson } from '../utils/storage';
-import { stackCounts, stacksInScope } from '../utils/stack-inventory';
+import { stacksInScope } from '../utils/stack-inventory';
 import { useWorkspace, workspaceHref, workspaceLocation } from '../routes/workspace';
 import type {
   IProjectInfo,
@@ -40,7 +40,7 @@ interface ProjectState {
   loading: boolean;
   error: string | null;
 
-  fetchProjects: () => Promise<void>;
+  fetchProjects: (afterChange?: boolean) => Promise<void>;
   setInventoryReaders: (projects: string | null, stacks: string | null) => void;
   fetchStacks: (project: string) => Promise<IStackInfo[] | null>;
   fetchStackStatus: (project: string, stack: string) => Promise<StackRuntime | null>;
@@ -89,6 +89,7 @@ export function workspaceBookmark(routes: Record<string, string>, project: strin
 export const useProjectStore = create<ProjectState>((set, get) => {
 
   const stackRequests = new Map<string, Promise<IStackInfo[] | null>>();
+  let projectRequest: Promise<void> | null = null;
   let stackReader: string | null = null;
   let projectReader: string | null = null;
   let projectGeneration = 0;
@@ -127,26 +128,30 @@ export const useProjectStore = create<ProjectState>((set, get) => {
   loading: false,
   error: null,
 
-  fetchProjects: async () => {
-    if (!projectReader) return undefined;
-    const generation = projectGeneration;
-    try {
-      set({ loading: true, error: null });
-      const projects = await projectRpc.listProjects();
-      if (generation !== projectGeneration) return undefined;
-      set(state => ({ projects: projects.map(project => state.stacksByProject[project.name]
-        ? { ...project, ...stackCounts(state.stacksByProject[project.name]!) } : project), loading: false }));
-
-    } catch (err) {
-      if (generation === projectGeneration) set({ error: (err as Error).message, loading: false });
+  fetchProjects: async (afterChange = false) => {
+    if (!projectReader) return;
+    if (projectRequest && !afterChange) {
+      await projectRequest;
+      return;
     }
-    return undefined;
+    const generation = ++projectGeneration;
+    set({ loading: true, error: null });
+    const request = projectRpc.listProjects().then(projects => {
+      if (generation === projectGeneration) set({ projects, loading: false });
+    }).catch((err: Error) => {
+      if (generation === projectGeneration) set({ error: err.message, loading: false });
+    });
+    projectRequest = request;
+    try { await request; } finally {
+      if (projectRequest === request) projectRequest = null;
+    }
   },
 
   setInventoryReaders: (projects, stacks) => {
     if (projectReader !== projects) {
       projectReader = projects;
       projectGeneration++;
+      projectRequest = null;
       set({ projects: [], loading: false, error: null });
     }
     if (stackReader === stacks) return;
@@ -168,7 +173,6 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       set((state) => ({
         stacksByProject: { ...state.stacksByProject, [projectName]: stacks },
         stackReadErrors: { ...state.stackReadErrors, [projectName]: null },
-        projects: state.projects.map(project => project.name === projectName ? { ...project, ...stackCounts(stacks) } : project),
       }));
 
       return stacks;
@@ -211,7 +215,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     try {
       set({ loading: true, error: null });
       await projectRpc.addProject({ name, path });
-      await get().fetchProjects();
+      await get().fetchProjects(true);
     } catch (err) {
       set({ error: (err as Error).message, loading: false });
       throw err;
@@ -222,7 +226,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     try {
       set({ loading: true, error: null });
       await projectRpc.updateProject({ name, ...data });
-      await get().fetchProjects();
+      await get().fetchProjects(true);
     } catch (err) {
       set({ error: (err as Error).message, loading: false });
       throw err;
@@ -233,7 +237,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     try {
       set({ loading: true, error: null });
       await projectRpc.removeProject({ name });
-      await get().fetchProjects();
+      await get().fetchProjects(true);
     } catch (err) {
       set({ error: (err as Error).message, loading: false });
       throw err;

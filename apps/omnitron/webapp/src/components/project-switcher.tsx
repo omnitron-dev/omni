@@ -26,6 +26,7 @@ import { PlusIcon, ChipIcon, FolderIcon } from '../assets/icons';
 import { useProjectStore, workspaceBookmark } from '../stores/project.store';
 import { useWorkspace } from '../routes/workspace';
 import { useAccess } from '../auth/access';
+import { stackCounts } from '../utils/stack-inventory';
 
 export function ProjectSwitcher() {
   const { open, anchorEl, onClose, onOpen } = usePopover();
@@ -45,6 +46,9 @@ export function ProjectSwitcher() {
   const activeInfo = projects.find((p) => p.name === activeProject);
   const isOmnitron = !activeProject;
   const stackReadError = useProjectStore(s => activeProject ? s.stackReadErrors?.[activeProject] : null);
+  const observed = useProjectStore(s => activeProject ? s.stacksByProject?.[activeProject] : undefined);
+  const activeCounts = observed ? stackCounts(observed) : activeInfo;
+  const observedStatus = stackReadError ? ' · stale' : observed?.some(stack => stack.status === 'unknown') ? ' · unknown' : '';
 
   const buttonBg: SxProps<Theme> = {
     height: 1,
@@ -100,10 +104,10 @@ export function ProjectSwitcher() {
           {isOmnitron ? 'Omnitron' : (activeInfo?.displayName ?? activeProject)}
         </Box>
 
-        {activeInfo && !activeStack && (
+        {activeInfo && activeCounts && !activeStack && (
           <Box component="span" title="Running / configured stacks in the whole workspace" sx={{ display: { xs: 'none', sm: 'inline-flex' } }}>
-            <Label color={activeInfo.runningStacks > 0 ? 'success' : 'default'} sx={{ height: 22, cursor: 'inherit' }}>
-              {activeInfo.runningStacks}/{activeInfo.totalStacks} stacks{stackReadError ? " · stale" : ""}
+            <Label color={activeCounts.runningStacks > 0 ? 'success' : 'default'} sx={{ height: 22, cursor: 'inherit' }}>
+              {activeCounts.runningStacks}/{activeCounts.totalStacks} {activeCounts.totalStacks === 1 ? 'stack' : 'stacks'}{observedStatus}
             </Label>
           </Box>
         )}
@@ -145,6 +149,7 @@ export function ProjectSwitcher() {
         {/* Registered projects */}
         {projects.map((p) => {
           const isActive = p.name === activeProject;
+          const counts = isActive && activeCounts ? activeCounts : p;
 
           return (
             <MenuItem
@@ -163,8 +168,8 @@ export function ProjectSwitcher() {
                 </Box>
               </Tooltip>
 
-              <Label color={isActive && p.runningStacks > 0 ? 'success' : 'default'}>
-                {isActive ? `${p.runningStacks}/${p.totalStacks}` : p.totalStacks} stacks{isActive && stackReadError ? " · stale" : ""}
+              <Label color={isActive && counts.runningStacks > 0 ? 'success' : 'default'}>
+                {isActive ? `${counts.runningStacks}/${counts.totalStacks}` : counts.totalStacks} {counts.totalStacks === 1 ? 'stack' : 'stacks'}{isActive && observedStatus}
               </Label>
             </MenuItem>
           );

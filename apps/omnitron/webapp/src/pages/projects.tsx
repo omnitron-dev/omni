@@ -11,18 +11,19 @@ import { Can, useAccess } from 'src/auth/access';
  * Available in the INFRASTRUCTURE sidebar (no active project required).
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
+import { useId, useState, useEffect, useCallback } from 'react';
+import { Link as RouterLink, useSearchParams } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
+import CardActionArea from '@mui/material/CardActionArea';
 import CardContent from '@mui/material/CardContent';
 import CardActions from '@mui/material/CardActions';
 import Grid from '@mui/material/Grid';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
+import Link from '@mui/material/Link';
 import Tooltip from '@mui/material/Tooltip';
-import Chip from '@mui/material/Chip';
 import Stack from '@mui/material/Stack';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
@@ -30,7 +31,6 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
 import TextField from '@mui/material/TextField';
 import Divider from '@mui/material/Divider';
-import { alpha } from '@mui/material/styles';
 
 import { Alert } from '@omnitron-dev/prism/components/alert';
 import { Breadcrumbs } from 'src/components/page-breadcrumbs';
@@ -64,126 +64,64 @@ function ProjectCard({
   href: string;
   onImport: (p: IProjectInfo) => void;
 }) {
-  const navigate = useNavigate();
+  const titleId = useId();
+  const { can } = useAccess();
   const hasRunning = project.runningStacks > 0;
-  const counts = project.runningStacks + '/' + project.totalStacks;
+  const title = project.displayName.trim() || project.name;
+  const showIdentifier = title.toLowerCase() !== project.name.toLowerCase();
+  const imported = project.configurations?.reduce((count, source) =>
+    count + Object.keys(source.stacks).length, 0) ?? 0;
+  const canRemove = can('OmnitronProject.removeProject');
+  const canImport = can('OmnitronProject.importConfiguration');
+  const canEdit = can('OmnitronProject.updateProject');
 
   return (
-    <Card
-      sx={{
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        cursor: 'pointer',
-        transition: 'border-color 0.2s, box-shadow 0.2s',
-        '&:hover': {
-          borderColor: (t) => alpha(t.palette.primary.main, 0.3),
-          boxShadow: (t) => t.shadows[8],
-        },
-      }}
-      variant="outlined"
-      onClick={() => navigate(href)}
-    >
-      <CardContent sx={{ flex: 1, pb: '12px !important' }}>
-        {/* Header */}
-        <Stack
-          direction="row"
-          sx={{
-            alignItems: 'flex-start',
-            justifyContent: 'space-between',
-            mb: 1.5,
-          }}
-        >
-          <Stack
-            direction="row"
-            spacing={1}
-            sx={{
-              alignItems: 'center',
-              minWidth: 0,
-            }}
-          >
-            <ProjectIcon sx={{ fontSize: 28, color: hasRunning ? 'primary.main' : 'text.secondary', flexShrink: 0 }} />
+    <Card component="article" aria-labelledby={titleId} variant="outlined"
+      sx={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0 }}>
+      <CardActionArea component={RouterLink} to={href} aria-labelledby={titleId}
+        sx={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-start', textAlign: 'start' }}>
+        <CardContent sx={{ width: '100%', minWidth: 0 }}>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1.5 }}>
+            <ProjectIcon sx={{ fontSize: 24, color: hasRunning ? 'primary.main' : 'text.secondary', flexShrink: 0 }} />
             <Box sx={{ minWidth: 0 }}>
-              <Typography
-                component={RouterLink} to={href} onClick={event => event.stopPropagation()}
-                variant="subtitle2" color="inherit" sx={{ fontWeight: 700, textDecoration: 'none' }}
-                noWrap
-              >
-                {project.displayName}
-              </Typography>
-              <Typography
-                variant="caption"
-                noWrap
-                sx={{
-                  color: 'text.disabled',
-                }}
-              >
+              <Typography id={titleId} component="h2" variant="subtitle1" title={title} noWrap>{title}</Typography>
+              {showIdentifier && <Typography component="p" variant="caption" color="text.secondary" noWrap title={project.name}>
                 {project.name}
-              </Typography>
+              </Typography>}
             </Box>
           </Stack>
-          <Label color={hasRunning ? 'success' : 'default'} sx={{ flexShrink: 0 }}>
-            {counts} stacks
+          <Label color={hasRunning ? 'success' : 'default'}>
+            {project.runningStacks} of {project.totalStacks} {project.totalStacks === 1 ? 'stack' : 'stacks'} active
           </Label>
-        </Stack>
-
-        <Divider sx={{ mb: 1.5 }} />
-
-        {/* Path */}
-        <DetailRow label="Path" value={project.path} mono />
-
-        {/* Stats */}
-        <Stack
-          spacing={0.5}
-          sx={{
-            mt: 1,
-          }}
-        >
-          <DetailRow label="Stacks" value={counts} />
-          {project.enabledStacks.length > 0 && <DetailRow label="Enabled" value={project.enabledStacks.join(', ')} />}
-          <DetailRow label="Registered" value={timeAgo(project.registeredAt)} />
-        </Stack>
-
-        {/* Enabled stacks as chips */}
-        {project.enabledStacks.length > 0 && (
-          <Stack
-            direction="row"
-            spacing={0.5}
-            useFlexGap
-            sx={{
-              mt: 1.5,
-              flexWrap: 'wrap',
-            }}
-          >
-            {project.enabledStacks.map((s) => (
-              <Chip key={s} label={s} size="small" variant="outlined" sx={{ height: 22, fontSize: 11 }} />
-            ))}
+          {imported > 0 && imported <= project.totalStacks && (
+            <Typography component="p" variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+              {project.totalStacks - imported} in primary configuration · {imported} imported
+            </Typography>
+          )}
+          <Divider sx={{ my: 1.5 }} />
+          <Stack spacing={0.5}>
+            <DetailRow label="Path" value={project.path} mono />
+            {project.enabledStacks?.length > 0 && <DetailRow label="Enabled stacks" value={project.enabledStacks.join(', ')} />}
+            {project.registeredAt && <DetailRow label="Registered" value={timeAgo(project.registeredAt)} />}
           </Stack>
-        )}
-      </CardContent>
-      <CardActions sx={{ px: 2, pb: 1.5, gap: 1, flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
-        <Can permission="OmnitronProject.removeProject">
-          <Tooltip title="Remove project">
-            <span>
-              <IconButton size="small" color="error" aria-label={`Remove project ${project.name}`} onClick={() => onRemove(project.name)} disabled={hasRunning} sx={{ marginInlineEnd: 1 }}>
-                <DeleteIcon sx={{ fontSize: 18 }} />
-              </IconButton>
-            </span>
-          </Tooltip>
-        </Can>
-        <Box sx={{ marginInlineStart: 'auto', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-          <Can permission="OmnitronProject.importConfiguration">
-            <Button size="small" onClick={() => onImport(project)}>Import stacks</Button>
-          </Can>
-          <Can permission="OmnitronProject.updateProject">
-            <Tooltip title="Settings">
+        </CardContent>
+      </CardActionArea>
+      {(canRemove || canImport || canEdit) && (
+        <CardActions sx={{ px: 2, pb: 1.5, gap: 1, flexWrap: 'wrap' }}>
+          {canRemove && <Tooltip title={hasRunning ? 'Stop the running stacks before removing this project' : 'Remove project'}>
+            <span><IconButton size="small" color="error" aria-label={`Remove project ${project.name}`}
+              onClick={() => onRemove(project.name)} disabled={hasRunning}><DeleteIcon sx={{ fontSize: 18 }} /></IconButton></span>
+          </Tooltip>}
+          <Box sx={{ marginInlineStart: 'auto', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+            {canImport && <Button size="small" onClick={() => onImport(project)}>Import stacks</Button>}
+            {canEdit && <Tooltip title="Project settings">
               <IconButton size="small" aria-label={`Settings for ${project.name}`} onClick={() => onEdit(project)}>
                 <SettingsIcon sx={{ fontSize: 18 }} />
               </IconButton>
-            </Tooltip>
-          </Can>
-        </Box>
-      </CardActions>
+            </Tooltip>}
+          </Box>
+        </CardActions>
+      )}
     </Card>
   );
 }
@@ -201,7 +139,7 @@ function DetailRow({ label, value, mono }: { label: string; value: string; mono?
       <Typography
         variant="caption"
         sx={{
-          color: 'text.disabled',
+          color: 'text.secondary',
           flexShrink: 0,
         }}
       >
@@ -213,7 +151,7 @@ function DetailRow({ label, value, mono }: { label: string; value: string; mono?
         title={value}
         sx={{
           fontWeight: 500,
-          textAlign: 'right',
+          textAlign: 'end',
           minWidth: 0,
           ...(mono && { fontFamily: 'monospace', fontSize: 11 }),
         }}
@@ -502,13 +440,14 @@ export default function ProjectsPage() {
       <Breadcrumbs
         links={[{ name: 'Projects' }]}
         action={
-          <Stack direction="row" spacing={1}>
+          <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
             <Button
               data-console-command="refresh"
               variant="outlined"
               size="small"
               startIcon={<RefreshIcon sx={{ fontSize: 18 }} />}
               onClick={() => fetchProjects()}
+              disabled={loading}
             >
               Refresh
             </Button>
@@ -528,6 +467,12 @@ export default function ProjectsPage() {
         }
       />
 
+      {projects.length > 0 && can('OmnitronNodes.listNodes') && can('OmnitronNodes.getNodeDaemonStatus') && (
+        <Typography variant="body2" color="text.secondary">
+          Stacks registered with this controller.{' '}
+          <Link component={RouterLink} to="/nodes">View applications by node</Link>
+        </Typography>
+      )}
       {error && (
         <Alert closable severity="error" onClose={clearError}>
           {error}
@@ -542,7 +487,7 @@ export default function ProjectsPage() {
             </Grid>
           ))}
         </Grid>
-      ) : projects.length === 0 ? (
+      ) : error && projects.length === 0 ? null : projects.length === 0 ? (
         <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300 }}>
           <EmptyContent
             title="No projects"
@@ -560,7 +505,7 @@ export default function ProjectsPage() {
       )}
 
       {importProject && <ImportStacksDialog project={importProject} onClose={() => setImportProject(null)}
-        onImport={async input => { await projectRpc.importConfiguration(input); await fetchProjects(); }} />}
+        onImport={async input => { await projectRpc.importConfiguration(input); await fetchProjects(true); }} />}
       {/* Edit dialog */}
       <EditProjectDialog
         open={!!editProject}
@@ -573,7 +518,7 @@ export default function ProjectsPage() {
       {/* Add dialog */}
       {createOpen && <CreateProjectDialog query={searchParams} onClose={() => setCreateOpen(false)} onCreated={name => {
         setCreateOpen(false);
-        void fetchProjects();
+        void fetchProjects(true);
         snackbar.success(`Project "${name}" created`);
       }} />}
       <AddProjectDialog open={addOpen} onClose={() => setAddOpen(false)} onAdd={handleAdd} loading={submitting} />

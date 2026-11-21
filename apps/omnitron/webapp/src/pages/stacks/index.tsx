@@ -13,11 +13,12 @@ import { Can } from 'src/auth/access';
  * app count, and start/stop actions.
  */
 
-import { useState, useCallback } from 'react';
+import { useId, useState, useCallback } from 'react';
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 import Grid from '@mui/material/Grid';
 import Card from '@mui/material/Card';
+import CardActionArea from '@mui/material/CardActionArea';
 import CardContent from '@mui/material/CardContent';
 import CardActions from '@mui/material/CardActions';
 import Typography from '@mui/material/Typography';
@@ -29,12 +30,12 @@ import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogContentText from '@mui/material/DialogContentText';
 import DialogActions from '@mui/material/DialogActions';
-import { alpha } from '@mui/material/styles';
+import { SimpleAccordion } from '@omnitron-dev/prism/components';
 import { Alert } from '@omnitron-dev/prism/components/alert';
 import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import { EmptyContent } from '@omnitron-dev/prism/components/empty-content';
 import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
-import { useNavigate, Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink } from 'react-router-dom';
 import { SyncIcon, RefreshIcon, PlusIcon, DeleteIcon } from '../../assets/icons';
 import { DeployReleaseDialog } from 'src/components/deploy-release-dialog';
 import CreateStackDialog from './create-stack-dialog';
@@ -75,7 +76,6 @@ function StackInventory({ activeProject, activeStack }: { activeProject: string 
   const startStack = useProjectStore((s) => s.startStack);
   const stopStack = useProjectStore((s) => s.stopStack);
   const deleteStack = useProjectStore((s) => s.deleteStack);
-  const navigate = useNavigate();
   const [createOpen, setCreateOpen] = useState(false);
   const [stopTarget, setStopTarget] = useState<{ project: string; stack: string } | null>(null);
   const [diagnoseTarget, setDiagnoseTarget] = useState<string | null>(null);
@@ -123,6 +123,29 @@ function StackInventory({ activeProject, activeStack }: { activeProject: string 
       </Stack>
     );
   }
+
+  const imports = activeStack ? [] : stacks.filter(stack => stack.runtimeScope && stack.runtimeScope.project !== activeProject);
+  const primary = imports.length ? stacks.filter(stack => !stack.runtimeScope || stack.runtimeScope.project === activeProject) : stacks;
+  const cards = (items: IStackInfo[]) => (
+    <Grid container spacing={2}>
+      {items.map((stack) => {
+        const detailPath = stackHref(activeProject, stack.name);
+        return <Grid key={stack.name} size={{ xs: 12, sm: 6, md: 4 }}>
+          <StackCard
+            stack={stack}
+            pendingOp={pendingOps[`${activeProject}/${stack.name}`] ?? null}
+            onDiagnose={() => setDiagnoseTarget(stack.name)}
+            onResume={() => void resumeInstalled(activeProject, stack.name)}
+            onStart={() => handleStart(stack.name)}
+            onDeploy={() => setDeployTarget(stack.name)}
+            onStop={() => setStopTarget({ project: activeProject, stack: stack.name })}
+            onDelete={() => setDeleteTarget(stack.name)}
+            detailPath={detailPath}
+          />
+        </Grid>;
+      })}
+    </Grid>
+  );
 
   return (
     <Stack spacing={3} sx={{ flex: 1 }}>
@@ -175,25 +198,16 @@ function StackInventory({ activeProject, activeStack }: { activeProject: string 
           />
         </Box>
       ) : (
-        <Grid container spacing={2}>
-          {stacks.map((stack) => {
-            const detailPath = stackHref(activeProject!, stack.name);
-            return <Grid key={stack.name} size={{ xs: 12, sm: 6, md: 4 }}>
-              <StackCard
-                stack={stack}
-                pendingOp={activeProject ? (pendingOps[`${activeProject}/${stack.name}`] ?? null) : null}
-                onDiagnose={() => setDiagnoseTarget(stack.name)}
-                onResume={() => void resumeInstalled(activeProject, stack.name)}
-                onStart={() => handleStart(stack.name)}
-                onDeploy={() => setDeployTarget(stack.name)}
-                onStop={() => setStopTarget({ project: activeProject, stack: stack.name })}
-                onDelete={() => setDeleteTarget(stack.name)}
-                detailPath={detailPath}
-                onDetail={() => navigate(detailPath)}
-              />
-            </Grid>;
-          })}
-        </Grid>
+        <>
+          {primary.length > 0 && cards(primary)}
+          {imports.length > 0 && (
+            <SimpleAccordion title={`Imported stacks (${imports.length})`}
+              defaultExpanded={imports.some(stack => stack.status !== 'stopped')}
+              disableGutters elevation={0}>
+              {cards(imports)}
+            </SimpleAccordion>
+          )}
+        </>
       )}
 
       <Can permission="OmnitronProject.startStack"><DeployReleaseDialog
@@ -240,7 +254,6 @@ function StackCard({
   onDeploy,
   onDelete,
   detailPath,
-  onDetail,
 }: {
   stack: IStackInfo;
   pendingOp: import('../../stores/project.store').PendingOp | null;
@@ -251,36 +264,25 @@ function StackCard({
   onDeploy: () => void;
   onDelete: () => void;
   detailPath: string;
-  onDetail: () => void;
 }) {
   // A stack whose config says so takes releases only: its Start is refused by
   // the daemon on purpose, so the card offers the button that works.
+  const titleId = useId();
   const takesReleasesOnly = stack.config?.release?.mode === 'required';
   const isRunning = stack.status === 'running';
   const isStopped = stack.status === 'stopped';
   const busy = !!pendingOp;
 
   return (
-    <Card
-      sx={{
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        cursor: 'pointer',
-        transition: 'border-color 0.2s',
-        '&:hover': {
-          borderColor: (t) => alpha(t.palette.primary.main, 0.3),
-        },
-      }}
-      variant="outlined"
-      onClick={onDetail}
-    >
-      <CardContent sx={{ flex: 1 }}>
+    <Card component="article" aria-labelledby={titleId} variant="outlined"
+      sx={{ height: '100%', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+      <CardActionArea component={RouterLink} to={detailPath} aria-labelledby={titleId}
+        sx={{ flex: 1, display: 'flex', alignItems: 'flex-start', textAlign: 'start' }}>
+      <CardContent sx={{ minWidth: 0, width: '100%' }}>
         {/* Header */}
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
-          <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1.1rem' }}>
-            <Box component={RouterLink} to={detailPath} onClick={event => event.stopPropagation()}
-              sx={{ color: 'inherit', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}>{stack.name}</Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, justifyContent: 'space-between', mb: 1.5 }}>
+          <Typography id={titleId} component="h2" variant="subtitle1" noWrap title={stack.name}>
+            {stack.name}
           </Typography>
           <Chip
             label={stack.status[0]!.toUpperCase() + stack.status.slice(1)}
@@ -332,8 +334,9 @@ function StackCard({
           </Typography>
         )}
       </CardContent>
+      </CardActionArea>
 
-      <CardActions sx={{ px: 2, pb: 1.5, justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }} onClick={(e) => e.stopPropagation()}>
+      <CardActions sx={{ px: 2, pb: 1.5, justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
         {isStopped && !busy && (
           <Can permission="OmnitronProject.deleteStack"><IconButton size="small" color="error" onClick={onDelete} title="Delete stack" aria-label={`Delete stack ${stack.name}`} sx={{ marginInlineEnd: 1 }}>
             <DeleteIcon />

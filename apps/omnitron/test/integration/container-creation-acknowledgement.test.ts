@@ -1,11 +1,10 @@
-import { mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { setTimeout as delay } from 'node:timers/promises';
 import { expect, it, vi } from 'vitest';
 import { createContainer } from '../../src/infrastructure/container-runtime.js';
 
-it('joins late Docker creation and a lost start reply across separate CLI processes', async () => {
+it.each(['acknowledged', 'lost'])('joins late Docker creation and publication across CLI processes when the start reply is %s', async reply => {
   const dir = await mkdtemp(path.join(tmpdir(), 'omnitron-creation-'));
   const file = (name: string) => path.join(dir, name);
   const id = 'b'.repeat(64);
@@ -31,52 +30,39 @@ it('joins late Docker creation and a lost start reply across separate CLI proces
     "  fs.writeFileSync(f('pending'), JSON.stringify(state), { flag: 'wx' });",
     "  fail('error reading from Docker: EOF');",
     "} else if (op === 'inspect' && !fs.existsSync(f('visible'))) {",
-    "  fs.writeFileSync(f('first-absent'), ref);",
+    "  fs.renameSync(f('pending'), f('visible'));", // This inspect missed the allocation. The next native observer sees it.
     "  fail('Error response from daemon: No such container: ' + ref);",
     "} else {",
     "  const state = JSON.parse(fs.readFileSync(f('visible')));",
     "  if (op === 'start' && ref === state.Id && state.State.Status === 'created') {",
-    "    state.State.Status = 'running'; state.NetworkSettings.Ports = { '80/tcp': [{ HostIp: '127.0.0.1', HostPort: '19800' }] };",
+    "    state.State.Status = 'running';",
     "    fs.writeFileSync(f('visible'), JSON.stringify(state));",
-    "    fail('error reading from Docker: EOF');",
+    reply === 'lost' ? "    fail('error reading from Docker: EOF');" : "    process.stdout.write(state.Id);",
     "  } else if (op === 'inspect' && [state.Id, state.Name.slice(1)].includes(ref)) {",
     "    const format = args[args.indexOf('--format') + 1];",
     "    if (!format.includes('.Config.Labels') || format.includes('.Config.Env')) throw Error('unexpected inspection fields');",
+    "    if (state.State.Status === 'running') {",
+    "      if (fs.existsSync(f('published'))) state.NetworkSettings.Ports = state.HostConfig.PortBindings;",
+    "      else fs.writeFileSync(f('published'), ref);", // Return this empty port snapshot before the forwarded address appears.
+    "    }",
     "    process.stdout.write(JSON.stringify([state], null, 2));",
     "  } else throw Error('unexpected native operation: ' + JSON.stringify([op, ref]));",
     '}',
   ].join('\n');
-  const isolated = AbortSignal.timeout(10_000);
-  let operation: Promise<string> | undefined;
   try {
     await writeFile(file('docker'), docker, { mode: 0o700 });
     vi.stubEnv('PATH', dir + path.delimiter + process.env['PATH']);
     vi.stubEnv('DOCKER_HOST', 'unix://' + file('absent.sock'));
     vi.stubEnv('DOCKER_CONTEXT', '');
-    operation = createContainer({
+    const operation = createContainer({
       name, image: 'fixture:1', ports: [{ container: 80, host: 19800 }], volumes: [], environment: {},
       labels: { description: 'password=example-only' }, restart: 'no',
     }, { fullId: true, pull: 'never' });
-    const absence = async () => {
-      for (;;) {
-        try { return await readFile(file('first-absent'), 'utf8'); }
-        catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-        await delay(20, undefined, { signal: isolated });
-      }
-    };
-    expect(await Promise.race([absence(), operation])).toBe(name);
-    await rename(file('pending'), file('visible'));
     await expect(operation).resolves.toBe(id);
     const calls = (await readFile(file('calls'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
-    expect(calls.filter(([op]) => op === 'create')).toEqual([['create', null]]);
-    expect(calls.filter(([op]) => op === 'start')).toEqual([['start', id]]);
-    expect(calls.at(-1)).toEqual(['inspect', id]);
+    expect(calls).toEqual([['create', null], ['inspect', name], ['inspect', name],
+      ['start', id], ['inspect', id], ['inspect', id]]);
   } finally {
-    // Keep unjoined CLI work inside its isolated environment if the assertion fails.
-    if (operation) {
-      await rename(file('pending'), file('visible')).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error; });
-      await operation.catch(() => undefined);
-    }
     vi.unstubAllEnvs();
     await rm(dir, { recursive: true, force: true });
   }

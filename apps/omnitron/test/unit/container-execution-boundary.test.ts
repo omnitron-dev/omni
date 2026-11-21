@@ -3,6 +3,11 @@ import type { ResolvedContainer } from '../../src/infrastructure/types.js';
 
 const native = vi.hoisted(() => ({
   create: vi.fn(), start: vi.fn(), inspect: vi.fn(), remove: vi.fn(), engines: vi.fn(), dispose: vi.fn(),
+  network: vi.fn(), sweep: vi.fn(),
+}));
+vi.mock('node:child_process', async original => ({ ...await original<object>(), execFile: native.network }));
+vi.mock('../../src/infrastructure/phantom-endpoint-janitor.js', () => ({
+  PhantomEndpointJanitor: class { sweepNetwork = native.sweep; },
 }));
 vi.mock('@xec-sh/core', () => ({
   DockerAdapter: class {
@@ -36,7 +41,7 @@ function observation(status = 'running') {
   const labels = Object.fromEntries(args.flatMap((value, index) => value === '--label' ? [args[index + 1]!.split('=')] : []));
   const ports = { '80/tcp': [{ HostIp: '127.0.0.1', HostPort: '19800' }] };
   return { Id: id, Name: '/sample-service', Config: { Image: 'example/service:1', Labels: labels },
-    State: { Status: status }, HostConfig: { PortBindings: ports }, NetworkSettings: { Ports: ports } };
+    State: { Status: status }, HostConfig: { PortBindings: structuredClone(ports) }, NetworkSettings: { Ports: ports } };
 }
 const commandFailure = (stderr: string) => Object.assign(Error(stderr), { code: 'COMMAND_FAILED', stderr });
 const lostReply = () => Object.assign(Error('Docker acknowledgement lost'), { code: 'TIMEOUT_ERROR' });
@@ -53,8 +58,10 @@ describe('immutable Docker allocation and startup', () => {
     await expect(createContainer(config())).resolves.toBe(id.slice(0, 12));
     expect(native.engines).toHaveBeenCalledWith(expect.objectContaining({ defaultShell: false, enableEvents: false }));
     expect(native.create).toHaveBeenCalledWith(expect.objectContaining({ command: 'docker', adapter: 'local', shell: false,
-      timeout: 90_000, maxBuffer: 1024 * 1024, args: expect.arrayContaining(['create', '--rpc-login', 'service:rpc-secret',
+      maxBuffer: 1024 * 1024, args: expect.arrayContaining(['create', '--rpc-login', 'service:rpc-secret',
         '--health-cmd', 'curl --user "service:health secret" http://localhost/health']) }));
+    expect(native.create.mock.calls[0]![0].timeout).toBeGreaterThan(240_000);
+    expect(native.create.mock.calls[0]![0].timeout).toBeLessThanOrEqual(300_000);
     expect(native.start.mock.calls).toEqual([[id]]);
     expect(native.dispose).toHaveBeenCalledTimes(2);
   });
@@ -89,6 +96,35 @@ describe('immutable Docker allocation and startup', () => {
     expect(native.remove).not.toHaveBeenCalled();
   });
 
+  it.each(['acknowledged', 'lost'])('keeps the same allocation across three minutes of create lag and delayed publication with a %s start reply', async reply => {
+    vi.useFakeTimers();
+    native.create.mockRejectedValueOnce(lostReply());
+    if (reply === 'lost') native.start.mockRejectedValueOnce(lostReply());
+    let visible = false;
+    let publishedPorts = false;
+    native.inspect.mockImplementation(async ref => {
+      if (!visible) throw commandFailure('No such container: sample-service');
+      if (ref === 'sample-service') return observation('created');
+      expect(ref).toBe(id);
+      const state = observation();
+      if (!publishedPorts) return { ...state, NetworkSettings: { Ports: {} } };
+      return state;
+    });
+    const result = createContainer(published(), { fullId: true });
+    await vi.advanceTimersByTimeAsync(180_000);
+    expect(native.start).not.toHaveBeenCalled();
+    visible = true;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(native.start.mock.calls).toEqual([[id]]);
+    expect(native.remove).not.toHaveBeenCalled();
+    publishedPorts = true;
+    await vi.advanceTimersByTimeAsync(500);
+    await expect(result).resolves.toBe(id);
+    expect(native.create).toHaveBeenCalledOnce();
+    expect(native.start).toHaveBeenCalledOnce();
+    expect(native.remove).not.toHaveBeenCalled();
+  });
+
   it('accepts a proved running allocation without repeating its start', async () => {
     native.create.mockRejectedValueOnce(lostReply());
     await expect(createContainer(published(), { fullId: true })).resolves.toBe(id);
@@ -113,7 +149,7 @@ describe('immutable Docker allocation and startup', () => {
     const failure = expect(createContainer(published())).rejects.toMatchObject({
       message: expect.stringContaining('Docker start is unconfirmed'), cause: { message: expect.stringContaining('declared ports') },
     });
-    await vi.advanceTimersByTimeAsync(120_001);
+    await vi.advanceTimersByTimeAsync(600_001);
     await failure;
     expect(native.create).toHaveBeenCalledOnce();
     expect(native.start.mock.calls).toEqual([[id]]);
@@ -156,7 +192,7 @@ describe('immutable Docker allocation and startup', () => {
       throw commandFailure('No such container: sample-service');
     });
     const failure = expect(createContainer(config())).rejects.toThrow(/Docker create is unconfirmed.*creation/);
-    await vi.advanceTimersByTimeAsync(120_001);
+    await vi.advanceTimersByTimeAsync(600_001);
     await failure;
     visible = true;
     await vi.advanceTimersByTimeAsync(60_000);
@@ -209,6 +245,25 @@ describe('immutable Docker allocation and startup', () => {
     expect(native.start.mock.calls).toEqual([[id], [id]]);
     expect(native.inspect.mock.calls).toEqual([[id], [id]]);
     expect(native.remove.mock.calls).toEqual([[id, true, {}], [id, true, {}]]);
+  });
+
+  it('rebuilds once when the managed network confirms a same-name phantom and the owned ID still has no published ports', async () => {
+    native.network.mockImplementation((file, args, _options, done) => {
+      expect([file, ...args]).toEqual(['docker', 'network', 'inspect', 'fixture-net']);
+      done(null, '');
+    });
+    native.sweep.mockResolvedValue(1);
+    const replacement = 'e'.repeat(64);
+    native.create.mockResolvedValueOnce({ stdout: id }).mockResolvedValueOnce({ stdout: replacement });
+    native.start.mockResolvedValueOnce({ stdout: id }).mockResolvedValueOnce({ stdout: replacement });
+    native.inspect.mockImplementation(async ref => ref === id
+      ? { ...observation(), NetworkSettings: { Ports: {} } }
+      : { ...observation(), Id: replacement });
+    await expect(createContainer({ ...published(), network: 'fixture-net' }, { fullId: true })).resolves.toBe(replacement);
+    expect(native.sweep.mock.calls).toEqual([['fixture-net', 'sample-service']]);
+    expect(native.inspect.mock.calls).toEqual([[id], [id], [replacement]]);
+    expect(native.remove.mock.calls).toEqual([[id, true, {}]]);
+    expect(native.start.mock.calls).toEqual([[id], [replacement]]);
   });
 
   it('preserves the sanitized error from a definitive Docker refusal', async () => {

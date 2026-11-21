@@ -9,6 +9,7 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto';
+import { LONG_REQUEST_TIMEOUT } from '../shared/dto/services.js';
 import { CONFIG_ROOT_PREFIX } from './shipped-config.js';
 import { nativeHealthCheck } from './health-recovery.js';
 import { DEFAULT_PORT_BIND_HOST } from './types.js';
@@ -778,18 +779,20 @@ export async function createContainer(config: ResolvedContainer, options: { full
 
   // A timed-out Docker request can become visible later. Only create is issued before
   // the immutable ID is known, so a late allocation cannot also start serving.
-  const deadline = performance.now() + 120_000;
+  const deadline = performance.now() + LONG_REQUEST_TIMEOUT;
   const remaining = (phase: string, id?: string, cause?: unknown) => {
     const ms = Math.ceil(deadline - performance.now());
     if (ms <= 0) throw Error(`Docker ${phase} is unconfirmed for ${config.name} (creation ${creation}${id ? ', id ' + id : ''})`, { cause });
     return ms;
   };
   const expectedBindings = config.ports.map(port => `${port.container}/tcp ${port.bindHost ?? DEFAULT_PORT_BIND_HOST} ${port.host}`).sort();
-  const portsMatch = (bindings: NativePortBindings | undefined, id: string) => {
-    if (!expectedBindings.length) return true;
-    if (!bindings) throw Error('Cannot verify native port bindings for ' + id);
+  const publication = (bindings: NativePortBindings | undefined, id: string) => {
+    if (!expectedBindings.length) return 'published';
+    if (bindings == null) return 'unconfirmed';
+    if (typeof bindings !== 'object' || Array.isArray(bindings)) throw Error('Cannot verify native port bindings for ' + id);
     const observed = Object.entries(bindings).flatMap(([port, hosts]) => (hosts ?? []).map(host => `${port} ${host.HostIp} ${host.HostPort}`)).sort();
-    return observed.length === expectedBindings.length && observed.every((entry, index) => entry === expectedBindings[index]);
+    if (observed.length === expectedBindings.length && observed.every((entry, index) => entry === expectedBindings[index])) return 'published';
+    return observed.length > expectedBindings.length || observed.some(entry => !expectedBindings.includes(entry)) ? 'conflict' : 'pending';
   };
   const inspect = async (id?: string) => {
     // Address an acknowledged allocation by immutable ID. Only after a lost
@@ -814,32 +817,54 @@ export async function createContainer(config: ResolvedContainer, options: { full
       if (actual.image !== config.image) throw Error('The Docker image differs for ' + raw.Id);
       if (!Object.entries(labels).every(([key, value]) => actual.labels?.[key] === value))
         throw Error('The Docker ownership labels differ for ' + raw.Id);
-      if (actual.status === 'created' && !portsMatch(raw.HostConfig?.PortBindings, raw.Id))
+      if ((actual.status === 'created' || actual.status === 'running') && publication(raw.HostConfig?.PortBindings, raw.Id) !== 'published')
         throw Error('The configured Docker port bindings differ for ' + raw.Id);
-      return { ...actual, id: raw.Id, published: actual.status === 'running' && portsMatch(raw.NetworkSettings?.Ports, raw.Id) };
+      return { ...actual, id: raw.Id, publication: actual.status === 'running' ? publication(raw.NetworkSettings?.Ports, raw.Id) : 'unconfirmed' };
     } catch (error) {
       const stderr = (error as { stderr?: unknown })?.stderr;
       if (typeof stderr === 'string' && /^(?:Error(?: response from daemon)?:\s*)?no such (?:object|container):\s*(.+)$/i.exec(stderr.trim())?.[1] === ref) return null;
       throw error;
     }
   };
-  const waitForState = async (phase: 'create' | 'start', id: string | undefined, cause: unknown, wait: boolean) => {
+  const sweepStaleEndpoint = async () => {
+    if (!config.network) return 0;
+    const { PhantomEndpointJanitor } = await import('./phantom-endpoint-janitor.js');
+    const { createNullLogger } = await import('@omnitron-dev/titan/module/logger');
+    return new PhantomEndpointJanitor({ networks: [config.network], logger: createNullLogger() }).sweepNetwork(config.network, config.name);
+  };
+  const waitForState = async (phase: 'create' | 'start', id: string | undefined, cause: unknown, reply: 'refused' | 'lost' | 'acknowledged') => {
     const failure = cause;
+    let checkedNetwork = false;
+    let removedPhantom = false;
     for (;;) {
       let actual;
       try { actual = await inspect(id); }
       catch (error) {
-        if (!wait || !lostDockerTransport(error)) throw error;
+        if (reply === 'refused' || !lostDockerTransport(error)) throw error;
         cause = error;
       }
+      remaining(phase, id, cause);
       if (actual && (actual.status === 'running' || phase === 'create' && actual.status === 'created')) {
-        if (!containerResourcesMatch(config, actual)) throw Error(`Container '${config.name}' does not enforce its declared resource limits`);
-        if (actual.status !== 'running' || actual.published) return actual;
+        id ??= actual.id;
+        if (!containerResourcesMatch(config, actual)) {
+          if (reply === 'acknowledged') await removeContainer(actual.id);
+          throw Error(`Container '${config.name}' does not enforce its declared resource limits`);
+        }
+        if (actual.status !== 'running' || actual.publication === 'published') return actual;
+        // A missing binding can appear later. Rebuild only on a conflicting
+        // publication or after verifying and clearing a same-name phantom.
+        if (reply === 'acknowledged') {
+          if (actual.publication === 'conflict' || removedPhantom && actual.publication === 'pending') return actual;
+          if (actual.publication === 'pending' && config.network && !checkedNetwork) {
+            checkedNetwork = true;
+            removedPhantom = await sweepStaleEndpoint() > 0;
+          }
+        }
         cause = Error(`Docker has not published the declared ports for ${actual.containerId}`, { cause: failure });
       } else if (actual && actual.status !== 'created') {
         throw Error(`Docker ${phase} left ${actual.containerId} in state ${actual.status}`, { cause });
       }
-      if (!wait) throw cause;
+      if (reply === 'refused') throw cause;
       await new Promise(resolve => setTimeout(resolve, Math.min(500, remaining(phase, id, cause))));
       remaining(phase, id, cause);
     }
@@ -848,14 +873,16 @@ export async function createContainer(config: ResolvedContainer, options: { full
   const allocate = async (): Promise<{ id: string; running: boolean }> => {
     let failure: unknown;
     try {
-      const id = (await executeDocker(args, { timeout: Math.min(90_000, remaining('create')) })).stdout.trim();
+      // Keep time to inspect the committed effect even if the client never
+      // receives its reply. Creation, startup and all observations share the deadline.
+      const id = (await executeDocker(args, { timeout: Math.ceil(remaining('create') / 2) })).stdout.trim();
       if (/^[a-f0-9]{64}$/.test(id)) return { id, running: false };
       failure = Error('Docker create returned no immutable container ID');
     } catch (error) {
       if (definiteDockerFailure(error) && !isStaleContainerState((error as Error).message)) throw error;
       failure = error;
     }
-    const actual = await waitForState('create', undefined, failure, !definiteDockerFailure(failure));
+    const actual = await waitForState('create', undefined, failure, definiteDockerFailure(failure) ? 'refused' : 'lost');
     return { id: actual.id, running: actual.status === 'running' };
   };
 
@@ -864,11 +891,11 @@ export async function createContainer(config: ResolvedContainer, options: { full
     const { id, running } = await allocate();
     if (!running) {
       try {
-        const started = await executeDocker(['container', 'start', '--', id], { timeout: Math.min(60_000, remaining('start', id)) });
+        const started = await executeDocker(['container', 'start', '--', id], { timeout: Math.ceil(remaining('start', id) / 2) });
         if (started.stdout.trim() !== id) throw Error('Docker start did not acknowledge ' + id);
       } catch (error) {
         if (!definiteDockerFailure(error)) {
-          await waitForState('start', id, error, true);
+          await waitForState('start', id, error, 'lost');
           return options.fullId ? id : id.slice(0, 12);
         }
         const message = error instanceof Error ? error.message : String(error);
@@ -882,25 +909,14 @@ export async function createContainer(config: ResolvedContainer, options: { full
         if (attempt >= 3) throw bindFailure ? Error(await describeBindFailure(config, message), { cause: error }) : error;
         if (bindFailure) {
           await new Promise(resolve => setTimeout(resolve, Math.min(attempt * 1000, remaining('start', id))));
-        } else if (config.network) {
-          const { PhantomEndpointJanitor } = await import('./phantom-endpoint-janitor.js');
-          const { createNullLogger } = await import('@omnitron-dev/titan/module/logger');
-          await new PhantomEndpointJanitor({ networks: [config.network], logger: createNullLogger() }).sweepNetwork(config.network, config.name);
-        }
+        } else await sweepStaleEndpoint();
         continue;
       }
     }
 
     if (!running && (config.ports.length || Object.keys(resources).length)) {
-      const actual = await inspect(id);
-      if (!actual || actual.status !== 'running') throw Error(`Docker did not confirm ${id} is running`);
-      if (!containerResourcesMatch(config, actual)) {
-        await removeContainer(id);
-        throw Error(`Container '${config.name}' does not enforce its declared resource limits`);
-      }
-      if (!actual.published) {
-        // An acknowledged start can inherit a stale endpoint. Rebuild once,
-        // after removing only the immutable allocation whose bindings we read.
+      const actual = await waitForState('start', id, undefined, 'acknowledged');
+      if (actual.publication !== 'published') {
         await removeContainer(id);
         if (unpublished) throw Error(`Docker did not publish the declared ports for ${config.name}`);
         unpublished = true;

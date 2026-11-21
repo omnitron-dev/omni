@@ -72,3 +72,8 @@ omnitron --json pipeline save revoke-pipeline.json
 ```
 
 Review and start this saved definition using the same `pipeline run --prepare`, `start --expected-digest` and `status` sequence above. Revocation disables authentication and active writes, removes the source private key, and retains the partial stage for retry. If an endpoint reports a busy session, inspect the original run and repeat revocation after it exits. OpenSSH enforces the absolute key expiry; the forced receiver enforces the same deadline on connected sessions. After expiry or explicit cleanup, run the offer phase again with the same spec to obtain a fresh key for the original manifest, then export a new copy definition.
+
+
+## Accept a completed direct stream after a lost controller acknowledgement
+
+Reconcile both operation locks through a short registered-node inspection. The donor must have the original durable `sent.json` matching the manifest, file count and bytes. The receiver must have its complete stage under the recorded inode and no remaining session. Export `pnpm exec xec block-preseed accept spec.json --offer offer.json`, then check, review and start the emitted Pipeline with the installed CLI. Its pin check precedes the existing receiver seal, which rehashes every file and removes the scoped SSH account. A successful seal authorizes the donor to forget the one-use key. This phase can also finish a fully received stage after credential expiry. If either physical session is still active, wait for completion. With two idle endpoints and an incomplete stream, use the resumable copy phase.

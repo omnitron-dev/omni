@@ -20,13 +20,16 @@ const offer = { protocol: 1, id: spec.id, spec: 'a'.repeat(64), publicKey: 'ssh-
   manifest: 'b'.repeat(64), files: 2, bytes: 128, issued: 200, expires: 320 };
 
 test('stock pipeline checker admits each graph with registered-node dependencies and no private material', async () => {
-  for (const phase of ['offer', 'copy', 'revoke']) {
-    const graph = await blockPreseedDefinition(phase, spec, phase === 'copy' ? offer : undefined);
+  for (const phase of ['offer', 'copy', 'accept', 'revoke']) {
+    const graph = await blockPreseedDefinition(phase, spec, ['copy', 'accept'].includes(phase) ? offer : undefined);
     await checkPipelineDefinition(graph);
     assert.equal(graph.steps[0].name, 'registered-pins');
     assert.equal(graph.steps[0].nodeId, undefined);
     assert(graph.steps.slice(1).every(step => [spec.sourceNode, spec.receiverNode].includes(step.nodeId) && step.retries === 0));
     assert.doesNotMatch(JSON.stringify(graph), /BEGIN (?:OPENSSH |RSA |EC )?PRIVATE KEY/);
+    if (phase === 'accept')
+      assert.deepEqual(graph.steps.slice(1).map(step => [step.name, step.nodeId, step.dependsOn]),
+        [['seal', spec.receiverNode, ['registered-pins']], ['forget', spec.sourceNode, ['seal']]]);
     if (phase === 'copy')
       assert.deepEqual(graph.steps.slice(1).map(step => [step.name, step.nodeId, step.dependsOn]),
         [['grant', spec.receiverNode, ['registered-pins']], ['send', spec.sourceNode, ['grant']],

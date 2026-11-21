@@ -57,8 +57,8 @@ print('Both registered SSH identities match the review.')`;
 
 export async function blockPreseedDefinition(phase, spec, offer) {
   validateSpec(spec);
-  if (!['offer', 'copy', 'revoke'].includes(phase)) throw Error('Use offer, copy or revoke.');
-  return preseedGraph(phase, spec, phase === 'copy' ? publicOffer(offer, spec) : null, await fs.readFile(helper, 'utf8'),
+  if (!['offer', 'copy', 'accept', 'revoke'].includes(phase)) throw Error('Use offer, copy, accept or revoke.');
+  return preseedGraph(phase, spec, ['copy', 'accept'].includes(phase) ? publicOffer(offer, spec) : null, await fs.readFile(helper, 'utf8'),
     'block-preseed', 'Direct transfer of reviewed closed public block and undo segments.');
 }
 
@@ -87,7 +87,7 @@ export function command(program) {
   program.command('block-preseed <phase> <spec>').description('Export a reviewed node-to-node block preseed pipeline as JSON')
     .option('--offer <file>', 'Public JSON receipt printed by the source offer step')
     .allowExcessArguments(false).action(async (phase, file, options) => {
-      if (Boolean(options.offer) !== (phase === 'copy')) throw Error('Use --offer only for copy.');
+      if (Boolean(options.offer) !== ['copy', 'accept'].includes(phase)) throw Error('Copy and accept require --offer.');
       const read = async name => {
         const contents = await fs.readFile(name, 'utf8');
         try { return JSON.parse(contents); } catch { throw Error('Invalid preseed input JSON.'); }

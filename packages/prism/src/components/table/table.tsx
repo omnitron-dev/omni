@@ -106,6 +106,8 @@ export interface TableProps<T> extends Omit<MuiTableProps, 'children'> {
   maxHeight?: number | string;
   /** Row click handler */
   onRowClick?: (row: T, index: number) => void;
+  /** Rows for which the click handler is available. Defaults to all rows. */
+  isRowClickable?: (row: T, index: number) => boolean;
   /** Accessible name of the scrollable table region. */
   scrollLabel?: string;
   /** Container styles */
@@ -198,6 +200,7 @@ export function Table<T>({
   stickyHeader = false,
   maxHeight,
   onRowClick,
+  isRowClickable,
   containerSx,
   scrollLabel,
   sx,
@@ -365,17 +368,18 @@ export function Table<T>({
               displayData.map((row, index) => {
                 const key = getRowKey(row, index);
                 const isSelected = selected.includes(key);
+                const clickable = onRowClick && (!isRowClickable || isRowClickable(row, index));
 
                 return (
                   <StyledTableRow
                     key={key}
                     hover
                     selected={isSelected}
-                    tabIndex={onRowClick || selectable ? -1 : undefined}
-                    data-row-action={onRowClick ? true : undefined}
-                    onClick={onRowClick ? event => { if (isRowActionTarget(event.target)) onRowClick(row, index); } : undefined}
+                    tabIndex={clickable || selectable ? -1 : undefined}
+                    data-row-action={clickable || undefined}
+                    onClick={clickable ? event => { if (isRowActionTarget(event.target)) onRowClick(row, index); } : undefined}
                     sx={{
-                      cursor: onRowClick ? 'pointer' : 'default',
+                      cursor: clickable ? 'pointer' : 'default',
                       '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: -2 },
                     }}
                   >

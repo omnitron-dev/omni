@@ -115,6 +115,91 @@ test('getApp-only direct entry reads the imported owner without inventory or pri
   await expect(page.getByRole('button', { name: /^(Restart|Stop|Start)$/ })).toHaveCount(0);
 });
 
+test('remote application links name their stack destination at both viewport widths', async ({ page, context, url }) => {
+  await setup(context);
+  for (const width of [1280, 320]) {
+    await page.setViewportSize({ width, height: 800 });
+    for (const path of ['/projects/alpha?stack=edge', '/projects/alpha/apps?stack=edge']) {
+      await page.goto(url + path);
+      const link = page.getByRole('rowheader').getByRole('link', { name: 'Open stack edge for api' });
+      await expect(link).toHaveText('Open stack');
+      await expect(link).toBeInViewport();
+      await expect(link).toHaveAttribute('href', '/projects/alpha/stacks/edge');
+      await link.focus();
+      await page.keyboard.press('Enter');
+      await expect(page).toHaveURL(url + '/projects/alpha/stacks/edge');
+      await page.goBack();
+      await expect(page).toHaveURL(url + path);
+      await expect(link).toBeVisible();
+    }
+  }
+});
+
+test('application rows expose only available actions in a mixed local and remote inventory', async ({ page, context, url }) => {
+  await setup(context, ['OmnitronProject.getProjectApps', 'OmnitronDaemon.getApp', 'OmnitronDaemon.restartApp']);
+  const list = '/projects/alpha/apps';
+  await page.goto(url + list);
+  const remote = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'edge · remote' }) });
+  await expect(remote.getByRole('rowheader')).toHaveText('api');
+  await expect(remote.getByRole('link')).toHaveCount(0);
+  await expect(remote).toHaveCSS('cursor', 'default');
+  const table = page.getByRole('region', { name: 'Applications' });
+  await table.focus();
+  await page.keyboard.press('End');
+  await expect(remote).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(url + list);
+
+  const local = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'research', exact: true }) });
+  await expect(local.getByRole('link', { name: 'api' })).toHaveAttribute('href', resource);
+  await expect(local.getByRole('button', { name: 'Restart archive/local/api' })).toBeVisible();
+  await local.focus();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(url + resource);
+});
+
+test('application logs and scoped Logs share keyboard disclosure and retain the full event', async ({ page, context, url }) => {
+  const event = {
+    id: 'event-a', app: 'archive/local/api', timestamp: '2026-01-11T09:12:34.000Z', level: 'info',
+    message: 'A test job completed', labels: { queue: 'example' },
+  };
+  await setup(context, undefined, {
+    'OmnitronLogs.streamLogs': [event],
+    'OmnitronLogs.queryLogs': { entries: [event], total: 1, byLevel: [] },
+  });
+  const logs = '/projects/alpha/logs?stack=research';
+  await page.setViewportSize({ width: 320, height: 800 });
+  for (const path of [resource, logs + '&app=archive%2Flocal%2Fapi', logs]) {
+    await page.goto(url + path);
+    if (path === resource) {
+      const tabs = page.getByRole('tablist', { name: 'Application details' });
+      await tabs.getByRole('tab', { name: 'Overview' }).focus();
+      await page.keyboard.press('ArrowRight');
+      await page.keyboard.press('Enter');
+      await expect(page.getByRole('tabpanel', { name: 'Logs' })).toBeVisible();
+    }
+    const entry = page.getByRole('button', { name: /archive\/local\/api info: A test job completed/ });
+    await expect(entry).toBeVisible();
+    if (path === logs) await expect(entry).toContainText(event.app);
+    else await expect(entry).not.toContainText(event.app);
+    await entry.focus();
+    await page.keyboard.press('Enter');
+    await expect(entry).toHaveAttribute('aria-expanded', 'true');
+    const raw = page.getByRole('button', { name: 'Raw event' });
+    await raw.focus();
+    await page.keyboard.press('Space');
+    const json = page.getByLabel('Raw log event');
+    await expect(json).toContainText(event.app);
+    expect(JSON.parse(await json.textContent())).toMatchObject(event);
+    const main = page.getByRole('main');
+    expect(await main.evaluate(el => el.scrollWidth - el.clientWidth)).toBe(0);
+    await json.focus();
+    await page.keyboard.press('Escape');
+    await expect(entry).toBeFocused();
+    await expect(entry).toHaveAttribute('aria-expanded', 'false');
+  }
+});
+
 
 test('release, stack and deployment links carry their public owner across tabs and both workspaces', async ({ page, context, url }) => {
   const releases = ['alpha', 'beta'].map(project => ({ id: project + '-build', project, complete: true }));

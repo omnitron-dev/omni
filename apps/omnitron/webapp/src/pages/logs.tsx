@@ -1071,7 +1071,7 @@ export default function LogsPage() {
 
               {/* Log rows — newest at bottom for live, newest at top for paginated */}
               {logRows.map((log) => (
-                <LogEntryRowView key={log.id} log={log} isNew={newIdsRef.current.has(log.id)} nodeNames={nodeNameById} />
+                <LogEntryRowView key={log.id} log={log} selectedApp={app} isNew={newIdsRef.current.has(log.id)} nodeNames={nodeNameById} />
               ))}
             </>
           )}

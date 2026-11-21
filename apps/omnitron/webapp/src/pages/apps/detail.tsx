@@ -10,14 +10,11 @@ import Stack from '@mui/material/Stack';
 import Chip from '@mui/material/Chip';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
-import Tabs from '@mui/material/Tabs';
-import Tab from '@mui/material/Tab';
+import { Tabs, TabPanel } from '@omnitron-dev/prism/components/tabs';
 import LinearProgress from '@mui/material/LinearProgress';
 import TextField from '@mui/material/TextField';
 import InputAdornment from '@mui/material/InputAdornment';
-import Tooltip from '@mui/material/Tooltip';
-import Collapse from '@mui/material/Collapse';
-import { alpha, useTheme, keyframes } from '@mui/material/styles';
+import { alpha, useTheme } from '@mui/material/styles';
 import { Chart, type ChartOptions } from '@omnitron-dev/prism/components/chart';
 import { RestartIcon, StopIcon, PlayIcon, RefreshIcon, CircleIcon, SearchIcon } from 'src/assets/icons';
 import { Alert } from '@omnitron-dev/prism/components/alert';
@@ -28,8 +25,8 @@ import { Table, type TableColumn } from '@omnitron-dev/prism/components/table';
 import { daemon, logs, metrics } from 'src/netron/client';
 import { formatUptime, formatMemory } from 'src/utils/formatters';
 import { LogLevelFilter } from 'src/components/log-level-filter';
-import { shortLogLevel } from 'src/utils/log-levels';
-import { STATUS_COLORS, LEVEL_COLORS } from 'src/utils/constants';
+import { LogEntryRowView } from 'src/components/log-entry-row';
+import { STATUS_COLORS } from 'src/utils/constants';
 import { appHref, useWorkspace, workspaceHref } from 'src/routes/workspace';
 import { useProjectStore } from 'src/stores/project.store';
 import { countedTraffic, latencyCaption, measuredProcess, qualifiedAppHandle, requestsCaption } from 'src/utils/app-address';
@@ -48,15 +45,10 @@ import type {
 // Tab Panel
 // ---------------------------------------------------------------------------
 
-function TabPanel({ children, value, index }: { children: React.ReactNode; value: number; index: number }) {
-  const [mounted, setMounted] = useState(value === index);
-  useEffect(() => { if (value === index) setMounted(true); }, [value, index]);
-  if (!mounted) return null;
-  return (
-    <Box sx={{ pt: 2, display: value === index ? 'block' : 'none' }}>
-      {children}
-    </Box>
-  );
+function VisitedTabContent({ children, active }: { children: React.ReactNode; active: boolean }) {
+  const [visited, setVisited] = useState(active);
+  useEffect(() => { if (active) setVisited(true); }, [active]);
+  return active || visited ? children : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -429,80 +421,9 @@ function InfoRow({ label, value, mono }: { label: string; value: string | number
 // Logs Tab — streaming log viewer with filtering
 // ---------------------------------------------------------------------------
 
-const LEVEL_ROW_BG: Record<string, string> = { fatal: 'rgba(220,38,38,0.08)', error: 'rgba(239,68,68,0.05)', warn: 'rgba(245,158,11,0.04)' };
 const MONO = "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', monospace";
 const STREAM_INTERVAL = 2000;
 const SEARCH_DEBOUNCE = 300;
-
-const slideIn = keyframes`
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
-`;
-
-function formatTimePrecise(ts: Date | string): string {
-  const d = typeof ts === 'string' ? new Date(ts) : ts;
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}.${String(d.getMilliseconds()).padStart(3, '0')}`;
-}
-
-function formatDateFull(ts: Date | string): string {
-  const d = typeof ts === 'string' ? new Date(ts) : ts;
-  return `${d.toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}.${String(d.getMilliseconds()).padStart(3, '0')}`;
-}
-
-function LogRow({ log, isNew }: { log: LogEntryRow; isNew?: boolean }) {
-  const [expanded, setExpanded] = useState(false);
-  const levelColor = Object.hasOwn(LEVEL_COLORS, log.level) ? LEVEL_COLORS[log.level]! : '#6b7280';
-  const rowBg = Object.hasOwn(LEVEL_ROW_BG, log.level) ? LEVEL_ROW_BG[log.level] : 'transparent';
-  const hasDetail = log.labels || log.traceId || log.spanId || log.metadata;
-
-  return (
-    <>
-      <Box
-        onClick={() => hasDetail && setExpanded((v) => !v)}
-        sx={{
-          display: 'grid',
-          gridTemplateColumns: '90px 36px 1fr',
-          gap: 1,
-          alignItems: 'baseline',
-          px: 1.5,
-          py: '3px',
-          bgcolor: expanded ? 'rgba(255,255,255,0.04)' : rowBg,
-          borderLeft: `2px solid ${expanded ? levelColor : 'transparent'}`,
-          cursor: hasDetail ? 'pointer' : 'default',
-          transition: 'background-color 0.15s ease',
-          animation: isNew ? `${slideIn} 0.3s ease-out` : undefined,
-          '&:hover': { bgcolor: 'rgba(255,255,255,0.04)' },
-        }}
-      >
-        <Tooltip title={formatDateFull(log.timestamp)} placement="top-start" arrow enterDelay={400}>
-          <Typography component="span" sx={{ fontFamily: MONO, fontSize: 11, color: '#7c8493', lineHeight: '20px', whiteSpace: 'nowrap', letterSpacing: '-0.02em' }}>
-            {formatTimePrecise(log.timestamp)}
-          </Typography>
-        </Tooltip>
-        <Typography component="span" sx={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: levelColor, lineHeight: '20px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-          {shortLogLevel(log.level)}
-        </Typography>
-        <Typography component="span" sx={{
-          fontFamily: MONO, fontSize: 11.5, lineHeight: '20px', overflow: 'hidden',
-          color: log.level === 'error' || log.level === 'fatal' ? '#fca5a5' : '#c9d1d9',
-          textOverflow: 'ellipsis', whiteSpace: expanded ? 'pre-wrap' : 'nowrap', wordBreak: expanded ? 'break-all' : undefined,
-        }}>
-          {log.message}
-        </Typography>
-      </Box>
-      <Collapse in={expanded} unmountOnExit>
-        <Box sx={{ ml: '14px', mr: 1.5, mb: 0.5, p: 1.5, bgcolor: 'rgba(255,255,255,0.025)', borderRadius: 1, borderLeft: `2px solid ${alpha(levelColor, 0.3)}` }}>
-          <Box component="pre" sx={{ fontFamily: MONO, fontSize: 11, color: '#8b949e', m: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all', lineHeight: 1.7 }}>
-            {log.traceId && <span><span style={{ color: '#7c8493' }}>traceId: </span><span style={{ color: '#d2a8ff' }}>{log.traceId}</span>{'\n'}</span>}
-            {log.spanId && <span><span style={{ color: '#7c8493' }}>spanId:  </span><span style={{ color: '#d2a8ff' }}>{log.spanId}</span>{'\n'}</span>}
-            {log.labels && <span><span style={{ color: '#7c8493' }}>labels:  </span><span style={{ color: '#7ee787' }}>{JSON.stringify(log.labels, null, 2)}</span>{'\n'}</span>}
-            {log.metadata && <span><span style={{ color: '#7c8493' }}>metadata:</span>{'\n'}<span style={{ color: '#e6edf3' }}>{JSON.stringify(log.metadata, null, 2)}</span></span>}
-          </Box>
-        </Box>
-      </Collapse>
-    </>
-  );
-}
 
 function LogsTab({ appName }: { appName: string }) {
   // `appName` is the daemon's own namespaced name and goes to the daemon
@@ -525,7 +446,6 @@ function LogsTab({ appName }: { appName: string }) {
   const streamRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastTimestampRef = useRef<string | null>(null);
   const newIdsRef = useRef<Set<string>>(new Set());
-  const scrollRef = useRef<HTMLDivElement>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Search debounce
@@ -613,6 +533,7 @@ function LogsTab({ appName }: { appName: string }) {
       <Stack
         direction="row"
         spacing={1.5}
+        useFlexGap
         sx={{
           alignItems: "center",
           flexWrap: 'wrap'
@@ -624,6 +545,7 @@ function LogsTab({ appName }: { appName: string }) {
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
           slotProps={{
+            htmlInput: { 'aria-label': 'Search application logs' },
             input: {
               startAdornment: <InputAdornment position="start"><SearchIcon sx={{ fontSize: 16, color: 'text.disabled' }} /></InputAdornment>,
               sx: { fontSize: 13 },
@@ -649,22 +571,21 @@ function LogsTab({ appName }: { appName: string }) {
       </Stack>
       {/* Terminal */}
       <Card
-        ref={scrollRef}
         variant="outlined"
-        sx={{ bgcolor: '#0d1117', maxHeight: 600, overflow: 'auto', borderColor: 'rgba(255,255,255,0.1)' }}
+        sx={{ bgcolor: 'background.paper', maxHeight: 600, overflow: 'auto', borderColor: 'divider' }}
       >
         <CardContent sx={{ p: 0, '&:last-child': { pb: 0 } }}>
           {loading ? (
             <Stack spacing={0.5} sx={{ p: 1.5 }}>
-              {[...Array(12)].map((_, i) => <Skeleton key={i} height={20} sx={{ bgcolor: 'rgba(255,255,255,0.05)' }} />)}
+              {[...Array(12)].map((_, i) => <Skeleton key={i} height={20} />)}
             </Stack>
           ) : logRows.length === 0 ? (
-            <Typography variant="body2" sx={{ fontFamily: MONO, fontSize: 12, color: '#8b949e', textAlign: 'center', py: 6 }}>
+            <Typography variant="body2" sx={{ fontFamily: MONO, fontSize: 12, color: 'text.secondary', textAlign: 'center', py: 6 }}>
               No log entries found.
             </Typography>
           ) : (
             logRows.map((log) => (
-              <LogRow key={log.id} log={log} isNew={newIdsRef.current.has(log.id)} />
+              <LogEntryRowView key={log.id} log={log} selectedApp={appName} isNew={newIdsRef.current.has(log.id)} />
             ))
           )}
         </CardContent>
@@ -983,7 +904,7 @@ function AppDetail({ name, project, stack }: { name: string; project: string | n
   const { can } = useAccess();
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
-  const [tab, setTab] = useState(0);
+  const [selectedTab, setTab] = useState('overview');
   const [healthRefresh, setHealthRefresh] = useState(0);
   const inventory = useProjectStore(s => project && can('OmnitronProject.listStacks') ? s.stacksByProject[project] : undefined);
   const observed = inventory?.find(item => item.name === stack);
@@ -1014,6 +935,8 @@ function AppDetail({ name, project, stack }: { name: string; project: string | n
   const fetchDiagnostics = () => daemonName && mayInspect ? diag.refresh() : Promise.resolve();
   const canReadLogs = can('OmnitronLogs.streamLogs');
   const canReadMetrics = can('OmnitronDaemon.getMetrics');
+  const tab = (selectedTab === 'logs' && !canReadLogs) || (selectedTab === 'metrics' && !canReadMetrics)
+    ? 'overview' : selectedTab;
   if (!project && app?.workspace) return <Navigate replace to={appHref(app.workspace.project, app.workspace.stack, app.name.split('/').at(-1)!)} />;
   const handleAction = async (action: 'start' | 'stop' | 'restart') => {
     if (!qualifiedAppHandle(daemonName)) return;
@@ -1105,28 +1028,22 @@ function AppDetail({ name, project, stack }: { name: string; project: string | n
            {process.error ?? 'Application unavailable.'}
         </Alert>
       ) : (
-        <>
-          <Tabs value={tab} onChange={(_, v) => setTab(v)}>
-            <Tab label="Overview" />
-            {canReadLogs && <Tab value={1} label="Logs" />}
-            {canReadMetrics && <Tab value={2} label="Metrics" />}
-          </Tabs>
-
-          <TabPanel value={tab} index={0}>
+        <Tabs value={tab} onChange={setTab} aria-label="Application details" keepMounted>
+          <TabPanel value="overview" label="Overview">
             <Stack spacing={2}>
-              <Can permission="OmnitronDaemon.getHealth"><AppHealth key={app.name} appName={app.name} refreshToken={healthRefresh} onLogs={canReadLogs ? () => setTab(1) : undefined} /></Can>
+              <Can permission="OmnitronDaemon.getHealth"><AppHealth key={app.name} appName={app.name} refreshToken={healthRefresh} onLogs={canReadLogs ? () => setTab('logs') : undefined} /></Can>
               <OverviewTab app={app} diagnostics={mayInspect ? diag.data : null} diagLoading={mayInspect && diag.loading} />
             </Stack>
           </TabPanel>
           {/* The handle the daemon answered with, not the URL's name: an older
               link says `main`, and every log and metric is keyed by the handle. */}
-          <TabPanel value={tab} index={1}>
-            {canReadLogs && <LogsTab appName={app.name} />}
-          </TabPanel>
-          <TabPanel value={tab} index={2}>
-            {canReadMetrics && <MetricsTab appName={app.name} />}
-          </TabPanel>
-        </>
+          {canReadLogs && <TabPanel value="logs" label="Logs">
+            <VisitedTabContent active={tab === 'logs'}><LogsTab appName={app.name} /></VisitedTabContent>
+          </TabPanel>}
+          {canReadMetrics && <TabPanel value="metrics" label="Metrics">
+            <VisitedTabContent active={tab === 'metrics'}><MetricsTab appName={app.name} /></VisitedTabContent>
+          </TabPanel>}
+        </Tabs>
       )}
     </Stack>
   );

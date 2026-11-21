@@ -1,14 +1,15 @@
-import { appHref, stackHref, workspaceHref } from 'src/routes/workspace';
+import { workspaceHref } from 'src/routes/workspace';
 import { processWorkspace } from 'src/utils/project-scope';
 import { useEffect, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
-import { Button, Chip, Grid, Link, Stack, Typography } from '@mui/material';
+import { Button, Chip, Grid, Stack, Typography } from '@mui/material';
 import { Alert } from '@omnitron-dev/prism/components/alert';
 import { StatCard, type StatCardProps } from '@omnitron-dev/prism/components/card';
 import { Table, type TableColumn } from '@omnitron-dev/prism/components/table';
 import { healthLabel } from '@omnitron-dev/omnitron/stack-reading';
 import { useAccess } from 'src/auth/access';
 import { Breadcrumbs } from 'src/components/page-breadcrumbs';
+import { ApplicationLink, applicationDestination } from 'src/components/application-link';
 import { ResourceBreakdown } from 'src/components/resource-breakdown';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { useStackContext } from 'src/hooks/use-stack-context';
@@ -51,9 +52,7 @@ function ApplicationInventory({
       render: (app) => {
         const owner = project && app.stack ? { project, stack: app.stack }
           : app.workspace === undefined ? processWorkspace(projects, app.key) : app.workspace;
-        const href = app.remote
-          ? owner && can('OmnitronProject.listStacks') && stackHref(owner.project, owner.stack)
-          : can('OmnitronDaemon.getApp') && (owner ? appHref(owner.project, owner.stack, app.name) : '/processes/' + encodeURIComponent(app.key));
+        const destination = applicationDestination(app.name, app.key, owner, app.remote, can);
         const scope = project ? app.stack : owner ? owner.project + '/' + owner.stack : app.key.split('/').slice(0, -1).join('/');
         const processes = app.processes?.length
           ? `${app.processes.filter((process) => process.status === 'online').length}/${app.processes.length} processes online`
@@ -63,19 +62,7 @@ function ApplicationInventory({
         const detail = [!stack && scope, app.remote && 'Remote', processes].filter(Boolean).join(' · ');
         return (
           <>
-            {href ? (
-              <Link
-                component={RouterLink}
-                to={href}
-                underline="hover"
-                color="inherit"
-                aria-label={app.remote ? `Open stack ${app.stack} for ${app.name}` : undefined}
-              >
-                {app.name}
-              </Link>
-            ) : (
-              app.name
-            )}
+            <ApplicationLink name={app.name} destination={destination} />
             {detail && (
               <Typography component="span" variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                 {detail}
@@ -220,7 +207,7 @@ function DashboardReader({
     if (readProcesses) void processes.refresh();
   };
   const summary: Pick<StatCardProps, 'label' | 'value' | 'subtitle'>[] = [
-    { label: 'Applications', value: apps ? `${online}/${apps.length}` : '—', subtitle: 'Applications online' },
+    { label: 'Applications', value: apps ? `${online}/${apps.length}` : '—', subtitle: 'Online / total' },
     {
       label: 'Stacks',
       value:
@@ -231,8 +218,8 @@ function DashboardReader({
             : '—',
       subtitle: project
         ? counts?.unknownStacks
-          ? `${counts.unknownStacks} unknown`
-          : 'Stacks running'
+          ? `Running / configured · ${counts.unknownStacks} unknown`
+          : 'Running / configured'
         : 'On this daemon',
     },
     {
@@ -253,11 +240,7 @@ function DashboardReader({
         heading="Overview"
         links={[{ name: 'Overview' }]}
         action={
-          stack && readStacks ? (
-            <Button size="small" component={RouterLink} to={stackHref(project!, stack)}>
-              Open stack
-            </Button>
-          ) : project && can('OmnitronMetrics.getSnapshot') ? (
+          project && can('OmnitronMetrics.getSnapshot') ? (
             <Button size="small" component={RouterLink} to={workspaceHref({ project, stack }, '/metrics')}>
               Metrics
             </Button>

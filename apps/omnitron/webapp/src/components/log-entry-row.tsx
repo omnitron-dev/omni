@@ -36,10 +36,12 @@ export function LogEntryRowView({
   log,
   isNew,
   nodeNames,
+  selectedApp,
 }: {
   log: LogEntryRow;
   isNew?: boolean;
   nodeNames?: Record<string, string>;
+  selectedApp?: string;
 }) {
   const theme = useTheme();
   const [expanded, setExpanded] = useState(false);
@@ -48,6 +50,7 @@ export function LogEntryRowView({
   const toggle = useRef<HTMLButtonElement>(null);
   const clipboard = useCopyToClipboard();
   const tone = logLevelColor(log.level, theme);
+  const showApp = log.app !== selectedApp;
   const highlighted = expanded
     ? alpha(theme.palette.primary.main, 0.045)
     : ['warn', 'error', 'fatal'].includes(log.level)
@@ -112,7 +115,9 @@ export function LogEntryRowView({
           minWidth: 0,
           textAlign: 'left',
           display: 'grid',
-          gridTemplateColumns: { xs: '16px 90px minmax(0, 1fr) 32px', sm: '16px 90px 120px 32px minmax(0, 1fr)' },
+          gridTemplateColumns: showApp
+            ? { xs: '16px 90px minmax(0, 1fr) 32px', sm: '16px 90px 120px 32px minmax(0, 1fr)' }
+            : { xs: '16px 90px minmax(32px, 1fr)', sm: '16px 90px 32px minmax(0, 1fr)' },
           columnGap: 1,
           alignItems: 'start',
           px: 1.25,
@@ -138,7 +143,7 @@ export function LogEntryRowView({
             {timeOf(log.timestamp)}
           </Typography>
         </Tooltip>
-        <Typography
+        {showApp && <Typography
           component="span"
           title={log.app}
           sx={{
@@ -153,7 +158,7 @@ export function LogEntryRowView({
           }}
         >
           {log.app}
-        </Typography>
+        </Typography>}
         <Typography
           component="span"
           sx={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, lineHeight: '20px', color: tone }}

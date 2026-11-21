@@ -35,7 +35,8 @@ import type { ContainerState } from '../infrastructure/types.js';
 import type { AlertRule, AlertEvent, AlertSummary, ActiveAlert, AlertSeverity } from '../shared/dto/alerts.js';
 import { diskAtHome } from '../monitoring/host-disk.js';
 import { readHostStorage } from '../monitoring/host-storage.js';
-import { localAlert, reconcileStorageAlert } from './host-storage-alert.js';
+import { alertLayout } from '../database/alert-bridge/layout.js';
+import { reconcileStorageAlert } from './host-storage-alert.js';
 import type { SyncService } from './sync.service.js';
 import { notifyDesktop } from '../monitoring/desktop-notifier.js';
 import { callExposedService, type ExposingSupervisor } from '../orchestrator/call-exposed-service.js';
@@ -284,9 +285,13 @@ export class AlertService {
         : null,
     };
 
-    const storage = rules.some(r => ALERT_EXPRESSION_FORMS[4].test(r.expression.trim())) ? await readHostStorage() : null;
+    const layout = await alertLayout(this.db);
+    const storage = layout.expanded && rules.some(r => ALERT_EXPRESSION_FORMS[4].test(r.expression.trim())) ? await readHostStorage() : null;
     for (const rule of rules) {
-      if (storage && ALERT_EXPRESSION_FORMS[4].test(rule.expression.trim())) {
+      // Old PostgreSQL cannot identify an event carrying the same annotation that replicas used.
+      if (layout.ambiguousAnnotations && typeof alertAnnotations(rule.annotations)['node'] === 'string') continue;
+      if (ALERT_EXPRESSION_FORMS[4].test(rule.expression.trim())) {
+        if (!storage) continue;
         const change = await reconcileStorageAlert(this.db, rule, storage, now, firing => this.held(rule, firing, now), this.sync);
         if (change && rule.severity === 'critical') this.sayOnDesktop(rule, change.status, change.value);
         continue;
@@ -320,7 +325,7 @@ export class AlertService {
         .selectAll()
         .where('ruleId', '=', rule.id)
         .where('status', '=', 'firing')
-        .where(localAlert)
+        .where(layout.local)
         .executeTakeFirst();
 
       if (!firing) this.pendingSince.delete(rule.id);
@@ -363,7 +368,7 @@ export class AlertService {
     // After the rules, and never in their way: a sink that cannot be reached
     // this tick is tried again on the next.
     try {
-      await this.deliverPending(now);
+      await this.deliverPending(now, layout);
     } catch (err) {
       this.logger.warn({ err }, 'Alert sink delivery failed this tick — tried again on the next');
     }
@@ -397,7 +402,7 @@ export class AlertService {
    * The call takes `exec`'s road — the supervisor's socket into the process —
    * and only into an app in bootstrap mode.
    */
-  private async deliverPending(now: number): Promise<void> {
+  private async deliverPending(now: number, layout: Awaited<ReturnType<typeof alertLayout>>): Promise<void> {
     const sinks = await this.alertSinks(now);
     const targets = sinks.flatMap((sink) => this.sinkTargets(sink).map((name) => ({ sink, name })));
     if (targets.length === 0) {
@@ -407,7 +412,7 @@ export class AlertService {
       await this.db
         .updateTable('alert_events')
         .set({ deliveryError: NO_SINK } as any)
-        .where(localAlert)
+        .where(layout.local)
         .where('deliveredAt', 'is', null)
         .where('deliveryError', 'is', null)
         .where('firedAt', '>', new Date(now - DELIVERY_WINDOW_MS))
@@ -432,7 +437,7 @@ export class AlertService {
         'alert_rules.annotations as annotations',
       ])
       .where('alert_rules.severity', '=', 'critical')
-      .where(localAlert)
+      .where(layout.local)
       .where(eb => eb.or([
         eb('alert_events.firedAt', '>', new Date(now - DELIVERY_WINDOW_MS)),
         eb.and([eb('alert_events.deliveredAt', 'is not', null), eb('alert_events.resolvedAt', '>', new Date(now - DELIVERY_WINDOW_MS))]),
@@ -595,14 +600,15 @@ export class AlertService {
    * something a human can act on.
    */
   async getActiveAlerts(limit = 100): Promise<ActiveAlert[]> {
+    const layout = await alertLayout(this.db);
     const rows = await this.db
       .selectFrom('alert_events')
       .innerJoin('alert_rules', 'alert_rules.id', 'alert_events.ruleId')
       .select([
         'alert_events.id as id',
         'alert_events.ruleId as ruleId',
-        'alert_events.originNode as originNode',
-        'alert_events.legacyOrigin as legacyOrigin',
+        layout.origin.as('originNode'),
+        layout.legacy.as('legacyOrigin'),
         'alert_events.status as status',
         'alert_events.value as value',
         'alert_events.annotations as eventAnnotations',

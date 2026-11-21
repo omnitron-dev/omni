@@ -169,7 +169,7 @@ export async function backendSelectCommand(id: string, checkOnly = false, option
       }
       // Managed cold startup reads this instance's persisted role. Other launch
       // modes may override it and must retain the conservative comparison.
-      const scope = backendSchemaScope(config) === 'node' && await readManagedRuntime(registry.home) ? 'node' : 'all';
+      const scope = await readManagedRuntime(registry.home) ? backendSchemaScope(config) : 'all';
       let schema: Awaited<ReturnType<typeof import('../daemon/schema-transition.js').validateSchemaTransitionForSelection>> | undefined;
       if (options.schemaPlan && (!selected || config.role !== 'master'))
         throw new Error('Applied schema selection requires an installed master runtime');

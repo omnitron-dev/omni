@@ -20,6 +20,7 @@ import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import type { OmnitronDatabase } from '../database/schema.js';
 import type { ISyncConfig, DaemonRole } from '../config/types.js';
 import type { ISyncStatus } from '../shared/dto/project.js';
+import { ingestAlertLayout } from '../database/alert-bridge/layout.js';
 import { toIsoUtc } from '../database/sqlite-date-binding.js';
 import { describeError } from '../shared/describe-error.js';
 import { readReplicationEvidence, receiptGroups, type ReplicationReceipt } from './replication-evidence.js';
@@ -156,14 +157,14 @@ function logRow(nodeId: string, entry: IngestEntry): Insertable<OmnitronDatabase
  * does not share — which is what makes the permanent-failure path the
  * important half of this.
  */
-function alertRow(nodeId: string, entry: IngestEntry): Insertable<OmnitronDatabase['alert_events']> {
+function alertRow(nodeId: string, entry: IngestEntry, expanded: boolean): Insertable<OmnitronDatabase['alert_events']> {
   const annotations = {
     ...(entry.payload['annotations'] as Record<string, unknown> | undefined),
     node: nodeId,
   };
   return {
     ruleId: (entry.payload['ruleId'] as string) ?? 'unknown',
-    originNode: nodeId,
+    ...(expanded && { originNode: nodeId }),
     status: (entry.payload['status'] as string) ?? 'firing',
     value: entry.payload['value'] != null ? String(entry.payload['value']) : null,
     annotations: JSON.stringify(annotations) as any,
@@ -977,6 +978,7 @@ export class SyncService {
     const alerts: Insertable<OmnitronDatabase['alert_events']>[] = [];
     const traces: Insertable<OmnitronDatabase['traces']>[] = [];
     const unknown: IngestEntry[] = [];
+    const alertSchema = entries.some(entry => entry.category === 'alerts') ? await ingestAlertLayout(db) : undefined;
 
     for (const entry of entries) {
       switch (entry.category) {
@@ -987,8 +989,10 @@ export class SyncService {
           logs.push(logRow(nodeId, entry));
           break;
         case 'alerts':
-          if (entry.payload['format'] === STORAGE_ALERT_FORMAT) await projectStorageAlert(db, nodeId, entry.payload);
-          else alerts.push(alertRow(nodeId, entry));
+          if (entry.payload['format'] === STORAGE_ALERT_FORMAT) {
+            if (!alertSchema?.expanded) throw Error('Storage alert schema is pending; retain this entry on the source node');
+            await projectStorageAlert(db, nodeId, entry.payload);
+          } else alerts.push(alertRow(nodeId, entry, alertSchema!.expanded));
           break;
         case 'traces':
           traces.push(traceRow(nodeId, entry));

@@ -37,7 +37,7 @@ import type { RuntimeRestartConfiguration, RuntimeRestartReview, RuntimeUpdateId
 
 export type RuntimeUpdateCall = <T>(argv: readonly string[], options?: { timeoutMs?: number; signal?: AbortSignal }) => Promise<T>;
 interface ColdStartObservation {
-  checked: boolean; candidate: string; current: string | null; schemaScope: 'node' | 'all'; coldStackAdmissionProtocol?: number | null;
+  checked: boolean; candidate: string; current: string | null; schemaScope: 'node' | 'enrolled-node' | 'all'; coldStackAdmissionProtocol?: number | null;
   runtimeRestartProtocol?: number | null;
   coldConsoleProtocol?: number | null;
   infrastructure: {

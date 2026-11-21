@@ -13,8 +13,11 @@ import { SyncService, type SyncBatch } from '../../src/services/sync.service.js'
 import { SyncRpcService } from '../../src/services/sync.rpc-service.js';
 import { projectStorageAlert } from '../../src/services/host-storage-alert.js';
 import { registerDaemonJobs } from '../../src/daemon/daemon-scheduler.js';
-import { STORAGE_ALERT_RULE, migration as pgSeed } from '../../src/database/migrations/018_host_storage_alert.js';
-import * as sqliteSeed from '../../src/database/slave-migrations/002_host_storage_alert.js';
+import { STORAGE_ALERT_RULE, migration as pgSeed } from '../../src/database/alert-bridge/migrations/018_host_storage_alert.js';
+import * as sqliteSeed from '../../src/database/alert-bridge/slave-migrations/002_host_storage_alert.js';
+import { createMigrationRunner } from '../../src/migration/index.js';
+import { SLAVE_MIGRATIONS } from '../../src/database/slave-migrations/index.js';
+import { STORAGE_ORIGIN_ROLLBACK } from '../../src/database/alert-bridge/layout.js';
 import { Findings, checkHostStorage } from '../../src/commands/doctor.js';
 import type { OmnitronDatabase } from '../../src/database/schema.js';
 import { databaseOfItsOwn, type OwnDatabase } from './a-database-of-its-own.js';
@@ -106,6 +109,8 @@ async function nvme(n: number, state: string, sectors: string, address = slot) {
 async function node() {
   storage = new SlaveStorageService(logger, join(dir, 'node.db'));
   db = (await storage.getDb()) as unknown as Kysely<OmnitronDatabase>;
+  await createMigrationRunner(db as unknown as Kysely<unknown>, [...SLAVE_MIGRATIONS,
+    { name: '002_host_storage_alert', checksum: STORAGE_ORIGIN_ROLLBACK.node, up: sqliteSeed.up }], { verbose: false }).up();
   sync = new SyncService(db, logger, 'node-reported-name', 'slave');
   alerts = new AlertService({ logger } as never, db, healthyApps as never, project as never, sync);
 }
@@ -315,6 +320,7 @@ describe.skipIf(!pg.ok)('receipt-backed mesh storage alerts', () => {
   let master: OwnDatabase;
   beforeAll(async () => {
     master = await databaseOfItsOwn(TEST_POSTGRES_URL, `storage_alert_${process.pid}`);
+    await pgSeed.up(master.db as unknown as Kysely<unknown>);
   });
   afterAll(async () => {
     await master?.drop();

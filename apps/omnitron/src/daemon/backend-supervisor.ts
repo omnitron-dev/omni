@@ -26,6 +26,7 @@ import { recoverReviewedBackend } from './reviewed-backend-recovery.js';
 export interface SupervisorStatus {
   kernelHandoff?: 1;
   migrationChecksumMetadata?: 1;
+  nodeStorageExpansion?: 1;
   infrastructureAdoptionPreflight?: 1;
   backendHandoffReviewProtocol?: 1;
   reviewedRecovery?: 1;
@@ -70,7 +71,7 @@ export class BackendSupervisorService {
 
   @Public({ auth: { roles: ADMIN_ROLES } })
   async status(): Promise<SupervisorStatus> {
-    return { ...this.state, kernelHandoff: 1, migrationChecksumMetadata: 1, infrastructureAdoptionPreflight: 1, reviewedRecovery: 1, backendHandoffReviewProtocol: 1,
+    return { ...this.state, kernelHandoff: 1, migrationChecksumMetadata: 1, nodeStorageExpansion: 1, infrastructureAdoptionPreflight: 1, reviewedRecovery: 1, backendHandoffReviewProtocol: 1,
       operationPending: this.operationClaimed || (this.busy && !this.inspection) };
   }
 

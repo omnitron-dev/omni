@@ -934,7 +934,8 @@ export class SlaveConnector {
       // Pull in batches until slave buffer is empty
       while (conn.peer === peer && conn.status === 'connected') {
         await this.ensureCredential(conn, peer);
-        const drained = await syncProxy.drainBuffer({ limit: 1000, storageAlertVersion: 1 });
+        // Retain storage-format entries on the node until its controller selects the expanded release.
+        const drained = await syncProxy.drainBuffer({ limit: 1000 });
         await this.ensureCredential(conn, peer);
         if (conn.peer !== peer || conn.status !== 'connected') return;
         if (!drained || !drained.entries || drained.entries.length === 0) break;

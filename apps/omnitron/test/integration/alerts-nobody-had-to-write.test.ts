@@ -25,7 +25,6 @@ import { alertRuleTypeOf, readAlertRuleFields } from '../../src/shared/alert-exp
 import { migrateOmnitronDb } from '../../src/database/migration-runner.js';
 import * as m011 from '../../src/database/migrations/011_alerts_nobody_had_to_write.js';
 import * as m012 from '../../src/database/migrations/012_a_disk_nobody_watched.js';
-import { STORAGE_ALERT_RULE } from '../../src/database/migrations/018_host_storage_alert.js';
 
 // The host's disk, as the evaluator reads it: this machine's own would make
 // the court's events depend on how full the disk it runs on happens to be.
@@ -44,7 +43,7 @@ const testPg = await requiresTestPostgres(TEST_PG_URL);
 
 const logger = { debug() {}, info() {}, warn() {}, error() {}, trace() {}, fatal() {} };
 const MINUTE = 60_000;
-const DEFAULT_NAMES = [...m011.DEFAULT_ALERT_RULES, m012.DISK_ALERT_RULE, STORAGE_ALERT_RULE].map((r) => r.name).sort();
+const DEFAULT_NAMES = [...m011.DEFAULT_ALERT_RULES, m012.DISK_ALERT_RULE].map((r) => r.name).sort();
 
 describe.skipIf(!testPg.ok)('alerts nobody had to write', () => {
   let own: OwnDatabase;
@@ -226,7 +225,7 @@ describe.skipIf(!testPg.ok)('alerts nobody had to write', () => {
       await own.db.updateTable('alert_rules').set({ expression: 'app.*.cpu > 95' }).where('name', '=', 'CPU above 90%').execute();
 
       await m011.down(own.db as never);
-      expect(await names()).toEqual(['CPU above 90%', m012.DISK_ALERT_RULE.name, STORAGE_ALERT_RULE.name]);
+      expect(await names()).toEqual(['CPU above 90%', m012.DISK_ALERT_RULE.name]);
 
       await m011.up(own.db as never);
       expect(await names()).toEqual(DEFAULT_NAMES);

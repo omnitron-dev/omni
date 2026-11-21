@@ -58,10 +58,10 @@ async function observe(socket?: string, preparation = false) {
   } finally { await control.close(); }
 }
 
-async function worker<T>(artifact: BackendArtifact, environment: Record<string, string>, mode: 'inspect' | 'apply', argument: string): Promise<T> {
+async function worker<T>(artifact: BackendArtifact, environment: Record<string, string>, mode: 'inspect' | 'apply', argument: string, rollback?: string): Promise<T> {
   const entry = path.join(artifact.directory, 'database/schema-worker.js');
   await fs.access(entry);
-  const output = await execute(artifact.execPath, [entry, mode, argument], {
+  const output = await execute(artifact.execPath, [entry, mode, argument, ...(rollback ? [rollback] : [])], {
     cwd: path.dirname(artifact.directory), env: environment, timeout: 120_000, maxBuffer: 2 * 1024 * 1024,
   });
   return JSON.parse(output.stdout) as T;
@@ -112,7 +112,7 @@ export async function prepareSchemaTransition(directory: string, socket?: string
     const target = await installation.install(path.resolve(directory));
     if (target.runtimeHash === source.runtimeHash || target.schemaExpansionProtocol !== 1) throw new Error('Choose a different schema-expansion-capable candidate');
     const before = await worker<SchemaSnapshot>(target, live.record.environment, 'inspect', source.directory);
-    const after = await worker<SchemaSnapshot>(target, live.record.environment, 'inspect', target.directory);
+    const after = await worker<SchemaSnapshot>(target, live.record.environment, 'inspect', target.directory, source.directory);
     const baseFiles = await masterMigrationFiles(source.directory);
     const targetFiles = await masterMigrationFiles(target.directory);
     const prior = priorPlanFile ? await readSchemaPlan(path.resolve(priorPlanFile)) : undefined;
@@ -176,7 +176,7 @@ export async function applySchemaTransition(file: string) {
     const source = await installation.artifact(plan.receipt.fromRuntime);
     const target = await installation.artifact(plan.receipt.toRuntime);
     await assertArtifacts(plan, source, target);
-    assertSchemaHistory(plan, await worker<SchemaSnapshot>(target, live.record.environment, 'inspect', target.directory));
+    assertSchemaHistory(plan, await worker<SchemaSnapshot>(target, live.record.environment, 'inspect', target.directory, source.directory));
     if (plan.phase === 'prepared') {
       plan.phase = 'approved'; plan.receipt.approvedAt = new Date().toISOString();
       await writePrivateRecord(file, plan);
@@ -192,7 +192,7 @@ export async function applySchemaTransition(file: string) {
 }
 
 async function assertReady(plan: SchemaTransitionPlan, source: BackendArtifact, target: BackendArtifact, record: BackendRecoveryRecord) {
-  const next = await worker<SchemaSnapshot>(target, record.environment, 'inspect', target.directory);
+  const next = await worker<SchemaSnapshot>(target, record.environment, 'inspect', target.directory, source.directory);
   assertSchemaHistory(plan, next);
   if (next.inspection.pending.length) throw new Error('The planned schema expansion is not completely applied');
   const prior = await worker<SchemaSnapshot>(target, record.environment, 'inspect', source.directory);
@@ -245,7 +245,7 @@ export async function validateSchemaTransitionForSelection(
   const target = candidate.runtimeHash === source.runtimeHash ? current : candidate;
   const [before, after, files] = await Promise.all([
     worker<SchemaSnapshot>(target, managed.environment, 'inspect', source.directory),
-    worker<SchemaSnapshot>(target, managed.environment, 'inspect', target.directory),
+    worker<SchemaSnapshot>(target, managed.environment, 'inspect', target.directory, source.directory),
     masterMigrationFiles(target.directory),
   ]);
   planSchemaContinuation(plan, before, after, plan.receipt.baseFiles, files);

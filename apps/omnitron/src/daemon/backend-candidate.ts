@@ -9,6 +9,7 @@ import { inspectRuntimeArtifact, verifyRuntimeArtifact } from '../shared/runtime
 import { readExecutionCapabilities, type ExecutionCapabilities } from './execution-capabilities.js';
 import type { IDaemonConfig } from '../config/types.js';
 import { compareMigrationChecksumMetadata, type MigrationChecksumChange } from '../database/migration-registry-compatibility.js';
+import { reviewedNodeStorageExpansion } from '../database/storage-schema-compatibility.js';
 import type { BackendBootRecord } from './backend-handoff-types.js';
 import type { BackendRecoveryRecord } from './backend-recovery-journal.js';
 import { backendInfrastructureDigest, backendInfrastructureInput, backendInfrastructureIntentDigest, type ColdInfrastructurePreview } from './backend-infrastructure-preflight.js';
@@ -103,11 +104,12 @@ export interface BackendArtifact {
   executionRequirements?: ExecutionCapabilities;
 }
 
-export type BackendSchemaScope = 'all' | 'node';
+export type BackendSchemaScope = 'all' | 'node' | 'enrolled-node';
 
 /** An enrolled worker also reads the controller's PostgreSQL authority ledger. */
 export function backendSchemaScope(config: Pick<IDaemonConfig, 'role' | 'cluster'>): BackendSchemaScope {
-  return config.role === 'slave' && (config.cluster === undefined || config.cluster?.enabled === false) ? 'node' : 'all';
+  if (config.role !== 'slave') return 'all';
+  return config.cluster?.enabled ? 'enrolled-node' : 'node';
 }
 
 async function readBackendMigrations(directory: string, scope: BackendSchemaScope) {
@@ -128,9 +130,9 @@ async function readBackendMigrations(directory: string, scope: BackendSchemaScop
       } else if (item.isSymbolicLink()) throw new Error('Database migration files must not be symlinks');
     }
   };
-  if (scope === 'all') await walk(path.join(directory, 'database', 'migrations'), 'master');
+  if (scope !== 'node') await walk(path.join(directory, 'database', 'migrations'), 'master');
   const local = path.join(directory, 'database', 'slave-migrations');
-  if (scope === 'node') {
+  if (scope !== 'all') {
     if (!(await fs.lstat(path.join(local, 'index.js'))).isFile()) throw new Error('A regular worker migration registry is required');
   } else {
     try { await fs.lstat(local); }
@@ -144,7 +146,7 @@ export async function backendMigrationDigest(directory: string, scope: BackendSc
   return (await readBackendMigrations(directory, scope)).digest;
 }
 
-export type BackendMigrationCompatibility = { kind: 'identical' } | {
+export type BackendMigrationCompatibility = { kind: 'identical' | 'node-storage-expansion' } | {
   kind: 'checksum-metadata'; changes: Array<MigrationChecksumChange & { registry: string }>;
 };
 
@@ -152,6 +154,11 @@ export async function assertBackendMigrationsCompatible(current: string, next: s
   const [before, after] = await Promise.all([readBackendMigrations(current, scope), readBackendMigrations(next, scope)]);
   if (before.digest === after.digest) return { kind: 'identical' };
   try {
+    if (scope !== 'all') {
+      const forward = before.files.size < after.files.size;
+      if (await reviewedNodeStorageExpansion(forward ? before : after, forward ? after : before,
+        forward ? current : next, forward ? next : current, scope === 'enrolled-node')) return { kind: 'node-storage-expansion' };
+    }
     if (JSON.stringify(before.directories) !== JSON.stringify(after.directories) || before.files.size !== after.files.size) {
       throw new Error('Migration files or directories changed');
     }

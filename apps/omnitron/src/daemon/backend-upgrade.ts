@@ -258,7 +258,7 @@ export async function replaceBackend(directory: string, options: {
     } finally { await reader.disconnect(); }
     if (managed && !supervisesBackendChildren()) {
       const compatibility = options.schemaPlan ? null : await assertBackendMigrationsCompatible(
-        path.dirname(path.dirname(previous.entry)), artifact.directory, previous.schemaScope === 'node' ? 'node' : 'all');
+        path.dirname(path.dirname(previous.entry)), artifact.directory, previous.schemaScope === 'node' || previous.schemaScope === 'enrolled-node' ? previous.schemaScope : 'all');
       const supervisor = await privateControlClient<BackendSupervisorService>(managedSupervisorSocket(managed), 'OmnitronSupervisor', 600_000);
       try {
         const guardian = await supervisor.service.status();
@@ -267,6 +267,8 @@ export async function replaceBackend(directory: string, options: {
         }
         if (guardian.backendHandoffReviewProtocol !== 1)
           throw Error('The running guardian cannot enforce reviewed backend admission; no work was cancelled');
+        if (compatibility?.kind === 'node-storage-expansion' && guardian.nodeStorageExpansion !== 1)
+          throw Error('Prepare and apply a backend guardian transition with the storage-aware bridge before changing the node registry');
         if (compatibility?.kind === 'checksum-metadata' && guardian.migrationChecksumMetadata !== 1) {
           throw new Error('Only migration checksum metadata changed, but the running guardian cannot verify that transition. Prepare and apply a backend guardian transition with this candidate, then retry backend upgrade. No backend or application was stopped.');
         }
@@ -310,7 +312,7 @@ export async function replaceBackend(directory: string, options: {
     const validateSchema = async () => {
       if (!options.schemaPlan) {
         // Older private peers did not attest their database scope.
-        await assertBackendMigrationsCompatible(rollback.directory, artifact.directory, previous.schemaScope === 'node' ? 'node' : 'all');
+        await assertBackendMigrationsCompatible(rollback.directory, artifact.directory, previous.schemaScope === 'node' || previous.schemaScope === 'enrolled-node' ? previous.schemaScope : 'all');
         return;
       }
       const { validateSchemaTransitionForUpgrade } = await import('./schema-transition.js');

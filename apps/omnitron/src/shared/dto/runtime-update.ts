@@ -144,7 +144,7 @@ export interface VerifiedRuntimeReference extends RuntimeUpdateReference {
 }
 
 export interface RuntimeUpdateInfrastructure {
-  schemaScope: 'node' | 'all';
+  schemaScope: 'node' | 'enrolled-node' | 'all';
   coldStackAdmissionProtocol?: 1;
   runtimeRestartProtocol?: 1;
   digest: string;

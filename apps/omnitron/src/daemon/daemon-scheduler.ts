@@ -4,7 +4,7 @@
  * Jobs:
  *   - Session cleanup (5 min) — master only
  *   - Metrics collection (configurable, default 5s) — uses titan-metrics
- *   - Alert evaluation (30s) — master only
+ *   - Alert evaluation (at admission, then every health interval) — both roles
  *   - Fleet heartbeat sweep (30s) — master only
  *   - Log rotation check (60s)
  *   - Metrics replication (configurable) — slave only
@@ -125,20 +125,23 @@ export function registerDaemonJobs(
   });
   jobs.push('metrics-collection');
 
-  // Alert evaluation — on both roles: the master on Postgres, a node on its SQLite
-  if (alertService) {
-    scheduler.addInterval('alert-evaluation', deps.healthCheckInterval, async () => {
-      try {
-        await alertService.evaluate();
-        recovered('alert-evaluation');
-      } catch (err) {
+  // The admitted backend owns evaluation and sink delivery. A replacement first samples when it takes ownership.
+  let evaluating: Promise<void> | undefined;
+  const evaluateAlerts = () => {
+    if (alertService && !metricsPaused) evaluating ??= alertService.evaluate().then(
+      () => { recovered('alert-evaluation'); },
+      err => {
         // At `error`, with its cause. This is the loop whose whole job is to
         // notice that something is wrong: its own failure is the one no alert
         // can report, and an unreachable database would stop every alert on
         // the platform looking exactly like a platform with nothing to say.
         failed('alert-evaluation', 'Alert evaluation failed — no rules were checked this cycle', err);
-      }
-    });
+      },
+    ).finally(() => { evaluating = undefined; });
+    return evaluating;
+  };
+  if (alertService) {
+    scheduler.addInterval('alert-evaluation', deps.healthCheckInterval, evaluateAlerts, { immediate: true });
     jobs.push('alert-evaluation');
   } else {
     skipped.push({ job: 'alert-evaluation', because: 'no alert service' });
@@ -212,9 +215,13 @@ export function registerDaemonJobs(
   return {
     async pauseAndFlush(): Promise<void> {
       metricsPaused = true;
-      await sampling;
+      await Promise.all([sampling, evaluating]);
       await metricsService.flush();
     },
-    resume(): void { metricsPaused = false; },
+    resume(): void {
+      const wasPaused = metricsPaused;
+      metricsPaused = false;
+      if (wasPaused) void evaluateAlerts();
+    },
   };
 }

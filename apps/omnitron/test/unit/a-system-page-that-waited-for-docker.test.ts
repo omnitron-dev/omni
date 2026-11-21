@@ -23,6 +23,7 @@ const quiet: SectionReaders = {
   cpu: async () => ({ info: { cores: 10 } as never, load: { currentLoad: 12, cpus: [] } as never, temperature: null }),
   memory: async () => ({ total: 100, available: 40, free: 10, used: 90 } as never),
   disks: async () => [],
+  storage: async () => ({ status: 'unsupported', resources: [], issues: ['Linux sysfs is required'] }),
   network: async () => ({ interfaces: [], stats: [] }),
   docker: async () => ({ running: 2, paused: 0, stopped: 1 }),
 };

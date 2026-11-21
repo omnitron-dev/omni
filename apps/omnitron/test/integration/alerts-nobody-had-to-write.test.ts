@@ -25,6 +25,7 @@ import { alertRuleTypeOf, readAlertRuleFields } from '../../src/shared/alert-exp
 import { migrateOmnitronDb } from '../../src/database/migration-runner.js';
 import * as m011 from '../../src/database/migrations/011_alerts_nobody_had_to_write.js';
 import * as m012 from '../../src/database/migrations/012_a_disk_nobody_watched.js';
+import { STORAGE_ALERT_RULE } from '../../src/database/migrations/018_host_storage_alert.js';
 
 // The host's disk, as the evaluator reads it: this machine's own would make
 // the court's events depend on how full the disk it runs on happens to be.
@@ -33,13 +34,17 @@ const disk = vi.hoisted(() => ({ free: (198 * 1024 ** 3) as number | null }));
 vi.mock('../../src/monitoring/host-disk.js', () => ({
   diskAtHome: async () => (disk.free === null ? null : { free: disk.free, total: 1843 * 1024 ** 3 }),
 }));
+vi.mock('../../src/monitoring/host-storage.js', async importActual => ({
+  ...await importActual<typeof import('../../src/monitoring/host-storage.js')>(),
+  readHostStorage: async () => ({ status: 'not-applicable', issues: [], resources: [] }),
+}));
 
 const TEST_PG_URL = TEST_POSTGRES_URL;
 const testPg = await requiresTestPostgres(TEST_PG_URL);
 
 const logger = { debug() {}, info() {}, warn() {}, error() {}, trace() {}, fatal() {} };
 const MINUTE = 60_000;
-const DEFAULT_NAMES = [...m011.DEFAULT_ALERT_RULES, m012.DISK_ALERT_RULE].map((r) => r.name).sort();
+const DEFAULT_NAMES = [...m011.DEFAULT_ALERT_RULES, m012.DISK_ALERT_RULE, STORAGE_ALERT_RULE].map((r) => r.name).sort();
 
 describe.skipIf(!testPg.ok)('alerts nobody had to write', () => {
   let own: OwnDatabase;
@@ -65,7 +70,7 @@ describe.skipIf(!testPg.ok)('alerts nobody had to write', () => {
   afterAll(async () => own?.drop());
 
   describe('a fresh master', () => {
-    it('starts with the defaults of 011 and 012, each on and each one the evaluator reads', async () => {
+    it('starts with its default rules, each on and each one the evaluator reads', async () => {
       const rules = await alerts.getRules();
 
       expect(rules.map((r) => r.name).sort()).toEqual(DEFAULT_NAMES);
@@ -221,7 +226,7 @@ describe.skipIf(!testPg.ok)('alerts nobody had to write', () => {
       await own.db.updateTable('alert_rules').set({ expression: 'app.*.cpu > 95' }).where('name', '=', 'CPU above 90%').execute();
 
       await m011.down(own.db as never);
-      expect(await names()).toEqual(['CPU above 90%', m012.DISK_ALERT_RULE.name]);
+      expect(await names()).toEqual(['CPU above 90%', m012.DISK_ALERT_RULE.name, STORAGE_ALERT_RULE.name]);
 
       await m011.up(own.db as never);
       expect(await names()).toEqual(DEFAULT_NAMES);

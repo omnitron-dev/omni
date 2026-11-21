@@ -30,6 +30,7 @@ import si from 'systeminformation';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import type { DaemonRole } from '../config/types.js';
 import type { SnapshotSection, SystemSnapshot } from '../shared/dto/system-info.js';
+import { readHostStorage, storageSnapshot } from '../monitoring/host-storage.js';
 
 // =============================================================================
 // Types
@@ -113,6 +114,7 @@ export interface SectionReaders {
   }>;
   memory: () => Promise<si.Systeminformation.MemData>;
   disks: () => Promise<si.Systeminformation.FsSizeData[]>;
+  storage: () => Promise<NonNullable<SystemSnapshot['storage']>>;
   network: () => Promise<{
     interfaces: si.Systeminformation.NetworkInterfacesData[];
     stats: si.Systeminformation.NetworkStatsData[];
@@ -132,6 +134,7 @@ const DEFAULT_READERS: SectionReaders = {
   },
   memory: () => si.mem(),
   disks: () => si.fsSize(),
+  storage: async () => storageSnapshot(await readHostStorage()),
   network: async () => {
     const [interfaces, stats] = await Promise.all([si.networkInterfaces(), si.networkStats('*')]);
     return { interfaces: Array.isArray(interfaces) ? interfaces : [interfaces], stats };
@@ -169,6 +172,7 @@ export class SystemInfoService {
       cpu: new SectionQuestion(read.cpu),
       memory: new SectionQuestion(read.memory),
       disks: new SectionQuestion(read.disks),
+      storage: new SectionQuestion(read.storage),
       network: new SectionQuestion(read.network),
       docker: new SectionQuestion(read.docker),
     };
@@ -194,13 +198,14 @@ export class SystemInfoService {
   private async collectOnce(): Promise<SystemSnapshot> {
     const started = Date.now();
     const budget = this.budgetMs;
-    const [os, cpu, memory, disks, network, docker] = await Promise.all([
+    const [os, cpu, memory, disks, network, docker, storage] = await Promise.all([
       this.questions.os.ask(budget),
       this.questions.cpu.ask(budget),
       this.questions.memory.ask(budget),
       this.questions.disks.ask(budget),
       this.questions.network.ask(budget),
       this.questions.docker.ask(budget),
+      this.questions.storage.ask(budget),
     ]);
 
     const unanswered: SystemSnapshot['unanswered'] = {};
@@ -221,6 +226,7 @@ export class SystemInfoService {
     const rateAvailable = rates.length > 0 && rates.every(stat =>
       stat && Number.isFinite(stat.rx_sec) && stat.rx_sec >= 0 && Number.isFinite(stat.tx_sec) && stat.tx_sec >= 0);
     const dockerData = value('docker', docker);
+    const storageData = value('storage', storage);
     if (Object.keys(unanswered).length > 0) {
       this.logger.debug({ unanswered }, 'System snapshot collected without some sections');
     }
@@ -230,6 +236,7 @@ export class SystemInfoService {
       timestamp: Date.now(),
       collectedMs: Date.now() - started,
       unanswered,
+      storage: storageData,
 
       os: {
         platform: osData?.info.platform ?? process.platform,

@@ -189,7 +189,7 @@ export type { OmnitronDiscoveredTarget, DiscoveryScanResult } from './discovery.
 
 export type { PipelineRecoveryReview, PipelineDeploymentTarget, PipelineDeploymentEvidence, PreparePipelineRun, StartPipelineRun, PipelineRunReview, Pipeline, PipelineDef, PipelineStep, PipelineReleaseTarget, PipelineReleaseExecution, PipelineRun, PipelineRunStepResult, PipelineRunSummary, PipelineWorkspace } from './pipelines.js';
 export type { Trace, TraceSpan, TraceFilter, ServiceMapEntry } from './traces.js';
-export { readSystemSnapshot, type SystemSnapshot } from './system-info.js';
+export { readSystemSnapshot, type SystemSnapshot, type HostStorageSnapshot, type HostStorageResource } from './system-info.js';
 
 export type { FleetNode, FleetSummary, NodeRegistration, NodeRole };
 export type { NodeStatus } from './fleet.js';

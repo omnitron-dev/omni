@@ -55,7 +55,7 @@ describe('OMNITRON_MIGRATIONS registry', () => {
   it('binds procedural migration integrity to source bytes, independent of transpilation', () => {
     const definitions = [
       ...OMNITRON_MIGRATIONS.slice(0, 13).map(migration => ({ migration, directory: migrationsDir })),
-      { migration: SLAVE_MIGRATIONS[0]!, directory: path.join(migrationsDir, '../slave-migrations') },
+      ...SLAVE_MIGRATIONS.map(migration => ({ migration, directory: path.join(migrationsDir, '../slave-migrations') })),
     ];
     for (const { migration, directory } of definitions) {
       const source = fs.readFileSync(path.join(directory, migration.name + '.ts'));

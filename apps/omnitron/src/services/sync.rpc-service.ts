@@ -19,8 +19,8 @@ export class SyncRpcService {
    * is what keeps a failure between the two from losing data.
    */
   @Public({ auth: { roles: ['admin', 'service_role'] } })
-  async drainBuffer(data?: { limit?: number }): Promise<SyncBatch> {
-    return this.syncService.drainBuffer(data?.limit);
+  async drainBuffer(data?: { limit?: number; storageAlertVersion?: number }): Promise<SyncBatch> {
+    return this.syncService.drainBuffer(data?.limit, data?.storageAlertVersion === 1);
   }
 
   /**

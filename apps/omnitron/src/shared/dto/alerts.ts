@@ -90,6 +90,9 @@ export interface UpdateAlertRuleInput {
  */
 export interface ActiveAlert {
   id: string;
+  subject?: 'host.storage';
+  /** Retained label from before the master stored the mesh source separately from user annotations. */
+  reportedNode?: string;
   ruleId: string;
   ruleName: string;
   severity: AlertSeverity;
@@ -100,9 +103,7 @@ export interface ActiveAlert {
   /**
    * The node that raised it, or null when this master raised it itself.
    *
-   * A replicated alert carries it in `annotations.node` — `alert_events` has
-   * no column for a node, and an alert that says "disk above 90%" without
-   * saying whose disk is one nobody can act on.
+   * The authenticated mesh connection supplies the origin. Operator annotations cannot set it.
    */
   node: string | null;
 }

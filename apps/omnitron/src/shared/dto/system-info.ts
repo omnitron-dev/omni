@@ -9,7 +9,20 @@
 import type { DaemonRole } from '../../config/types.js';
 
 /** The parts of a snapshot that are asked separately, each with its own budget. */
-export type SnapshotSection = 'os' | 'cpu' | 'memory' | 'disks' | 'network' | 'docker';
+export type SnapshotSection = 'os' | 'cpu' | 'memory' | 'disks' | 'network' | 'docker' | 'storage';
+
+export interface HostStorageResource {
+  kind: 'array' | 'controller' | 'namespace';
+  name: string;
+  health: 'healthy' | 'degraded' | 'unknown';
+  detail: string;
+}
+
+export interface HostStorageSnapshot {
+  status: HostStorageResource['health'] | 'unsupported' | 'not-applicable';
+  resources: HostStorageResource[];
+  issues: string[];
+}
 
 export interface SystemSnapshot {
   /** When it was collected. A snapshot is served while the next is collected: read its age from this. */
@@ -66,6 +79,9 @@ export interface SystemSnapshot {
     usedPercent: number;
     mount: string;
   }>;
+
+  /** Older peers omit hardware diagnostics. A timed-out collection returns null and names the section in unanswered. */
+  storage?: HostStorageSnapshot | null;
 
   network: {
     /** False until all reported external interfaces have a measurable rate. Older peers omit this field. */

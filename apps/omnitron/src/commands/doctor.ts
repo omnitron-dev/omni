@@ -40,6 +40,7 @@ import { box, log, prism } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import { DEFAULT_DAEMON_CONFIG, OMNITRON_HOME } from '../config/defaults.js';
 import { diskAtHome } from '../monitoring/host-disk.js';
+import { readHostStorage } from '../monitoring/host-storage.js';
 import type { IDaemonConfig } from '../config/types.js';
 import { emitJson, isJsonMode } from './output.js';
 import { resolveOmnitronPgConfig } from '../database/connection.js';
@@ -1170,6 +1171,18 @@ export async function checkProjectConfigs(findings: Findings): Promise<void> {
  * monitoring/host-disk.ts) at 50 GiB, and it runs every tick, not when
  * somebody runs doctor.
  */
+export async function checkHostStorage(findings: Findings, read = readHostStorage): Promise<void> {
+  const storage = await read();
+  const faults = storage.resources.filter(r => r.health === 'degraded').map(r => `${r.name} ${r.detail}`);
+  if (faults.length) findings.add({
+    id: 'disk.hardware', severity: 'error', title: 'Linux storage reports a device or redundancy fault',
+    evidence: faults, remedy: 'Inspect the affected devices and verify array redundancy and controller state after repair.',
+  });
+  const gaps = [...storage.issues, ...storage.resources.filter(r => r.health === 'unknown').map(r => `${r.name} ${r.detail}`)];
+  if (gaps.length) findings.skip('disk.hardware', gaps.join(' · '));
+  else if (storage.status === 'not-applicable') findings.skip('disk.hardware', 'No md arrays or NVMe devices were observed');
+}
+
 export async function checkDiskSpace(findings: Findings): Promise<void> {
   const ERROR_BYTES = 2 * 1024 ** 3;
   const WARN_BYTES = 10 * 1024 ** 3;
@@ -1829,6 +1842,7 @@ export async function doctorCommand(): Promise<void> {
   // reason the daemon is down, and it is the reason operators reach for last.
   try {
     await checkDiskSpace(findings);
+    await checkHostStorage(findings);
   } catch (err) {
     findings.add({
       id: 'doctor.check-failed',

@@ -30,6 +30,7 @@ import * as m014 from './014_replication_receipts.js';
 import * as m015 from './015_persistent_metrics.js';
 import * as m016 from './016_cluster_lease.js';
 import * as m017 from './017_pipeline_admission.js';
+import * as m018 from './018_host_storage_alert.js';
 
 /**
  * Every Omnitron migration, in apply order.
@@ -58,4 +59,5 @@ export const OMNITRON_MIGRATIONS: Migration[] = [
   m015.migration,
   m016.migration,
   m017.migration,
+  m018.migration,
 ];

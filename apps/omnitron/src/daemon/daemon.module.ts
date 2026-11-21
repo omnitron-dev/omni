@@ -605,9 +605,7 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
         },
       ] as any]),
 
-      // Alert evaluation engine (master only). It reads the stacks'
-      // containers through the project service; the accessor it used to
-      // take here answered `{}` on every call.
+      // Both roles evaluate local rules. The source node owns its sink and replicates storage transitions for the Console.
       ...(!isSlave ? [[
         ALERT_SERVICE_TOKEN,
         {
@@ -615,7 +613,7 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
           scope: Scope.Singleton,
         },
       ] as any] : [[
-        // A node counts its own alarms, in its SQLite, with the four critical
+        // A node counts its own alarms, in its SQLite, with the critical
         // defaults (SlaveStorageService.createAlertTables) — the owner's choice
         // of 2026-09-30. It was master-only, and the test stack's alerts were
         // evaluated by nobody. The rules' RPC stays on the master: the console
@@ -626,9 +624,10 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
             loggerModule: ILoggerModule,
             slaveStorage: SlaveStorageService,
             orchestrator: OrchestratorService,
-            projects: ProjectService
-          ) => new AlertService(loggerModule, (await slaveStorage.getDb()) as any, orchestrator, projects),
-          inject: [LOGGER_SERVICE_TOKEN, SLAVE_STORAGE_TOKEN, ORCHESTRATOR_TOKEN, PROJECT_SERVICE_TOKEN],
+            projects: ProjectService,
+            sync: SyncService,
+          ) => new AlertService(loggerModule, (await slaveStorage.getDb()) as any, orchestrator, projects, sync),
+          inject: [LOGGER_SERVICE_TOKEN, SLAVE_STORAGE_TOKEN, ORCHESTRATOR_TOKEN, PROJECT_SERVICE_TOKEN, SYNC_SERVICE_TOKEN],
           scope: Scope.Singleton,
         },
       ] as any]),

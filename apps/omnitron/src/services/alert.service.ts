@@ -4,7 +4,7 @@
  * The daemon scheduler's `alert-evaluation` job calls `evaluate()` every
  * `monitoring.healthCheck.interval` (15 s by default). A rule is an
  * expression of `shared/alert-expression.ts` — an app's status, cpu or
- * memory, a container's health, or the space free on this host's disk — and
+ * memory, a container's health, disk capacity or Linux host storage health — and
  * what it watches (`health` or `metric`) is read off it.
  *
  * Lifecycle: a condition that holds becomes PENDING for the rule's
@@ -12,9 +12,7 @@
  * FIRING, then RESOLVED when it stops holding. Acknowledging a firing alert
  * records who and when; it stays firing until the condition clears.
  *
- * Rules and events are stored in omnitron-pg; the defaults a fresh master
- * starts with are seeded once by migrations 011 and 012, and are the
- * operator's after.
+ * The master stores rules and events in omnitron-pg. Nodes keep their own SQLite alarms.
  */
 
 import { sql, type Kysely } from 'kysely';
@@ -31,11 +29,14 @@ import {
 } from '../shared/alert-expression.js';
 
 export { ALERT_EXPRESSION_FORMS, isAlertExpressionParseable };
-import { OMNITRON_DB_TOKEN, ORCHESTRATOR_TOKEN, PROJECT_SERVICE_TOKEN } from '../shared/tokens.js';
+import { OMNITRON_DB_TOKEN, ORCHESTRATOR_TOKEN, PROJECT_SERVICE_TOKEN, SYNC_SERVICE_TOKEN } from '../shared/tokens.js';
 import type { ProjectService } from './project.service.js';
 import type { ContainerState } from '../infrastructure/types.js';
 import type { AlertRule, AlertEvent, AlertSummary, ActiveAlert, AlertSeverity } from '../shared/dto/alerts.js';
 import { diskAtHome } from '../monitoring/host-disk.js';
+import { readHostStorage } from '../monitoring/host-storage.js';
+import { localAlert, reconcileStorageAlert } from './host-storage-alert.js';
+import type { SyncService } from './sync.service.js';
 import { notifyDesktop } from '../monitoring/desktop-notifier.js';
 import { callExposedService, type ExposingSupervisor } from '../orchestrator/call-exposed-service.js';
 import type { IAlertSink } from '../config/types.js';
@@ -165,16 +166,19 @@ const SINK_TTL_MS = 60_000;
 export const NO_SINK = 'no alert sink: no project this daemon runs names one (monitoring.alertSink)';
 
 /** A rule's summary, from its annotations as the database hands them back — a jsonb object or its text. */
-function summaryOf(annotations: unknown): string | null {
+function alertAnnotations(annotations: unknown): Record<string, unknown> {
   let value = annotations;
   if (typeof value === 'string') {
     try {
       value = JSON.parse(value);
     } catch {
-      return null;
+      return {};
     }
   }
-  const summary = value && typeof value === 'object' ? (value as { summary?: unknown }).summary : null;
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+function summaryOf(annotations: unknown): string | null {
+  const summary = alertAnnotations(annotations)['summary'];
   return typeof summary === 'string' && summary.length > 0 ? summary : null;
 }
 
@@ -210,6 +214,7 @@ export class AlertService {
    * wait again, which errs toward firing later rather than at once.
    */
   private readonly pendingSince = new Map<string, number>();
+  private evaluation?: Promise<void> | undefined;
 
   constructor(
     @Inject(LOGGER_SERVICE_TOKEN) loggerModule: ILoggerModule,
@@ -221,6 +226,7 @@ export class AlertService {
     // evaluated against no containers at all and could never fire.
     @Optional() @Inject(PROJECT_SERVICE_TOKEN)
     private readonly projects?: Partial<Pick<ProjectService, 'getInfraManager' | 'listWorkspaceNames' | 'loadProjectConfig'>>,
+    @Optional() @Inject(SYNC_SERVICE_TOKEN) private readonly sync?: Pick<SyncService, 'bufferBatch'>,
   ) {
     this.logger = loggerModule.logger;
   }
@@ -240,7 +246,23 @@ export class AlertService {
    * Evaluate all enabled alert rules — once per scheduler tick. `now` is a
    * parameter for the court that walks a rule through its wait.
    */
-  async evaluate(now: number = Date.now()): Promise<void> {
+  evaluate(now: number = Date.now()): Promise<void> {
+    this.evaluation ??= this.evaluateOnce(now).finally(() => { this.evaluation = undefined; });
+    return this.evaluation;
+  }
+
+  private held(rule: { id: string; forDuration: number | null }, firing: boolean, now: number) {
+    if (!firing) { this.pendingSince.delete(rule.id); return false; }
+    const since = this.pendingSince.get(rule.id) ?? now;
+    if (now - since < (rule.forDuration ?? 0) * 1000) {
+      this.pendingSince.set(rule.id, since);
+      return false;
+    }
+    this.pendingSince.delete(rule.id);
+    return true;
+  }
+
+  private async evaluateOnce(now: number): Promise<void> {
     const rules = await this.db
       .selectFrom('alert_rules')
       .selectAll()
@@ -262,7 +284,13 @@ export class AlertService {
         : null,
     };
 
+    const storage = rules.some(r => ALERT_EXPRESSION_FORMS[4].test(r.expression.trim())) ? await readHostStorage() : null;
     for (const rule of rules) {
+      if (storage && ALERT_EXPRESSION_FORMS[4].test(rule.expression.trim())) {
+        const change = await reconcileStorageAlert(this.db, rule, storage, now, firing => this.held(rule, firing, now), this.sync);
+        if (change && rule.severity === 'critical') this.sayOnDesktop(rule, change.status, change.value);
+        continue;
+      }
       const { firing, value, unparseable, unreadable } = evaluateExpression(rule.expression, ctx);
 
       if (unparseable) {
@@ -292,6 +320,7 @@ export class AlertService {
         .selectAll()
         .where('ruleId', '=', rule.id)
         .where('status', '=', 'firing')
+        .where(localAlert)
         .executeTakeFirst();
 
       if (!firing) this.pendingSince.delete(rule.id);
@@ -299,13 +328,7 @@ export class AlertService {
       if (firing && !currentAlert) {
         // Held long enough? A rule with a wait fires only once its condition
         // has held for all of it, so a spike shorter than the wait is not paged.
-        const waitMs = (rule.forDuration ?? 0) * 1000;
-        if (waitMs > 0) {
-          const since = this.pendingSince.get(rule.id) ?? now;
-          this.pendingSince.set(rule.id, since);
-          if (now - since < waitMs) continue;
-        }
-        this.pendingSince.delete(rule.id);
+        if (!this.held(rule, true, now)) continue;
         await this.db.insertInto('alert_events').values({
           ruleId: rule.id,
           status: 'firing',
@@ -384,6 +407,7 @@ export class AlertService {
       await this.db
         .updateTable('alert_events')
         .set({ deliveryError: NO_SINK } as any)
+        .where(localAlert)
         .where('deliveredAt', 'is', null)
         .where('deliveryError', 'is', null)
         .where('firedAt', '>', new Date(now - DELIVERY_WINDOW_MS))
@@ -401,13 +425,18 @@ export class AlertService {
         'alert_events.id as id',
         'alert_events.status as status',
         'alert_events.value as value',
+        'alert_events.annotations as eventAnnotations',
         'alert_events.deliveredAt as deliveredAt',
         'alert_events.resolveDeliveredAt as resolveDeliveredAt',
         'alert_rules.name as ruleName',
         'alert_rules.annotations as annotations',
       ])
       .where('alert_rules.severity', '=', 'critical')
-      .where('alert_events.firedAt', '>', new Date(now - DELIVERY_WINDOW_MS))
+      .where(localAlert)
+      .where(eb => eb.or([
+        eb('alert_events.firedAt', '>', new Date(now - DELIVERY_WINDOW_MS)),
+        eb.and([eb('alert_events.deliveredAt', 'is not', null), eb('alert_events.resolvedAt', '>', new Date(now - DELIVERY_WINDOW_MS))]),
+      ]))
       .where((eb) =>
         eb.or([
           eb('alert_events.deliveredAt', 'is', null),
@@ -424,7 +453,10 @@ export class AlertService {
       if (!event.deliveredAt) transitions.push('firing');
       if (event.status === 'resolved' && !event.resolveDeliveredAt) transitions.push('resolved');
       for (const status of transitions) {
-        const failure = await this.deliverTo(targets, event, status);
+        const annotations = typeof event.eventAnnotations === 'string' ? JSON.parse(event.eventAnnotations) : event.eventAnnotations;
+        const fault = (annotations?.['storage'] as { lastFault?: unknown } | undefined)?.lastFault;
+        const value = status === 'firing' && typeof fault === 'string' ? fault : event.value;
+        const failure = await this.deliverTo(targets, { ...event, value }, status);
         await this.db
           .updateTable('alert_events')
           .set(
@@ -569,6 +601,8 @@ export class AlertService {
       .select([
         'alert_events.id as id',
         'alert_events.ruleId as ruleId',
+        'alert_events.originNode as originNode',
+        'alert_events.legacyOrigin as legacyOrigin',
         'alert_events.status as status',
         'alert_events.value as value',
         'alert_events.annotations as eventAnnotations',
@@ -598,25 +632,27 @@ export class AlertService {
       // The event's own values win where both have a key: the rule's
       // annotations are the template and the event's are what happened.
       const annotations = {
-        ...((row.ruleAnnotations ?? {}) as Record<string, unknown>),
-        ...((row.eventAnnotations ?? {}) as Record<string, unknown>),
+        ...alertAnnotations(row.ruleAnnotations),
+        ...alertAnnotations(row.eventAnnotations),
       };
       const summary = typeof annotations['summary'] === 'string' ? (annotations['summary'] as string) : null;
-      const node = typeof annotations['node'] === 'string' ? (annotations['node'] as string) : null;
+      const node = row.originNode ?? null;
       const value = row.value !== null && row.value !== undefined ? String(row.value) : null;
+      const storage = ALERT_EXPRESSION_FORMS[4].test(row.expression.trim());
 
       return {
         id: String(row.id),
+        ...(storage && { subject: 'host.storage' as const }),
+        ...(row.legacyOrigin && typeof annotations['node'] === 'string' && { reportedNode: annotations['node'] }),
         ruleId: String(row.ruleId),
         ruleName: String(row.ruleName),
         severity: row.severity as AlertSeverity,
-        message: summary ?? (value ? `${row.expression} (value: ${value})` : String(row.expression)),
+        message: summary && value && storage
+          ? `${summary} · ${value}`
+          : summary ?? (value ? `${row.expression} (value: ${value})` : String(row.expression)),
         firedAt: new Date(row.firedAt as unknown as string).toISOString(),
         resolvedAt: row.resolvedAt ? new Date(row.resolvedAt as unknown as string).toISOString() : null,
         acknowledged: row.acknowledgedAt !== null && row.acknowledgedAt !== undefined,
-        // Null for an alert this master raised about itself. Present for one
-        // replicated from a node, which is the case where "disk above 90%"
-        // is unactionable without it.
         node,
       };
     });
@@ -721,12 +757,19 @@ function mapRule(row: any): AlertRule {
 }
 
 function mapEvent(row: any): AlertEvent {
+  const annotations = row.annotations ? alertAnnotations(row.annotations) : null;
+  const storage = annotations?.['storage'] as { subjects?: unknown; revision?: unknown } | undefined;
+  if (storage && Array.isArray(storage.subjects) && typeof storage.revision === 'number') {
+    // Observable hardware evidence is in value. The origin alone needs its replacement and identity bookkeeping.
+    delete annotations!['storage'];
+    annotations!['storageRevision'] = storage.revision;
+  }
   return {
     id: row.id,
     ruleId: row.ruleId,
     status: row.status,
     value: row.value ?? null,
-    annotations: row.annotations ? (typeof row.annotations === 'string' ? JSON.parse(row.annotations) : row.annotations) : null,
+    annotations,
     firedAt: row.firedAt instanceof Date ? row.firedAt.toISOString() : String(row.firedAt),
     resolvedAt: row.resolvedAt ? (row.resolvedAt instanceof Date ? row.resolvedAt.toISOString() : String(row.resolvedAt)) : null,
     acknowledgedAt: row.acknowledgedAt ? (row.acknowledgedAt instanceof Date ? row.acknowledgedAt.toISOString() : String(row.acknowledgedAt)) : null,

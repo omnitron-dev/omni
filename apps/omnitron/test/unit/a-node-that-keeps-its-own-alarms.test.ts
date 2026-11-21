@@ -25,6 +25,10 @@ import { AlertService } from '../../src/services/alert.service.js';
 vi.mock('../../src/monitoring/host-disk.js', () => ({
   diskAtHome: async () => ({ free: 198 * 1024 ** 3, total: 1843 * 1024 ** 3 }),
 }));
+vi.mock('../../src/monitoring/host-storage.js', async importActual => ({
+  ...await importActual<typeof import('../../src/monitoring/host-storage.js')>(),
+  readHostStorage: async () => ({ status: 'not-applicable', issues: [], resources: [] }),
+}));
 
 const logger = { debug() {}, info() {}, warn() {}, error() {}, trace() {}, fatal() {}, child: () => logger };
 
@@ -91,13 +95,13 @@ describe('a node’s own alarms, on its SQLite', () => {
     raised.length = 0;
   });
 
-  it('seeds the four critical defaults, and no warning it could show nobody', async () => {
+  it('seeds the critical node defaults', async () => {
     const rules = await db.selectFrom('alert_rules').select(['name', 'severity', 'enabled']).orderBy('name').execute();
     expect(rules.map((r) => r.name).sort()).toEqual(
-      ['App crashed', 'App erroring', 'Container unhealthy', 'Disk space below 50 GiB'].sort()
+      ['App crashed', 'App erroring', 'Container unhealthy', 'Disk space below 50 GiB', 'Linux storage degraded'].sort()
     );
     expect(rules.every((r) => r.severity === 'critical' && r.enabled === 1)).toBe(true);
-    expect(NODE_ALERT_RULES).toHaveLength(4);
+    expect(NODE_ALERT_RULES).toHaveLength(5);
   });
 
   it('delivers a crash on the node to the stack it runs, with its summary, once', async () => {
@@ -142,7 +146,7 @@ describe('a node’s own alarms, on its SQLite', () => {
       .where('name', '=', 'Container unhealthy')
       .executeTakeFirst();
     expect(row?.enabled).toBe(0);
-    expect(await again.selectFrom('alert_rules').select('id').execute()).toHaveLength(4);
+    expect(await again.selectFrom('alert_rules').select('id').execute()).toHaveLength(NODE_ALERT_RULES.length);
     await again.destroy();
 
     await sql`DELETE FROM alert_rules WHERE name = 'App crashed'`.execute(db);

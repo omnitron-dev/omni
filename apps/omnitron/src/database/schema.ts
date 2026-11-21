@@ -149,6 +149,9 @@ export interface AlertRulesTable {
 // =============================================================================
 
 export interface AlertEventsTable {
+  /** Set by authenticated mesh ingestion, independently of operator annotations. */
+  originNode: string | null;
+  legacyOrigin: Generated<boolean>;
   id: Generated<string>;
   ruleId: string;
   status: string; // 'firing' | 'resolved' — an acknowledgement is `acknowledgedAt`, not a status

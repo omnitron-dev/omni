@@ -38,6 +38,7 @@ import {
 } from './sync-policy.js';
 import { planRetention, batchesPerPass, type RetentionPlan } from './log-retention.js';
 import { historyCoverage } from './replication-history.js';
+import { projectStorageAlert, STORAGE_ALERT_FORMAT } from './host-storage-alert.js';
 
 // =============================================================================
 // Types
@@ -145,10 +146,7 @@ function logRow(nodeId: string, entry: IngestEntry): Insertable<OmnitronDatabase
 /**
  * A remote alert, with the machine that raised it.
  *
- * `nodeId` was `_nodeId` here: accepted and discarded. `alert_events` has
- * no node column, so it goes into `annotations`, which is the jsonb this
- * table already carries context in — an alert that says "disk above 90%"
- * and cannot say whose disk is an alert an operator cannot act on.
+ * The mesh connection supplies originNode. Keep the node annotation for historical exports.
  *
  * `ruleId` keeps its `?? 'unknown'` only so the shape is unchanged; the
  * column is a `uuid` with a foreign key to `alert_rules`, so that literal
@@ -165,6 +163,7 @@ function alertRow(nodeId: string, entry: IngestEntry): Insertable<OmnitronDataba
   };
   return {
     ruleId: (entry.payload['ruleId'] as string) ?? 'unknown',
+    originNode: nodeId,
     status: (entry.payload['status'] as string) ?? 'firing',
     value: entry.payload['value'] != null ? String(entry.payload['value']) : null,
     annotations: JSON.stringify(annotations) as any,
@@ -394,8 +393,8 @@ export class SyncService {
    * Re-draining before that returns the same entries, which is correct and
    * is what the deduplication ledger on the master side is for.
    */
-  async drainBuffer(limit?: number): Promise<SyncBatch> {
-    return this.fetchPendingBatch(limit);
+  async drainBuffer(limit?: number, storageAlerts = true): Promise<SyncBatch> {
+    return this.fetchPendingBatch(limit, storageAlerts);
   }
 
   /**
@@ -419,17 +418,21 @@ export class SyncService {
     return this.outboxMaintenance;
   }
 
-  private async fetchPendingBatch(limit?: number): Promise<SyncBatch> {
+  private async fetchPendingBatch(limit: number | undefined, storageAlerts: boolean): Promise<SyncBatch> {
     const requested = limit ?? this.config.batchSize;
     if (!Number.isSafeInteger(requested) || requested < 1 || requested > 10_000) throw new Error('Replication batch limit must be between 1 and 10000');
     const tracked = await this.replicationEvidence();
     const { sql } = await import('kysely');
-    const rows = await this.db
+    let query = this.db
       .selectFrom('sync_buffer')
       .select(['category', 'payload', 'createdAt'])
       .select(sql<string>`cast(id as text)`.as('id'))
-      .where('syncedAt', 'is', null)
+      .where('syncedAt', 'is', null);
+    // Older controllers interpret every alerts entry as an insertion with their own rule UUID and discard this format.
+    if (!storageAlerts) query = query.where(sql<boolean>`category <> 'alerts' OR coalesce(payload ->> 'format', '') <> ${STORAGE_ALERT_FORMAT}`);
+    const rows = await query
       .orderBy('createdAt', 'asc')
+      .orderBy('sync_buffer.id', 'asc')
       .limit(requested)
       .execute();
 
@@ -984,7 +987,8 @@ export class SyncService {
           logs.push(logRow(nodeId, entry));
           break;
         case 'alerts':
-          alerts.push(alertRow(nodeId, entry));
+          if (entry.payload['format'] === STORAGE_ALERT_FORMAT) await projectStorageAlert(db, nodeId, entry.payload);
+          else alerts.push(alertRow(nodeId, entry));
           break;
         case 'traces':
           traces.push(traceRow(nodeId, entry));

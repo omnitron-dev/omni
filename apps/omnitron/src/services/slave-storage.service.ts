@@ -26,6 +26,7 @@ import { openSqliteDatabase } from '@omnitron-dev/titan-database/sqlite';
 import { withDateBinding } from '../database/sqlite-date-binding.js';
 import { DEFAULT_ALERT_RULES } from '../database/migrations/011_alerts_nobody_had_to_write.js';
 import { DISK_ALERT_RULE } from '../database/migrations/012_a_disk_nobody_watched.js';
+import { STORAGE_ALERT_RULE } from '../database/migrations/018_host_storage_alert.js';
 import { migrateSlaveDb } from '../database/slave-migrations/index.js';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 
@@ -34,10 +35,11 @@ const DATA_DIR = path.join(OMNITRON_HOME, 'data');
 const DEFAULT_DB_PATH = path.join(DATA_DIR, 'slave.db');
 
 /** The alert rules a node seeds: the master's critical defaults (see `createAlertTables`). */
-export const NODE_ALERT_RULES = [
+const BOOTSTRAP_ALERT_RULES = [
   ...DEFAULT_ALERT_RULES.filter((rule) => rule.severity === 'critical'),
   DISK_ALERT_RULE,
 ];
+export const NODE_ALERT_RULES = [...BOOTSTRAP_ALERT_RULES, STORAGE_ALERT_RULE];
 
 // =============================================================================
 // Schema
@@ -91,6 +93,8 @@ export interface SlaveDatabase {
     updatedAt: string;
   };
   alert_events: {
+    originNode: string | null;
+    legacyOrigin: number;
     id: string;
     ruleId: string;
     status: string;
@@ -235,8 +239,8 @@ export class SlaveStorageService {
     `.execute(this.db);
 
     await this.createBufferStats();
-    await migrateSlaveDb(this.db as Kysely<unknown>);
     await this.createAlertTables();
+    await migrateSlaveDb(this.db as Kysely<unknown>);
 
     // logs — column names match OmnitronDatabase.LogsTable (camelCase)
     // id is TEXT (UUID) to match PG schema — allows LogCollectorService to work unchanged
@@ -350,11 +354,8 @@ export class SlaveStorageService {
    * the stack's own Postgres — an alarm stored in the Postgres it is about
    * would be lost exactly when that Postgres goes.
    *
-   * The rules are the four CRITICAL defaults the master seeds (migrations 011,
-   * 012 — the same constants, not a copy): an app crashed, an app erroring, a
-   * container unhealthy, this host's disk under 50 GiB. Only critical alerts
-   * are delivered; a warning the node cannot show anyone is not kept.
-   * Seeded by name, so an operator's change to one survives a restart.
+   * Bootstrap the original critical defaults from migrations 011 and 012.
+   * Versioned node migrations then install new rules, including storage health, once.
    */
   private async createAlertTables(): Promise<void> {
     if (!this.db) return;
@@ -396,7 +397,7 @@ export class SlaveStorageService {
       ON alert_events (ruleId, status)
     `.execute(this.db);
 
-    for (const rule of NODE_ALERT_RULES) {
+    for (const rule of BOOTSTRAP_ALERT_RULES) {
       await sql`
         INSERT OR IGNORE INTO alert_rules (name, expression, type, severity, forDuration, annotations, enabled)
         VALUES (${rule.name}, ${rule.expression}, ${rule.type}, ${rule.severity}, ${rule.forDuration},

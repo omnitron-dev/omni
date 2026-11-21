@@ -49,7 +49,7 @@ const alerts = (rows: unknown[]) =>
 
 describe('what an alert says', () => {
   it('keeps the rule summary when the event adds only a node', async () => {
-    const [alert] = await alerts([row({ eventAnnotations: { node: 'edge-7' } })]);
+    const [alert] = await alerts([row({ originNode: 'edge-7', eventAnnotations: { node: 'edge-7' } })]);
 
     // `??` would have taken `{node}` whole and left `summary` behind, so the
     // list would show `disk_percent > 90 (value: 93)` — the expression, for
@@ -68,14 +68,14 @@ describe('what an alert says', () => {
   });
 
   it('says nothing about a node for an alert this master raised', async () => {
-    const [alert] = await alerts([row()]);
+    const [alert] = await alerts([row({ ruleAnnotations: { node: 'operator annotation', summary: 'disk above 90%' } })]);
 
     expect(alert!.node).toBeNull();
     expect(alert!.message).toBe('disk above 90%');
   });
 
   it('still falls back to the expression when nothing has a summary', async () => {
-    const [alert] = await alerts([row({ ruleAnnotations: null, eventAnnotations: { node: 'edge-7' } })]);
+    const [alert] = await alerts([row({ ruleAnnotations: null, originNode: 'edge-7', eventAnnotations: { node: 'edge-7' } })]);
 
     expect(alert!.message).toBe('disk_percent > 90 (value: 93)');
     expect(alert!.node).toBe('edge-7');

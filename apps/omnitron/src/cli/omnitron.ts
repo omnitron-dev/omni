@@ -1413,6 +1413,7 @@ pipeline
   .description('Execute a pipeline')
   .option('--params-file <file>', 'JSON parameters, supplied as data to the executor')
   .option('--run-id <uuid>', 'Stable command identity; reuse after a lost reply')
+  .option('--expected-revision <sha256>', 'Prepare this saved pipeline UUID at its reviewed revision')
   .option('--prepare', 'Persist the request for review without executing it')
   .structuredAction(async (id, options) => {
     const { pipelineRunCommand } = await import('../commands/pipeline.js');

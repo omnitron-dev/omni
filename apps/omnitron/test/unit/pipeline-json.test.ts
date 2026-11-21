@@ -79,6 +79,41 @@ describe('pipeline CLI uses the shared machine output protocol', () => {
     expect(JSON.parse(old.err).error).toContain('Method not available');
     expect(service.executePipeline).not.toHaveBeenCalled();
   });
+  it('submits the saved revision directly and leaves a stale revision for the controller to reject', async () => {
+    const id = '990fed79-57f3-4af5-857c-340dd29c8937';
+    const runId = 'ce9658f5-6225-48b5-a916-b7bb2a01ad70';
+    const expectedRevision = 'a'.repeat(64);
+    service.prepareRun.mockRejectedValue(Error('Pipeline changed after review'));
+    const output = await capture(() => pipelineRunCommand(id, { runId, expectedRevision, prepare: true }));
+    expect(JSON.parse(output.err).error).toContain('changed after review');
+    expect(service.prepareRun).toHaveBeenCalledExactlyOnceWith({ id, runId, expectedRevision });
+    expect(service.getPipeline).not.toHaveBeenCalled();
+    expect(service.listPipelines).not.toHaveBeenCalled();
+    expect(service.startRun).not.toHaveBeenCalled();
+  });
+  it.each([
+    ['nightly', 'a'.repeat(64)],
+    ['990fed79-57f3-4af5-857c-340dd29c8937', 'short'],
+  ])('requires an exact identity and revision before preparing %s', async (id, expectedRevision) => {
+    const output = await capture(() => pipelineRunCommand(id, { expectedRevision }));
+    expect(JSON.parse(output.err).error).toContain('--expected-revision');
+    expect(service.prepareRun).not.toHaveBeenCalled();
+    expect(service.listPipelines).not.toHaveBeenCalled();
+  });
+  it('reads one definition for a UUID and still resolves a UUID-shaped name', async () => {
+    const reference = '990fed79-57f3-4af5-857c-340dd29c8937';
+    const namedId = 'abee554b-b149-4b05-aa4b-cf5e152bf324';
+    const revision = 'a'.repeat(64);
+    service.getPipeline.mockResolvedValueOnce({ id: reference, revision }).mockResolvedValueOnce(null);
+    service.prepareRun.mockResolvedValue({ status: 'awaiting-review' });
+    await capture(() => pipelineRunCommand(reference, { prepare: true }));
+    expect(service.getPipeline).toHaveBeenCalledWith({ id: reference });
+    expect(service.listPipelines).not.toHaveBeenCalled();
+    expect(service.prepareRun).toHaveBeenLastCalledWith(expect.objectContaining({ id: reference, expectedRevision: revision }));
+    service.listPipelines.mockResolvedValue([{ id: namedId, name: reference, revision }]);
+    await capture(() => pipelineRunCommand(reference, { prepare: true }));
+    expect(service.prepareRun).toHaveBeenLastCalledWith(expect.objectContaining({ id: namedId, expectedRevision: revision }));
+  });
   it('passes the recovery digest and reads reconciliation without a second start', async () => {
     service.reconcileRun.mockResolvedValue({ id: 'run', status: 'failed', recovery: { digest: 'c'.repeat(64), blocked: [] } });
     service.resumeRun.mockResolvedValue({ id: 'run', status: 'running' });

@@ -74,20 +74,36 @@ export async function pipelineListCommand(): Promise<void> {
   }
 }
 
-export async function pipelineRunCommand(id: string, options: { paramsFile?: string; runId?: string; prepare?: boolean } = {}): Promise<void> {
+async function resolveRunTarget(svc: IOmnitronPipelinesService, reference: string, expectedRevision?: string) {
+  const isId = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(reference);
+  if (expectedRevision !== undefined) {
+    if (!isId || !/^[a-f0-9]{64}$/.test(expectedRevision))
+      throw new Error('--expected-revision requires the saved pipeline UUID and its SHA-256 revision');
+    return { id: reference.toLowerCase(), revision: expectedRevision };
+  }
+  if (isId) {
+    const pipeline = await svc.getPipeline({ id: reference });
+    if (pipeline) return pipeline;
+  }
+  const pipelines = await svc.listPipelines();
+  const byId = pipelines.find(pipeline => pipeline.id === reference);
+  if (byId) return byId;
+  const matches = pipelines.filter(pipeline => pipeline.name === reference);
+  if (matches.length !== 1)
+    throw new Error(matches.length ? `Pipeline name '${reference}' is ambiguous; use its id` : `No pipeline '${reference}'`);
+  return matches[0]!;
+}
+
+export async function pipelineRunCommand(id: string, options: { paramsFile?: string; runId?: string; prepare?: boolean; expectedRevision?: string } = {}): Promise<void> {
   const runId = options.runId ?? randomUUID();
   try {
     const params = options.paramsFile ? JSON.parse(await readFile(options.paramsFile, 'utf8')) : undefined;
     const run = await withPipelines(async (svc) => {
-      const pipelines = await svc.listPipelines();
-      const byId = pipelines.find((pipeline) => pipeline.id === id);
-      const matches = byId ? [byId] : pipelines.filter((pipeline) => pipeline.name === id);
-      if (matches.length !== 1)
-        throw new Error(matches.length ? `Pipeline name '${id}' is ambiguous; use its id` : `No pipeline '${id}'`);
+      const target = await resolveRunTarget(svc, id, options.expectedRevision);
       const request = {
         runId,
-        id: matches[0]!.id,
-        expectedRevision: matches[0]!.revision,
+        id: target.id,
+        expectedRevision: target.revision,
         ...(params !== undefined ? { params } : {}),
       };
       const prepared = await svc.prepareRun(request);

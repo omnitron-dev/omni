@@ -339,13 +339,15 @@ availability are checked when preparing or starting the operation. [Reviewing ge
 omnitron pipeline check publication.json --json
 omnitron pipeline save publication.json
 omnitron pipeline run <pipeline-id>
-omnitron pipeline run <pipeline-id> --prepare --run-id <uuid-v4> --json
+omnitron pipeline run <pipeline-id> --expected-revision <saved-revision> --prepare --run-id <uuid-v4> --json
 omnitron pipeline start <run-id> --expected-digest <review-digest>
 omnitron pipeline status <run-id> --output
 omnitron pipeline reconcile <run-id> --json
 omnitron pipeline resume <run-id> --expected-digest <recovery-digest> --params-file parameters.json
 omnitron pipeline save publication.json --id <pipeline-id> --expected-revision <sha256>
 ```
+
+For automation, keep the definition ID and revision returned by `save` and choose a run ID before submitting the request. With those three values, `run --prepare` sends one request. The controller checks the revision and records the run before any step starts. After a lost reply, repeat that request with the same run ID and parameters to retrieve its receipt.
 
 The public `PipelineDef` contract is exported from `@omnitron-dev/omnitron/dto/services`; `verifyInstalledRuntime` from `/runtime` supplies a verified caller's producer identity. Console's JSON editor preserves release targets and arguments. Entries must belong to the admitted closure, arguments are literal arrays, and output belongs outside the immutable installation.
 

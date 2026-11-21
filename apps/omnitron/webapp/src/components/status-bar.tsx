@@ -107,8 +107,10 @@ interface StatusData {
   appsOnline: number;
   appsTotal: number;
   nodesOnline: number;
-  nodesTotal: number;
-  firingAlerts: number;
+  nodesTotal: number | null;
+  nodesCurrent: boolean;
+  firingAlerts: number | null;
+  alertsCurrent: boolean;
   uptimeMs: number;
   version: string;
   pid: number;
@@ -125,7 +127,7 @@ export function StatusBar({ docked = false }: { docked?: boolean }) {
   const showStatus = can('OmnitronDaemon.status');
   const showStacks = can('OmnitronProject.listStacks');
   const showNodes = can('OmnitronNodes.listNodes') && (!project || showStacks);
-  const showAlerts = can('OmnitronAlerts.getSummary') && can('OmnitronAlerts.getActiveAlerts') && can('OmnitronAlerts.getRules');
+  const showAlerts = can('OmnitronAlerts.getSummary') && can('OmnitronAlerts.getActiveAlerts');
   const key = JSON.stringify([snapshot?.userId, project, stack, showStatus, showNodes, showStacks, showAlerts]);
   return <StatusBarReader key={key} docked={docked} showStatus={showStatus} showNodes={showNodes}
     showStacks={showStacks} showAlerts={showAlerts} />;
@@ -135,7 +137,9 @@ type StatusBarGrants = { docked: boolean; showStatus: boolean; showNodes: boolea
 
 function StatusBarReader({ docked, showStatus, showNodes, showStacks, showAlerts }: StatusBarGrants) {
   // Retain observations across a failed poll only within this reader's grants and workspace.
-  const lastKnown = useRef({ nodesOnline: 0, nodesTotal: 0, firingAlerts: 0, appsOnline: 0, appsTotal: 0, appsKnown: false });
+  const lastKnown = useRef<Pick<StatusData, 'nodesOnline' | 'nodesTotal' | 'firingAlerts' | 'appsOnline' | 'appsTotal' | 'appsKnown'>>({
+    nodesOnline: 0, nodesTotal: null, firingAlerts: null, appsOnline: 0, appsTotal: 0, appsKnown: false,
+  });
   const wsConnected = useRealtimeStore((s) => s.connected);
   const lastEvent = useRealtimeStore((s) => s.lastEvent);
   const initializeRealtime = useRealtimeStore((s) => s.initialize);
@@ -178,9 +182,7 @@ function StatusBarReader({ docked, showStatus, showNodes, showStacks, showAlerts
         lastKnown.current.nodesOnline = nd.filter(node => node.status?.omnitronConnected).length;
         lastKnown.current.nodesTotal = nd.length;
       }
-      if (alertsResult.status === 'fulfilled') {
-        lastKnown.current.firingAlerts = al?.firing ?? 0;
-      }
+      if (al) lastKnown.current.firingAlerts = al.firing;
 
       return {
         daemonOnline: reachable,
@@ -190,7 +192,9 @@ function StatusBarReader({ docked, showStatus, showNodes, showStacks, showAlerts
         appsTotal: lastKnown.current.appsTotal,
         nodesOnline: lastKnown.current.nodesOnline,
         nodesTotal: lastKnown.current.nodesTotal,
+        nodesCurrent: Array.isArray(nd),
         firingAlerts: lastKnown.current.firingAlerts,
+        alertsCurrent: al != null,
         uptimeMs: st?.uptime ?? 0,
         version: st?.version ?? '',
         pid: st?.pid ?? 0,
@@ -224,8 +228,9 @@ function StatusBarReader({ docked, showStatus, showNodes, showStacks, showAlerts
   const unknownNodes = nodes?.filter(node => node.connected === null).length ?? 0;
   const nodeCount = activeProject
     ? nodes ? `${nodes.filter(node => node.connected).length}/${nodes.length}${inventoryError ? ' stale' : unknownNodes ? ` · ${unknownNodes} unknown` : ''}` : 'unknown'
-    : `${data.nodesOnline}/${data.nodesTotal}`;
-  const alertCount = `${data.firingAlerts} ${activeProject ? 'fleet ' : ''}alert${data.firingAlerts === 1 ? '' : 's'}`;
+    : data.nodesTotal === null ? 'unknown' : `${data.nodesOnline}/${data.nodesTotal}${data.nodesCurrent ? '' : ' stale'}`;
+  const alertCount = data.firingAlerts === null ? 'Alerts unknown'
+    : `${data.firingAlerts} ${activeProject ? 'fleet ' : ''}alert${data.firingAlerts === 1 ? '' : 's'}${data.alertsCurrent ? '' : ' stale'}`;
   const nodeNames = nodes?.map(node => `${node.name} (${node.connected === null ? 'unknown' : node.connected ? 'connected' : 'disconnected'})`).join(', ');
   const unknownApps = selectedApps?.filter(app => app.status === 'unknown').length ?? 0;
   const observedApps = selectedApps ? tally(selectedApps) : null;
@@ -281,18 +286,19 @@ function StatusBarReader({ docked, showStatus, showNodes, showStacks, showAlerts
       </StatusItem>}
 
       {/* Nodes */}
-      {showNodes && (activeProject || data.nodesTotal > 0) && (
+      {showNodes && (activeProject || data.nodesTotal !== 0 || !data.nodesCurrent) && (
         <StatusItem priority="extra">
           <Box component="span" title={nodeNames || undefined}><StatusLabel label="Nodes" value={nodeCount} /></Box>
         </StatusItem>
       )}
 
       {/* Alerts */}
-      {showAlerts && data.firingAlerts > 0 && (
+      {showAlerts && !data.firingAlerts && !data.alertsCurrent && <StatusItem><StatusText>{alertCount}</StatusText></StatusItem>}
+      {showAlerts && data.firingAlerts != null && data.firingAlerts > 0 && (
         <Box
           component={RouterLink}
           to="/alerts#firing"
-          aria-label={`View ${data.firingAlerts} firing ${data.firingAlerts === 1 ? 'alert' : 'alerts'} across all workspaces`}
+          aria-label={`View ${data.firingAlerts} firing ${data.firingAlerts === 1 ? 'alert' : 'alerts'} across all workspaces${data.alertsCurrent ? '' : ' (last available count)'}`}
           sx={{
             display: 'inline-flex', alignItems: 'center', gap: 0.5, minHeight: 24, px: 0.5,
             whiteSpace: 'nowrap', flexShrink: 0, borderRadius: 0.5, textDecoration: 'none',

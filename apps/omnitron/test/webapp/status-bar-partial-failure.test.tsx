@@ -92,6 +92,16 @@ beforeEach(() => {
 });
 
 describe('StatusBar', () => {
+  it('distinguishes unanswered node and alert reads from verified empty responses', async () => {
+    listNodes.mockRejectedValueOnce(new Error('Node registry offline')).mockResolvedValue([]);
+    getSummary.mockRejectedValueOnce(new Error('Alert count offline')).mockResolvedValue({ firing: 0 });
+    const { rerender } = render(<StatusBar />);
+    await screen.findByLabelText(/nodes unknown, Alerts unknown/);
+    realtime = { connected: true, lastEvent: { channel: 'alert.resolved' } };
+    rerender(<StatusBar />);
+    await screen.findByLabelText(/nodes 0\/0, 0 alerts/);
+  });
+
   it('opens the firing list with the keyboard from the system workspace', async () => {
     function Location() { const { pathname, hash } = useLocation(); return <output>{pathname}{hash}</output>; }
     getSummary.mockResolvedValue({ firing: 1, resolved: 8 });
@@ -201,7 +211,7 @@ describe('StatusBar', () => {
     rerender(<StatusBar />);
 
     await waitFor(() => expect(getSummary).toHaveBeenCalledTimes(2));
-    expect(alertChip().length).toBeGreaterThan(0);
+    expect(await screen.findByRole('link', { name: /View 3 firing alerts.*last available count/ })).toHaveTextContent('3 alerts stale');
   });
 
   it('keeps the alert count when the POLL\'s alerts call fails', async () => {
@@ -222,7 +232,7 @@ describe('StatusBar', () => {
       });
 
       await vi.waitFor(() => expect(getSummary).toHaveBeenCalledTimes(2));
-      expect(alertChip().length).toBeGreaterThan(0);
+      expect(screen.getByRole('link', { name: /View 4 firing alerts.*last available count/ })).toHaveTextContent('4 alerts stale');
     } finally {
       vi.useRealTimers();
     }
@@ -249,7 +259,7 @@ describe('StatusBar', () => {
       });
 
       await vi.waitFor(() => expect(listNodes).toHaveBeenCalledTimes(2));
-      expect(nodesChip().length).toBeGreaterThan(0);
+      expect(screen.getByText('1/2 stale')).toBeVisible();
     } finally {
       vi.useRealTimers();
     }

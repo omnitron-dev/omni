@@ -26,7 +26,6 @@ import { PipelineEditor } from 'src/components/pipeline-editor';
 import { pipelines, nodes } from 'src/netron/client';
 import { formatDate, formatDuration } from 'src/utils/formatters';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
-import { settledPair } from 'src/utils/settled-pair';
 
 const colors: Record<string, 'success' | 'error' | 'info' | 'warning' | 'default'> = {
   'awaiting-review': 'warning',
@@ -166,18 +165,21 @@ export function PipelineRunDetail({
 
 export default function PipelinesPage() {
   const { project, stack } = useWorkspace();
-  const { can } = useAccess();
-  const [section, setSection] = useState('definitions');
+  const { can, snapshot } = useAccess();
+  const reads = { definitions: can('OmnitronPipelines.listPipelines'), runs: can('OmnitronPipelines.listRuns'), detail: can('OmnitronPipelines.getRunStatus') };
+  const [section, setSection] = useState(() => !project && !reads.definitions && reads.runs ? 'runs' : 'definitions');
   const workspace = project ? { project, ...(stack && { stack }) } : null;
   if (workspace && !can('OmnitronPipelines.listWorkspace')) return <Stack spacing={2}>
     <Breadcrumbs links={[{ name: 'Pipelines' }]} />
     <Alert severity="warning">Workspace pipeline history is unavailable on this controller for this account.</Alert>
   </Stack>;
-  return <PipelineInventory key={JSON.stringify(workspace)} workspace={workspace} section={section} setSection={setSection} />;
+  return <PipelineInventory key={JSON.stringify([workspace, snapshot?.userId, reads])}
+    workspace={workspace} reads={reads} section={section} setSection={setSection} />;
 }
 
-function PipelineInventory({ workspace, section, setSection }: {
+function PipelineInventory({ workspace, reads, section, setSection }: {
   workspace: PipelineWorkspace | null;
+  reads: { definitions: boolean; runs: boolean; detail: boolean };
   section: string;
   setSection: (section: string) => void;
 }) {
@@ -193,27 +195,27 @@ function PipelineInventory({ workspace, section, setSection }: {
   const [remove, setRemove] = useState<Pipeline | null>(null);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
+  const { definitions: readDefinitions, runs: readRuns, detail: readDetail } = reads;
+  const readNodes = can('OmnitronNodes.listNodes');
   const targets = usePolledResource(() => nodes.listNodes(), {
     intervalMs: 30_000,
-    enabled: Boolean(runDefinition || selectedRun),
+    enabled: readNodes && Boolean(runDefinition || selectedRun), resourceKey: Number(readNodes),
   });
   const targetLabel = (id?: string) =>
     !id || id === 'local' ? 'Local daemon host' : (targets.data?.find((node) => node.id === id)?.name ?? id);
-  const { data, loading, error, refresh } = usePolledResource(
-    async () => {
-      if (workspace) {
-        return { ...await pipelines.listWorkspace({ ...workspace, limit: 100 }), partialFailure: null };
-      }
-      const pair = await settledPair([pipelines.listPipelines(), pipelines.listRuns({ limit: 100 })], [[], []]);
-      return { definitions: pair.first, runs: pair.second, partialFailure: pair.partialFailure };
-    },
-    { intervalMs: 3000 }
-  );
-  const definitions = data?.definitions ?? [];
-  const runs = data?.runs ?? [];
+  const scoped = usePolledResource(() => pipelines.listWorkspace({ ...workspace!, limit: 100 }), { intervalMs: 3000, enabled: !!workspace });
+  const automations = usePolledResource(() => pipelines.listPipelines(), { intervalMs: 3000, enabled: !workspace && readDefinitions });
+  const history = usePolledResource(() => pipelines.listRuns({ limit: 100 }), { intervalMs: 3000, enabled: !workspace && readRuns });
+  const automationData = workspace ? scoped.data?.definitions : automations.data;
+  const historyData = workspace ? scoped.data?.runs : history.data;
+  const definitions = automationData ?? [];
+  const runs = historyData ?? [];
+  const automationError = workspace ? scoped.error : readDefinitions ? automations.error : 'Your account cannot read automation definitions.';
+  const historyError = workspace ? scoped.error : readRuns ? history.error : 'Your account cannot read automation run history.';
+  const refresh = () => workspace ? scoped.refresh() : Promise.all([readDefinitions && automations.refresh(), readRuns && history.refresh()]);
   const detail = usePolledResource(() => pipelines.getRunStatus({ runId: selectedRun! }), {
     intervalMs: 3000,
-    enabled: Boolean(selectedRun),
+    enabled: readDetail && Boolean(selectedRun),
     resourceKey: selectedRun,
   });
   const run = detail.data?.id === selectedRun ? detail.data : null;
@@ -279,11 +281,11 @@ function PipelineInventory({ workspace, section, setSection }: {
     {
       key: 'name',
       header: 'Automation',
-      render: (item) => (
+      render: (item) => readDetail ? (
         <Button size="small" onClick={() => { setParams('{}'); setActionError(null); setSelectedRun(item.id); }}>
           {runLabel(item)}
         </Button>
-      ),
+      ) : runLabel(item),
     },
     {
       key: 'status',
@@ -321,9 +323,9 @@ function PipelineInventory({ workspace, section, setSection }: {
           </Stack>
         }
       />
-      {(error || data?.partialFailure || actionError) && (
+      {actionError && (
         <Alert severity="warning" variant="outlined">
-          {actionError ?? error ?? data?.partialFailure} · Displayed run state may be stale.
+          {actionError}
         </Alert>
       )}
       <Tabs
@@ -334,8 +336,8 @@ function PipelineInventory({ workspace, section, setSection }: {
         }}
         aria-label="Pipeline views"
         tabs={[
-          { value: 'definitions', label: `Automations · ${definitions.length}` },
-          { value: 'runs', label: `Runs · ${runs.length}` },
+          { value: 'definitions', label: `Automations · ${automationError ? '—' : automationData?.length ?? '—'}` },
+          { value: 'runs', label: `Runs · ${historyError ? '—' : historyData?.length ?? '—'}` },
         ]}
       />
       {section === 'definitions' ? (
@@ -351,9 +353,10 @@ function PipelineInventory({ workspace, section, setSection }: {
             setPageSize(size);
             setPage(0);
           }}
-          loading={loading}
-          loadError={error ?? data?.partialFailure}
-          emptyMessage={workspace ? 'No automations target this workspace.' : 'Create an automation to run Xec scripts and shell steps.'}
+          loading={workspace ? scoped.loading : readDefinitions && automations.loading}
+          loadError={automationError}
+          loadErrorLabels={{ partial: 'Showing the last available automation definitions' }}
+          emptyMessage={workspace ? 'No automations target this workspace.' : 'No automations defined.'}
           minWidth={560}
           scrollLabel="Automation definitions"
           dense
@@ -371,8 +374,9 @@ function PipelineInventory({ workspace, section, setSection }: {
             setPageSize(size);
             setPage(0);
           }}
-          loading={loading}
-          loadError={error ?? data?.partialFailure}
+          loading={workspace ? scoped.loading : readRuns && history.loading}
+          loadError={historyError}
+          loadErrorLabels={{ partial: 'Showing the last available run history' }}
           emptyMessage={workspace ? 'No recorded runs target this workspace.' : 'No automation runs yet.'}
           minWidth={620}
           scrollLabel="Automation run history"
@@ -474,13 +478,13 @@ function PipelineInventory({ workspace, section, setSection }: {
                   setPreparedRun(admitted);
                   return;
                 }
-                setSelectedRun(preparedRun.id);
+                if (readDetail) setSelectedRun(preparedRun.id);
                 setSection('runs');
                 setPage(0);
                 const result = await pipelines.startRun({
                   runId: preparedRun.id, expectedDigest: preparedRun.review!.digest, params: JSON.parse(params),
                 });
-                setSelectedRun(result.id);
+                if (readDetail) setSelectedRun(result.id);
                 setRunDefinition(null);
               })
             }

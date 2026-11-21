@@ -33,6 +33,7 @@ interface Destination {
   title: string;
   icon: ReactNode;
   permission?: PagePermission;
+  projectPermission?: PagePermission;
   scope?: 'system' | 'project';
   stackFilter?: boolean;
 }
@@ -81,7 +82,8 @@ const sections: { title: string; items: Destination[] }[] = [
         stackFilter: true,
       },
       { path: '/flows', title: 'Flows', icon: <TopologyIcon />, permission: ['OmnitronFlows.list', 'OmnitronFlows.catalog'], stackFilter: true },
-      { path: '/pipelines', title: 'Pipelines', icon: <PipelineIcon />, permission: 'OmnitronPipelines.listPipelines', stackFilter: true },
+      { path: '/pipelines', title: 'Pipelines', icon: <PipelineIcon />, permission: ['OmnitronPipelines.listPipelines', 'OmnitronPipelines.listRuns'],
+        projectPermission: ['OmnitronPipelines.listWorkspace', 'OmnitronPipelines.listPipelines'], stackFilter: true },
     ],
   },
   {
@@ -102,7 +104,7 @@ const sections: { title: string; items: Destination[] }[] = [
         permission: 'OmnitronTraces.queryTraces',
         scope: 'system',
       },
-      { path: '/alerts', scope: 'system', title: 'Alerts', icon: <AlertIcon />, permission: 'OmnitronAlerts.getRules' },
+      { path: '/alerts', scope: 'system', title: 'Alerts', icon: <AlertIcon />, permission: ['OmnitronAlerts.getRules', 'OmnitronAlerts.getActiveAlerts'] },
       {
         path: '/dashboard-builder',
         title: 'Dashboard Builder',
@@ -160,7 +162,7 @@ export function consoleRoute(pathname: string, search = '') {
   const release = page === 'releases' && !!detail;
   const params = new URLSearchParams(search);
   const proposal = page === 'flows' && !!params.get('team') && !!params.get('proposal') && !params.has('flow') && !params.has('new');
-  let permission = item?.permission;
+  let permission = project ? item?.projectPermission ?? item?.permission : item?.permission;
   if (appDetail || process) permission = 'OmnitronDaemon.getApp';
   else if (page === 'nodes' && !project && params.has('node')) permission = 'OmnitronNodes.getNodeDaemonStatus';
   else if (release) permission = 'OmnitronRelease.get';
@@ -183,9 +185,10 @@ export function consoleNavigation(workspace: Workspace, can: (permission: RpcPer
       id: sectionTitle.toLowerCase(),
       subheader: sectionTitle,
       items: items
-        .flatMap(({ title, path, icon, scope, permission }) => {
+        .flatMap(({ title, path, icon, scope, permission, projectPermission }) => {
           if (scope === 'project' && !project || scope === 'system' && project) return [];
-          const mayList = !permission || (Array.isArray(permission) ? permission.some(can) : can(permission));
+          const grant = project ? projectPermission ?? permission : permission;
+          const mayList = !grant || (Array.isArray(grant) ? grant.some(can) : can(grant));
           const selected = current.pagePath === path || path !== '/' && current.pagePath.startsWith(path + '/')
             || path === '/' && current.pagePath.startsWith('/processes/');
           const mayReadDetail = selected && typeof detailGrant === 'string' && can(detailGrant);

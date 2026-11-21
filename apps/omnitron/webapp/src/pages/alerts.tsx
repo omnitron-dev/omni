@@ -33,7 +33,6 @@ import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
 import { alerts } from 'src/netron/client';
 import { timeAgo } from 'src/utils/formatters';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
-import { settledPair } from 'src/utils/settled-pair';
 import {
   ALERT_EXPRESSION_HELP,
   ALERT_SEVERITIES,
@@ -50,7 +49,6 @@ import {
 // 'absence' | 'composite') the server has never accepted (it takes
 // 'metric' | 'log' | 'health'), so every rule created here was rejected.
 type AlertRule = import('@omnitron-dev/omnitron/dto/services').AlertRule;
-type ActiveAlert = import('@omnitron-dev/omnitron/dto/services').ActiveAlert;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -261,6 +259,12 @@ function StatCard({ title, value, icon, color, loading }: StatCardProps) {
 // ---------------------------------------------------------------------------
 
 export default function AlertsPage() {
+  const { snapshot, can } = useAccess();
+  const readRules = can('OmnitronAlerts.getRules'), readFiring = can('OmnitronAlerts.getActiveAlerts');
+  return <AlertInventory key={JSON.stringify([snapshot?.userId, readRules, readFiring])} readRules={readRules} readFiring={readFiring} />;
+}
+
+function AlertInventory({ readRules, readFiring }: { readRules: boolean; readFiring: boolean }) {
   const { can } = useAccess();
   const { hash, key } = useLocation();
   const firingSection = useRef<HTMLElement>(null);
@@ -275,16 +279,9 @@ export default function AlertsPage() {
   // Absent: no dialog. `null`: a new rule. A rule: that rule, being changed.
   const [editing, setEditing] = useState<AlertRule | null | undefined>(undefined);
 
-  const { data, loading, error, refresh: fetchData } = usePolledResource(
-    async () => {
-      const { first, second, partialFailure } = await settledPair<AlertRule[], ActiveAlert[] | null>(
-        [alerts.getRules(), alerts.getActiveAlerts({ limit: ACTIVE_ALERT_LIMIT })],
-        [[], null]
-      );
-      return { rules: first, activeAlerts: second, partialFailure };
-    },
-    { intervalMs: 15_000 }
-  );
+  const ruleList = usePolledResource(() => alerts.getRules(), { intervalMs: 15_000, enabled: readRules });
+  const firing = usePolledResource(() => alerts.getActiveAlerts({ limit: ACTIVE_ALERT_LIMIT }), { intervalMs: 15_000, enabled: readFiring });
+  const fetchData = () => Promise.all([readRules && ruleList.refresh(), readFiring && firing.refresh()]);
 
   // Failures from a button press are a different thing from a stale poll:
   // one says "what you just asked for did not happen", the other "this view
@@ -297,17 +294,19 @@ export default function AlertsPage() {
   const [rulePage, setRulePage] = useState(0);
   const [rulePageSize, setRulePageSize] = useState(25);
 
-  const rules = data?.rules ?? [];
-  const activeAlerts = data?.activeAlerts ?? [];
-  const partialFailure = data?.partialFailure ?? null;
+  const rules = ruleList.data ?? [];
+  const activeAlerts = firing.data ?? [];
+  const ruleError = readRules ? ruleList.error : 'Your account cannot read alert rules.';
+  const firingError = readFiring ? firing.error : 'Your account cannot read firing alerts.';
 
   // The list is firing alerts only; «resolved» counted from it was always 0.
   const firingCount = activeAlerts.length;
   const limitReached = firingCount === ACTIVE_ALERT_LIMIT;
-  const activeAvailable = data?.activeAlerts != null;
+  const activeAvailable = firing.data != null && !firingError;
   const acknowledgedCount = activeAlerts.filter((a) => a.acknowledged).length;
   let activeCaption = 'No alerts are currently firing.';
-  if (!activeAvailable) activeCaption = loading ? 'Loading firing alerts…' : 'Firing alerts unavailable.';
+  if (firingError) activeCaption = firing.data ? `Last available firing alerts. ${firingError}` : firingError;
+  else if (!activeAvailable) activeCaption = 'Loading firing alerts…';
   else if (limitReached) activeCaption = `Showing the latest ${ACTIVE_ALERT_LIMIT} firing alerts across all workspaces`;
   else if (firingCount) activeCaption = `${firingCount} currently firing across all workspaces`;
 
@@ -441,7 +440,7 @@ export default function AlertsPage() {
           <Stack direction="row" spacing={1} sx={{
             alignItems: "center"
           }}>
-            {firingCount > 0 && (
+            {activeAvailable && firingCount > 0 && (
               <Badge badgeContent={firingCount} color="error">
                 <Chip label="Firing" size="small" color="error" variant="outlined" />
               </Badge>
@@ -460,9 +459,9 @@ export default function AlertsPage() {
           </Stack>
         }
       />
-      {(error || actionError || partialFailure) && (
+      {actionError && (
         <Alert closable severity="warning" variant="outlined" onClose={() => setActionError(null)}>
-          {actionError ?? error ?? `Some data is unavailable: ${partialFailure}`}
+          {actionError}
         </Alert>
       )}
       {/* Summary Cards */}
@@ -472,8 +471,8 @@ export default function AlertsPage() {
             title="Firing"
             value={activeAvailable ? `${firingCount}${limitReached ? '+' : ''}` : '—'}
             icon={<AlertIcon />}
-            color={firingCount > 0 ? 'error' : 'success'}
-            loading={loading}
+            color={!activeAvailable ? 'info' : firingCount > 0 ? 'error' : 'success'}
+            loading={readFiring && firing.loading}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 4 }}>
@@ -481,22 +480,22 @@ export default function AlertsPage() {
             title="Acknowledged"
             value={activeAvailable ? `${acknowledgedCount}${limitReached ? '+' : ''}` : '—'}
             icon={<CheckIcon />}
-            color={acknowledgedCount < firingCount ? 'warning' : 'success'}
-            loading={loading}
+            color={!activeAvailable ? 'info' : acknowledgedCount < firingCount ? 'warning' : 'success'}
+            loading={readFiring && firing.loading}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 4 }}>
           <StatCard
             title="Total Rules"
-            value={rules.length}
+            value={ruleError ? '—' : ruleList.data?.length ?? '—'}
             icon={<AlertIcon />}
             color="primary"
-            loading={loading}
+            loading={readRules && ruleList.loading}
           />
         </Grid>
       </Grid>
       {/* Active Alerts */}
-      {(hash === '#firing' || firingCount > 0) && (
+      {(hash === '#firing' || firingCount > 0 || firingError) && (
         <Card component="section" id="firing" aria-label="Active alerts across all workspaces" ref={firingSection}
           tabIndex={-1} variant="outlined" sx={{ '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: -2 } }}>
           <CardHeader slotProps={{ subheader: { variant: 'caption' }, title: { variant: 'subtitle1', fontWeight: 600 } }}
@@ -592,9 +591,10 @@ export default function AlertsPage() {
           columns={ruleColumns}
           data={ruleRows}
           total={rules.length}
-          loading={loading}
-          loadError={error ?? partialFailure ?? null}
-          emptyMessage="No alert rules configured. Create a rule to get started."
+          loading={readRules && ruleList.loading}
+          loadError={ruleError}
+          loadErrorLabels={{ partial: 'Showing the last available alert rules' }}
+          emptyMessage="No alert rules configured."
           rowKey={(rule) => rule.id}
           // A disabled rule is still worth reading, just not acting on.
           rowSx={(rule) => ({ opacity: rule.enabled ? 1 : 0.5 })}

@@ -259,7 +259,7 @@ export interface StackStopProgress {
   startedAt: string;
   completedAt?: string;
   error?: string;
-  nodes: Array<{ node: string; outcome: 'checking' | 'prepared' | 'stopping' | 'stopped' | 'unknown'; operationId?: string; observedAt?: string; reason?: string;
+  nodes: Array<{ node: string; nodeId?: string; outcome: 'checking' | 'prepared' | 'stopping' | 'stopped' | 'unknown'; operationId?: string; observedAt?: string; reason?: string;
     authority?: { clusterId: string; nodeId: string; epoch: string } }>;
 }
 

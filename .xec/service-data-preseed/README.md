@@ -73,6 +73,8 @@ The two admission receipts must name the same spec and key fingerprint. `seed` m
 
 After the normal full `stack stop` has retired the source writers, use the exact controller `stopOperation.id`. Preserve the old named volumes, OCI images, project configuration, secrets and routing for rollback. The receiving roles must still be offline.
 
+The cold and seal graphs read the completed stop on both sides of their data operations. Each checks the recipient's operation ID and observation time. A standalone controller can record a recipient by its mesh address. The graph resolves that address and daemon port to the unique source registration whose SSH key it checked. A conflicting node ID, cluster authority or registration stops the operation.
+
 ```sh
 pnpm exec xec service-data-preseed cold spec.json --grants grants.json --stop "$STOP" > cold.pipeline.json
 pnpm exec xec service-data-preseed seal spec.json --stop "$STOP" --receipt cold-receipt.json > seal.pipeline.json

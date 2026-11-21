@@ -187,7 +187,10 @@ describe('stack stop coordinator', () => {
 
   it('prepares every node before effects and retains RPC connections for observation', async () => {
     const { service, calls } = fixture();
+    new StackTargets(service.daemonStateStore).remember({ project, stack },
+      [{ host: 'one.test', port: 9700, applications: true, nodeId: 'registered-first' }]);
     const result = await service.stopStack(project, stack);
+    expect(result.stopOperation.nodes[0]).toMatchObject({ node: 'one.test:9700', nodeId: 'registered-first' });
     expect(calls).toEqual(['one.test:prepareNodeStackStop', 'two.test:prepareNodeStackStop',
       'one.test:executeNodeStackStop', 'two.test:executeNodeStackStop']);
     expect(service.registry.setStackEnabled).toHaveBeenCalledWith(project, stack, false);

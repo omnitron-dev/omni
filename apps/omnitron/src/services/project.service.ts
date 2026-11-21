@@ -2517,7 +2517,9 @@ export class ProjectService extends EventEmitter {
       if (targets.nodes.length) {
         if (!this.slaveConnector) throw new Error('Node RPC is unavailable; no remote stop has been sent');
         targetsRevision = targets.revision;
-        progress.nodes = targets.nodes.map(node => ({ node: `${node.host}:${node.port}`, outcome: 'checking' }));
+        progress.nodes = targets.nodes.map(node => ({
+          node: stackNodeKey(node.host, node.port), ...(node.nodeId && { nodeId: node.nodeId }), outcome: 'checking',
+        }));
         persist();
         for (const [index, node] of targets.nodes.entries()) {
           let plan: NodeStackStopPlan;

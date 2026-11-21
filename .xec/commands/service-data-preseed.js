@@ -110,14 +110,7 @@ export async function receiverProgram() {
   );
 }
 
-const fence = `import base64,json,subprocess,sys
-s,stop=json.loads(base64.b64decode(sys.argv[1]))
-r=subprocess.run(['omnitron','--json','stack','status',s['project'],s['stack']],stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=60)
-if r.returncode: sys.exit('The controller could not confirm the stack stop')
-v=json.loads(r.stdout); st=v.get('data',{}); op=st.get('stopOperation') or {}; nodes=op.get('nodes') or []
-if v.get('ok') is not True or st.get('status')!='stopped' or op.get('phase')!='stopped' or op.get('id')!=stop or op.get('supersededAt') or op.get('keepInfrastructure') or not nodes or any(n.get('outcome')!='stopped' for n in nodes) or sum(s['sourceNode'] in (n.get('node'),(n.get('authority') or {}).get('nodeId')) for n in nodes)!=1:
-    sys.exit('The approved full stack stop is absent, superseded, retained infrastructure or belongs to another source')
-print('The controller confirms the exact full stack stop.')`;
+const fenceFile = new URL('../service-data-preseed/stop_receipt.py', import.meta.url);
 
 const checkedRunner = `import hashlib,os,pathlib,re,stat,sys
 d=sys.argv.pop(1)
@@ -219,6 +212,7 @@ export async function serviceDataDefinition(phase, spec, { grants, stop, receipt
   ).steps[0];
   const env = packed([stop ?? null, receipt ?? null, grants ?? null]);
   const steps = [pins];
+  const fence = final ? await fs.readFile(fenceFile, 'utf8') : '';
   if (phase.startsWith('bootstrap-') || phase.endsWith('-grant')) {
     const side = phase.startsWith('bootstrap-') ? phase.slice(10) : phase.split('-')[0];
     for (const part of installSteps(await fs.readFile(installer, 'utf8'), program, spec, side)) {
@@ -237,7 +231,7 @@ export async function serviceDataDefinition(phase, spec, { grants, stop, receipt
           'python3 -I -c ' +
           quote(fence) +
           ' ' +
-          encode([{ project: spec.project, stack: spec.stack, sourceNode: spec.sourceNode }, stop]),
+          encode([{ project: spec.project, stack: spec.stack, sourceNode: spec.sourceNode, sourceIp: spec.sourceIp }, stop]),
       });
     } else {
       steps.push({

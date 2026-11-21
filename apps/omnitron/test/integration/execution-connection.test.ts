@@ -12,13 +12,16 @@ import { attestManagedOwnerRuntime } from '../../src/daemon/managed-owner-build.
 
 vi.mock('../../src/daemon/managed-owner-build.js', () => ({ attestManagedOwnerRuntime: vi.fn() }));
 
+const inventoryOnly = { appLogTails: 'on-demand' } as const;
+type SnapshotRequest = { afterEvent?: number; appLogTails?: 'on-demand' };
+
 @Service({ name: 'OmnitronExecution' })
 class Owner {
   readonly startedAt = new Date().toISOString();
   controllerId = 'test';
   epoch = 1;
   phase = 'active';
-  snapshots: unknown[] = [];
+  snapshots: Array<SnapshotRequest | undefined> = [];
   acknowledgments = 0;
   mutations = 0;
   mutationInputs: unknown[] = [];
@@ -33,7 +36,7 @@ class Owner {
   constructor(readonly id: string) {}
 
   @Public()
-  async snapshot(input?: { afterEvent?: number }) {
+  async snapshot(input?: SnapshotRequest) {
     this.snapshots.push(input);
     if (input?.afterEvent !== undefined) await this.beforeObservation?.();
     if (this.unavailable) throw new Error('Owner observation fixture is unavailable');
@@ -117,7 +120,7 @@ it('sends the reviewed grant unchanged over Netron and lets the actual owner fen
   const reviewed = { ownerId: owner.id, controllerId: 'test', epoch: 1 };
   owner.controllerId = 'foreign'; owner.epoch = 2;
   await expect(client.prepareReviewedReplacement(reviewed, 'replacement')).rejects.toThrow('no longer owns');
-  expect(owner.preparationInputs).toEqual([{ grant: reviewed, candidateId: 'replacement' }]);
+  expect(owner.preparationInputs).toEqual([{ ...inventoryOnly, grant: reviewed, candidateId: 'replacement' }]);
   expect(owner.mutations).toBe(0);
   const current = { ownerId: owner.id, controllerId: 'foreign', epoch: 2 };
   await expect(client.prepareReviewedReplacement(current, 'replacement')).resolves.toMatchObject({ ticket: { from: current, to: { epoch: 3 } } });
@@ -196,7 +199,8 @@ it('waits for an in-flight observation before reporting replay activation comple
   }
   expect(activated).toBe(true);
   expect(owner.acknowledgments).toBe(1);
-  expect(owner.snapshots.filter(input => input !== undefined)).toHaveLength(1);
+  // Both channels verify identity before replay. Only replay carries the event cursor.
+  expect(owner.snapshots.filter(input => input?.afterEvent !== undefined)).toEqual([{ ...inventoryOnly, afterEvent: 0 }]);
 });
 
 it('recovers observation failures without changing controller ownership and distinguishes failed acknowledgments', async () => {
@@ -233,7 +237,7 @@ it('rejects another owner at the same address before sending an old cursor, ackn
   const replacement = await serve();
   await internals.refresh();
   expect(client.state()?.connection.status).toBe('owner-changed');
-  expect(replacement.owner.snapshots).toEqual([undefined]);
+  expect(replacement.owner.snapshots).toEqual([inventoryOnly]);
   expect(replacement.owner.acknowledgments).toBe(0);
   await expect(client.shutdownOwner()).rejects.toThrow('identity changed');
   expect(replacement.owner.mutations).toBe(0);
@@ -286,7 +290,7 @@ it('sends the exact source binding through the existing owner mutation channel o
   // source-refresh-http and source-refresh owner tests, not an invented handle.
   await expect(client.orchestrator.restartAfterChange('fixture/local/site', binding)).resolves.toBeUndefined();
   expect(owner.mutations).toBe(1);
-  expect(owner.mutationInputs).toEqual([{ grant: internals.grant, sequence: 1,
+  expect(owner.mutationInputs).toEqual([{ ...inventoryOnly, grant: internals.grant, sequence: 1,
     method: 'restartAfterChange', args: ['fixture/local/site', binding] }]);
   expect(recoveryState.token()).not.toBe(before);
   expect(client.state()?.owner.id).toBe(owner.id);

@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { getExecutionSignal } from '@xec-sh/core';
-import { buildInWorkspace, cleanWorkspace, physicalCache, scheduleLocalCleanup, syncDirectory } from './local-runtime-cleanup.mjs';
+import { buildInWorkspace, cleanWorkspace, physicalCache, scheduleLocalCleanup, syncDirectory } from './local-runtime-cleanup.js';
 import { developmentCacheDirectory } from '../apps/omnitron/bin/sdk-transition.js';
 import { locateQualifiedLocalRuntime } from './qualification.mjs';
 

@@ -150,7 +150,7 @@ export async function localCleanup(base, { status = false, run = releaseCommand,
   return { cache: base, jobs };
 }
 
-/** A durable cleanup worker owns its own native removal deadline. Command exit does not abandon its receipt. */
+/** The worker runs from this checkout so its module and Xec dependencies share the project package boundary. */
 export async function scheduleLocalCleanup(base, newJob) {
   if (!await stat(registry(base))) return;
   const args = ['--import=tsx/esm', fileURLToPath(import.meta.url), base];

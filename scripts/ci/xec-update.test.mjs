@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { localCleanup, scheduleLocalCleanup } from '../../.xec/local-runtime-cleanup.mjs';
-import { withLocalRuntime } from '../../.xec/local-runtime.mjs';
+import { localCleanup, scheduleLocalCleanup } from '../../.xec/local-runtime-cleanup.js';
+import { withLocalRuntime } from '../../.xec/local-runtime.js';
 import { within } from '@xec-sh/core';
 import test from 'node:test';
 import fs from 'node:fs/promises';

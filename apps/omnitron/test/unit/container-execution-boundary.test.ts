@@ -1,107 +1,221 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-const native = vi.hoisted(() => ({ execute: vi.fn(), dispose: vi.fn(), engines: vi.fn(), inspect: vi.fn(), remove: vi.fn() }));
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ResolvedContainer } from '../../src/infrastructure/types.js';
+
+const native = vi.hoisted(() => ({
+  create: vi.fn(), start: vi.fn(), inspect: vi.fn(), remove: vi.fn(), engines: vi.fn(), dispose: vi.fn(),
+}));
 vi.mock('@xec-sh/core', () => ({
   DockerAdapter: class {
     async listImages() { return ['example/service:1']; }
-    async listContainers() { return ['sample-service']; }
-    inspectContainer = native.inspect;
     removeContainer = native.remove;
   },
   ExecutionEngine: class {
     constructor(options: unknown) { native.engines(options); }
-    execute = native.execute;
+    async execute(command: { args: string[] }) {
+      const [scope, operation] = command.args;
+      if (scope !== 'container') throw Error('Unexpected Docker command: ' + scope);
+      if (operation === 'create') return native.create(command);
+      if (operation === 'start') return native.start(command.args.at(-1));
+      if (operation === 'inspect') return { stdout: JSON.stringify([await native.inspect(command.args.at(-1))]) };
+      throw Error('Unexpected Docker operation: ' + operation);
+    }
     dispose = native.dispose;
   },
 }));
-import { createContainer, containerSpecHash } from '../../src/infrastructure/container-runtime.js';
-import type { ResolvedContainer } from '../../src/infrastructure/types.js';
+import { createContainer } from '../../src/infrastructure/container-runtime.js';
+
+const id = 'abcdef1234567890'.repeat(4);
 const config = (): ResolvedContainer => ({
   name: 'sample-service', image: 'example/service:1', ports: [], volumes: [], labels: {}, restart: 'no', critical: false,
-  environment: { RPC_PASSWORD: 'environment-secret' },
-  command: ['--rpc-login', 'service:rpc-secret'],
+  environment: { RPC_PASSWORD: 'environment-secret' }, command: ['--rpc-login', 'service:rpc-secret'],
   healthCheck: { test: ['CMD-SHELL', 'curl --user "service:health secret" http://localhost/health'] },
 });
-beforeEach(() => { vi.clearAllMocks(); native.execute.mockResolvedValue({ stdout: 'abcdef1234567890'.repeat(4) + '\n' }); });
-describe('container execution security boundary', () => {
-  it('uses the Xec local argv executor with bounded execution and shared diagnostics', async () => {
-    expect(await createContainer(config())).toBe('abcdef123456');
+const published = () => ({ ...config(), ports: [{ host: 19800, container: 80, bindHost: '127.0.0.1' }] });
+function observation(status = 'running') {
+  const args = native.create.mock.calls[0]![0].args as string[];
+  const labels = Object.fromEntries(args.flatMap((value, index) => value === '--label' ? [args[index + 1]!.split('=')] : []));
+  const ports = { '80/tcp': [{ HostIp: '127.0.0.1', HostPort: '19800' }] };
+  return { Id: id, Name: '/sample-service', Config: { Image: 'example/service:1', Labels: labels },
+    State: { Status: status }, HostConfig: { PortBindings: ports }, NetworkSettings: { Ports: ports } };
+}
+const commandFailure = (stderr: string) => Object.assign(Error(stderr), { code: 'COMMAND_FAILED', stderr });
+const lostReply = () => Object.assign(Error('Docker acknowledgement lost'), { code: 'TIMEOUT_ERROR' });
+beforeEach(() => {
+  vi.resetAllMocks();
+  native.create.mockResolvedValue({ stdout: id + '\n' });
+  native.start.mockResolvedValue({ stdout: id });
+  native.inspect.mockImplementation(async () => observation());
+});
+afterEach(() => { vi.useRealTimers(); });
+
+describe('immutable Docker allocation and startup', () => {
+  it('executes bounded, redacted Xec argv and starts only the acknowledged full ID', async () => {
+    await expect(createContainer(config())).resolves.toBe(id.slice(0, 12));
     expect(native.engines).toHaveBeenCalledWith(expect.objectContaining({ defaultShell: false, enableEvents: false }));
-    expect(native.execute).toHaveBeenCalledWith(expect.objectContaining({
-      command: 'docker', adapter: 'local', shell: false, timeout: 60_000, maxBuffer: 1024 * 1024,
-      args: expect.arrayContaining(['--rpc-login', 'service:rpc-secret', '--health-cmd',
-        'curl --user "service:health secret" http://localhost/health']),
-    }));
-    expect(native.dispose).toHaveBeenCalledOnce();
+    expect(native.create).toHaveBeenCalledWith(expect.objectContaining({ command: 'docker', adapter: 'local', shell: false,
+      timeout: 90_000, maxBuffer: 1024 * 1024, args: expect.arrayContaining(['create', '--rpc-login', 'service:rpc-secret',
+        '--health-cmd', 'curl --user "service:health secret" http://localhost/health']) }));
+    expect(native.start.mock.calls).toEqual([[id]]);
+    expect(native.dispose).toHaveBeenCalledTimes(2);
   });
-  it('never erases the occupant of a reused name during a docker run retry', async () => {
-    native.execute.mockRejectedValueOnce(new Error('Conflict. The container name "/sample-service" is already in use by container "previous"'));
-    native.inspect.mockResolvedValue({ Name: '/sample-service', Id: 'f'.repeat(64), State: { Status: 'running' },
-      Config: { Labels: { 'omnitron.creation': 'another-operation' } } });
+
+  it('waits across an absent name for a late native create and starts its exact allocation once', async () => {
+    vi.useFakeTimers();
+    native.create.mockRejectedValueOnce(lostReply());
+    native.inspect.mockRejectedValueOnce(commandFailure('Error response from daemon: No such container: sample-service'))
+      .mockImplementationOnce(async () => observation('created')).mockImplementation(async () => observation());
+    const result = createContainer(published(), { fullId: true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(native.create).toHaveBeenCalledOnce();
+    expect(native.start).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(500);
+    await expect(result).resolves.toBe(id);
+    expect(native.inspect.mock.calls).toEqual([['sample-service'], ['sample-service'], [id]]);
+    expect(native.start.mock.calls).toEqual([[id]]);
+    expect(native.create).toHaveBeenCalledOnce();
+    expect(native.remove).not.toHaveBeenCalled();
+  });
+
+  it('joins a lost start reply through the exact ID even while Docker still reports Created', async () => {
+    vi.useFakeTimers();
+    native.start.mockRejectedValueOnce(lostReply());
+    native.inspect.mockImplementationOnce(async () => observation('created'));
+    const result = createContainer(published(), { fullId: true });
+    await vi.advanceTimersByTimeAsync(500);
+    await expect(result).resolves.toBe(id);
+    expect(native.inspect.mock.calls).toEqual([[id], [id]]);
+    expect(native.start.mock.calls).toEqual([[id]]);
+    expect(native.create).toHaveBeenCalledOnce();
+    expect(native.remove).not.toHaveBeenCalled();
+  });
+
+  it('accepts a proved running allocation without repeating its start', async () => {
+    native.create.mockRejectedValueOnce(lostReply());
+    await expect(createContainer(published(), { fullId: true })).resolves.toBe(id);
+    expect(native.inspect.mock.calls).toEqual([['sample-service']]);
+    expect(native.start).not.toHaveBeenCalled();
+  });
+
+  it('refuses a late allocation with unconfirmed native resource limits before starting it', async () => {
+    native.create.mockRejectedValueOnce(lostReply());
+    native.inspect.mockImplementationOnce(async () => observation('created'));
+    await expect(createContainer({ ...published(), resources: { memory: '32m' } })).rejects.toThrow('resource limits');
+    expect(native.start).not.toHaveBeenCalled();
+    expect(native.remove).not.toHaveBeenCalled();
+  });
+
+  it('retains a running allocation with wrong native bindings after losing its start acknowledgement', async () => {
+    vi.useFakeTimers();
+    native.start.mockRejectedValueOnce(lostReply());
+    native.inspect.mockImplementation(async () => {
+      const state = observation(); state.NetworkSettings.Ports['80/tcp'][0]!.HostIp = '0.0.0.0'; return state;
+    });
+    const failure = expect(createContainer(published())).rejects.toMatchObject({
+      message: expect.stringContaining('Docker start is unconfirmed'), cause: { message: expect.stringContaining('declared ports') },
+    });
+    await vi.advanceTimersByTimeAsync(120_001);
+    await failure;
+    expect(native.create).toHaveBeenCalledOnce();
+    expect(native.start.mock.calls).toEqual([[id]]);
+    expect(native.remove).not.toHaveBeenCalled();
+  });
+
+  it.each(['foreign', 'wrong-spec', 'wrong-image', 'wrong-binding', 'bad-id', 'exited'] as const)('refuses a competing or unverifiable create receipt (%s)', async proof => {
+    native.create.mockRejectedValueOnce(lostReply());
+    native.inspect.mockImplementation(async () => {
+      const actual = observation(proof === 'exited' ? 'exited' : 'created');
+      if (proof === 'foreign') actual.Config.Labels['omnitron.creation'] = 'competing-attempt';
+      if (proof === 'wrong-spec') actual.Config.Labels['omnitron.spec-hash'] = 'other';
+      if (proof === 'wrong-image') actual.Config.Image = 'other:1';
+      if (proof === 'wrong-binding') actual.HostConfig.PortBindings['80/tcp'][0]!.HostIp = '0.0.0.0';
+      if (proof === 'bad-id') actual.Id = id.slice(0, 12);
+      return actual;
+    });
+    await expect(createContainer(published())).rejects.toThrow();
+    expect(native.start).not.toHaveBeenCalled();
+    expect(native.remove).not.toHaveBeenCalled();
+    expect(native.create).toHaveBeenCalledOnce();
+  });
+
+  it('leaves another instance at the same name alone when create is refused', async () => {
+    native.create.mockRejectedValueOnce(commandFailure('The container name "/sample-service" is already in use by container "other"'));
+    native.inspect.mockImplementation(async () => {
+      const actual = observation(); actual.Config.Labels['omnitron.creation'] = 'other'; return actual;
+    });
     await expect(createContainer(config())).rejects.toThrow('belongs to another creation');
+    expect(native.start).not.toHaveBeenCalled();
     expect(native.remove).not.toHaveBeenCalled();
-    expect(native.execute).toHaveBeenCalledOnce();
   });
 
-  it('retries a partial creation only by its own native container ID', async () => {
-    native.execute.mockRejectedValueOnce(new Error('Conflict. The container name "/sample-service" is already in use by container "previous"'));
+  it('cannot issue a late start or a second create after its observation deadline', async () => {
+    vi.useFakeTimers();
+    native.create.mockRejectedValueOnce(lostReply());
+    let visible = false;
     native.inspect.mockImplementation(async () => {
-      const label = native.execute.mock.calls[0]![0].args.find((arg: string) => arg.startsWith('omnitron.creation='));
-      return { Name: '/sample-service', Id: 'f'.repeat(64), State: { Status: 'created' },
-        Config: { Labels: { 'omnitron.creation': label.split('=')[1] } } };
+      if (visible) return observation('created');
+      throw commandFailure('No such container: sample-service');
     });
-    expect(await createContainer(config())).toBe('abcdef123456');
-    expect(native.remove).toHaveBeenCalledWith('f'.repeat(64), true, {});
-    expect(native.execute).toHaveBeenCalledTimes(2);
+    const failure = expect(createContainer(config())).rejects.toThrow(/Docker create is unconfirmed.*creation/);
+    await vi.advanceTimersByTimeAsync(120_001);
+    await failure;
+    visible = true;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(native.start).not.toHaveBeenCalled();
+    expect(native.create).toHaveBeenCalledOnce();
+    expect(native.remove).not.toHaveBeenCalled();
   });
 
-  it.each(['own', 'foreign', 'wrong-spec', 'wrong-binding'] as const)('reconciles a lost docker run response only for its exact live creation (%s)', async proof => {
-    const id = 'd'.repeat(64);
-    const desired = { ...config(), ports: [{ host: 19800, container: 80, bindHost: '127.0.0.1' }],
-      labels: { 'omnitron.instance-home': '/reviewed/instance' } };
-    native.execute.mockRejectedValueOnce(Error('Docker acknowledgement lost'));
+  it('refuses an ID replaced during startup without touching the replacement', async () => {
+    native.start.mockRejectedValueOnce(lostReply());
+    native.inspect.mockImplementation(async () => ({ ...observation(), Id: 'd'.repeat(64) }));
+    await expect(createContainer(published())).rejects.toThrow('immutable container ID');
+    expect(native.inspect.mock.calls).toEqual([[id]]);
+    expect(native.start.mock.calls).toEqual([[id]]);
+    expect(native.remove).not.toHaveBeenCalled();
+  });
+
+  it('never follows a name reused between recovering an allocation and starting it', async () => {
+    native.create.mockRejectedValueOnce(lostReply());
+    native.inspect.mockImplementationOnce(async () => observation('created'));
+    native.start.mockRejectedValueOnce(commandFailure('Error response from daemon: No such container: ' + id));
+    await expect(createContainer(published())).rejects.toThrow('No such container: ' + id);
+    expect(native.inspect.mock.calls).toEqual([['sample-service']]);
+    expect(native.start.mock.calls).toEqual([[id]]);
+    expect(native.create).toHaveBeenCalledOnce();
+    expect(native.remove).not.toHaveBeenCalled();
+  });
+
+  it('recreates an exact stopped allocation after Docker explicitly refuses the port bind', async () => {
+    vi.useFakeTimers();
+    const replacement = 'e'.repeat(64);
+    native.create.mockResolvedValueOnce({ stdout: id }).mockResolvedValueOnce({ stdout: replacement });
+    native.start.mockRejectedValueOnce(commandFailure('port is already allocated')).mockResolvedValueOnce({ stdout: replacement });
+    native.inspect.mockImplementationOnce(async () => observation('created'))
+      .mockImplementationOnce(async () => ({ ...observation(), Id: replacement }));
+    const result = createContainer(published(), { fullId: true });
+    await vi.advanceTimersByTimeAsync(1000);
+    await expect(result).resolves.toBe(replacement);
+    expect(native.start.mock.calls).toEqual([[id], [replacement]]);
+    expect(native.remove.mock.calls).toEqual([[id, true, {}]]);
+  });
+
+  it('validates both TCP ports and every published address on the exact running ID', async () => {
     native.inspect.mockImplementation(async () => {
-      const args = native.execute.mock.calls[0]![0].args as string[];
-      const nonce = args.find(arg => arg.startsWith('omnitron.creation='))!.slice('omnitron.creation='.length);
-      return { Name: '/sample-service', Id: id, State: { Status: 'running' }, Config: { Image: desired.image, Labels: {
-        ...desired.labels, 'omnitron.creation': proof === 'foreign' ? 'another-creation' : nonce,
-        'omnitron.spec-hash': proof === 'wrong-spec' ? 'different' : containerSpecHash(desired),
-      } }, NetworkSettings: { Ports: { '80/tcp': [{ HostIp: proof === 'wrong-binding' ? '0.0.0.0' : '127.0.0.1', HostPort: '19800' }] } } };
+      const actual = observation();
+      actual.NetworkSettings.Ports['80/tcp'].push({ HostIp: '0.0.0.0', HostPort: '19800' });
+      return actual;
     });
-    const action = createContainer(desired, { fullId: true });
-    if (proof === 'own') await expect(action).resolves.toBe(id);
-    else await expect(action).rejects.toThrow();
-    expect(native.execute).toHaveBeenCalledOnce();
-    expect(native.remove).not.toHaveBeenCalled();
+    await expect(createContainer(published())).rejects.toThrow('did not publish the declared ports');
+    expect(native.start.mock.calls).toEqual([[id], [id]]);
+    expect(native.inspect.mock.calls).toEqual([[id], [id]]);
+    expect(native.remove.mock.calls).toEqual([[id, true, {}], [id, true, {}]]);
   });
 
-  it('checks both port numbers and the bind address on the exact container returned by Docker', async () => {
-    const id = 'abcdef1234567890'.repeat(4);
-    const desired = { ...config(), ports: [{ host: 80, container: 8080, bindHost: '127.0.0.1' }] };
-    native.inspect.mockResolvedValue({ Id: id, NetworkSettings: { Ports: {
-      '8080/tcp': [{ HostPort: '80', HostIp: '127.0.0.1' }],
-    } } });
-    await expect(createContainer(desired)).resolves.toBe(id.slice(0, 12));
-    expect(native.inspect).toHaveBeenCalledWith(id);
-    native.inspect.mockResolvedValue({ Id: 'd'.repeat(64), NetworkSettings: { Ports: {} } });
-    await expect(createContainer(desired)).rejects.toThrow('Cannot verify native port publication');
-    expect(native.remove).not.toHaveBeenCalled();
-    native.inspect.mockImplementation(async (ref: string) => {
-      if (ref === id) return { Id: id, NetworkSettings: { Ports: {
-        '8080/tcp': [{ HostPort: '8080', HostIp: '127.0.0.1' }, { HostPort: '80', HostIp: '0.0.0.0' }],
-        '80/tcp': [{ HostPort: '80', HostIp: '127.0.0.1' }],
-      } } };
-      const run = native.execute.mock.calls.at(-1)![0];
-      const label = run.args.find((arg: string) => arg.startsWith('omnitron.creation='));
-      return { Id: id, Config: { Labels: { 'omnitron.creation': label.split('=')[1] } } };
-    });
-    await expect(createContainer(desired)).rejects.toThrow('Docker did not publish the declared ports');
-    expect(native.remove).toHaveBeenCalledTimes(2);
-  });
-
-  it('preserves the sanitized executor error instead of rebuilding it from raw argv', async () => {
-    const failure = new Error('docker run --rpc-login [REDACTED]: image unavailable');
-    native.execute.mockRejectedValue(failure);
+  it('preserves the sanitized error from a definitive Docker refusal', async () => {
+    const failure = commandFailure('docker create --rpc-login [REDACTED]: image unavailable');
+    native.create.mockRejectedValueOnce(failure);
     await expect(createContainer(config())).rejects.toBe(failure);
-    expect(native.execute).toHaveBeenCalledOnce(); expect(native.dispose).toHaveBeenCalledOnce();
+    expect(native.start).not.toHaveBeenCalled();
+    expect(native.dispose).toHaveBeenCalledOnce();
   });
 });

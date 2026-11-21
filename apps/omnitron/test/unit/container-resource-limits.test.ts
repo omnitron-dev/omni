@@ -21,14 +21,16 @@ const config = (over: Partial<ResolvedContainer> = {}): ResolvedContainer => ({
 const host = (over: Record<string, number> = {}) => ({ Memory: 128 * 1024 ** 2, MemoryReservation: 64 * 1024 ** 2,
   NanoCpus: 500_000_000, ShmSize: 32 * 1024 ** 2, CpuQuota: 0, CpuPeriod: 0, ...over });
 function inspection(HostConfig = host()) {
-  const args: string[] = native.execute.mock.calls.at(-1)?.[0].args ?? [];
-  const label = args.find(arg => arg.startsWith('omnitron.creation='));
-  return { Name: '/resource-fixture', Id: id, Config: { Image: 'fixture:1', Labels: { 'omnitron.creation': label?.split('=')[1] } },
+  const args: string[] = native.execute.mock.calls.find(([command]) => command.args[1] === 'create')?.[0].args ?? [];
+  const labels = Object.fromEntries(args.flatMap((value, index) => value === '--label' ? [args[index + 1]!.split('=')] : []));
+  return { Name: '/resource-fixture', Id: id, Config: { Image: 'fixture:1', Labels: labels },
     State: { Status: 'running' }, HostConfig, NetworkSettings: { Networks: { bridge: {} } } };
 }
 const limits = { memory: '128m', memoryReservation: '64MiB', cpus: 0.5, shmSize: '32mb' };
 beforeEach(() => {
-  vi.clearAllMocks(); native.images.mockResolvedValue(['fixture:1']); native.execute.mockResolvedValue({ stdout: id + '\n' });
+  vi.clearAllMocks(); native.images.mockResolvedValue(['fixture:1']);
+  native.execute.mockImplementation(async ({ args }) => ({ stdout: args[1] === 'inspect'
+    ? JSON.stringify([await native.inspect(args.at(-1))]) : id + '\n' }));
   native.inspect.mockImplementation(async () => inspection());
 });
 
@@ -39,7 +41,7 @@ describe('the declared resource limits reach Docker and its observation', () => 
     expect(await createContainer(config({ resources: resolved!.resources! }))).toBe(id.slice(0, 12));
     const call = native.execute.mock.calls[0]![0];
     expect(call.args).toContain('omnitron.spec-hash-schema=2');
-    expect(call).toMatchObject({ command: 'docker', shell: false, adapter: 'local', timeout: 60_000 });
+    expect(call).toMatchObject({ command: 'docker', shell: false, adapter: 'local', timeout: 90_000 });
     const position = call.args.indexOf('--memory');
     expect(call.args.slice(position, position + 8)).toEqual(['--memory', '134217728', '--memory-reservation', '67108864', '--cpus', '0.500000000', '--shm-size', '33554432']);
     expect(call.args.indexOf('fixture:1')).toBeGreaterThan(position + 7);
@@ -76,7 +78,7 @@ describe('the declared resource limits reach Docker and its observation', () => 
     native.inspect.mockImplementation(async () => inspection(host({ [field]: 0 })));
     await expect(createContainer(config({ resources: limits }))).rejects.toThrow('does not enforce');
     expect(native.remove).toHaveBeenCalledWith(id, true, {});
-    expect(native.execute).toHaveBeenCalledOnce();
+    expect(native.execute.mock.calls.map(([command]) => command.args[1])).toEqual(['create', 'start', 'inspect']);
   });
   it('does not remove another allocation while verifying a failed create', async () => {
     native.inspect.mockResolvedValue({ ...inspection(), Config: { Labels: { 'omnitron.creation': 'someone-else' } } });

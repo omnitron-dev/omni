@@ -460,14 +460,16 @@ async function inspectContainers(names: string[], strict = false): Promise<any[]
   }
 }
 
+type NativePortBindings = Record<string, Array<{ HostPort?: string; HostIp?: string }> | null>;
+
 interface NativeContainerObservation {
   Id?: string;
   Name?: string;
   Config?: { Image?: string; Labels?: Record<string, string> };
   State?: { Status?: string; StartedAt?: string; ExitCode?: number; Error?: string; OOMKilled?: boolean;
     Health?: { Status?: string; Log?: unknown[] } };
-  HostConfig?: Record<string, unknown>;
-  NetworkSettings?: { Networks?: Record<string, unknown>; Ports?: Record<string, Array<{ HostPort?: string; HostIp?: string }> | null> };
+  HostConfig?: Record<string, unknown> & { PortBindings?: NativePortBindings };
+  NetworkSettings?: { Networks?: Record<string, unknown>; Ports?: NativePortBindings };
   Mounts?: Array<{ Source: string; Destination: string; Type?: string; Name?: string; RW?: boolean }>;
 }
 
@@ -683,7 +685,7 @@ export async function createContainer(config: ResolvedContainer, options: { full
   // Use the local Xec executor with explicit argv. The command can contain
   // credentials in environment, application flags and nested health checks;
   // raw execFile errors would print those arguments before any logger sees them.
-  const args: string[] = ['docker', 'run', '-d', '--name', config.name];
+  const args: string[] = ['container', 'create', '--name', config.name];
   if (options.pull === 'never') args.push('--pull=never');
 
   // Network — explicit network avoids the default bridge, which
@@ -761,143 +763,144 @@ export async function createContainer(config: ResolvedContainer, options: { full
     args.push(...config.command);
   }
 
-  // Execute docker run asynchronously through Xec's shared error redaction.
-  //
-  // Self-heal the two stale-state failures that otherwise wedge a managed
-  // container into an unstartable state (both seen in production on
-  // macOS/OrbStack after dockerd restarts under disk pressure):
-  //   1. "endpoint with name X already exists in network N" — an orphaned
-  //      libnetwork endpoint outlived its container; docker run then leaves a
-  //      half-created container with PortBindings set but NO published host
-  //      port, so clients get ECONNREFUSED while inspect says "running".
-  //   2. "Conflict. The container name X is already in use" — a leftover
-  //      Created-state container from a previously failed run.
-  //   3. "Bind for 127.0.0.1:5432 failed: port is already allocated" — the
-  //      docker-proxy of a container `docker rm` has already returned for
-  //      has not released its bind yet. A reconciler that removes and
-  //      immediately recreates races that release. Measured on a node
-  //      recreating three services at once: all three failed this way and
-  //      were left in `Created`, and `docker start` by hand a second later
-  //      worked — which is what makes it a race rather than a conflict.
-  //
-  // The first two are scrubbed; the third only needs a moment. Both are
-  // retried, with a short wait, up to three times.
-  //
-  // Deliberately narrow. A missing image, a bad flag, or a port genuinely
-  // held by something else is permanent, and retrying it turns one clear
-  // error into several identical ones separated by delays.
-  const runDocker = async (): Promise<{ stdout: string }> => {
-    let failure: unknown;
+  // A timed-out Docker request can become visible later. Only create is issued before
+  // the immutable ID is known, so a late allocation cannot also start serving.
+  const deadline = performance.now() + 120_000;
+  const remaining = (phase: string, id?: string, cause?: unknown) => {
+    const ms = Math.ceil(deadline - performance.now());
+    if (ms <= 0) throw Error(`Docker ${phase} is unconfirmed for ${config.name} (creation ${creation}${id ? ', id ' + id : ''})`, { cause });
+    return ms;
+  };
+  const expectedBindings = config.ports.map(port => `${port.container}/tcp ${port.bindHost ?? DEFAULT_PORT_BIND_HOST} ${port.host}`).sort();
+  const portsMatch = (bindings: NativePortBindings | undefined, id: string) => {
+    if (!expectedBindings.length) return true;
+    if (!bindings) throw Error('Cannot verify native port bindings for ' + id);
+    const observed = Object.entries(bindings).flatMap(([port, hosts]) => (hosts ?? []).map(host => `${port} ${host.HostIp} ${host.HostPort}`)).sort();
+    return observed.length === expectedBindings.length && observed.every((entry, index) => entry === expectedBindings[index]);
+  };
+  const inspect = async (id?: string) => {
+    // Address an acknowledged allocation by immutable ID. Only after a lost
+    // create reply is the name needed to discover that ID.
+    const ref = id ?? config.name;
     try {
-      const result = await executeDocker(args.slice(1));
-      if (/^[a-f0-9]{64}$/.test(result.stdout.trim())) return result;
-      failure = Error('Docker did not confirm the identity of ' + config.name);
-    } catch (error) { failure = error; }
-    // The name and spec may also describe a competing start. Only this run's nonce can recover its lost reply.
-    const actual = await getContainerState(config.name, { orThrow: true, fullId: true });
-    if (!actual || actual.labels?.['omnitron.creation'] !== creation || actual.status !== 'running') throw failure;
-    const id = actual.containerId;
-    if (!id || !/^[a-f0-9]{64}$/.test(id) || actual.specHash !== labels[SPEC_HASH_LABEL] || actual.image !== config.image ||
-        !containerResourcesMatch(config, actual) || config.ports.length && !await arePortsPublished(id, config.ports))
-      throw Error('The running container cannot confirm this creation: ' + config.name, { cause: failure });
-    return { stdout: id };
+      const result = await executeDocker(['container', 'inspect', '--', ref], 1024 * 1024, remaining('inspection', id));
+      const [raw] = JSON.parse(result.stdout) as NativeContainerObservation[];
+      if (!raw?.Id || !/^[a-f0-9]{64}$/.test(raw.Id) || id && raw.Id !== id)
+        throw Error('Docker did not confirm the immutable container ID');
+      if (raw.Name !== '/' + config.name || raw.Config?.Labels?.['omnitron.creation'] !== creation)
+        throw Error(`Container '${config.name}' belongs to another creation`);
+      const actual = containerObservation(raw, ref, true);
+      if (actual.specHash !== labels[SPEC_HASH_LABEL]) throw Error('The Docker specification hash differs for ' + raw.Id);
+      if (actual.image !== config.image) throw Error('The Docker image differs for ' + raw.Id);
+      if (!Object.entries(labels).every(([key, value]) => actual.labels?.[key] === value))
+        throw Error('The Docker ownership labels differ for ' + raw.Id);
+      if (actual.status === 'created' && !portsMatch(raw.HostConfig?.PortBindings, raw.Id))
+        throw Error('The configured Docker port bindings differ for ' + raw.Id);
+      return { ...actual, id: raw.Id, published: actual.status === 'running' && portsMatch(raw.NetworkSettings?.Ports, raw.Id) };
+    } catch (error) {
+      const stderr = (error as { stderr?: unknown })?.stderr;
+      if (typeof stderr === 'string' && /^(?:Error(?: response from daemon)?:\s*)?no such (?:object|container):\s*(.+)$/i.exec(stderr.trim())?.[1] === ref) return null;
+      throw error;
+    }
+  };
+  const waitForState = async (phase: 'create' | 'start', id: string | undefined, cause: unknown, wait: boolean) => {
+    const failure = cause;
+    for (;;) {
+      let actual;
+      try { actual = await inspect(id); }
+      catch (error) {
+        if (!wait || !lostDockerTransport(error)) throw error;
+        cause = error;
+      }
+      if (actual && (actual.status === 'running' || phase === 'create' && actual.status === 'created')) {
+        if (!containerResourcesMatch(config, actual)) throw Error(`Container '${config.name}' does not enforce its declared resource limits`);
+        if (actual.status !== 'running' || actual.published) return actual;
+        cause = Error(`Docker has not published the declared ports for ${actual.containerId}`, { cause: failure });
+      } else if (actual && actual.status !== 'created') {
+        throw Error(`Docker ${phase} left ${actual.containerId} in state ${actual.status}`, { cause });
+      }
+      if (!wait) throw cause;
+      await new Promise(resolve => setTimeout(resolve, Math.min(500, remaining(phase, id, cause))));
+      remaining(phase, id, cause);
+    }
   };
 
-  let stdout: string | undefined;
-  let lastError: unknown;
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
+  const allocate = async (): Promise<{ id: string; running: boolean }> => {
+    let failure: unknown;
     try {
-      ({ stdout } = await runDocker());
-      lastError = undefined;
-      break;
-    } catch (err) {
-      lastError = err;
-      const msg = err instanceof Error ? err.message : String(err);
+      const id = (await executeDocker(args, 1024 * 1024, Math.min(90_000, remaining('create')))).stdout.trim();
+      if (/^[a-f0-9]{64}$/.test(id)) return { id, running: false };
+      failure = Error('Docker create returned no immutable container ID');
+    } catch (error) {
+      if (definiteDockerFailure(error) && !isStaleContainerState((error as Error).message)) throw error;
+      failure = error;
+    }
+    const actual = await waitForState('create', undefined, failure, !definiteDockerFailure(failure));
+    return { id: actual.id, running: actual.status === 'running' };
+  };
 
-      if (isStaleContainerState(msg)) {
-        await cleanFailedCreation(config.name, creation);
-        if (config.network) {
+  let unpublished = false;
+  for (let attempt = 1; ; attempt++) {
+    const { id, running } = await allocate();
+    if (!running) {
+      try {
+        const started = await executeDocker(['container', 'start', '--', id], 1024 * 1024, Math.min(60_000, remaining('start', id)));
+        if (started.stdout.trim() !== id) throw Error('Docker start did not acknowledge ' + id);
+      } catch (error) {
+        if (!definiteDockerFailure(error)) {
+          await waitForState('start', id, error, true);
+          return options.fullId ? id : id.slice(0, 12);
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        const bindFailure = isPortNotYetReleased(message);
+        if (!bindFailure && !isStaleContainerState(message)) throw error;
+        // A failed start may leave an owned Created container. Verify that it
+        // is still that stopped ID before releasing the name for another create.
+        const actual = await inspect(id);
+        if (!actual || actual.status !== 'created' && actual.status !== 'exited') throw error;
+        await removeContainer(id);
+        if (attempt >= 3) throw bindFailure ? Error(await describeBindFailure(config, message), { cause: error }) : error;
+        if (bindFailure) {
+          await new Promise(resolve => setTimeout(resolve, Math.min(attempt * 1000, remaining('start', id))));
+        } else if (config.network) {
           const { PhantomEndpointJanitor } = await import('./phantom-endpoint-janitor.js');
           const { createNullLogger } = await import('@omnitron-dev/titan/module/logger');
           await new PhantomEndpointJanitor({ networks: [config.network], logger: createNullLogger() }).sweepNetwork(config.network, config.name);
         }
         continue;
       }
+    }
 
-      if (isPortNotYetReleased(msg)) {
-        // The failed run leaves the container in `Created` holding the name,
-        // so the next attempt would hit the name conflict instead of the
-        // port. Remove it, then wait for the bind to go.
-        await cleanFailedCreation(config.name, creation);
-        await new Promise((resolve) => setTimeout(resolve, attempt * 1_000));
+    if (!running && (config.ports.length || Object.keys(resources).length)) {
+      const actual = await inspect(id);
+      if (!actual || actual.status !== 'running') throw Error(`Docker did not confirm ${id} is running`);
+      if (!containerResourcesMatch(config, actual)) {
+        await removeContainer(id);
+        throw Error(`Container '${config.name}' does not enforce its declared resource limits`);
+      }
+      if (!actual.published) {
+        // An acknowledged start can inherit a stale endpoint. Rebuild once,
+        // after removing only the immutable allocation whose bindings we read.
+        await removeContainer(id);
+        if (unpublished) throw Error(`Docker did not publish the declared ports for ${config.name}`);
+        unpublished = true;
         continue;
       }
-
-      throw err;
     }
+    return options.fullId ? id : id.slice(0, 12);
   }
-  if (lastError || stdout === undefined) {
-    const message = lastError instanceof Error ? lastError.message : String(lastError ?? '');
-    if (isPortNotYetReleased(message)) {
-      // Waiting did not help, so something is holding the port rather than
-      // letting go of it. Name it: the docker error names the port and
-      // withholds the one thing an operator can act on.
-      throw new Error(await describeBindFailure(config, message));
-    }
-    throw lastError ?? new Error(`docker run produced no container id for ${config.name}`);
-  }
-
-  // Post-create guard: a container can report "running" yet have its declared
-  // host ports UNpublished when it silently reused an orphaned endpoint
-  // (PortBindings present but never wired by dockerd) — the exact failure that
-  // took Redis offline and cascaded to a login outage. Detect the mismatch and
-  // rebuild once from clean state so a successful return always means the
-  // declared ports are actually reachable.
-  const creationId = (output: string | undefined) => {
-    const id = output?.trim();
-    if (!id || !/^[a-f0-9]{64}$/.test(id)) throw Error(`Docker did not confirm the identity of ${config.name}`);
-    return id;
-  };
-  let id = creationId(stdout);
-  if (config.ports.length && !(await arePortsPublished(id, config.ports))) {
-    await cleanFailedCreation(config.name, creation);
-    ({ stdout } = await runDocker());
-    id = creationId(stdout);
-    if (!await arePortsPublished(id, config.ports)) {
-      await cleanFailedCreation(config.name, creation);
-      throw Error(`Docker did not publish the declared ports for ${config.name}`);
-    }
-  }
-
-  if (Object.keys(resources).length) {
-    const actual = await getContainerState(config.name, { orThrow: true, fullId: true });
-    if (!actual || actual.labels?.['omnitron.creation'] !== creation || !containerResourcesMatch(config, actual)) {
-      await cleanFailedCreation(config.name, creation);
-      throw new Error(`Container '${config.name}' does not enforce its declared resource limits`);
-    }
-  }
-
-  return options.fullId ? id : id.slice(0, 12);
 }
 
-/** A failed docker run may leave its own container in Created. Never follow a reused name. */
-async function cleanFailedCreation(name: string, creation: string): Promise<void> {
-  const actual = await getContainerState(name, { orThrow: true, fullId: true });
-  if (!actual) return;
-  if (actual.labels?.['omnitron.creation'] !== creation || !actual.containerId || !/^[a-f0-9]{64}$/.test(actual.containerId)) {
-    throw new Error(`Container '${name}' belongs to another creation; inspect its ownership before retrying`);
-  }
-  await removeContainer(actual.containerId);
+function lostDockerTransport(error: unknown): boolean {
+  const command = error as { code?: string; stderr?: string };
+  return command?.code === 'TIMEOUT_ERROR' || command?.code === 'EXECUTION_OUTCOME_UNKNOWN' ||
+    /(?:\bEOF\b|connection (?:reset|refused)|context cancel(?:ed|led)|deadline exceeded|timed? ?out|broken pipe|bad gateway|gateway timeout)/i.test(command?.stderr ?? '');
 }
 
-/** An unavailable inspection is not evidence of a missing binding and cannot trigger removal. */
-async function arePortsPublished(id: string, ports: ResolvedContainer['ports']): Promise<boolean> {
-  const adapter = await getAdapter();
-  const info = await adapter.inspectContainer(id) as NativeContainerObservation;
-  const bindings = info.NetworkSettings?.Ports;
-  if (info.Id !== id || !bindings || typeof bindings !== 'object') throw Error('Cannot verify native port publication');
-  return ports.every(port => bindings[`${port.container}/tcp`]?.some(binding =>
-    binding.HostPort === String(port.host) && binding.HostIp === (port.bindHost ?? DEFAULT_PORT_BIND_HOST)));
+/** A transport failure or lost stdout can follow a committed Docker mutation. */
+function definiteDockerFailure(error: unknown): boolean {
+  const command = error as { code?: string; stderr?: string; signal?: string; aborted?: boolean };
+  return command?.code === 'COMMAND_FAILED' && !command.signal && !command.aborted && Boolean(command.stderr?.trim()) && !lostDockerTransport(error);
 }
 
 /**
@@ -908,12 +911,12 @@ export async function startContainer(nameOrId: string): Promise<void> {
   await adapter.startContainer(nameOrId);
 }
 
-async function executeDocker(args: string[], maxBuffer = 1024 * 1024) {
+async function executeDocker(args: string[], maxBuffer = 1024 * 1024, timeout = 60_000) {
   const { ExecutionEngine } = await import('@xec-sh/core');
   const engine = new ExecutionEngine({ defaultShell: false, enableEvents: false });
   try {
     return await engine.execute({ command: 'docker', args, shell: false, adapter: 'local',
-      timeout: 60_000, maxBuffer, throwOnNonZeroExit: true });
+      timeout, maxBuffer, throwOnNonZeroExit: true });
   } finally { await engine.dispose(); }
 }
 

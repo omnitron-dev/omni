@@ -721,7 +721,7 @@ export type PreparedContainerAction =
   | { operation: 'allocate' | 'discover' | 'verify' | 'discard'; creation: string; id?: string }
   | { operation: 'publish'; creation: string; id: string; stagedName: string;
       configure: (running: boolean) => Promise<void>;
-      issued: 'allocated' | 'renaming' | 'starting'; record: (effect: 'renaming' | 'starting') => Promise<void> };
+      issued: 'allocated' | 'renaming' | 'starting'; record: (effect: 'allocated' | 'renaming' | 'starting') => Promise<void> };
 
 /** Reviewed allocation suspends between native create and start. Every resumed effect uses its original nonce and ID. */
 export async function preparedContainer(config: ResolvedContainer, action: PreparedContainerAction): Promise<string> {
@@ -949,7 +949,13 @@ async function provisionContainer(config: ResolvedContainer, options: { fullId?:
         if (staged.issued === 'allocated') {
           await staged.record('renaming');
           try { await executeDocker(['container', 'rename', '--', id, config.name], { timeout: Math.ceil(remaining('rename', id) / 2) }); }
-          catch (error) { if (definiteDockerFailure(error)) throw error; }
+          catch (error) {
+            if (definiteDockerFailure(error)) {
+              const native = await inspect(id);
+              if (native?.name === staged.stagedName && native.status === 'created') await staged.record('allocated');
+              throw error;
+            }
+          }
         }
         // A lost rename reply cannot authorize starting a container under the wrong name.
         for (;;) {
@@ -964,17 +970,24 @@ async function provisionContainer(config: ResolvedContainer, options: { fullId?:
       await staged.configure(state.status === 'running');
       if (state.status === 'created' && staged.issued !== 'starting') {
         await staged.record('starting');
-        const start = () => executeDocker(['container', 'start', '--', id], { timeout: Math.ceil(remaining('start', id) / 2) });
-        try { await start(); }
-        catch (error) {
-          if (definiteDockerFailure(error)) {
+        const start = async () => {
+          try { await executeDocker(['container', 'start', '--', id], { timeout: Math.ceil(remaining('start', id) / 2) }); }
+          catch (error) {
+            if (!definiteDockerFailure(error)) return;
             const native = await inspect(id);
-            if (!isStaleContainerState((error as Error).message) || native?.status !== 'created' || native.name !== config.name ||
-                !await sweepStaleEndpoint()) throw error;
-            // Docker explicitly refused and the janitor proved a same-name orphan.
-            // Start the same ID once after repair. An unknown reply only permits observation.
-            try { await start(); } catch (retryError) { if (definiteDockerFailure(retryError)) throw retryError; }
+            if (native?.status !== 'created' || native.name !== config.name) throw error;
+            // The start was refused and the exact renamed ID is still inactive. Rollback may retire it.
+            await staged.record('renaming');
+            return error;
           }
+          return undefined;
+        };
+        const failure = await start();
+        if (failure) {
+          if (!isStaleContainerState((failure as Error).message) || !await sweepStaleEndpoint()) throw failure;
+          await staged.record('starting');
+          const retryFailure = await start();
+          if (retryFailure) throw retryFailure;
         }
       }
       const serving = await waitForState('start', id, undefined, 'lost');

@@ -543,3 +543,20 @@ it('keeps the first allocation timestamps visible while recovery rechecks the sa
   expect(Date.parse(next.startedAt)).toBeGreaterThan(Date.parse(timing.readyAt!));
   expect(Date.parse(next.readyAt!)).toBeGreaterThanOrEqual(Date.parse(next.startedAt));
 });
+
+it.each(['rename', 'start'] as const)('can restore after Docker definitively refuses the forward %s without an effect', async effect => {
+  const { run, allocation } = scenario();
+  await run('prepare');
+  const once = () => {
+    beforeRename = beforeStart = () => {};
+    throw refused('Error response from daemon: fixture operation rejected');
+  };
+  if (effect === 'rename') beforeRename = once;
+  else beforeStart = once;
+  await expect(run('apply')).rejects.toThrow('was rolled-back');
+  expect(await served()).toBe(previous.commit);
+  expect((await readRuntimeUpdateReceipt(directory))!.phase).toBe('rolled-back');
+  await allocation('target').discard(true);
+  expect([...containers.keys()]).toEqual([inspect(canonical).Id]);
+  expect(events.filter(event => event.startsWith('start'))).toEqual(['start ' + inspect(canonical).Id]);
+});

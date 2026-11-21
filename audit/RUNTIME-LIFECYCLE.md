@@ -103,8 +103,9 @@ the host verifies which Console actually occupies the native name. The original
 reviewed ID can still serve when the forward allocation is staged in `Created`.
 A candidate on the canonical name must match its allocation ID, creation nonce
 and issued publication phase. A rename or start whose outcome is unknown keeps
-recovery pending until native evidence settles it. A failed rollback allocation
-preserves the accepted candidate.
+recovery pending until native evidence settles it. If Docker rejects the operation
+and inspection confirms the same inactive ID at its previous name, rollback
+can proceed. A failed rollback allocation preserves the accepted candidate.
 
 An installed CLI containing this handoff can run `omnitron runtime update
 recover <full-plan-sha256>` for an earlier interrupted preparation. It releases

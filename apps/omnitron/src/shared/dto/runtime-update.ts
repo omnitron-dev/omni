@@ -110,6 +110,8 @@ export interface RuntimeUpdateIdentity extends RuntimeUpdateOwner {
   backendPid: number;
   revision: number;
   retiredPids: number[];
+  /** Protocol 1 owner snapshot at review. Older receipts record only the PIDs. */
+  processInventory?: { epoch: number; digest: string };
 }
 
 /** An empty candidate owner can outlive a backend which never became ready.

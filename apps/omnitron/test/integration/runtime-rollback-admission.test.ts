@@ -117,14 +117,20 @@ it('drains a real in-flight request, refuses its late journal or worker change, 
     await fs.mkdir(path.join(home, 'data'), { recursive: true });
     const db = openSqliteDatabase(path.join(home, 'data/daemon-state.db'));
     const netron = new Netron(createNullLogger(), { id: 'rollback-fixture' });
-    const apps: Array<{ info: { name: string; status: string } }> = [];
+    const processIds = ['batch-a', 'batch-b'];
+    const workers = processIds.map((id, index) => ({ info: { id }, pid: process.pid + 10 + index }));
+    const pool = { name: 'batch', workerIds: processIds };
+    const apps: Array<{ info: { name: string; status: string; pid: number | null }; children: null; pools: typeof pool[] }> = [
+      { info: { name: 'library/dev/index', status: 'online', pid: null }, children: null, pools: [pool] },
+    ];
     const daemon = Object.assign(Object.create(OmnitronDaemon.prototype), {
       app: { netron },
       execution: {
         controlledOwnerSnapshot: async () => ({
-          status: { owner: { id: 'owner', pid: 42 }, inFlight: 0 },
+          protocol: 1, inventoryDigest: 'f'.repeat(64),
+          status: { owner: { id: 'owner', pid: 42 }, controller: { epoch: 1 }, inFlight: 0 },
           apps,
-          workers: [],
+          workers,
           watchedApps: [],
         }),
       },
@@ -136,12 +142,13 @@ it('drains a real in-flight request, refuses its late journal or worker change, 
       instance: home,
       target: { artifact: target },
       before: { backend: legacy },
-      stacks: [],
+      stacks: [{ apps: [{ handleKey: apps[0]!.info.name }] }],
       watches: [],
     } as unknown as RuntimeUpdatePlan;
     const digest = runtimeUpdatePlanDigest(plan);
     const attempt = randomUUID();
-    await writePrivateRecord(path.join(home, 'runtime/local-updates/current.json'), {
+    const receiptPath = path.join(home, 'runtime/local-updates/current.json');
+    const receipt = {
       protocol: 1,
       phase: 'stopping-candidate',
       plan,
@@ -152,9 +159,11 @@ it('drains a real in-flight request, refuses its late journal or worker change, 
         ownerPid: 42,
         backend: target,
         backendPid: process.pid,
-        retiredPids: [process.pid],
+        guardianPid: process.ppid,
+        retiredPids: [process.pid, process.ppid, ...workers.map(worker => worker.pid)].sort((a, b) => a - b),
       },
-    });
+    };
+    await writePrivateRecord(receiptPath, receipt);
     try {
       db.exec('CREATE TABLE flow_definitions(active TEXT); CREATE TABLE flow_deliveries(status TEXT)');
       expect(netron.inbound.enter()).toBe(true);
@@ -169,10 +178,26 @@ it('drains a real in-flight request, refuses its late journal or worker change, 
       expect(netron.inbound.isDraining).toBe(false);
       expect(db.prepare('SELECT count(*) AS n FROM flow_definitions').get()).toEqual({ n: 1 });
       db.exec('UPDATE flow_definitions SET active=NULL');
-      apps.push({ info: { name: 'library/dev/new', status: 'online' } });
+      apps.push({ info: { name: 'library/dev/new', status: 'online', pid: 55 }, children: null, pools: [] });
       await expect(daemon.holdRuntimeRollback(digest, process.ppid, attempt)).rejects.toThrow('ownership changed');
       expect(netron.inbound.isDraining).toBe(false);
-      apps.length = 0;
+      apps.pop();
+      const departed = workers.pop()!;
+      pool.workerIds.pop();
+      await expect(daemon.holdRuntimeRollback(digest, process.ppid, attempt)).rejects.toThrow('ownership changed');
+      expect(netron.inbound.isDraining).toBe(false);
+      workers.push(departed); pool.workerIds.push(departed.info.id);
+      // A complete earlier receipt has only the PID set. A new receipt also
+      // detects identity changes when the OS PID set stays the same.
+      await daemon.holdRuntimeRollback(digest, process.ppid, attempt);
+      daemon.releaseRuntimeRollback(digest, attempt);
+      const pinInventory = (digest: string, epoch: number) => writePrivateRecord(receiptPath,
+        { ...receipt, rollbackOwner: { ...receipt.rollbackOwner, processInventory: { digest, epoch } } });
+      await pinInventory('e'.repeat(64), 1);
+      await expect(daemon.holdRuntimeRollback(digest, process.ppid, attempt)).rejects.toThrow('ownership changed');
+      await pinInventory('f'.repeat(64), 2);
+      await expect(daemon.holdRuntimeRollback(digest, process.ppid, attempt)).rejects.toThrow('ownership changed');
+      await pinInventory('f'.repeat(64), 1);
       await daemon.holdRuntimeRollback(digest, process.ppid, attempt);
       daemon.releaseRuntimeRollback('0'.repeat(64), attempt);
       daemon.releaseRuntimeRollback(digest, randomUUID());

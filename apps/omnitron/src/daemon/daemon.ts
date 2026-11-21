@@ -1,3 +1,4 @@
+import { retiringRuntimePids } from './runtime-update-processes.js';
 import { RecoveryMutation, RecoveryBusyError, observeRecoveryState } from './recovery-state.js';
 import { BackendRecoveryMonitor } from './backend-recovery-monitor.js';
 import { checkBackendCandidate, type BackendArtifact } from './backend-candidate.js';
@@ -617,8 +618,8 @@ export class OmnitronDaemon {
           Object.values(this.backendRuntimeStatus().blockers).some(count => count > 0) ||
           snapshot.status.inFlight !== 0 || snapshot.apps.some(app => app.info.status !== 'stopped' && !handles.has(app.info.name)) ||
           snapshot.watchedApps.some(watch => !plan.watches.some(prior => prior.name === watch.name && prior.directory === watch.directory)) ||
-          snapshot.workers.some(worker => !worker.pid || !live.retiredPids.includes(worker.pid)) ||
-          snapshot.apps.some(app => app.info.pid && !live.retiredPids.includes(app.info.pid)))
+          !isDeepStrictEqual(retiringRuntimePids(snapshot, process.pid, live.guardianPid), live.retiredPids) ||
+          live.processInventory && (live.processInventory.epoch !== snapshot.status.controller.epoch || live.processInventory.digest !== snapshot.inventoryDigest))
         throw Error('Application ownership changed during cold rollback admission');
     } catch (error) { this.releaseRuntimeRollback(digest, attempt); throw error; }
   }

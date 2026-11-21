@@ -362,6 +362,15 @@ that application may cancel. Preparation does not cancel work, pause schedules
 or grant shutdown authority. Restores, unknown outcomes and operations without
 confirmed local ownership block admission.
 
+The retiring PID list comes from the resident owner's private protocol-1
+snapshot. It includes classic applications, supervisor children and every
+registered worker in each pool. An already stopped application contributes
+no PID. A partially running application contributes its observed members.
+A registered worker with an unknown PID prevents admission. The updater binds
+the snapshot to the public owner and controller epoch, checks it again before
+shutdown and checks the candidate under the rollback hold. Prepare a fresh
+plan if an earlier CLI recorded only the representative PID from a pool.
+
 Infrastructure preview reads the live controller through authenticated private
 RPC, including while its owned backups run. The response marks this observation
 as `reviewed-declarations`; it does not publish a recovery certificate. Offline

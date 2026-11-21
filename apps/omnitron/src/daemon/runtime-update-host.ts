@@ -19,6 +19,7 @@ import { RuntimeObservationPending, RuntimeObservationConflict, RuntimeObservati
   observeRuntimeUntil, observeStartingController, withRuntimeObservation, type RuntimeObservation } from './runtime-observation.js';
 import { CommandResultError, reviewTargetFailures } from '../shared/command-result.js';
 import { captureNativeEmptyRuntime } from './runtime-update-native.js';
+import { retiringRuntimePids } from './runtime-update-processes.js';
 import type { BackendControlService } from './backend-control.js';
 import type { BackendRpcService } from './backend.rpc-service.js';
 import type { ExecutionHostService } from './execution-host.js';
@@ -359,12 +360,15 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
     if (life.state !== 'alive') throw Error('Cannot establish execution owner process lifetime');
     if (!cleanBuild(status.build) || await runtimeBuildCommit(installed(selection.current)) !== status.build.commit ||
         !cleanBuild(execution.ownerBuild) || await runtimeBuildCommit(installed(config.owner.artifact)) !== execution.ownerBuild.commit) throw Error('Native roles disagree with the serving backend or owner');
-    const retired = status.apps.flatMap(app => [app.pid, ...(app.processes ?? []).map(worker => worker.pid)]).filter(pid => pid !== null && pid !== undefined);
-    if (![status.pid, ownerPid, guardianPid, ...retired].every(pid => Number.isSafeInteger(pid) && pid > 0)) throw Error('Invalid native application process identity');
-    return { backend: selection.current, owner: config.owner.artifact, guardian: config.backend.artifact,
-      backendCommit: status.build.commit, ownerCommit: execution.ownerBuild.commit, scope: config.scope, ownerId: execution.owner.id,
-      ownerPid, ownerLifetime: life.identity, guardianPid, backendPid: status.pid, revision: selection.revision,
-      retiredPids: [...new Set([status.pid, guardianPid, ...retired])].sort((a, b) => a - b) };
+    const owner = await privateControlClient<ExecutionHostService>(path.join(config.directory, 'owner.sock'), 'OmnitronExecution', observation?.remaining());
+    try {
+      const snapshot = await owner.service.snapshot();
+      const retiredPids = retiringRuntimePids(snapshot, status.pid, guardianPid, status);
+      return { backend: selection.current, owner: config.owner.artifact, guardian: config.backend.artifact,
+        backendCommit: status.build.commit, ownerCommit: execution.ownerBuild.commit, scope: config.scope, ownerId: execution.owner.id,
+        ownerPid, ownerLifetime: life.identity, guardianPid, backendPid: status.pid, revision: selection.revision,
+        retiredPids, processInventory: { epoch: snapshot.status.controller.epoch, digest: snapshot.inventoryDigest } };
+    } finally { await owner.close(); }
   };
   const inventory = async (status: RuntimeUpdateStatusObservation, observation?: RuntimeObservation) => {
     const projects = await observeCall<RuntimeUpdateProjectObservation>(['project', 'list'], observation);
@@ -654,7 +658,8 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
           throw Error('A development source watch is outside the reviewed rollback scope');
       }
       const observed = await identity(status);
-      if (!sameOwner(previous, observed) || !isDeepStrictEqual(previous.retiredPids, observed.retiredPids)) throw Error('Native ownership or worker set changed before shutdown');
+      if (!sameOwner(previous, observed) || !isDeepStrictEqual(previous.retiredPids, observed.retiredPids) ||
+          previous.processInventory && !isDeepStrictEqual(previous.processInventory, observed.processInventory)) throw Error('Native ownership or worker set changed before shutdown');
       if (rollbackPlan) await checkRestorationJournals(rollbackPlan);
     },
     stop: previous => raw(previous.backend, ['down']),

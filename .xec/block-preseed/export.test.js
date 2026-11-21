@@ -27,6 +27,7 @@ test('stock pipeline checker admits each graph with registered-node dependencies
     assert.equal(graph.steps[0].nodeId, undefined);
     assert(graph.steps.slice(1).every(step => [spec.sourceNode, spec.receiverNode].includes(step.nodeId) && step.retries === 0));
     assert.doesNotMatch(JSON.stringify(graph), /BEGIN (?:OPENSSH |RSA |EC )?PRIVATE KEY/);
+    if (phase === 'accept') assert(graph.steps.every(step => Buffer.byteLength(step.run) <= 22 * 1024));
     if (phase === 'accept')
       assert.deepEqual(graph.steps.slice(1).map(step => [step.name, step.nodeId, step.dependsOn]),
         [['seal', spec.receiverNode, ['registered-pins']], ['forget', spec.sourceNode, ['seal']]]);

@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import { isIPv4 } from 'node:net';
 import path from 'node:path';
+import { gzipSync } from 'node:zlib';
 
 const helper = new URL('../block-preseed/endpoint.py', import.meta.url);
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
@@ -58,8 +59,18 @@ print('Both registered SSH identities match the review.')`;
 export async function blockPreseedDefinition(phase, spec, offer) {
   validateSpec(spec);
   if (!['offer', 'copy', 'accept', 'revoke'].includes(phase)) throw Error('Use offer, copy, accept or revoke.');
-  return preseedGraph(phase, spec, ['copy', 'accept'].includes(phase) ? publicOffer(offer, spec) : null, await fs.readFile(helper, 'utf8'),
-    'block-preseed', 'Direct transfer of reviewed closed public block and undo segments.');
+  const value = ['copy', 'accept'].includes(phase) ? publicOffer(offer, spec) : null;
+  const source = await fs.readFile(helper, 'utf8');
+  if (phase === 'accept') {
+    const packed = gzipSync(source).toString('base64');
+    const loader = 'import base64,gzip;s=gzip.decompress(base64.b64decode("' + packed + '")).decode();' +
+      'exec(compile(s,"block-preseed","exec"),{"__name__":"__main__","SELF":s})';
+    const run = (...args) => '/usr/bin/python3 -I -c ' + quote(loader) + ' ' + args.map(quote).join(' ');
+    const graph = preseedGraph(phase, spec, value, run, 'block-preseed', 'Seal the completed reviewed public block transfer.');
+    if (graph.steps.some(step => Buffer.byteLength(step.run) > 22 * 1024)) throw Error('Block acceptance exceeds the SSH management command budget.');
+    return graph;
+  }
+  return preseedGraph(phase, spec, value, source, 'block-preseed', 'Direct transfer of reviewed closed public block and undo segments.');
 }
 
 export function preseedGraph(phase, spec, offer, program, name, description, tool) {

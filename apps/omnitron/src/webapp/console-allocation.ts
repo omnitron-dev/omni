@@ -4,10 +4,11 @@ import { constants } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import { isIP } from 'node:net';
 import { withKernelFileLock } from '@xec-sh/ops/utils/file-lock';
+import { RuntimeObservationConflict, RuntimeObservationUnconfirmed } from '../daemon/runtime-observation.js';
 import { readPrivateRecord, writePrivateRecord } from '../daemon/execution-journal.js';
-import { ContainerAllocationRefused, containerSpecHash, ensureImage, preparedContainer } from '../infrastructure/container-runtime.js';
+import { ContainerAllocationRefused, containerSpecHash, ensureImage, preparedContainer, reviewedContainerState, requestReviewedContainerRemoval } from '../infrastructure/container-runtime.js';
 import { resolveOmnitronNginx } from '../infrastructure/service-resolver.js';
-import { CONSOLE_INSTANCE_LABEL, consoleContainerName, inspectInstalledConsole } from './console-container.js';
+import { CONSOLE_INSTANCE_LABEL, assertConsoleOwnership, consoleContainerName, inspectInstalledConsole } from './console-container.js';
 import type { ResolvedContainer } from '../infrastructure/types.js';
 import type { RuntimeConsoleConfigIdentity, RuntimeUpdatePlan, RuntimeUpdateReference } from '../shared/dto/runtime-update.js';
 
@@ -69,7 +70,7 @@ export class ReviewedConsoleAllocation {
   private readonly staged: ResolvedContainer;
 
   constructor(private readonly home: string, private readonly digest: string, private readonly direction: Direction,
-    private readonly release: RuntimeUpdateReference, private readonly publication: ConsolePublication) {
+    private readonly release: RuntimeUpdateReference, private readonly publication: ConsolePublication, private readonly target: RuntimeUpdateReference) {
     if (!/^[a-f0-9]{64}$/.test(digest) || !/^[a-f0-9]{64}$/.test(release.artifact) || !/^[a-f0-9]{40}$/.test(release.commit) ||
         !/^[a-f0-9]{64}$/.test(publication.containerId) || !isIP(publication.address) || !Number.isInteger(publication.port) ||
         publication.port < 1 || publication.port > 65533 || !/^[0-9]+$/.test(publication.configuration?.device) ||
@@ -105,8 +106,7 @@ export class ReviewedConsoleAllocation {
       await verified?.assertUnchanged();
       const { inspection } = await inspectInstalledConsole(this.home, this.release,
         verified && path.join(verified.directory, 'packages/0/webapp/dist'));
-      const previous = this.direction === 'previous' ? await readPrivateRecord<Allocation>(
-        path.join(this.home, 'runtime/local-updates', this.digest + '-console-target.json')) : null;
+      const previous = this.direction === 'previous' ? await this.forwardAllocation().read() : null;
       if (this.direction === 'previous' && (previous?.digest !== this.digest || previous.direction !== 'target' ||
           typeof previous.originalConfig !== 'string' || hash(previous.originalConfig) !== this.publication.configuration.sha256))
         throw Error('Cannot establish the retained Console configuration');
@@ -147,8 +147,93 @@ export class ReviewedConsoleAllocation {
     this.checkConfig(await consoleConfigIdentity(this.home), [record.sourceHash]);
   }
 
-  async assertCanonicalId(id: string): Promise<void> {
-    if ((await this.read())?.id !== id) throw Error('The canonical Console belongs to another allocation');
+  async assertPublished(id: string | undefined): Promise<void> {
+    const record = await this.read();
+    if (!id || record?.phase !== 'published' || record.id !== id)
+      throw new RuntimeObservationConflict('The serving Console differs from the published allocation');
+  }
+
+  private forwardAllocation() {
+    return new ReviewedConsoleAllocation(this.home, this.digest, 'target', this.target, this.publication, this.target);
+  }
+
+  /** Identify the predecessor on the native name. An independently renamed object or an outstanding start/rename
+   * cannot grant authority over another generation, even when the instance labels and mounts are identical. */
+  async predecessor(): Promise<string | null> {
+    const record = await this.read();
+    if (!record?.id || !['allocated', 'renaming', 'starting', 'published'].includes(record.phase))
+      throw Error('The reviewed Console has no confirmed allocation for handoff');
+    const canonical = await reviewedContainerState(this.spec.name);
+    const occupant = canonical && assertConsoleOwnership(canonical, this.home);
+    const original = occupant === this.publication.containerId ? canonical : await reviewedContainerState(this.publication.containerId);
+    if (original && (original.name !== this.spec.name || occupant !== this.publication.containerId))
+      throw Error('The reviewed incumbent moved outside its canonical name');
+
+    let predecessor = original?.containerId ?? null;
+    if (this.direction === 'previous') {
+      const forward = this.forwardAllocation(), candidate = await forward.read();
+      if (!candidate?.id) throw Error('Cannot verify the forward Console allocation during restoration');
+      if (original && candidate.phase !== 'allocated')
+        throw Error('The original Console is present after the forward allocation entered publication');
+      const native = await reviewedContainerState(candidate.id);
+      if (native) {
+        if (assertConsoleOwnership(native, this.home) !== candidate.id || native.labels?.['omnitron.creation'] !== candidate.creation ||
+            native.specHash !== candidate.specHash || native.image !== forward.spec.image)
+          throw Error('The forward Console differs from its reviewed creation');
+        if (native.name === forward.staged.name) {
+          if (candidate.phase !== 'allocated' || native.status !== 'created')
+            throw new RuntimeObservationUnconfirmed('The issued forward Console operation is unconfirmed');
+        } else if (native.name === this.spec.name && occupant === candidate.id && !original) {
+          if (!(candidate.phase === 'renaming' && native.status === 'created' ||
+                candidate.phase === 'starting' && ['running', 'paused', 'restarting', 'exited', 'dead'].includes(native.status) ||
+                candidate.phase === 'published'))
+            throw new RuntimeObservationUnconfirmed('The forward Console publication is unconfirmed');
+          predecessor = candidate.id;
+        } else throw Error('The forward Console moved outside its reviewed names');
+      } else if (candidate.phase === 'allocated') {
+        throw Error('The inactive forward Console disappeared outside its reviewed operation');
+      }
+    }
+    if (occupant === record.id) {
+      if (record.phase === 'allocated') throw Error('The prepared Docker ID was renamed outside its recorded operation');
+      return null;
+    }
+    if (occupant !== predecessor || occupant && record.phase !== 'allocated')
+      throw Error(`The canonical Console belongs to another allocation (observed ${occupant}, authorized predecessor ${predecessor}, ${this.direction} phase ${record.phase})`);
+    if (record.phase === 'allocated') await this.verify();
+    return predecessor;
+  }
+
+  /** Both directions share the retirement receipt for a native ID. Recovery observes a lost reply without
+   * issuing another removal, even when it is restoring the original build before the target ever served. */
+  async releaseCanonical(): Promise<void> {
+    const directory = path.dirname(this.file);
+    await withKernelFileLock(path.join(directory, this.digest + '-console-handoff.lock'), async () => {
+      const id = await this.predecessor();
+      if (!id) return;
+      const file = path.join(directory, this.digest + '-console-retire-' + id + '.json');
+      const saved = await readPrivateRecord<{ digest: string; id: string; state: string }>(file);
+      if (saved && (saved.digest !== this.digest || saved.id !== id || !['issued', 'refused'].includes(saved.state)))
+        throw Error('The Console retirement receipt differs from its reviewed predecessor');
+      if (saved?.state !== 'issued') {
+        await writePrivateRecord(file, { digest: this.digest, id, state: 'issued' });
+        if (await requestReviewedContainerRemoval(id) === 'refused') {
+          await writePrivateRecord(file, { digest: this.digest, id, state: 'refused' });
+          if (await reviewedContainerState(id)) throw Error('Docker refused removal of the reviewed Console ' + id);
+        }
+      }
+      const deadline = performance.now() + 30_000;
+      for (;;) {
+        let remaining;
+        try { remaining = await reviewedContainerState(id); }
+        catch (error) { throw new RuntimeObservationUnconfirmed('Cannot observe the issued Console removal for ' + id, error); }
+        if (!remaining) break;
+        if (remaining.name !== this.spec.name) throw Error('The retiring Console moved outside its canonical name');
+        if (performance.now() >= deadline) throw new RuntimeObservationUnconfirmed('Reviewed Console removal is unconfirmed for ' + id);
+        await new Promise(resolve => setTimeout(resolve, 250));
+      }
+      if (await this.predecessor()) throw Error('The canonical Console changed during retirement');
+    });
   }
 
   async discard(restored = false): Promise<void> {
@@ -171,6 +256,7 @@ export class ReviewedConsoleAllocation {
         throw Error('The prepared Console differs from the serving publication policy');
       const desired = this.direction === 'previous' ? record.originalConfig : rendered;
       if (hash(desired) !== record.desiredHash) throw Error('The rendered Console configuration changed since allocation');
+      await this.releaseCanonical();
       const id = await preparedContainer(current, { operation: 'publish', id: record.id, creation: record.creation, stagedName: this.staged.name,
         issued: record.phase === 'allocated' || record.phase === 'renaming' ? record.phase : 'starting',
         configure: async running => {

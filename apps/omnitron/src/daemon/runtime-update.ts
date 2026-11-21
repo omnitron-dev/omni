@@ -57,6 +57,8 @@ export interface RuntimeUpdateActions {
   prepare(reviewed?: RuntimeUpdatePlan): Promise<RuntimeUpdatePlan>;
   /** Allocate the selected Console before admission or retirement of the serving processes. */
   prepareConsole(plan: RuntimeUpdatePlan, direction: 'target' | 'previous'): Promise<void>;
+  /** After process retirement, release only the exact native predecessor for the selected Console. */
+  retireConsole(plan: RuntimeUpdatePlan, direction: 'target' | 'previous'): Promise<void>;
   /** Quiesce only the reviewed backup attempts, then obtain the strict certificate. */
   admit(plan: RuntimeUpdatePlan, digest: string): Promise<void>;
   /** Release only this plan's admission; never stop or restore application processes. */
@@ -143,14 +145,16 @@ export async function runRuntimeUpdate({ actions, directory, operation, digest: 
     };
     const prepareConsole = async (plan: RuntimeUpdatePlan, direction: 'target' | 'previous') => {
       if (!plan.consolePublication || !record) return;
-      const startedAt = record.consoleAllocation?.[direction]?.startedAt ?? new Date().toISOString();
-      const allocating = { consoleAllocation: { ...record.consoleAllocation, [direction]: { startedAt } } };
+      const timing = record.consoleAllocation?.[direction] ?? { startedAt: new Date().toISOString() };
+      const allocating = { consoleAllocation: { ...record.consoleAllocation, [direction]: timing } };
       // An accepted candidate is still serving. Fence manual Console operations
       // before preparing its rollback, using a phase understood by old controllers.
       if (direction === 'previous' && record.phase === 'accepted') await withInstancePolicy(plan.instance, () => save('stopping-candidate', allocating));
       else await save(record.phase, allocating);
       await actions.prepareConsole(plan, direction);
-      await save(record.phase, { consoleAllocation: { ...record.consoleAllocation, [direction]: { startedAt, readyAt: new Date().toISOString() } } });
+      if (!timing.readyAt) await save(record.phase, { consoleAllocation: {
+        ...record.consoleAllocation, [direction]: { ...timing, readyAt: new Date().toISOString() },
+      } });
     };
     const releaseAdmission = async (error?: string) => {
       if (!record || record.phase !== 'draining') throw Error('No runtime update admission is pending');
@@ -202,6 +206,7 @@ export async function runRuntimeUpdate({ actions, directory, operation, digest: 
           await actions.withRollbackAdmission(plan, live, stop);
           await actions.assertStopped(live);
         }
+        if (plan.consolePublication) await actions.retireConsole(plan, 'previous');
         await save('restoring', { restoreAttempted: true });
         await actions.start(plan.before, plan, restoration);
         const acceptance = await actions.accept(plan, 'previous');
@@ -292,6 +297,7 @@ export async function runRuntimeUpdate({ actions, directory, operation, digest: 
     try {
       await actions.stop(plan.before);
       await actions.assertStopped(plan.before);
+      if (plan.consolePublication) await actions.retireConsole(plan, 'target');
       await save('starting');
       await actions.start(plan.target, plan);
       await save('verifying');

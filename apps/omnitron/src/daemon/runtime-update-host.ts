@@ -338,7 +338,7 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
     if (!cleanBuild(stamp)) throw Error('Mounted Console has no clean installed build');
     const timeout = AbortSignal.timeout(observation?.remaining(5000) ?? 5000);
     await assertConsoleBuild(state, stamp, observation ? AbortSignal.any([observation.signal, timeout]) : timeout, home);
-    if (!reviewPublication) return { artifact: id, commit: stamp.commit };
+    if (!reviewPublication) return { artifact: id, commit: stamp.commit, containerId };
     const bindings = state.portBindings?.['80/tcp'];
     const config = state.mounts?.find(volume => volume.target === '/etc/nginx/nginx.conf');
     if (bindings?.length !== 1 || !config?.readOnly || config.source !== path.join(home, 'webapp/nginx/nginx.conf'))
@@ -349,7 +349,7 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
   const allocation = (plan: RuntimeUpdatePlan, direction: 'target' | 'previous') => {
     const release = reviewedRuntimeConsole(plan, direction);
     return release && plan.consolePublication
-      ? new ReviewedConsoleAllocation(home, runtimeUpdatePlanDigest(plan), direction, release, plan.consolePublication) : null;
+      ? new ReviewedConsoleAllocation(home, runtimeUpdatePlanDigest(plan), direction, release, plan.consolePublication, plan.target) : null;
   };
   const installationState = async (observation?: RuntimeObservation) => {
     const state = await observeCall<{ directory: string; selection: RuntimeSelection | null; activation: unknown }>(['backend', 'installation'], observation);
@@ -511,6 +511,7 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
       const reviewedConsole = reviewedRuntimeConsole(plan, direction);
       if (web.artifact !== (reviewedConsole?.artifact ?? null) || web.commit !== (reviewedConsole?.commit ?? null))
         throw new RuntimeObservationConflict('The serving Console has not reached its reviewed version');
+      await allocation(plan, direction)?.assertPublished(web.containerId);
       if (stacks.targets.length !== plan.stacks.length || !isDeepStrictEqual(stacks.excluded, plan.excluded))
         throw new RuntimeObservationConflict('Local stack membership differs from the plan');
       const observed = new Map(stacks.targets.map(stack => [projectKey(stack), stack]));
@@ -648,6 +649,11 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
       await selected.prepare(generateNginxConfig('host.docker.internal', port + 1, port + 2),
         proof ? { directory: reference.directory, assertUnchanged: proof.assertUnchanged } : undefined);
     },
+    async retireConsole(plan, direction) {
+      const selected = allocation(plan, direction);
+      if (!selected) throw Error('Cannot establish reviewed Console handoff authority');
+      await selected.releaseCanonical();
+    },
     async admit(plan, planDigest) {
       if (!plan.configuration) throw Error('Runtime update admission requires retained next-start intent');
       const web = await consoleState(undefined, Boolean(plan.consolePublication));
@@ -668,9 +674,7 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
     },
     async validateStop(previous, plan, rollbackPlan, verifyAllocation = true) {
       if (rollbackPlan?.consolePublication) {
-        await allocation(rollbackPlan, 'previous')?.verify();
-        const serving = await getContainerState(consoleContainerName(home), { orThrow: true, fullId: true });
-        if (serving) await allocation(rollbackPlan, 'target')?.assertCanonicalId(assertConsoleOwnership(serving, home));
+        await allocation(rollbackPlan, 'previous')?.predecessor();
       }
       if (previous.backendPid === null) {
         if (plan) throw Error('Native empty-owner evidence cannot authorize an ordinary update');

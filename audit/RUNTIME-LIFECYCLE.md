@@ -74,34 +74,59 @@ the same name. The host verifies the immutable ID, read-only mounts, image,
 ownership labels, resources, configured host binding and `Created` state
 before requesting backup admission. It checks the allocation and incumbent
 again before issuing shutdown. The private journal records when allocation
-started, when it became ready and whether the host requested admission.
+started, when it first became ready and whether the host requested admission.
+A repeated recovery checks the same native ID while retaining both timestamps.
+Each new reviewed transition records its own timings.
 
-The cold controller renames and starts that exact ID after the old canonical
-name and port are released. It verifies the native identity before updating
-the configuration through its checked file descriptor. A replay observes the
-same ID and the issued native operation. Health, effective port publication
+A supervised `omnitron down` unloads the native service and can return after
+the backend exits while its nginx still serves. After confirming the reviewed
+processes have retired, the host checks the canonical Console name and the exact
+predecessor. When the incumbent still occupies that name it records its full ID
+before submitting one Docker removal. Handoff waits for native inspection to
+confirm that ID disappeared and checks the name again. A lost reply leaves the
+request in the private plan journal. Both forward publication and restoration
+observe that same request on retry. A different ID, including one belonging to
+the same instance, keeps the handoff pending.
+
+The cold controller then renames and starts the allocated ID. It verifies the
+native identity before updating the configuration through its checked file descriptor. A replay observes the
+same ID and the issued native operation. The independent host acceptance also
+checks the serving ID against the published allocation receipt. Health, effective port publication
 and HTTP BUILD must all match. A rejected create leaves the incumbent and
 applications in place. An unresolved create remains inactive and its receipt
 retains the nonce until recovery can account for the outcome.
 
 An explicit rollback preallocates the reviewed previous Console while the
 candidate still serves. Its assets and original nginx configuration bytes
-come from the reviewed release and private receipt. A failed rollback allocation
-preserves the accepted candidate. Legacy transactions and targets without the
-new capability continue using the original cold-start contract.
+come from the reviewed release and private receipt. Before retiring a candidate,
+the host verifies which Console actually occupies the native name. The original
+reviewed ID can still serve when the forward allocation is staged in `Created`.
+A candidate on the canonical name must match its allocation ID, creation nonce
+and issued publication phase. A rename or start whose outcome is unknown keeps
+recovery pending until native evidence settles it. A failed rollback allocation
+preserves the accepted candidate.
+
+An installed CLI containing this handoff can run `omnitron runtime update
+recover <full-plan-sha256>` for an earlier interrupted preparation. It releases
+the reviewed predecessor after process retirement and before issuing the cold
+start, so the previously sealed starter can publish its verified allocation.
+The current receipt records whether a restoration has already been issued.
+An issued process start continues through the existing observation path.
+Legacy transactions and targets without the capability use the original
+cold-start contract.
 
 A permanent nginx with a switchable directory would require a different mount
-layout. Existing releases bind the exact immutable asset directory, derive the
-rollback release from that physical path and remove the owned canonical
-container on cold shutdown. Preallocation supports the first handoff from
-such a release without changing its filesystem or shutdown code.
+layout. Existing releases bind the exact immutable asset directory and derive
+the rollback release from that physical path. The handoff handles both a
+shutdown which removed the old container and a shutdown which preserved it.
 
 `test/integration/console-preallocation.test.ts` runs the update coordinator
 and cold WebappService with a controlled Docker boundary, a loopback HTTP
 server, sealed asset trees and two OS application processes. It checks their
-PIDs during delayed refusal, loss of create/rename/start replies, substitution
-of a native identity, changed configuration content or inode, normal
-publication and rollback to the independently retained artifact.
+PIDs during delayed refusal, loss of create/remove/rename/start replies,
+substitution of a native identity, changed configuration content or inode,
+supervised shutdown with a serving nginx, and rollback with an incumbent or
+a published candidate on the canonical name.
 
 An isolated OrbStack run used the shipped bf935080 and 7a59d5a0 Console
 assets on one loopback port. The inactive successor took 52.143 seconds to

@@ -13,7 +13,7 @@ const sha = (value: unknown): value is string => typeof value === 'string' && /^
 type Direction = 'target' | 'previous';
 export interface ColdBatch {
   digest: string; phase: string; direction: Direction;
-  artifact: string; ownerArtifact: string; before: RuntimeUpdatePlan['before']; retiringOwner: RuntimeUpdateOwner; target: string;
+  artifact: string; ownerArtifact: string; before: RuntimeUpdatePlan['before']; retiringOwner: RuntimeUpdateOwner; target: string; targetCommit: string;
   console: RuntimeUpdatePlan['target'] | null;
   consolePublication?: NonNullable<RuntimeUpdatePlan['consolePublication']>;
   database: string | null; stacks: ReviewedRuntimeUpdateStack[]; excluded: RuntimeUpdatePlan['excluded'];
@@ -52,7 +52,7 @@ export async function readColdBatch(instance: string): Promise<ColdBatch | null>
       typeof retiringOwner.ownerLifetime !== 'string' || compareProcessLifetimes(retiringOwner.ownerLifetime, retiringOwner.ownerLifetime) !== 'same')
     throw Error('Cannot identify the retiring execution owner');
   return { digest: receipt.digest, phase: receipt.phase, direction, retiringOwner, artifact: direction === 'target' || plan.configuration ? plan.target.artifact : plan.before.backend,
-    ownerArtifact: direction === 'target' ? plan.target.artifact : plan.before.owner, before: plan.before, target: plan.target.artifact,
+    ownerArtifact: direction === 'target' ? plan.target.artifact : plan.before.owner, before: plan.before, target: plan.target.artifact, targetCommit: plan.target.commit,
     console: reviewedRuntimeConsole(plan, direction), database: plan.infrastructure.database, stacks: plan.stacks, excluded: plan.excluded,
     ...(plan.consolePublication && { consolePublication: plan.consolePublication }),
     ...(plan.configuration && { configuration: plan.configuration.sha256 }) };

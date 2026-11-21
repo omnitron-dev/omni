@@ -526,6 +526,44 @@ export function containerObservation(info: NativeContainerObservation, name: str
   };
 }
 
+/** Native inspection by name or immutable ID. Only a precise Docker absence reply establishes absence. */
+async function inspectDockerContainer(ref: string, mounts: boolean, id?: string, timeout?: number) {
+  try {
+    const result = await executeDocker(['container', 'inspect', '--format', creationInspectFormat(mounts), '--', ref], {
+      ...(timeout !== undefined && { timeout }), redactOutput: false,
+    });
+    let raw: NativeContainerObservation | undefined;
+    try { [raw] = JSON.parse(result.stdout) as NativeContainerObservation[]; }
+    catch { throw Error('Docker returned invalid container inspection data'); }
+    if (!raw?.Id || !/^[a-f0-9]{64}$/.test(raw.Id) || id && raw.Id !== id)
+      throw Error('Docker did not confirm the immutable container ID');
+    return { ...raw, Id: raw.Id };
+  } catch (error) {
+    const stderr = (error as { stderr?: string })?.stderr;
+    if (definiteDockerFailure(error) && /^(?:Error(?: response from daemon)?:\s*)?no such (?:object|container):\s*(.+)$/i.exec(stderr!.trim())?.[1] === ref)
+      return null;
+    throw error;
+  }
+}
+
+export async function reviewedContainerState(ref: string) {
+  const byId = /^[a-f0-9]{64}$/.test(ref);
+  const raw = await inspectDockerContainer(ref, true, byId ? ref : undefined);
+  if (raw && !byId && raw.Name !== '/' + ref) throw Error('Docker did not confirm the reviewed container name');
+  return raw ? containerObservation(raw, ref, true) : null;
+}
+
+/** The caller records intent before this single request and reconciles its immutable ID after any unknown reply. */
+export async function requestReviewedContainerRemoval(id: string): Promise<'issued' | 'refused'> {
+  if (!/^[a-f0-9]{64}$/.test(id)) throw Error('Reviewed Docker removal requires an immutable container ID');
+  try { await executeDocker(['container', 'rm', '--force', '--', id]); }
+  catch (error) {
+    if (definiteDockerFailure(error) && !/removal.+in progress|marked for removal/i.test((error as { stderr: string }).stderr))
+      return 'refused';
+  }
+  return 'issued';
+}
+
 /**
  * Get state of a specific container by name.
  */
@@ -818,39 +856,24 @@ async function provisionContainer(config: ResolvedContainer, options: { fullId?:
     // Address an acknowledged allocation by immutable ID. Only after a lost
     // create reply is the name needed to discover that ID.
     const ref = id ?? config.name;
-    try {
-      const result = await executeDocker(['container', 'inspect', '--format', creationInspectFormat(Boolean(staged)), '--', ref], {
-        timeout: remaining('inspection', id), redactOutput: false,
-      });
-      let raw: NativeContainerObservation | undefined;
-      try {
-        [raw] = JSON.parse(result.stdout) as NativeContainerObservation[];
-      } catch {
-        throw Error('Docker returned invalid container inspection data');
-      }
-      if (!raw?.Id || !/^[a-f0-9]{64}$/.test(raw.Id) || id && raw.Id !== id)
-        throw Error('Docker did not confirm the immutable container ID');
-      if ((raw.Name !== '/' + config.name && !(staged?.operation === 'publish' && raw.Name === '/' + staged.stagedName)) ||
-          raw.Config?.Labels?.['omnitron.creation'] !== creation)
-        throw Error(`Container '${config.name}' belongs to another creation`);
-      const actual = containerObservation(raw, ref, true);
-      if (actual.specHash !== labels[SPEC_HASH_LABEL]) throw Error('The Docker specification hash differs for ' + raw.Id);
-      if (actual.image !== config.image) throw Error('The Docker image differs for ' + raw.Id);
-      if (!Object.entries(labels).every(([key, value]) => actual.labels?.[key] === value))
-        throw Error('The Docker ownership labels differ for ' + raw.Id);
-      if (staged && (!actual.mounts || config.volumes.length !== actual.mounts.length ||
-          !config.volumes.every(volume => actual.mounts!.some(mount => mount.source === volume.source &&
-            mount.target === volume.target && mount.readOnly === Boolean(volume.readonly)))))
-        throw Error('The native mounts differ for the prepared container ' + raw.Id);
-      if (staged && !containerResourcesMatch(config, actual)) throw Error('The native resource limits differ for the prepared container ' + raw.Id);
-      if ((actual.status === 'created' || actual.status === 'running') && publication(raw.HostConfig?.PortBindings, raw.Id) !== 'published')
-        throw Error('The configured Docker port bindings differ for ' + raw.Id);
-      return { ...actual, id: raw.Id, publication: actual.status === 'running' ? publication(raw.NetworkSettings?.Ports, raw.Id) : 'unconfirmed' };
-    } catch (error) {
-      const stderr = (error as { stderr?: unknown })?.stderr;
-      if (typeof stderr === 'string' && /^(?:Error(?: response from daemon)?:\s*)?no such (?:object|container):\s*(.+)$/i.exec(stderr.trim())?.[1] === ref) return null;
-      throw error;
-    }
+    const raw = await inspectDockerContainer(ref, Boolean(staged), id, remaining('inspection', id));
+    if (!raw) return null;
+    if ((raw.Name !== '/' + config.name && !(staged?.operation === 'publish' && raw.Name === '/' + staged.stagedName)) ||
+        raw.Config?.Labels?.['omnitron.creation'] !== creation)
+      throw Error(`Container '${config.name}' belongs to another creation`);
+    const actual = containerObservation(raw, ref, true);
+    if (actual.specHash !== labels[SPEC_HASH_LABEL]) throw Error('The Docker specification hash differs for ' + raw.Id);
+    if (actual.image !== config.image) throw Error('The Docker image differs for ' + raw.Id);
+    if (!Object.entries(labels).every(([key, value]) => actual.labels?.[key] === value))
+      throw Error('The Docker ownership labels differ for ' + raw.Id);
+    if (staged && (!actual.mounts || config.volumes.length !== actual.mounts.length ||
+        !config.volumes.every(volume => actual.mounts!.some(mount => mount.source === volume.source &&
+          mount.target === volume.target && mount.readOnly === Boolean(volume.readonly)))))
+      throw Error('The native mounts differ for the prepared container ' + raw.Id);
+    if (staged && !containerResourcesMatch(config, actual)) throw Error('The native resource limits differ for the prepared container ' + raw.Id);
+    if ((actual.status === 'created' || actual.status === 'running') && publication(raw.HostConfig?.PortBindings, raw.Id) !== 'published')
+      throw Error('The configured Docker port bindings differ for ' + raw.Id);
+    return { ...actual, id: raw.Id, publication: actual.status === 'running' ? publication(raw.NetworkSettings?.Ports, raw.Id) : 'unconfirmed' };
   };
   const sweepStaleEndpoint = async () => {
     if (!config.network) return 0;

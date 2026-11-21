@@ -287,7 +287,7 @@ export class WebappService {
       if (batch && Boolean(batch.console) !== enabled) throw Error('Saved Console policy differs from the reviewed local update');
       if (enabled && prepared) {
         const allocation = batch?.consolePublication && batch.console
-          ? new ReviewedConsoleAllocation(OMNITRON_HOME, batch.digest, batch.direction, batch.console, batch.consolePublication) : undefined;
+          ? new ReviewedConsoleAllocation(OMNITRON_HOME, batch.digest, batch.direction, batch.console, batch.consolePublication, { artifact: batch.target, commit: batch.targetCommit }) : undefined;
         await this.startLocked(false, prepared, false, allocation);
       }
     });
@@ -341,7 +341,6 @@ export class WebappService {
     };
 
     if (allocation) {
-      if (priorId) await allocation.assertCanonicalId(priorId);
       return { ...await confirm(await allocation.publish(spec, nginxConfig)), autoStart: readSavedDaemonConfig()?.webapp ?? null };
     }
     if (!force && prior?.status === 'running' && prior.specHash === hash && appliedConfig === nginxConfig) {
@@ -361,6 +360,7 @@ export class WebappService {
   async stop(shutdown = false): Promise<boolean | null> {
     const stop = async () => {
       if (shutdown && !readSavedDaemonConfig()?.webapp) return null;
+      if (shutdown && (await readColdBatch(OMNITRON_HOME))?.consolePublication) return true;
       const inspect = () => getContainerState(consoleContainerName(), { orThrow: true, fullId: true });
       const state = await inspect();
       const id = state && assertConsoleOwnership(state);

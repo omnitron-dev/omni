@@ -31,6 +31,7 @@ import { buildInfraFromRequirements, requirementsFromDefinitions } from '../proj
 import { randomUUID, createHash } from 'node:crypto';
 import { NodeStackStop, stackDefinitionFingerprint, type NodeStackStopExecution, type NodeStackStopRequest, type NodeStackStopPlan, type NodeStackStopInventory, type NodeStackStopReceipt } from '../project/node-stack-stop.js';
 import { stackStopReview, type StopReviewTarget } from '../project/stack-stop-review.js';
+import { retainedDatabaseBinding } from '../project/retained-database-backup.js';
 import type { StopPermit, StopRecipient } from '../cluster/stop-authority.js';
 import type { LeaderElection } from '../cluster/leader-election.js';
 import { inspectStackContainers, removeContainer } from '../infrastructure/container-runtime.js';
@@ -2563,6 +2564,8 @@ export class ProjectService extends EventEmitter {
           persist();
         }
       } else if (localPlan && localInventory) {
+        const owner = keepInfrastructure ? this.infraManager.getInstance(projectName, stackName) : null;
+        const registration = owner ? this.registry.get(projectName) : null;
         const verifyRetained = async () => {
           const retained = await this.infraManager.inspectStopContainers(projectName, stackName);
           if (!isDeepStrictEqual([...retained].sort((a, b) => a.id.localeCompare(b.id)),
@@ -2570,12 +2573,24 @@ export class ProjectService extends EventEmitter {
             throw new Error('Retained stack infrastructure changed; inspect before confirming this application stop');
         };
         if (keepInfrastructure) {
-          await this.infraManager.getInstance(projectName, stackName)?.holdForPreservation();
+          await owner?.holdForPreservation();
           await verifyRetained();
         }
-        await this.orchestrator.stopStackExecution({ operationId: progress.id, plan: localPlan });
-        if (keepInfrastructure) await verifyRetained();
-        else await this.infraManager.teardownStack(projectName, stackName, localInventory.containers);
+        const stopped = await this.orchestrator.stopStackExecution({ operationId: progress.id, plan: localPlan });
+        if (keepInfrastructure) {
+          await verifyRetained();
+          if (!prepared.length && owner && registration && stopped?.operationId === progress.id &&
+              stopped.project === scope.project && stopped.stack === scope.stack) {
+            try {
+              if (ownsStackInfrastructure(stackConfig)) {
+                const binding = retainedDatabaseBinding(scope, progress.id, stopped.revision, registration, owner.getDefinition(), localInventory.containers);
+                if (binding) progress.retainedDatabaseSha256 = binding.digest;
+              }
+            } catch {
+              this.logger.warn(scope, 'Could not record a database backup binding for the completed application stop');
+            }
+          }
+        } else await this.infraManager.teardownStack(projectName, stackName, localInventory.containers);
       }
       if (prepared.length) {
         const failures: string[] = [];
@@ -3684,6 +3699,60 @@ export class ProjectService extends EventEmitter {
    */
   getInfraManager(): StackInfrastructureManager {
     return this.infraManager;
+  }
+
+  /** Read a named database from a completed local stop when a cold owner has no infrastructure instance. */
+  async inspectRetainedDatabaseBackup(scope: StackExecutionScope, database: string) {
+    const key = stackExecutionKey(scope);
+    if (!database || database.includes('\0') || Buffer.byteLength(database) > 63)
+      throw Error('A valid PostgreSQL database name is required for a retained backup');
+    const registration = this.registry.get(scope.project), config = this.getLoadedConfig(scope.project);
+    if (!registration || isControlPlaneWorkspace(registration.path) || !config)
+      throw Error(`Retained database backup requires the registered, loaded project '${scope.project}'`);
+    const stack = this.resolveStacks(config, scope.project)[scope.stack];
+    if (!stack || stack.type !== 'local' || stack.managedOrigin || !ownsStackInfrastructure(stack))
+      throw Error(`Retained database backup requires an independently owned local stack '${key}'`);
+    const readStop = () => this.daemonStateStore.kvGetSync<StackStopProgress>(`stack:${key}:last-stop`, { strict: true });
+    const stop = readStop();
+    if (!stop?.id || stop.phase !== 'stopped' || stop.keepInfrastructure !== true || stop.intentCommitted !== true ||
+        stop.supersededAt || !Array.isArray(stop.nodes) || stop.nodes.length || registration.enabledStacks?.includes(scope.stack))
+      throw Error(`No current completed local stop with retained infrastructure for '${key}'`);
+    if (!stop.retainedDatabaseSha256)
+      throw Error(`The stop for '${key}' has no retained database identity. A fresh --keep-infrastructure stop from the owning stack is required for a cold backup.`);
+    const registry = this.recoveryRegistryDigest();
+    const selection = this.localSelection(scope.project, scope.stack).read();
+    const declaration = stackDefinitionFingerprint(stack);
+    const assertCurrent = () => {
+      if (this.clusterStop || this.ownershipFrozen || this.resumingInstalled || this.startsInFlight.has(key) || this.stopsInFlight.has(key) ||
+          this.rereading?.has(scope.project) || this.infraManager.getInstance(scope.project, scope.stack) ||
+          this.recoveryRegistryDigest() !== registry || this.getLoadedConfig(scope.project) !== config ||
+          stackDefinitionFingerprint(this.resolveStacks(config, scope.project)[scope.stack] ?? null) !== declaration ||
+          !isDeepStrictEqual(selection, this.localSelection(scope.project, scope.stack).read()) || !isDeepStrictEqual(stop, readStop()))
+        throw Error(`Ownership, stop or declarations changed for '${key}' during retained backup admission`);
+      this.nodeStackStop.assertMutable(scope);
+    };
+    assertCurrent();
+    const { entries, installation } = await this.inspectLaunch(scope.project, scope.stack, stack, config);
+    const definitions = this.preservationDefinitions(scope.project, scope.stack, entries);
+    const effective = mergeInferredInfrastructure(buildInfraFromRequirements(requirementsFromDefinitions(definitions)),
+      installation?.infrastructure ?? mergeInfrastructure(config, stack));
+    const { definition, review } = await this.infraManager.inspectPreservedBindings(scope.project, scope.stack, stack,
+      effective ?? {}, definitions, registration.path, 'backup');
+    if (review.scope?.project !== scope.project || review.scope.stack !== scope.stack)
+      throw Error(`Native infrastructure ownership is unconfirmed for '${key}'`);
+    const execution = await this.orchestrator.inspectStackExecution(scope);
+    const declaredApps = new Set(entries.map(entry => ProjectService.handleKey(scope.project, scope.stack, entry.name)));
+    if (execution.project !== scope.project || execution.stack !== scope.stack || execution.phase !== 'stopped' ||
+        execution.apps.some(({ name }) => {
+          const app = this.orchestrator.getApp(name);
+          return !declaredApps.has(name) || app?.status !== 'stopped' || !!app.pid;
+        })) throw Error(`Application stop is unconfirmed for '${key}'`);
+    const binding = retainedDatabaseBinding(scope, stop.id, execution.revision, registration, definition, review.containers);
+    if (!binding || binding.digest !== stop.retainedDatabaseSha256)
+      throw Error(`The registration, declared databases or native infrastructure differ from the confirmed stop for '${key}'`);
+    if (!binding.names.includes(database)) throw Error(`PostgreSQL database '${database}' is not declared for '${key}'`);
+    assertCurrent();
+    return { dbConfig: { ...binding.connection, database }, containerName: binding.containerName, id: binding.id, assertCurrent };
   }
 
   /** Cached declarations plus persisted intent; this query never starts infrastructure. */

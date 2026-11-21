@@ -109,6 +109,12 @@ export type { BackupPassOutcome, BackupPassEntry, BackupOrigin, BackupRecord, Ba
 /** The daemon's own control-plane database: the audit log, deployments, runs. */
 const CONTROL_PLANE_DB = 'omnitron';
 
+/** Each tool's -d accepts a libpq connection string as well as a literal database name. */
+function postgresDatabaseArgument(name: string): string {
+  return name.includes('=') || /^postgres(?:ql)?:\/\//.test(name)
+    ? "dbname='" + name.replace(/['\\]/g, '\\$&') + "'" : name;
+}
+
 /** A failure's own words, without the "Backup failed for 'x':" every wrapper adds. */
 function reasonOf(err: unknown): string {
   const e = err as Error & { cause?: unknown };
@@ -540,9 +546,11 @@ export class BackupService {
     inputs: unknown, effect: (execution: Pick<ExecutionService, 'execute'>, options: PipelineOptions) => Promise<T>,
     artifact?: (value: T) => OperationArtifact): Promise<T> {
     const { dbConfig, origin } = target;
-    const binding = target.isDocker ? await this.execution.inspectDockerTarget(target.containerName) : undefined;
+    const binding = target.isDocker ? await this.execution.inspectDockerTarget(target.retained?.id ?? target.containerName) : undefined;
+    if (target.retained && binding?.id !== target.retained.id) throw Error('The execution adapter could not confirm the retained database container ID');
     await this.assertRuntimeAdmission();
     if (this.quiescing) throw new Error('Backup admission is paused for runtime update');
+    target.retained?.assertCurrent();
     const prepared = this.operations.prepare({ id, kind,
       resources: [{ kind: 'database', name: dbConfig.database,
         ...(origin === 'control-plane' ? { project: 'omnitron', stack: 'control-plane' } : origin) },
@@ -788,9 +796,18 @@ export class BackupService {
   // Create backup
   // ===========================================================================
 
-  async createBackup(database: string, options?: { compress?: boolean; operationId?: string }): Promise<BackupRecord> {
-    return this.trackOperation(() => {
-      const target = this.resolveDbTarget(database), id = options?.operationId ?? randomUUID();
+  async createBackup(database: string, options?: { compress?: boolean; operationId?: string },
+    source: 'explicit' | 'inventory' = 'explicit'): Promise<BackupRecord> {
+    return this.trackOperation(async () => {
+      const parts = database.split('/');
+      let target: ResolvedDb;
+      if (source === 'explicit' && parts.length === 3 && parts.every(Boolean) && this.projects &&
+          !this.projects.getInfraManager().getInstance(parts[0]!, parts[1]!)) {
+        const origin = { project: parts[0]!, stack: parts[1]! };
+        const { dbConfig, containerName, id, assertCurrent } = await this.projects.inspectRetainedDatabaseBackup(origin, parts[2]!);
+        target = { dbConfig, containerName, isDocker: true, origin, retained: { id, assertCurrent } };
+      } else target = this.resolveDbTarget(database);
+      const id = options?.operationId ?? randomUUID();
       return this.databaseOperation('backup', target, id, { compress: options?.compress !== false },
         (execution, pipelineOptions) => this.createDatabaseBackup(database, target, id, execution, pipelineOptions, options),
         record => ({ id: record.id, sizeBytes: record.size }));
@@ -1705,7 +1722,7 @@ export class BackupService {
           }
           if (this.excludesScheduledDatabase(target)) entry = { target, ok: false, excludedByPolicy: true };
           else {
-            const info = await this.createBackup(target, { compress: true });
+            const info = await this.createBackup(target, { compress: true }, 'inventory');
             entry = { target: database, ok: true, id: info.id, size: info.size };
           }
         } catch (err) {
@@ -1827,7 +1844,7 @@ export class BackupService {
   ): Promise<void> {
     await dumpToFile(
       execution, '-h',
-      ['127.0.0.1', '-U', config.user, '-d', config.database],
+      ['127.0.0.1', '-U', config.user, '-d', postgresDatabaseArgument(config.database)],
       outputPath,
       compress,
       options,
@@ -1844,7 +1861,7 @@ export class BackupService {
   ): Promise<void> {
     await restoreFromFile(
       execution, '-X',
-      ['-v', 'ON_ERROR_STOP=1', '--single-transaction', '-h', '127.0.0.1', '-U', config.user, '-d', config.database],
+      ['-v', 'ON_ERROR_STOP=1', '--single-transaction', '-h', '127.0.0.1', '-U', config.user, '-d', postgresDatabaseArgument(config.database)],
       inputPath,
       compressed,
       options,
@@ -1871,7 +1888,7 @@ export class BackupService {
     await dumpToFile(
       execution,
       'pg_dump',
-      ['-h', config.host, '-p', String(config.port), '-U', config.user, '-d', config.database],
+      ['-h', config.host, '-p', String(config.port), '-U', config.user, '-d', postgresDatabaseArgument(config.database)],
       outputPath,
       compress,
       { ...options, env: { PGPASSWORD: config.password } }
@@ -1883,7 +1900,7 @@ export class BackupService {
     await restoreFromFile(
       execution,
       'psql',
-      ['-X', '-v', 'ON_ERROR_STOP=1', '--single-transaction', '-h', config.host, '-p', String(config.port), '-U', config.user, '-d', config.database],
+      ['-X', '-v', 'ON_ERROR_STOP=1', '--single-transaction', '-h', config.host, '-p', String(config.port), '-U', config.user, '-d', postgresDatabaseArgument(config.database)],
       inputPath,
       compressed,
       { ...options, env: { PGPASSWORD: config.password } }
@@ -2085,7 +2102,7 @@ export class BackupService {
         continue;
       }
       try {
-        const info = await this.createBackup(target, { compress: true });
+        const info = await this.createBackup(target, { compress: true }, 'inventory');
         results.push({ database: d.database, ...where, ok: true, id: info.id, size: info.size });
       } catch (err) {
         results.push({ database: d.database, ...where, ok: false, error: (err as Error).message });
@@ -2118,6 +2135,7 @@ interface ResolvedDb {
   isDocker: boolean;
   containerName: string;
   origin: BackupOrigin;
+  retained?: { id: string; assertCurrent: () => void };
 }
 
 interface DbConfig {

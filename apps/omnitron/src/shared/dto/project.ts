@@ -248,6 +248,8 @@ export interface InstalledStackResumeResult {
 }
 
 export interface StackStopProgress {
+  /** Binds this local stop to its registration, PostgreSQL databases and retained native container identities. */
+  retainedDatabaseSha256?: string;
   backupWindow?: { id: string; target: string; expiresAt: string };
   keepInfrastructure?: true;
   intentCommitted?: boolean;

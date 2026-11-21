@@ -177,7 +177,7 @@ export class StackInfrastructureManager {
    * only after its complete definition matches the still-running containers. */
   async inspectPreservedBindings(
     project: string, stack: string, config: IStackConfig, infrastructure: InfrastructureConfig,
-    definitions?: Map<string, import('../config/types.js').IAppDefinition>, directory?: string,
+    definitions?: Map<string, import('../config/types.js').IAppDefinition>, directory?: string, operation: 'migration' | 'backup' = 'migration',
   ) {
     if (!ownsStackInfrastructure(config)) throw Error('This stack does not own its infrastructure');
     const retained = this.getInstance(project, stack), allocated = this.getPortAllocation(project, stack);
@@ -186,7 +186,8 @@ export class StackInfrastructureManager {
     const definition = retained?.getDefinition() ?? await withInfrastructureScope(project, stack,
       () => this.resolveStackDefinition(project, stack, config, infrastructure, allocation, definitions, directory));
     const review = await reviewExistingContainers([...definition.containers], undefined, { project, stack });
-    if (!review.digest) throw preservationFailure('Preserved stack connection bindings could not be verified; no migration was executed', review);
+    if (!review.digest) throw preservationFailure(operation === 'backup' ? 'Preserved stack connection bindings could not be verified for backup'
+      : 'Preserved stack connection bindings could not be verified; no migration was executed', review);
     return { allocation, definition, review };
   }
 

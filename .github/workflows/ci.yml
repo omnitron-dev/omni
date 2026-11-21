@@ -260,9 +260,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       # Owns a unique Compose project and tears it down on success or failure.
-      # Run every package's normal suite, in addition to the focused gates above.
+      # The Console test command selects UI tests already included by the Omnitron suite.
       # Packages are already built; keep forced tests without rebuilding prerequisites.
-      - run: pnpm test:ci --only
+      - run: pnpm test:ci --only --filter='!@omnitron/console'
         env:
           OMNITRON_HOME: ${{ runner.temp }}/omnitron-test-home
           OMNITRON_TEST_EVIDENCE_DIR: ${{ runner.temp }}/omnitron-verification

@@ -4,7 +4,6 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { serviceDataDefinition } from '../commands/service-data-preseed.js';
 
 const [runtime, fixturePort, key, graphFile, specFile] = process.argv.slice(2);
 const port = Number(fixturePort);
@@ -12,7 +11,16 @@ assert(Number.isInteger(port) && port > 1024 && port <= 65535);
 const graph = JSON.parse(await fs.readFile(graphFile)),
   spec = JSON.parse(await fs.readFile(specFile));
 assert.equal(spec.project, 'fixture');
-assert.deepEqual(graph, await serviceDataDefinition('bootstrap-receiver', spec));
+const normalExport = JSON.parse(
+  execFileSync(path.resolve('node_modules/.bin/xec'), ['service-data-preseed', 'bootstrap-receiver', specFile], {
+    maxBuffer: 2 * 1024 * 1024,
+  })
+);
+assert.equal(
+  JSON.stringify(graph),
+  JSON.stringify(normalExport),
+  'The fixture must execute the reviewed exporter bytes'
+);
 const cli = path.join(runtime, 'packages/0/dist/cli/omnitron.js');
 const check = JSON.parse(execFileSync(path.join(runtime, 'node'), [cli, '--json', 'pipeline', 'check', graphFile]));
 assert(check.ok);

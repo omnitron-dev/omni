@@ -41,6 +41,8 @@ Review and run the source graph first. It verifies every Docker binding before i
 
 When the operation needs a new lease, independently update both local consents for this spec and review the two bootstrap graphs again. Use the current source public key when the receiver owner renews. Grants are bound to the exact key and deadline in the transfer review. Renewal preserves the physical stage and completed files. A sealed or revoked operation is closed.
 
+Retain the exact Xec exporter, Node runtime and zlib version with the operation. Record the SHA-256 of `xec service-data-preseed receiver-helper` before both grants and compare it on later exports. Compression may give different helper bytes under another Node build. The receiving Omnitron CLI checks and executes the exported JSON directly.
+
 Endpoint owners that already provision host grants manually can use this equivalent contract.
 
 1. The source administrator creates an operation-specific Ed25519 key. Its private half stays at `/var/lib/omnitron-service-data/UUID/identity`, root-owned mode 0600. Export only the public key for the two grants.

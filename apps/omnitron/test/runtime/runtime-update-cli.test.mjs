@@ -29,6 +29,14 @@ test('machine results preserve refusals, explicit codes and process failure with
   });
   assert.throws(() => readCommandResult('{"ok":true,"data":{"reason":"Not finished"}}', 'apply', 7), error =>
     error instanceof CommandResultError && error.message === 'Not finished' && error.exitCode === 7);
+  const review = { ok: true, data: { targets: [
+    { node: 'local', infrastructure: { checks: [
+      { resource: 'cache', state: 'pass', message: 'Ready' },
+      { resource: 'gateway', state: 'unknown', message: 'Configuration changed', environment: 'private-value' },
+    ] } }, { node: 'peer', reason: 'Declarations unavailable' },
+  ] } };
+  assert.throws(() => readCommandResult(JSON.stringify(review), 'review', 1), error =>
+    error instanceof CommandResultError && error.message === 'local: gateway: Configuration changed; peer: Declarations unavailable');
   assert.throws(() => readCommandResult('{"ok":true,"data":{}}', 'apply', 'SIGTERM'), error =>
     error instanceof CommandResultError && error.exitCode === 1);
   assert.throws(() => readCommandResult('private-output-that-is-not-json', 'status'), error =>

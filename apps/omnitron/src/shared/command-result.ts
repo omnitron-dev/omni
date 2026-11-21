@@ -3,6 +3,27 @@ type RecordValue = Record<string, unknown>;
 const record = (value: unknown): value is RecordValue => value !== null && typeof value === 'object' && !Array.isArray(value);
 const message = (value: unknown): string | undefined => typeof value === 'string' && value.trim() ? value : undefined;
 
+/** Only diagnostics declared by the review are safe to propagate across CLI and RPC boundaries. */
+export function reviewTargetFailures(targets: unknown): string[] {
+  if (!Array.isArray(targets)) return [];
+  return targets.flatMap(target => {
+    if (!record(target)) return [];
+    const node = message(target['node']) ?? message(target['name']);
+    const at = node ? node + ': ' : '';
+    const reason = message(target['reason']);
+    const failures = reason ? [at + reason] : [];
+    const infrastructure = target['infrastructure'];
+    if (record(infrastructure) && Array.isArray(infrastructure['checks'])) {
+      for (const check of infrastructure['checks']) {
+        if (!record(check) || (check['state'] !== 'blocked' && check['state'] !== 'unknown' && check['state'] !== 'change')) continue;
+        const resource = message(check['resource']), detail = message(check['message']);
+        if (resource && detail) failures.push(at + resource + ': ' + detail);
+      }
+    }
+    return failures;
+  });
+}
+
 export class CommandResultError extends Error {
   readonly code: string | number;
   readonly details: RecordValue;
@@ -12,12 +33,7 @@ export class CommandResultError extends Error {
   constructor(command: string, status: number | string, reply?: RecordValue, cause?: unknown) {
     const data = record(reply?.['data']) ? reply['data'] : undefined;
     const error = reply?.['error'];
-    const targets = Array.isArray(data?.['targets']) ? data['targets'].flatMap(target => {
-      if (!record(target)) return [];
-      const reason = message(target['reason']);
-      const name = message(target['node']) ?? message(target['name']);
-      return reason ? [name ? `${name}: ${reason}` : reason] : [];
-    }) : [];
+    const targets = reviewTargetFailures(data?.['targets']);
     const reason = message(error) ?? (record(error) ? message(error['message']) : undefined)
       ?? message(data?.['reason']) ?? message(data?.['because']) ?? (targets.length ? targets.join('; ') : undefined);
     super(reason ?? `${command} did not confirm its result. Inspect its state before retrying.`, { cause });

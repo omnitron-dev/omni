@@ -128,6 +128,22 @@ async function fixture(bootstrap = false, ownInfrastructure = false) {
   return { service, scope, config, registration, capture, boot, repo, home, release, entry, handles, owner, selector, provision, migrations, archive };
 }
 
+it('reports the blocking native resource before handing off a running stack', async () => {
+  const f = await fixture();
+  vi.mocked(f.service.infraManager.reviewPreservation).mockResolvedValue({
+    protocol: 1, mode: 'preserve', scope: f.scope, digest: null, containers: [], checks: [
+      { code: 'verified', resource: 'database', state: 'pass', message: 'Identity verified' },
+      { code: 'config', resource: 'gateway', state: 'unknown', message: 'Mounted configuration cannot be verified' },
+    ],
+  });
+  const error = await f.capture().catch((cause: unknown) => cause);
+  expect(error).toBeInstanceOf(Error);
+  expect((error as Error).message).toContain('local: gateway: Mounted configuration cannot be verified');
+  expect((error as Error).message).not.toContain('database');
+  expect(f.provision).not.toHaveBeenCalled();
+  expect(f.owner.startApp).not.toHaveBeenCalled();
+});
+
 it('verifies installed payloads once per restart capture and refuses changes on the next capture', async () => {
   const f = await fixture();
   const inspected = vi.spyOn(f.service, 'installedRelease');

@@ -1,4 +1,5 @@
 import { stackHealthReading, healthLabel } from '../shared/stack-reading.js';
+import { reviewTargetFailures } from '../shared/command-result.js';
 import { observeStackStart } from '../shared/release-reading.js';
 /**
  * Stack CLI Commands — manage stacks on the running daemon
@@ -368,7 +369,8 @@ export async function stackStartCommand(
       return;
     }
     if (opts?.infrastructure === 'preserve' && (!review?.digest || (opts.review !== undefined && opts.review !== review.digest)))
-      throw Error('Current infrastructure or launch differs from the review; no start was requested. Inspect again, or reconcile separately.');
+      throw Error(['Current infrastructure or launch differs from the review; no start was requested. Inspect again, or reconcile separately.',
+        ...reviewTargetFailures(review?.targets)].join('\n'));
     emitStep(`Starting stack ${projectName}/${stackName}...`);
 
     const scope = { project: projectName, stack: stackName, ...(opts?.release && { release: opts.release }) };

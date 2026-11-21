@@ -1,5 +1,6 @@
 import { readColdBatch, reviewedColdStart, claimColdStart, type ColdStartPermit } from '../project/cold-stack-start.js';
 import { readRestartConfiguration, restartLaunchIntent } from '../project/runtime-restart.js';
+import { reviewTargetFailures } from '../shared/command-result.js';
 import type { RuntimeRestartConfiguration, RuntimeRestartStack } from '../shared/dto/runtime-update.js';
 import { readProjectStacks, resolveProjectStacks } from '../config/project-stacks.js';
 import { createProjectDirectory, reviewProjectCreation } from '../project/project-creation.js';
@@ -1705,7 +1706,10 @@ export class ProjectService extends EventEmitter {
         declarations: structuredClone([...declarations]), entries: structuredClone(retainedPayload?.entries ?? entries), launches,
         review: { protocol: 1, ...scope, infrastructure: 'preserve', checkedAt: '', digest: null, targets: [], deferred: [] } };
       retained.review = await this.reviewStackStartIntent(scope.project, scope.stack, { infrastructure: 'preserve' }, { retained, installation });
-      if (!retained.review.digest) throw Error('Retained launch and infrastructure cannot be verified for ' + scope.project + '/' + scope.stack);
+      if (!retained.review.digest) {
+        const reasons = reviewTargetFailures(retained.review.targets);
+        throw Error(['Retained launch and infrastructure cannot be verified for ' + scope.project + '/' + scope.stack, ...reasons].join('\n'));
+      }
       // A timestamp is not part of restart authority and must not invalidate a
       // second preparation of the same private configuration.
       retained.review.checkedAt = '';

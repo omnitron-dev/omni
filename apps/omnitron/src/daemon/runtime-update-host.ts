@@ -17,7 +17,7 @@ import { privateControlClient } from './private-control-client.js';
 import { assertRuntimeUpdateHealth, RuntimeUpdateHealthRegression, runtimeUpdatePlanDigest } from './runtime-update.js';
 import { RuntimeObservationPending, RuntimeObservationConflict, RuntimeObservationUnconfirmed,
   observeRuntimeUntil, observeStartingController, withRuntimeObservation, type RuntimeObservation } from './runtime-observation.js';
-import { CommandResultError } from '../shared/command-result.js';
+import { CommandResultError, reviewTargetFailures } from '../shared/command-result.js';
 import { captureNativeEmptyRuntime } from './runtime-update-native.js';
 import type { BackendControlService } from './backend-control.js';
 import type { BackendRpcService } from './backend.rpc-service.js';
@@ -409,7 +409,9 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
     const review = await observeCall<StackStartReview>([...args, '--dry-run'], observation);
     const inspected = review.targets?.[0]?.infrastructure;
     if (!(typeof review.digest === 'string' && hash.test(review.digest)) || review.project !== stack.project || review.stack !== stack.stack || review.targets?.length !== 1 ||
-        review.targets[0]!.node !== 'local' || !Array.isArray(inspected?.containers)) throw Error('Cannot establish launch and infrastructure for ' + projectKey(stack) + ': ' + (review.targets?.find(v => v.reason)?.reason || 'incomplete preservation review'));
+        review.targets[0]!.node !== 'local' || !Array.isArray(inspected?.containers)) {
+      throw Error(['Cannot establish launch and infrastructure for ' + projectKey(stack), ...reviewTargetFailures(review.targets)].join('\n'));
+    }
     let selection: RuntimeUpdateSelection;
     if (typeof review.selection?.release === 'string' && !review.selection.workingTree) {
       if (stack.selection.kind === 'release') {

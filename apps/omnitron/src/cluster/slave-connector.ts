@@ -676,6 +676,8 @@ export class SlaveConnector {
     conn.status = 'disconnected';
     conn.syncStatus = null;
     conn.syncStatusAt = null;
+    conn.lastSyncStatusError = null;
+    conn.lastPullError = null;
     const cleanup = this.closeResources(netron, link).then(error => {
       conn.cleanupError = error;
       if (error) this.logger.warn({ host: conn.config.host, port: conn.config.port, error },
@@ -965,7 +967,10 @@ export class SlaveConnector {
           await syncProxy.ackDrained({ ids: delivered, ...(result.receiptVersion === 1 && { receipt: {
             version: 1, committedIds: result.committedIds ?? [], discardedIds: result.discardedIds ?? [],
           } }) });
-          if (conn.peer === peer) conn.lastPullAt = Date.now();
+          if (conn.peer === peer) {
+            conn.lastPullAt = Date.now();
+            conn.lastPullError = null;
+          }
         }
         totalPulled += delivered.length;
 

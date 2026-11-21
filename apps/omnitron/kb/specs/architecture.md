@@ -75,6 +75,8 @@ private async ensureConnected(): Promise<void> {
 
 On each daemon, `Health@1.0.0.live` and `ready` answer external probes with a status and timestamp. Full reports and individual indicators require viewer, operator, administrator or an authenticated mesh service role. Console node diagnostics use the same report that a credentialed controller retrieves over RPC. `omnitron doctor` probes the installed daemon for legacy anonymous access to diagnostic inventory.
 
+`omnitron node check <node>` shows the current peer's connection and replication status. After a reconnect, the controller reads the new peer's queue and reports any error from that connection. The first acknowledged page clears a previous pull failure even while the rest of the queue is draining. The committed sequence shows how far the node has confirmed durable storage on the controller.
+
 ### DI Providers (Token-Based)
 
 All providers use `Scope.Singleton` and are registered via DI tokens defined in `src/shared/tokens.ts`:

@@ -247,6 +247,27 @@ describe('a pull that started again before it had finished', () => {
     expect(new Set(m.received).size).toBe(500);
   });
 
+  it('clears a previous failure as soon as the node acknowledges a page', async () => {
+    const n = node(1_100);
+    const m = master();
+    const record = m.service.receiveBatch;
+    const ingest = vi.spyOn(m.service, 'receiveBatch');
+    const { connector, conn } = connected(n.peer, m.service);
+    n.failNextDrain(new Error('Temporary read failure'));
+    await sweep(connector);
+    await settle();
+    expect(conn.lastPullError).toBe('Temporary read failure');
+    ingest.mockImplementationOnce(async batch => {
+      n.hold();
+      return record(batch);
+    });
+    try {
+      await sweep(connector);
+      await vi.waitFor(() => expect(n.pending).toBe(100));
+      expect(conn.lastPullError).toBeNull();
+    } finally { n.release(); await settle(); }
+  });
+
   it('gives the turn back when a pull fails', async () => {
     const n = node(50);
     const m = master();

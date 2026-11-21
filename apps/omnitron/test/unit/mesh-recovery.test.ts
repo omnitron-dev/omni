@@ -28,8 +28,8 @@ function peer() {
   return { ping, getSyncStatus, runTask: vi.fn(async () => serviceAuth()), queryInterface: vi.fn(async (name: string) => name === 'OmnitronDaemon'
     ? { ping } : { getSyncStatus, drainBuffer: async () => ({ entries: [] }) }) };
 }
-function connector(dial?: any) {
-  const c = new SlaveConnector(createNullLogger(), null, { cleanupTimeout: 50, heartbeatInterval: 60000,
+function connector(dial?: any, sync: ConstructorParameters<typeof SlaveConnector>[1] = null) {
+  const c = new SlaveConnector(createNullLogger(), sync, { cleanupTimeout: 50, heartbeatInterval: 60000,
     dial: dial ?? (async () => ({ via: 'ssh-tunnel', url: 'tcp://127.0.0.1:1', token: 'worker-service', close: async () => {} })) });
   connectors.push(c); return c;
 }
@@ -41,6 +41,29 @@ afterEach(async () => {
 const settle = () => vi.advanceTimersByTimeAsync(0);
 
 describe('mesh recovery and resource ownership', () => {
+  it('reports the new peer while its first authenticated pull is pending', async () => {
+    const first = peer(), next = peer();
+    let resume!: () => void;
+    const waiting = new Promise<void>(resolve => { resume = resolve; });
+    const discover = next.queryInterface;
+    next.queryInterface = vi.fn(async (name: string) => name === 'OmnitronSync'
+      ? { getSyncStatus: () => status(20), drainBuffer: async () => { await waiting; return { entries: [] }; } }
+      : discover(name)) as typeof next.queryInterface;
+    network.peers.push(first, next);
+    const link = { via: 'ssh-tunnel', url: 'tcp://127.0.0.1:1' };
+    const dial = vi.fn().mockResolvedValueOnce(link)
+      .mockResolvedValueOnce({ ...link, token: 'new-peer', expiresAt: Date.now() + 300_000 });
+    const c = connector(dial, { receiveBatch: vi.fn() } as never);
+    await c.addSlave(config); await settle();
+    expect(c.getConnections()[0]?.lastPullError).toMatch(/verified service credential/);
+    network.instances[0].handlers.get('peer:disconnect')();
+    await vi.advanceTimersByTimeAsync(5000);
+    try {
+      expect(c.getConnections()[0]).toMatchObject({ authenticated: true, lastPullError: null, lastSyncStatusError: null,
+        syncStatus: { pendingItems: 20 } });
+    } finally { resume(); await settle(); }
+  });
+
   it('survives twenty successive transport losses without accumulating connections or changing registry identity', async () => {
     for (let n = 0; n < 21; n++) network.peers.push(peer());
     const closed = vi.fn(async () => {});

@@ -64,7 +64,8 @@ it('keeps an uncertain candidate available and restores only through an explicit
   let serving: 'target' | 'previous' = 'target';
   const effects: string[] = [];
   const actions: RuntimeUpdateActions = {
-    prepare: async () => plan, admit: async () => {}, releaseAdmission: async () => {},
+    prepare: async () => plan, prepareConsole: async () => { throw Error('Unexpected Console allocation for a legacy plan'); },
+    admit: async () => {}, releaseAdmission: async () => {},
     validateStop: vi.fn(async () => {}),
     withRollbackAdmission: async (_review, identity, stop) => { expect(identity).toEqual(candidate); return stop(); },
     stop: vi.fn(async identity => { effects.push('stop:' + identity.ownerId); }), assertStopped: async () => {},

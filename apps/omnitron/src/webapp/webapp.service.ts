@@ -32,6 +32,7 @@ import {
 } from '../infrastructure/container-runtime.js';
 import { resolveOmnitronNginx } from '../infrastructure/service-resolver.js';
 import { consoleContainerName, assertConsoleOwnership, consoleEndpoint, assertConsoleBuild, inspectInstalledConsole, assertConsoleOperatorAllowed, withConsoleOperator, saveConsoleBootPolicy } from './console-container.js';
+import { consoleSpecification, ReviewedConsoleAllocation } from './console-allocation.js';
 import { readSavedDaemonConfig, withInstancePolicy } from '../config/saved.js';
 import { readBuildStamp } from '../shared/build-stamp.js';
 import { readColdBatch, type ColdBatch } from '../project/cold-stack-start.js';
@@ -276,7 +277,7 @@ export class WebappService {
   /** Cold startup owns the reviewed Console, including a distinct retained Console during restoration. */
   async startOnBoot(startup: ColdBatch | null): Promise<void> {
     const prepared = (startup ? startup.console !== null : readSavedDaemonConfig()?.webapp)
-      ? await this.prepare(startup?.console ?? null) : null;
+      ? await this.prepare(startup?.console ?? null, Boolean(startup?.consolePublication)) : null;
     await withInstancePolicy(OMNITRON_HOME, async () => {
       const batch = await readColdBatch(OMNITRON_HOME);
       if (batch?.digest !== startup?.digest || batch?.direction !== startup?.direction ||
@@ -284,11 +285,15 @@ export class WebappService {
         throw Error('Console startup no longer belongs to the reviewed local update');
       const enabled = Boolean(readSavedDaemonConfig()?.webapp);
       if (batch && Boolean(batch.console) !== enabled) throw Error('Saved Console policy differs from the reviewed local update');
-      if (enabled && prepared) await this.startLocked(false, prepared, false);
+      if (enabled && prepared) {
+        const allocation = batch?.consolePublication && batch.console
+          ? new ReviewedConsoleAllocation(OMNITRON_HOME, batch.digest, batch.direction, batch.console, batch.consolePublication) : undefined;
+        await this.startLocked(false, prepared, false, allocation);
+      }
     });
   }
 
-  private async prepare(release: RuntimeUpdateReference | null) {
+  private async prepare(release: RuntimeUpdateReference | null, preallocated = false) {
     if (!this.publication) throw Error('Console start requires the serving daemon publication policy');
     const localDist = path.join(this.webappDir, 'dist');
     // Native startup has verified its own release. A different Console needs its own seal.
@@ -300,19 +305,18 @@ export class WebappService {
       await this.build();
     }
     const image = resolveOmnitronNginx().image;
-    await ensureImage(image);
+    if (!preallocated) await ensureImage(image);
     return { dist, release, image, inspection };
   }
 
-  private async startLocked(force: boolean, prepared: Awaited<ReturnType<WebappService['prepare']>>, persist: boolean) {
+  private async startLocked(force: boolean, prepared: Awaited<ReturnType<WebappService['prepare']>>, persist: boolean, allocation?: ReviewedConsoleAllocation) {
     const { dist, release, image, inspection } = prepared;
     const { port } = this.publication!;
     const bindHost = await this.publication!.bindHost();
     const nginxConfig = generateNginxConfig('host.docker.internal', port + 1, port + 2);
     const configPath = path.join(this.configDir, 'nginx.conf');
-    const appliedConfig = fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf8') : null;
-    const spec = resolveOmnitronNginx({ port, internalApiPort: port + 1, webappDistPath: dist, bindHost, image });
-    spec.volumes.push({ source: configPath, target: '/etc/nginx/nginx.conf', readonly: true });
+    const appliedConfig = !allocation && fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf8') : null;
+    const spec = consoleSpecification(OMNITRON_HOME, dist, port, bindHost, image);
     const hash = containerSpecHash(spec);
     const inspect = () => getContainerState(spec.name, { orThrow: true, fullId: true });
     const prior = await inspect();
@@ -336,6 +340,10 @@ export class WebappService {
       return { running: true, healthy: true, ...consoleEndpoint(serving) };
     };
 
+    if (allocation) {
+      if (priorId) await allocation.assertCanonicalId(priorId);
+      return { ...await confirm(await allocation.publish(spec, nginxConfig)), autoStart: readSavedDaemonConfig()?.webapp ?? null };
+    }
     if (!force && prior?.status === 'running' && prior.specHash === hash && appliedConfig === nginxConfig) {
       const status = await confirm(priorId!);
       return { ...status, autoStart: persist ? saveConsoleBootPolicy(true) : readSavedDaemonConfig()?.webapp ?? null };

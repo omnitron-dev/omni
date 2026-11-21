@@ -465,9 +465,10 @@ type NativePortBindings = Record<string, Array<{ HostPort?: string; HostIp?: str
 
 // Creation needs identity, bindings and enforced limits. Keep environment,
 // command lines and health-check output outside this structured response.
-const creationInspectFormat = `[{
+const creationInspectFormat = (mounts: boolean) => `[{
   "Id":{{json .Id}},"Name":{{json .Name}},
   "Config":{"Image":{{json .Config.Image}},"Labels":{{json .Config.Labels}}},
+  ${mounts ? '"Mounts":[{{range $i, $m := .Mounts}}{{if $i}},{{end}}{"Source":{{json $m.Source}},"Destination":{{json $m.Destination}},"RW":{{json $m.RW}}}{{end}}],' : ''}
   "State":{"Status":{{json .State.Status}}},
   "HostConfig":{"PortBindings":{{json .HostConfig.PortBindings}},
     "Memory":{{json .HostConfig.Memory}},"MemoryReservation":{{json .HostConfig.MemoryReservation}},
@@ -674,20 +675,39 @@ export async function describeBindFailure(
  * Create and start a container from a resolved config.
  */
 export async function createContainer(config: ResolvedContainer, options: { fullId?: boolean; pull?: 'never' } = {}): Promise<string> {
+  return provisionContainer(config, options);
+}
+
+export class ContainerAllocationRefused extends Error {}
+export type PreparedContainerAction =
+  | { operation: 'allocate' | 'discover' | 'verify' | 'discard'; creation: string; id?: string }
+  | { operation: 'publish'; creation: string; id: string; stagedName: string;
+      configure: (running: boolean) => Promise<void>;
+      issued: 'allocated' | 'renaming' | 'starting'; record: (effect: 'renaming' | 'starting') => Promise<void> };
+
+/** Reviewed allocation suspends between native create and start. Every resumed effect uses its original nonce and ID. */
+export async function preparedContainer(config: ResolvedContainer, action: PreparedContainerAction): Promise<string> {
+  if (!/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(action.creation) ||
+      action.id !== undefined && !/^[a-f0-9]{64}$/.test(action.id) ||
+      action.operation === 'verify' && !action.id) throw Error('Invalid prepared Docker allocation identity');
+  return provisionContainer(config, { fullId: true, pull: 'never' }, action);
+}
+
+async function provisionContainer(config: ResolvedContainer, options: { fullId?: boolean; pull?: 'never' }, staged?: PreparedContainerAction): Promise<string> {
   const resources = containerResources(config);
   // Ensure the managed network exists before we try to attach to it.
   // Idempotent — `docker network create` errors with "already exists"
   // when present, which we treat as success. Doing this here (rather
   // than at daemon start) keeps the provisioner self-sufficient and
   // means single-container test setups work without a manual prep step.
-  if (config.network) {
+  if (config.network && !staged) {
     await ensureNetwork(config.network);
   }
 
   // Ensure volumes exist. A `configroot:` source is a shipped directory this
   // node has no copy of (`shipped-config.ts`), not a volume to create: it
   // reaches `docker run`, which refuses it by name.
-  for (const vol of config.volumes) {
+  for (const vol of staged ? [] : config.volumes) {
     if (!vol.source.startsWith('/') && !vol.source.startsWith('.') && !vol.source.startsWith(CONFIG_ROOT_PREFIX)) {
       await createVolume(vol.source);
     }
@@ -728,7 +748,7 @@ export async function createContainer(config: ResolvedContainer, options: { full
   // Labels — stamp the desired-spec fingerprint so a later reconcile can
   // detect config drift (env/ports/volumes/cmd change under the same image)
   // and recreate instead of silently no-op'ing.
-  const creation = randomUUID();
+  const creation = staged?.creation ?? randomUUID();
   const labels = { ...(config.labels ?? {}), [SPEC_HASH_LABEL]: containerSpecHash(config),
     [SPEC_HASH_SCHEMA_LABEL]: '2', 'omnitron.creation': creation };
   for (const [key, value] of Object.entries(labels)) {
@@ -799,7 +819,7 @@ export async function createContainer(config: ResolvedContainer, options: { full
     // create reply is the name needed to discover that ID.
     const ref = id ?? config.name;
     try {
-      const result = await executeDocker(['container', 'inspect', '--format', creationInspectFormat, '--', ref], {
+      const result = await executeDocker(['container', 'inspect', '--format', creationInspectFormat(Boolean(staged)), '--', ref], {
         timeout: remaining('inspection', id), redactOutput: false,
       });
       let raw: NativeContainerObservation | undefined;
@@ -810,13 +830,19 @@ export async function createContainer(config: ResolvedContainer, options: { full
       }
       if (!raw?.Id || !/^[a-f0-9]{64}$/.test(raw.Id) || id && raw.Id !== id)
         throw Error('Docker did not confirm the immutable container ID');
-      if (raw.Name !== '/' + config.name || raw.Config?.Labels?.['omnitron.creation'] !== creation)
+      if ((raw.Name !== '/' + config.name && !(staged?.operation === 'publish' && raw.Name === '/' + staged.stagedName)) ||
+          raw.Config?.Labels?.['omnitron.creation'] !== creation)
         throw Error(`Container '${config.name}' belongs to another creation`);
       const actual = containerObservation(raw, ref, true);
       if (actual.specHash !== labels[SPEC_HASH_LABEL]) throw Error('The Docker specification hash differs for ' + raw.Id);
       if (actual.image !== config.image) throw Error('The Docker image differs for ' + raw.Id);
       if (!Object.entries(labels).every(([key, value]) => actual.labels?.[key] === value))
         throw Error('The Docker ownership labels differ for ' + raw.Id);
+      if (staged && (!actual.mounts || config.volumes.length !== actual.mounts.length ||
+          !config.volumes.every(volume => actual.mounts!.some(mount => mount.source === volume.source &&
+            mount.target === volume.target && mount.readOnly === Boolean(volume.readonly)))))
+        throw Error('The native mounts differ for the prepared container ' + raw.Id);
+      if (staged && !containerResourcesMatch(config, actual)) throw Error('The native resource limits differ for the prepared container ' + raw.Id);
       if ((actual.status === 'created' || actual.status === 'running') && publication(raw.HostConfig?.PortBindings, raw.Id) !== 'published')
         throw Error('The configured Docker port bindings differ for ' + raw.Id);
       return { ...actual, id: raw.Id, publication: actual.status === 'running' ? publication(raw.NetworkSettings?.Ports, raw.Id) : 'unconfirmed' };
@@ -851,14 +877,15 @@ export async function createContainer(config: ResolvedContainer, options: { full
           throw Error(`Container '${config.name}' does not enforce its declared resource limits`);
         }
         if (actual.status !== 'running' || actual.publication === 'published') return actual;
+        if (staged && actual.publication === 'conflict') throw Error('The native publication conflicts with the prepared Docker ID ' + actual.id);
         // A missing binding can appear later. Rebuild only on a conflicting
         // publication or after verifying and clearing a same-name phantom.
         if (reply === 'acknowledged') {
           if (actual.publication === 'conflict' || removedPhantom && actual.publication === 'pending') return actual;
-          if (actual.publication === 'pending' && config.network && !checkedNetwork) {
-            checkedNetwork = true;
-            removedPhantom = await sweepStaleEndpoint() > 0;
-          }
+        }
+        if ((reply === 'acknowledged' || staged) && actual.publication === 'pending' && config.network && !checkedNetwork) {
+          checkedNetwork = true;
+          removedPhantom = await sweepStaleEndpoint() > 0;
         }
         cause = Error(`Docker has not published the declared ports for ${actual.containerId}`, { cause: failure });
       } else if (actual && actual.status !== 'created') {
@@ -879,12 +906,73 @@ export async function createContainer(config: ResolvedContainer, options: { full
       if (/^[a-f0-9]{64}$/.test(id)) return { id, running: false };
       failure = Error('Docker create returned no immutable container ID');
     } catch (error) {
+      if (staged?.operation === 'allocate' && definiteDockerFailure(error))
+        throw new ContainerAllocationRefused('Docker refused allocation of ' + config.name + ': ' + (error as { stderr: string }).stderr.trim(), { cause: error });
       if (definiteDockerFailure(error) && !isStaleContainerState((error as Error).message)) throw error;
       failure = error;
     }
     const actual = await waitForState('create', undefined, failure, definiteDockerFailure(failure) ? 'refused' : 'lost');
     return { id: actual.id, running: actual.status === 'running' };
   };
+
+  if (staged) {
+    if (staged.operation === 'publish') {
+      const id = staged.id;
+      let state = await inspect(id);
+      if (!state || state.status !== 'created' && state.status !== 'running') throw Error('The prepared Docker ID is absent or stopped: ' + id);
+      if (state.name === config.name && staged.issued === 'allocated') throw Error('The prepared Docker ID was renamed outside its recorded operation');
+      if (state.name === staged.stagedName) {
+        if (state.status !== 'created' || staged.issued === 'starting') throw Error('Unexpected state of the staged Docker container ' + id);
+        if (staged.issued === 'allocated') {
+          await staged.record('renaming');
+          try { await executeDocker(['container', 'rename', '--', id, config.name], { timeout: Math.ceil(remaining('rename', id) / 2) }); }
+          catch (error) { if (definiteDockerFailure(error)) throw error; }
+        }
+        // A lost rename reply cannot authorize starting a container under the wrong name.
+        for (;;) {
+          try { state = await inspect(id); } catch (error) { if (!lostDockerTransport(error)) throw error; state = null; }
+          remaining('rename', id);
+          if (state?.name === config.name && (state.status === 'created' || state.status === 'running')) break;
+          if (state && state.status !== 'created') throw Error('Cannot confirm the prepared Docker rename for ' + id);
+          await new Promise(resolve => setTimeout(resolve, Math.min(500, remaining('rename', id))));
+        }
+      }
+      if (state.status === 'running' && staged.issued !== 'starting') throw Error('The prepared Docker ID started outside its recorded operation');
+      await staged.configure(state.status === 'running');
+      if (state.status === 'created' && staged.issued !== 'starting') {
+        await staged.record('starting');
+        const start = () => executeDocker(['container', 'start', '--', id], { timeout: Math.ceil(remaining('start', id) / 2) });
+        try { await start(); }
+        catch (error) {
+          if (definiteDockerFailure(error)) {
+            const native = await inspect(id);
+            if (!isStaleContainerState((error as Error).message) || native?.status !== 'created' || native.name !== config.name ||
+                !await sweepStaleEndpoint()) throw error;
+            // Docker explicitly refused and the janitor proved a same-name orphan.
+            // Start the same ID once after repair. An unknown reply only permits observation.
+            try { await start(); } catch (retryError) { if (definiteDockerFailure(retryError)) throw retryError; }
+          }
+        }
+      }
+      const serving = await waitForState('start', id, undefined, 'lost');
+      if (serving.name !== config.name) throw Error('The prepared Docker ID lost its published name');
+      return id;
+    }
+    if (staged.operation === 'discard') {
+      const state = await inspect(staged.id);
+      if (!state && !staged.id) throw Error('Docker allocation is still unconfirmed for ' + config.name + ' (creation ' + creation + ')');
+      if (state) {
+        if (state.status !== 'created') throw Error('Cannot discard a prepared container in state ' + state.status);
+        await removeContainer(state.id);
+        if (await inspect(state.id)) throw Error('Prepared Docker removal is unconfirmed for ' + state.id);
+      }
+      return '';
+    }
+    const id = staged.operation === 'allocate' ? (await allocate()).id : staged.id;
+    const state = staged.operation === 'verify' ? await inspect(id) : await waitForState('create', id, undefined, 'lost');
+    if (!state || state.status !== 'created') throw Error('The prepared Docker allocation is not in Created state for ' + config.name);
+    return state.id;
+  }
 
   let unpublished = false;
   for (let attempt = 1; ; attempt++) {

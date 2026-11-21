@@ -6,6 +6,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { inspectRuntimeArtifact, verifyRuntimeArtifact } from '../shared/runtime-artifact.js';
 import { readBuildStamp } from '../shared/build-stamp.js';
 import { reviewedRuntimeConsole } from '../shared/dto/runtime-update.js';
+import { consoleConfigIdentity, ReviewedConsoleAllocation } from '../webapp/console-allocation.js';
 import { BACKEND_ACTIVITY_COUNTERS } from '../shared/dto/backend.js';
 import { assertReviewableBackendActivity, retainReviewedBackups } from '../shared/backup-admission.js';
 import { LAUNCHD_LABEL, OWNER_LAUNCHD_LABEL } from '../commands/service-units.js';
@@ -40,6 +41,7 @@ interface ColdStartObservation {
   checked: boolean; candidate: string; current: string | null; schemaScope: 'node' | 'enrolled-node' | 'all'; coldStackAdmissionProtocol?: number | null;
   runtimeRestartProtocol?: number | null;
   coldConsoleProtocol?: number | null;
+  preparedConsoleProtocol?: number | null;
   infrastructure: {
     coverage: string;
     reason?: string;
@@ -58,7 +60,7 @@ const runtimeInspections = new WeakMap<VerifiedRuntimeReference, Awaited<ReturnT
 
 /** Both the foreground stack stop and native restart use the candidate's own cold-start prediction. */
 export async function reviewRuntimeInfrastructure(artifact: string, call: RuntimeUpdateCall,
-  { requireLive = false, separateConsole = false } = {}): Promise<{ current: string | null; infrastructure: RuntimeUpdateInfrastructure }> {
+  { requireLive = false, separateConsole = false } = {}): Promise<{ current: string | null; infrastructure: RuntimeUpdateInfrastructure; preparedConsoleProtocol?: 1 }> {
   const response = await call<ColdStartObservation>(['backend', 'select', artifact, '--check']);
   const infra = response.infrastructure;
   if (separateConsole && response.coldConsoleProtocol !== 1)
@@ -76,6 +78,7 @@ export async function reviewRuntimeInfrastructure(artifact: string, call: Runtim
   if (changes.length) throw Error(`Cold start requires retained infrastructure. ${changes.join(', ')}. ${inspect}`);
   return {
     current: response.current,
+    ...(response.preparedConsoleProtocol === 1 && { preparedConsoleProtocol: 1 }),
     infrastructure: {
       schemaScope: response.schemaScope,
       ...(response.coldStackAdmissionProtocol === 1 && { coldStackAdmissionProtocol: 1 }),
@@ -317,13 +320,13 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
   });
   const observeCall = <T>(args: readonly string[], observation?: RuntimeObservation): Promise<T> =>
     call<T>(args, observation ? { timeoutMs: observation.remaining(), signal: observation.signal } : undefined);
-  const consoleState = async (observation?: RuntimeObservation) => {
+  const consoleState = async (observation?: RuntimeObservation, reviewPublication = false) => {
     const state = await getContainerState(consoleContainerName(home), { orThrow: true, fullId: true });
     const running = state?.status === 'running';
     if (Boolean(readSavedDaemonConfig(path.join(home, 'config.json'))?.webapp) !== running)
       throw Error('Serving Console disagrees with its saved boot policy');
     if (!state) return { artifact: null, commit: null };
-    assertConsoleOwnership(state, home);
+    const containerId = assertConsoleOwnership(state, home);
     if (state.status === 'exited') return { artifact: null, commit: null };
     if (!running || state.health !== 'healthy') throw Error('Console has no healthy native serving identity');
     const mount = state.mounts?.find(volume => volume.target === '/usr/share/nginx/html');
@@ -334,7 +337,18 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
     if (!cleanBuild(stamp)) throw Error('Mounted Console has no clean installed build');
     const timeout = AbortSignal.timeout(observation?.remaining(5000) ?? 5000);
     await assertConsoleBuild(state, stamp, observation ? AbortSignal.any([observation.signal, timeout]) : timeout, home);
-    return { artifact: id, commit: stamp.commit };
+    if (!reviewPublication) return { artifact: id, commit: stamp.commit };
+    const bindings = state.portBindings?.['80/tcp'];
+    const config = state.mounts?.find(volume => volume.target === '/etc/nginx/nginx.conf');
+    if (bindings?.length !== 1 || !config?.readOnly || config.source !== path.join(home, 'webapp/nginx/nginx.conf'))
+      throw Error('Console allocation requires the native publication address and the instance configuration mount');
+    return { artifact: id, commit: stamp.commit, publication: { containerId, address: bindings[0]!.address, port: bindings[0]!.port,
+      configuration: await consoleConfigIdentity(home) } };
+  };
+  const allocation = (plan: RuntimeUpdatePlan, direction: 'target' | 'previous') => {
+    const release = reviewedRuntimeConsole(plan, direction);
+    return release && plan.consolePublication
+      ? new ReviewedConsoleAllocation(home, runtimeUpdatePlanDigest(plan), direction, release, plan.consolePublication) : null;
   };
   const installationState = async (observation?: RuntimeObservation) => {
     const state = await observeCall<{ directory: string; selection: RuntimeSelection | null; activation: unknown }>(['backend', 'installation'], observation);
@@ -469,8 +483,8 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
     else throw Error('Saved launch and reviewed release disagree for ' + projectKey(stack));
     return { digest: review.digest, selection };
   };
-  const coldPreview = async (artifact: string, observation?: RuntimeObservation, separateConsole = false) =>
-    (await reviewRuntimeInfrastructure(artifact, args => observeCall(args, observation), { separateConsole })).infrastructure;
+  const coldPreview = async (artifact: string, observation?: RuntimeObservation) =>
+    (await reviewRuntimeInfrastructure(artifact, args => observeCall(args, observation))).infrastructure;
   const stopped = async (previous: RuntimeUpdateRetiringIdentity) => {
     const config = await readManagedRuntime(home);
     if (!config || config.scope !== previous.scope) throw Error('Native service instance changed');
@@ -563,6 +577,7 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
     await restoreRuntimeRoles(plan, () => until('Waiting for the restored controller',
       async () => identity(await call<RuntimeUpdateStatusObservation>(['status'])), 10 * 60_000),
     () => accept(plan, 'previous', false, true), call, restoration);
+    await allocation(plan, 'target')?.discard(true);
   };
   return {
     async prepare(reviewed?: RuntimeUpdatePlan): Promise<RuntimeUpdatePlan> {
@@ -571,7 +586,7 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
       const live = await call<RuntimeUpdateStatusObservation>(['status']);
       assertLocalReview(live);
       const observeIdentity = (status: RuntimeUpdateStatusObservation) => identity(status, { requireIdle: false, preparing: reviewed === undefined });
-      const [before, stacks, web] = await Promise.all([observeIdentity(live), inventory(live), consoleState()]);
+      const [before, stacks, web] = await Promise.all([observeIdentity(live), inventory(live), consoleState(undefined, !reviewed || Boolean(reviewed.consolePublication))]);
       const existing = await fs.lstat(installed(manifest.sha256)).catch(error => { if (error.code !== 'ENOENT') throw error; return null; });
       let candidate;
       if (existing) {
@@ -581,7 +596,8 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
         candidate = { id: manifest.sha256, directory: installed(manifest.sha256), build: { commit: await runtimeBuildCommit(installed(manifest.sha256)), dirty: false } };
       } else candidate = await call<{ id: string; directory: string; build: BuildStamp }>(['backend', 'install', runtime]);
       if (candidate.id !== manifest.sha256 || candidate.directory !== installed(candidate.id) || !cleanBuild(candidate.build) || candidate.build.commit !== await runtimeBuildCommit(runtime, true)) throw Error('Installed candidate or Console differs from the sealed checkout');
-      const infrastructure = await coldPreview(candidate.id, undefined, web.artifact !== null && web.artifact !== candidate.id);
+      const { infrastructure, preparedConsoleProtocol } = await reviewRuntimeInfrastructure(candidate.id, call,
+        { separateConsole: web.artifact !== null && web.artifact !== candidate.id });
       if (before.backend !== candidate.id) {
         await assertBackendMigrationsCompatible(path.join(installed(candidate.id), cliDist), path.join(installed(before.backend), cliDist), infrastructure.schemaScope);
         await coldPreview(before.backend);
@@ -615,12 +631,26 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
       const sha256 = reviewed && await sameRetainedIntent(reviewed, configuration)
         ? reviewed.configuration!.sha256 : await saveRestartConfiguration(home, configuration);
       return { protocol: 1, stackAdmissionProtocol: protocol, configuration: { sha256, basis: 'retained-next-start' }, backupOperations, instance: home, target: { artifact: candidate.id, commit: candidate.build.commit },
-        before: { ...before, console: web.artifact, consoleCommit: web.commit }, stacks: targets, excluded: stacks.excluded, watches: watching, infrastructure };
+        before: { ...before, console: web.artifact, consoleCommit: web.commit },
+        ...(preparedConsoleProtocol && web.publication && { consolePublication: web.publication }),
+        stacks: targets, excluded: stacks.excluded, watches: watching, infrastructure };
+    },
+    async prepareConsole(plan, direction) {
+      const selected = allocation(plan, direction);
+      if (!selected || !plan.consolePublication) throw Error('The reviewed update has no Console allocation authority');
+      const { port } = plan.consolePublication;
+      const { generateNginxConfig } = await import('../webapp/webapp.service.js');
+      progress(direction === 'target' ? 'Allocating the stopped Console before backup admission. Serving applications are still running.'
+        : 'Allocating the retained Console before retiring the candidate.');
+      const release = reviewedRuntimeConsole(plan, direction)!;
+      const proof = release.artifact === reference.artifact && installed(release.artifact) === reference.directory && runtimeInspections.get(reference);
+      await selected.prepare(generateNginxConfig('host.docker.internal', port + 1, port + 2),
+        proof ? { directory: reference.directory, assertUnchanged: proof.assertUnchanged } : undefined);
     },
     async admit(plan, planDigest) {
       if (!plan.configuration) throw Error('Runtime update admission requires retained next-start intent');
-      const web = await consoleState();
-      if (web.artifact !== plan.before.console || web.commit !== plan.before.consoleCommit)
+      const web = await consoleState(undefined, Boolean(plan.consolePublication));
+      if (web.artifact !== plan.before.console || web.commit !== plan.before.consoleCommit || !isDeepStrictEqual(web.publication, plan.consolePublication))
         throw Error('Console changed before runtime admission');
       const reviewed = await retainedReview(plan.stacks);
       if (!await sameRetainedIntent(plan, reviewed.configuration)) throw Error('Retained next-start intent changed before backup admission');
@@ -631,10 +661,16 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
       if (!await sameRetainedIntent(plan, configuration))
         throw Error('Retained next-start intent changed during backup admission');
     },
-    async releaseAdmission(plan, planDigest) {
-      await runtimeControl(service => service.runtimeRestartRelease({ planDigest }), plan.before.backendPid);
+    async releaseAdmission(plan, planDigest, requested) {
+      if (requested) await runtimeControl(service => service.runtimeRestartRelease({ planDigest }), plan.before.backendPid);
+      await allocation(plan, 'target')?.discard();
     },
-    async validateStop(previous, plan, rollbackPlan) {
+    async validateStop(previous, plan, rollbackPlan, verifyAllocation = true) {
+      if (rollbackPlan?.consolePublication) {
+        await allocation(rollbackPlan, 'previous')?.verify();
+        const serving = await getContainerState(consoleContainerName(home), { orThrow: true, fullId: true });
+        if (serving) await allocation(rollbackPlan, 'target')?.assertCanonicalId(assertConsoleOwnership(serving, home));
+      }
       if (previous.backendPid === null) {
         if (plan) throw Error('Native empty-owner evidence cannot authorize an ordinary update');
         const observed = await captureNativeEmptyRuntime(home, { artifact: previous.backend, commit: previous.ownerCommit }, undefined, rollbackPlan);
@@ -643,6 +679,11 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
         return;
       }
       if (plan) {
+        if (plan.consolePublication) {
+          const web = await consoleState(undefined, true);
+          if (!isDeepStrictEqual(web.publication, plan.consolePublication) || web.artifact !== plan.before.console || web.commit !== plan.before.consoleCommit)
+            throw Error('The incumbent Console changed before shutdown');
+        }
         if (plan.configuration) {
           const configuration = await retainedConfiguration(plan.stacks);
           if (!await sameRetainedIntent(plan, configuration))
@@ -663,6 +704,7 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
       const observed = await identity(status);
       if (!sameOwner(previous, observed) || !isDeepStrictEqual(previous.retiredPids, observed.retiredPids) ||
           previous.processInventory && !isDeepStrictEqual(previous.processInventory, observed.processInventory)) throw Error('Native ownership or worker set changed before shutdown');
+      if (plan && verifyAllocation) await allocation(plan, 'target')?.verify();
       if (rollbackPlan) await checkRestorationJournals(rollbackPlan);
     },
     stop: previous => raw(previous.backend, ['down']),
@@ -678,17 +720,19 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
       await checkRestorationJournals(plan);
       const retained = reviewedRuntimeConsole(plan, 'previous');
       if (!retained) return;
-      await inspectInstalledConsole(home, retained);
-      if (retained.artifact === starter) return;
-      if (plan.stackAdmissionProtocol !== 1) throw Error('The retained Console requires a cold-start admission receipt');
-      // Recovery can be invoked by a newer installed CLI while the daemon is unavailable.
-      const { checkBackendCandidate } = await import('./backend-candidate.js');
-      const controller = await checkBackendCandidate(path.join(installed(starter), cliDist), undefined, starter);
-      if (controller.coldConsoleProtocol !== 1) throw Error('The installed cold controller cannot restore the independently selected Console');
+      if (!plan.consolePublication) await inspectInstalledConsole(home, retained); // Preallocation verifies its release while the candidate still serves.
+      if (retained.artifact !== starter || plan.consolePublication) {
+        if (plan.stackAdmissionProtocol !== 1) throw Error('The retained Console requires a cold-start admission receipt');
+        // Recovery can be invoked by a newer installed CLI while the daemon is unavailable.
+        const { checkBackendCandidate } = await import('./backend-candidate.js');
+        const controller = await checkBackendCandidate(path.join(installed(starter), cliDist), undefined, starter);
+        if (controller.coldConsoleProtocol !== 1) throw Error('The installed cold controller cannot restore the independently selected Console');
+        if (plan.consolePublication && controller.preparedConsoleProtocol !== 1) throw Error('The installed cold controller cannot publish the prepared Console');
+      }
     },
     async isPreviousServing(this: RuntimeUpdateActions, plan) {
       try {
-        await this.validateStop(plan.before, plan);
+        await this.validateStop(plan.before, plan, undefined, false);
         return true;
       } catch { return false; }
     },

@@ -189,7 +189,8 @@ export async function backendSelectCommand(id: string, checkOnly = false, option
         const confirmed = registry.settledSelection({ allowEmpty: true });
         if (confirmed?.revision !== selected?.revision || confirmed?.current !== selected?.current) throw new Error('Runtime selection changed during the check');
         if (!emitJson({ checked: true, current: selected?.current ?? null, candidate: id, schemaScope: scope, coldStackAdmissionProtocol: artifact.coldStackAdmissionProtocol ?? null,
-          runtimeRestartProtocol: artifact.runtimeRestartProtocol ?? null, coldConsoleProtocol: artifact.coldConsoleProtocol ?? null, infrastructure, ...(schema && { schema }) })) {
+          runtimeRestartProtocol: artifact.runtimeRestartProtocol ?? null, coldConsoleProtocol: artifact.coldConsoleProtocol ?? null,
+          preparedConsoleProtocol: artifact.preparedConsoleProtocol ?? null, infrastructure, ...(schema && { schema }) })) {
           emitInfo(`Runtime selection and ${scope} migrations verified for ${id}.`);
           if ('containers' in infrastructure) {
             emitInfo(`Cold stack preview from ${infrastructure.coverage} at ${infrastructure.capturedAt}. Startup rechecks current declarations and native containers.`);

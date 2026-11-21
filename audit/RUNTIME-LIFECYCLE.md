@@ -55,6 +55,64 @@ different creator with the same specification. The recovery tests run the
 sealed cold controller's preflight without a serving backend and check that an
 unsupported restoration preserves the candidate.
 
+### Native Console allocation used to extend the application outage
+
+An OrbStack create can continue after its client times out. A qualification of
+the released Console observed a newly visible container in `Created` after the
+60-second caller had already reported absence. A separate native measurement
+took 78.10 seconds to create, 8.13 seconds to start by full ID and 86.29 seconds
+to serve the reviewed HTTP build. A longer timeout inside cold startup still
+left the applications down throughout allocation.
+
+For a target advertising `preparedConsoleProtocol: 1`, the read-only review
+captures the serving container's full ID, publication address and port, and the
+device, inode and SHA-256 of its mounted nginx configuration. On reviewed apply
+the host allocates one inactive nginx under a plan-specific name while the
+previous Console and applications still serve. It records the creation nonce
+before calling Docker. A lost reply permits discovery of that creation under
+the same name. The host verifies the immutable ID, read-only mounts, image,
+ownership labels, resources, configured host binding and `Created` state
+before requesting backup admission. It checks the allocation and incumbent
+again before issuing shutdown. The private journal records when allocation
+started, when it became ready and whether the host requested admission.
+
+The cold controller renames and starts that exact ID after the old canonical
+name and port are released. It verifies the native identity before updating
+the configuration through its checked file descriptor. A replay observes the
+same ID and the issued native operation. Health, effective port publication
+and HTTP BUILD must all match. A rejected create leaves the incumbent and
+applications in place. An unresolved create remains inactive and its receipt
+retains the nonce until recovery can account for the outcome.
+
+An explicit rollback preallocates the reviewed previous Console while the
+candidate still serves. Its assets and original nginx configuration bytes
+come from the reviewed release and private receipt. A failed rollback allocation
+preserves the accepted candidate. Legacy transactions and targets without the
+new capability continue using the original cold-start contract.
+
+A permanent nginx with a switchable directory would require a different mount
+layout. Existing releases bind the exact immutable asset directory, derive the
+rollback release from that physical path and remove the owned canonical
+container on cold shutdown. Preallocation supports the first handoff from
+such a release without changing its filesystem or shutdown code.
+
+`test/integration/console-preallocation.test.ts` runs the update coordinator
+and cold WebappService with a controlled Docker boundary, a loopback HTTP
+server, sealed asset trees and two OS application processes. It checks their
+PIDs during delayed refusal, loss of create/rename/start replies, substitution
+of a native identity, changed configuration content or inode, normal
+publication and rollback to the independently retained artifact.
+
+An isolated OrbStack run used the shipped bf935080 and 7a59d5a0 Console
+assets on one loopback port. The inactive successor took 52.143 seconds to
+allocate. All 127 HTTP probes of the old build succeeded and both test
+application PIDs stayed alive throughout. Docker reported the reviewed host
+binding, zero start time and no effective ports for the successor before
+admission. The test discarded create, rename and start acknowledgements and
+delayed the native start. The controller accepted the same full ID and
+verified the new HTTP BUILD and entry JavaScript bytes. Retiring the previous
+test container through HTTP and asset acceptance took a further 75.988 seconds.
+
 ### Observation metadata was treated as authorization
 
 `project/runtime-restart.ts` previously used the complete serialized snapshot

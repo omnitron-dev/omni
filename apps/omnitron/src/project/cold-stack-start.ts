@@ -15,6 +15,7 @@ export interface ColdBatch {
   digest: string; phase: string; direction: Direction;
   artifact: string; ownerArtifact: string; before: RuntimeUpdatePlan['before']; retiringOwner: RuntimeUpdateOwner; target: string;
   console: RuntimeUpdatePlan['target'] | null;
+  consolePublication?: NonNullable<RuntimeUpdatePlan['consolePublication']>;
   database: string | null; stacks: ReviewedRuntimeUpdateStack[]; excluded: RuntimeUpdatePlan['excluded'];
   configuration?: string;
 }
@@ -53,6 +54,7 @@ export async function readColdBatch(instance: string): Promise<ColdBatch | null>
   return { digest: receipt.digest, phase: receipt.phase, direction, retiringOwner, artifact: direction === 'target' || plan.configuration ? plan.target.artifact : plan.before.backend,
     ownerArtifact: direction === 'target' ? plan.target.artifact : plan.before.owner, before: plan.before, target: plan.target.artifact,
     console: reviewedRuntimeConsole(plan, direction), database: plan.infrastructure.database, stacks: plan.stacks, excluded: plan.excluded,
+    ...(plan.consolePublication && { consolePublication: plan.consolePublication }),
     ...(plan.configuration && { configuration: plan.configuration.sha256 }) };
 }
 

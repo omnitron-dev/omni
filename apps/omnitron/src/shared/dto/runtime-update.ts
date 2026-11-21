@@ -157,9 +157,17 @@ export interface RuntimeUpdateWatch {
   directory: string;
 }
 
+export interface RuntimeConsoleConfigIdentity {
+  device: string;
+  inode: string;
+  sha256: string;
+}
+
 export interface RuntimeUpdatePlan {
   protocol: 1;
   stackAdmissionProtocol?: 1;
+  /** Native incumbent and binding reviewed before allocating its successor. Absent on older plans. */
+  consolePublication?: { containerId: string; address: string; port: number; configuration: RuntimeConsoleConfigIdentity };
   /** Private effective definitions; never contains environment values in the public plan. */
   configuration?: { sha256: string; basis: 'retained-next-start' };
   /** Only these reviewed, locally owned attempts may be cancelled before shutdown. */
@@ -213,6 +221,9 @@ export interface RuntimeUpdateReceipt extends PreparedRuntimeUpdate {
   updatedAt: string;
   /** First UTC entry recorded for each phase. Older attempts may have only partial timing. */
   phaseEnteredAt?: Partial<Record<RuntimeUpdatePhase, string>>;
+  /** Set before contacting the serving daemon after a reviewed Console has been allocated. */
+  admissionRequestedAt?: string;
+  consoleAllocation?: Partial<Record<'target' | 'previous', { startedAt: string; readyAt?: string }>>;
   rollbackOwner?: RuntimeUpdateRetiringIdentity;
   restoreAttempted?: true;
   /** Existing guardian transaction, retained before its first effect. */

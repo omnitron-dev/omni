@@ -100,6 +100,7 @@ export interface BackendArtifact {
   coldInfrastructureProtocol?: 1;
   coldStackAdmissionProtocol?: 1;
   coldConsoleProtocol?: 1;
+  preparedConsoleProtocol?: 1;
   runtimeRestartProtocol?: 1;
   executionRequirements?: ExecutionCapabilities;
 }
@@ -210,6 +211,7 @@ export async function checkBackendCandidate(directory: string, currentEntry?: st
     executionRequirements: Object.freeze(readExecutionCapabilities(answer.executionRequirements)),
     ...(answer.coldStackAdmissionProtocol === 1 ? { coldStackAdmissionProtocol: 1 } : {}),
     ...(answer.coldConsoleProtocol === 1 ? { coldConsoleProtocol: 1 } : {}),
+    ...(answer.preparedConsoleProtocol === 1 ? { preparedConsoleProtocol: 1 } : {}),
     ...(answer.runtimeRestartProtocol === 1 ? { runtimeRestartProtocol: 1 } : {}),
     ...(answer.coldInfrastructureProtocol === 1 ? { coldInfrastructureProtocol: 1 } : {}),
     ...(answer.schemaExpansionProtocol === 1 ? { schemaExpansionProtocol: 1 } : {}),
@@ -241,6 +243,7 @@ interface BackendPreflightResponse {
   protocol?: number; schemaExpansionProtocol?: number; infrastructureAdoptionProtocol?: number;
   runtimeRestartProtocol?: number;
   coldStackAdmissionProtocol?: number; coldConsoleProtocol?: number; coldInfrastructureProtocol?: number; coldInfrastructure?: ColdInfrastructurePreview;
+  preparedConsoleProtocol?: number;
   infrastructureAdoption?: { protocol?: number; digest?: string };
   build?: BuildStamp; executionRequirements?: unknown;
 }

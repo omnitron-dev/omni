@@ -55,11 +55,13 @@ function assertGuardianReference(plan: RuntimeUpdatePlan, reference: NonNullable
 
 export interface RuntimeUpdateActions {
   prepare(reviewed?: RuntimeUpdatePlan): Promise<RuntimeUpdatePlan>;
+  /** Allocate the selected Console before admission or retirement of the serving processes. */
+  prepareConsole(plan: RuntimeUpdatePlan, direction: 'target' | 'previous'): Promise<void>;
   /** Quiesce only the reviewed backup attempts, then obtain the strict certificate. */
   admit(plan: RuntimeUpdatePlan, digest: string): Promise<void>;
   /** Release only this plan's admission; never stop or restore application processes. */
-  releaseAdmission(plan: RuntimeUpdatePlan, digest: string): Promise<void>;
-  validateStop(previous: RuntimeUpdateRetiringIdentity, plan?: RuntimeUpdatePlan, rollbackPlan?: RuntimeUpdatePlan): Promise<void>;
+  releaseAdmission(plan: RuntimeUpdatePlan, digest: string, requested: boolean): Promise<void>;
+  validateStop(previous: RuntimeUpdateRetiringIdentity, plan?: RuntimeUpdatePlan, rollbackPlan?: RuntimeUpdatePlan, verifyAllocation?: boolean): Promise<void>;
   stop(previous: RuntimeUpdateRetiringIdentity): Promise<unknown>;
   /** Hold the checked inventory and journal writers until native retirement is issued. */
   withRollbackAdmission(plan: RuntimeUpdatePlan, retiring: RuntimeUpdateRetiringIdentity, stop: () => Promise<unknown>): Promise<unknown>;
@@ -139,10 +141,21 @@ export async function runRuntimeUpdate({ actions, directory, operation, digest: 
         await save('restoring', { restoreGuardian: reference });
       },
     };
+    const prepareConsole = async (plan: RuntimeUpdatePlan, direction: 'target' | 'previous') => {
+      if (!plan.consolePublication || !record) return;
+      const startedAt = record.consoleAllocation?.[direction]?.startedAt ?? new Date().toISOString();
+      const allocating = { consoleAllocation: { ...record.consoleAllocation, [direction]: { startedAt } } };
+      // An accepted candidate is still serving. Fence manual Console operations
+      // before preparing its rollback, using a phase understood by old controllers.
+      if (direction === 'previous' && record.phase === 'accepted') await withInstancePolicy(plan.instance, () => save('stopping-candidate', allocating));
+      else await save(record.phase, allocating);
+      await actions.prepareConsole(plan, direction);
+      await save(record.phase, { consoleAllocation: { ...record.consoleAllocation, [direction]: { startedAt, readyAt: new Date().toISOString() } } });
+    };
     const releaseAdmission = async (error?: string) => {
       if (!record || record.phase !== 'draining') throw Error('No runtime update admission is pending');
       try {
-        await actions.releaseAdmission(record.plan, record.digest);
+        await actions.releaseAdmission(record.plan, record.digest, !record.plan.consolePublication || record.admissionRequestedAt !== undefined);
         delete record.recoveryError;
         return await save('aborted', { ...(error && { error }) });
       } catch (cause) {
@@ -158,7 +171,8 @@ export async function runRuntimeUpdate({ actions, directory, operation, digest: 
       if (record.phase === 'aborted') return record;
       if (record.phase === 'draining') return releaseAdmission(record.error);
       const plan = record.plan;
-      const accepted = record.phase === 'accepted' ? record : null;
+      const accepted = record.phase === 'accepted' ||
+        (record.phase === 'stopping-candidate' && !record.rollbackOwner && record.consoleAllocation?.previous && record.acceptance) ? record : null;
       let retirementIssued = false;
       try {
         if (!record.restoreAttempted && !record.rollbackOwner &&
@@ -175,6 +189,7 @@ export async function runRuntimeUpdate({ actions, directory, operation, digest: 
           return await save('rolled-back', { acceptance });
         }
         await actions.validateRestore(plan);
+        await prepareConsole(plan, 'previous');
         if (!(await actions.canRestore(record.rollbackOwner ?? plan.before))) {
           const live = record.rollbackOwner ?? await actions.captureForRollback(plan);
           const claimedStartup = live.backendPid === null && live.startupEvidence !== undefined;
@@ -194,7 +209,8 @@ export async function runRuntimeUpdate({ actions, directory, operation, digest: 
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (accepted && !retirementIssued && !record.restoreAttempted) {
-          record = { ...accepted, ...(record.phaseEnteredAt && { phaseEnteredAt: record.phaseEnteredAt }) };
+          record = { ...accepted, ...(record.phaseEnteredAt && { phaseEnteredAt: record.phaseEnteredAt }),
+            ...(record.consoleAllocation && { consoleAllocation: record.consoleAllocation }) };
           await save('accepted', { recoveryError: message });
           throw Error('Local rollback refused before retirement: ' + message, { cause: error });
         }
@@ -262,6 +278,10 @@ export async function runRuntimeUpdate({ actions, directory, operation, digest: 
     // Prior operator mutations finish before this receipt excludes new ones. Release before calling the daemon.
     await withInstancePolicy(plan.instance, () => save('draining'));
     try {
+      if (plan.consolePublication) {
+        await prepareConsole(plan, 'target');
+        await save('draining', { admissionRequestedAt: new Date().toISOString() });
+      }
       await actions.admit(plan, digest);
       await actions.validateStop(plan.before, plan);
     } catch (error) {

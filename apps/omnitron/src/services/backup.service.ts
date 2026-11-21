@@ -4,7 +4,7 @@ import { OMNITRON_HOME } from '../config/defaults.js';
  *
  * Manages PostgreSQL database backups for omnitron-pg and app databases.
  * Backups stored as compressed pg_dump files in ~/.omnitron/backups/.
- * Uses Docker exec for pg_dump/pg_restore when databases are containerised.
+ * Containerised transfers run pg_dump or psql in an owned helper on the verified database container's network.
  *
  * Features:
  * - Create on-demand backups (compressed gzip)
@@ -27,7 +27,7 @@ import { OperationJournal, OperationJournalError } from '../execution/operation-
 import type { OperationReceipt, OperationArtifact } from '../shared/dto/execution-operations.js';
 import { assertReviewedBackupCompletion } from '../shared/backup-admission.js';
 import type { ExecutionResourceObservation } from '@xec-sh/core';
-import type { PipelineOptions } from './backup-pipeline.js';
+import type { BackupTransferFailure, PipelineOptions } from './backup-pipeline.js';
 import { getEnv } from '../shared/env-config.js';
 import { resolveOmnitronPgConfig } from '../database/connection.js';
 import { ensurePrivateDir, sealFile, sealDirContents } from '../shared/private-files.js';
@@ -522,6 +522,8 @@ export class BackupService {
       receipt = this.operations.transition(id, revision, 'cancelling');
     try {
       const observation = await this.execution.terminateExecution(receipt.execution!);
+      if (receipt.code === 'BACKUP_DEADLINE_EXCEEDED')
+        return this.operations.transition(id, receipt.revision, 'failed', { observation, code: receipt.code });
       return this.operations.transition(id, receipt.revision, 'cancelled', { observation, code: 'BACKUP_CANCELLED' });
     } catch {
       return receipt.state === 'unknown' ? receipt : this.operations.transition(id, receipt.revision, 'unknown', { code: 'BACKUP_EXECUTION_UNCONFIRMED' });
@@ -537,7 +539,8 @@ export class BackupService {
     try {
       const observation = await this.execution.inspectExecution(receipt.execution);
       if (observation.state === 'absent' || observation.state === 'stopped')
-        return this.operations.transition(id, revision, 'failed', { observation, code: 'BACKUP_INTERRUPTED' });
+        return this.operations.transition(id, revision, 'failed', { observation,
+          code: receipt.code === 'BACKUP_DEADLINE_EXCEEDED' ? receipt.code : 'BACKUP_INTERRUPTED' });
     } catch { /* Unavailable observation cannot authorize replay or release a claim. */ }
     return receipt.state === 'unknown' ? receipt : this.operations.transition(id, revision, 'unknown', { code: 'BACKUP_EXECUTION_UNCONFIRMED' });
   }
@@ -562,6 +565,7 @@ export class BackupService {
     const done = new Promise<void>(resolve => { finish = resolve; });
     this.databaseOperations.set(id, { controller, done });
     let executionKnown = true;
+    let transferFailure: BackupTransferFailure | undefined;
     const execution: Pick<ExecutionService, 'execute'> = { execute: async command => {
       try { return await this.execution.execute(command); }
       catch (error) {
@@ -578,6 +582,7 @@ export class BackupService {
     try {
       this.operations.transition(id, prepared.receipt.revision, 'running');
       const options: PipelineOptions = { timeoutMs: this.databaseTimeoutMs, signal: controller.signal,
+        onFailure: failure => { transferFailure = failure; },
         execution: { operationId: id, onResource: async (resource, signal) => {
           signal.throwIfAborted();
           const current = this.operations.read(id)!;
@@ -591,9 +596,14 @@ export class BackupService {
       return result;
     } catch (error) {
       const { receipt, observation, known } = completion();
-      if (!['succeeded', 'failed', 'cancelled'].includes(receipt.state)) this.operations.transition(id, receipt.revision,
-        known ? controller.signal.aborted ? 'cancelled' : 'failed' : 'unknown',
-        known ? { ...(observation && { observation }), code: controller.signal.aborted ? 'BACKUP_CANCELLED' : 'BACKUP_FAILED' } : { code: 'BACKUP_EXECUTION_UNCONFIRMED' });
+      if (!['succeeded', 'failed', 'cancelled'].includes(receipt.state)) {
+        const code = !known && transferFailure?.code !== 'BACKUP_DEADLINE_EXCEEDED'
+          ? 'BACKUP_EXECUTION_UNCONFIRMED' : transferFailure?.code ?? 'BACKUP_FAILED';
+        const state = !known ? 'unknown' : code === 'BACKUP_CANCELLED' ? 'cancelled' : 'failed';
+        this.operations.transition(id, receipt.revision, state, { ...(observation && { observation }), code });
+        this.logger.warn({ operationId: id, kind, state, code, transfer: transferFailure, timeoutMs: this.databaseTimeoutMs },
+          'Database transfer did not complete');
+      }
       throw error;
     } finally { this.databaseOperations.delete(id); finish(); }
   }
@@ -832,6 +842,7 @@ export class BackupService {
 
     let publicationConfirmed = false;
     let indexConfirmed = false;
+    let archiveBytes: number | undefined;
     try {
       if (isDocker) {
         await this.pgDumpDocker(containerName, dbConfig, filepath, compress, execution, pipelineOptions);
@@ -845,6 +856,7 @@ export class BackupService {
       // umask says, which for a normal login shell is 0644.
       sealFile(filepath);
       const stats = fs.statSync(filepath);
+      archiveBytes = stats.size;
 
       const info: BackupRecord = {
         id,
@@ -873,6 +885,8 @@ export class BackupService {
       this.logger.info({ database: name, ...from, filename, size: stats.size }, 'Backup created');
       return info;
     } catch (err) {
+      if (publicationConfirmed && !indexConfirmed)
+        pipelineOptions.onFailure?.({ code: 'BACKUP_INDEX_UNCONFIRMED', phase: 'index', ...(archiveBytes !== undefined && { archiveBytes }) });
       // The pipeline owns its private staging. A final path may belong to a
       // concurrent writer, or hold a complete backup whose fsync/index receipt
       // was lost. Never turn that uncertainty into destructive cleanup.

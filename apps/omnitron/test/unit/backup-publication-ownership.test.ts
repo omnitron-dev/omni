@@ -2,6 +2,7 @@ import { testExecution } from '../fixtures/execution.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
@@ -74,13 +75,16 @@ describe('database backup publication ownership', () => {
 
   it('retains a durable complete orphan when the index write fails before insertion', async () => {
     vi.spyOn(store, 'insertBackupSync').mockImplementation(() => { throw new Error('index unavailable'); });
-    const error = await backups.createBackup('example/dev/main').then(() => undefined, reason => reason as Error);
+    const id = randomUUID();
+    const error = await backups.createBackup('example/dev/main', { operationId: id }).then(() => undefined, reason => reason as Error);
     expect(gunzipSync(fs.readFileSync(destination())).toString()).toBe('verified harmless backup bytes');
     expect(store.selectBackupsSync()).toEqual([]);
     expect(error?.message).toContain('Complete backup file retained');
     expect(error?.message).toContain('index completion was not confirmed');
     expect(error?.message).toContain(destination());
     expect(error?.cause).toMatchObject({ message: 'index unavailable' });
+    expect(backups.getOperation(id)).toMatchObject({ state: 'failed', code: 'BACKUP_INDEX_UNCONFIRMED' });
+    expect(backups.getOperation(id)?.artifact).toBeUndefined();
   });
 
   it('does not destroy an indexed backup after an ambiguous committed index write', async () => {

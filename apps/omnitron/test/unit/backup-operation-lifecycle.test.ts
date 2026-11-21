@@ -46,7 +46,7 @@ const { BackupService } = await import('../../src/services/backup.service.js');
 const { DaemonStateStore } = await import('../../src/daemon/daemon-state-store.service.js');
 const logger = createNullLogger();
 let store: InstanceType<typeof DaemonStateStore>, backups: InstanceType<typeof BackupService>, executor: ExecutionService;
-let mode: 'complete' | 'wait' | 'unknown';
+let mode: 'complete' | 'wait' | 'unknown' | 'lost-on-abort';
 let submitted: ExecutionResource[];
 const containers = { one: 'a'.repeat(64), two: 'b'.repeat(64) };
 const image = `sha256:${'c'.repeat(64)}`;
@@ -99,6 +99,12 @@ beforeEach(() => {
     await command.onResource!(resource, command.signal!);
     submitted.push(resource);
     if (mode === 'unknown') throw new ExecutionOutcomeUnknownError({ adapter: 'docker', resource });
+    if (mode === 'lost-on-abort') {
+      if (!command.stdout || typeof command.stdout === 'string') throw new Error('Fixture needs a real output stream');
+      command.stdout.write('incomplete archive');
+      if (!command.signal!.aborted) await once(command.signal!, 'abort');
+      throw new ExecutionOutcomeUnknownError({ adapter: 'docker', resource });
+    }
     // Real process/streams plus real SQLite receipts, with only the daemon
     // ownership protocol faked. No real Docker service or database is used.
     return testExecution.execute({ ...command, adapter: 'local', adapterOptions: { type: 'local' },
@@ -551,7 +557,7 @@ describe('durable backup execution', () => {
     await backups.prepareHandoff();
     expect(performance.now() - started).toBeLessThan(5000);
     expect(await run).toBeInstanceOf(Error);
-    expect(backups.getOperation(operationId)?.state).toBe('cancelled');
+    expect(backups.getOperation(operationId)).toMatchObject({ state: 'cancelled', code: 'BACKUP_CANCELLED' });
     expect((await backups.listBackups()).map(row => row.id)).toEqual([retained.id]);
     expect(store.kvGetSync('backup:schedules')).toEqual({ all: 'hourly' });
     expect(backups.activeOperationCount()).toBe(0);
@@ -599,7 +605,7 @@ describe('durable backup execution', () => {
     const id = randomUUID();
     await expect(backups.createBackup('one/dev/ledger', { operationId: id })).rejects.toThrow();
     const receipt = backups.getOperation(id)!;
-    expect(receipt.state).toBe('unknown');
+    expect(receipt).toMatchObject({ state: 'unknown', code: 'BACKUP_EXECUTION_UNCONFIRMED' });
     expect(() => backups.reviewHandoffOperations()).toThrow('unconfirmed');
     const directory = path.join(fixture.home, 'backups');
     const partial = fs.readdirSync(directory).filter(name => name.endsWith('.partial'));
@@ -614,6 +620,49 @@ describe('durable backup execution', () => {
     expect(restarted.listOperations()).toEqual([]);
     expect(store.selectBackupsSync()).toEqual([]);
     restarted.dispose();
+  });
+
+  it.each(['reconcile', 'cancel'] as const)('preserves a reached deadline when Docker settlement is lost and later confirmed by %s', async action => {
+    backups.configure({ databaseTimeoutMs: 300 });
+    mode = 'lost-on-abort';
+    const id = randomUUID();
+    const failed = backups.createBackup('one/dev/ledger', { operationId: id, compress: false });
+    await expect(failed).rejects.toThrow(/deadline during transfer \(18 bytes written to archive\).*unknown/i);
+    const receipt = backups.getOperation(id)!;
+    expect(receipt).toMatchObject({ state: 'unknown', code: 'BACKUP_DEADLINE_EXCEEDED', execution: submitted[0] });
+    expect(receipt.observation).toBeUndefined();
+    expect(receipt.artifact).toBeUndefined();
+    expect(store.selectBackupsSync()).toEqual([]);
+    const directory = path.join(fixture.home, 'backups');
+    const partial = fs.readdirSync(directory).filter(name => name.endsWith('.partial'));
+    expect(partial).toHaveLength(1);
+    expect(fs.readFileSync(path.join(directory, partial[0]!), 'utf8')).toBe('incomplete archive');
+    const reopened = new BackupService({ logger } as never, store, executor, projects as never);
+    try {
+      await expect(reopened.createBackup('one/dev/ledger', { operationId: id, compress: false })).rejects.toThrow('already exists');
+      expect(executor.execute).toHaveBeenCalledOnce();
+      const observation = { resource: submitted[0]!, state: 'absent' as const };
+      vi.spyOn(executor, action === 'reconcile' ? 'inspectExecution' : 'terminateExecution').mockResolvedValue(observation);
+      const settled = action === 'reconcile' ? await reopened.reconcileOperation(id, receipt.revision) : await reopened.cancelOperation(id, receipt.revision);
+      expect(settled).toMatchObject({ state: 'failed', code: 'BACKUP_DEADLINE_EXCEEDED', observation });
+      expect(settled.artifact).toBeUndefined();
+      expect(reopened.listOperations()).toEqual([]);
+      expect(executor.execute).toHaveBeenCalledOnce();
+    } finally { reopened.dispose(); }
+  });
+
+  it('keeps the claim when an explicit cancellation loses Docker settlement before the deadline', async () => {
+    mode = 'lost-on-abort';
+    const id = randomUUID();
+    const work = backups.createBackup('one/dev/ledger', { operationId: id }).catch(error => error as Error);
+    await vi.waitFor(() => expect(backups.getOperation(id)?.execution?.id).toBeTruthy());
+    const receipt = await backups.cancelOperation(id, backups.getOperation(id)!.revision);
+    expect(receipt).toMatchObject({ state: 'unknown', code: 'BACKUP_EXECUTION_UNCONFIRMED' });
+    expect(receipt.observation).toBeUndefined();
+    expect(receipt.artifact).toBeUndefined();
+    expect(await work).toHaveProperty('message', expect.stringMatching(/cancelled.*unknown/i));
+    expect(backups.listOperations()).toEqual([receipt]);
+    expect(executor.execute).toHaveBeenCalledOnce();
   });
 
   it('requires exact reviewed operations and the same transition owner to resume schedules', async () => {

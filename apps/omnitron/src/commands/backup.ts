@@ -172,7 +172,8 @@ function printOperation(receipt: OperationReceipt): void {
   log.info(`${receipt.id} · ${receipt.kind} · ${receipt.state} · revision ${receipt.revision}`);
   for (const resource of receipt.resources.filter(value => value.kind === 'database'))
     log.info(`  ${resource.project}/${resource.stack}/${resource.name}`);
-  if (receipt.execution) log.info(`  Docker ${receipt.execution.daemonId} · container ${receipt.execution.id ?? 'not acknowledged'}`);
+  if (receipt.execution) log.info(`  Docker ${receipt.execution.daemonId} · container ${receipt.execution.id ?? 'not acknowledged'}` +
+    (receipt.observation ? ` · ${receipt.observation.state}` : ''));
   if (receipt.code) log.info(`  ${receipt.code}`);
   if (receipt.review) log.warn(`  Outcome remains unknown. New backups allowed; restores blocked. Reviewed by ${receipt.review.actor}: ${receipt.review.reason}`);
 }

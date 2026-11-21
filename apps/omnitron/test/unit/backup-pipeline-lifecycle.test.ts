@@ -110,6 +110,7 @@ describe('backup transfer lifecycle', () => {
   });
 
   it('kills and reaps a live producer after output failure, before returning the error', async () => {
+    const onFailure = vi.fn();
     const marker = pidFile('producer.pid');
     await alterWriteStream(stream => {
       const write = stream._write;
@@ -122,7 +123,8 @@ describe('backup transfer lifecycle', () => {
       process.stdout.on('error', () => {});
       process.stdout.write('partial bytes');
       setInterval(() => {}, 1000);
-    `, marker], file('failed'), false, { timeoutMs: 5_000 })).rejects.toThrow(/ENOSPC/);
+    `, marker], file('failed'), false, { timeoutMs: 5_000, onFailure })).rejects.toThrow(/ENOSPC/);
+    expect(onFailure).toHaveBeenCalledWith({ code: 'BACKUP_ARCHIVE_IO_FAILED', phase: 'transfer', archiveBytes: 13 });
     expect(alive(pidAt(marker)), 'the producer survived a failed output').toBe(false);
     expect(fs.existsSync(file('failed'))).toBe(false);
     expect(fs.readdirSync(directory).filter(name => name.endsWith('.partial'))).toEqual([]);
@@ -183,18 +185,23 @@ describe('backup transfer lifecycle', () => {
   });
 
   it('does not publish after a file fsync finishes beyond the execution deadline', async () => {
+    const now = performance.now.bind(performance);
+    let elapsed = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => now() + elapsed);
     await alterSync(async (_handle, sync) => {
       await sync();
-      await new Promise<void>(resolve => { timers.add(setTimeout(resolve, 800)); });
+      // Advance only after the real file fsync, independent of subprocess startup time.
+      elapsed = 20_000;
     });
     await expect(dumpToFile(testExecution, process.execPath, ['-e', 'process.stdout.end("complete")'], file('late-sync'), false,
-      { timeoutMs: 300 })).rejects.toThrow('deadline during publication (8 bytes written to archive)');
+      { timeoutMs: 10_000 })).rejects.toThrow('deadline during publication (8 bytes written to archive)');
     expect(fs.existsSync(file('late-sync'))).toBe(false);
     expect(fs.readdirSync(directory).filter(name => name.endsWith('.partial'))).toEqual([]);
   });
 
   it('reports directory durability failure without deleting a concurrent replacement', async () => {
     const output = file('published');
+    const onFailure = vi.fn();
     await alterSync(async (handle, sync) => {
       if ((await handle.stat()).isFile()) { await sync(); return; }
       expect(fs.readFileSync(output, 'utf8')).toBe('complete');
@@ -203,8 +210,9 @@ describe('backup transfer lifecycle', () => {
       fs.writeFileSync(output, 'replacement belongs to another writer', { flag: 'wx' });
       throw new Error('injected directory fsync failure');
     });
-    await expect(dumpToFile(testExecution, process.execPath, ['-e', 'process.stdout.end("complete")'], output, false))
+    await expect(dumpToFile(testExecution, process.execPath, ['-e', 'process.stdout.end("complete")'], output, false, { onFailure }))
       .rejects.toThrow(/publication was not confirmed.*directory fsync failure/);
+    expect(onFailure).toHaveBeenCalledWith({ code: 'BACKUP_PUBLICATION_UNCONFIRMED', phase: 'publication', archiveBytes: 8 });
     expect(fs.readFileSync(output, 'utf8')).toBe('replacement belongs to another writer');
   });
 

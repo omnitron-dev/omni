@@ -2,7 +2,7 @@ import { testExecution } from '../fixtures/execution.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { ExecutionResource } from '@xec-sh/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -54,6 +54,13 @@ describe('persisted database transfer deadline', () => {
     expect(() => backup.configure({ databaseTimeoutMs: 60_000 })).toThrow(/before starting/);
   });
 
+  it('does not infer a transfer deadline from a command error mentioning a timeout', async () => {
+    const backup = service(), id = randomUUID();
+    vi.spyOn(testExecution, 'execute').mockRejectedValueOnce(new Error('database statement timeout'));
+    await expect(backup.createBackup('fixture/dev/ledger', { operationId: id })).rejects.toThrow('database statement timeout');
+    expect(backup.getOperation(id)).toMatchObject({ state: 'failed', code: 'BACKUP_FAILED' });
+  });
+
   it.skipIf(process.platform === 'win32').each([false, true])('enforces dump and restore deadlines through the public service (Docker=%s)', async docker => {
     // Synthetic commands exercise real streams, process cleanup and the backup
     // index without opening a database or addressing a running Docker service.
@@ -89,12 +96,20 @@ if (restore) { process.stdin.resume(); process.stdin.on('end', done); } else don
 
     backup.configure({ databaseTimeoutMs: 300 });
     vi.stubEnv('OMNI_BACKUP_FIXTURE_DELAY', '5000');
-    const dumping = backup.createBackup('fixture/dev/ledger');
+    const dumpingId = randomUUID(), restoringId = randomUUID();
+    const warning = vi.spyOn(logger, 'warn');
+    const dumping = backup.createBackup('fixture/dev/ledger', { operationId: dumpingId });
     expect(() => backup.configure({ databaseTimeoutMs: 5_000 })).toThrow(/before starting/);
     await expect(dumping).rejects.toThrow(/pg_dump pipeline exceeded its 300 ms deadline during transfer \(\d+ bytes written to archive\)/);
-    await expect(backup.restoreBackup(record.id)).rejects.toThrow(
+    await expect(backup.restoreBackup(record.id, restoringId)).rejects.toThrow(
       `psql pipeline exceeded its 300 ms deadline during transfer (${record.size} bytes read from archive)`,
     );
+    for (const id of [dumpingId, restoringId]) {
+      expect(backup.getOperation(id)).toMatchObject({ state: 'failed', code: 'BACKUP_DEADLINE_EXCEEDED' });
+      expect(backup.getOperation(id)?.artifact).toBeUndefined();
+    }
+    expect(warning).toHaveBeenCalledWith(expect.objectContaining({ operationId: restoringId, timeoutMs: 300,
+      transfer: { code: 'BACKUP_DEADLINE_EXCEEDED', phase: 'transfer', archiveBytes: record.size } }), 'Database transfer did not complete');
     expect(backup.activeOperationCount()).toBe(0);
     expect((await backup.listBackups()).map(item => item.id)).toEqual([record.id]);
     expect(fs.readdirSync(path.join(state.home, 'backups')).filter(name => name.endsWith('.partial'))).toEqual([]);

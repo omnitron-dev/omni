@@ -102,6 +102,7 @@ describe('backup command outcomes', () => {
 
     it.each([
       ['failed', 'BACKUP_FAILED'], ['cancelled', 'BACKUP_CANCELLED'], ['unknown', 'BACKUP_EXECUTION_UNCONFIRMED'],
+      ['failed', 'BACKUP_DEADLINE_EXCEEDED'], ['unknown', 'BACKUP_DEADLINE_EXCEEDED'],
     ] as const)('retains the journal state %s on a lost reply', async (state, code) => {
       let id = '';
       fixture.rpc['createBackup'] = input => { id = submitted(input); throw lost(); };
@@ -169,6 +170,15 @@ describe('backup command outcomes', () => {
       expect(fixture.printed.filter(line => line.level === 'error')).toEqual([{ level: 'error', text: 'Backup admission denied' }]);
       expect(process.exitCode).toBe(1);
     });
+  });
+
+  it('shows the observed state of the exact Docker resource alongside the terminal deadline', async () => {
+    const execution = { ...operation.execution, id: 'a'.repeat(64) };
+    fixture.rpc['getOperation'] = () => ({ ...operation, execution, observation: { resource: execution, state: 'absent' },
+      state: 'failed', code: 'BACKUP_DEADLINE_EXCEEDED' });
+    await commands.backupOperationsCommand(operation.id);
+    expect(fixture.printed.map(line => line.text)).toContain(`  Docker example-daemon · container ${execution.id} · absent`);
+    expect(fixture.printed.map(line => line.text)).toContain('  BACKUP_DEADLINE_EXCEEDED');
   });
 
   it.each([undefined, backup.id])('reads the exact operation receipt without replay (id=%s)', async id => {

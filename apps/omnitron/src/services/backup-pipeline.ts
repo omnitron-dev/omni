@@ -102,8 +102,17 @@ export interface PipelineOptions {
   /** Environment for the spawned command (e.g. PGPASSWORD). */
   env?: NodeJS.ProcessEnv;
   signal?: AbortSignal;
+  /** First observed transfer failure, before execution and file cleanup settle. */
+  onFailure?: (failure: BackupTransferFailure) => void;
   /** Execution target and ownership hook are supplied by the operation journal. */
   execution?: Pick<Command, 'adapter' | 'adapterOptions' | 'operationId' | 'onResource'>;
+}
+
+export interface BackupTransferFailure {
+  code: 'BACKUP_DEADLINE_EXCEEDED' | 'BACKUP_CANCELLED' | 'BACKUP_ARCHIVE_IO_FAILED' |
+    'BACKUP_PUBLICATION_UNCONFIRMED' | 'BACKUP_INDEX_UNCONFIRMED' | 'BACKUP_FAILED';
+  phase: 'preparation' | 'transfer' | 'publication' | 'index';
+  archiveBytes?: number;
 }
 
 const DEFAULT_TIMEOUT_MS = 600_000;
@@ -144,17 +153,21 @@ async function runFileTransfer(execution: Pick<ExecutionService, 'execute'>, com
   const program = (Array.isArray(entrypoint) ? entrypoint[0] : entrypoint) || command;
 
   const deadline = performance.now() + timeoutMs;
+  const { ExecutionOutcomeUnknownError, TimeoutError } = await import('@xec-sh/core');
   const controller = new AbortController();
-  let phase = 'preparation';
+  let phase: BackupTransferFailure['phase'] = 'preparation';
+  let deadlineError: Error | undefined;
   const expire = () => {
+    if (controller.signal.aborted) return;
     const limit = timeoutMs >= 1000 ? `${timeoutMs / 1000} s` : `${timeoutMs} ms`;
     const progress = transfer.direction === 'dump' ? 'bytes written to archive' : 'bytes read from archive';
-    controller.abort(new Error(`${program} pipeline exceeded its ${limit} deadline during ${phase} (${transfer.archiveBytes()} ${progress})`));
+    deadlineError = new Error(`${program} pipeline exceeded its ${limit} deadline during ${phase} (${transfer.archiveBytes()} ${progress})`);
+    controller.abort(deadlineError);
   };
   const cancel = () => controller.abort(options.signal!.reason);
   options.signal?.addEventListener('abort', cancel, { once: true });
   if (options.signal?.aborted) cancel();
-  const timer = setTimeout(expire, timeoutMs);
+  const timer = setTimeout(expire, Math.max(0, Math.ceil(deadline - performance.now())));
   const checkDeadline = () => {
     if (performance.now() >= deadline && !controller.signal.aborted) expire();
     controller.signal.throwIfAborted();
@@ -167,7 +180,9 @@ async function runFileTransfer(execution: Pick<ExecutionService, 'execute'>, com
 
   const streams = { stdin: new PassThrough(), stdout: new PassThrough() };
   let processResult: Promise<ExecutionResult> | undefined;
-  let executionConfirmed = true;
+  let executionTimeout: number | undefined;
+  let unknownExecution: Error | undefined;
+  let streamError: unknown;
   const pending = new Set<Promise<unknown>>();
   const track = <T>(task: Promise<T>): Promise<T> => {
     pending.add(task);
@@ -177,6 +192,7 @@ async function runFileTransfer(execution: Pick<ExecutionService, 'execute'>, com
   const wait = <T>(task: Promise<T>) => Promise.race([track(task), aborted]);
   let cleanupDeadline: number | undefined;
   let failure: unknown;
+  let diagnostic: BackupTransferFailure | undefined;
   const cleanupErrors: unknown[] = [];
   try {
     checkDeadline();
@@ -184,10 +200,11 @@ async function runFileTransfer(execution: Pick<ExecutionService, 'execute'>, com
     if (preparation) await wait(preparation);
     checkDeadline();
     phase = 'transfer';
-    const pumping = track(transfer.pipe(streams, controller.signal));
+    const pumping = track(transfer.pipe(streams, controller.signal).catch(error => { streamError = error; throw error; }));
+    executionTimeout = Math.max(1, Math.ceil(deadline - performance.now()));
     processResult = execution.execute({ ...options.execution, command, args, shell: false, nothrow: true,
       env: Object.fromEntries(Object.entries(options.env ?? {}).filter((entry): entry is [string, string] => entry[1] !== undefined)),
-      signal: controller.signal, timeout: Math.max(1, Math.ceil(deadline - performance.now())),
+      signal: controller.signal, timeout: executionTimeout,
       stdout: transfer.direction === 'dump' ? streams.stdout : 'ignore',
       ...(transfer.direction === 'restore' && { stdin: streams.stdin }),
       stderr: 'pipe', maxBuffer: 8192 });
@@ -203,7 +220,14 @@ async function runFileTransfer(execution: Pick<ExecutionService, 'execute'>, com
     }
     checkDeadline();
   } catch (error) {
+    if (error instanceof TimeoutError && error.timeout === executionTimeout && performance.now() >= deadline) expire();
     failure = controller.signal.aborted ? controller.signal.reason : error;
+    const code = deadlineError !== undefined && failure === deadlineError ? 'BACKUP_DEADLINE_EXCEEDED'
+      : options.signal?.aborted && failure === options.signal.reason ? 'BACKUP_CANCELLED'
+      : phase === 'publication' ? 'BACKUP_PUBLICATION_UNCONFIRMED'
+      : phase === 'preparation' || (streamError !== undefined && failure === streamError) ? 'BACKUP_ARCHIVE_IO_FAILED'
+      : 'BACKUP_FAILED';
+    diagnostic = { code, phase, archiveBytes: transfer.archiveBytes() };
     controller.abort(failure);
     streams.stdin.destroy();
     streams.stdout.destroy();
@@ -212,11 +236,7 @@ async function runFileTransfer(execution: Pick<ExecutionService, 'execute'>, com
     if (processResult) {
       try { await processResult; }
       catch (executionError) {
-        const { ExecutionOutcomeUnknownError } = await import('@xec-sh/core');
-        if (executionError instanceof ExecutionOutcomeUnknownError) {
-          executionConfirmed = false;
-          failure = executionError;
-        }
+        if (executionError instanceof ExecutionOutcomeUnknownError) unknownExecution = executionError;
       }
     }
     cleanupDeadline = performance.now() + CLEANUP_TIMEOUT_MS;
@@ -228,14 +248,19 @@ async function runFileTransfer(execution: Pick<ExecutionService, 'execute'>, com
     streams.stdin.destroy();
     streams.stdout.destroy();
     try {
-      const cleanup = transfer.cleanup?.(pending.size === 0 && executionConfirmed);
+      const cleanup = transfer.cleanup?.(pending.size === 0 && !unknownExecution);
       if (cleanup) await withinCleanup(cleanup, cleanupDeadline ?? performance.now() + CLEANUP_TIMEOUT_MS, transfer.location);
     } catch (cleanupError) { cleanupErrors.push(cleanupError); }
   }
-  if (cleanupErrors.length) {
-    throw new AggregateError(failure === undefined ? cleanupErrors : [failure, ...cleanupErrors],
-      `${failure === undefined ? 'Backup pipeline' : failure instanceof Error ? failure.message : String(failure)}; cleanup failed: ${cleanupErrors.map(error => error instanceof Error ? error.message : String(error)).join('; ')}`,
-      failure === undefined ? undefined : { cause: failure });
+  if (diagnostic) options.onFailure?.(diagnostic);
+  const additionalFailure = unknownExecution && unknownExecution !== failure ? unknownExecution : undefined;
+  if (cleanupErrors.length || additionalFailure) {
+    const causes = failure === undefined ? [] : [failure];
+    if (additionalFailure) causes.push(additionalFailure);
+    const messages = causes.map(error => error instanceof Error ? error.message : String(error));
+    if (!messages.length) messages.push('Backup pipeline');
+    if (cleanupErrors.length) messages.push('cleanup failed: ' + cleanupErrors.map(error => error instanceof Error ? error.message : String(error)).join('; '));
+    throw new AggregateError([...causes, ...cleanupErrors], messages.join('; '), { cause: unknownExecution ?? failure });
   }
   if (failure !== undefined) throw failure;
 }

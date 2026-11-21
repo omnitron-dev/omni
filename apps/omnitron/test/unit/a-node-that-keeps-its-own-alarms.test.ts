@@ -98,10 +98,10 @@ describe('a node’s own alarms, on its SQLite', () => {
   it('seeds the critical node defaults', async () => {
     const rules = await db.selectFrom('alert_rules').select(['name', 'severity', 'enabled']).orderBy('name').execute();
     expect(rules.map((r) => r.name).sort()).toEqual(
-      ['App crashed', 'App erroring', 'Container unhealthy', 'Disk space below 50 GiB'].sort()
+      ['App crashed', 'App erroring', 'Container unhealthy', 'Disk space below 50 GiB', 'Linux storage degraded'].sort()
     );
     expect(rules.every((r) => r.severity === 'critical' && r.enabled === 1)).toBe(true);
-    expect(NODE_ALERT_RULES).toHaveLength(4);
+    expect(NODE_ALERT_RULES).toHaveLength(5);
   });
 
   it('delivers a crash on the node to the stack it runs, with its summary, once', async () => {

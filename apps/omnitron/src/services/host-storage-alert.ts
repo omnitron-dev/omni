@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { sql, type Kysely, type Selectable, type Transaction } from 'kysely';
 import { uuidV5 } from '../cluster/mesh-link.js';
-import { STORAGE_ALERT_RULE } from '../database/alert-bridge/migrations/018_host_storage_alert.js';
+import { STORAGE_ALERT_RULE } from '../database/migrations/018_host_storage_alert.js';
 import type { OmnitronDatabase } from '../database/schema.js';
 import { storageDecision, type StorageObservation, type StorageSubject } from '../monitoring/host-storage.js';
 import type { SyncService } from './sync.service.js';

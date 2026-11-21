@@ -6,35 +6,47 @@ import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createOmnitronDb } from './connection.js';
 import { schemaDatabaseIdentity } from './schema-compatibility.js';
-import { MASTER_SCHEMA_EXPANSIONS } from './schema-expansion-policy.js';
+import { masterExpansionPolicies } from './schema-expansion-policy.js';
+import { STORAGE_EXPANSION } from './storage-schema-compatibility.js';
 import { assertSchemaHistory, readSchemaPlan, type SchemaSnapshot } from './schema-transition-plan.js';
 import { createOmnitronMigrationRunner } from './migration-runner.js';
 import { OMNITRON_MIGRATIONS } from './migrations/index.js';
 import type { Kysely } from 'kysely';
 
 const ownDist = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const [mode, argument] = process.argv.slice(2);
+const [mode, argument, rollback] = process.argv.slice(2);
 const db = await createOmnitronDb<unknown>({
   max: 1, connectionTimeoutMillis: 5000,
   options: '-c lock_timeout=5000 -c statement_timeout=60000' + (mode === 'inspect' ? ' -c default_transaction_read_only=on' : ''),
 });
-async function snapshot(connection: Kysely<unknown>, dist = ownDist): Promise<SchemaSnapshot> {
+async function snapshot(connection: Kysely<unknown>, dist = ownDist, rollbackDist?: string): Promise<SchemaSnapshot> {
   const source = dist === ownDist ? { createOmnitronMigrationRunner } :
     await import(pathToFileURL(path.join(dist, 'database/migration-runner.js')).href) as { createOmnitronMigrationRunner: typeof createOmnitronMigrationRunner };
   const registry = dist === ownDist ? OMNITRON_MIGRATIONS :
     (await import(pathToFileURL(path.join(dist, 'database/migrations/index.js')).href) as { OMNITRON_MIGRATIONS: typeof OMNITRON_MIGRATIONS }).OMNITRON_MIGRATIONS;
   return { database: await schemaDatabaseIdentity(connection), registry: registry.map(m => ({ name: m.name, checksum: m.checksum ?? null })),
-    expansions: dist === ownDist ? MASTER_SCHEMA_EXPANSIONS : [], inspection: await source.createOmnitronMigrationRunner(connection).inspect() };
+    expansions: dist === ownDist ? await masterExpansionPolicies(ownDist, rollbackDist) : [], inspection: await source.createOmnitronMigrationRunner(connection).inspect() };
 }
 try {
   if (mode === 'inspect' && argument && path.isAbsolute(argument)) {
-    process.stdout.write(JSON.stringify(await snapshot(db, argument)) + '\n');
+    process.stdout.write(JSON.stringify(await snapshot(db, argument, rollback)) + '\n');
   } else if (mode === 'apply' && argument) {
     const plan = await readSchemaPlan(argument);
     if (plan.phase === 'prepared') throw new Error('Schema expansion has not been approved for execution');
     const { verifyRuntimeArtifact } = await import('../shared/runtime-artifact.js');
     const runtime = await verifyRuntimeArtifact(path.resolve(ownDist, '../../..'), plan.receipt.toRuntime);
     if (runtime.sha256 !== plan.receipt.toRuntime || process.env['OMNITRON_HOME'] !== plan.receipt.instanceHome) throw new Error('Schema worker belongs to another runtime or instance');
+    // Reconstruct the rollback directory from the private, instance-bound receipt. An older CLI,
+    // a manually retried plan, or unrelated 017 binary cannot authorize this particular DDL.
+    const expansion = plan.receipt.additions.find(m => m.name === STORAGE_EXPANSION.masterName);
+    if (expansion) {
+      const source = path.join(plan.receipt.instanceHome, 'runtime/releases', plan.receipt.fromRuntime);
+      await verifyRuntimeArtifact(source, plan.receipt.fromRuntime);
+      const policies = await masterExpansionPolicies(ownDist, path.join(source, 'packages/0/dist'));
+      if (expansion.fileHash !== STORAGE_EXPANSION.masterBody ||
+          !policies.some(p => p.name === expansion.name && p.checksum === expansion.checksum))
+        throw Error('018_host_storage_alert requires the reviewed storage-aware rollback writer and exact migration body');
+    }
     const result = await createOmnitronMigrationRunner(db, undefined, {
       beforeSetup: async connection => assertSchemaHistory(plan, await snapshot(connection)),
     }).up();

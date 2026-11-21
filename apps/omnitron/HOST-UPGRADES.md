@@ -833,3 +833,50 @@ inspection of the recorded operation and host processes. Intentionally detached
 late mutations and direct administrator operations outside the deployment
 contract are not made transactional by this mechanism. A single physical host
 also remains a failure domain; process recovery is not multi-host availability.
+
+### Storage alerts and the 017/001 rollback release
+
+The storage-alert bridge is commit `5be6b9744667ad4fe24fa0a7af17bcbc77b732ff`.
+Build and seal it for the host's platform. Keep both immutable runtime roots, their
+digests, the installation receipt and the schema plan through the rollback window.
+`bf935080` and `1ff20dd5` use the same old registries. Their receivers lack trusted
+alert provenance and their evaluators can close and deliver a replicated firing alert.
+
+On the master, use the bridge or expanded release's CLI against the intended instance.
+In the commands below, `$bridge_dist` and `$target_dist` refer to the sealed
+`packages/0/dist` directories. Capture the private file returned by schema preparation
+as `$plan`. Review each check before the corresponding operation.
+
+```sh
+omnitron --json backend upgrade "$bridge_dist" --check
+omnitron --json backend upgrade "$bridge_dist"
+omnitron --json backend schema prepare "$target_dist"
+omnitron --json backend schema apply "$plan"
+omnitron --json backend upgrade "$target_dist" --schema-plan "$plan" --check
+omnitron --json backend upgrade "$target_dist" --schema-plan "$plan"
+```
+
+The bridge must be the selected and serving backend for schema preparation and application.
+Application requires a current recovery certificate. The master records the exact old history,
+new migration checksum, runtime digests and database identity. PostgreSQL 018 preserves ambiguous
+historical `annotations.node` as an unverified report and keeps it outside automated delivery.
+The master can roll its backend back with `backend upgrade "$bridge_dist" --schema-plan "$plan" --check`
+and then the same command without `--check`. Keep the expanded schema and the receipt.
+The bridge continues distinguishing local, authenticated and historically unverified alerts.
+
+On each SQLite node first select the same platform's bridge through the ordinary backend
+handoff. A managed node needs a guardian advertising `nodeStorageExpansion: 1`.
+Use `backend guardian prepare "$bridge_dist"`, check the resulting guardian plan, then apply it
+if the current guardian lacks that capability. Run `backend upgrade "$target_dist" --check`
+and `backend upgrade "$target_dist"`. Local startup applies SQLite 002. To return use
+`backend upgrade "$bridge_dist" --check` and `backend upgrade "$bridge_dist"`.
+The bridge recognizes only the reviewed future SQLite checksum and preserves events and their rule.
+The enrolled-node comparison also checks the controller ledger migration bodies.
+The mesh sender retains storage entries while the receiving master lacks the storage alert capability,
+subject to the node's ordinary outbox retention.
+
+The backend handoffs retain the execution owner and application processes. Before either expansion,
+the original binary remains a rollback option. After expansion the supported recovery target is
+the sealed bridge. A PostgreSQL receipt belongs only to that rollback runtime, and an old SQLite
+binary refuses the future history row. Reverting the binary to `bf935080` after expansion would
+require a separate data restoration decision involving writes made since the backup.

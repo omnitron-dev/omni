@@ -1,4 +1,4 @@
-import { defineSqlMigration } from '../../../migration/index.js';
+import { defineSqlMigration } from '../../migration/index.js';
 
 /** A native rule identity shared with the node that owns its own critical alert and delivery policy. */
 export const STORAGE_ALERT_RULE = {

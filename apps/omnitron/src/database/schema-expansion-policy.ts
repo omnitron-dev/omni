@@ -1,3 +1,5 @@
+import { STORAGE_EXPANSION, hasReviewedStorageBody, hasStorageRollbackWriter } from './storage-schema-compatibility.js';
+import { migration as storageAlert } from './migrations/018_host_storage_alert.js';
 import { migration as metricsMigration } from './migrations/015_persistent_metrics.js';
 import { migration as clusterMigration } from './migrations/016_cluster_lease.js';
 import { migration } from './migrations/014_replication_receipts.js';
@@ -24,3 +26,12 @@ export const MASTER_SCHEMA_EXPANSIONS = [{
   checksum: pipelineAdmission.checksum!,
   summary: 'Add nullable pipeline admission JSONB. Existing writers omit it; rollback retains the column and all command, review and recovery receipts.',
 }];
+
+/** Older coordinators inspect the registry without a rollback identity. They can still plan the
+ * original expansions, but only a qualified 017 writer may own alert traffic through 018. */
+export async function masterExpansionPolicies(target: string, rollback?: string) {
+  if (!rollback || storageAlert.checksum !== STORAGE_EXPANSION.masterChecksum ||
+      !await hasStorageRollbackWriter(rollback) || !await hasReviewedStorageBody(target)) return MASTER_SCHEMA_EXPANSIONS;
+  return [...MASTER_SCHEMA_EXPANSIONS, { name: storageAlert.name, checksum: storageAlert.checksum,
+    summary: 'Add alert provenance, preserve ambiguous historic origins, and seed the storage rule with a qualified rollback writer.' }];
+}

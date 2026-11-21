@@ -190,6 +190,36 @@ omnitron stack start acme prod --release <release-id> --infrastructure preserve 
 
 Startup repeats release, environment and native-resource checks. Omitting `--review` obtains a fresh review automatically; supplying it pins the inspected digest. Application code and its own startup hooks still run. `check-release` alone does not establish infrastructure preservation.
 
+### Versioned Linux service binaries
+
+A bare-metal service can declare `binaryRelease` in its configuration or in a network
+variant. Declare the release name, version, executable names and one archive per
+Linux machine architecture. Pin each archive's SHA-256 from the verified upstream
+release manifest. Set `directory` to the directory containing the executables
+inside the archive, or to an empty string for files at its root.
+
+```ts
+const binaryRelease = {
+  name: 'indexer',
+  version: '2.1.0',
+  executables: ['indexer', 'indexer-cli'],
+  archives: {
+    x86_64: {
+      url: 'https://downloads.example.org/indexer-2.1.0-linux-x86_64.tgz',
+      sha256: verifiedArchiveSha256,
+      directory: 'indexer-2.1.0/bin',
+    },
+  },
+};
+```
+
+On a Linux host with Python 3.9 or later, Omnitron verifies the archive and installs
+its declared regular files together under `/opt/omnitron/binaries/indexer/2.1.0`.
+Reference that path in the systemd unit. A repeated installation verifies the
+existing files against the publication receipt. A changed digest at the same
+version requires explicit reconciliation. Data directories and service activation
+use the ordinary bare-metal plan.
+
 ## Source SDK development
 
 Use a complete Omni checkout with its ordinary frozen installation. From a consumer project:

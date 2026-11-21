@@ -24,7 +24,8 @@
  */
 
 import { bindService, secretValues } from './service-binding.js';
-import type { AptPackagePolicy, IServiceHealthCheck, IServiceOverride, SecretRef } from './types.js';
+import { binaryReleaseCommand } from './binary-release.js';
+import type { AptPackagePolicy, BareMetalBinaryRelease, IServiceHealthCheck, IServiceOverride, SecretRef } from './types.js';
 import { aptChanges, type AptChange, type AptDependency, type AptPackageReading, type AptTransaction } from './apt-packages.js';
 
 /** A declared bare-metal service, with its `networkMode` variant applied. */
@@ -457,6 +458,7 @@ export function selectBareMetal(
   const merged = { ...base, ...(variant ?? {}), ...(override?.bareMetal ?? {}) } as Omit<BareMetalSpec, 'name'> & {
     configTemplate?: string;
     bindAddress?: string;
+    binaryRelease?: BareMetalBinaryRelease;
   };
 
   const spec: BareMetalSpec = { name };
@@ -467,6 +469,12 @@ export function selectBareMetal(
   if (merged.dataDir) spec.dataDir = merged.dataDir;
   if (merged.user) spec.user = merged.user;
   if (merged.validateCommand) spec.validateCommand = merged.validateCommand;
+  if (merged.binaryRelease) {
+    if (merged.installCommand) throw new Error(`${name} declares both binaryRelease and installCommand`);
+    spec.installCommand = binaryReleaseCommand('stage', merged.binaryRelease);
+    const check = binaryReleaseCommand('check', merged.binaryRelease);
+    spec.validateCommand = merged.validateCommand ? `${check} && ( ${merged.validateCommand} )` : check;
+  }
   const { healthCheck } = merged as { healthCheck?: IServiceHealthCheck };
   if (healthCheck) spec.healthCheck = healthCheck;
   // A chain to take over is the node's own history: the stack's word only.

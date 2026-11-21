@@ -545,6 +545,9 @@ export interface IBareMetalServiceConfig {
   /** Package install command. */
   installCommand?: string;
 
+  /** Executables from a reviewed HTTPS archive, installed under /opt/omnitron/binaries/<name>/<version>. */
+  binaryRelease?: BareMetalBinaryRelease;
+
   /** Systemd service name. */
   systemdUnit?: string;
 
@@ -599,6 +602,14 @@ export interface IBareMetalServiceConfig {
    * (`bindService`).
    */
   variants?: Record<string, Partial<Omit<IBareMetalServiceConfig, 'variants'>> & { ports?: Record<string, number> }>;
+}
+
+export interface BareMetalBinaryRelease {
+  name: string;
+  version: string;
+  executables: string[];
+  /** Entries use Linux machine names such as x86_64 and aarch64. */
+  archives: Record<string, { url: string; sha256: string; directory: string }>;
 }
 
 export interface AptPackagePolicy {

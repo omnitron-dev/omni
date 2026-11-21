@@ -250,7 +250,61 @@ function RuntimeDetails({ data }: { data: SystemSnapshot }) {
   );
 }
 
+const storageHealthLabels = {
+  healthy: 'Healthy',
+  degraded: 'Degraded',
+  unknown: 'Unconfirmed',
+  unsupported: 'Hardware monitoring is unavailable on this platform.',
+  'not-applicable': 'No supported storage devices were found.',
+} as const;
+
 function StorageDetails({ data }: { data: SystemSnapshot }) {
+  const storage = data.storage;
+  const priority = { degraded: 0, unknown: 1, healthy: 2 };
+  const resources = [...(storage?.resources ?? [])].sort((a, b) => priority[a.health] - priority[b.health]);
+  return (
+    <Stack spacing={3}>
+      <Section title="Storage hardware">
+        {storage && !data.unanswered.storage ? (
+          <Stack spacing={1}>
+            <Typography variant="body2" color={storage.status === 'degraded' ? 'error.main' : 'text.primary'}>
+              {storageHealthLabels[storage.status]}
+            </Typography>
+            {resources.length > 0 && (
+              <Stack component="ul" aria-label="Storage devices" spacing={1.5} sx={{ listStyle: 'none', m: 0, p: 0 }}>
+                {resources.map((resource) => (
+                  <Box component="li" key={resource.name}>
+                    <Stack direction="row" spacing={1} sx={{ alignItems: 'baseline', justifyContent: 'space-between' }}>
+                      <Typography variant="subtitle2" sx={mono}>{resource.name}</Typography>
+                      <Typography variant="caption" sx={{ color: resource.health === 'degraded' ? 'error.main' : 'text.secondary' }}>
+                        {storageHealthLabels[resource.health]}
+                      </Typography>
+                    </Stack>
+                    <Typography variant="body2" sx={{ ...mono, color: 'text.secondary' }}>{resource.detail}</Typography>
+                  </Box>
+                ))}
+              </Stack>
+            )}
+            {storage.issues.map((reason) => (
+              <Typography key={reason} variant="body2" color="text.secondary">
+                {reason}
+              </Typography>
+            ))}
+          </Stack>
+        ) : (
+          <Typography variant="body2" color="text.secondary">
+            {data.unanswered.storage
+              ? 'Hardware reading unavailable for this sample.'
+              : 'This daemon does not report storage hardware health.'}
+          </Typography>
+        )}
+      </Section>
+      <Mounts data={data} />
+    </Stack>
+  );
+}
+
+function Mounts({ data }: { data: SystemSnapshot }) {
   if (data.unanswered.disks) return <Typography variant="body2">Mount inventory unavailable.</Typography>;
   if (!data.disks.length) return <Typography variant="body2">No mounted filesystems reported.</Typography>;
   const disks = [...data.disks].sort((a, b) => b.usedPercent - a.usedPercent || a.mount.localeCompare(b.mount));
@@ -477,7 +531,19 @@ function SystemHost({
                   ))}
                 </Alert>
               )}
-              <Resources data={data} />
+              {view !== 'storage' && !data.unanswered.storage && data.storage?.status === 'degraded' && (
+                <Alert
+                  severity="error"
+                  action={
+                    <Button color="inherit" size="small" onClick={() => onView('storage')}>
+                      Inspect storage
+                    </Button>
+                  }
+                >
+                  Storage hardware is degraded
+                </Alert>
+              )}
+              {view !== 'storage' && <Resources data={data} />}
               <Divider />
               <Tabs
                 aria-label="System details"

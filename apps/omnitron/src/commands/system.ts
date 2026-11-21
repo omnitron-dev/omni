@@ -16,7 +16,7 @@ export async function systemCommand({ node }: { node?: string }): Promise<void> 
     const { missing, timing, complete } = readSystemSnapshot(snapshot);
     if (!complete) process.exitCode = 1;
     if (emitJson({ target: node ?? null, timing, complete, snapshot })) return;
-    const { os, cpu, memory, daemon, unanswered, network, disks, docker } = snapshot;
+    const { os, cpu, memory, daemon, unanswered, network, disks, docker, storage } = snapshot;
     emitInfo(
       `${node ?? 'Connected daemon'} · ${(!unanswered.os && os.hostname) || 'hostname unavailable'} · ${new Date(snapshot.timestamp).toISOString()} (${timing}, ${snapshot.collectedMs} ms)`
     );
@@ -29,6 +29,14 @@ export async function systemCommand({ node }: { node?: string }): Promise<void> 
     if (!unanswered.disks)
       for (const disk of disks)
         emitInfo(`${disk.mount} · ${disk.usedPercent}% used · ${formatBytes(disk.available)} available`);
+    if (storage && !unanswered.storage) {
+      emitInfo(`Storage hardware · ${storage.status}`);
+      for (const resource of storage.resources)
+        emitInfo(`  ${resource.name} · ${resource.health} · ${resource.detail}`);
+      for (const issue of storage.issues) emitInfo(`  ${issue}`);
+    } else if (!unanswered.storage) {
+      emitInfo('Storage hardware · not reported by this daemon');
+    }
     if (!unanswered.network)
       emitInfo(
         `Network · ${network.interfaces.length} interfaces · ${network.rateAvailable !== false && network.rxSec >= 0 && network.txSec >= 0 ? `RX ${formatBytes(network.rxSec)}/s · TX ${formatBytes(network.txSec)}/s` : 'rate unavailable'}`

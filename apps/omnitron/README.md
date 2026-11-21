@@ -388,6 +388,16 @@ A database transfer deadline covers file preparation, transfer and durable publi
 
 ## Logs and operations
 
+### Storage hardware alerts
+
+On Linux, **Linux storage degraded** opens a critical alert when the kernel reports a failed NVMe controller, a zero-capacity NVMe namespace or a degraded software RAID array. The alert can fire while applications are serving and filesystems still have space. The daemon samples its own host through sysfs on the monitoring interval.
+
+Open **Alerts** for the incident. In **System → Storage**, select the affected host to see the device names, controller states and RAID member counts alongside mounted filesystem usage. The CLI reads the same snapshot with `omnitron system` or `omnitron system --node <node-id>`. Use `omnitron --json system --node <node-id>` for automation. An older daemon reports filesystem capacity only.
+
+Repeated readings update the open incident. A lost reading keeps it open. After a repair, Omnitron looks for positive evidence that the affected devices or their redundant mirrors have recovered. The originating node delivers critical transitions through the configured `monitoring.alertSink`. Update the controller before its mesh nodes so their incidents can also appear in the controller's **Alerts**.
+
+### Operational records
+
 CLI ranked log levels are minimum severities; `--level unknown` selects records without a recognized level. Console's level filters select exact values. Capture, storage and remote delivery are separate states: a live log line does not prove durable delivery.
 
 Use reviewed rollout plans and reconciliation for backend or owner transitions. Lost replies remain visible in operation receipts. Do not infer successful mutation from a local timeout or replace unresolved operations with an unreviewed retry.

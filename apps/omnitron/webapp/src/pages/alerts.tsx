@@ -1,6 +1,6 @@
 import { Can, useAccess } from 'src/auth/access';
 import { useEffect, useRef, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { Link as RouterLink, useLocation } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Grid from '@mui/material/Grid';
 import Card from '@mui/material/Card';
@@ -10,6 +10,7 @@ import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
 import Chip from '@mui/material/Chip';
 import Button from '@mui/material/Button';
+import Link from '@mui/material/Link';
 import IconButton from '@mui/material/IconButton';
 import Switch from '@mui/material/Switch';
 import Tooltip from '@mui/material/Tooltip';
@@ -49,6 +50,7 @@ import {
 // 'absence' | 'composite') the server has never accepted (it takes
 // 'metric' | 'log' | 'health'), so every rule created here was rejected.
 type AlertRule = import('@omnitron-dev/omnitron/dto/services').AlertRule;
+type ActiveAlert = import('@omnitron-dev/omnitron/dto/services').ActiveAlert;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -258,6 +260,25 @@ function StatCard({ title, value, icon, color, loading }: StatCardProps) {
 // Alerts Page
 // ---------------------------------------------------------------------------
 
+function AlertSource({ alert, canInspect }: { alert: ActiveAlert; canInspect: boolean }) {
+  if (!alert.reportedNode && alert.subject === 'host.storage' && canInspect) {
+    const search = new URLSearchParams({ view: 'storage' });
+    if (alert.node) search.set('node', alert.node);
+    return (
+      <Link component={RouterLink} to={'/system?' + search} variant="caption"
+        sx={{ alignSelf: 'flex-start', overflowWrap: 'anywhere' }}>
+        Inspect storage · {alert.node ?? 'Connected daemon'}
+      </Link>
+    );
+  }
+  if (!alert.reportedNode && !alert.node) return null;
+  return (
+    <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
+      {alert.reportedNode ? 'Reported origin (unverified)' : 'Node'} · {alert.reportedNode ?? alert.node}
+    </Typography>
+  );
+}
+
 export default function AlertsPage() {
   const { snapshot, can } = useAccess();
   const readRules = can('OmnitronAlerts.getRules'), readFiring = can('OmnitronAlerts.getActiveAlerts');
@@ -266,6 +287,8 @@ export default function AlertsPage() {
 
 function AlertInventory({ readRules, readFiring }: { readRules: boolean; readFiring: boolean }) {
   const { can } = useAccess();
+  const readSystem = can('OmnitronSystemInfo.getSnapshot');
+  const readRemoteSystem = can('OmnitronNodes.getNodeSystemSnapshot');
   const { hash, key } = useLocation();
   const firingSection = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -544,14 +567,10 @@ function AlertInventory({ readRules, readFiring }: { readRules: boolean; readFir
                       </Typography>
                       <Typography
                         variant="caption"
-                        sx={{
-                          color: "text.secondary",
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap'
-                        }}>
+                        sx={{ color: 'text.secondary', overflowWrap: 'anywhere' }}>
                         {alert.message}
                       </Typography>
+                      <AlertSource alert={alert} canInspect={readSystem && (!alert.node || readRemoteSystem)} />
                     </Stack>
                     <Typography
                       variant="caption"

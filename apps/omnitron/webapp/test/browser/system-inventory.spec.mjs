@@ -79,3 +79,45 @@ test('the fleet alert link opens the firing list with only its read permissions'
   await expect(section.getByText('Check workers')).toBeVisible();
   expect(ruleReads).toBe(0);
 });
+
+test('a disk alert opens the reporting node and keeps the mirror evidence readable on mobile', async ({ page, url }, testInfo) => {
+  const node = 'worker-2';
+  const evidence = 'raid1 degraded=1 in_sync=1/2 array_state=active sync_action=idle nvme0n1p1=in_sync nvme1n1p1=faulty';
+  const reads = [];
+  await stubInventory(page, {
+    'OmnitronAlerts.getRules': [],
+    'OmnitronAlerts.getActiveAlerts': [{
+      id: 'disk-incident', ruleId: 'disk-health', ruleName: 'Linux storage degraded', subject: 'host.storage',
+      severity: 'critical', node, message: evidence, firedAt: new Date().toISOString(), acknowledged: false,
+    }],
+    'OmnitronSystemInfo.getSnapshot': new Error('This alert belongs to another host'),
+    'OmnitronNodes.getNodeSystemSnapshot': (input) => {
+      reads.push(input.nodeId);
+      return {
+        timestamp: Date.now(), collectedMs: 35, unanswered: {},
+        os: { hostname: node, platform: 'linux', distro: 'Linux', release: '', kernel: '', arch: 'x64', uptime: 100 },
+        cpu: { brand: '', manufacturer: '', cores: 2, physicalCores: 2, speed: 2, loadPerCore: [], currentLoad: 10 },
+        memory: { total: 1000, committed: 250, available: 750, usedPercent: 25 },
+        network: { interfaces: [], rateAvailable: false }, docker: null,
+        daemon: { role: 'slave', pid: 52, uptimeMs: 8000, memoryUsage: {} },
+        disks: [{ fs: '/dev/md0', mount: '/', type: 'ext4', used: 100, size: 1000, available: 900, usedPercent: 10 }],
+        storage: { status: 'degraded', issues: [], resources: [
+          { kind: 'array', name: 'md0', health: 'degraded', detail: evidence },
+          { kind: 'controller', name: 'nvme1', health: 'degraded', detail: 'state=dead' },
+        ] },
+      };
+    },
+  });
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto(url + '/alerts#firing');
+  const inspect = page.getByRole('link', { name: 'Inspect storage · worker-2' });
+  await inspect.focus();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(url + '/system?view=storage&node=worker-2');
+  await expect(page.getByRole('tab', { name: 'Storage' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByText('state=dead')).toBeVisible();
+  await expect(page.getByText('/dev/md0 · ext4')).toBeVisible();
+  expect(reads).toContain(node);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+  await page.screenshot({ path: testInfo.outputPath('host-storage.png') });
+});

@@ -23,15 +23,17 @@ import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { SnackbarProvider } from '@omnitron-dev/prism';
 import '@testing-library/jest-dom/vitest';
 
-import type { AlertRule } from '../../src/shared/dto/alerts.js';
+import type { ActiveAlert, AlertRule } from '../../src/shared/dto/alerts.js';
 
 // These cases exercise an authorized operator's form; access revocation has
 // separate coverage against the real provider in console-access.test.tsx.
 vi.mock('src/auth/access', () => ({
   Can: ({ children }: { children: ReactNode }) => children,
-  useAccess: () => ({ can: () => true }),
+  useAccess: () => ({ can: (permission: string) => !denied.has(permission) }),
 }));
 
+const denied = new Set<string>();
+let firing: ActiveAlert[] = [];
 const createRule = vi.fn();
 const updateRule = vi.fn();
 let listed: AlertRule[] = [];
@@ -43,7 +45,7 @@ let listed: AlertRule[] = [];
 vi.mock('src/netron/client', () => ({
   alerts: {
     getRules: vi.fn(async () => listed),
-    getActiveAlerts: vi.fn(async () => []),
+    getActiveAlerts: vi.fn(async () => firing),
     createRule: (...a: unknown[]) => createRule(...a),
     updateRule: (...a: unknown[]) => updateRule(...a),
     deleteRule: vi.fn(),
@@ -64,9 +66,46 @@ const render = (ui: ReactNode) =>
   );
 
 beforeEach(() => {
+  denied.clear();
+  firing = [];
   createRule.mockReset();
   updateRule.mockReset();
   listed = [];
+});
+
+describe('hardware incidents', () => {
+  it.each([true, false])('attributes the incident when remote inspection is allowed=%s', async (allowed) => {
+    denied.add('OmnitronAlerts.getRules');
+    if (!allowed) denied.add('OmnitronNodes.getNodeSystemSnapshot');
+    firing = [{
+      id: 'event-1', ruleId: 'rule-1', ruleName: 'Linux storage degraded', severity: 'critical',
+      subject: 'host.storage', node: 'node-2', message: 'md0 has one in-sync member',
+      firedAt: new Date().toISOString(), resolvedAt: null, acknowledged: false,
+    }];
+    const { default: AlertsPage } = await import('../../webapp/src/pages/alerts.js');
+    render(<AlertsPage />);
+    expect(await screen.findByText('md0 has one in-sync member')).toBeVisible();
+    if (allowed) {
+      expect(screen.getByRole('link', { name: 'Inspect storage · node-2' })).toHaveAttribute(
+        'href', '/system?view=storage&node=node-2'
+      );
+    } else {
+      expect(screen.getByText('Node · node-2')).toBeVisible();
+      expect(screen.queryByRole('link', { name: /Inspect storage/ })).not.toBeInTheDocument();
+    }
+  });
+
+  it('displays a historical origin label without making it a navigation target', async () => {
+    firing = [{
+      id: 'legacy-event', ruleId: 'legacy-rule', ruleName: 'Disk capacity', severity: 'critical',
+      node: null, reportedNode: 'previous-label', message: 'Low capacity',
+      firedAt: new Date().toISOString(), resolvedAt: null, acknowledged: false,
+    }];
+    const { default: AlertsPage } = await import('../../webapp/src/pages/alerts.js');
+    render(<AlertsPage />);
+    expect(await screen.findByText('Reported origin (unverified) · previous-label')).toBeVisible();
+    expect(screen.queryByRole('link', { name: /previous-label/ })).not.toBeInTheDocument();
+  });
 });
 
 async function openForm() {

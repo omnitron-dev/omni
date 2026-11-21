@@ -331,6 +331,9 @@ async function finalizationFixture(t, hooks = {}) {
     if (args[0] === 'rev-parse') return commit;
     if (args[0] === 'status') return '';
     if (executable === 'pnpm' && args[0] === 'install') await hooks.build?.();
+    if (executable === process.execPath && args[0] === '--input-type=module' && args[2]?.includes('assertStandaloneNodeConfiguration')) {
+      await hooks.producer?.();
+    }
     if (args[0] === '--conditions=omnitron-source') return JSON.stringify(await verifyRuntimeArtifact(args.at(-1)));
     if (args[0]?.endsWith('/freeze-backend.mjs')) {
       const directory = args[2];
@@ -348,6 +351,17 @@ async function finalizationFixture(t, hooks = {}) {
 }
 
 const finalizationOptions = { skip: !['linux', 'darwin'].includes(process.platform), timeout: 10_000 };
+test('refuses an unsuitable Node producer before creating a checkout or installing dependencies', finalizationOptions, async t => {
+  const fixture = await finalizationFixture(t, {
+    producer: () => { throw Error('Standalone Node required'); },
+    build: () => assert.fail('Started installing dependencies'),
+    cleanup: () => assert.fail('Created a build workspace'),
+  });
+  await assert.rejects(withLocalRuntime(process.cwd(), fixture.cache, fixture.run, () => {}, () => assert.fail('Prepared a runtime')),
+    /Standalone Node required/);
+  assert(!(await fs.readdir(fixture.cache)).some(entry => entry.startsWith('.build-')));
+});
+
 test('Xec prepares the published runtime while joining checkout cleanup', finalizationOptions, async t => {
   let release, started;
   const gate = new Promise(resolve => { release = resolve; }), cleaning = new Promise(resolve => { started = resolve; });

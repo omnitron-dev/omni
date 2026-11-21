@@ -231,6 +231,10 @@ and uses its bundled Node, even if the shell now runs another Node version or
 the build cache has been cleared. The checkout must still match the reviewed
 commit and have a clean working tree.
 
+For a fresh build, run Xec with a standalone Node distribution such as the
+official Node binary. Xec checks the producer before creating the build
+checkout or installing dependencies. A verified cached runtime uses its own Node.
+
 ```sh
 pnpm exec xec update local-sync
 pnpm exec xec update local-sync --review <plan-sha256>

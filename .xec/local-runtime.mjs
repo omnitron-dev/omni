@@ -51,6 +51,8 @@ export async function withLocalRuntime(root, cache, run, progress, use, { prepar
       progress('Using qualified local runtime ' + revision);
       return use(path.join(qualified.directory, 'packages/0/dist'));
     }
+    await run(root, process.execPath, ['--input-type=module', '--eval',
+      "import { assertStandaloneNodeConfiguration } from './apps/omnitron/scripts/standalone-node.js'; assertStandaloneNodeConfiguration(process.config.variables);"]);
     const stage = await fs.mkdtemp(path.join(base, '.build-'));
     let cleanupStarted = false;
     const cleanup = async signal => {

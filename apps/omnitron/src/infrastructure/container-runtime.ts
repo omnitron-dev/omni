@@ -973,7 +973,7 @@ async function provisionContainer(config: ResolvedContainer, options: { fullId?:
         const start = async () => {
           try { await executeDocker(['container', 'start', '--', id], { timeout: Math.ceil(remaining('start', id) / 2) }); }
           catch (error) {
-            if (!definiteDockerFailure(error)) return;
+            if (!definiteDockerFailure(error)) return undefined;
             const native = await inspect(id);
             if (native?.status !== 'created' || native.name !== config.name) throw error;
             // The start was refused and the exact renamed ID is still inactive. Rollback may retire it.

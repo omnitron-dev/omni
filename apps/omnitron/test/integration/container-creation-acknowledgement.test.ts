@@ -20,7 +20,11 @@ it('joins late Docker creation and a lost start reply across separate CLI proces
     "fs.appendFileSync(f('calls'), JSON.stringify([op, op === 'create' ? null : ref]) + '\\n');",
     "const fail = msg => { console.error(msg); process.exitCode = 1; };",
     "if (op === 'create') {",
-    "  const labels = Object.fromEntries(args.flatMap((arg, i) => arg === '--label' ? [args[i+1].split('=')] : []));",
+    "  const labels = Object.fromEntries(args.flatMap((arg, i) => {",
+    "    if (arg !== '--label') return [];",
+    "    const label = args[i+1], split = label.indexOf('=');",
+    "    return [[label.slice(0, split), label.slice(split+1)]];",
+    "  }));",
     "  const state = { Id: 'b'.repeat(64), Name: '/' + args[args.indexOf('--name') + 1],",
     "    Config: { Image: ref, Labels: labels }, State: { Status: 'created' }, NetworkSettings: { Ports: {} },",
     "    HostConfig: { PortBindings: { '80/tcp': [{ HostIp: '127.0.0.1', HostPort: '19800' }] } } };",
@@ -36,7 +40,9 @@ it('joins late Docker creation and a lost start reply across separate CLI proces
     "    fs.writeFileSync(f('visible'), JSON.stringify(state));",
     "    fail('error reading from Docker: EOF');",
     "  } else if (op === 'inspect' && [state.Id, state.Name.slice(1)].includes(ref)) {",
-    "    process.stdout.write(JSON.stringify([state]));",
+    "    const format = args[args.indexOf('--format') + 1];",
+    "    if (!format.includes('.Config.Labels') || format.includes('.Config.Env')) throw Error('unexpected inspection fields');",
+    "    process.stdout.write(JSON.stringify([state], null, 2));",
     "  } else throw Error('unexpected native operation: ' + JSON.stringify([op, ref]));",
     '}',
   ].join('\n');
@@ -48,7 +54,8 @@ it('joins late Docker creation and a lost start reply across separate CLI proces
     vi.stubEnv('DOCKER_HOST', 'unix://' + file('absent.sock'));
     vi.stubEnv('DOCKER_CONTEXT', '');
     operation = createContainer({
-      name, image: 'fixture:1', ports: [{ container: 80, host: 19800 }], volumes: [], environment: {}, labels: {}, restart: 'no',
+      name, image: 'fixture:1', ports: [{ container: 80, host: 19800 }], volumes: [], environment: {},
+      labels: { description: 'password=example-only' }, restart: 'no',
     }, { fullId: true, pull: 'never' });
     const absence = async () => {
       for (;;) {

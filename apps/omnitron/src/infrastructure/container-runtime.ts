@@ -317,7 +317,7 @@ async function managedContainerInventory(expected?: ReadonlySet<string>, scope?:
     args.push('--filter', 'label=omnitron.managed=true');
     if (scope) args.push('--filter', 'label=omnitron.project=' + scope.project, '--filter', 'label=omnitron.stack=' + scope.stack);
   }
-  const { stdout } = await executeDocker(args, 32 * 1024 * 1024);
+  const { stdout } = await executeDocker(args, { maxBuffer: 32 * 1024 * 1024 });
   const entries: Array<{ id: string; name: string }> = [];
   for (const line of stdout.trim().split('\n').filter(Boolean)) {
     const entry = JSON.parse(line);
@@ -461,6 +461,19 @@ async function inspectContainers(names: string[], strict = false): Promise<any[]
 }
 
 type NativePortBindings = Record<string, Array<{ HostPort?: string; HostIp?: string }> | null>;
+
+// Creation needs identity, bindings and enforced limits. Keep environment,
+// command lines and health-check output outside this structured response.
+const creationInspectFormat = `[{
+  "Id":{{json .Id}},"Name":{{json .Name}},
+  "Config":{"Image":{{json .Config.Image}},"Labels":{{json .Config.Labels}}},
+  "State":{"Status":{{json .State.Status}}},
+  "HostConfig":{"PortBindings":{{json .HostConfig.PortBindings}},
+    "Memory":{{json .HostConfig.Memory}},"MemoryReservation":{{json .HostConfig.MemoryReservation}},
+    "NanoCpus":{{json .HostConfig.NanoCpus}},"ShmSize":{{json .HostConfig.ShmSize}},
+    "CpuPeriod":{{json .HostConfig.CpuPeriod}},"CpuQuota":{{json .HostConfig.CpuQuota}}},
+  "NetworkSettings":{"Ports":{{json .NetworkSettings.Ports}}}
+}]`;
 
 interface NativeContainerObservation {
   Id?: string;
@@ -783,8 +796,15 @@ export async function createContainer(config: ResolvedContainer, options: { full
     // create reply is the name needed to discover that ID.
     const ref = id ?? config.name;
     try {
-      const result = await executeDocker(['container', 'inspect', '--', ref], 1024 * 1024, remaining('inspection', id));
-      const [raw] = JSON.parse(result.stdout) as NativeContainerObservation[];
+      const result = await executeDocker(['container', 'inspect', '--format', creationInspectFormat, '--', ref], {
+        timeout: remaining('inspection', id), redactOutput: false,
+      });
+      let raw: NativeContainerObservation | undefined;
+      try {
+        [raw] = JSON.parse(result.stdout) as NativeContainerObservation[];
+      } catch {
+        throw Error('Docker returned invalid container inspection data');
+      }
       if (!raw?.Id || !/^[a-f0-9]{64}$/.test(raw.Id) || id && raw.Id !== id)
         throw Error('Docker did not confirm the immutable container ID');
       if (raw.Name !== '/' + config.name || raw.Config?.Labels?.['omnitron.creation'] !== creation)
@@ -828,7 +848,7 @@ export async function createContainer(config: ResolvedContainer, options: { full
   const allocate = async (): Promise<{ id: string; running: boolean }> => {
     let failure: unknown;
     try {
-      const id = (await executeDocker(args, 1024 * 1024, Math.min(90_000, remaining('create')))).stdout.trim();
+      const id = (await executeDocker(args, { timeout: Math.min(90_000, remaining('create')) })).stdout.trim();
       if (/^[a-f0-9]{64}$/.test(id)) return { id, running: false };
       failure = Error('Docker create returned no immutable container ID');
     } catch (error) {
@@ -844,7 +864,7 @@ export async function createContainer(config: ResolvedContainer, options: { full
     const { id, running } = await allocate();
     if (!running) {
       try {
-        const started = await executeDocker(['container', 'start', '--', id], 1024 * 1024, Math.min(60_000, remaining('start', id)));
+        const started = await executeDocker(['container', 'start', '--', id], { timeout: Math.min(60_000, remaining('start', id)) });
         if (started.stdout.trim() !== id) throw Error('Docker start did not acknowledge ' + id);
       } catch (error) {
         if (!definiteDockerFailure(error)) {
@@ -911,12 +931,13 @@ export async function startContainer(nameOrId: string): Promise<void> {
   await adapter.startContainer(nameOrId);
 }
 
-async function executeDocker(args: string[], maxBuffer = 1024 * 1024, timeout = 60_000) {
+async function executeDocker(args: string[], { maxBuffer = 1024 * 1024, timeout = 60_000, redactOutput = true }:
+  { maxBuffer?: number; timeout?: number; redactOutput?: boolean } = {}) {
   const { ExecutionEngine } = await import('@xec-sh/core');
   const engine = new ExecutionEngine({ defaultShell: false, enableEvents: false });
   try {
     return await engine.execute({ command: 'docker', args, shell: false, adapter: 'local',
-      timeout, maxBuffer, throwOnNonZeroExit: true });
+      timeout, maxBuffer, redactOutput, throwOnNonZeroExit: true });
   } finally { await engine.dispose(); }
 }
 

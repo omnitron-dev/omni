@@ -10,7 +10,7 @@ const rpc = vi.hoisted(() => Object.fromEntries([
   'getMeshStatus', 'getNodeDaemonStatus', 'getUpgradeProgress', 'getNodeDaemonHealth', 'triggerNodeCheck',
 ].map(name => [name, vi.fn()])));
 vi.mock('src/netron/client', () => ({ nodes: rpc }));
-vi.mock('src/auth/access', () => ({ Can: ({ children }: { children: React.ReactNode }) => children, useAccess: () => ({}) }));
+vi.mock('src/auth/access', () => ({ Can: ({ children }: { children: React.ReactNode }) => children, useAccess: () => ({ can: () => true }) }));
 vi.mock('@omnitron-dev/prism/components/snackbar', () => ({ useSnackbar: () => ({ success: vi.fn(), warning: vi.fn(), error: vi.fn(), info: vi.fn() }) }));
 
 const node = (id: string) => ({ id, name: id, host: '127.0.0.1', daemonPort: 9700, isLocal: true }) as INodeWithStatus;

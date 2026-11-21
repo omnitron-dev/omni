@@ -9,7 +9,7 @@ import { Can, useAccess } from 'src/auth/access';
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useSearchParams } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
@@ -41,7 +41,7 @@ import { useSnackbar } from '@omnitron-dev/prism/components/snackbar';
 import { FleetRollout } from 'src/components/fleet-rollout';
 import { RuntimeDiagnosticDetails } from 'src/components/runtime-diagnostic-details';
 import { nodes as nodesRpc } from 'src/netron/client';
-import { usePollingEffect } from 'src/hooks/use-polled-resource';
+import { usePolledResource, usePollingEffect } from 'src/hooks/use-polled-resource';
 // One contract, imported. These four were local copies of types the daemon
 // already publishes, and they had drifted: this file declared
 // `omnitronRole?: string` where the daemon says `'master' | 'slave'`, so a
@@ -763,15 +763,15 @@ function NodeApps({ data, health }: {
   return (
     <Box sx={{ py: 0.5 }}>
       <Typography variant="caption" sx={{ display: 'block', mb: 1, color: 'text.secondary' }}>
-        {status.apps.length} app(s) · {status.totalCpu.toFixed(1)}% CPU ·{' '}
+        {status.apps.filter(app => app.status === 'online').length} of {status.apps.length} online · {status.totalCpu.toFixed(1)}% CPU ·{' '}
         {(appsMemoryOf(status) / 1024 / 1024).toFixed(0)} MB
       </Typography>
       {status.apps.map((app) => (
         <Box key={app.name}>
         <Stack
-          key={app.name}
           direction="row"
           spacing={1}
+          useFlexGap
           sx={{ py: 0.5, alignItems: 'baseline', flexWrap: 'wrap' }}
         >
           <Chip
@@ -780,13 +780,13 @@ function NodeApps({ data, health }: {
             color={tone(app.status) as 'success' | 'warning' | 'error' | 'default'}
             sx={{ height: 20, fontSize: 11 }}
           />
-          <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+          <Typography variant="body2" sx={{ fontFamily: 'monospace', overflowWrap: 'anywhere' }}>
             {app.name}
           </Typography>
-          <Button component={RouterLink} to={logHref(app.name, data.nodeId === 'local' ? undefined : data.nodeId)} size="small"
+          <Can permission="OmnitronLogs.queryLogs"><Button component={RouterLink} to={logHref(app.name, data.nodeId === 'local' ? undefined : data.nodeId)} size="small"
             aria-label={`View logs for ${app.name}`}>
             Logs
-          </Button>
+          </Button></Can>
           <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
             {[
               app.pid ? `pid ${app.pid}` : null,
@@ -798,7 +798,7 @@ function NodeApps({ data, health }: {
               .join(' · ')}
           </Typography>
         </Stack>
-        <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
+        <Can permission="OmnitronNodes.getNodeDaemonHealth"><Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
           Health: {health?.answer?.apps[app.name]?.status ?? 'not read'}
           {health?.error ? ` — ${health.error}` : ''}
         </Typography>
@@ -807,7 +807,7 @@ function NodeApps({ data, health }: {
             color: check.status === 'fail' ? 'error.main' : check.status === 'warn' ? 'warning.main' : 'text.secondary' }}>
             {check.status} · {check.name}{check.message ? ` — ${check.message}` : ''}
           </Typography>
-        ))}
+        ))}</Can>
         </Box>
       ))}
     </Box>
@@ -1076,6 +1076,9 @@ export function NodeDiagnosisDialog(props: NodeDiagnosisProps) {
 function NodeDiagnosisSession({
   open, onClose, node, cluster,
 }: NodeDiagnosisProps) {
+  const { can } = useAccess();
+  const readApps = can('OmnitronNodes.getNodeDaemonStatus');
+  const readHealth = readApps && can('OmnitronNodes.getNodeDaemonHealth');
   const [history, setHistory] = useState<HealthCheckRow[]>([]);
   const [indicators, setIndicators] = useState<INodeIndicators | null>(null);
   const [sync, setSync] = useState<INodeSyncStatus | null>(null);
@@ -1108,9 +1111,9 @@ function NodeDiagnosisSession({
         nodesRpc.getNodeSyncStatus({ nodeId }),
         nodesRpc.getNodeRelayStats({ nodeId }),
         nodesRpc.getNodeHealthSummaries(),
-        nodesRpc.getNodeDaemonStatus({ nodeId }),
+        readApps ? nodesRpc.getNodeDaemonStatus({ nodeId }).then(reply => nodeReply(nodeId, reply)) : null,
         nodesRpc.getUpgradeProgress(),
-        nodesRpc.getNodeDaemonHealth({ nodeId }),
+        readHealth ? nodesRpc.getNodeDaemonHealth({ nodeId }).then(reply => nodeReply(nodeId, reply)) : null,
         nodesRpc.getMeshStatus(),
       ]);
       if (current !== request.current) return;
@@ -1118,7 +1121,9 @@ function NodeDiagnosisSession({
       setAppHealth(health.status === 'fulfilled' ? health.value : {
         nodeId, reachable: false, answer: null, error: 'Application health could not be read',
       });
-      setApps(running.status === 'fulfilled' ? (running.value as INodeDaemonAnswer<DaemonStatusDto>) : null);
+      setApps(running.status === 'fulfilled' ? running.value : {
+        nodeId, reachable: false, answer: null, error: running.reason instanceof Error ? running.reason.message : 'Application inventory unavailable',
+      });
       setUpgrade(
         upgrades.status === 'fulfilled'
           ? ((upgrades.value as INodeUpgradeProgress[]).find((u) => u.nodeId === nodeId) ?? null)
@@ -1148,7 +1153,7 @@ function NodeDiagnosisSession({
     } finally {
       if (current === request.current) setLoading(false);
     }
-  }, []);
+  }, [readApps, readHealth]);
 
   useEffect(() => {
     const cursor = request;
@@ -1290,12 +1295,11 @@ function NodeDiagnosisSession({
 
         <Divider sx={{ my: 2 }} />
 
-        <Typography variant="overline" sx={{ color: 'text.secondary' }}>
+        <Can permission="OmnitronNodes.getNodeDaemonStatus"><Typography variant="overline" sx={{ color: 'text.secondary' }}>
           Running on this node
         </Typography>
         <NodeApps data={apps} health={appHealth} />
-
-        <Divider sx={{ my: 2 }} />
+        <Divider sx={{ my: 2 }} /></Can>
 
         <Typography variant="overline" sx={{ color: 'text.secondary' }}>Replication</Typography>
         {!node.isLocal && connection && (
@@ -1440,6 +1444,12 @@ function NodeCard({
             </Box>
           </Stack>
           <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexWrap: 'wrap', justifyContent: 'flex-end', flexShrink: 0, maxWidth: '100%' }}>
+            <Can permission="OmnitronNodes.getNodeDaemonStatus">
+              <Button component={RouterLink} to={'/nodes?' + new URLSearchParams({ node: node.id })} size="small"
+                aria-label={`Applications on ${node.name}`}>
+                Applications
+              </Button>
+            </Can>
             {!node.isLocal && <Can permission="OmnitronNodes.removeNode"><Tooltip title="Remove"><IconButton size="small" aria-label={`Remove node ${node.name}`} onClick={() => onRemove(node.id)} color="error" sx={{ marginInlineEnd: 1 }}><DeleteIcon sx={{ fontSize: 18 }} /></IconButton></Tooltip></Can>}
             {!node.isLocal && <Can permission="OmnitronTerminal.open"><Button component={RouterLink} to={`/terminal?${new URLSearchParams({ node: node.id })}`} size="small">SSH</Button></Can>}
             {!node.isLocal && (
@@ -1531,7 +1541,7 @@ function NodeCard({
           {status?.omnitronUptime != null && status.omnitronUptime > 0 && (
             <DetailRow label="Uptime" value={formatUptime(status.omnitronUptime)} />
           )}
-          {!node.isLocal && <MeshRow mesh={mesh} />}
+          {!node.isLocal && <Can permission="OmnitronNodes.getMeshStatus"><MeshRow mesh={mesh} /></Can>}
         </Stack>
 
         {node.tags.length > 0 && (
@@ -1551,12 +1561,14 @@ function NodeCard({
 
         {/* Uptime bars — remote nodes only */}
         {!node.isLocal && (
+          <Can permission="OmnitronNodes.getUptimeBar">
           <Box sx={{ mt: 'auto', pt: 1.5 }}>
             <Stack spacing={0.75}>
               <UptimeStrip data={uptimeData} metric="ping" label="PING" segWidth={SEG_WIDTH} gap={SEG_GAP} height={SEG_HEIGHT} lastCheckAt={lastCheckAt} />
               <UptimeStrip data={uptimeData} metric="omnitron" label="OMNITRON" segWidth={SEG_WIDTH} gap={SEG_GAP} height={SEG_HEIGHT} lastCheckAt={lastCheckAt} />
             </Stack>
           </Box>
+          </Can>
         )}
       </CardContent>
     </Card>
@@ -1949,8 +1961,64 @@ function CheckSettingsDialog({ open, onClose, onSaved }: {
 // =============================================================================
 
 export default function NodesPage() {
+  const [params] = useSearchParams();
+  const { snapshot } = useAccess();
+  const selection = params.getAll('node');
+  if (selection.length === 0) return <NodeDirectory key={snapshot?.userId} />;
+  // An absent or ambiguous ID must never select the connected controller.
+  const nodeId = selection.length === 1 ? selection[0]! : '';
+  return <NodeApplicationsPage key={JSON.stringify([nodeId, snapshot?.userId])} nodeId={nodeId} />;
+}
+
+function nodeReply<T>(nodeId: string, reply: INodeDaemonAnswer<T>) {
+  if (reply.nodeId !== nodeId) throw new Error('The controller returned a reading for a different node.');
+  return reply;
+}
+
+function NodeApplicationsPage({ nodeId }: { nodeId: string }) {
+  const { can } = useAccess();
+  const canReadNode = can('OmnitronNodes.getNode');
+  const canReadHealth = can('OmnitronNodes.getNodeDaemonHealth');
+  const identity = usePolledResource(() => nodesRpc.getNode({ id: nodeId }), {
+    enabled: Boolean(nodeId) && canReadNode, intervalMs: 30_000,
+  });
+  const status = usePolledResource(async () => nodeReply(nodeId, await nodesRpc.getNodeDaemonStatus({ nodeId })), {
+    enabled: Boolean(nodeId), intervalMs: 5_000,
+  });
+  const hasApps = status.data?.reachable && Boolean(status.data.answer?.apps.length);
+  const health = usePolledResource(async () => nodeReply(nodeId, await nodesRpc.getNodeDaemonHealth({ nodeId })), {
+    enabled: Boolean(hasApps) && canReadHealth, intervalMs: 5_000,
+  });
+  const name = canReadNode && identity.data?.id === nodeId ? identity.data?.name : undefined;
+  return (
+    <Stack spacing={2} sx={{ minWidth: 0 }}>
+      <Breadcrumbs heading={nodeId ? `Applications on ${name ?? nodeId}` : 'Node applications'}
+        links={[
+          { name: 'Nodes', ...(can('OmnitronNodes.listNodes') && { href: '/nodes' }) },
+          ...(nodeId ? [{ name: name ?? nodeId }] : []),
+          { name: 'Applications' },
+        ]} />
+      {!nodeId ? <FormAlert severity="info">Choose one node to view its applications.</FormAlert>
+        : status.loading ? <LinearProgress aria-label="Reading node applications" />
+        : <>
+          {status.error && <FormAlert severity="warning">
+            Application inventory unavailable. {status.error}{status.data && ' Showing the last response from this node.'}
+          </FormAlert>}
+          {status.data && <NodeApps data={status.data} health={canReadHealth && !health.error ? health.data : null} />}
+          {hasApps && canReadHealth && health.error && <FormAlert severity="warning">Application health unavailable. {health.error}</FormAlert>}
+        </>}
+    </Stack>
+  );
+}
+
+function NodeDirectory() {
   const { can } = useAccess();
   const mayListSshKeys = can('OmnitronNodes.listSshKeys');
+  const readChecks = can('OmnitronNodes.getCheckHistory');
+  const readMesh = can('OmnitronNodes.getMeshStatus');
+  const readCluster = can('OmnitronNodes.getNodeClusterState');
+  const readUptime = can('OmnitronNodes.getUptimeBar');
+  const readHistoryConfig = readUptime && can('OmnitronNodes.getHistoryConfig');
   const [nodeList, setNodeList] = useState<INodeWithStatus[]>([]);
   const [sshKeys, setSshKeys] = useState<SshKeyInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1993,6 +2061,7 @@ export default function NodesPage() {
       const list: INodeWithStatus[] = await nodesRpc.listNodes();
       setNodeList(list);
       setListError(null);
+      if (!readChecks) return list;
       // Freshness follows current checks, not the five-minute aggregation
       // of historical bars. Otherwise the UI's own cache creates an outage.
       const latest = await Promise.allSettled(list.map(async node => ({
@@ -2017,9 +2086,10 @@ export default function NodesPage() {
       setListError((err as Error)?.message ?? 'Could not reach the daemon');
       return nodeListRef.current;
     } finally { setLoading(false); }
-  }, []);
+  }, [readChecks]);
 
   const fetchMesh = useCallback(async () => {
+    if (!readMesh) return;
     try {
       const rows: IMeshNodeStatus[] = await nodesRpc.getMeshStatus();
       setMesh(Object.fromEntries(rows.map((r) => [r.nodeId, r])));
@@ -2028,10 +2098,11 @@ export default function NodesPage() {
       // is replicating, and showing "not joined" because the daemon was busy
       // reports an outage this page invented.
     }
-  }, []);
+  }, [readMesh]);
 
   // Sample each participant directly. A newer manual refresh supersedes any slower previous poll.
   const fetchClusterStates = useCallback(async (nodes: INodeWithStatus[]) => {
+    if (!readCluster) return;
     const generation = ++clusterReading.current;
     const settled = await Promise.allSettled(
       nodes.map(async (n) => nodesRpc.getNodeClusterState({ nodeId: n.id })),
@@ -2045,9 +2116,10 @@ export default function NodesPage() {
       };
     });
     if (generation === clusterReading.current) setClusterStates(next);
-  }, []);
+  }, [readCluster]);
 
   const fetchUptimeBars = useCallback(async (nodes: INodeWithStatus[]) => {
+    if (!readUptime) return;
     const results: Record<string, UptimeBucket[]> = {};
     let failure: string | null = null;
     await Promise.allSettled(nodes.map(async (node) => {
@@ -2072,7 +2144,7 @@ export default function NodesPage() {
     // Merge, so a node whose call failed keeps the bars it had.
     setUptimeBars((previous) => ({ ...previous, ...results }));
     setBarsError(failure);
-  }, []);
+  }, [readUptime]);
 
   const fetchSshKeys = useCallback(async () => {
     if (!mayListSshKeys) { setSshKeys([]); return; }
@@ -2145,11 +2217,12 @@ export default function NodesPage() {
     // blank page. The console and the daemon are versioned separately; a
     // console one release ahead must fall back to its defaults, not
     // white-screen the fleet view.
+    if (!readHistoryConfig) return;
     Promise.resolve()
       .then(() => nodesRpc.getHistoryConfig())
       .then((c: FleetHistoryConfig) => setHistory(c))
       .catch(() => { /* the defaults above are the fallback */ });
-  }, []);
+  }, [readHistoryConfig]);
 
   // Computed over the whole list rather than per card: "behind" is a
   // statement about the fleet, and a card cannot make it alone.
@@ -2268,6 +2341,7 @@ export default function NodesPage() {
     if (a.isLocal !== b.isLocal) return a.isLocal ? -1 : 1;
     return a.name.localeCompare(b.name);
   });
+  const historyError = (readUptime && barsError) || (readChecks && checksError);
 
   return (
     <Stack spacing={3}>
@@ -2294,7 +2368,7 @@ export default function NodesPage() {
       />
 
       <OperationStatus active={refreshing} label="Refreshing node status" detail="Reading fleet, replication and uptime observations" />
-      <ClusterAgreement states={clusterStates} />
+      {readCluster && <ClusterAgreement states={clusterStates} />}
 
       {/*
         Upgrading the fleet, as one operation rather than a button per card.
@@ -2311,9 +2385,9 @@ export default function NodesPage() {
         </FormAlert>
       )}
 
-      {(barsError || checksError) && (
+      {historyError && (
         <FormAlert severity="warning" onClose={() => { setBarsError(null); setChecksError(null); }}>
-          Could not refresh the uptime history — {barsError || checksError}. The strips below are
+          Could not refresh the uptime history — {historyError}. The strips below are
           the last aggregation that arrived, and may be behind the cards.
         </FormAlert>
       )}
@@ -2337,7 +2411,7 @@ export default function NodesPage() {
             <Grid key={node.id} size={{ xs: 12, sm: 6, md: 4 }}>
               <NodeCard node={node} onEdit={handleOpenEdit} onRemove={setConfirmRemoveId}
                 onCheckSsh={handleCheckSsh} onDiagnose={setDiagnoseNode} checking={checkingId === node.id}
-                uptimeData={uptimeBars[node.id] ?? []} lastCheckAt={lastCheckAt[node.id] ?? null}
+                uptimeData={uptimeBars[node.id] ?? []} lastCheckAt={readChecks ? lastCheckAt[node.id] ?? null : null}
                 newest={newestInFleet} mesh={mesh[node.id]} />
             </Grid>
           ))}
@@ -2345,7 +2419,7 @@ export default function NodesPage() {
       )}
 
       <NodeDiagnosisDialog
-        cluster={diagnoseNode ? clusterStates[diagnoseNode.id] : undefined}
+        cluster={readCluster && diagnoseNode ? clusterStates[diagnoseNode.id] : undefined}
         open={!!diagnoseNode}
         onClose={() => setDiagnoseNode(null)}
         node={diagnoseNode ? (nodeList.find((n) => n.id === diagnoseNode.id) ?? diagnoseNode) : null}

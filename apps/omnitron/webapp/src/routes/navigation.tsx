@@ -162,6 +162,7 @@ export function consoleRoute(pathname: string, search = '') {
   const proposal = page === 'flows' && !!params.get('team') && !!params.get('proposal') && !params.has('flow') && !params.has('new');
   let permission = item?.permission;
   if (appDetail || process) permission = 'OmnitronDaemon.getApp';
+  else if (page === 'nodes' && !project && params.has('node')) permission = 'OmnitronNodes.getNodeDaemonStatus';
   else if (release) permission = 'OmnitronRelease.get';
   else if (proposal) permission = 'OmnitronStudio.flowProposal';
   else if (page === 'flows' && params.get('flow')) permission = 'OmnitronFlows.get';

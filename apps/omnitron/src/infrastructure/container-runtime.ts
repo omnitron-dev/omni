@@ -12,6 +12,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { LONG_REQUEST_TIMEOUT } from '../shared/dto/services.js';
 import { CONFIG_ROOT_PREFIX } from './shipped-config.js';
 import { nativeHealthCheck } from './health-recovery.js';
+import { mountSourceMatches } from './owned-container.js';
 import type { CredentialVolumeState } from './service-credentials.js';
 import { DEFAULT_PORT_BIND_HOST } from './types.js';
 import type { ContainerState, ContainerStatus, ContainerSpecHashMigration, ReconcileAction, ResolvedContainer } from './types.js';
@@ -474,7 +475,7 @@ type NativePortBindings = Record<string, Array<{ HostPort?: string; HostIp?: str
 const creationInspectFormat = (mounts: boolean) => `[{
   "Id":{{json .Id}},"Name":{{json .Name}},
   "Config":{"Image":{{json .Config.Image}},"Labels":{{json .Config.Labels}}},
-  ${mounts ? '"Mounts":[{{range $i, $m := .Mounts}}{{if $i}},{{end}}{"Source":{{json $m.Source}},"Destination":{{json $m.Destination}},"RW":{{json $m.RW}}}{{end}}],' : ''}
+  ${mounts ? '"Mounts":[{{range $i, $m := .Mounts}}{{if $i}},{{end}}{"Type":{{json $m.Type}},{{if eq $m.Type "volume"}}"Name":{{json $m.Name}},{{end}}"Source":{{json $m.Source}},"Destination":{{json $m.Destination}},"RW":{{json $m.RW}}}{{end}}],' : ''}
   "State":{"Status":{{json .State.Status}}},
   "HostConfig":{"PortBindings":{{json .HostConfig.PortBindings}},
     "Memory":{{json .HostConfig.Memory}},"MemoryReservation":{{json .HostConfig.MemoryReservation}},
@@ -873,7 +874,7 @@ async function provisionContainer(config: ResolvedContainer, options: { fullId?:
     if (!Object.entries(labels).every(([key, value]) => actual.labels?.[key] === value))
       throw Error('The Docker ownership labels differ for ' + raw.Id);
     if (staged && (!actual.mounts || config.volumes.length !== actual.mounts.length ||
-        !config.volumes.every(volume => actual.mounts!.some(mount => mount.source === volume.source &&
+        !config.volumes.every(volume => actual.mounts!.some(mount => mountSourceMatches(volume.source, mount) &&
           mount.target === volume.target && mount.readOnly === Boolean(volume.readonly)))))
       throw Error('The native mounts differ for the prepared container ' + raw.Id);
     if (staged && !containerResourcesMatch(config, actual)) throw Error('The native resource limits differ for the prepared container ' + raw.Id);

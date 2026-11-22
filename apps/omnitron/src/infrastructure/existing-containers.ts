@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { isDeepStrictEqual } from 'node:util';
-import path from 'node:path';
+import { mountSourceMatches } from './owned-container.js';
 import { containerObservation, containerResources, containerSpecHash, inspectStackContainers } from './container-runtime.js';
 import { DEFAULT_PORT_BIND_HOST, type ContainerState, type InfrastructureState, type ResolvedContainer } from './types.js';
 import { stackDefinitionFingerprint } from '../project/node-stack-stop.js';
@@ -77,10 +77,9 @@ function mountsMatch(volumes: ResolvedContainer['volumes'], mounts: Native[], ru
   }
   return volumes.every(wanted => {
     const actual = observed.get(wanted.target);
-    const bind = path.isAbsolute(wanted.source) || wanted.source.startsWith('.');
-    return actual?.['RW'] === !wanted.readonly && (bind
-      ? actual['Type'] === 'bind' && actual['Source'] === path.resolve(wanted.source)
-      : actual['Type'] === 'volume' && actual['Name'] === wanted.source);
+    return actual?.['RW'] === !wanted.readonly && mountSourceMatches(wanted.source, {
+      source: actual['Source'], type: actual['Type'], name: actual['Name'],
+    });
   });
 }
 

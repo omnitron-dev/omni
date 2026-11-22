@@ -11,7 +11,7 @@ import { runtimeUpdateActions, verifyRuntimeUpdateTarget } from '../../src/daemo
 import { readColdBatch } from '../../src/project/cold-stack-start.js';
 import { ReviewedConsoleAllocation, consoleConfigIdentity, consoleSpecification } from '../../src/webapp/console-allocation.js';
 import { generateNginxConfig, WebappService } from '../../src/webapp/webapp.service.js';
-import { containerSpecHash } from '../../src/infrastructure/container-runtime.js';
+import { containerSpecHash, preparedContainer } from '../../src/infrastructure/container-runtime.js';
 import type { RuntimeUpdatePlan, RuntimeUpdateReference } from '../../src/shared/dto/runtime-update.js';
 
 const home = await vi.hoisted(async () => {
@@ -66,7 +66,12 @@ function native(id: string, name: string, status: string, labels: Record<string,
   return { Id: id, Name: '/' + name, Config: { Image: 'nginx:alpine', Labels: labels },
     State: { Status: status, Health: { Status: 'healthy' } },
     HostConfig: { PortBindings: ports }, NetworkSettings: { Ports: status === 'running' ? ports : {}, Networks: { omnitron: {} } },
-    Mounts: mounts.map(value => { const [Source, Destination, mode] = value.split(':'); return { Source: Source!, Destination: Destination!, RW: mode !== 'ro' }; }) };
+    Mounts: mounts.map(value => {
+      const [source, Destination, mode] = value.split(':');
+      const mount = path.isAbsolute(source!) ? { Type: 'bind', Source: source! }
+        : { Type: 'volume', Name: source!, Source: '/var/lib/docker/volumes/' + source + '/_data' };
+      return { ...mount, Destination: Destination!, RW: mode !== 'ro' };
+    }) };
 }
 const containers = new Map<string, ReturnType<typeof native>>();
 function inspect(ref: string) {
@@ -78,7 +83,15 @@ async function execute(args: string[]) {
   expect(args[0]).toBe('container');
   const ref = args.at(-1)!;
   switch (args[1]) {
-    case 'inspect': onInspect(ref); return { stdout: JSON.stringify([inspect(ref)]) };
+    case 'inspect': {
+      const format = fields(args, '--format')[0];
+      if (format?.includes('"Mounts":[')) {
+        expect(format).toContain('$m.Type');
+        expect(format).toContain('$m.Name');
+      }
+      onInspect(ref);
+      return { stdout: JSON.stringify([inspect(ref)]) };
+    }
     case 'create': {
       const name = fields(args, '--name')[0]!, id = (++next).toString(16).padStart(64, '0');
       events.push('create ' + name);
@@ -245,7 +258,7 @@ function scenario() {
       const release = direction === 'target' ? target : previous;
       await allocation(direction).assertPublished(inspect(canonical).Id);
       expect(await served()).toBe(release.commit);
-      expect(inspect(canonical).Mounts).toContainEqual({ Source: dist(release), Destination: '/usr/share/nginx/html', RW: false });
+      expect(inspect(canonical).Mounts).toContainEqual({ Type: 'bind', Source: dist(release), Destination: '/usr/share/nginx/html', RW: false });
       expect(pids()).toHaveLength(2);
       return { backend: release.artifact, owner: release.artifact, guardian: release.artifact, ownerId: direction, console: release, stacks: [], watches: [] };
     },
@@ -254,6 +267,16 @@ function scenario() {
     runRuntimeUpdate({ operation, actions, directory, ...(operation !== 'prepare' && { digest }) });
   return { run, digest, allocation, ids, plan, actions };
 }
+
+it('verifies a prepared named volume by Docker name and rejects a different volume on the same target', async () => {
+  const declaration = { ...consoleSpecification(home, dist(target), port, address), name: 'example-prepared',
+    volumes: [{ source: 'example-data', target: '/data' }] };
+  const creation = '830e43bc-c3c3-4e32-a951-70457ac541f8';
+  const id = await preparedContainer(declaration, { operation: 'allocate', creation });
+  await expect(preparedContainer(declaration, { operation: 'verify', creation, id })).resolves.toBe(id);
+  Object.assign(inspect(id).Mounts[0]!, { Name: 'other-volume' });
+  await expect(preparedContainer(declaration, { operation: 'verify', creation, id })).rejects.toThrow('native mounts differ');
+});
 
 it('keeps both application PIDs and the old HTTP publication through a delayed refusal, before backup admission', async () => {
   const { run, ids } = scenario(), entered = gate(), reply = gate();

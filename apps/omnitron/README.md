@@ -291,6 +291,8 @@ An enabled-stack reconciler tick with no eligible launch leaves a recovery revie
 
 Infrastructure planning resolves one complete data definition: presets, application containers, overrides and mounted configuration. Local, CLI and remote paths use that same resolver. A preview does not create a resource owner, reserve ports or invalidate recovery. Applying a definition acquires ownership and rechecks native identities; conflicting container declarations are rejected before provisioning. Handoff restores the recorded definition without resolving it against a newer preset implementation.
 
+Omnitron verifies a named Docker volume by its volume name and a bind mount by its absolute host path. For a prepared container it also checks the target path and read-only setting before publication.
+
 After the planned runtime transition, inspect again if its owner or launch context changed, then use the current review:
 
 ```sh

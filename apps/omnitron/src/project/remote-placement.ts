@@ -24,6 +24,10 @@ function endpoint(value: PlacementEndpoint): boolean {
     Number.isInteger(value.port) && value.port > 0 && value.port <= 65535 && digest.test(value.pin);
 }
 export function validateRemotePlacement(value: RemotePlacement, scope: StackExecutionScope): void {
+  const change = value?.receipt?.registrationChange;
+  if (change && (!digest.test(change.previous) || change.current !== value.registration || change.previous === change.current ||
+      !/^[a-f0-9]{40}$/.test(change.previousDeclarationCommit) || !value.selected || value.from?.nodeId !== value.selected.nodeId))
+    throw Error('Corrupt remote placement registration change');
   if (!value || !value.receipt || !digest.test(value.registration) || !endpoint(value.origin) || !endpoint(value.from) ||
       (value.originCommit !== null && (typeof value.originCommit !== 'string' || !/^[0-9a-f]{40}$/.test(value.originCommit))) || typeof value.activated !== 'boolean' ||
       !value.sourceStop || value.sourceStop.id !== value.receipt.stopId || value.from.nodeId !== value.receipt.fromNodeId ||
@@ -35,12 +39,13 @@ export function validateRemotePlacement(value: RemotePlacement, scope: StackExec
       value.receipt.release !== (value.selected?.release ?? null)) throw Error('Corrupt remote stack placement');
 }
 export function remotePlacementReview(scope: StackExecutionScope, generation: number, registration: string, originCommit: string | null, from: PlacementEndpoint,
-  to: PlacementEndpoint, prepared: PreparedRemoteReleaseSource | null, stop: StackStopProgress | null, observed: NodeStackStopInventory): PlacementReceipt {
+  to: PlacementEndpoint, prepared: PreparedRemoteReleaseSource | null, stop: StackStopProgress | null, observed: NodeStackStopInventory,
+  registrationChange?: PlacementReceipt['registrationChange']): PlacementReceipt {
   const { acknowledgement, execution, confirmed } = confirmStoppedPlacement(scope, from, stop, observed);
   const contents = [scope.project, scope.stack, generation, registration, originCommit, from, to, prepared, confirmed.id, confirmed.completedAt,
     acknowledgement.operationId, observed.definition, execution.project, execution.stack, execution.revision, execution.apps.map(app => [app.name, app.generation])];
-  return { project: scope.project, stack: scope.stack, generation: generation + 1, fromNodeId: from.nodeId, toNodeId: to.nodeId,
-    stopId: confirmed.id, release: prepared?.release ?? null, digest: stackDefinitionFingerprint(['omnitron/remote-placement/v1', contents]) };
+  return { project: scope.project, stack: scope.stack, generation: generation + 1, fromNodeId: from.nodeId, toNodeId: to.nodeId, ...(registrationChange && { registrationChange }),
+    stopId: confirmed.id, release: prepared?.release ?? null, digest: stackDefinitionFingerprint(['omnitron/remote-placement/v1', contents, ...(registrationChange ? [registrationChange] : [])]) };
 }
 
 export function confirmStoppedPlacement(scope: StackExecutionScope, from: PlacementEndpoint, stop: StackStopProgress | null, observed: NodeStackStopInventory) {

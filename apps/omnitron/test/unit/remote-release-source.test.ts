@@ -281,11 +281,11 @@ describe('prepared source of one registered remote release', () => {
     expect(fs.existsSync(path.join(scope, '.remote-sources'))).toBe(false);
   });
 
-  it('selects only after an observed full stop, preserves the source and routes restart, status, stop and the reverse placement to the selected peer', async () => {
+  it.each(['original', 'changed'])('routes a fully stopped placement with a %s registered declaration', async (registrationMode) => {
     const f = fixture();
     const service = f.service;
     const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
-    const store = new DaemonStateStore(log as never, path.join(root, 'placement.db'));
+    const store = new DaemonStateStore(log as never, path.join(root, 'placement-' + registrationMode + '.db'));
     Object.assign(service, { daemonStateStore: store });
     delete (service as unknown as { resolveStacks?: unknown }).resolveStacks;
     const serving = {
@@ -299,7 +299,7 @@ describe('prepared source of one registered remote release', () => {
     const incumbent = { ...oldNode };
     delete (incumbent as { nodeId?: string }).nodeId;
     // A pre-pinned mutating registry was not required when this old incumbent was first deployed.
-    const registeredSource = path.join(root, 'legacy-serving');
+    const registeredSource = path.join(root, 'legacy-serving-' + registrationMode);
     git(root, 'clone', '-q', '--no-local', original, registeredSource);
     fs.writeFileSync(path.join(registeredSource, 'omnitron.stacks.json'), JSON.stringify(stacks(incumbent as typeof oldNode)));
     git(registeredSource, 'add', 'omnitron.stacks.json');
@@ -471,6 +471,33 @@ describe('prepared source of one registered remote release', () => {
       expect(stopReview.digest).toBeTruthy();
       await service.stopStack('sample', 'test', stopReview.digest!);
       expect(read).toHaveBeenCalledWith('executeNodeStackStop', expect.objectContaining({ operationId: 'replacement-stop' }));
+      if (registrationMode === 'changed') {
+        const priorCommit = git(registeredSource, 'rev-parse', 'HEAD');
+        const file = path.join(registeredSource, 'omnitron.stacks.json');
+        const declarations = JSON.parse(fs.readFileSync(file, 'utf8'));
+        declarations.test.infrastructure = { redis: { ports: { redis: 6397 } } };
+        fs.writeFileSync(file, JSON.stringify(declarations));
+        git(registeredSource, 'commit', '-qam', 'revise service configuration');
+        const refreshed = await service.prepareRemoteReleaseSource('sample', 'test', id, f.input);
+        const same = { ...req, fromNodeId: nodeId, destination: { release: id, prepared: refreshed.digest } };
+        await expect(service.reviewRemotePlacement(same)).rejects.toThrow(/registered stack has changed/);
+        const update = { ...same, previousDeclarationCommit: priorCommit };
+        await expect(service.reviewRemotePlacement({ ...update, previousDeclarationCommit: originalCommit })).rejects.toThrow(/does not match/);
+        await expect(service.reviewRemotePlacement({ ...update, fromNodeId: oldNode.nodeId })).rejects.toThrow(/same-recipient/);
+        const at = f.registration.registeredAt;
+        f.registration.registeredAt = '2026-01-02T00:00:00.000Z';
+        await expect(service.reviewRemotePlacement(update)).rejects.toThrow(/does not match/);
+        f.registration.registeredAt = at;
+        const change = await service.reviewRemotePlacement(update);
+        expect(change.registrationChange?.previousDeclarationCommit).toBe(priorCommit);
+        expect(change.registrationChange?.previous).not.toBe(change.registrationChange?.current);
+        inv.execution.revision++;
+        await expect(service.selectRemotePlacement({ ...update, review: change.digest })).rejects.toThrow(/generation/);
+        inv.execution.revision--;
+        expect(await service.selectRemotePlacement({ ...update, review: change.digest })).toEqual(change);
+        expect(await service.selectRemotePlacement({ ...update, review: change.digest })).toEqual(change);
+        return;
+      }
       const back = await service.reviewRemotePlacement(restore);
       await service.selectRemotePlacement({ ...restore, review: back.digest });
       expect(nativeResolve(base, 'sample').test.nodes[0].nodeId).toBe(oldNode.nodeId);

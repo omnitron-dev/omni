@@ -49,7 +49,7 @@ import { publicLaunchFailure } from '../project/launch-failure.js';
 import { nodeApplicationNames, resolveNodePlacements, stackNodeKey } from '../project/stack-placement.js';
 import { StackTargets, type StackTarget } from '../project/stack-targets.js';
 import { confirmStoppedPlacement, remotePlacementReview, type PlacementEndpoint, type RemotePlacement } from '../project/remote-placement.js';
-import { cleanRegisteredCommit, remoteReleaseSourceKey, type ReleaseRecipient } from '../release/remote-source.js';
+import { cleanRegisteredCommit, registeredStackAtCommit, remoteReleaseSourceKey, type ReleaseRecipient } from '../release/remote-source.js';
 import { defineEcosystem } from '../config/define-ecosystem.js';
 import { readCapturedSourceSync } from '../release/source-data.js';
 
@@ -2930,7 +2930,19 @@ export class ProjectService extends EventEmitter {
     const journal = new StackTargets(this.daemonStateStore), current = journal.inspect(scope);
     const baseline = this.registeredRemoteScope(project, stack);
     const previous = current.placement, expected = previous?.selected ?? previous?.origin;
-    if (previous && previous.registration !== baseline.fingerprint) throw Error('The original registered stack has changed');
+    let registrationChange: PlacementReceipt['registrationChange'];
+    if (previous && previous.registration !== baseline.fingerprint) {
+      if (!request.previousDeclarationCommit || previous.selected?.nodeId !== fromNodeId || !('release' in destination))
+        throw Error('The original registered stack has changed; review its previous declaration commit for a same-recipient release');
+      const reg = baseline.registration;
+      const prior = await registeredStackAtCommit(reg.path, request.previousDeclarationCommit, stack);
+      if (stackDefinitionFingerprint([reg.name, reg.path, reg.registeredAt, prior]) !== previous.registration ||
+          !isDeepStrictEqual(prior.nodes, baseline.stack.nodes))
+        throw Error('Prior declaration, project registration or registered node configuration does not match the existing placement');
+      registrationChange = { previous: previous.registration, current: baseline.fingerprint, previousDeclarationCommit: request.previousDeclarationCommit };
+    } else if (request.previousDeclarationCommit !== undefined) {
+      throw Error('The placement has no changed registration to review');
+    }
     const old = this.placementRecipient(fromNodeId, expected);
     const originNode = baseline.stack.nodes?.[0];
     if (!originNode || baseline.stack.nodes?.length !== 1 || (!previous?.selected &&
@@ -2941,6 +2953,7 @@ export class ProjectService extends EventEmitter {
     if (!candidate && !previous?.selected) throw Error('There is no previous registered placement to restore');
     const endpoint = candidate?.target ?? this.placementRecipient(previous!.origin.nodeId, previous!.origin);
     const to: PlacementEndpoint = candidate ? { nodeId: candidate.receipt.nodeId, host: endpoint.host, port: endpoint.port, pin: endpoint.pin } : previous!.origin;
+    if (registrationChange && !isDeepStrictEqual(from, to)) throw Error('A changed registration requires the same pinned recipient');
     if (to.nodeId !== fromNodeId && to.host === from.host && to.port === from.port)
       throw Error('Two recipient identities cannot hand off the same endpoint');
     if (candidate && previous?.selected?.prepared === candidate.receipt.digest)
@@ -2955,7 +2968,7 @@ export class ProjectService extends EventEmitter {
     const originCommit = previous ? previous.originCommit : cleanCommit;
     if (!candidate && (!originCommit || cleanCommit !== originCommit))
       throw Error('The original checkout is unavailable or has changed; prepare its exact immutable release instead');
-    const receipt = remotePlacementReview(scope, current.revision, baseline.fingerprint, originCommit, from, to, candidate?.receipt ?? null, stop, observation);
+    const receipt = remotePlacementReview(scope, current.revision, baseline.fingerprint, originCommit, from, to, candidate?.receipt ?? null, stop, observation, registrationChange);
     const acknowledgement = stop.nodes[0]!;
     const sourceStop: StackStopProgress = { id: stop.id, phase: 'stopped', startedAt: stop.startedAt, completedAt: stop.completedAt!,
       intentCommitted: true, nodes: [{ node: acknowledgement.node, outcome: 'stopped', operationId: acknowledgement.operationId!,
@@ -2993,6 +3006,7 @@ export class ProjectService extends EventEmitter {
     await this.requireNoColdBatch();
     const previous = this.placement(request.project, request.stack);
     if (previous?.receipt.digest === request.review && previous.receipt.fromNodeId === request.fromNodeId &&
+        previous.receipt.registrationChange?.previousDeclarationCommit === request.previousDeclarationCommit &&
         ('registered' in request.destination ? previous.selected === null : previous.selected?.prepared === request.destination.prepared &&
           previous.selected.release === request.destination.release)) return previous.receipt;
     const { value, revision, recheck } = await this.inspectRemotePlacement(request);

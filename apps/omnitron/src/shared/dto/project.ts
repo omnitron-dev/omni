@@ -283,9 +283,11 @@ export interface PreparedArtifactVolume {
 export interface PlacementRequest extends RuntimeStackScope {
   fromNodeId: string;
   destination: { release: string; prepared: string } | { registered: true };
+  previousDeclarationCommit?: string;
 }
 export interface PlacementReceipt extends RuntimeStackScope {
   digest: string; generation: number; fromNodeId: string; toNodeId: string; stopId: string; release: string | null;
+  registrationChange?: { previous: string; current: string; previousDeclarationCommit: string };
 }
 
 /** Controller-local, administrator-selected input for a single remote replacement. */

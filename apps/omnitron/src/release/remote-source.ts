@@ -38,6 +38,17 @@ async function git(directory: string, args: string[], alternates?: string): Prom
   return (await exec('git', ['-C', directory, ...args], { env, timeout: 30_000 })).stdout.trimEnd();
 }
 
+/** Read a historical stack declaration as data. No project code is evaluated. */
+export async function registeredStackAtCommit(directory: string, commit: string, stack: string): Promise<IStackConfig> {
+  if (!/^[a-f0-9]{40}$/.test(commit) || !validName.test(stack)) throw Error('An exact prior declaration commit and stack are required');
+  const object = commit + ':./omnitron.stacks.json';
+  if (await git(directory, ['cat-file', '-t', commit]) !== 'commit') throw Error('Prior declaration must come from a Git commit');
+  const declarations = JSON.parse(await git(directory, ['cat-file', 'blob', object]));
+  if (!declarations || !Object.hasOwn(declarations, stack) || declarations[stack]?.type !== 'remote')
+    throw Error('Prior commit has no matching registered remote stack');
+  return declarations[stack];
+}
+
 export async function cleanRegisteredCommit(directory: string): Promise<string | null> {
   const head = () => git(directory, ['rev-parse', '--verify', 'HEAD']);
   const commit = await head();

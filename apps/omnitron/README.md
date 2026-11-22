@@ -283,6 +283,8 @@ Selection rechecks the stopped owner on its enrolled connection and commits the 
 
 For a return to the original registration, first complete a reviewed full stop on the replacement. Run `select-placement acme prod --from-node "$new_id" --restore-registration --json`, then repeat with its `--review` digest. A return checks the original stable endpoint, SSH enrollment and clean Git commit. To deploy there, specify a release at that exact commit. Data promotion, recovery and signer custody each require their own positive evidence before enabling writers.
 
+When a project's registered stack declaration changes between releases on the same node, prepare the release against the current declaration. Pass `--previous-declaration-commit <full-sha>` to both the placement review and its confirmation. Choose a Git commit whose tracked `omnitron.stacks.json` contains the previously registered stack. Omnitron checks its fingerprint against the existing project registration, verifies the registered node configuration and obtains a fresh full-stop observation from the selected recipient. The receipt records both declaration fingerprints and the historical commit.
+
 Runtime-only recovery uses `--infrastructure preserve`. Review the intended release and current resources before stopping applications:
 
 ```sh

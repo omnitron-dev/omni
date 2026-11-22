@@ -65,14 +65,15 @@ export async function stackInstallHostConfigsCommand(request: import('../shared/
 }
 
 export async function stackSelectPlacementCommand(project: string, stack: string, options: {
-  fromNode: string; release?: string; prepared?: string; restoreRegistration?: boolean; review?: string;
+  fromNode: string; release?: string; prepared?: string; restoreRegistration?: boolean; review?: string; previousDeclarationCommit?: string;
 }) {
   const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
   try {
     if (options.restoreRegistration ? options.release || options.prepared : !options.release || !options.prepared)
       throw Error('Choose --release with --prepared or --restore-registration');
     const destination = options.restoreRegistration ? { registered: true as const } : { release: options.release!, prepared: options.prepared! };
-    const request = { project, stack, fromNodeId: options.fromNode, destination };
+    const request = { project, stack, fromNodeId: options.fromNode, destination,
+      ...(options.previousDeclarationCommit !== undefined && { previousDeclarationCommit: options.previousDeclarationCommit }) };
     const svc = await client.service<IProjectRpcService>('OmnitronProject');
     const result = options.review === undefined ? await svc.reviewRemotePlacement(request) : await svc.selectRemotePlacement({ ...request, review: options.review });
     if (!emitJson(result)) {

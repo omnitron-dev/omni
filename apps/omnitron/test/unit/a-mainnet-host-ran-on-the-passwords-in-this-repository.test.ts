@@ -22,6 +22,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import childProcess from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
+import { promisify } from 'node:util';
 
 import {
   resolveServiceCredentials,
@@ -213,7 +214,7 @@ describe('a service that already holds state', () => {
 
     const filled = await withGeneratedCredentials({ postgres: { password: 'postgres' } }, {
       project: 'sample', stack: 'test', vault: v,
-      hasExistingState: async () => true,
+      volumeState: async () => 'existing',
       onLeftOnDefault: (service, field) => told.push([service, field]),
     });
 
@@ -232,7 +233,7 @@ describe('a service that already holds state', () => {
 
     const filled = await withGeneratedCredentials({ postgres: { password: 'postgres' } }, {
       project: 'sample', stack: 'test', vault: v,
-      hasExistingState: async () => false,
+      volumeState: async () => 'absent',
     });
 
     expect(filled.postgres.password).not.toBe('postgres');
@@ -244,10 +245,10 @@ describe('a service that already holds state', () => {
     let asked = 0;
 
     await withGeneratedCredentials({ postgres: { password: 'postgres' } }, {
-      project: 'sample', stack: 'test', vault: v, hasExistingState: async () => { asked += 1; return false; },
+      project: 'sample', stack: 'test', vault: v, volumeState: async () => { asked += 1; return 'absent'; },
     });
     const second = await withGeneratedCredentials({ postgres: { password: 'postgres' } }, {
-      project: 'sample', stack: 'test', vault: v, hasExistingState: async () => { asked += 1; return false; },
+      project: 'sample', stack: 'test', vault: v, volumeState: async () => { asked += 1; return 'absent'; },
     });
 
     // The vault entry IS the record that generation happened; a volume that
@@ -256,25 +257,45 @@ describe('a service that already holds state', () => {
     expect(asked).toBe(1);
     expect(second.postgres.password).toBe(await v.get('infra:sample:test:postgres:password'));
   });
+
+  it.each([
+    ['postgres', 'password'],
+    ['minio', 'secretKey'],
+  ])('requires the target vault binding before attaching a restored %s volume', async (service, field) => {
+    const { withGeneratedCredentials } = await import('../../src/infrastructure/service-credentials.js');
+    const v = vault();
+    const key = credentialKey('sample', 'prod', service, field);
+    const options = { project: 'sample', stack: 'prod', vault: v, volumeState: async () => 'restored' as const };
+    await expect(withGeneratedCredentials({ [service]: {} }, options)).rejects.toThrow(key);
+    expect(v.store.size).toBe(0);
+    await v.set(key, 'existing-fixture-value');
+    expect(await withGeneratedCredentials({ [service]: {} }, options)).toEqual({ [service]: { [field]: 'existing-fixture-value' } });
+  });
 });
 
-describe('asking whether a volume exists', () => {
+describe('reading the credential volume identity', () => {
   it.each([
-    ['No such volume: test-volume', false],
-    ['Cannot connect to the Docker daemon', true],
-    ['Permission denied', true],
-    ['Command timed out', true],
-  ])('answers safely for %s', async (message, expected) => {
-    const { volumeExists } = await import('../../src/infrastructure/container-runtime.js');
-    const run = vi.spyOn(childProcess, 'execFile').mockImplementation(((...args: unknown[]) => {
-      const callback = args.at(-1) as (error: Error, stdout: string, stderr: string) => void;
-      callback(new Error(message), '', message);
-      return {};
-    }) as typeof childProcess.execFile);
+    ['Error response from daemon: get test-volume: no such volume', undefined, 'absent'],
+    ['Cannot connect to the Docker daemon', undefined, undefined],
+    ['Permission denied', undefined, undefined],
+    [undefined, 'malformed', undefined],
+    [undefined, 'null', 'existing'],
+    [undefined, '{"other":"yes"}', 'existing'],
+    [undefined, '{"org.omnitron.service-adoption":"transfer"}', 'restored'],
+  ])('recognizes Docker evidence %s / %s', async (message, stdout, expected) => {
+    const { credentialVolumeState } = await import('../../src/infrastructure/container-runtime.js');
+    const run = vi.spyOn(childProcess, 'execFile');
+    const native = vi.fn(async () => {
+      if (message) throw Object.assign(new Error(message), { code: 1, stderr: message });
+      return { stdout };
+    });
+    Object.defineProperty(run, promisify.custom, { value: native, configurable: true });
     syncBuiltinESMExports();
     try {
-      // A unit test must control Docker's answer, not depend on a local daemon.
-      await expect(volumeExists('test-volume')).resolves.toBe(expected);
+      const result = credentialVolumeState('test-volume');
+      if (expected) await expect(result).resolves.toBe(expected);
+      else await expect(result).rejects.toThrow(/cannot inspect/i);
+      expect(native).toHaveBeenCalledWith('docker', ['volume', 'inspect', '--format', '{{json .Labels}}', 'test-volume'], expect.any(Object));
     } finally {
       run.mockRestore();
       syncBuiltinESMExports();
@@ -292,7 +313,7 @@ describe('the report that a deployment is on a default credential', () => {
 
     await withGeneratedCredentials({ postgres: { password: 'postgres' } }, {
       project: 'sample', stack: 'test', vault: vault(),
-      hasExistingState: async () => true,
+      volumeState: async () => 'existing',
       onLeftOnDefault: (service, field) =>
         logger.error({ service, secret: field }, `${service} is still on its default ${field}`),
     });

@@ -364,10 +364,10 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
           vault: data.infrastructure === 'preserve' ? { get: key => vault.get(key), set: async () => { throw Error('Preservation cannot create credentials'); } } : vault,
           // The volume is what says whether this service already holds state
           // initialised with another password.
-          hasExistingState: async (service) => {
-            const { volumeExists } = await import('../infrastructure/container-runtime.js');
+          volumeState: async (service) => {
+            const { credentialVolumeState } = await import('../infrastructure/container-runtime.js');
             const { getContainerPrefix } = await import('../infrastructure/service-resolver.js');
-            return volumeExists(`${getContainerPrefix()}-${service}-data`);
+            return credentialVolumeState(`${getContainerPrefix()}-${service}-data`);
           },
           onLeftOnDefault: (service, field) => {
             // ERROR, because this is a public host running on a published

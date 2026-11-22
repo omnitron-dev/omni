@@ -92,6 +92,8 @@ export interface CredentialStore {
   set(key: string, value: string): Promise<void>;
 }
 
+export type CredentialVolumeState = 'absent' | 'existing' | 'restored';
+
 /**
  * Fill in a service's credentials, generating what has never been set.
  *
@@ -170,7 +172,7 @@ export interface CredentialOptions {
    * vault entry are created together and cannot disagree. A deployment that
    * predates this keeps what it has, and is told.
    */
-  hasExistingState?: ((service: string) => Promise<boolean>) | undefined;
+  volumeState?: ((service: string) => Promise<CredentialVolumeState>) | undefined;
   /** Told when an existing deployment is left on a default credential. */
   onLeftOnDefault?: ((service: string, field: string) => void) | undefined;
 }
@@ -200,7 +202,11 @@ export async function withGeneratedCredentials<T extends Record<string, any>>(
 
     // Nothing in the vault: either this is the first provision, or the
     // service predates generated credentials. The volume answers which.
-    if (options.hasExistingState && (await options.hasExistingState(service))) {
+    const state = await options.volumeState?.(service);
+    if (state === 'restored') {
+      throw new Error(`Restore the node vault binding '${key}' before starting ${service} with its restored volume.`);
+    }
+    if (state === 'existing') {
       options.onLeftOnDefault?.(service, field);
       continue;
     }

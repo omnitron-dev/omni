@@ -12,6 +12,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { LONG_REQUEST_TIMEOUT } from '../shared/dto/services.js';
 import { CONFIG_ROOT_PREFIX } from './shipped-config.js';
 import { nativeHealthCheck } from './health-recovery.js';
+import type { CredentialVolumeState } from './service-credentials.js';
 import { DEFAULT_PORT_BIND_HOST } from './types.js';
 import type { ContainerState, ContainerStatus, ContainerSpecHashMigration, ReconcileAction, ResolvedContainer } from './types.js';
 
@@ -1203,36 +1204,22 @@ export async function createVolume(name: string): Promise<void> {
   }
 }
 
-/**
- * Does a Docker volume exist?
- *
- * The question behind this one is "does this service already hold state
- * initialised with some other password" — a Postgres data directory keeps
- * the password it was created with and ignores `POSTGRES_PASSWORD`
- * thereafter, so a volume is the difference between a first provision and
- * one that would lock an application out of its own database.
- *
- * `docker volume inspect` rather than listing and filtering: the answer is
- * about one name, and a list is a different question that happens to
- * contain it.
- */
-export async function volumeExists(name: string): Promise<boolean> {
+/** Read the adoption label recorded when a replacement node reserves a volume. */
+export async function credentialVolumeState(name: string): Promise<CredentialVolumeState> {
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
+  let labels: unknown;
   try {
-    await promisify(execFile)('docker', ['volume', 'inspect', name], { timeout: 15_000 });
-    return true;
+    const { stdout } = await promisify(execFile)('docker', ['volume', 'inspect', '--format', '{{json .Labels}}', name], { timeout: 15_000 });
+    labels = JSON.parse(stdout);
   } catch (err) {
-    // "No such volume" is an answer. Anything else — docker unreachable, a
-    // timeout, a permission error — is NOT, and the two must not be
-    // collapsed: the caller generates a credential when this says false, and
-    // generating one for a volume that does exist locks an application out
-    // of its own database. So only the message that means absence answers
-    // absence; everything else answers "assume there is state", which
-    // leaves a service on a default loudly rather than breaking it quietly.
-    const message = err instanceof Error ? err.message : String(err);
-    return !/no such volume/i.test(message);
+    const { code, stderr } = err as { code?: unknown; stderr?: string };
+    if (code === 1 && typeof stderr === 'string' && /\bno such volume\b/i.test(stderr)) return 'absent';
+    throw new Error(`Cannot inspect Docker volume '${name}' before resolving its credentials.`, { cause: err });
   }
+  if (labels === null) return 'existing';
+  if (typeof labels !== 'object' || Array.isArray(labels)) throw new Error(`Invalid Docker labels for volume '${name}'.`);
+  return Object.hasOwn(labels, 'org.omnitron.service-adoption') ? 'restored' : 'existing';
 }
 
 /**

@@ -27,6 +27,8 @@ The restore journal reserves fresh volumes with an operation-specific label and 
 
 Review the resulting physical identities, tree digests and native evidence before attaching target writers. A stale stop, an already used volume name, a changed engine, an incomplete ID mapping, a writer or any mismatch holds the cutover. While the new volumes remain unattached, rollback uses the donor's preserved placement and data. Reconcile any writes accepted by the destination before changing direction.
 
+Restoring a volume also requires its service credential. For PostgreSQL and MinIO, provision the matching binding in the destination node's vault under `infra:<project>:<stack>:postgres:password` or `infra:<project>:<stack>:minio:secretKey`. A stack with explicit service credentials uses those bindings. A restored volume with a missing generated credential stops provisioning before the service starts. Verify a database login and access to an existing object before admitting application traffic.
+
 ## Native validator requirements
 
 Before the stop, export and review the image-only probe. It checks the receiver's registered SSH key and engine observation, inspects the local immutable PostgreSQL image and the created container, and runs `pg_controdata --version` under the engine's stock security profile. An image-declared data volume receives a private 4 KiB read-only tmpfs. The result records the version, pinned image and number of mounted data volumes.

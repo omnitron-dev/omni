@@ -66,6 +66,19 @@ The source applies nice 19 and, where available, `ionice -c 2 -n 7`. The rate ce
 
 `seal` closes admissions, takes exclusive ownership, verifies the grant and signature, and independently reads and hashes the staged file. Its offline read of the compact LMDB checks mainnet's block-one checkpoint, the source genesis, minimum height and the block hash at the original source tip's height. A growing chain can produce a later valid snapshot. The successful stage contains only `data.mdb` owned by root at mode 0400 in a mode-0700 directory. The receipt includes the stage path, transaction height, source checkpoint, byte count and SHA-256. The operation removes the receiver account and the source private key. Installation, ownership for the eventual service and any service transition require a separate operation. [Mainnet checkpoint](https://github.com/monero-project/monero/blob/v0.18.5.1/src/checkpoints/checkpoints.cpp)
 
+## Prepare the daemon data directory
+
+After `seal` succeeds, save its JSON output as `receiver-seal.json`. Use the original specification and offer to prepare a separate data directory on the receiver.
+
+```sh
+pnpm exec xec lmdb-preseed prepare-data spec.json --offer source-offer.json \
+  --seal receiver-seal.json --reserve-bytes 10737418240 > prepare-data-pipeline.json
+```
+
+Submit the definition through the same Pipeline lifecycle. The receiver checks its original disk and seal receipts, reserves the named candidate, and copies only `data.mdb`. A copy-on-write clone is used where supported. Capacity checks allow for a full copy and the requested free-space reserve. Before publishing the directory, the receiver reads back its SHA-256 and checks that it has a separate inode. A retried run can finish a prepared rename and returns the original receipt for an intact candidate.
+
+The receipt's `dataDir` contains `lmdb/data.mdb` in the layout expected by `monerod`. Its root-only permissions isolate the candidate until the reviewed service transition. Use that path when configuring the stack's existing `bareMetal.adopt.from` on the same filesystem. The operator can verify the official daemon in isolation and select the point at which it may connect to peers. The original sealed snapshot remains available for recovery.
+
 ## Interruptions, credentials and retries
 
 Inspect the existing run after an unknown outcome. Each checked helper chunk is content-addressed and at most 6 KiB before base64. A repeated chunk verifies the stored bytes. The final installer independently verifies the complete ELF and publishes it atomically under `/var/lib/omnitron-lmdb-tools/<sha256>`, mode 0500. An existing exact ELF satisfies a later install after an uncertain acknowledgement. A mismatched file stops the operation. The exported shell steps each fit within 24 KiB.
@@ -86,5 +99,7 @@ node --import tsx --test .xec/lmdb-preseed/export.test.js .xec/block-preseed/exp
 python3 -B .xec/lmdb-preseed/stream_test.py
 python3 -B .xec/block-preseed/endpoint_test.py
 ```
+
+Run `python3 -B .xec/lmdb-preseed/materialize_test.py` as root inside a disposable Linux test container with a writable private `/root`. It checks the independent copy, exact replay, recovery after an interrupted rename, and refusals for an occupied destination, a mismatched receipt and insufficient space.
 
 `stand_test.py --help` describes the additional two-node fixture. It requires two disposable Linux containers with `sshd` on the same internal Docker network, tagged `org.omnitron.preseed-qa`. Compile `mvcc-fixture.c` with `mdb.c` and `midl.c` from the verified release for the fixture architecture. The test exercises the exported operations with the installed CLI's definition checker, a concurrent LMDB writer, an interrupted stream, a fresh key, acceptance after revocation and exact receipt replay. `native-ssh-test.mjs` additionally runs the offer's remote commands through the installed Omnitron `ExecutionService` and Xec SSH adapter against a pinned fixture host.

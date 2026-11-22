@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { buildHelper, sha } from '../lmdb-preseed/build.js';
-import { preseedGraph, validEndpoints } from './block-preseed.js';
+import { preseedGraph, registeredPinsStep, validEndpoints } from './block-preseed.js';
 
 const shared = new URL('../block-preseed/endpoint.py', import.meta.url);
 const stream = new URL('../lmdb-preseed/stream.py', import.meta.url);
@@ -86,6 +86,34 @@ export async function lmdbDefinition(phase, spec, offer, binary) {
   return graph;
 }
 
+export async function preparedDataDefinition(spec, offer, seal, reserveBytes) {
+  validate(spec);
+  validateOffer(spec, offer);
+  if (!range(reserveBytes, 0, 16 * 1024 ** 4) || seal?.sealed !== true || seal.format !== format ||
+      seal.manifest !== offer.manifest || !hash(seal.offer) || !hash(seal.sha256) ||
+      seal.stage !== path.posix.join(spec.stageParent, 'block-preseed-' + spec.id) ||
+      !range(seal.bytes, 1, spec.maxBytes) || !range(seal.database?.height, offer.anchor.height, Number.MAX_SAFE_INTEGER))
+    throw Error('Use the successful seal from the receiver, the original offer and an explicit free-space reserve.');
+  const source = embedChannel(await fs.readFile(shared)) +
+    await fs.readFile(new URL('../lmdb-preseed/materialize.py', import.meta.url), 'utf8');
+  const args = [spec, offer, seal, reserveBytes].map(value => b64(JSON.stringify(value)));
+  const run = pythonCommand(source)(...args);
+  if (Buffer.byteLength(run) > 24 * 1024) throw Error('Data preparation exceeds the management command size.');
+  return {
+    name: 'private-lmdb-preseed-' + spec.id + '-prepare-data',
+    description: 'Prepare an independent Monero data directory from the sealed receiver snapshot.',
+    triggers: [{ type: 'manual', config: {} }],
+    steps: [registeredPinsStep(spec), {
+      name: 'prepare-data', nodeId: spec.receiverNode, dependsOn: ['registered-pins'], retries: 0, timeout: 86400000, run,
+    }],
+  };
+}
+
+async function readJson(name) {
+  const raw = await fs.readFile(name, 'utf8');
+  try { return JSON.parse(raw); } catch { throw Error('Invalid snapshot input JSON.'); }
+}
+
 async function print(value) {
   await new Promise((resolve, reject) => process.stdout.write(JSON.stringify(value, null, 2) + '\n',
     error => error ? reject(error) : resolve()));
@@ -95,16 +123,21 @@ export function command(program) {
   const op = program.command('lmdb-preseed').description('Stage a private compact Monero LMDB snapshot between registered Linux nodes');
   op.command('build-helper <upstream> <output>').requiredOption('--machine <arch>', 'Linux glibc architecture, x86_64 or aarch64')
     .action(async (upstream, output, options) => print(await buildHelper(upstream, output, options.machine)));
+  op.command('prepare-data <spec>').description('Prepare an independent data directory beside the sealed snapshot')
+    .requiredOption('--offer <file>', 'Original public source offer')
+    .requiredOption('--seal <file>', 'Successful receiver seal JSON')
+    .requiredOption('--reserve-bytes <bytes>', 'Free space to retain after a full copy')
+    .action(async (file, options) => {
+      if (!/^(0|[1-9]\d*)$/.test(options.reserveBytes)) throw Error('Use an integer free-space reserve in bytes.');
+      await print(await preparedDataDefinition(await readJson(file), await readJson(options.offer),
+        await readJson(options.seal), Number(options.reserveBytes)));
+    });
   for (const phase of ['offer', 'copy', 'accept', 'revoke']) {
     const sub = op.command(phase + ' <spec>').description('Export the ' + phase + ' pipeline');
     if (phase !== 'revoke') sub.requiredOption('--helper <file>', 'Exact locally qualified ELF payload');
     if (['copy', 'accept'].includes(phase)) sub.requiredOption('--offer <file>', 'Public source offer JSON');
     sub.action(async (file, options) => {
-      const read = async name => {
-        const raw = await fs.readFile(name, 'utf8');
-        try { return JSON.parse(raw); } catch { throw Error('Invalid snapshot input JSON.'); }
-      };
-      await print(await lmdbDefinition(phase, await read(file), options.offer && await read(options.offer),
+      await print(await lmdbDefinition(phase, await readJson(file), options.offer && await readJson(options.offer),
         options.helper && await fs.readFile(options.helper)));
     });
   }

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import test from 'node:test';
 import { checkPipelineDefinition } from '../../apps/omnitron/src/services/pipeline-definition.ts';
-import { lmdbDefinition } from '../commands/lmdb-preseed.js';
+import { lmdbDefinition, preparedDataDefinition } from '../commands/lmdb-preseed.js';
 import { sha } from './build.js';
 
 const elf = randomBytes(70 * 1024);
@@ -19,6 +19,20 @@ const offer = { protocol: 1, id: spec.id, spec: 'a'.repeat(64), publicKey: 'ssh-
   manifest: 'b'.repeat(64), issued: 100, expires: 100 + 60 * spec.ttlMinutes, format: spec.payload,
   sourceFreeFloorBytes: 8 * 1024 ** 3, pollSeconds: 5, anchor: { nettype: 'mainnet', height: 8, checkpointHeight: 1,
     genesis: 'c'.repeat(64), tip: 'd'.repeat(64), checkpointHash: 'e'.repeat(64) } };
+
+test('preparing an independent database uses the sealed bytes on the registered receiver', async () => {
+  const seal = { sealed: true, stage: spec.stageParent + '/block-preseed-' + spec.id, manifest: offer.manifest,
+    offer: 'f'.repeat(64), sha256: '8'.repeat(64), bytes: 8192, format: spec.payload, database: { height: 10 } };
+  const graph = await preparedDataDefinition(spec, offer, seal, 4096);
+  await checkPipelineDefinition(graph);
+  assert.deepEqual(graph.steps.map(s => s.name), ['registered-pins', 'prepare-data']);
+  assert.equal(graph.steps[1].nodeId, spec.receiverNode);
+  assert.equal(graph.steps[1].retries, 0);
+  assert(graph.steps.every(s => Buffer.byteLength(s.run) <= 24 * 1024));
+  for (const change of [{ sealed: false }, { stage: '/' }, { manifest: '0'.repeat(64) }, { bytes: spec.maxBytes + 1 }])
+    await assert.rejects(preparedDataDefinition(spec, offer, { ...seal, ...change }, 4096), /successful seal/);
+  await assert.rejects(preparedDataDefinition(spec, offer, seal, -1), /free-space reserve/);
+});
 
 test('the stock engine accepts bounded content-addressed installation and each reviewed lifecycle', async () => {
   const phases = { offer: ['offer'], copy: ['grant', 'send', 'seal', 'forget'], accept: ['seal', 'forget'], revoke: ['revoke', 'forget'] };

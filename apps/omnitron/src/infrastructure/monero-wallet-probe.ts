@@ -10,16 +10,22 @@ def command(*args):
     return subprocess.run(args,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,check=True,timeout=5,text=True).stdout.strip()
 def digest(value):
     return hashlib.sha256(value.encode('ascii')).hexdigest()
-def socket_identity(unit,port):
+def socket_identity(unit,port,declared_host=None):
     require(unit in ('monero-wallet-rpc.service','monero-walletd.service') and type(port) is int and 0<port<65536)
     pid=int(command('systemctl','show',unit,'-p','MainPID','--value'))
     require(pid>1 and os.path.basename(os.readlink('/proc/%d/exe'%pid))=='monero-wallet-rpc')
     sockets=command('ss','-H','-ltnp','sport = :%d'%port).splitlines()
     require(len(sockets)==1 and set(re.findall(r'\bpid=(\d+)\b',sockets[0]))=={str(pid)})
     host=sockets[0].split()[3].rsplit(':',1)[0].strip('[]')
-    if host in ('*','0.0.0.0'): host='127.0.0.1'
-    if host=='::': host='::1'
-    addr=ipaddress.ip_address(host)
+    bound=None if host=='*' else ipaddress.ip_address(host)
+    if declared_host is not None:
+        addr=ipaddress.ip_address(declared_host)
+        require('%' not in declared_host and not addr.is_unspecified and not addr.is_multicast)
+        require(bound is None or bound==addr or (bound.is_unspecified and bound.version==addr.version))
+    elif bound is None or bound.is_unspecified:
+        addr=ipaddress.ip_address('::1' if bound and bound.version==6 else '127.0.0.1')
+    else:
+        addr=bound
     if not addr.is_loopback:
         routes=json.loads(command('ip','-j',('-4' if addr.version==4 else '-6'),'route','get',str(addr)))
         require(len(routes)==1 and routes[0].get('dev')=='lo' and routes[0].get('type')=='local')
@@ -29,7 +35,8 @@ def main():
     unit,port,nonce,members=q['unit'],q['port'],q['nonce'],q['members']
     require(re.fullmatch('[0-9a-f]{64}',nonce) and 0<len(members)<=8192 and len(set(members))==len(members))
     require(all(re.fullmatch('[0-9a-f]{64}',m) for m in members))
-    identity=socket_identity(unit,port)
+    declared_host=q.get('host')
+    identity=socket_identity(unit,port,declared_host)
     rpc=http.client.HTTPConnection(identity[1],port,timeout=12)
     body=b'{"jsonrpc":"2.0","id":"owned","method":"get_address","params":{"account_index":0}}'
     headers={'Content-Type':'application/json','Connection':'keep-alive'}
@@ -51,7 +58,7 @@ def main():
         output({'challenge':challenge})
         auth=json.loads(sys.stdin.buffer.readline(4096))
         require(isinstance(auth,str) and auth.startswith('Digest ') and not re.search(r'[\x00-\x1f\x7f]',auth))
-        require(rpc.sock is sock and sock is not None and socket_identity(unit,port)==identity)
+        require(rpc.sock is sock and sock is not None and socket_identity(unit,port,declared_host)==identity)
         rpc.request('POST','/json_rpc',body,{**headers,'Authorization':auth})
         second=rpc.getresponse()
         require(second.status==200)
@@ -68,13 +75,14 @@ def main():
             require(re.fullmatch(('4' if index==0 else '8')+'[1-9A-HJ-NP-Za-km-z]{94}',address))
             seen_indices.add(index); addresses.add(address)
             if index==0: zero=address
-        require(zero==primary and socket_identity(unit,port)==identity)
+        require(zero==primary and socket_identity(unit,port,declared_host)==identity)
         owned={digest(nonce+':'+address) for address in addresses if address!=primary}
         output({'primarySha256':digest(json.dumps(['xmr-mainnet-primary-v1',primary],separators=(',',':'))),
                 'checked':len(members),'matched':len(owned.intersection(members))})
     finally:
         rpc.close()
-try:
-    main()
-except Exception:
-    sys.exit(1)`;
+if __name__=='__main__':
+    try:
+        main()
+    except Exception:
+        sys.exit(1)`;

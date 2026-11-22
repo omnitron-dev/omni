@@ -206,7 +206,9 @@ omnitron --json stack verify-wallet-addresses acme prod < wallet-membership.json
 | `nonce` | A fresh 32-byte random value encoded as 64 lowercase hex characters |
 | `members` | One lowercase SHA-256 per distinct issued subaddress, computed over the ASCII text `nonce + ":" + address`, with 1 to 8,192 entries |
 
-The node checks the process that owns the listening socket and connects to it locally. The controller answers the wallet's HTTP Digest challenge over the registered SSH connection. The query reads account zero. Its receipt gives the fingerprint of the primary address, the number checked, and the number matched. The CLI succeeds only when every supplied subaddress matches. Keep the receipt alongside the ledger observation and compare it again after restoring the wallet, before enabling payouts.
+For a wallet managed by Omnitron, the two references come from the service override's `secrets`. For a wallet already installed on the registered node, use `external.secrets` and declare its IP address and port in `external.host` and `external.ports.rpc`. The node checks that the Linux unit owns the listener and that the declared address is local before opening the connection.
+
+The controller answers the wallet's HTTP Digest challenge over the registered SSH connection. The query reads account zero. Its receipt gives the fingerprint of the primary address, the number checked, and the number matched. The CLI succeeds only when every supplied subaddress matches. Keep the receipt alongside the ledger observation and compare it again after restoring the wallet, before enabling payouts.
 
 ### Move one stopped remote stack to its prepared recipient
 

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { isIP } from 'node:net';
 import { PassThrough } from 'node:stream';
 import { createInterface } from 'node:readline';
 import type { SSHTarget } from '../execution/execution.service.js';
@@ -7,6 +8,7 @@ import type { WalletMembershipRequest, WalletMembershipReceipt } from '../shared
 import { shellEscape } from '../shared/shell-escape.js';
 import { digestAuthorization } from './host-inspection.js';
 import { MONERO_WALLET_PROBE } from './monero-wallet-probe.js';
+import { bindService } from './service-binding.js';
 
 const hash = /^[0-9a-f]{64}$/;
 const label = /^[\w][\w.-]{0,127}$/;
@@ -30,16 +32,23 @@ export function checkWalletMembership(request: WalletMembershipRequest): void {
 export function checkWalletProfile(stack: IStackConfig, request: WalletMembershipRequest) {
   const overrides = stack.serviceOverrides;
   const wallet = overrides?.['monero-wallet-rpc'];
-  if (stack.type !== 'remote' || !wallet || wallet.external || wallet.provisioning !== 'bareMetal' || wallet.networkMode !== 'mainnet' ||
+  if (stack.type !== 'remote' || !wallet ||
       Object.keys(overrides!).some(key => key.endsWith('/monero-wallet-rpc'))) throw invalid();
+  const binding = bindService({}, wallet);
+  const port = binding.ports['rpc'];
+  if (binding.networkMode !== 'mainnet' || !['bareMetal', 'external'].includes(binding.provisioning) ||
+      (port !== undefined && port !== request.port)) throw invalid();
+  const host = binding.host;
+  if (binding.provisioning === 'external' && (!host || !isIP(host) || host.includes('%') ||
+      port === undefined)) throw invalid();
   const bound = (key: string) => {
-    const ref = wallet.secrets?.[key];
+    const ref = binding.secrets[key];
     if (!ref || typeof ref !== 'object' || Object.keys(ref).length !== 1 || typeof ref.secret !== 'string') throw invalid();
     return ref.secret;
   };
   const user = bound('rpc_user'), password = bound('rpc_password');
   if (user !== request.userRef || password !== request.passwordRef) throw invalid();
-  return { user, password };
+  return { user, password, host };
 }
 
 type Login = { user: string; password: string };
@@ -79,7 +88,7 @@ export async function walletChallengeResponse(challenge: unknown, login: () => P
   return opaque === undefined ? proof : proof + ', opaque="' + opaque + '"';
 }
 
-export async function inspectMoneroWallet(target: SSHTarget, request: WalletMembershipRequest, login: () => Promise<Login>): Promise<WalletMembershipReceipt> {
+export async function inspectMoneroWallet(target: SSHTarget, request: WalletMembershipRequest, login: () => Promise<Login>, host?: string): Promise<WalletMembershipReceipt> {
   checkWalletMembership(request);
   if (target.username !== 'root' || target.expectedHostFingerprint !== request.fingerprint) throw invalid();
   const { SSHClient } = await import('@xec-sh/ssh');
@@ -106,7 +115,7 @@ export async function inspectMoneroWallet(target: SSHTarget, request: WalletMemb
       if (line.done || !line.value) throw invalid();
       return JSON.parse(line.value);
     };
-    input.write(JSON.stringify({ unit: request.unit, port: request.port, nonce: request.nonce, members: request.members }) + '\n');
+    input.write(JSON.stringify({ unit: request.unit, port: request.port, host, nonce: request.nonce, members: request.members }) + '\n');
     const first = await frame();
     if (!first || Object.keys(first).join() !== 'challenge') throw invalid();
     const authorization = await walletChallengeResponse(first.challenge, login);

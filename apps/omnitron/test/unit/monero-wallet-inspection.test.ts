@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createInterface } from 'node:readline';
 import type { Readable } from 'node:stream';
@@ -37,13 +38,13 @@ const challenge = 'Digest realm="monero-rpc", nonce="aGVsbG8=", algorithm=MD5-se
 const receipt = { primarySha256: sha('synthetic-primary'), checked: 2, matched: 2 };
 type ProbeStreams = {stdin: Readable; onStdout: (chunk: Buffer) => void};
 
-function responder(reply: unknown, code = 0, check?: (header: string) => void) {
+function responder(reply: unknown, code = 0, check?: (header: string) => void, host?: string) {
   transport.exec.mockImplementation(async (_cmd: string, io: ProbeStreams) => {
     const frames = createInterface({ input: io.stdin });
     const lines = frames[Symbol.asyncIterator]();
     try {
       const frame = JSON.parse((await lines.next()).value!);
-      expect(frame).toEqual({ unit: request.unit, port: request.port, nonce: request.nonce, members: request.members });
+      expect(frame).toEqual({ unit: request.unit, port: request.port, host, nonce: request.nonce, members: request.members });
       expect(login).not.toHaveBeenCalled();
       io.onStdout(Buffer.from(JSON.stringify({ challenge })+'\n'));
       const header = JSON.parse((await lines.next()).value!);
@@ -93,6 +94,52 @@ describe('registered mainnet wallet ownership', () => {
     expect(login).toHaveBeenCalledTimes(1);
   });
 
+  it('uses the endpoint and credentials declared by a pre-existing wallet service', async () => {
+    const external = { host: '192.0.2.8', ports: { rpc: request.port }, secrets: profile.secrets };
+    const stack = (endpoint: typeof external) => ({ type: 'remote', serviceOverrides: {
+      'monero-wallet-rpc': { networkMode: 'mainnet', external: endpoint },
+    } }) satisfies IStackConfig;
+    const binding = checkWalletProfile(stack(external), request);
+    expect(binding).toEqual({ user: request.userRef, password: request.passwordRef, host: external.host });
+    for (const endpoint of [{ ...external, ports: { rpc: request.port + 1 } }, { ...external, host: 'wallet.invalid' },
+      { ...external, secrets: { ...profile.secrets, rpc_user: { secret: 'different/user' } } }]) {
+      expect(() => checkWalletProfile(stack(endpoint), request)).toThrow();
+    }
+    responder(receipt, 0, undefined, external.host);
+    await expect(inspectMoneroWallet(target, request, login, binding.host)).resolves.toMatchObject(receipt);
+  });
+
+  it('accepts a declared IP only on a matching listener with a local route', () => {
+    const verify = `
+import json,sys
+from unittest.mock import patch
+p={'__name__':'wallet_probe'}
+exec(sys.stdin.read(),p)
+def verify(listener, declared, route, success):
+    def command(*args):
+        if args[0]=='systemctl': return '48'
+        if args[0]=='ss': return 'LISTEN 0 32 '+listener+':29742 *:* users:(("monero-wallet-rpc",pid=48,fd=3))'
+        assert args==('ip','-j','-6' if ':' in declared else '-4','route','get',declared)
+        return json.dumps([route])
+    with patch.dict(p,{'command':command}), patch('os.readlink',return_value='/usr/bin/monero-wallet-rpc'):
+        try: result=p['socket_identity']('monero-wallet-rpc.service',29742,declared)
+        except ValueError:
+            assert not success
+        else:
+            assert success and result==(48,declared)
+local={'dev':'lo','type':'local'}
+remote={'dev':'eth0','type':'unicast'}
+verify('192.0.2.8','192.0.2.8',local,True)
+verify('192.0.2.8','192.0.2.9',local,False)
+verify('0.0.0.0','192.0.2.8',remote,False)
+verify('0.0.0.0','192.0.2.8',local,True)
+verify('[::]','2001:db8::8',local,True)
+verify('0.0.0.0','2001:db8::8',local,False)
+verify('0.0.0.0','0.0.0.0',local,False)
+`;
+    execFileSync('python3', ['-I', '-c', verify], { input: MONERO_WALLET_PROBE, timeout: 5000 });
+  });
+
   it('sends the fixed probe on pinned SSH and returns the public receipt', async () => {
     responder(receipt);
     await expect(inspectMoneroWallet(target, request, login)).resolves.toEqual({
@@ -122,13 +169,14 @@ describe('registered mainnet wallet ownership', () => {
     }
   });
 
-  it('uses the administrator RPC and resolves only the two references bound to the selected node', async () => {
+  it.each([undefined, '192.0.2.8'])('uses the administrator RPC and the references bound to the selected node (declared IP %s)', async host => {
     const permission = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, ProjectRpcService.prototype, 'inspectMoneroWallet');
     expect(permission).toEqual({ roles: ['admin'] });
     for (const role of ['admin', 'operator', 'viewer', 'service_role']) {
       expect(validateAccessRequirements({ roles: [role], permissions: [] }, permission).allowed).toBe(role === 'admin');
     }
-    const scope = { ...registered, nodes: [{ nodeId: request.nodeId, host: target.host, port: 9700 }] };
+    const wallet = host ? { networkMode: 'mainnet', external: { host, ports: { rpc: request.port }, secrets: profile.secrets } } : profile;
+    const scope = { ...registered, serviceOverrides: { 'monero-wallet-rpc': wallet }, nodes: [{ nodeId: request.nodeId, host: target.host, port: 9700 }] };
     const recipient = { host: target.host, port: 9700, fingerprint: request.fingerprint,
       managementIdentity: meshManagementIdentity(request.nodeId, target) };
     const get = vi.fn(async (ref: string) => ref === request.userRef ? 'synthetic-reader' : 'synthetic-credential');
@@ -139,7 +187,7 @@ describe('registered mainnet wallet ownership', () => {
       secrets: { get },
     });
     const rpc = new ProjectRpcService(services);
-    responder(receipt);
+    responder(receipt, 0, undefined, host);
     await expect(rpc.inspectMoneroWallet(request)).resolves.toMatchObject(receipt);
     expect(get.mock.calls.map(v => v[0])).toEqual([request.userRef, request.passwordRef]);
     get.mockClear();

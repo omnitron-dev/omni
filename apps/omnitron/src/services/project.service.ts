@@ -4483,7 +4483,7 @@ export class ProjectService extends EventEmitter {
       current();
       if (!user || !password) throw Error('Declared wallet profile unavailable');
       return { user, password };
-    });
+    }, initial.references.host);
     current();
     return receipt;
   }

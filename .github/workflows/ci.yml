@@ -109,6 +109,7 @@ jobs:
         working-directory: apps/omnitron
         run: |
           node test/runtime/kernel-distribution.mjs dist
+          node --import=tsx/esm test/runtime/managed-service-account.mjs
           pnpm exec vitest run --maxWorkers 2 \
             test/unit/kernel-catalog.test.ts test/unit/kernel-rollout.test.ts test/unit/managed-rollout-driver.test.ts \
             test/unit/managed-fleet-rollout-cli.test.ts test/unit/supervisor-transition.test.ts \

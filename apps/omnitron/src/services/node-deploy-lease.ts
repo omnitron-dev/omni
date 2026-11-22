@@ -108,17 +108,55 @@ const GUARD_FILE = 'deploy.guard';
 const EXECUTION_GUARD_FILE = 'deploy.execution.guard';
 const EXECUTION_RECORD_FILE = 'deploy.execution.json';
 
+/** An administrator may deploy to an instance owned by another Linux account.
+ * The machine lease must stay under exclusive administrative write access. */
+function prepareLeaseDirectory(dir: string, refusalExit: number): string[] {
+  const fallback = `mkdir -p ${shellEscape(dir)} 2>/dev/null || { echo 'NO-DIR'; exit ${refusalExit}; }`;
+  if (dir !== DEFAULT_LEASE_TIMING.dir) return [fallback];
+  return [
+    'if [ "$(id -u)" = 0 ]; then',
+    `  refuse_lock_path() { echo 'UNSAFE-LOCKS'; exit ${refusalExit}; }`,
+    '  protected_mode() {',
+    '    set -- $(stat -c "%u %a %h" -- "$1" 2>/dev/null)',
+    '    [ "$#" = 3 ] && [ "$1" = 0 ] && [ "$((0$2 & 022))" = 0 ] || return 1',
+    '    [ "$lock_type" = directory ] || [ "$3" = 1 ]',
+    '  }',
+    '  lock_type=directory',
+    '  for lock_path in /opt /opt/omnitron /opt/omnitron/locks; do',
+    '    if [ ! -e "$lock_path" ] && [ ! -L "$lock_path" ]; then',
+    '      lock_mode=0755; [ "$lock_path" != /opt/omnitron/locks ] || lock_mode=0700',
+    '      mkdir -m "$lock_mode" -- "$lock_path" 2>/dev/null || [ -d "$lock_path" ] || refuse_lock_path',
+    '    fi',
+    '    [ ! -L "$lock_path" ] && [ -d "$lock_path" ] && protected_mode "$lock_path" || refuse_lock_path',
+    '  done',
+    '  lock_type=file',
+    '  protected_file() {',
+    '    [ ! -L "$1" ] && { [ ! -e "$1" ] || { [ -f "$1" ] && protected_mode "$1"; }; } || refuse_lock_path',
+    '  }',
+    `  protected_file ${shellEscape(`${dir}/${GUARD_FILE}`)}`,
+    `  protected_file ${shellEscape(`${dir}/${EXECUTION_GUARD_FILE}`)}`,
+    '  umask 077',
+    'else',
+    `  ${fallback}`,
+    'fi',
+  ];
+}
+
 /** Everything that decides runs after this: exclusion, or a named refusal. */
 function prelude(dir: string, refusalExit = 0): string[] {
   const d = shellEscape(dir);
   return [
     `command -v flock >/dev/null 2>&1 || { echo 'NO-FLOCK'; exit ${refusalExit}; }`,
-    `mkdir -p ${d} 2>/dev/null || { echo 'NO-DIR'; exit ${refusalExit}; }`,
+    ...prepareLeaseDirectory(dir, refusalExit),
     `fs=$(stat -f -c %T ${d} 2>/dev/null || echo unknown)`,
     `case "$fs" in nfs*|cifs|smb*|fuse*|9p|ceph) echo "NETWORK-FS $fs"; exit ${refusalExit};; esac`,
     `exec 9>${shellEscape(`${dir}/${GUARD_FILE}`)} || { echo 'NO-GUARD'; exit ${refusalExit}; }`,
     `flock -w 10 9 || { echo 'GUARD-TIMEOUT'; exit ${refusalExit}; }`,
     `L=${shellEscape(`${dir}/${LEASE_FILE}`)}`,
+    // The holder can replace these files. Inspect them only after obtaining the metadata lock.
+    ...(dir === DEFAULT_LEASE_TIMING.dir ? [
+      `if [ "$(id -u)" = 0 ]; then protected_file "$L"; protected_file "$L.tmp"; protected_file ${shellEscape(`${dir}/${EXECUTION_RECORD_FILE}`)}; fi`,
+    ] : []),
   ];
 }
 
@@ -175,7 +213,7 @@ export function guardScript(timing: LeaseTiming, token: string, command: string,
   ].join('\n');
   return [
     `command -v flock >/dev/null 2>&1 || { echo 'Execution fencing requires flock' >&2; exit 73; }`,
-    `mkdir -p ${shellEscape(timing.dir)} || exit 73`,
+    ...prepareLeaseDirectory(timing.dir, 73),
     // --close prevents a launched service/background process from retaining
     // the kernel lock forever. The durable record handles lock-holder death.
     `flock --exclusive --timeout 30 --close ${shellEscape(`${timing.dir}/${EXECUTION_GUARD_FILE}`)} sh -c ${shellEscape(body)}`,
@@ -222,6 +260,7 @@ const REFUSALS: Record<string, string> = {
   'EXECUTION-BUSY': 'a remote deployment command is still executing; the lease cannot be replaced',
   'EXECUTION-UNRESOLVED': 'a remote deployment command has unresolved durable intent; inspected recovery is required',
   'NO-DIR': 'the lock directory could not be created',
+  'UNSAFE-LOCKS': 'the administrative machine lease requires physical root-owned paths with exclusive write access',
   'NO-GUARD': 'the guard file could not be opened',
   'GUARD-TIMEOUT': 'the guard stayed locked for 10s — a lease operation on the node is stuck',
 };

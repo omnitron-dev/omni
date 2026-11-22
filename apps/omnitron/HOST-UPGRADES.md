@@ -127,6 +127,24 @@ home. Prepare their system units as that account with
 and the private supervision record. Review the unit contents before installing
 them with administrative privileges. systemd uses the account's primary GID.
 
+The registered SSH administrator and the resident service can have different
+Linux accounts. When root's private Omnitron configuration is an explicit link
+to the service account's private `~/.omnitron/config.json`, the controller
+uses its owner to locate the instance. It checks the link and file permissions
+and adopts the service UID and groups before reading the supervision record or
+loading the installed SDK. A second supervision record under the administrator's
+home makes this selection ambiguous and stops admission.
+
+For this split-account installation, import the selected release into the
+recipient's canonical store before starting the remote stack. Admission checks
+each assigned archive against the manifest. During installation the service
+account copies the archive into its new application directory and verifies
+the on-disk byte count and SHA-256 before extraction. The same account runs
+migrations, registers applications and verifies their health. The SSH
+administrator holds the machine deployment lease under `/opt/omnitron/locks`
+and opens the declared route from the gateway. Application directories under
+`/opt/omnitron/projects` and `/opt/omnitron/artifacts` belong to the service.
+
 Automatic guardian replacement currently supports a Linux system instance only
 when its private state and running guardian belong to root. The coordinator
 checks the real and effective operator UID, the guardian's four kernel UID and

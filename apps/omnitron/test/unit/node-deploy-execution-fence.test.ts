@@ -24,6 +24,7 @@ describe('remote execution fencing', () => {
   it('treats active and unresolved execution as refusals, never a lease grant', () => {
     expect(() => parseAcquire('node', 'LAPSED 121\t{}\nEXECUTION-BUSY')).toThrow('still executing');
     expect(() => parseAcquire('node', 'EXECUTION-UNRESOLVED')).toThrow('inspected recovery');
+    expect(() => parseAcquire('node', 'UNSAFE-LOCKS')).toThrow('exclusive write access');
     expect(parseRelease('node', 'EXECUTION-BUSY')).toEqual({ kind: 'busy' });
     expect(parseRelease('node', 'EXECUTION-UNRESOLVED')).toEqual({ kind: 'busy' });
   });

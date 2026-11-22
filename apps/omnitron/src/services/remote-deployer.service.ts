@@ -10,6 +10,7 @@ import { deploymentProgressKey } from '../shared/release-reading.js';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import { redactDiagnosticText } from '@omnitron-dev/titan/diagnostics';
 import { assertFrozenLaunch, installFrozenApplicationCommand } from '../release/frozen-installation.js';
+import { checkCanonicalArchivesCommand, stageCanonicalArchivesCommand } from '../release/canonical-archive.js';
 import { releaseOptionsForEnv } from '../release/target-runtime.js';
 import { installedReleaseCheckCommand, validOrigin } from '../release/runtime-provenance.js';
 import type { StaticAssetPublication, StaticAssetReceipt } from './static-carry-forward.js';
@@ -50,17 +51,18 @@ import {
   updateContractBindingsCommand, runtimeProbeCommand, runtimeStartCommand, runtimeStopCommand,
   appHealthCommand, pendingReceiptsCommand, recoverHostUpgrade, stoppedDaemonCommand,
   bootstrapPreflightCommand, HOST_BOOTSTRAP_PREFLIGHT_TIMEOUT_MS,
-  assertResidentApplicationRuntime, assertSameApplicationRuntime, type ApplicationRuntime, type InstalledBundle, type HostInventory, type HostRuntime, type HostUpgradePlan, type HostUpgradeActions, type HostUpgradeReceipt,
+  assertResidentApplicationRuntime, assertSameApplicationRuntime, type ApplicationRuntime, type InstalledBundle, type ManagedApplicationAccount, type HostInventory, type HostRuntime, type HostUpgradePlan, type HostUpgradeActions, type HostUpgradeReceipt,
 } from './host-upgrade.js';
 import { gunzipSync } from 'node:zlib';
 import { shellEscape } from '../shared/shell-escape.js';
 import { fromDataChannel, throughDataChannel } from '../execution/data-channel.js';
 import { commandFailure } from '../execution/command-failure.js';
-import { activateManagedTarget, managedHostCommand, planManagedRollout, reconcileManagedTarget,
+import { activateManagedTarget, managedApplicationCommand, managedHostCommand, planManagedRollout, reconcileManagedTarget, workingTreeConnectionProbe,
   type ManagedHostEvidence, type ManagedHostRequest, type ManagedRolloutObservation, type ManagedSelection } from './managed-rollout.js';
 
 /** A node that could not be asked at all — the SSH call itself failed. */
 const UNREADABLE = -3;
+const serviceAccount = Symbol('verified deployment account');
 import { withNodeLeases, type LeaseRunner } from './node-deploy-lease.js';
 import { hostOperationBarrierCommand, type HostOperationAllowance } from './host-operation-barrier.js';
 import { migrationOutput } from './migration-output.js';
@@ -125,6 +127,7 @@ export function artifactDirOnNode(project: string, app: string, version: string)
  */
 export interface DeployTarget {
   host: string;
+  [serviceAccount]?: ManagedApplicationAccount;
   /**
    * SSH port. Default 22.
    *
@@ -151,6 +154,21 @@ export interface DeployTarget {
   apps?: string[];
   /** What to call this node in logs and progress events. */
   label?: string;
+}
+
+function administrativeTarget(target: DeployTarget): DeployTarget {
+  if (!target[serviceAccount]) return target;
+  const admin = { ...target };
+  delete admin[serviceAccount];
+  return admin;
+}
+
+function applicationTarget(target: DeployTarget, bundle: InstalledBundle): DeployTarget {
+  const pinned = target[serviceAccount];
+  const current = bundle.managed?.applicationAccount;
+  if (pinned && (!current || pinned.uid !== current.uid || pinned.gid !== current.gid || pinned.instanceHome !== current.instanceHome))
+    throw Error('The registered deployment account changed');
+  return current && !pinned ? { ...target, [serviceAccount]: current } : target;
 }
 
 /** The credentials half, in the shape `ExecutionService` takes. */
@@ -397,12 +415,13 @@ export class RemoteDeployer {
       let inspected: InstalledBundle | undefined;
       // 1. Verify SSH connectivity
       this.emitProgress(nodeKey, artifact.app, 'pending', 0, 'Connecting via SSH...');
-      await this.verifySSH(target);
+      await this.verifySSH(target, !artifact.release);
 
       if (artifact.release) {
         assertFrozenLaunch(artifact.launch, artifact.release);
         inspected = await this.inspectInstalledBundle(target);
         assertResidentApplicationRuntime(inspected.applicationRuntime);
+        target = applicationTarget(target, inspected);
       }
 
       // 2. Ensure remote directory structure
@@ -460,26 +479,23 @@ export class RemoteDeployer {
       await this.sshExec(target, `umask 077; mkdir -p ${shellEscape(parent)} && mkdir ${shellEscape(remotePath)}`);
 
       // 3. Transfer artifact
-      this.emitProgress(nodeKey, artifact.app, 'transferring', 20, 'Transferring artifact...');
       const remoteFile = `${remotePath}/${artifact.app}-${artifact.version}.tar.gz`;
-      await this.scpTransfer(target, artifact.path, remoteFile);
+      if (target[serviceAccount] && inspected?.applicationRuntime) {
+        this.emitProgress(nodeKey, artifact.app, 'transferring', 20, "Installing from the node's verified release store");
+        const command = stageCanonicalArchivesCommand(project, [{ artifact, directory: remotePath }], inspected.applicationRuntime, inspected.root);
+        const receipt = JSON.parse(await this.sshExecData(target, command, 240_000));
+        const file = receipt.files?.[0];
+        if (receipt.state !== 'staged' || receipt.files?.length !== 1 || file?.app !== artifact.app || file.file !== remoteFile ||
+            file.bytes !== artifact.size || file.sha256 !== artifact.tarballSha256)
+          throw Error('Recipient did not confirm the staged application archive');
+      } else {
+        this.emitProgress(nodeKey, artifact.app, 'transferring', 20, 'Transferring artifact...');
+        await this.scpTransfer(target, artifact.path, remoteFile);
+      }
 
-      // 3b. And ask the node whether what it has is what was sent.
-      //
-      // This used to go straight to `tar -xzf`. The `.artifact-sha256`
-      // written further down reads like this check and is not one: it holds
-      // `artifact.checksum`, the hash of the build INPUTS, it is written
-      // AFTER the unpack, and it is compared against the next build rather
-      // than against the file. So a truncated transfer reached tar, which
-      // failed with whatever tar says about a corrupt archive, and one that
-      // happened to end on a record boundary unpacked a subset and reported
-      // success.
-      //
-      // Skipped only when the artifact carries no tarball hash — an
-      // artifact found on disk by `listArtifacts` rather than built here.
-      // That is an absence of information, not a verdict, and it is said out
-      // loud rather than passed over in silence.
-      if (artifact.tarballSha256) {
+      // The service-store receipt already includes the on-disk digest. SFTP
+      // delivery needs its own physical check before the installer opens it.
+      if (artifact.tarballSha256 && !target[serviceAccount]) {
         const probe = await this.sshExec(target, deliveredProbeCommand(remoteFile));
         const verdict = checkDelivered(
           { sha256: artifact.tarballSha256, bytes: artifact.size },
@@ -501,7 +517,7 @@ export class RemoteDeployer {
             error: verdict.because,
           };
         }
-      } else {
+      } else if (!artifact.tarballSha256) {
         this.logger.warn(
           { node: nodeKey, app: artifact.app },
           'Artifact carries no tarball hash — the transfer was not verified',
@@ -755,19 +771,21 @@ export class RemoteDeployer {
 
     // Build deployment matrix: each app to each node (or node-specific apps)
     const tasks: Array<{ target: DeployTarget; artifact: ArtifactInfo }> = [];
-    for (const target of targets) {
-      for (const artifact of artifacts) {
-        // If node has explicit app list, only deploy matching apps
-        if (target.apps && !target.apps.includes(artifact.app)) continue;
-        tasks.push({ target, artifact });
-      }
-    }
-
     const owners = new Map<DeployTarget, ApplicationRuntime>();
-    for (const { target, artifact } of tasks) if (artifact.release && !owners.has(target)) {
-      const runtime = (await this.inspectInstalledBundle(target)).applicationRuntime;
-      assertResidentApplicationRuntime(runtime);
-      owners.set(target, runtime);
+    targets = [...targets];
+    for (const [index, admin] of targets.entries()) {
+      const assigned = artifacts.filter(artifact => !admin.apps || admin.apps.includes(artifact.app));
+      let target = admin;
+      if (assigned.some(artifact => artifact.release)) {
+        const bundle = await this.inspectInstalledBundle(admin);
+        assertResidentApplicationRuntime(bundle.applicationRuntime);
+        target = applicationTarget(admin, bundle);
+        if (target[serviceAccount] && assigned.some(artifact => !artifact.release))
+          throw Error('A dedicated service account requires a verified release for every assigned application');
+        targets[index] = target;
+        owners.set(target, bundle.applicationRuntime);
+      }
+      for (const artifact of assigned) tasks.push({ target, artifact });
     }
 
     // Execute with concurrency limit
@@ -840,7 +858,7 @@ export class RemoteDeployer {
 
         // And the path from the gateway to them, which is the one crossing
         // no configuration can open by itself. See `gateway-reachability`.
-        if (options.stack) await this.openGatewayPath(target, project, options.stack);
+        if (options.stack) await this.openGatewayPath(administrativeTarget(target), project, options.stack);
 
         // What the node is running right now, asked once for the whole node
         // rather than once per app: the decision below needs it for every
@@ -1678,8 +1696,26 @@ export class RemoteDeployer {
     });
   }
 
+  /** Check the complete assigned release in the service's store before admitting a source stop. */
+  async checkRecipientApplicationArchives(target: DeployTarget, bundle: InstalledBundle, artifacts: readonly ArtifactInfo[]): Promise<void> {
+    assertResidentApplicationRuntime(bundle.applicationRuntime);
+    if (!bundle.managed?.applicationAccount) throw Error('Checking recipient archives requires a verified service account');
+    const command = checkCanonicalArchivesCommand(artifacts, bundle.applicationRuntime, bundle.root);
+    const receipt = JSON.parse(await this.sshExecData(applicationTarget(target, bundle), command, 120_000));
+    if (receipt.state !== 'present' || !Array.isArray(receipt.files) || receipt.files.length !== artifacts.length ||
+        artifacts.some((artifact, index) => {
+          const file = receipt.files[index];
+          return file?.app !== artifact.app || file.bytes !== artifact.size || file.sha256 !== artifact.tarballSha256;
+        })) throw Error('Recipient canonical release inventory differs from the admitted artifacts');
+  }
+
   /** Require a settled host and the actual serving immutable daemon build. */
   async inspectInstalledBundle(target: DeployTarget, prefix = '/opt/omnitron', allowance?: HostOperationAllowance): Promise<InstalledBundle> {
+    if (target[serviceAccount]) {
+      const bundle = await this.inspectInstalledBundle(administrativeTarget(target), prefix, allowance);
+      applicationTarget(target, bundle);
+      return bundle;
+    }
     assertControlledDaemonPort(target.daemonPort);
     await this.assertNoPendingHostOperations(target, prefix, allowance);
     const pending = JSON.parse(await this.sshExecData(target, pendingReceiptsCommand(prefix))) as HostUpgradeReceipt[];
@@ -1810,8 +1846,9 @@ export class RemoteDeployer {
     };
   }
 
-  private async verifySSH(target: DeployTarget): Promise<void> {
-    await this.sshExec(target, 'echo ok', 10_000);
+  private async verifySSH(target: DeployTarget, workingTree = false): Promise<void> {
+    const command = workingTree && (target.username ?? 'root') === 'root' ? workingTreeConnectionProbe() : 'echo ok';
+    await this.sshExec(target, command, 10_000);
   }
 
   /**
@@ -1876,6 +1913,8 @@ export class RemoteDeployer {
   /** The node holds its execution fence for the command lifetime, beyond a lost controller. */
   private guardedCommand(target: DeployTarget, command: string, timeout: number): { command: string; timeout: number } {
     const lease = this.deploymentLeases.getStore()?.get(`${target.host}:${target.sshPort ?? 22}`);
+    const account = target[serviceAccount];
+    if (account) command = managedApplicationCommand(account, command);
     return lease ? { command: lease.guard(command, timeout), timeout: timeout + 45_000 } : { command, timeout };
   }
 
@@ -1954,6 +1993,7 @@ export class RemoteDeployer {
 
   /** Use this inside underLease so uploads share the command confirmation boundary. */
   async uploadToNode(target: DeployTarget, localPath: string, remotePath: string): Promise<void> {
+    if (target[serviceAccount]) throw Error('Service-owned application files must be installed from the verified recipient release store');
     await this.confirmLease(target, 'file upload');
     const lease = this.deploymentLeases.getStore()?.get(`${target.host}:${target.sshPort ?? 22}`);
     if (!lease) {

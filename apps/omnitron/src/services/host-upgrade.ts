@@ -25,9 +25,11 @@ export function assertResidentApplicationRuntime(value: ApplicationRuntime | und
         [...value.execution.lifetime].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127))))
     throw Error('Verified application deployment requires an authenticated independent execution owner (protocol 1). Prepare an owner transition and rollback before installing this release; no SDK rebinding or dependency installation will be attempted.');
 }
+export interface ManagedApplicationAccount { uid: number; gid: number; instanceHome: string }
+
 export interface InstalledBundle {
   root: string; version: string; commit: string; applicationRuntime?: ApplicationRuntime;
-  managed?: { platform: string; arch: string; nodeVersion: string; backendArtifact: string; backendPid: number; ownerArtifact: string; ownerId: string; ownerPid: number };
+  managed?: { platform: string; arch: string; nodeVersion: string; backendArtifact: string; backendPid: number; ownerArtifact: string; ownerId: string; ownerPid: number; applicationAccount?: ManagedApplicationAccount };
 }
 export interface AppUpgradeContract {
   name: string;

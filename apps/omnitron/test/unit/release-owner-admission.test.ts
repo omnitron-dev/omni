@@ -139,6 +139,18 @@ describe('admission asks the node before anything moves', () => {
     await svc.startStack('sample', 'test', { source: 'operator', release: id });
     expect(svc.startRemoteStack).toHaveBeenCalledTimes(1);
   });
+  it('requires the assigned archives in a dedicated recipient store before the stack starts', async () => {
+    const account = { uid: 1001, gid: 1001, instanceHome: '/home/service/.omnitron' };
+    const bundle = { applicationRuntime: runtime, managed: { applicationAccount: account } };
+    const { id, svc } = setup(async () => bundle);
+    const check = vi.fn(async () => { throw Error('Recipient archive is absent'); });
+    svc.deployer.checkRecipientApplicationArchives = check;
+    await expect(svc.startStack('sample', 'test', { source: 'operator', release: id })).rejects.toThrow('Recipient archive is absent');
+    expect(check).toHaveBeenCalledWith(expect.objectContaining({ host: '192.0.2.15' }), bundle, [
+      expect.objectContaining({ app: 'main', release: expect.objectContaining({ app: 'main', releaseId: id }) }),
+    ]);
+    expect(svc.startRemoteStack).not.toHaveBeenCalled();
+  });
   it('uses the recorded owner executable rather than the backend or login Node', async () => {
     const { id, svc } = setup(async () => ({ applicationRuntime: { ...runtime, target: { ...target, abi: '137' } } }));
     await expect(svc.startStack('sample', 'test', { source: 'operator', release: id })).rejects.toThrow(/release target: abi/);

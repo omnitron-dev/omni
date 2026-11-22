@@ -180,6 +180,18 @@ type AdmittedRelease = LoadedRelease & {
 class LocalReleaseStopRequired extends Error {}
 class DeclarationRefreshRequired extends Error {}
 
+function deploymentArtifacts(release: LoadedRelease, apps: readonly { name: string }[]) {
+  const files = new Map(release.files.map(file => [file.app, file]));
+  const origins = new Map(releaseArtifactOrigins(release.manifest, release.manifestSha256).map(source => [source.app, source]));
+  return apps.flatMap(({ name }) => {
+    const file = files.get(name), source = origins.get(name);
+    if (!file || !source) return [];
+    return [{ app: name, version: file.version, path: file.path, size: file.bytes, builtAt: release.manifest.builtAt,
+      checksum: file.inputs, tarballSha256: file.sha256, release: source.origin,
+      ...(source.artifact.launch && { launch: source.artifact.launch }) }];
+  });
+}
+
 function sameLaunchCode(actual: IEcosystemAppEntry, expected: IEcosystemAppEntry): boolean {
   if (!expected.releaseRoot) return !actual.releaseRoot;
   return actual.bootstrap === expected.bootstrap && actual.script === expected.script && actual.releaseRoot === expected.releaseRoot;
@@ -3897,7 +3909,7 @@ export class ProjectService extends EventEmitter {
     // A frozen application supplies its own SDK; a controller build is not its runtime.
     const { refuseReleaseOwners } = await import('../release/owner-admission.js');
     const incompatible = stackConfig.type === 'local' ? null : refuseReleaseOwners(release.manifest, stackConfig, configuredApps,
-      await this.askReleaseOwners(stackConfig, configuredApps, source?.fingerprint));
+      await this.askReleaseOwners(stackConfig, configuredApps, release, source?.fingerprint));
     if (incompatible) {
       throw new Error(`Refusing release ${release.id} for ${projectName}/${stackName}: ${incompatible}.`);
     }
@@ -3933,14 +3945,19 @@ export class ProjectService extends EventEmitter {
   /** Inspect exactly the nodes that will execute applications. Delivery repeats
    * this OS/private-Netron proof; version suffixes never substitute for it. */
   private async askReleaseOwners(
-    stackConfig: IStackConfig, apps: readonly IEcosystemAppEntry[], expectedFingerprint?: string,
+    stackConfig: IStackConfig, apps: readonly IEcosystemAppEntry[], release: LoadedRelease, expectedFingerprint?: string,
   ): Promise<Array<import('../release/owner-admission.js').ReleaseOwnerAnswer>> {
     return Promise.all(
-      resolveNodePlacements(stackConfig, apps).filter(placement => placement.apps.length).map(async ({ node }) => {
+      resolveNodePlacements(stackConfig, apps).filter(placement => placement.apps.length).map(async ({ node, apps: assigned }) => {
         try {
           const target = await this.targetForStackNode(node);
           if (expectedFingerprint && target.expectedHostFingerprint !== expectedFingerprint) throw Error('Release recipient SSH key changed');
           const bundle = await this.deployer.inspectInstalledBundle(target);
+          if (bundle.managed?.applicationAccount) {
+            const artifacts = deploymentArtifacts(release, assigned);
+            if (artifacts.length !== assigned.length) throw Error('Release lacks a canonical archive for an assigned application');
+            await this.deployer.checkRecipientApplicationArchives(target, bundle, artifacts);
+          }
           return { host: node.host, port: node.port ?? 9700,
             ...(bundle.applicationRuntime && { runtime: bundle.applicationRuntime }) };
         } catch (err) {
@@ -4859,25 +4876,9 @@ export class ProjectService extends EventEmitter {
     if (release) {
       // Built in clean clones, gated, and checked against the manifest by
       // `loadRelease` — nothing is compiled here, from this machine's disk.
-      const files = new Map(release.files.map((f) => [f.app, f]));
-      const sources = new Map(releaseArtifactOrigins(release.manifest, release.manifestSha256).map(source => [source.app, source]));
-      artifacts = appEntries.flatMap((entry) => {
-        const file = files.get(entry.name);
-        return file
-          ? [{
-              app: file.app,
-              version: file.version,
-              path: file.path,
-              size: file.bytes,
-              builtAt: release.manifest.builtAt,
-              checksum: file.inputs,
-              tarballSha256: file.sha256,
-              release: sources.get(file.app)!.origin,
-              ...(sources.get(file.app)!.artifact.launch && { launch: sources.get(file.app)!.artifact.launch! }),
-            }]
-          : [];
-      });
-      const missing = appEntries.filter((e) => !files.has(e.name)).map((e) => e.name);
+      artifacts = deploymentArtifacts(release, appEntries);
+      const landed = new Set(artifacts.map(artifact => artifact.app));
+      const missing = appEntries.filter(entry => !landed.has(entry.name)).map(entry => entry.name);
       if (missing.length > 0) {
         refusal = `Refusing to deploy ${stackName}: release ${release.id} carries no artifact for ${missing.join(', ')}.`;
       } else {

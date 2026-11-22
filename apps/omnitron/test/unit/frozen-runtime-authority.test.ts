@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { RemoteDeployer } from '../../src/services/remote-deployer.service.js';
+import { RemoteDeployer, artifactDirOnNode } from '../../src/services/remote-deployer.service.js';
 import { assertResidentApplicationRuntime, assertSameApplicationRuntime, type ApplicationRuntime } from '../../src/services/host-upgrade.js';
 import { selectNodeApps } from '../../src/project/node-app-config.js';
 
@@ -14,6 +14,62 @@ const artifact = { release, launch, app: 'worker', version: '1.0.0', path: '/arc
   builtAt: '2026-11-04', checksum: release.artifactSha256, tarballSha256: release.artifactSha256 };
 
 describe('verified application execution authority', () => {
+  const account = { uid: 1001, gid: 1002, instanceHome: '/home/service/.omnitron' };
+  const bundle = { root: '/runtime/controller', managed: { applicationAccount: account }, applicationRuntime: {
+    ...runtime, target: { platform: 'linux', arch: 'x64', node: 'v22.23.4', abi: '127', libc: '2.39', executableSha256: '1'.repeat(64) },
+  } };
+  const login = { host: 'example.invalid', username: 'root' };
+  function splitAccountFixture(confirmed: boolean) {
+    const service = new RemoteDeployer({ info() {}, warn() {}, error() {} } as never, {} as never) as any;
+    const directory = artifactDirOnNode('fixture', artifact.app, artifact.version + '-' + artifact.tarballSha256);
+    const file = { app: artifact.app, file: directory + '/worker-1.0.0.tar.gz', bytes: artifact.size, sha256: artifact.tarballSha256 };
+    const receipt = JSON.stringify({ state: 'staged', files: confirmed ? [file] : [] });
+    Object.assign(service, {
+      verifySSH: vi.fn(), emitProgress: vi.fn(), inspectInstalledBundle: vi.fn(async () => bundle),
+      sshExecData: vi.fn(async () => receipt), scpTransfer: vi.fn(),
+      sshExec: vi.fn(async (_target: object, command: string) => {
+        if (command.startsWith('test -e ')) return 'absent';
+        if (command.includes(' --input-type=module ')) return '""';
+        return '';
+      }),
+      migrateNodeApps: vi.fn(async () => new Map()), registerNodeApps: vi.fn(async () => ({ changed: true })),
+      openGatewayPath: vi.fn(), appsOnline: vi.fn(async () => new Set()), signalRemoteDaemon: vi.fn(async () => ({ ok: true })),
+      verifyHealth: vi.fn(async () => ({ online: true })), recordRunningArtifact: vi.fn(),
+    });
+    return service;
+  }
+  it.each([true, false])('installs through the service store and admits later effects only after its receipt: %s', async confirmed => {
+    const service = splitAccountFixture(confirmed);
+    const [result] = await service.deployToStack([login], [artifact], 'fixture', {
+      stack: 'test', apps: [{ name: artifact.app, script: launch.file }],
+    });
+    expect(service.scpTransfer).not.toHaveBeenCalled();
+    expect(service.sshExecData).toHaveBeenCalledOnce();
+    if (!confirmed) {
+      expect(result).toMatchObject({ status: 'failed', error: expect.stringContaining('did not confirm') });
+      expect(service.registerNodeApps).not.toHaveBeenCalled();
+      expect(service.migrateNodeApps).not.toHaveBeenCalled();
+      expect(service.openGatewayPath).not.toHaveBeenCalled();
+      return;
+    }
+    expect(result).toMatchObject({ status: 'success' });
+    const recipient = service.sshExecData.mock.calls[0][0];
+    const command = service.guardedCommand(recipient, 'id -u', 1000).command;
+    expect(command).toContain('enterManagedInstance');
+    expect(command).toContain(JSON.stringify(account));
+    for (const effect of [service.migrateNodeApps, service.registerNodeApps, service.signalRemoteDaemon, service.verifyHealth, service.recordRunningArtifact])
+      expect(effect.mock.calls[0][0]).toBe(recipient);
+    const gateway = service.openGatewayPath.mock.calls[0][0];
+    expect(service.guardedCommand(gateway, 'id -u', 1000).command).toBe('id -u');
+  });
+  it('refuses a different preflight archive before any deployment effect', async () => {
+    const service = splitAccountFixture(true);
+    service.sshExecData.mockResolvedValue(JSON.stringify({ state: 'present', files: [
+      { app: artifact.app, bytes: artifact.size, sha256: '0'.repeat(64) },
+    ] }));
+    await expect(service.checkRecipientApplicationArchives(login, bundle, [artifact])).rejects.toThrow('differs');
+    expect(service.sshExec).not.toHaveBeenCalled();
+  });
   it.each([undefined, { ...runtime, execution: undefined },
     { ...runtime, execution: { ...runtime.execution, protocol: 2 } },
     { ...runtime, execution: { ...runtime.execution, mode: 'coupled' } },

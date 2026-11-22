@@ -3,7 +3,7 @@ import { commandFailure } from '../execution/command-failure.js';
 import { BACKEND_ACTIVITY_COUNTERS } from '../shared/dto/backend.js';
 import { assertReviewableBackendActivity } from '../shared/backup-admission.js';
 import { compareExecutionIdentityEvidence, describeExecutionIdentityDrift, isExecutionIdentityEvidence, type ExecutionIdentityEvidence } from '../shared/execution-identity.js';
-import type { InstalledBundle } from './host-upgrade.js';
+import type { InstalledBundle, ManagedApplicationAccount } from './host-upgrade.js';
 import { remoteNode } from './host-upgrade.js';
 import { targetRuntime } from '../release/target-runtime.js';
 import { assertBackendHandoffAdmission, type BackendHandoffAdmission } from '../daemon/backend-handoff-types.js';
@@ -45,6 +45,40 @@ export interface ManagedHostEvidence {
 export type ManagedHostRequest = { operation: 'inspect' | 'observe' } | { operation: 'plan'; commit: string } |
   { operation: 'switch'; expected: ManagedRolloutObservation; from: string; to: string; revision: number; pid: number };
 
+let accountProgram: string | undefined;
+function managedAccountProgram(): string {
+  return accountProgram ??= readFileSync(new URL('../../data/operations/managed-account.mjs', import.meta.url), 'utf8');
+}
+
+/** A working-tree archive lacks the transport and execution origin a split-account node requires. */
+export function workingTreeConnectionProbe(): string {
+  const check = remoteNode(`import os from 'node:os';import path from 'node:path';
+    ${managedAccountProgram()}
+    if(enterManagedInstance(path.join(os.userInfo().homedir,'.omnitron')).account)
+      throw Error('A dedicated service account requires a verified release for every assigned application');
+    console.log('ok');`);
+  return `if [ "$(id -u)" = 0 ] && [ -L "$HOME/.omnitron/config.json" ]; then ${check}; else echo ok; fi`;
+}
+
+/** Recheck the enrolled account before running an application deployment command.
+ * The SSH administrator holds the machine lease. Only the service owner receives
+ * the command and its original stdin after an irreversible credential drop. */
+export function managedApplicationCommand(expected: ManagedApplicationAccount, command: string): string {
+  if (![expected.uid, expected.gid].every(id => Number.isSafeInteger(id) && id > 0) ||
+      typeof expected.instanceHome !== 'string' || !expected.instanceHome.startsWith('/') ||
+      !expected.instanceHome.endsWith('/.omnitron') || expected.instanceHome.includes('\0'))
+    throw Error('Invalid managed application account');
+  return remoteNode(`import os from 'node:os';import path from 'node:path';import {spawnSync} from 'node:child_process';
+    ${managedAccountProgram()}
+    const expected=${JSON.stringify(expected)};
+    const {account}=enterManagedInstance(path.join(os.userInfo().homedir,'.omnitron'));
+    if(!account||account.uid!==expected.uid||account.gid!==expected.gid||account.instanceHome!==expected.instanceHome)
+      throw Error('The enrolled application account changed');
+    const result=spawnSync('/bin/sh',['-c',${JSON.stringify(command)}],{stdio:'inherit'});
+    if(result.error||result.signal)throw Error('The service-owned deployment command was interrupted');
+    process.exitCode=result.status??1;`);
+}
+
 /** Run the installed management SDK with the live system guardian's own Node.
  * The SSH login's Node discovers the OS process. It never loads SQLite native
  * extensions or treats an old /opt/omnitron/current alias as a serving identity. */
@@ -58,9 +92,12 @@ export function managedHostCommand(request: ManagedHostRequest): string {
   ].join('\n');
   const wire = JSON.stringify({ ...request, requiredCounters: BACKEND_ACTIVITY_COUNTERS });
   return remoteNode(`import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import {execFileSync,spawnSync} from 'node:child_process';
+    ${managedAccountProgram()}
     const commandFailure=${commandFailure.toString()};
-    const home=process.env.OMNITRON_HOME||path.join(os.homedir(),'.omnitron'),directory=path.join(home,'runtime');
+    const {home,account}=enterManagedInstance(process.env.OMNITRON_HOME||path.join(os.homedir(),'.omnitron'));
+    const directory=path.join(home,'runtime');
     const file=path.join(directory,'supervision.json'),stat=fs.lstatSync(file,{throwIfNoEntry:false});
+    if(!stat&&account)throw Error('The registered service account has no installed managed supervisor');
     if(!stat)console.log('null');
     else {
       if(process.platform!=='linux'||!stat.isFile()||stat.uid!==process.getuid()||(stat.mode&0o077)||fs.realpathSync(file)!==file)
@@ -77,6 +114,11 @@ export function managedHostCommand(request: ManagedHostRequest): string {
         const reason=commandFailure(result.stderr||'',result.error?.code||result.signal||'exit '+result.status);
         process.stderr.write(JSON.stringify({ok:false,error:'Managed kernel '+${JSON.stringify(request.operation)}+' failed: '+reason})+'\\n');
         process.exitCode=1;
+      } else if(account&&${JSON.stringify(request.operation)}==='inspect') {
+        const evidence=JSON.parse(result.stdout);
+        if(!evidence?.bundle?.managed)throw Error('The enrolled service did not identify its managed runtime');
+        evidence.bundle.managed.applicationAccount=account;
+        process.stdout.write(JSON.stringify(evidence));
       } else process.stdout.write(result.stdout);
     }`);
 }

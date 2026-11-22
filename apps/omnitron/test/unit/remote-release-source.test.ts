@@ -7,6 +7,9 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { create } from 'tar';
 import { DaemonStateStore } from '../../src/daemon/daemon-state-store.service.js';
+import { StateStore } from '../../src/daemon/state-store.js';
+import { OrchestratorService } from '../../src/orchestrator/orchestrator.service.js';
+import * as containers from '../../src/infrastructure/container-runtime.js';
 import { StackTargets } from '../../src/project/stack-targets.js';
 import { ProjectService } from '../../src/services/project.service.js';
 import { ProjectRpcService } from '../../src/services/project.rpc-service.js';
@@ -95,6 +98,76 @@ function fixture() {
 }
 
 describe('prepared source of one registered remote release', () => {
+  it.each([false, true])('returns the placement using a new passive receiver full stop (partial provision %s)', async partial => {
+    const f = fixture(), dir = fs.mkdtempSync(path.join(root, 'passive-placement-'));
+    const log = { info() {}, warn() {}, error() {}, debug() {}, trace() {}, child() { return this; } };
+    const stores: DaemonStateStore[] = [];
+    const make = async (name: string) => {
+      const db = new DaemonStateStore(log as never, path.join(dir, name, 'state.db')); stores.push(db);
+      const state = new StateStore(db); await state.init();
+      return new ProjectService(log as never, new OrchestratorService(log as never, {} as never, state, dir), db);
+    };
+    const footprint: { id: string; name: string }[] = [];
+    const inventory = vi.spyOn(containers, 'inspectStackContainers').mockImplementation(async () => structuredClone(footprint));
+    const removal = vi.spyOn(containers, 'removeContainer').mockImplementation(async id => {
+      const i = footprint.findIndex(c => c.id === id); if (i < 0) throw Error('foreign container'); footprint.splice(i, 1);
+    });
+    try {
+      const controller = await make('controller'), donor = await make('donor'), receiver = await make('receiver');
+      const scope = { project: 'sample', stack: 'test' };
+      const expectedOld = { ...f.recipient(), host: oldNode.host, pin: 'b'.repeat(64), managementIdentity: 'original-management' };
+      controller.setReleaseRecipientResolver(n => n === oldNode.nodeId ? expectedOld : f.recipient());
+      controller.setNodeCredentialResolver(f.credentials as never);
+      vi.spyOn(Reflect.get(controller, 'deployer'), 'inspectInstalledBundle').mockImplementation(f.owner);
+      await controller.addProject(scope.project, original);
+      const originalConfig = { apps: [{ name: 'main', bootstrap: 'apps/main/src/bootstrap.mjs' }] };
+      Object.assign(controller, { getLoadedConfig: () => originalConfig, loadProjectConfig: async () => originalConfig,
+        releaseRunningOn: async () => null, assertStartAuthority: async () => {} });
+      for (const [node, sub] of [[donor, 'donor'], [receiver, 'receiver']] as const) {
+        const p = path.join(dir, sub, 'allocation'); fs.mkdirSync(p);
+        const config = { name: scope.project, apps: [{ name: 'main', script: 'unstarted.mjs', enabled: false }],
+          stacks: { deployed: { type: 'local', apps: ['main'], infrastructureOwnership: 'controller', managedOrigin: scope, release: { mode: 'required' } } } };
+        await expect(node.inspectNodeStackStop({ ...scope, applications: true })).rejects.toThrow('no verified source-stack binding');
+        fs.writeFileSync(path.join(p, 'omnitron.config.mjs'), 'export default ' + JSON.stringify(config));
+        await node.addProject(scope.project, p); await node.listProjects();
+      }
+      const invoke = (node: ProjectService, method: string, payload: unknown) => {
+        if (!['inspectNodeStackStop', 'prepareNodeStackStop', 'executeNodeStackStop'].includes(method)) throw Error('unexpected node method ' + method);
+        return Reflect.get(node, method).call(node, payload);
+      };
+      controller.setSlaveConnector({
+        getConnections: () => [],
+        invokeOnSlave: async (host: string, _port: number, _service: string, method: string, args: unknown[]) => {
+          expect(host).toBe(oldNode.host); return invoke(donor, method, args[0]);
+        },
+        pinnedService: (host: string, port: number, node: string, identity: string, service: string) => {
+          const old = node === oldNode.nodeId; expect([host, port, identity, service]).toEqual(
+            [old ? oldNode.host : candidateNode.host, 9700, old ? expectedOld.managementIdentity : f.recipient().managementIdentity, 'OmnitronProject']);
+          return (method: string, payload: unknown) => invoke(old ? donor : receiver, method, payload);
+        },
+      } as never);
+      const reviewedStop = async () => {
+        const review = await controller.reviewStackStop(scope.project, scope.stack);
+        expect(review.targets).toHaveLength(1); expect(review.digest, JSON.stringify(review.targets)).toBeTruthy();
+        return controller.stopStack(scope.project, scope.stack, review.digest!);
+      };
+      const admitted = await controller.prepareRemoteReleaseSource(scope.project, scope.stack, id, f.input);
+      const forward = { ...scope, fromNodeId: oldNode.nodeId, destination: { release: id, prepared: admitted.digest } };
+      await reviewedStop();
+      const first = await controller.reviewRemotePlacement(forward); await controller.selectRemotePlacement({ ...forward, review: first.digest });
+      const back = { ...scope, fromNodeId: nodeId, destination: { registered: true as const } };
+      await expect(controller.reviewRemotePlacement(back)).rejects.toThrow(/full stop/);
+      if (partial) footprint.push({ id: 'f'.repeat(64), name: 'fixture-partially-provisioned' });
+      const stopped = await reviewedStop();
+      expect(stopped.stopOperation?.nodes[0]?.execution).toMatchObject({ project: scope.project, stack: 'deployed', revision: 1 });
+      expect(footprint).toEqual([]); expect(removal).toHaveBeenCalledTimes(partial ? 1 : 0);
+      const restored = await controller.reviewRemotePlacement(back); await controller.selectRemotePlacement({ ...back, review: restored.digest });
+      expect(controller.getStack(scope.project, scope.stack).config.nodes?.[0]?.nodeId).toBe(oldNode.nodeId);
+    } finally {
+      inventory.mockRestore(); removal.mockRestore(); await Promise.all(stores.map(store => store.dispose()));
+    }
+  });
+
   it('reads the producer release mode, captures only the detached bootstrap and observes exclusively its pinned owner', async () => {
     const f = fixture();
     const reads = fs.readFileSync(marker, 'utf8');

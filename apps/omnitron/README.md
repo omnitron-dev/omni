@@ -192,6 +192,30 @@ The host-binding review identifies expected units, public template hashes and th
 
 ### Move one stopped remote stack to its prepared recipient
 
+#### Prepare the disabled receiver allocation
+
+Run this while the original registered recipient still serves the stack. Keep the native `stack prepare-release` JSON receipt and its producer declarations. For a configured artifact store, the normal transfer is `omnitron release push "$RELEASE"` at the producer and `omnitron release pull "$RELEASE"` under the receiving daemon account. The prepared allocation also accepts the same verified bytes already present in that account’s canonical release store. The receiver needs a registered administrative SSH route, the serving backend and execution-owner artifact digests, a running independent Linux owner, its private daemon socket, and a working container inventory.
+
+```sh
+xec passive-allocation prepared.json producer-declarations.json \
+  --expect-prepared "$PREPARED_DIGEST" --from-node "$ORIGINAL_NODE_ID" \
+  --user "$RECEIVER_USER" --uid "$RECEIVER_UID" \
+  --backend "$SERVING_BACKEND_ARTIFACT" --owner-artifact "$EXECUTION_OWNER_ARTIFACT" \
+  > prepare-allocation.pipeline.json
+omnitron pipeline check prepare-allocation.pipeline.json
+omnitron pipeline save prepare-allocation.pipeline.json
+```
+
+Review and run the resulting Pipeline through the controller. It confirms the original placement and registered SSH fingerprint. The daemon UID checks the existing allocation, owner and canonical manifest. The administrative login uses the native deployment lease in `/opt/omnitron/locks` and holds its execution guard while the service UID verifies and registers the release. A missing `/opt/omnitron` is created root-owned. A missing `locks` is created root-owned at 0700. Existing lock files must be physical root-owned regular files with one link in that private directory. Only missing `artifacts` and `projects` parents are created at 0700 for the reviewed daemon UID and primary GID. A foreign owner, symlink or unsafe mode causes a refusal. Existing permissions are preserved.
+
+The receiver verifies the complete manifest, archives, dependency closures, tree digests and owner target using the installed release SDK. It publishes a new `/opt/omnitron/projects/<project>` directory exclusively, registers it through the live daemon, and requests a native full-stop review. Its receipt includes each installed tree, the source-stack definition fingerprint, the observed owner revision, and zero handles and containers. The final controller step rechecks the original placement. A wired controller and receiver at revision `57eb4ad9` expose the necessary operations.
+
+The generated local `deployed` stack records the logical `managedOrigin`, sets controller-owned infrastructure and requires an immutable release. Every admitted application has `enabled: false`. The empty owner may initially report phase `running` at revision zero. The source handoff and any subsequent return require their own reviewed full stops with the revision and empty physical inventory observed at that time.
+
+On an interrupted run, inspect the Pipeline and the node's normal deployment lease. Repeat the same declaration after the previous attempt has ended and its lease has settled. An exact passive publication can complete a missing registration or verify the existing one. An occupied directory, different artifact set, enabled project, retained application handle, physical stack container or replaced publication requires reconciliation. Normal deployment writes the active configuration before starting the release. The operator can verify its data, host-service and execution-account prerequisites separately.
+
+To rehearse the receiver boundary, use a disposable Linux host with its own container engine. Mount the producer release read-only under a writable release store and point `OMNITRON_HOME` at a new empty directory. Run the installed runtime's Node with `.xec/passive-allocation/linux-qualification.mjs <installed-package> <release-store> <release-id> <declarations.json> <empty-home>`. Set `PASSIVE_FIXTURE_CONTAINER_IMAGE` to a local image ID to exercise a full stop after partial container provisioning. Set `PASSIVE_ACTIVE_SMOKE=1` for a separate run that builds and starts two synthetic programs through the normal publisher and CLI. The producer's real applications stay disabled during release verification.
+
 Before the maintenance window, retain the source capture, canonical release store and exact checkout on durable controller storage. Enroll both nodes with stable IDs and approved SSH host keys. Prepare the release above. At the receiver, verify each restored named volume against its data-adoption receipt and its declared mount target. A first `reconcile` creates missing containers on the declared volumes. A missing volume can be created empty by the container engine. Verify protected host configuration with its native installer, including the expected file owner, mode and content digest. The host reconciler also checks the binary, unit, activation state and data directory.
 
 After ordinary reviewed `stack stop` completes on the source, an administrator can review and select the replacement. Use a full stop that records the logical allocation, definition and execution revision on the recipient. A stop with `--keep-infrastructure` retains ownership and cannot be used for this handoff. Supply the registered ID even if the original single-node declaration predates stable IDs.

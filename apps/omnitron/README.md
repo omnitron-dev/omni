@@ -121,6 +121,12 @@ architecture, Node binary, ABI and libc. The executable's SHA-256 is part of
 the release target. `omnitron release build <project> --for <stack>` also builds
 the static frontend with that stack's environment.
 
+Preview local release retention with `omnitron release prune --project sample --keep 5`.
+The command counts the newest five builds within that project and retains releases
+referenced by deployment history or an active build. Pass `--protect <id>` to retain
+an additional rollback release. Review the listed candidates before adding `--yes`.
+Reported sizes count release files. Filesystem clones can share their physical blocks.
+
 For a stack with `release.mode: required`, a failed or incomplete gate run ends before application archives and the static frontend are packaged. The same rule applies to a build submitted for publication. The diagnostic manifest retains each gate outcome, source revision and machine load, and the logs remain in the release directory. An explicit `--skip-gates` build can still produce artifacts for local inspection.
 
 On local cold updates, `omnitron backend select <sha256> --check` previews changes to the host database and stack containers. If the host PostgreSQL was created on a project bridge, the preview identifies its SQL cluster and the required PostgreSQL process restart. Moving the retained container to the platform bridge rebuilds host port forwarding. Startup checks the cluster through both the container and its published SQL port before applying migrations. The named volume and container ID survive this transition.

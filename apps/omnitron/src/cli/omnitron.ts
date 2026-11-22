@@ -1189,13 +1189,15 @@ release
 release
   .command('prune')
   .description('Remove all but the newest releases, never one a stack runs')
+  .option('--project <name>', 'Limit retention to releases of this exact project')
+  .option('--protect <ids...>', 'Keep these additional release IDs for recovery')
   .option('--keep <n>', 'How many to keep (default: 5)', (v: string) => Number(v))
   .option('--yes', 'Remove them; without this it only says what it would remove')
   .option(
     '--allow-unprotected',
     'Remove even when the daemon cannot say which releases the stacks run (stopped daemon, no audit trail)',
   )
-  .action(async (options: { keep?: number; yes?: boolean; allowUnprotected?: boolean }) => {
+  .action(async (options: { project?: string; protect?: string[]; keep?: number; yes?: boolean; allowUnprotected?: boolean }) => {
     const { releasePruneCommand } = await import('../commands/release.js');
     await releasePruneCommand(options);
   });

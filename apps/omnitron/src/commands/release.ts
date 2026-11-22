@@ -32,6 +32,7 @@ import { runReleaseBuild, type ReleaseBuildOptions } from '../release/build-run.
 import type { ReleaseArtifact, ReleaseManifest } from '../release/manifest.js';
 import {
   listReleases,
+  listReleaseIds,
   projectOfId,
   pruneReleases,
   readReleaseDetail,
@@ -110,6 +111,25 @@ async function readDeployments(existing?: ReturnType<typeof createDaemonClient>)
     return { known: false, why: `deployment history could not be read: ${(err as Error)?.message ?? String(err)}` };
   } finally {
     if (!existing) await client.disconnect();
+  }
+}
+
+async function readPruneProtection() {
+  const client = createDaemonClient();
+  try {
+    const answer = await readDeployments(client);
+    const blind = pruneBlindness(answer);
+    if (!answer.known) return { answer, blind, building: [] as string[] };
+    try {
+      const service = await client.service<IOmnitronReleaseService>('OmnitronRelease');
+      const builds = await service.builds();
+      const building = builds.flatMap(build => build.state === 'running' && build.releaseId ? [build.releaseId] : []);
+      return { answer, blind, building };
+    } catch (error) {
+      return { answer, blind: blind ?? `active release builds could not be read: ${(error as Error).message}`, building: [] };
+    }
+  } finally {
+    await client.disconnect();
   }
 }
 
@@ -722,19 +742,27 @@ export async function releaseAttestCommand(
  * removing without knowing: the same shape as `--allow-dirty`.
  */
 export async function releasePruneCommand(
-  options: { keep?: number; yes?: boolean; allowUnprotected?: boolean } = {},
+  options: { project?: string; protect?: readonly string[]; keep?: number; yes?: boolean; allowUnprotected?: boolean } = {},
 ): Promise<void> {
   try {
     const keep = options.keep ?? 5;
-    const answer = await readDeployments();
+    const reviewedIds = new Set(listReleaseIds(undefined, options.project));
+    for (const id of options.protect ?? []) {
+      if (!reviewedIds.has(id)) throw Error(`Retained release was not found in the selected scope: ${id}`);
+    }
+    const { answer, building, blind } = await readPruneProtection();
     const byRelease = answer.known ? stacksByRelease(answer.deployments) : new Map<string, ReleaseDeploymentDto[]>();
-    const blind = pruneBlindness(answer);
     const refused = options.yes === true && blind !== null && options.allowUnprotected !== true;
     const apply = options.yes === true && !refused;
-    const result = pruneReleases({ keep, apply, protect: [...byRelease.keys()] });
+    const result = pruneReleases({
+      keep, apply, reviewedIds, ...(options.project !== undefined && { project: options.project }),
+      protect: [...byRelease.keys(), ...building, ...(options.protect ?? [])],
+    });
     for (const id of result.spared) {
       const where = (byRelease.get(id) ?? []).map((d) => `${d.project}/${d.stack}`).join(', ');
-      log.info(`  keeping ${id} — protected by deployment history for ${where}`);
+      let reason = building.includes(id) ? 'build in progress' : 'retained by request';
+      if (where) reason = `protected by deployment history for ${where}`;
+      log.info(`  keeping ${id} — ${reason}`);
     }
     if (result.doomed.length === 0) {
       log.info(`${result.kept} release(s), keeping ${keep} — nothing to remove.`);
@@ -762,7 +790,7 @@ export async function releasePruneCommand(
       return;
     }
     if (blind) log.warn(`Removed without knowing which releases stacks run (--allow-unprotected): ${blind}.`);
-    log.success(`Removed ${result.removed.length} release(s), ${size(result.freedBytes)} freed${rootsNote}; ${result.kept} kept.`);
+    log.success(`Removed ${result.removed.length} release(s) with ${size(result.freedBytes)} of release files${rootsNote}. Kept ${result.kept}.`);
   } catch (err) {
     log.error((err as Error).message);
     process.exitCode = 1;

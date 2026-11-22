@@ -119,8 +119,8 @@ export default function PruneReleasesDialog({
 
           {removed && (
             <Alert severity="success">
-              Removed {removed.removed.length} release{removed.removed.length === 1 ? '' : 's'}, {bytes(removed.freedBytes)} freed;{' '}
-              {removed.kept} kept.
+              Removed {removed.removed.length} release{removed.removed.length === 1 ? '' : 's'} ({bytes(removed.freedBytes)} of release files).
+              {' '}Kept {removed.kept}.
             </Alert>
           )}
 
@@ -130,7 +130,7 @@ export default function PruneReleasesDialog({
             ) : (
               <Box>
                 <Typography variant="body2" sx={{ mb: 1 }}>
-                  {plan.doomed.length} release{plan.doomed.length === 1 ? '' : 's'} would go, freeing {bytes(plan.freedBytes)}:
+                  {plan.doomed.length} release{plan.doomed.length === 1 ? '' : 's'} selected ({bytes(plan.freedBytes)} of release files)
                 </Typography>
                 <Box sx={{ maxHeight: 220, overflowY: 'auto' }}>
                   {plan.doomed.map((d) => (

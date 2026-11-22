@@ -36,6 +36,7 @@ vi.mock('../../src/config/defaults.js', async (importOriginal) => {
 const daemon = {
   state: 'up' as 'up' | 'down' | 'no-trail',
   deployments: [] as unknown[],
+  builds: vi.fn<() => Promise<Array<{ state: string; releaseId: string }>>>(),
 };
 
 vi.mock('../../src/daemon/daemon-client.js', () => ({
@@ -47,7 +48,7 @@ vi.mock('../../src/daemon/daemon-client.js', () => ({
         if (daemon.state === 'no-trail') throw new Error("Service 'OmnitronAudit' is not exposed");
         return { available: async () => ({ available: true }) };
       }
-      if (name === 'OmnitronRelease') return { deployments: async () => (daemon.state === 'up' ? daemon.deployments : []) };
+      if (name === 'OmnitronRelease') return { deployments: async () => (daemon.state === 'up' ? daemon.deployments : []), builds: daemon.builds };
       throw new Error(`Service '${name}' is not exposed`);
     },
     disconnect: async () => {},
@@ -99,6 +100,7 @@ beforeEach(() => {
   for (const id of IDS) writeRelease(id);
   daemon.state = 'up';
   daemon.deployments = testRuns(DEPLOYED);
+  daemon.builds.mockReset().mockResolvedValue([]);
   said.length = 0;
   process.exitCode = undefined;
 });
@@ -109,6 +111,35 @@ afterEach(() => {
 const onDisk = (id: string) => fs.existsSync(path.join(ROOT, id));
 
 describe('what a stack runs', () => {
+  it('retains the newest releases per exact project, active builds and explicit rollbacks', async () => {
+    const other = DEPLOYED.replace('sample-', 'sample2-');
+    const arriving = 'sample-202609230001-aaaaaaaa-bbbbbbbb';
+    writeRelease(other);
+    fs.mkdirSync(path.join(ROOT, 'sample'));
+    daemon.builds.mockImplementation(async () => {
+      writeRelease(arriving);
+      return [{ state: 'running', releaseId: IDS[4]! }];
+    });
+    await releasePruneCommand({ project: 'sample', keep: 1, protect: [NEXT_OLDEST], yes: true });
+    expect(fs.readdirSync(ROOT).sort()).toEqual(['sample', other, arriving, IDS[0], IDS[4], NEXT_OLDEST, DEPLOYED].sort());
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it('refuses an empty project or a missing requested rollback before removing files', async () => {
+    for (const options of [{ project: '' }, { project: 'sample', protect: ['unknown'] }]) {
+      await releasePruneCommand({ ...options, keep: 0, yes: true });
+      expect(process.exitCode).toBe(1);
+      expect(fs.readdirSync(ROOT).sort()).toEqual([...IDS].sort());
+    }
+  });
+
+  it('refuses removal when the daemon cannot list active builds', async () => {
+    daemon.builds.mockRejectedValue(new Error('unavailable'));
+    await releasePruneCommand({ project: 'sample', keep: 0, yes: true });
+    expect(process.exitCode).toBe(1);
+    expect(fs.readdirSync(ROOT).sort()).toEqual([...IDS].sort());
+  });
+
   it('is kept however old it is, and the command says why', async () => {
     await releasePruneCommand({ keep: 5, yes: true });
     expect(onDisk(DEPLOYED)).toBe(true);

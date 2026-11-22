@@ -272,8 +272,9 @@ export function readArtifactSources(manifest: ReleaseManifest): readonly Artifac
   }
 }
 
-/** Every release on this machine, newest build first; unfinished ones last. */
-export function listReleases(root: string = releasesRoot()): ReleaseSummary[] {
+/** Directory identities can be captured before asking the daemon which builds are active. */
+export function listReleaseIds(root: string = releasesRoot(), project?: string): string[] {
+  if (project !== undefined && (typeof project !== 'string' || !isReleaseId(project))) throw Error('A release project must be a single nonempty name');
   let entries: fs.Dirent[];
   try {
     entries = fs.readdirSync(root, { withFileTypes: true });
@@ -281,10 +282,21 @@ export function listReleases(root: string = releasesRoot()): ReleaseSummary[] {
     return [];
   }
   return entries
-    .filter((e) => e.isDirectory() && isReleaseId(e.name))
-    .map((e) => {
-      const dir = path.join(root, e.name), record = readManifestRecord(dir);
-      return summarise(e.name, dir, record.manifest, record.manifestError);
+    .filter(entry => entry.isDirectory() && isReleaseId(entry.name))
+    .map(entry => entry.name)
+    .filter(id => {
+      if (project === undefined) return true;
+      const identity = readReleaseId(id);
+      return identity.projectCommit !== null && identity.project === project;
+    });
+}
+
+/** Every release on this machine, newest build first; unfinished ones last. */
+export function listReleases(root: string = releasesRoot(), project?: string): ReleaseSummary[] {
+  return listReleaseIds(root, project)
+    .map(id => {
+      const dir = path.join(root, id), record = readManifestRecord(dir);
+      return summarise(id, dir, record.manifest, record.manifestError);
     })
     .sort((a, b) => (a.builtAt ?? '') < (b.builtAt ?? '') ? 1 : (a.builtAt ?? '') > (b.builtAt ?? '') ? -1 : a.id < b.id ? 1 : -1);
 }
@@ -358,6 +370,7 @@ export interface PruneResult {
   /** Removed for real, or empty when this was a dry run. */
   readonly removed: readonly string[];
   readonly kept: number;
+  /** Logical size of the selected release files. Shared extents and retained build roots affect disk reclamation. */
   readonly freedBytes: number;
   /**
    * Old enough to go, and kept because the caller protected it. Said apart
@@ -377,16 +390,18 @@ export interface PruneResult {
  * and `omnitron release prune` pass the releases their stacks last deployed.
  */
 export function pruneReleases(
-  options: { keep?: number; apply?: boolean; protect?: readonly string[]; root?: string } = {},
+  options: { keep?: number; apply?: boolean; protect?: readonly string[]; root?: string; project?: string; reviewedIds?: ReadonlySet<string> } = {},
 ): PruneResult {
   const keep = options.keep ?? 5;
   if (!Number.isInteger(keep) || keep < 0) throw new Error(`keep takes a whole number of releases, not ${String(options.keep)}`);
   const root = options.root ?? releasesRoot();
   const protect = new Set(options.protect ?? []);
-  const all = listReleases(root);
+  const all = listReleases(root, options.project);
   const old = all.slice(keep);
-  const spared = old.filter((r) => protect.has(r.id)).map((r) => r.id);
-  const doomed = old.filter((r) => !protect.has(r.id)).map((r) => ({ id: r.id, bytes: r.bytes, keptSource: r.keptSource }));
+  const { reviewedIds } = options;
+  const reviewed = reviewedIds ? old.filter(r => reviewedIds.has(r.id)) : old;
+  const spared = reviewed.filter((r) => protect.has(r.id)).map((r) => r.id);
+  const doomed = reviewed.filter((r) => !protect.has(r.id)).map((r) => ({ id: r.id, bytes: r.bytes, keptSource: r.keptSource }));
   const removed: string[] = [];
   if (options.apply) {
     for (const d of doomed) {

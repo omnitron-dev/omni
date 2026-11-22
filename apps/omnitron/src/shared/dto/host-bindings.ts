@@ -36,6 +36,8 @@ export interface WalletMembershipRequest {
   passwordRef: string;
   nonce: string;
   members: string[];
+  /** Resolve the matching, node-local ledger by its nonce for reverse index verification. */
+  lookup?: 'node-ledger';
 }
 
 export interface WalletMembershipReceipt {
@@ -43,4 +45,10 @@ export interface WalletMembershipReceipt {
   membershipSha256: string;
   checked: number;
   matched: number;
+  indexed?: {
+    /** The wallet recognizes the spend key but cannot reproduce the full address from its issued indices. */
+    indexOnly: number;
+    otherAccountMatches: number;
+    matchedSetSha256: string;
+  };
 }

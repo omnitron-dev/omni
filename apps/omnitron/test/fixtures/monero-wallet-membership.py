@@ -2,7 +2,7 @@
 
 python3 -I monero-wallet-membership.py <monero-wallet-rpc> <probe.py> [<compiled-controller-digest.mjs> <node>]
 The controller module reads a synthetic [challenge, user, password] JSON array on stdin and answers on its private pipe.
-The caller supplies a private /tmp, a non-root account and a network namespace with loopback alone.
+The caller supplies a private /tmp, a writable private /run, a non-root account and a network namespace with loopback alone.
 """
 import hashlib
 import http.client
@@ -76,7 +76,7 @@ def run_fixture(binary, probe, controller=None, node=None):
             return result.stdout
 
         def fixture_rpc(method, params):
-            require(method in ('get_version', 'create_wallet', 'create_address', 'get_address'), 'Unknown fixture method')
+            require(method in ('get_version', 'create_wallet', 'close_wallet', 'create_account', 'create_address', 'get_address'), 'Unknown fixture method')
             body = json.dumps(dict(jsonrpc='2.0', id='fixture', method=method, params=params)).encode()
             client = http.client.HTTPConnection('127.0.0.1', port, timeout=12)
             try:
@@ -122,6 +122,9 @@ def run_fixture(binary, probe, controller=None, node=None):
                     require(time.monotonic() < until, 'Synthetic RPC startup timed out (%s, status %s)' %
                             (type(exc).__name__, getattr(exc, 'code', None)))
                     time.sleep(.2)
+            fixture_rpc('create_wallet', {'filename': 'foreign-fixture', 'password': secrets.token_hex(24), 'language': 'English'})
+            foreign = fixture_rpc('create_address', {'account_index': 0})['address']
+            fixture_rpc('close_wallet', {})
             fixture_rpc('create_wallet', {'filename': 'empty-fixture', 'password': secrets.token_hex(24), 'language': 'English'})
             fixture_rpc('create_address', {'account_index': 0, 'count': 241})
             addresses = fixture_rpc('get_address', {'account_index': 0})
@@ -150,26 +153,37 @@ def run_fixture(binary, probe, controller=None, node=None):
                 with subprocess.Popen([python, '-I', str(probe_file)], env=qa_env, cwd=work, stdin=subprocess.PIPE,
                                       stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1) as proc:
                     try:
-                        proc.stdin.write(json.dumps(dict(unit=unit, port=candidate_port, nonce=nonce, members=members))+'\n')
+                        request = dict(unit=unit, port=candidate_port, nonce=nonce, members=members)
+                        if mode in ('indexed','invalid-ledger'):
+                            request['lookup'] = 'node-ledger'
+                        proc.stdin.write(json.dumps(request)+'\n')
                         proc.stdin.flush()
                         require(select.select([proc.stdout], [], [], 8)[0], 'Timed out awaiting probe admission')
                         frame = proc.stdout.readline()
-                        if mode in ('wrong-pid', 'wrong-port', 'shared'):
+                        if mode in ('wrong-pid', 'wrong-port', 'shared','invalid-ledger'):
                             require(not frame and proc.wait(timeout=6) != 0, 'Unverified OS identity reached the challenge')
                             return None
                         require(frame and set(json.loads(frame)) == {'challenge'}, 'Native Digest challenge missing')
-                        challenge = json.loads(frame)['challenge']
-                        auth = answer(challenge, password if mode != 'wrong-digest' else secrets.token_hex(24))
-                        proc.stdin.write(json.dumps(auth)+'\n')
+                        calls = 0
+                        while frame and set(json.loads(frame)) == {'challenge'}:
+                            calls += 1
+                            require(calls <= 2+2*len(members), 'Unexpected number of challenge frames')
+                            auth = answer(json.loads(frame)['challenge'], password if mode != 'wrong-digest' else secrets.token_hex(24))
+                            proc.stdin.write(json.dumps(auth)+'\n')
+                            proc.stdin.flush()
+                            require(select.select([proc.stdout], [], [], 9)[0], 'Timed out awaiting next probe frame')
+                            frame = proc.stdout.readline()
                         proc.stdin.close()
-                        result = proc.stdout.read(4097)
+                        result = frame
+                        require(not proc.stdout.read(1), 'Extra wallet probe frame')
                         code = proc.wait(timeout=9)
                         if mode == 'wrong-digest':
                             require(code != 0 and not result, 'Wrong Digest returned membership')
                             return None
                         require(code == 0 and len(result) < 1000, 'Native probe failed after Digest')
                         payload = json.loads(result)
-                        require(set(payload) == {'primarySha256', 'checked', 'matched'} and payload['primarySha256'] == primary_sha,
+                        fields = {'primarySha256','checked','matched'} | ({'indexed'} if mode=='indexed' else set())
+                        require(set(payload) == fields and payload['primarySha256'] == primary_sha,
                                 'Unexpected public projection or primary')
                         return payload
                     finally:
@@ -183,11 +197,29 @@ def run_fixture(binary, probe, controller=None, node=None):
             require((changed['checked'], changed['matched']) == (241,240), 'Foreign member was counted as present')
             for mode in ('wrong-pid', 'wrong-port', 'shared', 'wrong-digest'):
                 inspect(history, mode)
+            second = fixture_rpc('create_account', {})
+            sub = fixture_rpc('create_address', {'account_index':second['account_index']})
+            values = [addresses['addresses'][1]['address'], second['address'], sub['address'], foreign]
+            members = [sha(nonce+':'+v) for v in values]
+            ledger = Path('/run')/('omnitron-wallet-members-'+nonce)
+            with os.fdopen(os.open(ledger,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600),'w') as stream:
+                stream.write('\n'.join(values)+'\n')
+            try:
+                indexed = inspect(members,'indexed')
+                expected = sha(json.dumps([nonce,sorted(members[:-1])],separators=(',',':')))
+                require(indexed['matched']==3 and indexed['indexed']=={'otherAccountMatches':2,'indexOnly':0,'matchedSetSha256':expected},
+                        'Wallet index did not reproduce the exact cross-account membership')
+                inspect([*members[:-1],sha('another ledger')],'invalid-ledger')
+                ledger.chmod(0o644)
+                inspect(members,'invalid-ledger')
+            finally:
+                ledger.unlink()
             version = subprocess.check_output([str(binary), '--version'], env=env, cwd=work, text=True, timeout=5)
             parsed = re.search(r'v(\d+\.\d+\.\d+(?:\.\d+)?)', version)
             require(parsed, 'Missing native Monero version')
             return {'monero': parsed[1], 'binarySha256': binary_sha, 'privateLoopback': True,
-                    'isolatedUid': os.geteuid(), 'observedMethod': 'get_address',
+                    'isolatedUid': os.geteuid(), 'observedMethods': ['get_address','get_address_index','get_accounts'],
+                    'indexedChecked':indexed['checked'], 'indexedMatches':indexed['matched'],'matchesOutsideAccountZero':indexed['indexed']['otherAccountMatches'],
                     'checked': exact['checked'], 'matched': exact['matched'], 'changedMatched': changed['matched'],
                     'negativeDigest': True, 'wrongMainPid': True, 'missingListener': True, 'sharedListener': True,
                     'probeSha256': sha(probe), 'productionDigest': controller is not None}

@@ -192,7 +192,7 @@ The host-binding review identifies expected units, public template hashes and th
 
 ### Verify an existing Monero wallet before moving a stack
 
-A stack administrator can check whether the active mainnet wallet owns the deposit addresses that the application has already issued in account zero. Supply a private JSON request on standard input.
+A stack administrator can compare the active mainnet wallet with a ledger of previously issued deposit addresses. Supply a private JSON request on standard input.
 
 ```sh
 omnitron --json stack verify-wallet-addresses acme prod < wallet-membership.json
@@ -205,10 +205,15 @@ omnitron --json stack verify-wallet-addresses acme prod < wallet-membership.json
 | `userRef`, `passwordRef` | Names of the two vault references declared in the mainnet `monero-wallet-rpc` service override |
 | `nonce` | A fresh 32-byte random value encoded as 64 lowercase hex characters |
 | `members` | One lowercase SHA-256 per distinct issued subaddress, computed over the ASCII text `nonce + ":" + address`, with 1 to 8,192 entries |
+| `lookup` | Optional `node-ledger` for checking up to 256 previously issued addresses across accounts |
 
 For a wallet managed by Omnitron, the two references come from the service override's `secrets`. For a wallet already installed on the registered node, use `external.secrets` and declare its IP address and port in `external.host` and `external.ports.rpc`. The node checks that the Linux unit owns the listener and that the declared address is local before opening the connection.
 
-The controller answers the wallet's HTTP Digest challenge over the registered SSH connection. The query reads account zero. Its receipt gives the fingerprint of the primary address, the number checked, and the number matched. The CLI succeeds only when every supplied subaddress matches. Keep the receipt alongside the ledger observation and compare it again after restoring the wallet, before enabling payouts.
+The default query reads the materialized addresses in account zero. The controller answers the wallet's HTTP Digest challenge over the registered SSH connection. Its receipt gives the fingerprint of the primary address, the number checked and the number matched.
+
+Use `node-ledger` when the wallet history spans accounts or a restored wallet has an incomplete address list. On the registered source, have the ledger exporter create `/run/omnitron-wallet-members-<nonce>` exclusively as a regular file owned by root with mode `0600`. Write one 95-character public mainnet subaddress per line with a final newline. Compute `members` from the same snapshot. The wallet reader accepts the file for 15 minutes and verifies every fingerprint before authentication. Remove the file after the check. For longer histories, use batches with distinct nonces. The addresses stay on the source node.
+
+The indexed check looks up missing addresses with `get_address_index`, reproduces the full address from its account and index, and rechecks the primary address at the end. If addresses belong to other accounts, one `get_accounts` response ties their base addresses to that primary. `indexed.otherAccountMatches` counts those matches. `indexed.indexOnly` counts recognized indices beyond the wallet’s materialized addresses. These entries still require investigation. A successful CLI exit requires a full match for every supplied address. Keep the nonce and ledger observation privately with the receipt. Use the same input when comparing `indexed.matchedSetSha256` across a restoration, before enabling payouts.
 
 ### Move one stopped remote stack to its prepared recipient
 

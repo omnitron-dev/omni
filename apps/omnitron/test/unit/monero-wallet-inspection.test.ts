@@ -10,7 +10,7 @@ import { METADATA_KEYS } from '@omnitron-dev/titan/decorators';
 import { validateAccessRequirements } from '@omnitron-dev/titan/netron/auth';
 import { meshManagementIdentity } from '../../src/cluster/mesh-link.js';
 import {
-  checkWalletMembership, checkWalletProfile, inspectMoneroWallet, walletChallengeResponse,
+  checkWalletMembership, checkWalletProfile, inspectMoneroWallet, verifyWalletMembershipReceipt, walletChallengeResponse, walletMembershipDigest,
 } from '../../src/infrastructure/monero-wallet-inspection.js';
 import { MONERO_WALLET_PROBE } from '../../src/infrastructure/monero-wallet-probe.js';
 import { ProjectRpcService } from '../../src/services/project.rpc-service.js';
@@ -38,19 +38,22 @@ const challenge = 'Digest realm="monero-rpc", nonce="aGVsbG8=", algorithm=MD5-se
 const receipt = { primarySha256: sha('synthetic-primary'), checked: 2, matched: 2 };
 type ProbeStreams = {stdin: Readable; onStdout: (chunk: Buffer) => void};
 
-function responder(reply: unknown, code = 0, check?: (header: string) => void, host?: string) {
+function responder(reply: unknown, code = 0, check?: (header: string) => void, host?: string, indexedChallenges = 0) {
   transport.exec.mockImplementation(async (_cmd: string, io: ProbeStreams) => {
     const frames = createInterface({ input: io.stdin });
     const lines = frames[Symbol.asyncIterator]();
     try {
       const frame = JSON.parse((await lines.next()).value!);
-      expect(frame).toEqual({ unit: request.unit, port: request.port, host, nonce: request.nonce, members: request.members });
+      expect(frame).toEqual({ unit: request.unit, port: request.port, host, nonce: request.nonce, members: request.members,
+        ...(indexedChallenges && { lookup: 'node-ledger' }) });
       expect(login).not.toHaveBeenCalled();
-      io.onStdout(Buffer.from(JSON.stringify({ challenge })+'\n'));
-      const header = JSON.parse((await lines.next()).value!);
-      expect(header).toMatch(/^Digest /);
-      expect(header).not.toContain('synthetic-credential');
-      check?.(header);
+      for (let i = 0; i < (indexedChallenges || 1); i++) {
+        io.onStdout(Buffer.from(JSON.stringify({ challenge })+'\n'));
+        const header = JSON.parse((await lines.next()).value!);
+        expect(header).toMatch(/^Digest /);
+        expect(header).not.toContain('synthetic-credential');
+        check?.(header);
+      }
       if (reply !== null) io.onStdout(Buffer.from(JSON.stringify(reply)+'\n'));
       return { code };
     } finally { frames.close(); }
@@ -65,6 +68,8 @@ describe('registered mainnet wallet ownership', () => {
     expect(checkWalletProfile(registered, request)).toEqual({ user: request.userRef, password: request.passwordRef });
     for (const bad of [
       { ...request, members: [] }, { ...request, members: [request.members[0]!, request.members[0]!] },
+      { ...request, lookup: 'arbitrary-ledger' }, { ...request, lookup: 'node-ledger', path: '/another/file' },
+      { ...request, lookup: 'node-ledger', members: Array.from({ length: 257 }, (_, n) => sha(String(n))) },
       { ...request, members: ['a public address instead of a hash'] }, { ...request, port: 0 },
       { ...request, unit: 'other.service' }, { ...request, userRef: request.passwordRef },
       { ...request, members: Array.from({ length: 8193 }, (_, n) => sha(String(n))) }, { ...request, url: 'http://fixture.invalid' },
@@ -148,6 +153,58 @@ verify('0.0.0.0','0.0.0.0',local,False)
     expect(transport.connect).toHaveBeenCalledWith(expect.objectContaining(target));
     expect(transport.exec.mock.calls[0]![0]).toBe('python3 -I -c '+shellEscape(MONERO_WALLET_PROBE));
     expect(transport.dispose).toHaveBeenCalled();
+  });
+
+  it('keeps transport errors, lookahead indices and mismatched full addresses out of successful matches', () => {
+    const check = `import json,sys
+p={'__name__':'testing'}; exec(sys.stdin.read(),p)
+primary='4'+'A'*94; elsewhere='8'+'B'*94; known='8'+'C'*94; other='8'+'D'*94; foreign='8'+'E'*94
+nonce='1'*64; members={p['digest'](nonce+':'+row):row for row in (known,elsewhere,other,foreign)}
+def account(addr,extra=()):
+    return {'result':{'address':addr,'addresses':[{'address_index':i,'address':a} for i,a in enumerate([addr,*extra])]}}
+def probe(mode):
+    def rpc(method,params):
+        if method=='get_accounts':
+            base=foreign if mode=='changed' else primary
+            root=foreign if mode=='switchedAccount' else elsewhere
+            return {'result':{'subaddress_accounts':[{'account_index':0,'base_address':base},{'account_index':1,'base_address':root}]}}
+        if method=='get_address_index':
+            addr=params['address']
+            if addr==foreign:
+                if mode=='transport': return {'error':{'code':-13,'message':'Wallet unavailable'}}
+                return {'error':{'code':-2,'message':"Address doesn't belong to the wallet"}}
+            return {'result':{'index':{'major':1 if addr==elsewhere else 28,'minor':0}}}
+        assert method=='get_address'
+        major=params['account_index']
+        if major==0:
+            if 'address_index' in params: return account('4'+'F'*94 if mode=='changed' else primary)
+            return account(primary,[known])
+        if major==1: return account(other if mode=='mismatch' else elsewhere)
+        return {'error':{'code':-14}}
+    return p['membership'](rpc,nonce,list(members),members)
+r=probe('ok'); assert r['matched']==2 and r['checked']==4 and r['indexed']['indexOnly']==1 and r['indexed']['otherAccountMatches']==1
+for mode in ('transport','mismatch','changed','switchedAccount'):
+    try: probe(mode)
+    except ValueError: pass
+    else: raise AssertionError(mode)
+`;
+    execFileSync('python3', ['-I', '-c', check], { input: MONERO_WALLET_PROBE, timeout: 5000 });
+  });
+
+  it('binds the indexed receipt to the requested input and exact matched set', async () => {
+    const input = { ...request, lookup: 'node-ledger' as const };
+    const membershipSha256 = walletMembershipDigest(input);
+    const full = { ...receipt, membershipSha256, indexed: { indexOnly: 0, otherAccountMatches: 1, matchedSetSha256: membershipSha256 } };
+    expect(() => checkWalletMembership(input)).not.toThrow();
+    expect(() => verifyWalletMembershipReceipt(input, full)).not.toThrow();
+    expect(() => verifyWalletMembershipReceipt(input, { ...receipt, membershipSha256 })).toThrow();
+    for (const invalid of [{ ...full.indexed, indexOnly: 1 }, { ...full.indexed, matchedSetSha256: sha('different set') },
+      { ...full.indexed, otherAccountMatches: 3 }])
+      expect(() => verifyWalletMembershipReceipt(input, { ...full, indexed: invalid })).toThrow();
+    expect(() => verifyWalletMembershipReceipt(request, full)).toThrow();
+    responder({ ...receipt, indexed: full.indexed }, 0, undefined, undefined, 4);
+    await expect(inspectMoneroWallet(target, input, login)).resolves.toEqual(full);
+    expect(login).toHaveBeenCalledTimes(4);
   });
 
   it('keeps an unauthorized node, an unverified listener and refused Digest outside successful receipts', async () => {

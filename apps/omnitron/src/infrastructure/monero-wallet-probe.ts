@@ -1,6 +1,5 @@
-/** Executed on the registered Linux node. It owns one HTTP connection from the
- * challenge to the reply. The controlling service sends only the Digest response. */
-export const MONERO_WALLET_PROBE = String.raw`import hashlib, http.client, ipaddress, json, os, re, subprocess, sys
+/** Each read stays on its authenticated socket on the registered node. */
+export const MONERO_WALLET_PROBE = String.raw`import hashlib, http.client, ipaddress, json, os, re, stat, subprocess, sys, time
 def require(condition):
     if not condition:
         raise ValueError()
@@ -30,15 +29,24 @@ def socket_identity(unit,port,declared_host=None):
         routes=json.loads(command('ip','-j',('-4' if addr.version==4 else '-6'),'route','get',str(addr)))
         require(len(routes)==1 and routes[0].get('dev')=='lo' and routes[0].get('type')=='local')
     return (pid,str(addr))
-def main():
-    q=json.loads(sys.stdin.buffer.readline(650000))
-    unit,port,nonce,members=q['unit'],q['port'],q['nonce'],q['members']
-    require(re.fullmatch('[0-9a-f]{64}',nonce) and 0<len(members)<=8192 and len(set(members))==len(members))
-    require(all(re.fullmatch('[0-9a-f]{64}',m) for m in members))
-    declared_host=q.get('host')
-    identity=socket_identity(unit,port,declared_host)
+def ledger_addresses(nonce,members):
+    require(re.fullmatch('[0-9a-f]{64}',nonce) and 0<len(members)<=256)
+    flags=os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK
+    with os.fdopen(os.open('/run/omnitron-wallet-members-'+nonce,flags),'rb') as ledger:
+        info=os.fstat(ledger.fileno())
+        require(stat.S_ISREG(info.st_mode) and info.st_uid==os.geteuid() and stat.S_IMODE(info.st_mode)==0o600 and info.st_nlink==1)
+        require(0<=time.time()-info.st_mtime<=900 and info.st_size==96*len(members))
+        content=ledger.read(96*len(members)+1)
+    require(len(content)==96*len(members) and content.endswith(b'\n'))
+    rows=content[:-1].decode('ascii').split('\n')
+    require(len(rows)==len(members) and all(re.fullmatch('8[1-9A-HJ-NP-Za-km-z]{94}',row) for row in rows))
+    by_member={digest(nonce+':'+row):row for row in rows}
+    require(set(by_member)==set(members))
+    return by_member
+def wallet_call(identity,unit,port,declared_host,method,params):
+    require(method in ('get_address','get_address_index','get_accounts') and socket_identity(unit,port,declared_host)==identity)
     rpc=http.client.HTTPConnection(identity[1],port,timeout=12)
-    body=b'{"jsonrpc":"2.0","id":"owned","method":"get_address","params":{"account_index":0}}'
+    body=json.dumps({'jsonrpc':'2.0','id':'owned','method':method,'params':params},separators=(',',':')).encode('ascii')
     headers={'Content-Type':'application/json','Connection':'keep-alive'}
     try:
         rpc.request('POST','/json_rpc',body,headers)
@@ -65,22 +73,81 @@ def main():
         payload=second.read(8*1024*1024+1)
         require(len(payload)<=8*1024*1024)
         reply=json.loads(payload)
-        require(reply.get('jsonrpc')=='2.0' and reply.get('id')=='owned' and 'error' not in reply)
-        result=reply['result']; primary=result['address']; rows=result['addresses']
-        require(re.fullmatch('4[1-9A-HJ-NP-Za-km-z]{94}',primary) and isinstance(rows,list))
-        seen_indices=set(); addresses=set(); zero=None
-        for row in rows:
-            index,address=row['address_index'],row['address']
-            require(type(index) is int and 0<=index<=4294967295 and index not in seen_indices and address not in addresses)
-            require(re.fullmatch(('4' if index==0 else '8')+'[1-9A-HJ-NP-Za-km-z]{94}',address))
-            seen_indices.add(index); addresses.add(address)
-            if index==0: zero=address
-        require(zero==primary and socket_identity(unit,port,declared_host)==identity)
-        owned={digest(nonce+':'+address) for address in addresses if address!=primary}
-        output({'primarySha256':digest(json.dumps(['xmr-mainnet-primary-v1',primary],separators=(',',':'))),
-                'checked':len(members),'matched':len(owned.intersection(members))})
+        require(reply.get('jsonrpc')=='2.0' and reply.get('id')=='owned' and ('result' in reply)!=('error' in reply))
+        require(socket_identity(unit,port,declared_host)==identity)
+        return reply
     finally:
         rpc.close()
+def uint32(value):
+    return type(value) is int and 0<=value<=4294967295
+def read_account(call,major):
+    reply=call('get_address',{'account_index':major})
+    if 'error' in reply:
+        # Monero may recognize a lookahead key beyond the last materialized account.
+        require(major>0 and reply['error'].get('code')==-14)
+        return {}
+    result=reply['result']; rows=result['addresses']; by_index={}; distinct=set()
+    require(isinstance(rows,list))
+    for row in rows:
+        index,address=row['address_index'],row['address']
+        require(uint32(index) and index not in by_index and address not in distinct)
+        require(re.fullmatch(('4' if (major,index)==(0,0) else '8')+'[1-9A-HJ-NP-Za-km-z]{94}',address))
+        by_index[index]=address; distinct.add(address)
+    require(0 in by_index and by_index[0]==result['address'])
+    return by_index
+def membership(call,nonce,members,ledger):
+    first=read_account(call,0)
+    primary=first[0]
+    known={digest(nonce+':'+address) for minor,address in first.items() if minor!=0}
+    matched=set(members).intersection(known)
+    receipt={'primarySha256':digest(json.dumps(['xmr-mainnet-primary-v1',primary],separators=(',',':'))),'checked':len(members)}
+    if ledger is not None:
+        unresolved={}
+        for member in sorted(set(members)-matched):
+            address=ledger[member]
+            reply=call('get_address_index',{'address':address})
+            if 'error' in reply:
+                require(reply['error'].get('code')==-2 and reply['error'].get('message')=="Address doesn't belong to the wallet")
+                continue
+            index=reply['result']['index']; major,minor=index['major'],index['minor']
+            require(uint32(major) and uint32(minor))
+            unresolved.setdefault(major,[]).append((minor,member))
+        index_only=0; other_matches=0; roots={0:primary}
+        for major,rows in unresolved.items():
+            issued=first if major==0 else read_account(call,major)
+            for minor,member in rows:
+                if minor not in issued:
+                    index_only+=1
+                elif issued[minor]==ledger[member]:
+                    matched.add(member)
+                    if major!=0:
+                        other_matches+=1
+                        roots[major]=issued[0]
+                else:
+                    # A spend-key lookup alone does not verify the full receiving address.
+                    raise ValueError()
+        if other_matches:
+            # One response must bind all matched account roots to the original primary.
+            accounts=call('get_accounts',{})['result']['subaddress_accounts']
+            observed={row['account_index']:row['base_address'] for row in accounts}
+            require(len(observed)==len(accounts) and all(observed.get(i)==address for i,address in roots.items()))
+        else:
+            last=call('get_address',{'account_index':0,'address_index':[0]})['result']
+            require(last['address']==primary and len(last['addresses'])==1 and last['addresses'][0]['address_index']==0 and last['addresses'][0]['address']==primary)
+        receipt['indexed']={'indexOnly':index_only,'otherAccountMatches':other_matches,
+                            'matchedSetSha256':digest(json.dumps([nonce,sorted(matched)],separators=(',',':')))}
+    return {**receipt,'matched':len(matched)}
+def main():
+    q=json.loads(sys.stdin.buffer.readline(650000))
+    unit,port,nonce,members=q['unit'],q['port'],q['nonce'],q['members']
+    require(re.fullmatch('[0-9a-f]{64}',nonce) and 0<len(members)<=8192 and len(set(members))==len(members))
+    require(all(re.fullmatch('[0-9a-f]{64}',m) for m in members) and q.get('lookup') in (None,'node-ledger'))
+    ledger=ledger_addresses(nonce,members) if q.get('lookup')=='node-ledger' else None
+    declared_host=q.get('host')
+    identity=socket_identity(unit,port,declared_host)
+    def call(method,params):
+        return wallet_call(identity,unit,port,declared_host,method,params)
+    output(membership(call,nonce,members,ledger))
 if __name__=='__main__':
     try:
         main()

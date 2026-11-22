@@ -16,14 +16,17 @@ const reference = /^[\w./:-]{1,256}$/;
 const invalid = () => Error('The wallet ownership request does not match a registered mainnet service');
 
 export function checkWalletMembership(request: WalletMembershipRequest): void {
-  if (!request || Object.keys(request).sort().join(',') !== 'fingerprint,members,nodeId,nonce,passwordRef,port,project,stack,unit,userRef' ||
+  const indexed = request?.lookup === 'node-ledger';
+  const keys = indexed ? 'fingerprint,lookup,members,nodeId,nonce,passwordRef,port,project,stack,unit,userRef'
+    : 'fingerprint,members,nodeId,nonce,passwordRef,port,project,stack,unit,userRef';
+  if (!request || Object.keys(request).sort().join(',') !== keys ||
       ![request.project, request.stack, request.nodeId].every(value => typeof value === 'string' && label.test(value)) ||
       typeof request.fingerprint !== 'string' || !/^SHA256:[A-Za-z0-9+/]{43}$/.test(request.fingerprint) ||
       !['monero-walletd.service', 'monero-wallet-rpc.service'].includes(request.unit) ||
       !Number.isSafeInteger(request.port) || request.port < 1 || request.port > 65535 ||
       ![request.userRef, request.passwordRef].every(value => typeof value === 'string' && reference.test(value)) ||
       request.userRef === request.passwordRef || typeof request.nonce !== 'string' || !hash.test(request.nonce) ||
-      !Array.isArray(request.members) || request.members.length < 1 || request.members.length > 8192 ||
+      !Array.isArray(request.members) || request.members.length < 1 || request.members.length > (indexed ? 256 : 8192) ||
       !request.members.every(value => typeof value === 'string' && hash.test(value)) ||
       new Set(request.members).size !== request.members.length) throw invalid();
 }
@@ -62,6 +65,16 @@ export function verifyWalletMembershipReceipt(request: WalletMembershipRequest, 
       receipt.membershipSha256 !== walletMembershipDigest(request) ||
       receipt.checked !== request.members.length || !Number.isSafeInteger(receipt.matched) ||
       receipt.matched < 0 || receipt.matched > receipt.checked) throw Error('Invalid wallet membership receipt');
+  if (request.lookup === 'node-ledger') {
+    const details = receipt.indexed;
+    if (!details || Object.keys(details).sort().join(',') !== 'indexOnly,matchedSetSha256,otherAccountMatches' ||
+        !Number.isSafeInteger(details.indexOnly) || details.indexOnly < 0 || details.indexOnly > receipt.checked - receipt.matched ||
+        !Number.isSafeInteger(details.otherAccountMatches) || details.otherAccountMatches < 0 || details.otherAccountMatches > receipt.matched ||
+        typeof details.matchedSetSha256 !== 'string' || !hash.test(details.matchedSetSha256) ||
+        (receipt.matched === receipt.checked && details.matchedSetSha256 !== receipt.membershipSha256) ||
+        (receipt.matched === 0 && details.matchedSetSha256 !== walletMembershipDigest({ nonce: request.nonce, members: [] })))
+      throw Error('Invalid indexed wallet membership receipt');
+  } else if (receipt.indexed !== undefined) throw Error('Unexpected indexed wallet membership receipt');
 }
 
 /** Limit the vault proof to HTTP Digest auth on the fixed POST /json_rpc request. */
@@ -93,7 +106,10 @@ export async function inspectMoneroWallet(target: SSHTarget, request: WalletMemb
   if (target.username !== 'root' || target.expectedHostFingerprint !== request.fingerprint) throw invalid();
   const { SSHClient } = await import('@xec-sh/ssh');
   const ssh = new SSHClient();
-  const signal = AbortSignal.timeout(45000);
+  const indexed = request.lookup === 'node-ledger';
+  const maxChallenges = indexed ? 2 + 2 * request.members.length : 1;
+  const maxBytes = maxChallenges * 2200 + 1024;
+  const signal = AbortSignal.timeout(indexed ? 120000 : 45000);
   const input = new PassThrough(), output = new PassThrough();
   const lines = createInterface({ input: output, crlfDelay: Infinity });
   const iter = lines[Symbol.asyncIterator]();
@@ -105,7 +121,7 @@ export async function inspectMoneroWallet(target: SSHTarget, request: WalletMemb
       signal, channelOpenTimeoutMs: 5000, stdin: input, collectStdout: false, collectStderr: false,
       onStdout(chunk) {
         bytes += chunk.length;
-        if (bytes > 4096) { ssh.dispose(true); output.end(); return; }
+        if (bytes > maxBytes) { ssh.dispose(true); output.end(); return; }
         output.write(chunk);
       },
     }).finally(() => output.end());
@@ -115,19 +131,23 @@ export async function inspectMoneroWallet(target: SSHTarget, request: WalletMemb
       if (line.done || !line.value) throw invalid();
       return JSON.parse(line.value);
     };
-    input.write(JSON.stringify({ unit: request.unit, port: request.port, host, nonce: request.nonce, members: request.members }) + '\n');
-    const first = await frame();
-    if (!first || Object.keys(first).join() !== 'challenge') throw invalid();
-    const authorization = await walletChallengeResponse(first.challenge, login);
-    signal.throwIfAborted();
-    input.end(JSON.stringify(authorization) + '\n');
-    const result = await frame();
-    if ((await execution).code !== 0 || !(await iter.next()).done || bytes > 4096 || signal.aborted || !result ||
-        Object.keys(result).sort().join(',') !== 'checked,matched,primarySha256' ||
-        typeof result.primarySha256 !== 'string' || !hash.test(result.primarySha256) ||
-        result.checked !== request.members.length || !Number.isSafeInteger(result.matched) || result.matched < 0 || result.matched > result.checked) throw invalid();
-    const membershipSha256 = walletMembershipDigest(request);
-    return { primarySha256: result.primarySha256, membershipSha256, checked: result.checked, matched: result.matched };
+    input.write(JSON.stringify({ unit: request.unit, port: request.port, host, nonce: request.nonce, members: request.members, lookup: request.lookup }) + '\n');
+    let challenges = 0;
+    let result = await frame();
+    while (result && Object.keys(result).join() === 'challenge') {
+      if (++challenges > maxChallenges) throw invalid();
+      const authorization = await walletChallengeResponse(result.challenge, login);
+      signal.throwIfAborted();
+      input.write(JSON.stringify(authorization) + '\n');
+      result = await frame();
+    }
+    input.end();
+    const keys = indexed ? 'checked,indexed,matched,primarySha256' : 'checked,matched,primarySha256';
+    if (!challenges || (await execution).code !== 0 || !(await iter.next()).done || bytes > maxBytes || signal.aborted ||
+        !result || Object.keys(result).sort().join(',') !== keys) throw invalid();
+    const receipt: WalletMembershipReceipt = { ...result, membershipSha256: walletMembershipDigest(request) };
+    verifyWalletMembershipReceipt(request, receipt);
+    return receipt;
   } catch {
     throw Error('The registered wallet and its issued addresses could not be verified');
   } finally {

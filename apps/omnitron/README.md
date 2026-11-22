@@ -287,6 +287,8 @@ For a return to the original registration, first complete a reviewed full stop o
 
 When a project's registered stack declaration changes between releases on the same node, prepare the release against the current declaration. Pass `--previous-declaration-commit <full-sha>` to both the placement review and its confirmation. Choose a Git commit whose tracked `omnitron.stacks.json` contains the previously registered stack. Omnitron checks its fingerprint against the existing project registration, verifies the registered node configuration and obtains a fresh full-stop observation from the selected recipient. The receipt records both declaration fingerprints and the historical commit.
 
+If a same-node deployment stops after creating infrastructure, a reviewed full stop can advance the recipient's execution revision. Review and confirm the same prepared release again to bind its next launch to that new stop. The controller verifies an empty container inventory and the stopped execution on the original authenticated recipient.
+
 Runtime-only recovery uses `--infrastructure preserve`. Review the intended release and current resources before stopping applications:
 
 ```sh

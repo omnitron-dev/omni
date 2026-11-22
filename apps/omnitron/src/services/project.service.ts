@@ -2956,10 +2956,15 @@ export class ProjectService extends EventEmitter {
     if (registrationChange && !isDeepStrictEqual(from, to)) throw Error('A changed registration requires the same pinned recipient');
     if (to.nodeId !== fromNodeId && to.host === from.host && to.port === from.port)
       throw Error('Two recipient identities cannot hand off the same endpoint');
-    if (candidate && previous?.selected?.prepared === candidate.receipt.digest)
-      throw Error('This release source is already selected');
     const stopKey = 'stack:' + stackExecutionKey(scope) + ':last-stop';
     const stop = this.daemonStateStore.kvGetSync<StackStopProgress>(stopKey, { strict: true });
+    if (candidate && previous?.selected?.prepared === candidate.receipt.digest) {
+      const prior = previous.sourceStop.nodes[0]?.execution;
+      const latest = stop?.nodes[0]?.execution;
+      if (previous.from.nodeId !== fromNodeId || stop?.id === previous.sourceStop.id || !prior || !latest ||
+          prior.project !== latest.project || prior.stack !== latest.stack || latest.revision <= prior.revision)
+        throw Error('This release source is already selected; a newer full stop of the same allocation is required to renew it');
+    }
     if (!stop || stop.phase !== 'stopped' || stop.supersededAt || stop.keepInfrastructure || current.nodes.length)
       throw Error('Complete a full stop on every source recipient before changing placement');
     const currentSource = this.getSlaveConnector().pinnedService(from.host, from.port, fromNodeId, old.managementIdentity, 'OmnitronProject');

@@ -550,6 +550,20 @@ describe('prepared source of one registered remote release', () => {
         inv.execution.revision--;
         expect(await service.selectRemotePlacement({ ...update, review: change.digest })).toEqual(change);
         expect(await service.selectRemotePlacement({ ...update, review: change.digest })).toEqual(change);
+        await expect(service.reviewRemotePlacement(same)).rejects.toThrow(/newer full stop/);
+        const oldStop = store.kvGetSync<ReturnType<typeof saved>>(stopKey)!;
+        store.kvSetSync(stopKey, { ...oldStop, id: 'other-receipt-same-execution' });
+        await expect(service.reviewRemotePlacement(same)).rejects.toThrow(/newer full stop/);
+        const freshStop = await service.reviewStackStop('sample', 'test');
+        await service.stopStack('sample', 'test', freshStop.digest!);
+        const renewed = await service.reviewRemotePlacement(same);
+        expect(renewed.stopId).not.toBe(change.stopId);
+        expect(renewed.generation).toBeGreaterThan(change.generation);
+        inv.execution.phase = 'running';
+        await expect(service.selectRemotePlacement({ ...same, review: renewed.digest })).rejects.toThrow(/stopped execution/);
+        inv.execution.phase = 'stopped';
+        await expect(service.selectRemotePlacement({ ...same, review: renewed.digest })).resolves.toEqual(renewed);
+        await expect(service.selectRemotePlacement({ ...same, review: renewed.digest })).resolves.toEqual(renewed);
         return;
       }
       const back = await service.reviewRemotePlacement(restore);

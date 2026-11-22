@@ -37,13 +37,14 @@ it('builds from declared and explicit sources when the nominal developer SDK is 
   await fs.writeFile(path.join(project, '.gitignore'), 'node_modules/\ndist/\n');
   await fs.writeFile(path.join(project, 'package.json'), JSON.stringify({ name: 'consumer', private: true,
     dependencies: { '@omnitron-dev/omnitron': 'link:../missing-framework/apps/omnitron' },
-    scripts: { 'test:release': 'node -e "process.exit(0)"' },
+    scripts: { 'test:release': 'node -e "process.exit(process.env.REJECT_RELEASE === \'1\' ? 1 : 0)"' },
     omnitron: { framework: { repository: '../selected-origin', ref: 'refs/heads/stable' }, release: { gates: ['test:release'] } } }));
   await fs.writeFile(path.join(project, 'pnpm-workspace.yaml'), "packages: ['apps/*']\n");
   await fs.writeFile(path.join(project, 'apps/worker/package.json'), JSON.stringify({ name: 'worker', version: '1.0.0',
     dependencies: { '@omnitron-dev/titan': 'link:../../../missing-framework/packages/titan' }, scripts: { build: 'node build.mjs' } }));
   await fs.writeFile(path.join(project, 'apps/worker/build.mjs'), "import fs from 'node:fs';fs.mkdirSync('dist',{recursive:true});fs.writeFileSync('dist/main.js','console.log(1);');");
   await fs.writeFile(path.join(project, 'omnitron.config.mjs'), "export default {apps:[{name:'worker',cwd:'apps/worker',script:'dist/main.js'}]};");
+  await fs.writeFile(path.join(project, 'omnitron.stacks.json'), JSON.stringify({ production: { type: 'remote', release: { mode: 'required' } } }));
   await command(project, 'pnpm', 'install', '--lockfile-only', '--ignore-scripts');
   await fs.unlink(nominal);
   await command(project, 'git', 'init', '-q'); await commit(project);
@@ -72,4 +73,15 @@ it('builds from declared and explicit sources when the nominal developer SDK is 
   expect(override.manifest.artifactFailures).toBeUndefined();
   expect(await fs.readFile(path.join(override.root, 'src/missing-framework/packages/titan/dist/index.js'), 'utf8')).toContain('explicit-override');
   expect(result.manifest.omni.commit).toBe(sha);
+  const rejectedPhases: string[] = [];
+  const rejected = await runReleaseBuild('consumer', { omniCommit: sha, forStack: 'production', env: { REJECT_RELEASE: '1' } },
+    phase => rejectedPhases.push(phase.phase));
+  expect(rejected.manifest.gates).toEqual([expect.objectContaining({ name: 'test:release', status: 'failed' })]);
+  expect(rejected.manifest.artifacts).toEqual([]);
+  expect(rejectedPhases).not.toContain('packing artifacts');
+  expect(JSON.parse(await fs.readFile(rejected.manifestPath, 'utf8'))).toEqual(rejected.manifest);
+  expect(await fs.readdir(path.join(rejected.root, 'logs'))).toContain('gate-0-test_release.log');
+  const diagnostic = await runReleaseBuild('consumer', { omniCommit: sha, forStack: 'production', skipGates: true });
+  expect(diagnostic.manifest.gates[0]?.status).toBe('not-run');
+  expect(diagnostic.manifest.artifacts.map(artifact => artifact.app)).toEqual(['worker']);
 }, 120_000);

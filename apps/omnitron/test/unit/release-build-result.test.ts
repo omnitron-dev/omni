@@ -113,6 +113,7 @@ it('records a verified store index only after a successful build and confirmed p
   runner.mockResolvedValueOnce(checked);
   const record = service.start({ project: 'sample', publish: true }, 'operator', auth);
   await vi.waitFor(() => expect(publisher).toHaveBeenCalledOnce());
+  expect(runner).toHaveBeenCalledWith('sample', expect.objectContaining({ forPublication: true }), expect.any(Function));
   expect(auth).toHaveBeenCalledOnce();
   expect(record.state).toBe('running');
   expect(record.publication).toBeUndefined();

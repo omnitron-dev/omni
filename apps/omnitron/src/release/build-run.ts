@@ -21,7 +21,7 @@ import { promisify } from 'node:util';
 
 import { resolveProjectStacks } from '../config/project-stacks.js';
 import { ProjectRegistry } from '../project/registry.js';
-import { assembleManifest, gateOutcomesFromGates, releaseId } from './builder.js';
+import { assembleManifest, gateOutcomesFromGates, releaseId, type ManifestInput } from './builder.js';
 import { planBuildRoot, readFrameworkLayout, resolveCheckouts } from './layout.js';
 import { assertReleaseId, releasesRoot } from './load.js';
 import { releaseWorkspaceDirectory } from './workspace-source.js';
@@ -31,6 +31,7 @@ import { reproduceVendoredFramework, requireFrameworkCommit, vendoredFrameworkSo
 import { checkoutFrameworkSource, projectFrameworkSource, assertFrameworkInput } from './framework-source.js';
 import type { FrameworkSource } from '../shared/framework-source.js';
 import { OWN_BUILD } from '../shared/build-stamp.js';
+import { readBuildChecks } from '../shared/release-reading.js';
 import { importReleaseArtifacts } from './import-artifacts.js';
 import { MAX_RELEASE_MANIFEST_BYTES, validateReleaseOrigins } from './origin.js';
 import { readReleaseSource } from './source.js';
@@ -51,6 +52,8 @@ export interface ReleaseBuildOptions {
   keepSource?: boolean;
   /** Record every gate as not-run instead of running them — for a look, never for a stack. */
   skipGates?: boolean;
+  /** A store publication can only use artifacts from a complete, passing gate run. */
+  forPublication?: boolean;
   /**
    * Build the static bundle this stack's gateway serves, with this stack's
    * `staticEnv`, into the release. A frontend bakes its environment in, so the
@@ -767,15 +770,42 @@ async function buildRelease(
     );
   }
 
-  // 5. The artifacts, by the same builder a deployment uses.
   stillWanted();
-  say('packing artifacts', 84, { gates });
-  const artifactsLog = path.join(logs, 'artifacts.log');
   const { loadEcosystemConfig } = await import('../config/loader.js');
-  const { ArtifactBuilder } = await import('../project/artifact-builder.js');
   const configDirectory = path.join(plan.repositoryDir, projectPrefix);
   const ecosystem = await loadEcosystemConfig(configDirectory, 'release');
   const config = { ...ecosystem, stacks: resolveProjectStacks(ecosystem, configDirectory, projectName) };
+
+  const provenance = {
+    id,
+    project: { ...projectSource, ...(projectPrefix ? { directory: projectPrefix } : {}),
+      ...(workspace !== projectPrefix && { workspace }) },
+    omni: omniSource, target: await (await import('./target-runtime.js')).targetRuntime(),
+    gates, omnitron, packages: builtPackages, machine, builtBy: `${os.userInfo().username}@${os.hostname()}`,
+  };
+  const finish = (products: Pick<ManifestInput, 'artifacts' | 'artifactFailures' | 'importedArtifacts' | 'imports' | 'statics' | 'migrations'>): BuildOutcome => {
+    const manifest = assembleManifest({ ...provenance, ...products, builtAt: new Date() });
+    validateReleaseOrigins(manifest);
+    const manifestPath = path.join(releaseRoot, 'manifest.json');
+    const manifestJson = `${JSON.stringify(manifest, null, 2)}\n`;
+    if (Buffer.byteLength(manifestJson) > MAX_RELEASE_MANIFEST_BYTES) throw Error('Release manifest exceeds 8 MiB');
+    fs.writeFileSync(manifestPath, manifestJson);
+    if (!options.keepSource) fs.rmSync(path.join(releaseRoot, 'src'), { recursive: true, force: true });
+    const passed = gates.filter(g => g.status === 'passed').length;
+    say(`release ${manifest.id} — ${passed} of ${gates.length} gates passed, ${manifest.artifacts.length} artifact(s)`, 100, { gates });
+    return { id: manifest.id, root: releaseRoot, manifestPath, manifest, durationMs: Date.now() - started };
+  };
+
+  const qualificationRequired = options.forPublication || (options.forStack && config.stacks[options.forStack]?.release?.mode === 'required');
+  if (!options.skipGates && qualificationRequired && readBuildChecks({ gates }).exitCode !== 0) {
+    say('checks did not pass; saving the diagnostic manifest before packing', 98, { gates });
+    return finish({ artifacts: [], artifactFailures: [] });
+  }
+
+  // 5. The artifacts, by the same builder a deployment uses.
+  say('packing artifacts', 84, { gates });
+  const artifactsLog = path.join(logs, 'artifacts.log');
+  const { ArtifactBuilder } = await import('../project/artifact-builder.js');
   const { releaseBuildEntries } = await import('./artifact-volumes.js');
   const apps = releaseBuildEntries(config);
   const { declaredMigrationPrograms } = await import('./migration-programs.js');
@@ -830,34 +860,12 @@ async function buildRelease(
   const programs = packed.built.flatMap((artifact, i) => (artifact.migrationPrograms ?? [])
     .map(program => ({ ...program, directory: packageDirectories[i]! })));
   const { migrations, packages } = await releaseMigrationSources(plan.projectDir, projectSha, packageDirectories, programs);
-  const manifest = assembleManifest({
-    id,
-    project: { ...projectSource, ...(projectPrefix ? { directory: projectPrefix } : {}),
-      ...(workspace !== projectPrefix && { workspace }) },
-    omni: omniSource,
+  return finish({
     artifacts: packed.built.map((artifact, i) => ({ ...artifact, packageSource: packages.get(packageDirectories[i]!)! })),
-    target: await (await import('./target-runtime.js')).targetRuntime(),
     artifactFailures: packed.failed,
     importedArtifacts: imported.artifacts,
     imports: imported.imports,
-    gates,
-    omnitron,
-    packages: builtPackages,
-    machine,
-    builtAt: new Date(),
-    builtBy: `${os.userInfo().username}@${os.hostname()}`,
     ...(statics ? { statics } : {}),
     migrations,
   });
-  validateReleaseOrigins(manifest);
-  const manifestPath = path.join(releaseRoot, 'manifest.json');
-  const manifestJson = `${JSON.stringify(manifest, null, 2)}\n`;
-  if (Buffer.byteLength(manifestJson) > MAX_RELEASE_MANIFEST_BYTES) throw Error('Release manifest exceeds 8 MiB');
-  fs.writeFileSync(manifestPath, manifestJson);
-
-  if (!options.keepSource) fs.rmSync(path.join(releaseRoot, 'src'), { recursive: true, force: true });
-
-  const passed = gates.filter((g) => g.status === 'passed').length;
-  say(`release ${id} — ${passed} of ${gates.length} gates passed, ${manifest.artifacts.length} artifact(s)`, 100, { gates });
-  return { id, root: releaseRoot, manifestPath, manifest, durationMs: Date.now() - started };
 }

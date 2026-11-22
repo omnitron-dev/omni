@@ -223,6 +223,7 @@ export class ReleaseService {
     const safeGates = (gates: BuildRecord['gates'] | NonNullable<BuildPhase['gates']>) =>
       gates.map(gate => gate.detail ? { ...gate, detail: safe(gate.detail) } : gate);
     const options: ReleaseBuildOptions = {
+      ...(request.publish ? { forPublication: true } : {}),
       ...(request.projectCommit ? { projectCommit: request.projectCommit } : {}),
       ...(request.omniCommit ? { omniCommit: request.omniCommit } : {}),
       ...(frameworkSource ? { frameworkSource } : {}),

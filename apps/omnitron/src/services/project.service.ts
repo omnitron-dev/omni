@@ -5251,7 +5251,7 @@ export class ProjectService extends EventEmitter {
               throw new Error(
                 `Deployment to ${nodeKey} failed for ${failed.length} of ${results.length} app(s): ` +
                   failed.map((f) => f.app).join(', ') +
-                  '. The node is in a mixed state — re-run the deployment once the cause is fixed.',
+                  '. Inspect the recorded steps with omnitron stack progress and the live applications with omnitron stack status before retrying.',
               );
             }
           }

@@ -231,6 +231,7 @@ The CLI is organized into command groups:
 - `omnitron stack stop <project> <stack>` -- Stop stack
 - `omnitron stack status <project> <stack>` -- Stack detail
 - `omnitron stack progress <project> <stack>` shows the latest recorded deployment step for each application and its operation ID. After a client acknowledgement times out, inspect progress and stack status before submitting another start.
+- A later stack start can reuse a sealed release in its content-addressed directory after an interruption. The node verifies the receipt, runtime binding and installed bytes again. If the previous launch lacks a matching health receipt, Omnitron activates the application and records its checksum after the health check succeeds. An explicit reinstall creates a new installation.
 - `omnitron stack runtime <project> <stack>` -- Runtime status JSON
 - `omnitron stack account <project> <stack> --username <name> [--role <role>] [--display-name <text>] [--vault-key <key>]` -- Make a named account with a platform role on a remote stack's node (the project's `scripts/operator-account.mjs` at its HEAD commit, under the node's deploy lease). The password comes back sealed to a key made for the run (the SSH layer masks anything that looks like a password) and goes to the daemon's vault only — read it with `omnitron secret get <key>`
 - `omnitron stack account <project> <stack> --show <name>` -- What the stand holds under a name: id, role, status, when made, last active; never a secret

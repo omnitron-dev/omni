@@ -70,6 +70,23 @@ describe('verified application execution authority', () => {
     await expect(service.checkRecipientApplicationArchives(login, bundle, [artifact])).rejects.toThrow('differs');
     expect(service.sshExec).not.toHaveBeenCalled();
   });
+  it('reuses a sealed installation after an interrupted start and still verifies the new launch', async () => {
+    const service = splitAccountFixture(true);
+    service.sshExec.mockImplementation(async (_target: object, command: string) =>
+      command.includes('.omnitron-release.json') ? 'verified' : '__none__');
+    service.registerNodeApps.mockResolvedValue({ changed: false });
+    service.appsOnline.mockResolvedValue(new Set([artifact.app]));
+    const [result] = await service.deployToStack([login], [artifact], 'fixture', {
+      stack: 'test', apps: [{ name: artifact.app, script: launch.file }],
+    });
+    expect(result).toMatchObject({ status: 'success', unchanged: false, checksum: artifact.checksum,
+      directory: artifact.version + '-' + artifact.tarballSha256 });
+    expect(service.sshExecData).not.toHaveBeenCalled();
+    expect(service.scpTransfer).not.toHaveBeenCalled();
+    expect(service.signalRemoteDaemon).toHaveBeenCalledOnce();
+    expect(service.verifyHealth).toHaveBeenCalledOnce();
+    expect(service.recordRunningArtifact.mock.calls[0].at(-1)).toBe(artifact.checksum);
+  });
   it.each([undefined, { ...runtime, execution: undefined },
     { ...runtime, execution: { ...runtime.execution, protocol: 2 } },
     { ...runtime, execution: { ...runtime.execution, mode: 'coupled' } },

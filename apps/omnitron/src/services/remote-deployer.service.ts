@@ -449,13 +449,18 @@ export class RemoteDeployer {
         );
         const sameInputs = artifactChanged(recorded, artifact.checksum) === false;
         const binding = inspected?.applicationRuntime;
-        if (sameInputs && (!artifact.release || (binding &&
-            (await this.sshExec(target, installedReleaseCheckCommand(remotePath, artifact.release, binding, nodeOptions), 120_000)).trim() === 'verified'))) {
+        // A stopped stack may already have a complete installation even though startup never recorded health.
+        // Stack activation verifies the launch separately. Standalone install-and-start still owns that step here.
+        const installed = artifact.release
+          ? binding && (sameInputs || options?.startAfterInstall === false) &&
+            (await this.sshExec(target, installedReleaseCheckCommand(remotePath, artifact.release, binding, nodeOptions), 120_000)).trim() === 'verified'
+          : sameInputs;
+        if (installed) {
           const duration = Date.now() - startTime;
-          this.emitProgress(nodeKey, artifact.app, 'success', 75, 'Already installed — unchanged');
+          this.emitProgress(nodeKey, artifact.app, 'success', 75, sameInputs ? 'Already installed — unchanged' : 'Installation verified; awaiting activation');
           this.logger.info(
-            { node: nodeKey, app: artifact.app, version: artifact.version, sha: recorded!.slice(0, 12) },
-            'The node already has this artifact — not transferring it again',
+            { node: nodeKey, app: artifact.app, version: artifact.version, runningChecksumMatched: sameInputs },
+            'Reusing the installed application',
           );
           return {
             node: nodeKey,
@@ -463,8 +468,9 @@ export class RemoteDeployer {
             version: artifact.version,
             status: 'success',
             duration,
-            unchanged: true,
+            unchanged: sameInputs,
             directory,
+            ...(artifact.checksum ? { checksum: artifact.checksum } : {}),
             ...(artifact.release && binding ? { migrationNode: binding.executable } : {}),
           };
         }
@@ -874,18 +880,6 @@ export class RemoteDeployer {
         for (const entry of landed) {
           const result = results.find((r) => r.app === entry.app && r.node === nodeKey);
           if (!result) continue;
-
-          // Before anything decides to restart it. The code that was just
-          // unpacked expects the schema its migrations produce; starting it
-          // on the schema they failed to produce is the one outcome worse
-          // than not deploying — it can come up healthy and fail on a request.
-          const schemaError = migrationFailed.get(entry.app);
-          if (schemaError !== undefined) {
-            result.status = 'failed';
-            result.error = `database migrations failed, so the new code was not started: ${schemaError}`;
-            this.emitProgress(result.node, entry.app, 'failed', 80, result.error);
-            continue;
-          }
 
           // An app whose artifact did not move, whose configuration did not
           // move, and which is running, has nothing that a restart would

@@ -23,6 +23,10 @@ export function readStackStart(stack: Pick<IStackInfo, 'status' | 'apps' | 'notU
   return { confirmed: outcome === 'confirmed', outcome, online, total, issues } as const;
 }
 
+export function isDeploymentInFlight(status: string): boolean {
+  return status !== 'success' && status !== 'failed' && status !== 'unconfirmed';
+}
+
 export function deploymentProgressKey(record: Pick<DeployProgressRecord, 'project' | 'stack' | 'node' | 'app'>): string {
   return JSON.stringify([record.project, record.stack, record.node, record.app]);
 }

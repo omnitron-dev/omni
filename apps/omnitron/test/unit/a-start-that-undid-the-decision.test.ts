@@ -24,12 +24,14 @@
  * cannot be asked is a node whose apps get started.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { stripComments } from '../../../../scripts/lib/strip-comments.mjs';
+import { RemoteDeployer, type DeployTarget } from '../../src/services/remote-deployer.service.js';
+import { nodeStackActivationCommand, NodeRegistrationUnconfirmed } from '../../src/services/node-registration.js';
 import { decideNodeStackStart } from '../../src/services/redeploy-decision.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -108,31 +110,63 @@ describe('the order the deployment asks in', () => {
     fs.readFileSync(path.join(here, '../../src/services/remote-deployer.service.ts'), 'utf8'),
   );
 
-  it('decides before it tells the node — the defect was the other order', () => {
-    const decides = deployer.indexOf('decideNodeStackStart({');
-    const tells = deployer.indexOf('`omnitron stack start ${shellEscape(project)}');
+  async function registration(onlineNames: string[], confirmed: boolean) {
+    const events: string[] = [];
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const service = new RemoteDeployer(logger as never, {} as never);
+    const remote = service as unknown as {
+      askNodeStatus(target: DeployTarget): Promise<{ raw: string; code: number; words: string }>;
+      sshExec(target: DeployTarget, command: string, timeout?: number, input?: string): Promise<string>;
+    };
+    const dir = '/opt/omnitron/projects/fixture';
+    let operation = '';
+    vi.spyOn(remote, 'askNodeStatus').mockImplementation(async () => {
+      events.push('observe');
+      const apps = onlineNames.map(name => ({ name, status: 'online' }));
+      return { raw: JSON.stringify({ data: { apps } }), code: 0, words: '' };
+    });
+    vi.spyOn(remote, 'sshExec').mockImplementation(async (_target, command, _timeout, input) => {
+      if (input) {
+        operation = JSON.parse(input).operation;
+        events.push('publish');
+        return JSON.stringify({ changed: false });
+      }
+      if (command.startsWith('omnitron project add ')) {
+        events.push('register');
+        return 'Project registered';
+      }
+      if (command === nodeStackActivationCommand(dir, operation, 'fixture', 'deployed')) {
+        events.push('start');
+        throw Object.assign(new Error('Reply lost'), { code: 'EXECUTION_OUTCOME_UNKNOWN' });
+      }
+      if (command === nodeStackActivationCommand(dir, operation, 'fixture', 'deployed', true)) {
+        events.push('read receipt');
+        return JSON.stringify({ operation, project: 'fixture', stack: 'deployed', confirmed, apps: ['api'] });
+      }
+      events.push('unexpected remote effect');
+      throw Error('Unexpected remote operation');
+    });
+    const result = service['registerNodeApps']({ host: 'node' }, 'fixture',
+      [{ name: 'api' }], [{ app: 'api', version: '1' }], undefined, undefined, 'test');
+    return { events, result };
+  }
 
-    expect(decides).toBeGreaterThan(-1);
-    expect(tells).toBeGreaterThan(-1);
-    expect(decides).toBeLessThan(tells);
+  it('observes the right project before deciding to leave its running app alone', async () => {
+    const { result, events } = await registration(['fixture/deployed/api'], false);
+    await expect(result).resolves.toEqual({ changed: false });
+    expect(events).toEqual(['publish', 'register', 'observe']);
   });
 
-  it('runs the node-side start under that decision rather than unconditionally', () => {
-    const tells = deployer.indexOf('`omnitron stack start ${shellEscape(project)}');
-    // The command now sits inside the `start.action === 'start'` arm; the
-    // text between the decision and the command is what makes it
-    // conditional, and an edit that drops the condition drops this too.
-    const between = deployer.slice(deployer.indexOf('decideNodeStackStart({'), tells);
-
-    expect(between).toMatch(/start\.action === 'start'/);
+  it('recovers the reply to the original start when only a different project was online', async () => {
+    const { result, events } = await registration(['other/deployed/api'], true);
+    await expect(result).resolves.toEqual({ changed: false });
+    expect(events).toEqual(['publish', 'register', 'observe', 'start', 'read receipt']);
   });
 
-  it('still asks the node what is online before deciding', () => {
-    const asks = deployer.indexOf('online: await this.appsOnline(target, project)');
-    const decides = deployer.indexOf('decideNodeStackStart({');
-
-    expect(asks).toBeGreaterThan(decides);
-    expect(asks).toBeLessThan(deployer.indexOf('`omnitron stack start ${shellEscape(project)}'));
+  it('preserves the boot definitions and reports an unconfirmed start when no receipt exists', async () => {
+    const { result, events } = await registration([], false);
+    await expect(result).rejects.toBeInstanceOf(NodeRegistrationUnconfirmed);
+    expect(events).toEqual(['publish', 'register', 'observe', 'start', 'read receipt']);
   });
 
   it('says which of the two it did, in words the reader can tell apart', () => {

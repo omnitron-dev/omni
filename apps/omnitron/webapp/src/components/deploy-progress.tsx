@@ -21,7 +21,7 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 
 import type { DeployProgressRecord } from '@omnitron-dev/omnitron/dto/services';
-import { deploymentProgressKey } from '@omnitron-dev/omnitron/release-reading';
+import { deploymentProgressKey, isDeploymentInFlight } from '@omnitron-dev/omnitron/release-reading';
 
 type Status = DeployProgressRecord['status'];
 
@@ -33,7 +33,7 @@ type Status = DeployProgressRecord['status'];
  * this taking four minutes" has an answer and the answer is that npm is
  * resolving a dependency tree on a machine in another country.
  */
-const PHASES: Record<Status, { label: string; tone: 'info' | 'success' | 'error' | 'default' }> = {
+const PHASES: Record<Status, { label: string; tone: 'info' | 'success' | 'error' | 'warning' | 'default' }> = {
   waiting: { label: 'Waiting for node', tone: 'info' },
   pending: { label: 'Connecting', tone: 'default' },
   transferring: { label: 'Transferring artifact', tone: 'info' },
@@ -43,12 +43,8 @@ const PHASES: Record<Status, { label: string; tone: 'info' | 'success' | 'error'
   verifying: { label: 'Verifying', tone: 'info' },
   success: { label: 'Deployed', tone: 'success' },
   failed: { label: 'Failed', tone: 'error' },
+  unconfirmed: { label: 'Awaiting confirmation', tone: 'warning' },
 };
-
-/** Phases that are still going, so a caller can separate live from finished. */
-export function isInFlight(status: Status): boolean {
-  return status !== 'success' && status !== 'failed';
-}
 
 /**
  * How long ago, in words that fit a chip.
@@ -69,13 +65,13 @@ export function ago(iso: string, now: number = Date.now()): string {
 }
 
 function awaitingUpdate(record: DeployProgressRecord, now: number, unavailable: boolean): boolean {
-  return isInFlight(record.status) && (unavailable || !Number.isFinite(Date.parse(record.at)) || now - Date.parse(record.at) > 90_000);
+  return isDeploymentInFlight(record.status) && (unavailable || !Number.isFinite(Date.parse(record.at)) || now - Date.parse(record.at) > 90_000);
 }
 
 function Row({ record, now, unavailable }: { record: DeployProgressRecord; now: number; unavailable: boolean }) {
   const phase = PHASES[record.status] ?? { label: record.status, tone: 'default' as const };
   const uncertain = awaitingUpdate(record, now, unavailable);
-  const live = isInFlight(record.status) && !uncertain;
+  const live = isDeploymentInFlight(record.status) && !uncertain;
 
   return (
     <Box sx={{ py: 1 }}>
@@ -159,7 +155,7 @@ export interface DeployProgressListProps {
 export function DeployProgressList({ records, now = Date.now(), unavailable = false }: DeployProgressListProps) {
   if (records.length === 0) return null;
 
-  const inFlight = records.filter((r) => isInFlight(r.status) && !awaitingUpdate(r, now, unavailable)).length;
+  const inFlight = records.filter((r) => isDeploymentInFlight(r.status) && !awaitingUpdate(r, now, unavailable)).length;
 
   return (
     <Box sx={{ mb: 3 }}>

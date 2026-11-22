@@ -163,14 +163,14 @@ describe('realtime store — deploy progress', () => {
     expect(store.getState().activeDeployProgress()).toHaveLength(1);
   });
 
-  it('drops a finished row on read, without waiting for another event', async () => {
+  it.each(['failed', 'unconfirmed'])('drops a %s row after the retention window', async (status) => {
     // The raw array is only pruned when the next event arrives, and a
     // deploy's LAST event is the terminal one — so a finished row would sit
     // there until something unrelated happened.
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
     const { store, handler } = await withDeployHandler();
 
-    handler(progress({ status: 'failed' }));
+    handler(progress({ status }));
     vi.setSystemTime(new Date('2026-01-01T00:01:00Z'));
 
     expect(store.getState().deployProgress).toHaveLength(1);

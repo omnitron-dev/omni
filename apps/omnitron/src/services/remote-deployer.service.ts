@@ -28,7 +28,7 @@ import {
 } from './remote-provisioner.js';
 import { installSteps, installPreflightCommand, versionDir, activateSteps, pruneSteps } from './bundle-builder.js';
 import { reachabilityRule, reachabilityCommand } from '../infrastructure/gateway-reachability.js';
-import { readNodeHealth, readNodeStatus } from '../project/node-app-health.js';
+import { projectNodeApps, readNodeHealth, readNodeStatus } from '../project/node-app-health.js';
 import {
   decideRedeploy,
   decideNodeStackStart,
@@ -70,7 +70,8 @@ import { hostOperationBarrierCommand, type HostOperationAllowance } from './host
 import { migrationOutput } from './migration-output.js';
 import { prepareRemoteMigration } from './migration-process.js';
 import { migrationDatabaseEnvironment, migrationExecutionTimeout, validateMigrationDestinations, validateMigrationOwners, orderMigrationPlacements, type MigrationRequest } from './migration-target.js';
-import { prepareNodeConfigPublication, restoreNodeConfigCommand } from './node-registration.js';
+import { confirmedNodeStackActivation, nodeStackActivationCommand, NodeRegistrationUnconfirmed, prepareNodeConfigPublication, restoreNodeConfigCommand } from './node-registration.js';
+import { LONG_REQUEST_TIMEOUT } from '../shared/dto/services.js';
 
 
 /**
@@ -859,8 +860,9 @@ export class RemoteDeployer {
         try { registration = await this.registerNodeApps(target, project, options.apps, landed, options.appEnv, options.alertSink, options.stack, owners.get(target)); }
         catch (error) {
           for (const result of results.filter(r => r.node === nodeKey && r.status === 'success')) {
-            result.status = 'failed'; result.error = `Node registration failed: ${(error as Error).message}`;
-            this.emitProgress(nodeKey, result.app, 'failed', 85, result.error);
+            result.status = error instanceof NodeRegistrationUnconfirmed ? 'unconfirmed' : 'failed';
+            result.error = error instanceof NodeRegistrationUnconfirmed ? error.message : `Node registration failed: ${(error as Error).message}`;
+            this.emitProgress(nodeKey, result.app, result.status, 85, result.error);
           }
           continue;
         }
@@ -1179,7 +1181,7 @@ export class RemoteDeployer {
     });
 
     const operation = crypto.randomUUID();
-    let published = false, publicationAttempted = false;
+    let published = false, publicationAttempted = false, activationSubmitted = false;
     try {
       if (expectedOwner) assertSameApplicationRuntime(expectedOwner, (await this.inspectInstalledBundle(target)).applicationRuntime);
       const publication = prepareNodeConfigPublication({ directory: dir, project, body, operation, artifacts: landed });
@@ -1209,28 +1211,22 @@ export class RemoteDeployer {
         online: await this.appsOnline(target, project),
       });
       if (expectedOwner) assertSameApplicationRuntime(expectedOwner, (await this.inspectInstalledBundle(target)).applicationRuntime);
-      const out =
-        start.action === 'start'
-          ? await this.sshExec(
-              target,
-              `omnitron stack start ${shellEscape(project)} ${shellEscape(NODE_STACK)} 2>&1`,
-              300_000,
-            )
-          : '';
-      void added;
-
-      // The node's CLI prints its refusals and exits zero — `omnitron project
-      // add` answered `No omnitron.config.ts found at …` and this logged
-      // `The node now knows what to run` over it, twice, while the node knew
-      // nothing. An exit code that does not carry the outcome means the
-      // OUTPUT is the outcome.
-      const refused = /\bno .*found\b|\bfailed\b|\berror\b|not found|cannot/i.test(`${added}\n${out}`);
-      if (refused) {
-        this.logger.error(
-          { host: target.host, project, dir, detail: `${added}\n${out}`.trim().slice(0, 300) },
-          'The node refused the apps it was given — its artifacts are installed and it will run none of them',
-        );
-        throw new Error('Node CLI refused project registration or stack start');
+      // Older project-add clients printed a refusal and exited zero.
+      if (/\bno .*found\b|\bfailed\b|\berror\b|not found|cannot/i.test(added)) {
+        throw new Error('Node CLI refused project registration');
+      }
+      if (start.action === 'start') {
+        activationSubmitted = true;
+        let receipt: string;
+        try {
+          receipt = await this.sshExec(target, nodeStackActivationCommand(dir, operation, project, NODE_STACK), LONG_REQUEST_TIMEOUT + 30_000);
+        } catch {
+          // This command only reads the first request's result on the same node.
+          receipt = await this.sshExec(target, nodeStackActivationCommand(dir, operation, project, NODE_STACK, true));
+        }
+        if (!confirmedNodeStackActivation(receipt, operation, project, NODE_STACK, landed.map(entry => entry.app))) {
+          throw Error('The node has not confirmed this registration and its complete application set');
+        }
       }
 
       this.logger.info(
@@ -1242,7 +1238,7 @@ export class RemoteDeployer {
           changed,
           started: start.action === 'start',
           because: start.because,
-          detail: out.trim().slice(0, 200),
+          operation,
         },
         start.action === 'start'
           ? 'The node now knows what to run'
@@ -1250,6 +1246,11 @@ export class RemoteDeployer {
       );
       return { changed };
     } catch (err) {
+      if (activationSubmitted || (err as { code?: string } | null)?.code === 'EXECUTION_OUTCOME_UNKNOWN') {
+        const message = `Node registration ${operation} is unconfirmed. Inspect the running applications and the registration in ${dir}/.registration-${operation} before retrying.`;
+        this.logger.warn({ host: target.host, project, operation }, message);
+        throw new NodeRegistrationUnconfirmed(message, { cause: err });
+      }
       this.logger.error(
         { host: target.host, project, dir, error: (err as Error).message },
         'Could not tell the node what to run — its artifacts are installed and its daemon does not know the apps',
@@ -2405,14 +2406,11 @@ export class RemoteDeployer {
         );
         return new Set();
       }
-      return new Set(
-        status.apps
-          .filter((app) => app.status === 'online' && typeof app.name === 'string')
-          .map((app) => {
-            const name = app.name as string;
-            return name.includes('/') ? name.slice(name.lastIndexOf('/') + 1) : name;
-          }),
-      );
+      const online = new Set<string>();
+      for (const [name, app] of projectNodeApps(status, project)) {
+        if (app.status === 'online') online.add(name);
+      }
+      return online;
     } catch (err) {
       this.logger.warn(
         { node: target.host, project, error: (err as Error).message },

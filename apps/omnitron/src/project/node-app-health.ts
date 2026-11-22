@@ -94,6 +94,23 @@ export function nodeAppName(project: string, app: string): string {
   return `${project}/${NODE_STACK}/${app}`;
 }
 
+/** Qualified entries take precedence over legacy bare definitions on the same node. */
+export function projectNodeApps(status: NodeStatus, project: string) {
+  const prefix = nodeAppName(project, '');
+  const apps = new Map<string, NodeStatus['apps'][number]>();
+  for (const app of status.apps) {
+    const name = app.name;
+    if (!name) continue;
+    if (name.startsWith(prefix)) {
+      const local = name.slice(prefix.length);
+      if (local && !local.includes('/')) apps.set(local, app);
+    } else if (!name.includes('/') && !apps.has(name)) {
+      apps.set(name, app);
+    }
+  }
+  return apps;
+}
+
 /** How many names to print before the rest become a count. */
 const NAMES_SHOWN = 6;
 
@@ -118,12 +135,7 @@ export function readNodeHealth(raw: string, appName: string, project: string): N
   const apps = status.apps;
   const qualified = nodeAppName(project, appName);
 
-  // The qualified name first, because it is the one a node answers with, and
-  // the bare name after it, because a node that was given a bare definition
-  // answers bare. Nothing else: an app of the same name under another
-  // project is another app, and reporting it as this one is precisely the
-  // false pass this file exists to prevent.
-  const app = apps.find((a) => a.name === qualified) ?? apps.find((a) => a.name === appName);
+  const app = projectNodeApps(status, project).get(appName);
   if (!app) {
     const names = apps.map((a) => a.name ?? '(unnamed)');
     const shown = names.slice(0, NAMES_SHOWN).join(', ');

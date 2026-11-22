@@ -31,7 +31,8 @@ import { render, screen } from '@testing-library/react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import '@testing-library/jest-dom/vitest';
 
-import { DeployProgressList, isInFlight, ago } from '../../webapp/src/components/deploy-progress';
+import { isDeploymentInFlight } from '../../src/shared/release-reading.js';
+import { DeployProgressList, ago } from '../../webapp/src/components/deploy-progress';
 
 type Record_ = Parameters<typeof DeployProgressList>[0]['records'][number];
 
@@ -59,13 +60,14 @@ const draw = (records: Record_[]) =>
 describe('a phase that is running is not a phase that is done', () => {
   it('counts every phase before success or failure as in flight', () => {
     for (const status of ['pending', 'transferring', 'extracting', 'installing', 'restarting', 'verifying'] as const) {
-      expect(isInFlight(status)).toBe(true);
+      expect(isDeploymentInFlight(status)).toBe(true);
     }
   });
 
-  it('counts the two that have stopped as not', () => {
-    expect(isInFlight('success')).toBe(false);
-    expect(isInFlight('failed')).toBe(false);
+  it('stops tracking completed, failed and unconfirmed operations', () => {
+    expect(isDeploymentInFlight('success')).toBe(false);
+    expect(isDeploymentInFlight('failed')).toBe(false);
+    expect(isDeploymentInFlight('unconfirmed')).toBe(false);
   });
 });
 
@@ -77,6 +79,12 @@ describe('the panel says which phase, not just that something is happening', () 
     // wait is expected and where it is being spent.
     draw([record({ status: 'installing' })]);
     expect(screen.getByText('Installing dependencies on the node')).toBeInTheDocument();
+  });
+
+  it('shows an unconfirmed registration with its reconciliation message', () => {
+    draw([record({ status: 'unconfirmed', message: 'Inspect the receiver registration before retrying' })]);
+    expect(screen.getByText('Awaiting confirmation')).toBeInTheDocument();
+    expect(screen.getByText('Inspect the receiver registration before retrying')).toBeInTheDocument();
   });
 
   it('distinguishes the phases that used to share one word', () => {

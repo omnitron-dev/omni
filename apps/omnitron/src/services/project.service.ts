@@ -5240,6 +5240,8 @@ export class ProjectService extends EventEmitter {
               // sink on the stack it runs; named as the master names the stack.
               ...(sink && { alertSink: { ...sink, host: `${projectName}/${stackName}` } }),
             });
+            const unconfirmed = results.find(result => result.status === 'unconfirmed');
+            if (unconfirmed) throw Error(unconfirmed.error ?? 'Remote application registration is unconfirmed');
             const failed = results.filter((r) => r.status === 'failed');
             if (failed.length > 0) {
               // The other half of the same invariant. Building every artifact

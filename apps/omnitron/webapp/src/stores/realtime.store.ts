@@ -9,7 +9,7 @@
  */
 
 import { create } from 'zustand';
-import { deploymentProgressKey } from '@omnitron-dev/omnitron/release-reading';
+import { deploymentProgressKey, isDeploymentInFlight } from '@omnitron-dev/omnitron/release-reading';
 import type { StackDeployProgressEvent } from '@omnitron-dev/omnitron/dto/events';
 import { getDaemonWsClient, type DaemonWsClient } from '../netron/ws-client.js';
 
@@ -108,7 +108,7 @@ const DEPLOY_ROW_TTL_MS = 30_000;
 /** Rows still worth showing: recent, or not finished. */
 function stillActive(entries: DeployProgressEntry[], now: number): DeployProgressEntry[] {
   return entries.filter(
-    (p) => now - p.receivedAt < DEPLOY_ROW_TTL_MS || (p.status !== 'success' && p.status !== 'failed')
+    (p) => now - p.receivedAt < DEPLOY_ROW_TTL_MS || isDeploymentInFlight(p.status)
   );
 }
 

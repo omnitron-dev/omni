@@ -6,8 +6,7 @@ import { constants } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { spawnSync } from 'node:child_process';
 import { stageFixtureExtractor } from './fixture-extractor.mjs';
 const dist = await fs.realpath(process.argv[2]);
 const sdk = name => import(pathToFileURL(path.join(dist, name + '.js')).href);
@@ -15,9 +14,16 @@ const { RuntimeInstallation } = await sdk('daemon/runtime-installation');
 const { runtimeArtifactDigest } = await sdk('shared/runtime-artifact');
 const { writePortableArchive, sha256File } = await sdk('release/portable-archive');
 const { importKernelBuild, resolveKernelBuild } = await sdk('services/kernel-catalog');
-const shell = promisify(execFile);
+const sshFixture = process.argv[3] === '--ssh-fixture';
+if (sshFixture) {
+  assert.equal(process.platform, 'linux');
+  assert.ok(process.getuid() > 0);
+  assert.equal((await fs.lstat('/run/omnitron-kernel-qa/disposable')).uid, 0);
+  assert.equal(os.homedir(), '/home/receiver');
+  await assert.rejects(fs.stat(path.join(os.homedir(), '.omnitron/runtime')), { code: 'ENOENT' });
+}
 const work = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'omnitron-kernel-transfer-')));
-const home = path.join(work, 'instance');
+const home = sshFixture ? path.join(os.homedir(), '.omnitron') : path.join(work, 'instance');
 const { kernelReceiverSource } = await sdk('services/kernel-distribution');
 const receiver = kernelReceiverSource();
 async function fixture(name, commit) {
@@ -39,7 +45,7 @@ async function fixture(name, commit) {
   }
   await fs.writeFile(path.join(compiled, 'daemon/managed-runtime.js'), 'export const readManagedRuntime=async home=>({directory:home})');
   await fs.writeFile(path.join(compiled, 'daemon/private-control-client.js'), `export const privateControlClient=async()=>({
-    service:{status:async()=>({state:'ready',operationPending:false,kernelHandoff:Number(process.env.FIXTURE_HANDOFF)})},
+    service:{status:async()=>({state:'ready',operationPending:false,kernelHandoff:Number(process.env.FIXTURE_HANDOFF??1)})},
     close:async()=>{}
   })`);
   await fs.copyFile(process.execPath, path.join(root, 'node'), constants.COPYFILE_FICLONE);
@@ -62,7 +68,7 @@ try {
   });
   const before = installation.selection();
   const registry = installation.directory;
-  const publisher = path.join(work, 'controller');
+  const publisher = sshFixture ? home : path.join(work, 'controller');
   let archive, entry;
   if (process.platform === 'linux') {
     entry = await importKernelBuild(next.root, publisher);
@@ -73,27 +79,38 @@ try {
     await writePortableArchive(next.root, archive, { preserveExecutableBits: true });
     entry = { commit: next.commit, ...next.manifest, artifact: next.manifest.sha256, archive: await sha256File(archive), bytes: (await fs.stat(archive)).size };
   }
-  const remoteFile = path.join(registry, '.incoming-' + entry.artifact, 'runtime.tgz');
+  const remoteFile = path.join(work, 'receipt-bound-archive.tgz');
   const cleanEnv = { ...process.env, OMNITRON_HOME: home };
   delete cleanEnv.NODE_PATH;
   delete cleanEnv.NODE_OPTIONS;
   const call = async (phase, capability = 1) => {
-    const result = await shell(selected.execPath, ['--input-type=module', '-e', 'process.umask(0o077);\n' + receiver, phase, registry, selected.runtimeHash, JSON.stringify(entry)], {
-      env: { ...cleanEnv, FIXTURE_HANDOFF: String(capability) },
-    });
-    return JSON.parse(result.stdout);
+    const file = phase === 'install' ? await fs.open(remoteFile, 'r') : null;
+    try {
+      const result = spawnSync(selected.execPath, ['--input-type=module', '-e', 'process.umask(0o077);\n' + receiver, phase, registry, selected.runtimeHash, JSON.stringify(entry)], {
+        encoding: 'utf8', stdio: [file?.fd ?? 'ignore', 'pipe', 'pipe'], env: { ...cleanEnv, FIXTURE_HANDOFF: String(capability) },
+      });
+      if (result.status !== 0) throw Error(result.stderr || String(result.error));
+      return JSON.parse(result.stdout);
+    } finally { await file?.close(); }
   };
-  await assert.rejects(call('prepare', 0), /kernelHandoff@1/);
-  assert.equal((await call('prepare')).installed, false);
-  await fs.copyFile(archive, remoteFile);
-  const file = await fs.open(remoteFile, 'r+');
-  try { await file.write(Buffer.from([0]), 0, 1, 0); } finally { await file.close(); }
-  await assert.rejects(call('install'), /transfer SHA-256 mismatch/);
-  assert.deepEqual(installation.selection(), before);
-  assert.equal((await call('prepare')).installed, false);
-  await fs.copyFile(archive, remoteFile);
-  assert.deepEqual(await call('install'), { installed: true, artifact: entry.artifact });
-  assert.equal((await call('prepare')).installed, true);
+  if (sshFixture) {
+    const { exerciseKernelSSH } = await import('./kernel-distribution-ssh.mjs');
+    await exerciseKernelSSH({ sdk, home, previous: selected, entry, installation, before });
+  } else {
+    await assert.rejects(call('prepare', 0), /kernelHandoff@1/);
+    assert.equal((await call('prepare')).installed, false);
+    await fs.copyFile(archive, remoteFile);
+    await fs.chmod(remoteFile, 0o600);
+    const file = await fs.open(remoteFile, 'r+');
+    try { await file.write(Buffer.from([0]), 0, 1, 0); } finally { await file.close(); }
+    await assert.rejects(call('install'), /transfer SHA-256 mismatch/);
+    assert.deepEqual(installation.selection(), before);
+    assert.equal((await call('prepare')).installed, false);
+    await fs.copyFile(archive, remoteFile);
+    await fs.chmod(remoteFile, 0o600);
+    assert.deepEqual(await call('install'), { installed: true, artifact: entry.artifact });
+    assert.equal((await call('prepare')).installed, true);
+  }
   assert.deepEqual(installation.selection(), before);
   assert.equal(installation.activation(), null);
   assert.equal((await installation.artifact(entry.artifact)).build.commit, next.commit);

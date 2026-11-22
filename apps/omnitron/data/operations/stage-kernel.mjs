@@ -1,7 +1,8 @@
 // Runs under the pinned deployment lease using the serving managed runtime's Node.
 import fs from 'node:fs/promises';
-import { createReadStream } from 'node:fs';
+import { createReadStream, fstatSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -35,7 +36,6 @@ try {
 const installation = await RuntimeInstallation.open(home, { existing: true });
 if (!installation) throw Error('Missing runtime installation');
 const inbox = path.join(registry, '.incoming-' + build.artifact);
-const archive = path.join(inbox, 'runtime.tgz');
 const confirmSelection = () => {
   if (installation.selection()?.current !== current || installation.activation()) throw Error('Runtime selection changed during staging');
 };
@@ -67,17 +67,21 @@ try {
     await capacity(build.bytes);
     await fs.mkdir(inbox, { mode: 0o700 });
   } else if (!installed) {
-    const dir = await fs.lstat(inbox), file = await fs.lstat(archive);
+    const dir = await fs.lstat(inbox), file = fstatSync(0);
     if (!dir.isDirectory() || dir.uid !== process.getuid() || dir.mode & 0o077 || await fs.realpath(inbox) !== inbox ||
-        !file.isFile() || file.nlink !== 1 || file.uid !== process.getuid() || file.mode & 0o022 || file.size !== build.bytes) throw Error('Unsafe or incomplete kernel transfer');
+        !file.isFile() || file.nlink !== 1 || ![0, process.getuid()].includes(file.uid) || file.mode & 0o077 ||
+        file.size !== build.bytes) throw Error('Unsafe or incomplete kernel transfer');
+    // Positioned reads reuse the same private, seekable descriptor even after
+    // the irreversible UID change. The receiver never opens an administrative path.
+    const archive = () => createReadStream(null, { fd: 0, start: 0, autoClose: false });
     try {
       const sum = createHash('sha256');
-      for await (const chunk of createReadStream(archive)) sum.update(chunk);
+      for await (const chunk of archive()) sum.update(chunk);
       if (sum.digest('hex') !== build.archive) throw Error('Kernel transfer SHA-256 mismatch');
       const tar = await loadRuntimeExtractor(pkg);
       let expanded = 0, invalid = false;
       const entries = new Map();
-      await tar.list({ file: archive, strict: true, onReadEntry(entry) {
+      await pipeline(archive(), tar.list({ strict: true, onReadEntry(entry) {
         const name = entry.path.replace(/\/$/, '');
         if (!name || name.includes('\0') || name.startsWith('/') || name.split('/').some(s => !s || s === '.' || s === '..') ||
             !['File','Directory','SymbolicLink'].includes(entry.type) || entries.has(name) || entries.size >= 200_000) { invalid = true; return; }
@@ -88,7 +92,7 @@ try {
         }
         expanded += entry.size;
         entries.set(name, { type: entry.type, mode: entry.mode });
-      } });
+      } }));
       for (const name of entries.keys()) {
         const parent = path.dirname(name);
         if (parent !== '.' && entries.get(parent)?.type !== 'Directory') invalid = true;
@@ -97,8 +101,8 @@ try {
       await capacity(2 * expanded);
       const payload = path.join(inbox, 'payload');
       await fs.mkdir(payload, { mode: 0o700 });
-      await tar.extract({ file: archive, cwd: payload, strict: true, preserveOwner: false, preservePaths: false,
-        chmod: true, umask: 0o022, dmode: 0o700, fmode: 0o600 });
+      await pipeline(archive(), tar.extract({ cwd: payload, strict: true, preserveOwner: false, preservePaths: false,
+        chmod: true, umask: 0o022, dmode: 0o700, fmode: 0o600 }));
       // tar's chmod option does not restore modes of newly created regular files.
       // A receiver running with umask 077 must retain the sealed executable bits.
       // Restore only validated regular entries inside the private transfer directory;

@@ -30,6 +30,7 @@
  * would be the masker's bypass.
  */
 
+import { createHash } from 'node:crypto';
 import { shellEscape } from '../shared/shell-escape.js';
 
 /**
@@ -41,6 +42,24 @@ import { shellEscape } from '../shared/shell-escape.js';
  */
 export function throughDataChannel(command: string): string {
   return `out=$(sh -c ${shellEscape(command)}); code=$?; printf '%s' "$out" | od -An -v -tx1 | tr -d ' \\n'; exit $code`;
+}
+
+/** SSH exec requests have a smaller packet budget than channel data. Size the
+ * fully quoted command, including the lease guard. A truncated stdin frame
+ * must finish verification before the remote shell can execute any of it. */
+export function dataChannelRequest(command: string): { command: string; stdin?: Buffer } {
+  const inline = throughDataChannel(command);
+  if (Buffer.byteLength(inline) <= 16 * 1024) return { command: inline };
+  const stdin = Buffer.from('{\n' + command + '\n} </dev/null\n');
+  const digest = createHash('sha256').update(stdin).digest('hex');
+  const receive = [
+    'body=$(cat && printf .) || exit 1',
+    'body=${body%.}',
+    'sum=$(printf %s "$body" | (if command -v sha256sum >/dev/null; then sha256sum; else shasum -a 256; fi)) || exit 1',
+    'test "${sum%% *}" = ' + digest + " || { echo 'Incomplete SSH command frame' >&2; exit 1; }",
+    'printf %s "$body" | /bin/sh',
+  ].join('\n');
+  return { command: throughDataChannel(receive), stdin };
 }
 
 /** The stdout the command printed, or why the channel cannot be read. */

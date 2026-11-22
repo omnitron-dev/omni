@@ -17,9 +17,10 @@
  * turns this red.
  */
 
+import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 
-import { fromDataChannel, throughDataChannel } from '../../src/execution/data-channel.js';
+import { dataChannelRequest, fromDataChannel, throughDataChannel } from '../../src/execution/data-channel.js';
 import { ExecutionService } from '../../src/execution/execution.service.js';
 import { LeaseHeldError, parseAcquire } from '../../src/services/node-deploy-lease.js';
 import { RemoteDeployer } from '../../src/services/remote-deployer.service.js';
@@ -84,6 +85,20 @@ describe('the data channel', () => {
     expect((rewritten as { because: string }).because).toMatch(/not hex/);
     expect(fromDataChannel('686')).toMatchObject({ ok: false, because: expect.stringMatching(/odd length/) });
   });
+});
+
+it('checks the entire large SSH script before executing it and preserves its output and exit code', () => {
+  const script = ["printf 'ran'", '#'.repeat(32 * 1024), 'exit 7'].join('\n');
+  const request = dataChannelRequest(script);
+  expect(Buffer.byteLength(request.command)).toBeLessThan(16 * 1024);
+  const run = (input?: Buffer) => spawnSync('/bin/sh', ['-c', request.command], { input, encoding: 'utf8' });
+  const complete = run(request.stdin);
+  expect(complete.status).toBe(7);
+  expect(fromDataChannel(complete.stdout)).toEqual({ ok: true, text: 'ran' });
+  const incomplete = run(request.stdin!.subarray(0, -1));
+  expect(incomplete.status).not.toBe(0);
+  expect(incomplete.stderr).toContain('Incomplete SSH command frame');
+  expect(incomplete.stdout).toBe('');
 });
 
 describe('a refused deployment names who holds the node', () => {

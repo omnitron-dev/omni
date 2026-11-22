@@ -55,7 +55,7 @@ import {
 } from './host-upgrade.js';
 import { gunzipSync } from 'node:zlib';
 import { shellEscape } from '../shared/shell-escape.js';
-import { fromDataChannel, throughDataChannel } from '../execution/data-channel.js';
+import { dataChannelRequest, fromDataChannel } from '../execution/data-channel.js';
 import { commandFailure } from '../execution/command-failure.js';
 import { activateManagedTarget, managedApplicationCommand, managedHostCommand, planManagedRollout, reconcileManagedTarget, workingTreeConnectionProbe,
   type ManagedHostEvidence, type ManagedHostRequest, type ManagedRolloutObservation, type ManagedSelection } from './managed-rollout.js';
@@ -1983,7 +1983,8 @@ export class RemoteDeployer {
   private async readFromNodeRaw(
     target: DeployTarget, command: string, timeoutMs: number,
   ): Promise<{ stdout: string; stderr: string; code: number }> {
-    const result = await this.execution.ssh(sshTargetOf(target), throughDataChannel(command), { timeout: timeoutMs });
+    const request = dataChannelRequest(command);
+    const result = await this.execution.ssh(sshTargetOf(target), request.command, { timeout: timeoutMs, ...(request.stdin && { stdin: request.stdin }) });
     const data = fromDataChannel(result.stdout);
     if (!data.ok) {
       return { stdout: '', stderr: [data.because, result.stderr].filter(Boolean).join(' | '), code: result.exitCode === 0 ? -2 : (result.exitCode ?? -1) };

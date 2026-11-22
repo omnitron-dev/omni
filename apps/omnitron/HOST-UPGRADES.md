@@ -30,6 +30,29 @@ without selecting it. The first guardian bootstrap cannot rely on a handoff
 protocol the incumbent does not implement. Prepare its management runtime through
 the separately qualified native installation path.
 
+Use `omnitron fleet rollout plan <commit> <node> --stage --wait` to install
+the matching catalog build and review the candidate. Apply the resulting plan
+separately when the owner is ready for a handoff. The SSH login holds the
+machine deployment lease. On a Linux host enrolled through a dedicated service
+account, SFTP places the qualified archive under the login's protected
+`/opt/omnitron/locks` directory. The receiver gets one read-only file
+descriptor. It rechecks the enrolled UID, GID and instance home, drops to that
+account before using its Node, and verifies the archive and installed tree.
+Allow space for the compressed archive on the administrative filesystem and
+twice the expanded tree on the runtime filesystem, each with 256 MiB headroom.
+Large inspection and receiver programs use SHA-256-checked SSH channel data.
+The recipient verifies the complete script before its execution.
+
+After a lost staging acknowledgment, inspect `fleet rollout status <id>`, the
+node deployment lease and execution record, the current selection and the
+target artifact. An unresolved writer requires inspected recovery. Once the
+writer is settled, a fresh stage request recognizes the verified installation
+or reuses the preserved archive bound to its catalog digest. A terminal blocked
+plan keeps its original result. Where the verified runtime tree already exists
+locally, the service owner can use `omnitron --json backend install <runtime>`
+and check the reported digest, `selected: false`, and original selection
+revision with `omnitron --json backend installation`.
+
 CLI and Console read the same durable plan ID and per-target outcomes. CLI omission
 of node arguments retains its public meaning of all registered remotes in name
 order. Console requires explicit targets or **All registered remote nodes**.

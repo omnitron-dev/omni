@@ -63,18 +63,35 @@ export function workingTreeConnectionProbe(): string {
 /** Recheck the enrolled account before running an application deployment command.
  * The SSH administrator holds the machine lease. Only the service owner receives
  * the command and its original stdin after an irreversible credential drop. */
-export function managedApplicationCommand(expected: ManagedApplicationAccount, command: string): string {
-  if (![expected.uid, expected.gid].every(id => Number.isSafeInteger(id) && id > 0) ||
+export function managedApplicationCommand(
+  expected: ManagedApplicationAccount | { instanceHome: string; uid?: undefined; gid?: undefined },
+  command: string | { artifact: string; args: string[] },
+): string {
+  if ((expected.uid !== undefined && ![expected.uid, expected.gid].every(id => Number.isSafeInteger(id) && id > 0)) ||
       typeof expected.instanceHome !== 'string' || !expected.instanceHome.startsWith('/') ||
-      !expected.instanceHome.endsWith('/.omnitron') || expected.instanceHome.includes('\0'))
+      (expected.uid !== undefined && !expected.instanceHome.endsWith('/.omnitron')) || expected.instanceHome.includes('\0'))
     throw Error('Invalid managed application account');
+  if (typeof command !== 'string' && !/^[a-f0-9]{64}$/.test(command.artifact)) throw Error('Invalid managed runtime artifact');
+  const launch = typeof command === 'string'
+    ? `const result=spawnSync('/bin/sh',['-c',${JSON.stringify(command)}],{stdio:'inherit'});`
+    : `const node=path.join(home,'runtime/releases',${JSON.stringify(command.artifact)},'node');
+       for(let dir=path.dirname(node);;dir=path.dirname(dir)){
+         const st=lstatSync(dir);
+         if(!st.isDirectory()||![0,process.getuid()].includes(st.uid)||(st.mode&0o022))throw Error('Unsafe managed runtime parent');
+         if(dir===path.dirname(dir))break;
+       }
+       const st=lstatSync(node);
+       if(!st.isFile()||st.uid!==process.getuid()||(st.mode&0o022)||realpathSync(node)!==node)throw Error('Unsafe managed runtime executable');
+       delete process.env.NODE_OPTIONS;delete process.env.NODE_PATH;
+       const result=spawnSync(node,${JSON.stringify(command.args)},{stdio:'inherit'});`;
   return remoteNode(`import os from 'node:os';import path from 'node:path';import {spawnSync} from 'node:child_process';
     ${managedAccountProgram()}
     const expected=${JSON.stringify(expected)};
-    const {account}=enterManagedInstance(path.join(os.userInfo().homedir,'.omnitron'));
-    if(!account||account.uid!==expected.uid||account.gid!==expected.gid||account.instanceHome!==expected.instanceHome)
+    const login=path.join(os.userInfo().homedir,'.omnitron');
+    const {home,account}=enterManagedInstance(expected.uid===undefined?(process.env.OMNITRON_HOME||login):login);
+    if(home!==expected.instanceHome||account?.uid!==expected.uid||account?.gid!==expected.gid)
       throw Error('The enrolled application account changed');
-    const result=spawnSync('/bin/sh',['-c',${JSON.stringify(command)}],{stdio:'inherit'});
+    ${launch}
     if(result.error||result.signal)throw Error('The service-owned deployment command was interrupted');
     process.exitCode=result.status??1;`);
 }

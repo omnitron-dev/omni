@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.15] - 2026-11-22
+
 ### Added
 
 - Studio project rooms can connect agents from multiple registered adapters, assign work to team members and share memory within the room. Project interviews produce a starter that an operator can review before creating the project.

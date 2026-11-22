@@ -268,6 +268,60 @@ describe('prepared source of one registered remote release', () => {
     expect(mesh.invokeOnSlave).not.toHaveBeenCalled();
   });
 
+  describe('first native health probes on a release recipient', () => {
+    const scope = { project: 'sample', stack: 'test' };
+    const waiting = { name: 'search', status: 'running', error: 'container health probe is starting' };
+    const pending = { ready: false, failed: [waiting], missing: [] };
+    const container = { ...scope, name: 'search', containerId: 'f'.repeat(64), status: 'running', health: 'healthy' };
+    const full = { ready: true, detail: 'all services ready' };
+    function reconcile(responses: unknown[]) {
+      const apply = vi.fn(async (_method: string) => responses.shift());
+      const service = fixture().service;
+      const provision = Reflect.get(service, 'provisionNodeInfrastructure').bind(service);
+      const result = provision({ pinnedService: () => apply }, candidateNode, {}, {}, scope, source, undefined,
+        { mode: 'reconcile', managementIdentity: 'fixture-management' });
+      return { result, apply };
+    }
+    it('checks the same IDs until healthy, then requires a fresh complete recipient verdict', async () => {
+      vi.useFakeTimers();
+      try {
+        const { result, apply } = reconcile([pending, [{ ...container, health: 'starting' }], [container], full]);
+        await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(2));
+        await vi.advanceTimersByTimeAsync(2000);
+        await expect(result).resolves.toEqual(full);
+        expect(apply.mock.calls.map(([method]) => method)).toEqual(['provisionStack', 'listContainers', 'listContainers', 'provisionStack']);
+      } finally { vi.useRealTimers(); }
+    });
+    it.each([
+      ['missing', { ...pending, missing: ['db'] }], ['host failed', { ...pending, failed: [waiting, { name: 'db', status: 'failed' }] }],
+      ['unhealthy', { ...pending, failed: [{ ...waiting, error: 'container health probe is unhealthy' }] }],
+    ])('preserves the initial %s refusal', async (_name, report) => {
+      const { result, apply } = reconcile([report]);
+      await expect(result).resolves.toMatchObject({ ready: false });
+      expect(apply).toHaveBeenCalledTimes(1);
+    });
+    it.each([[], [{ ...container, stack: 'other' }], [{ ...container, health: 'unhealthy' }], [container, container]].map(observed => ({ observed })))(
+      'rejects an incomplete or conflicting observation %#', async ({ observed }) => {
+        const { result, apply } = reconcile([pending, observed]);
+        await expect(result).resolves.toMatchObject({ ready: false });
+        expect(apply).toHaveBeenCalledTimes(2);
+      });
+    it('refuses to continue after the same name acquires another container ID', async () => {
+      vi.useFakeTimers();
+      try {
+        const { result, apply } = reconcile([pending, [{ ...container, health: 'starting' }], [{ ...container, containerId: 'a'.repeat(64) }]]);
+        await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(2));
+        await vi.advanceTimersByTimeAsync(2000);
+        await expect(result).resolves.toMatchObject({ ready: false });
+        expect(apply).toHaveBeenCalledTimes(3);
+      } finally { vi.useRealTimers(); }
+    });
+    it('keeps a subsequent host or setup failure', async () => {
+      const { result } = reconcile([pending, [container], { ready: false, detail: 'host service failed', failed: [], missing: [] }]);
+      await expect(result).resolves.toEqual({ ready: false, detail: 'host service failed' });
+    });
+  });
+
   it('rejects release topology derived from a secret even when the project returns only its hash', async () => {
     const derived = path.join(root, 'derived'), scope = path.join(root, 'derived-store');
     git(root, 'clone', '-q', '--no-local', source, derived);

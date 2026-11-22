@@ -279,6 +279,8 @@ omnitron stack start acme prod --infrastructure reconcile
 omnitron stack status acme prod --json
 ```
 
+When a pinned recipient reports that its only outstanding checks are the first Docker health probes, the controller follows those containers on the authenticated connection for up to two minutes. It checks the complete provisioning result again before installing applications. The container IDs and owning stack must remain the same. A failed host service, missing container or failed probe keeps the release stopped.
+
 Selection rechecks the stopped owner on its enrolled connection and commits the placement to this stack’s existing target journal. The receipt binds both node identities, the confirmed stop, the release source and the journal generation. The old applications must still be stopped when the first deployment takes its lease. An accepted selection survives controller restarts. Status, stop and automatic attachment use the selected recipient. Deployment uses its verified archives and producer declarations. The registered development stack retains its own configuration. Existing cluster-managed allocations continue to require their recipient-fenced deployment adapter.
 
 For a return to the original registration, first complete a reviewed full stop on the replacement. Run `select-placement acme prod --from-node "$new_id" --restore-registration --json`, then repeat with its `--review` digest. A return checks the original stable endpoint, SSH enrollment and clean Git commit. To deploy there, specify a release at that exact commit. Data promotion, recovery and signer custody each require their own positive evidence before enabling writers.

@@ -55,7 +55,7 @@ import {
   containerResources,
   containerResourcesMatch,
 } from './container-runtime.js';
-import { summariseProvisioning, describeProvisioning, retainProvisioningObservation } from './provisioning-outcome.js';
+import { CONTAINER_START_TIMEOUT, summariseProvisioning, describeProvisioning, retainProvisioningObservation } from './provisioning-outcome.js';
 import {
   OMNITRON_PG_PORT,
   OMNITRON_PG_USER,
@@ -64,7 +64,6 @@ import {
 } from '../database/connection.js';
 
 const RECONCILE_INTERVAL = 30_000; // 30s health sweep
-const STARTUP_TIMEOUT = 120_000; // 2min max per service
 /** Restart circuit-breaker: first failed-restart backoff, doubled each failure. */
 const RESTART_BACKOFF_BASE = 30_000; // 30s
 /** Restart circuit-breaker: backoff ceiling (30s → 1m → 2m … capped here). */
@@ -1021,7 +1020,7 @@ export class InfrastructureService {
     const { promisify } = await import('node:util');
     const inspect = promisify(execFile);
     const startTime = Date.now();
-    while (Date.now() - startTime < STARTUP_TIMEOUT) {
+    while (Date.now() - startTime < CONTAINER_START_TIMEOUT) {
       let state: { Status: string; Health?: { Status: string } } | undefined;
       try {
         const { stdout } = await inspect('docker', ['inspect', '--format', '{{json .State}}', '--', name],
@@ -1035,7 +1034,7 @@ export class InfrastructureService {
       await new Promise((r) => setTimeout(r, 2000));
     }
 
-    throw Error(`Container ${name} did not become healthy within ${STARTUP_TIMEOUT}ms`);
+    throw Error(`Container ${name} did not become healthy within ${CONTAINER_START_TIMEOUT}ms`);
   }
 
   // ===========================================================================

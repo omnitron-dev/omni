@@ -124,7 +124,7 @@ import type {
 } from '../shared/dto/project.js';
 import { summariseSync } from './sync-summary.js';
 import { StackInfrastructureManager } from '../infrastructure/stack-infra-manager.js';
-import { describeProvisioning, summariseProvisioning, stackServiceObservation } from '../infrastructure/provisioning-outcome.js';
+import { describeProvisioning, summariseProvisioning, stackServiceObservation, waitForProvisionedContainers } from '../infrastructure/provisioning-outcome.js';
 import { resolveStack, resolvedConfigToEnv } from '../project/config-resolver.js';
 import { resolveStartupOrder } from '../orchestrator/dependency-resolver.js';
 import { SlaveConnector } from '../cluster/slave-connector.js';
@@ -5879,11 +5879,17 @@ export class ProjectService extends EventEmitter {
       const request = { config: configForNode, services: servicesForNode, ...(owner ?? {}), configFiles, staticRoots, staticLinkRoots,
         ...(preserving ? { infrastructure: 'preserve', staticDigests, ...(authority?.review && { review: authority.review }) }
           : authority?.mode === 'reconcile' ? { infrastructure: 'reconcile' } : {}) };
-      const report = (pinned ? await pinned(authority?.mode === 'review' ? 'reviewStack' : 'provisionStack', request) :
+      const provision = async () => (pinned ? await pinned(authority?.mode === 'review' ? 'reviewStack' : 'provisionStack', request) :
         await connector.invokeOnSlave(host, port, 'OmnitronInfra', authority?.mode === 'review' ? 'reviewStack' : 'provisionStack',
           [request], { retryOnDisconnect: true })) as ({ ready?: boolean; detail?: string; running?: string[]; failed?: unknown[]; missing?: string[]; preservation?: import('../shared/dto/project.js').ExistingInfrastructureReview }
         & Partial<import('../shared/dto/project.js').ExistingInfrastructureReview>) | undefined;
 
+      let report = await provision();
+      if (!preserving && pinned && owner && await waitForProvisionedContainers(report, owner,
+        async () => await pinned('listContainers', undefined) as import('../infrastructure/types.js').ContainerState[])) {
+        // Only the recipient can confirm the complete verdict, including host services and setup.
+        report = await provision();
+      }
       const preservation = authority?.mode === 'review' ? report as import('../shared/dto/project.js').ExistingInfrastructureReview : report?.preservation;
       if (preserving) {
         if (preservation?.protocol !== 1 || preservation.mode !== 'preserve' || !Array.isArray(preservation.checks) || !Array.isArray(preservation.containers))

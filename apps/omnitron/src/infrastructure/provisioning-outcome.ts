@@ -37,6 +37,38 @@
 
 import type { ContainerState, ContainerStatus } from './types.js';
 import type { IStackInfraStatus } from '../shared/dto/project.js';
+import type { StackExecutionScope } from '../shared/dto/stack-execution.js';
+
+export const CONTAINER_START_TIMEOUT = 120_000;
+
+/** A recipient may return while a background container is still running its first native probe. */
+export async function waitForProvisionedContainers(
+  report: { ready?: boolean; failed?: unknown[]; missing?: string[] } | undefined, scope: StackExecutionScope,
+  inspect: () => Promise<readonly ContainerState[]>,
+): Promise<boolean> {
+  if (report?.ready !== false || !Array.isArray(report.missing) || report.missing.length || !report.failed?.length) return false;
+  const pending = new Map<string, string | undefined>();
+  for (const failure of report.failed) {
+    const row = failure as Partial<ServiceOutcome> | null;
+    if (!row || typeof row.name !== 'string' || !row.name || pending.has(row.name) ||
+        row.status !== 'running' || row.error !== 'container health probe is starting') return false;
+    pending.set(row.name, undefined);
+  }
+  const deadline = Date.now() + CONTAINER_START_TIMEOUT;
+  while (Date.now() < deadline) {
+    const containers = (await inspect()).filter(row => pending.has(row.name));
+    if (containers.length !== pending.size || new Set(containers.map(row => row.name)).size !== pending.size) return false;
+    for (const row of containers) {
+      const id = pending.get(row.name);
+      if (!row.containerId || row.project !== scope.project || row.stack !== scope.stack || (id && row.containerId !== id) ||
+          row.status !== 'running' || (row.health !== 'healthy' && row.health !== 'starting')) return false;
+      pending.set(row.name, row.containerId);
+    }
+    if (containers.every(row => row.health === 'healthy')) return Date.now() < deadline;
+    await new Promise(resolve => setTimeout(resolve, 2_000));
+  }
+  return false;
+}
 
 export interface ServiceOutcome {
   name: string;

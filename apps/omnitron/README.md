@@ -306,6 +306,10 @@ The controller resolves each referenced key once per configuration. A missing
 required entry stops delivery before credentials are sent to the node. The
 error lists the missing names. Use `omnitron secret list` to check them.
 
+A bare-metal service can declare Debian packages with `apt.latest`. Host inspection reads the existing system indices. During reconciliation, an unprivileged Linux backend refreshes an empty, mode-0700 APT directory once for the operation. It uses the host's enabled sources, signing keys and pin preferences, resolves candidates from those same refreshed indices and checks the installed versions and holds in the system package database. The private refresh skips system update hooks and removes its temporary files when reconciliation finishes. Unreachable or expired indices and source settings that waive signature or validity checks block admission.
+
+An already-current package needs no administrative action. If a package is missing or behind, the service reports the exact candidate and its repository. An administrator can review and install that version through the host's normal package-management procedure, then retry reconciliation. A backend running as root retains the system refresh, native solver preview and exact-version install.
+
 A bare-metal service can declare `binaryRelease` in its configuration or in a network
 variant. Declare the release name, version, executable names and one archive per
 Linux machine architecture. Pin each archive's SHA-256 from the verified upstream

@@ -1,3 +1,6 @@
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { AptPackageReading } from '../shared/dto/host-inspection.js';
 import type { HostRunner } from './bare-metal-runner.js';
 import type { AptPackagePolicy } from './types.js';
@@ -58,14 +61,18 @@ function blocked(
 }
 
 /** Reads the installed package database and local repository indices. Never downloads or installs. */
-export async function inspectAptPackages(policy: AptPackagePolicy, host: Host): Promise<AptPackageReading[]> {
+export async function inspectAptPackages(
+  policy: AptPackagePolicy,
+  host: Host,
+  aptOptions: readonly string[] = []
+): Promise<AptPackageReading[]> {
   const error = validate(policy);
   if (error) return [blocked('APT', error)];
   const names = policy.latest;
   const [selection, available, holds, os] = await Promise.all([
-    host.run([...cLocale, 'apt-cache', 'policy', '--', ...names]),
-    host.run([...cLocale, 'apt-cache', 'madison', '--', ...names]),
-    host.run([...cLocale, 'apt-mark', 'showhold', '--', ...names]),
+    host.run([...cLocale, 'apt-cache', ...aptOptions, 'policy', '--', ...names]),
+    host.run([...cLocale, 'apt-cache', ...aptOptions, 'madison', '--', ...names]),
+    host.run([...cLocale, 'apt-mark', ...aptOptions, 'showhold', '--', ...names]),
     policy.repository ? host.readFile('/etc/os-release').catch(() => null) : null,
   ]);
   const failed = [selection, available, holds].find((result) => !result.ok);
@@ -128,10 +135,140 @@ export async function inspectAptPackages(policy: AptPackagePolicy, host: Host): 
   );
 }
 
-/** An explicit provisioning operation refreshes metadata before resolving exact versions. */
-export async function refreshAptIndices(host: Host): Promise<void> {
-  const result = await host.run([...cLocale, 'apt-get', '--error-on=any', 'update'], { timeoutMs: 120_000 });
-  if (!result.ok) throw new Error('Cannot refresh APT indices: ' + diagnostic(result.stderr));
+export type AptPackageReader = (policy: AptPackagePolicy) => Promise<AptPackageReading[]>;
+
+// Per-source settings take precedence over APT's Acquire defaults. A successful
+// update with Trusted=yes can even omit a Release file. Preserve the host's
+// sources and Signed-By restrictions, and reject exceptions in active entries.
+function weakSource(options: string): boolean {
+  const fields = options.matchAll(
+    /(?:^|\s)(trusted|allow-(?:insecure|weak|downgrade-to-insecure)|check-(?:date|valid-until)|valid-until-min)\s*[:=][ \t]*(\S*)/gi
+  );
+  for (const [, key, raw] of fields) {
+    const value = raw!.replace(/^["']|["']$/g, '').toLowerCase();
+    if (key!.toLowerCase() === 'valid-until-min') {
+      if (value !== '0') return true;
+    } else if (
+      key!.toLowerCase().startsWith('check-')
+        ? !['yes', 'true', 'on', '1'].includes(value)
+        : !['no', 'false', 'off', '0'].includes(value)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function privateAptSources(host: Host, directory: string): Promise<string[]> {
+  const found = await host.run([
+    ...cLocale,
+    'apt-config',
+    'shell',
+    'MAIN',
+    'Dir::Etc::sourcelist/f',
+    'PARTS',
+    'Dir::Etc::sourceparts/d',
+  ]);
+  const main = found.stdout.match(/^MAIN='(\/[^'\r\n]*)'$/m)?.[1];
+  const parts = found.stdout.match(/^PARTS='(\/[^'\r\n]*)'$/m)?.[1];
+  if (!found.ok || !main || !parts) throw Error('Cannot resolve the configured APT sources.');
+  const sources = join(directory, 'sources.list.d');
+  const source = join(directory, main.endsWith('.sources') ? 'main.sources' : 'main.list');
+  await mkdir(sources, { mode: 0o700 });
+  async function copy(from: string, to: string) {
+    const content = await host.readFile(from);
+    if (content === null) return;
+    const lines = content.replace(/^[ \t]*#[^\n]*\n?/gm, '');
+    const unsafe = from.endsWith('.sources')
+      ? lines.split(/\r?\n[ \t]*\r?\n/).some((stanza) => {
+          const fields = stanza.replace(/\r?\n[ \t]+/g, ' ');
+          return !/^Enabled:\s*(?:no|false|off|0)\s*$/im.test(fields) && weakSource(fields);
+        })
+      : lines
+          .split('\n')
+          .some((line) => weakSource((line.match(/^\s*deb(?:-src)?\s+\[([^\]]+)\]/)?.[1] ?? '').replace(/["']/g, '')));
+    if (unsafe) throw Error('Cannot refresh APT indices: a configured source disables signature or validity checks.');
+    await writeFile(to, content, { flag: 'wx', mode: 0o600 });
+  }
+  await copy(main, source);
+  let names: string[];
+  try {
+    names = await readdir(parts);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    names = [];
+  }
+  for (const name of names.filter((entry) => /^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*\.(list|sources)$/.test(entry))) {
+    await copy(join(parts, name), join(sources, name));
+  }
+  return ['-o', 'Dir::Etc::sourcelist=' + source, '-o', 'Dir::Etc::sourceparts=' + sources];
+}
+
+/** One successful refresh per reconciliation. Inspection outside this scope remains read-only. */
+export async function withFreshAptPackages<T>(
+  host: Host,
+  reconcile: (read: AptPackageReader) => Promise<T>
+): Promise<T> {
+  let directory: string | undefined;
+  let refresh: Promise<string[]> | undefined;
+  async function update(): Promise<string[]> {
+    const identity = await host.run(['id', '-u']);
+    if (!identity.ok || !/^\d+$/.test(identity.stdout.trim())) throw Error('Cannot determine APT provisioning UID.');
+    const options: string[] = [];
+    if (identity.stdout.trim() !== '0') {
+      directory = await mkdtemp(join(tmpdir(), 'omnitron-apt-'));
+      const lists = join(directory, 'lists');
+      await mkdir(join(lists, 'partial'), { recursive: true, mode: 0o700 });
+      const config = join(directory, 'apt.conf');
+      // System update hooks may change shared caches. A private refresh needs only APT's signed indices.
+      await writeFile(
+        config,
+        [
+          '#clear APT::Update::Pre-Invoke;',
+          '#clear APT::Update::Post-Invoke;',
+          '#clear APT::Update::Post-Invoke-Success;',
+          'Dir::Cache::pkgcache "";',
+          'Dir::Cache::srcpkgcache "";',
+          'Acquire::Languages "none";',
+          'Acquire::AllowInsecureRepositories "false";',
+          'Acquire::AllowWeakRepositories "false";',
+          'Acquire::AllowDowngradeToInsecureRepositories "false";',
+          '#clear Acquire::Min-ValidTime;',
+          'Acquire::Min-ValidTime "0";',
+          'Acquire::Check-Date "true";',
+          'Acquire::Check-Valid-Until "true";',
+        ].join('\n'),
+        { flag: 'wx', mode: 0o600 }
+      );
+      options.push('-c', config, '-o', 'Dir::State::lists=' + lists, ...(await privateAptSources(host, directory)));
+    }
+    const result = await host.run([...cLocale, 'apt-get', ...options, '--error-on=any', 'update'], {
+      timeoutMs: 120_000,
+    });
+    if (!result.ok) throw Error('Cannot refresh APT indices: ' + diagnostic(result.stderr));
+    return options;
+  }
+
+  try {
+    return await reconcile(async (policy) => {
+      const invalid = validate(policy);
+      if (invalid) return [blocked('APT', invalid)];
+      const options = await (refresh ??= update());
+      const readings = await inspectAptPackages(policy, host, options);
+      return readings.map((p) =>
+        options.length && (p.state === 'install' || p.state === 'upgrade')
+          ? blocked(
+              p.name,
+              `Have the host administrator install ${p.name}=${p.candidate} from ${p.detail}, then retry provisioning.`,
+              p.installed,
+              p.candidate
+            )
+          : p
+      );
+    });
+  } finally {
+    if (directory) await rm(directory, { recursive: true, force: true });
+  }
 }
 
 export type AptChange = { name: string; installed: string | null; candidate: string };

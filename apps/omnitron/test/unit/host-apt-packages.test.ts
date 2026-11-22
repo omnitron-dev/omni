@@ -1,9 +1,11 @@
+import { readFile, stat } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   inspectAptPackages,
   installAptPackages,
   previewAptTransaction,
-  refreshAptIndices,
+  withFreshAptPackages,
 } from '../../src/infrastructure/apt-packages.js';
 import { planBareMetal, selectBareMetal, type BareMetalObservation } from '../../src/infrastructure/bare-metal-plan.js';
 import type { CommandResult } from '../../src/infrastructure/bare-metal-runner.js';
@@ -35,12 +37,19 @@ function fixture() {
     download: repository + '/pool/proxy.deb',
     apply: true,
     refresh: true,
+    uid: '0',
+    sourceFile: '/apt-test-fixture.list',
+    sourceContent: 'deb [signed-by=/public/key.gpg] https://packages.example.org noble main\n',
   };
   const calls: string[][] = [];
   const host = {
-    readFile: async () => 'NAME="Ubuntu"\nVERSION_CODENAME=noble\n',
+    readFile: async (path: string) =>
+      path === state.sourceFile ? state.sourceContent : 'NAME="Ubuntu"\nVERSION_CODENAME=noble\n',
     run: async (argv: readonly string[]) => {
       calls.push([...argv]);
+      if (argv[0] === 'id') return ok(state.uid);
+      if (argv.includes('apt-config'))
+        return ok("MAIN='" + state.sourceFile + "'\nPARTS='/absent-apt-qualification-dir/'\n");
       if (argv.includes('policy'))
         return ok(
           'proxy:\n  Installed: ' +
@@ -187,8 +196,94 @@ describe('declared host packages', () => {
   it('does not present stale metadata as a successful refresh or disclose repository credentials', async () => {
     const { host, state } = fixture();
     state.refresh = false;
-    await expect(refreshAptIndices(host)).rejects.toThrow('Cannot refresh APT indices: offline at https://example.org');
+    await expect(withFreshAptPackages(host, (read) => read(policy))).rejects.toThrow(
+      'Cannot refresh APT indices: offline at https://example.org'
+    );
     state.source = 'https://user:credential@example.org/private';
     expect((await inspectAptPackages({ latest: ['proxy'] }, host))[0]?.detail).not.toContain('credential');
+  });
+
+  it('shares one private signed refresh and refuses an exact installation outside the administrator account', async () => {
+    const { host, state, calls } = fixture();
+    state.uid = '1234';
+    state.installed = state.candidate;
+    let file: string;
+    await withFreshAptPackages(host, async (read) => {
+      const current = await Promise.all([read(policy), read(policy)]);
+      expect(current.map((rows) => rows[0]?.state)).toEqual(['current', 'current']);
+      const updates = calls.filter((argv) => argv.includes('update'));
+      expect(updates).toHaveLength(1);
+      const options = updates[0]!.slice(updates[0]!.indexOf('-c'), -2);
+      file = options[1]!;
+      expect(options).toEqual([
+        '-c',
+        file,
+        '-o',
+        'Dir::State::lists=' + dirname(file) + '/lists',
+        '-o',
+        'Dir::Etc::sourcelist=' + dirname(file) + '/main.list',
+        '-o',
+        'Dir::Etc::sourceparts=' + dirname(file) + '/sources.list.d',
+      ]);
+      expect(await readFile(dirname(file) + '/main.list', 'utf8')).toBe(state.sourceContent);
+      expect((await stat(dirname(file))).mode & 0o777).toBe(0o700);
+      expect(await readFile(file, 'utf8')).toContain('Acquire::Check-Valid-Until "true";');
+      expect(
+        calls
+          .filter((argv) => argv.includes('apt-cache') || argv.includes('apt-mark'))
+          .every((argv) => JSON.stringify(argv.slice(3, 3 + options.length)) === JSON.stringify(options))
+      ).toBe(true);
+      state.installed = '';
+      expect((await read(policy))[0]).toMatchObject({
+        state: 'blocked',
+        installed: null,
+        candidate: '2',
+        detail: expect.stringContaining('proxy=2'),
+      });
+      expect(calls.flat()).not.toContain('install');
+    });
+    await expect(stat(file!)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('rejects per-source exceptions before using either .list or deb822 metadata', async () => {
+    for (const [ext, content] of [
+      ['list', 'deb [trusted="yes"] https://packages.example.org stable main'],
+      ['list', 'deb [check-valid-until=no] https://packages.example.org stable main'],
+      ['sources', 'Types: deb\nURIs: https://packages.example.org\nTrusted: yes\n'],
+      ['sources', 'Types: deb\nURIs: https://packages.example.org\nValid-Until-Min: 3600\n'],
+    ]) {
+      const { host, state, calls } = fixture();
+      state.uid = '1234';
+      state.sourceFile = '/apt-test-fixture.' + ext;
+      state.sourceContent = content!;
+      await expect(withFreshAptPackages(host, (read) => read(policy))).rejects.toThrow(
+        'disables signature or validity checks'
+      );
+      expect(calls.flat()).not.toContain('update');
+    }
+  });
+
+  it('does not consult older indices when the unprivileged refresh fails', async () => {
+    const { host, state, calls } = fixture();
+    state.uid = '1234';
+    state.refresh = false;
+    await expect(withFreshAptPackages(host, (read) => read(policy))).rejects.toThrow('Cannot refresh APT indices');
+    expect(calls.flat()).not.toContain('policy');
+    const update = calls.find((argv) => argv.includes('update'))!;
+    await expect(stat(update[update.indexOf('-c') + 1]!)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('retains the administrative system refresh and reviewed upgrade', async () => {
+    const { host, calls } = fixture();
+    const readings = await withFreshAptPackages(host, (read) => read(policy));
+    expect(readings[0]?.state).toBe('upgrade');
+    expect(calls.find((argv) => argv.includes('update'))).toEqual([
+      'env',
+      'LC_ALL=C',
+      'apt-get',
+      '--error-on=any',
+      'update',
+    ]);
+    expect(calls.flat()).not.toContain('-c');
   });
 });

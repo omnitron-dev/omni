@@ -15,7 +15,7 @@
 
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import { hostFileRefusals, type AdoptionObservation, type BareMetalAction, type BareMetalObservation, type BareMetalSpec } from './bare-metal-plan.js';
-import { aptChanges, inspectAptPackages, installAptPackages, previewAptTransaction } from './apt-packages.js';
+import { aptChanges, inspectAptPackages, installAptPackages, previewAptTransaction, type AptPackageReader } from './apt-packages.js';
 import { privateHostConfigEvidence, type PrivateConfigEvidence } from './private-host-config.js';
 
 export interface CommandResult {
@@ -52,13 +52,14 @@ async function observedConfig(host: HostRunner, spec: BareMetalSpec): Promise<Ba
 }
 
 export async function observeBareMetal(
-  spec: BareMetalSpec, host: HostRunner, refreshPackages?: () => Promise<void>,
+  spec: BareMetalSpec, host: HostRunner, readFreshPackages?: AptPackageReader,
 ): Promise<BareMetalObservation> {
   const unitPath = spec.systemdUnit ? (spec.unitFile ?? `/etc/systemd/system/${spec.systemdUnit}.service`) : null;
   const [configContent, unitContent] = await Promise.all([observedConfig(host, spec),
     spec.unitContent !== undefined && unitPath ? observedFile(host, unitPath) : null]);
-  // A refresh writes the APT indices. Ordinary inspection passes no refresh operation.
-  if (spec.apt && refreshPackages && !hostFileRefusals({ configContent, unitContent }).length) await refreshPackages();
+  // Ordinary inspection and already refused host files must not initiate an APT refresh.
+  const readPackages = readFreshPackages && !hostFileRefusals({ configContent, unitContent }).length
+    ? readFreshPackages : (policy: NonNullable<BareMetalSpec['apt']>) => inspectAptPackages(policy, host);
   const [installed, userExists, dataDirExists, unit, packages] = await Promise.all([
     // No `validateCommand` means "assume present": the declaration did not
     // give a way to check, and guessing "absent" would run an install every
@@ -67,7 +68,7 @@ export async function observeBareMetal(
     spec.user ? host.run(['id', '-u', spec.user]).then((r) => r.ok) : Promise.resolve(true),
     spec.dataDir ? host.exists(spec.dataDir) : Promise.resolve(true),
     observeUnit(spec.systemdUnit, host),
-    spec.apt !== undefined ? inspectAptPackages(spec.apt, host) : undefined,
+    spec.apt !== undefined ? readPackages(spec.apt) : undefined,
   ]);
 
   const adoption =

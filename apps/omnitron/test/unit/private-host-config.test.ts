@@ -46,7 +46,7 @@ describe('observing a declared host file', () => {
   it('does not refresh package indices for a service that is already refused', async () => {
     const host = fixture();
     const declaration = { ...spec, apt: { latest: ['example'] } };
-    const refresh = vi.fn(async () => {});
+    const refresh = vi.fn(async () => []);
     host.readFile = async () => { throw Error('permission denied'); };
     expect(planBareMetal(declaration, await observeBareMetal(declaration, host, refresh)).actions).toEqual([]);
     expect(refresh).not.toHaveBeenCalled();

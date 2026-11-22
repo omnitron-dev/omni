@@ -611,62 +611,62 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
 
     const host = localHost();
     const logger = createNullLogger();
-    let aptRefresh: Promise<void> | undefined;
+    const { withFreshAptPackages } = await import('../infrastructure/apt-packages.js');
+    return withFreshAptPackages(host, async readPackages => {
+      for (const [name, requirement] of Object.entries(declared)) {
+        // The stack's override, which `selectBareMetal` has always taken and
+        // no caller has ever passed.
+        //
+        // `networkMode` is the one that matters, and its own docblock says why:
+        // an application declares `regtest` because that is right on a laptop,
+        // and the stack is the scope that knows when it is not. Without the
+        // override the bare-metal path read the application's answer
+        // everywhere, so a stack declaring `mainnet` selected the variant that
+        // carries the verified download, the hardened unit and the mainnet
+        // config — and got the base declaration instead, which names a systemd
+        // unit and supplies no template to create it. That refuses, correctly
+        // and confusingly: the declaration the operator wrote was never the one
+        // being planned.
+        const spec = selectBareMetal(name, requirement as never, overrides[name] as never);
+        if (!spec) continue;
 
-    for (const [name, requirement] of Object.entries(declared)) {
-      // The stack's override, which `selectBareMetal` has always taken and
-      // no caller has ever passed.
-      //
-      // `networkMode` is the one that matters, and its own docblock says why:
-      // an application declares `regtest` because that is right on a laptop,
-      // and the stack is the scope that knows when it is not. Without the
-      // override the bare-metal path read the application's answer
-      // everywhere, so a stack declaring `mainnet` selected the variant that
-      // carries the verified download, the hardened unit and the mainnet
-      // config — and got the base declaration instead, which names a systemd
-      // unit and supplies no template to create it. That refuses, correctly
-      // and confusingly: the declaration the operator wrote was never the one
-      // being planned.
-      const spec = selectBareMetal(name, requirement as never, overrides[name] as never);
-      if (!spec) continue;
+        let observed;
+        try {
+          observed = await observeBareMetal(spec, host, readPackages);
+        } catch (error) {
+          const reason = (error as Error).message;
+          refusals.push(reason);
+          failed.push({ name, status: 'refused', error: reason });
+          continue;
+        }
+        const plan = planBareMetal(spec, observed);
 
-      let observed;
-      try {
-        observed = await observeBareMetal(spec, host, () => aptRefresh ??=
-          import('../infrastructure/apt-packages.js').then(({ refreshAptIndices }) => refreshAptIndices(host)));
-      } catch (error) {
-        const reason = (error as Error).message;
-        refusals.push(reason);
-        failed.push({ name, status: 'refused', error: reason });
-        continue;
+        if (plan.refusals.length > 0) {
+          refusals.push(...plan.refusals);
+          failed.push({ name, status: 'refused', error: plan.refusals[0] ?? null });
+          continue;
+        }
+
+        if (isSettled(plan)) {
+          settled.push(name);
+          if (observed.unitActivating) awaitingObservation.push(name);
+          continue;
+        }
+
+        const evidence = observed.configContent;
+        const attested = typeof evidence === 'object' && evidence?.state === 'verified-private' ? { spec, receipt: evidence.receipt } : undefined;
+        const result = await applyBareMetal(plan.actions, host, logger, name, attested);
+        if (result.failed) {
+          failed.push({ name, status: 'failed', error: result.failed.error });
+        } else {
+          settled.push(name);
+          if (result.applied.some(action => action.type === 'start-unit' || action.type === 'restart-unit'))
+            awaitingObservation.push(name);
+        }
       }
-      const plan = planBareMetal(spec, observed);
 
-      if (plan.refusals.length > 0) {
-        refusals.push(...plan.refusals);
-        failed.push({ name, status: 'refused', error: plan.refusals[0] ?? null });
-        continue;
-      }
-
-      if (isSettled(plan)) {
-        settled.push(name);
-        if (observed.unitActivating) awaitingObservation.push(name);
-        continue;
-      }
-
-      const evidence = observed.configContent;
-      const attested = typeof evidence === 'object' && evidence?.state === 'verified-private' ? { spec, receipt: evidence.receipt } : undefined;
-      const result = await applyBareMetal(plan.actions, host, logger, name, attested);
-      if (result.failed) {
-        failed.push({ name, status: 'failed', error: result.failed.error });
-      } else {
-        settled.push(name);
-        if (result.applied.some(action => action.type === 'start-unit' || action.type === 'restart-unit'))
-          awaitingObservation.push(name);
-      }
-    }
-
-    return { settled, awaitingObservation, failed, refusals };
+      return { settled, awaitingObservation, failed, refusals };
+    });
   }
 
   /**

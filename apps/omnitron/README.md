@@ -452,6 +452,8 @@ omnitron pipeline save publication.json --id <pipeline-id> --expected-revision <
 
 For automation, keep the definition ID and revision returned by `save` and choose a run ID before submission. With these values, `run --prepare` submits the reviewed definition directly. The daemon records the run before any step starts. If the preparation reply times out or the transport disconnects, the CLI reconnects once with the same run ID, revision and parameters. A second lost reply includes the original run ID for inspection. After a lost start reply, use `pipeline status <run-id>` to see whether execution began.
 
+If the journal becomes unavailable as a run finishes, the serving daemon retains the outcome in memory. Once storage recovers, checking status, listing runs or reconciling the original run saves the result for that execution. Each attempt has a unique journal identity, so a late write preserves a newer attempt. If the daemon restarts first, recovery uses the last durable checkpoint.
+
 The public `PipelineDef` contract is exported from `@omnitron-dev/omnitron/dto/services`; `verifyInstalledRuntime` from `/runtime` supplies a verified caller's producer identity. Console's JSON editor preserves release targets and arguments. Entries must belong to the admitted closure, arguments are literal arrays, and output belongs outside the immutable installation.
 
 `prepareRun` persists the request before execution; `startRun` admits its exact

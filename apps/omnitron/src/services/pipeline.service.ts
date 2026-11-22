@@ -47,6 +47,12 @@ interface ActiveRun {
   abort: AbortController;
   done: Promise<void>;
 }
+interface PipelineCompletion {
+  admission: string;
+  status: PipelineRun['status'];
+  steps: string;
+  completedAt: Date;
+}
 type Nodes = Pick<NodeManagerService, 'getNode' | 'nodeToSshTarget'>;
 interface DeploymentBinding { operation: Awaited<ReturnType<ProjectService['resolvePipelineDeployment']>>; run(): Promise<void> }
 type ReleaseOperation = Awaited<ReturnType<ProjectService['resolvePipelineRelease']>>;
@@ -129,7 +135,8 @@ export class PipelineOutput {
 export class PipelineService {
   activeRunCount(): number { return this.activeRuns.size; }
   private readonly activeRuns = new Map<string, ActiveRun>();
-  private initialization?: Promise<void>;
+  private readonly pendingCompletions = new Map<string, PipelineCompletion>();
+  private initialization: Promise<void> | undefined;
   private stopped = false;
   private nodes?: Nodes;
   private projects: PipelineProjects | undefined;
@@ -163,6 +170,9 @@ export class PipelineService {
         await trx.updateTable('pipeline_runs').set({ status: 'interrupted', steps: JSON.stringify(run.steps), completedAt: new Date() })
           .where('id', '=', row.id).where('status', 'in', live).execute();
       }
+    }).catch(error => {
+      this.initialization = undefined;
+      throw error;
     });
     return this.initialization;
   }
@@ -309,6 +319,7 @@ export class PipelineService {
   async reconcileRun(runId: string): Promise<PipelineRun> {
     await this.initialize();
     if (this.activeRuns.has(runId)) throw Error('Wait for the current executor before reconciling');
+    await this.flushCompletion(runId);
     const row = await this.db.selectFrom('pipeline_runs').selectAll().where('id', '=', runId).executeTakeFirstOrThrow();
     if (!['interrupted', 'failed'].includes(row.status)) return this.mapRun(row);
     const run = this.mapRun(row);
@@ -334,6 +345,7 @@ export class PipelineService {
     await this.initialize();
     request = readStartRun(request);
     const { runId } = request, params = request.params ?? {};
+    await this.flushCompletion(runId);
     const row = await this.db.selectFrom('pipeline_runs').selectAll().where('id', '=', runId).executeTakeFirstOrThrow();
     const admission = readAdmission(row.admission);
     if (!admission) throw new Error('Run has no durable admission');
@@ -370,7 +382,7 @@ export class PipelineService {
     this.activeRuns.set(runId, handle);
     const prepared: PreparedScript[] = [];
     const commands = new Map<NonNullable<Command['onSpawn']>, ReleaseCommand | null>();
-    let claimed = false;
+    let executionAdmission: string | undefined;
     try {
       await this.assertLifecycle?.();
       const definition = recovering ? pinned : await this.getPipeline(row.pipelineId);
@@ -380,9 +392,10 @@ export class PipelineService {
       await checkPipelineDefinition(storedDefinition(definition));
       const startedAt = new Date();
       pipelineAdmissionCheck.getStore()?.();
+      executionAdmission = JSON.stringify({ ...admission, approvedBy: actor, executionId: randomUUID(),
+        ...(recovering ? { resumedFrom: request.expectedDigest } : {}) });
       const claim = await this.db.updateTable('pipeline_runs').set({ status: 'running', startedAt,
-        completedAt: null,
-        admission: JSON.stringify({ ...admission, approvedBy: actor, ...(recovering ? { resumedFrom: request.expectedDigest } : {}) }) })
+        completedAt: null, admission: executionAdmission })
         .where('id', '=', runId).where('status', '=', row.status).where(sql<boolean>`steps = ${typeof row.steps === 'string' ? row.steps : JSON.stringify(row.steps)}`).executeTakeFirst();
       if (claim.numUpdatedRows !== 1n) {
         this.activeRuns.delete(runId);
@@ -391,7 +404,6 @@ export class PipelineService {
         if (!current) throw new Error('Pipeline request was removed before admission');
         return current;
       }
-      claimed = true;
       this.logger.info({ runId, actor, projects }, 'Reviewed pipeline admitted');
       const { Pipeline: XecPipeline, prepareScript } = await import('@xec-sh/ops');
       const graph = XecPipeline.create(definition.name);
@@ -484,7 +496,7 @@ export class PipelineService {
             .map(([, value]) => value as string),
         ]),
       ].sort((a, b) => b.length - a.length);
-      handle.done = this.executeRun(run, graph, abort.signal, secrets, prepared, commands, deployments).finally(() =>
+      handle.done = this.executeRun(run, executionAdmission, graph, abort.signal, secrets, prepared, commands, deployments).finally(() =>
         this.activeRuns.delete(runId)
       );
       finishAdmission();
@@ -493,19 +505,17 @@ export class PipelineService {
       );
       return structuredClone(run);
     } catch (error) {
-      this.activeRuns.delete(runId);
       try {
-        if (claimed) {
+        if (executionAdmission) {
           const failure = new PipelineOutput(Object.values(params).filter((value): value is string => typeof value === 'string' && value.length > 0));
           failure.append(String(error));
           const status = abort.signal.aborted ? 'cancelled' : 'failed';
           const steps = this.mapRun(row).steps.map(step => completedStep(step) ? step : ({ ...step, status, error: failure.snapshot(true) }));
-          await this.db.updateTable('pipeline_runs').set({ status, steps: JSON.stringify(steps), completedAt: new Date() })
-            .where('id', '=', runId).where('status', 'in', ['running', 'cancelling']).execute();
+          await this.completeRun(runId, { admission: executionAdmission, status, steps: JSON.stringify(steps), completedAt: new Date() });
         }
-        await Promise.all(prepared.map((script) => script.dispose()));
       } finally {
-        finishAdmission();
+        try { await Promise.all(prepared.map((script) => script.dispose())); }
+        finally { this.activeRuns.delete(runId); finishAdmission(); }
       }
       throw error;
     }
@@ -513,6 +523,7 @@ export class PipelineService {
 
   private async executeRun(
     run: PipelineRun,
+    executionAdmission: string,
     graph: import('@xec-sh/ops').Pipeline,
     signal: AbortSignal,
     secrets: string[],
@@ -654,11 +665,8 @@ export class PipelineService {
       }
       await writes.catch(() => undefined);
       run.completedAt = new Date().toISOString();
-      await this.db
-        .updateTable('pipeline_runs')
-        .set({ status: run.status, steps: JSON.stringify(run.steps), completedAt: new Date(run.completedAt) })
-        .where('id', '=', run.id)
-        .execute();
+      await this.completeRun(run.id, { admission: executionAdmission, status: run.status,
+        steps: JSON.stringify(run.steps), completedAt: new Date(run.completedAt) });
       const duration = Date.parse(run.completedAt) - Date.parse(run.startedAt);
       this.observe?.(run.status, duration);
       this.logger.info(
@@ -666,6 +674,20 @@ export class PipelineService {
         'Pipeline execution completed'
       );
     }
+  }
+  private async completeRun(runId: string, completion: PipelineCompletion): Promise<void> {
+    this.pendingCompletions.set(runId, completion);
+    await this.flushCompletion(runId);
+  }
+  private async flushCompletion(runId: string): Promise<void> {
+    const receipt = this.pendingCompletions.get(runId);
+    if (!receipt) return;
+    const { admission, ...result } = receipt;
+    // A retry may follow a lost acknowledgement or a newer execution of the same run.
+    // Only the process that claimed this attempt may finish its journal.
+    await this.db.updateTable('pipeline_runs').set(result).where('id', '=', runId)
+      .where('status', 'in', ['running', 'cancelling']).where(sql<boolean>`admission = ${admission}`).execute();
+    if (this.pendingCompletions.get(runId) === receipt) this.pendingCompletions.delete(runId);
   }
   async cancelRun(runId: string): Promise<void> {
     const handle = this.activeRuns.get(runId);
@@ -692,11 +714,13 @@ export class PipelineService {
     await handle.done;
   }
   async getRunStatus(runId: string): Promise<PipelineRun | null> {
+    await this.flushCompletion(runId);
     const row = await this.db.selectFrom('pipeline_runs').selectAll().where('id', '=', runId).executeTakeFirst();
     return row ? this.mapRun(row) : null;
   }
   async listRuns(pipelineId?: string, limit = 50, workspace?: Pick<ReturnType<typeof pipelineWorkspaceQueries>, 'runs' | 'name'>): Promise<PipelineRunSummary[]> {
     if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new Error('Run limit must be between 1 and 200');
+    for (const runId of this.pendingCompletions.keys()) await this.flushCompletion(runId);
     const name = workspace?.name ?? sql<null>`NULL`;
     let query = this.db
       .selectFrom('pipeline_runs')

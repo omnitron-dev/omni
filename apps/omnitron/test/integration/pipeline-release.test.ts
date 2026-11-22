@@ -506,6 +506,42 @@ it('reconciles interrupted prepared/started attempts durably as unconfirmed with
   await f.noEffects();
 });
 
+it.each(['original', 'successor'] as const)('recovers a failed terminal write only for the %s execution', async scenario => {
+  const f = await fixture();
+  const definition = await f.pipelines.createPipeline(f.definition);
+  const runId = randomUUID();
+  const prepared = await f.pipelines.prepareRun({ id: definition.id, runId, expectedRevision: definition.revision }, 'operator');
+  const start = { runId, expectedDigest: prepared.review!.digest };
+  await sql.raw(`CREATE TRIGGER journal_full BEFORE UPDATE OF status ON pipeline_runs
+    WHEN NEW.status = 'success' BEGIN SELECT RAISE(FAIL, 'journal unavailable'); END`).execute(f.db);
+  await f.pipelines.startRun(start, 'operator');
+  await vi.waitFor(() => expect(f.pipelines.activeRunCount()).toBe(0), { timeout: 10000 });
+  const stored = await f.db.selectFrom('pipeline_runs').select(['status', 'admission']).where('id', '=', runId).executeTakeFirstOrThrow();
+  expect(stored.status).toBe('running');
+  await sql.raw('DROP TRIGGER journal_full').execute(f.db);
+  if (scenario === 'successor') {
+    const previous = typeof stored.admission === 'string' ? JSON.parse(stored.admission) : stored.admission;
+    await f.db.updateTable('pipeline_runs').set({ admission: JSON.stringify({ ...previous, executionId: randomUUID() }) })
+      .where('id', '=', runId).execute();
+  }
+  const status = scenario === 'original' ? 'success' : 'running';
+  expect(await f.pipelines.listRuns(definition.id)).toMatchObject([{ id: runId, status }]);
+  expect(await f.pipelines.reconcileRun(runId)).toMatchObject({ id: runId, status });
+  expect(await f.pipelines.startRun(start, 'operator')).toMatchObject({ id: runId, status });
+  expect(await f.witness()).toHaveLength(1);
+});
+
+it('allows initialization after the journal becomes available again', async () => {
+  const db = createPipelineTestDatabase();
+  const service = new PipelineService(db, logger as never, testExecution);
+  try {
+    await sql.raw('ALTER TABLE pipeline_runs RENAME TO unavailable').execute(db);
+    await expect(service.initialize()).rejects.toThrow();
+    await sql.raw('ALTER TABLE unavailable RENAME TO pipeline_runs').execute(db);
+    await expect(service.initialize()).resolves.toBeUndefined();
+  } finally { await service.dispose(); await db.destroy(); }
+});
+
 it('never retries successful child effects when durable completion fails', async () => {
   const f = await fixture();
   f.step.retries = 2;

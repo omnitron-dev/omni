@@ -49,6 +49,19 @@ export function allocationInput(record, bytes, options) {
   });
   const spec = { prepared: Object.fromEntries(preparedFields.map(k => [k, prepared[k]])), fromNode: options.fromNode,
     uid, user: options.user, backend: options.backend, ownerArtifact: options.ownerArtifact, apps };
+  if (options.replaces !== undefined || options.expectReplaced !== undefined || options.expectOwner !== undefined) {
+    const previous = options.replaces;
+    if (previous?.protocol !== 1 || previous.project !== prepared.project || previous.sourceStack !== prepared.stack ||
+        previous.nodeId !== prepared.nodeId || previous.directory !== '/opt/omnitron/projects/' + prepared.project ||
+        !name(previous.release) || previous.release === prepared.release || previous.manifestSha256 === prepared.manifestSha256 ||
+        ![previous.ticket, previous.manifestSha256, previous.configSha256, previous.definitionSha256].every(hash) ||
+        previous.ticket !== options.expectReplaced || !name(previous.owner) || !name(options.expectOwner ?? previous.owner) ||
+        [previous.enabledApps, previous.physicalContainers, previous.handles].some(value => value !== 0))
+      throw Error('Select the verified previous disabled allocation receipt for this project, stack and node');
+    spec.replaces = { ticket: previous.ticket, release: previous.release, manifestSha256: previous.manifestSha256,
+      configSha256: previous.configSha256, definitionSha256: previous.definitionSha256,
+      previousOwner: previous.owner, owner: options.expectOwner ?? previous.owner };
+  }
   return { ...spec, ticket: sha(JSON.stringify(spec)) };
 }
 
@@ -103,8 +116,9 @@ export async function passiveAllocationDefinition(record, declarations, options)
   ]);
   const run = '/usr/bin/python3 -I -c ' + quote(start) + ' ' + wire + ' ' + gzipSync(JSON.stringify({ entry, worker, lease })).toString('base64');
   if (Buffer.byteLength(run) > 22 * 1024) throw Error('Allocation inventory exceeds the SSH management command budget');
-  return { name: 'Prepare passive allocation ' + spec.ticket.slice(0, 16),
-    description: 'Verify and register a frozen application allocation on an empty Linux recipient before changing placement.',
+  return { name: (spec.replaces ? 'Replace passive allocation ' : 'Prepare passive allocation ') + spec.ticket.slice(0, 16),
+    description: spec.replaces ? 'Replace the reviewed disabled allocation on the same registered recipient.' :
+      'Verify and register a frozen application allocation on an empty Linux recipient before changing placement.',
     steps: [
       { name: 'verify-original-placement', run: 'python3 -I -c ' + quote(admission) + ' ' + wire, retries: 0, timeout: 900000 },
       { name: 'prepare-passive-allocation', nodeId: spec.prepared.nodeId, dependsOn: ['verify-original-placement'], retries: 0,
@@ -122,7 +136,11 @@ export function command(program) {
     .requiredOption('--uid <number>', 'Recipient daemon numeric UID')
     .requiredOption('--backend <digest>', 'Serving sealed backend artifact on the recipient')
     .requiredOption('--owner-artifact <digest>', 'Sealed execution-owner artifact on the recipient')
+    .option('--replaces <receipt>', 'Previous successful disabled allocation receipt on this recipient')
+    .option('--expect-replaced <ticket>', 'Reviewed ticket of the previous disabled allocation')
+    .option('--expect-owner <id>', 'Current execution owner independently verified after an approved role replacement')
     .allowExcessArguments(false).action(async (record, declarations, options) => {
+      if (options.replaces) options.replaces = JSON.parse(await fs.readFile(options.replaces, 'utf8'));
       const graph = await passiveAllocationDefinition(JSON.parse(await fs.readFile(record, 'utf8')), await fs.readFile(declarations), options);
       process.stdout.write(JSON.stringify(graph, null, 2) + '\n');
     });

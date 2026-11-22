@@ -66,6 +66,30 @@ test('the native all-applications selection admits the exact single-node release
   const { prepared, bytes, options } = sample(c => { c.stacks.prod.apps = 'all'; });
   assert.deepEqual(allocationInput(prepared, bytes, options).apps.map(a => a.name), ['api', 'jobs']);
 });
+
+test('a replacement binds both disabled publications and the reviewed recipient owner', async () => {
+  const { prepared, bytes, options } = sample();
+  const previous = { protocol: 1, project: prepared.project, sourceStack: prepared.stack, nodeId: prepared.nodeId,
+    directory: '/opt/omnitron/projects/example', ticket: digest('1'), release: 'release-zero', manifestSha256: digest('2'),
+    configSha256: digest('3'), definitionSha256: digest('4'), owner: 'previous-owner', enabledApps: 0, physicalContainers: 0, handles: 0 };
+  const replace = { ...options, replaces: previous, expectReplaced: previous.ticket };
+  const same = allocationInput(prepared, bytes, replace);
+  assert.equal(same.replaces.owner, previous.owner);
+  assert.notEqual(same.ticket, allocationInput(prepared, bytes, options).ticket);
+  const fresh = allocationInput(prepared, bytes, { ...replace, expectOwner: 'confirmed-successor' });
+  assert.equal(fresh.replaces.previousOwner, previous.owner);
+  assert.notEqual(fresh.ticket, same.ticket);
+  assert.equal(fresh.replaces.owner, 'confirmed-successor');
+  const graph = await passiveAllocationDefinition(prepared, bytes, replace);
+  assert.match(graph.name, /^Replace passive allocation /);
+  assert.equal(graph.steps[1].nodeId, prepared.nodeId);
+  assert.ok(Buffer.byteLength(graph.steps[1].run) < 22 * 1024);
+  for (const change of [{ nodeId: 'other' }, { sourceStack: 'other' }, { release: prepared.release }, { manifestSha256: prepared.manifestSha256 },
+    { enabledApps: 1 }, { handles: 1 }, { physicalContainers: 1 }, { directory: '/elsewhere' }, { configSha256: null }, { owner: 'wrong/shape' }])
+    assert.throws(() => allocationInput(prepared, bytes, { ...replace, replaces: { ...previous, ...change } }));
+  for (const change of [{ expectReplaced: digest('0') }, { expectReplaced: undefined }, { replaces: undefined }, { expectOwner: '/other' }])
+    assert.throws(() => allocationInput(prepared, bytes, { ...replace, ...change }));
+});
 test('source admission refuses another SHA, recipient, membership, loader or account', () => {
   const { prepared, bytes, options } = sample();
   for (const override of [{ fromNode: 'receiver' }, { uid: '0' }, { user: 'root' }, { expectPrepared: digest('f') }])

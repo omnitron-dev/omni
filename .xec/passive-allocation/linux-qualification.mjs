@@ -44,6 +44,8 @@ const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const log = line => process.stderr.write(line + '\n');
 const target = await targetRuntime(), build = JSON.parse(await fs.readFile(path.join(pkg, 'dist/BUILD.json'), 'utf8'));
 const smoke = process.env.PASSIVE_ACTIVE_SMOKE === '1';
+const replace = process.env.PASSIVE_REPLACEMENT_SMOKE === '1';
+if (replace) assert.ok(smoke, 'Replacement rehearsal requires the synthetic active fixture');
 const id = smoke ? 'passive-smoke-' + Date.now() : admittedId;
 const declarationsFile = smoke ? path.join(work, 'smoke-capture.json') : admittedDeclarations;
 if (smoke) await buildSmokeRelease(sdk, work, storeRoot, id, declarationsFile, target, build.commit);
@@ -51,9 +53,9 @@ const bytes = await fs.readFile(declarationsFile), capture = JSON.parse(bytes);
 const prepared = { protocol: 1, project: capture.project, stack: capture.stack, commit: capture.commit, release: id,
   manifestSha256: capture.manifestSha256, declarationsSha256: sha(bytes), nodeId: capture.config.stacks[capture.stack].nodes[0].nodeId,
   sshFingerprint: 'SHA256:' + 'Q'.repeat(43), digest: sha('isolated fixture admission') };
-const spec = allocationInput(prepared, bytes, { fromNode: 'previous-fixture', user: 'fixture', uid: process.getuid(), backend: sha('fixture backend'),
-  ownerArtifact: sha('fixture owner'), expectPrepared: prepared.digest });
-const { project, stack } = prepared, configDir = path.join(work, 'projects', project), ownerDir = path.join(work, 'owner');
+const options = { fromNode: 'previous-fixture', user: 'fixture', uid: process.getuid(), backend: sha('fixture backend'), ownerArtifact: sha('fixture owner') };
+const spec = allocationInput(prepared, bytes, { ...options, expectPrepared: prepared.digest });
+const { project, stack } = prepared, configDir = path.join(replace ? '/opt/omnitron/projects' : path.join(work, 'projects'), project), ownerDir = path.join(work, 'owner');
 const report = { protocol: 1, release: id, target, commit: build.commit, checks: [] };
 const check = (name, value = true) => { report.checks.push({ name, value }); log(name); };
 const phases = path.join(work, 'progress.json');
@@ -95,7 +97,7 @@ try {
       execution: { mode: 'resident', protocol: 1, ownerId: connected.status.owner.id, pid: worker.pid, epoch: grant.epoch } };
   };
   const ports = { owner, sameOwner: assertSameApplicationRuntime, projects,
-    checkParents: name => checkAllocationParents(path.join(work, 'active'), path.dirname(configDir), name),
+    checkParents: name => checkAllocationParents(path.join(work, 'active'), path.dirname(configDir), name, replace),
     processes: async () => { await client.refresh(); return client.orchestrator.list(); },
     containers: () => listManagedContainers({ orThrow: true }), render: renderNodeAppConfig, publication: prepareNodeConfigPublication,
     install: inspectLocalReleaseInstallation, readReceipt: readInstalledReleaseReceipt, loadRelease: r => loadRelease(r, storeRoot) };
@@ -147,8 +149,25 @@ try {
       if ((await inspectStackContainers(scope)).some(c => c.id === id)) execFileSync('docker', ['rm', id]);
     }
   }
+  let latest = spec;
+  if (replace) {
+    const second = id + '-next', file = path.join(work, 'next-capture.json');
+    await buildSmokeRelease(sdk, work, storeRoot, second, file, target, build.commit);
+    const input = await fs.readFile(file), recorded = JSON.parse(input);
+    const next = { ...prepared, release: second, manifestSha256: recorded.manifestSha256, declarationsSha256: sha(input), digest: sha(input) };
+    latest = allocationInput(next, input, { ...options, expectPrepared: next.digest, replaces: receipt, expectReplaced: receipt.ticket });
+    ports.fingerprint = (await sdk('project/node-stack-stop')).stackDefinitionFingerprint;
+    const before = (await fs.stat(configDir)).ino;
+    report.replacement = await stagePassiveAllocation(latest, configDir, ports);
+    assert.notEqual(report.replacement.definitionSha256, receipt.definitionSha256);
+    assert.equal(report.replacement.replaced, receipt.ticket);
+    assert.deepEqual(await stagePassiveAllocation(latest, configDir, ports), report.replacement);
+    assert.equal((await fs.stat(path.join(path.dirname(configDir), '.passive-replacements', latest.ticket, 'exchange'))).ino, before);
+    report.replacementStop = await stop();
+    check('same-path project reread and complete native stop confirmed the replacement release and preserved the previous inode'); await save();
+  }
   if (smoke) {
-    report.active = await activateSmoke({ sdk, pkg, work, release: await ports.loadRelease(id), owner, client, logger, project, stack, dir: configDir });
+    report.active = await activateSmoke({ sdk, pkg, work, release: await ports.loadRelease(latest.prepared.release), owner, client, logger, project, stack, dir: configDir });
     check('ordinary remote registration and CLI started only the synthetic programs from their active frozen trees'); await save();
   } else {
     const config = (await import(pathToFileURL(path.join(configDir, 'omnitron.config.mjs')))).default;
@@ -164,7 +183,7 @@ try {
   const currentHandles = async () => (await ports.processes()).map(({ name, pid, generation }) => ({ name, pid, generation }));
   const activeHandles = await currentHandles();
   const activeStat = (await fs.stat(path.join(configDir, 'omnitron.config.mjs'), { bigint: true })).mtimeNs;
-  await assert.rejects(stagePassiveAllocation(spec, configDir, ports), /allocation changed/);
+  await assert.rejects(stagePassiveAllocation(latest, configDir, ports), /allocation changed/);
   assert.equal((await fs.stat(path.join(configDir, 'omnitron.config.mjs'), { bigint: true })).mtimeNs, activeStat);
   assert.deepEqual(await currentHandles(), activeHandles);
   check('normal active publication replaced every passive gate and final retry preserved the active configuration'); await save();

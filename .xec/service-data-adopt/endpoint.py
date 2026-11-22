@@ -293,13 +293,22 @@ def unattached(docker, paths):
             )
 
 
+def accepted_rows(seed, binding):
+    if "fileScope" not in binding:
+        return seed["volumes"]
+    from service_file_scope import file_rows
+
+    must(isinstance(binding["fileScope"], str), "An explicit file scope is required")
+    return file_rows(seed, binding["fileScope"])
+
+
 def reserve(mod, seed, binding, state, docker, data, creating):
     token = sha(binding)
-    rows = seed["volumes"]
+    rows = accepted_rows(seed, binding)
     names = binding["volumes"]
     must(
         names == {r["tag"]: r["volume"] for r in rows},
-        "Target volumes must be the six declared service roles and any reviewed PostgreSQL mounts",
+        "Target volume names must match every role in the approved file scope",
     )
     intended = [data / "volumes" / name / "_data" for name in names.values()]
     unattached(docker, intended)
@@ -586,10 +595,15 @@ def validate_services(seed, binding, paths, docker, security):
         )
 
     clusters = {}
-    for tag, kind, version, command in [
-        ("postgres-data", "postgres", "17", "pg_controldata"),
-        ("nominatim-data", "nominatim", "14", "/usr/lib/postgresql/14/bin/pg_controldata"),
-    ]:
+    pg_roles = (
+        [
+            ("postgres-data", "postgres", "17", "pg_controldata"),
+            ("nominatim-data", "nominatim", "14", "/usr/lib/postgresql/14/bin/pg_controldata"),
+        ]
+        if "fileScope" not in binding
+        else []
+    )
+    for tag, kind, version, command in pg_roles:
         root = paths[tag]
         must(
             (root / "PG_VERSION").read_text().strip() == version
@@ -614,7 +628,7 @@ def validate_services(seed, binding, paths, docker, security):
         clusters[kind] = system[1]
     must(
         (paths["nominatim-flatnode"] / "flatnode.file").is_file()
-        and (paths["nominatim-data"] / "import-finished").is_file()
+        and ("fileScope" in binding or (paths["nominatim-data"] / "import-finished").is_file())
         and (paths["minio-data"] / ".minio.sys" / "format.json").is_file(),
         "Missing Nominatim flatnode/import or MinIO layout",
     )
@@ -642,26 +656,35 @@ def validate_services(seed, binding, paths, docker, security):
 def evidence(seed, binding, cold, sealed, mod, root):
     mod["validate_scope"](seed)
     kinds = {r["tag"] for r in seed["volumes"]}
+    rows = accepted_rows(seed, binding)
+    scope = binding.get("fileScope")
+    suffix = "-files.json" if scope else ".json"
     must(
         binding["schema"] == 1
         and binding["seed"] == seed["id"]
         and binding["spec"] == sha(seed)
+        and binding["volumes"] == {r["tag"]: r["volume"] for r in rows}
         and set(binding["donorMaps"]) == kinds
         and all(v == {"uid_map": IDENTITY, "gid_map": IDENTITY} for v in binding["donorMaps"].values()),
         "A complete identity-mapped donor is required",
     )
     must(
         record(root / "spec.json") == seed
-        and record(root / "sealed.json") == sealed
+        and record(root / ("sealed" + suffix)) == sealed
+        and sealed.get("fileScope") == cold.get("fileScope") == scope
         and sealed["sealed"] is True
         and sealed["id"] == seed["id"] == cold["id"]
         and sealed["stop"] == cold["stop"]
         and sealed["spec"] == cold["spec"] == sha(seed)
         and sealed["sha256"] == cold["sha256"] == sha(cold["trees"])
-        and set(cold["trees"]) == kinds
+        and set(cold["trees"]) == {r["tag"] for r in rows}
         and mod["closed"](root),
         "The receiver has not sealed this exact fenced data set",
     )
+    if scope:
+        from service_file_scope import closed_for_files
+
+        must(closed_for_files(root, cold["stop"], cold["sha256"]), "Receiver closed under a different fence")
     channel = mod["ch"]
     must(
         channel.fingerprint(channel.key_text(channel.HOST_KEY)) == seed["receiverFingerprint"],
@@ -673,11 +696,12 @@ def evidence(seed, binding, cold, sealed, mod, root):
         sealed["stage"] == str(stage) and stat.S_IMODE(st.st_mode) == 0o700 and st.st_uid == 0,
         "The sealed stage is open or replaced",
     )
-    observed = record(root / "observed.json")
+    observed = record(root / ("observed" + suffix))
     must(
-        observed["stop"] == cold["stop"]
+        observed.get("fileScope") == scope
+        and observed["stop"] == cold["stop"]
         and observed["cold"] == cold["sha256"]
-        and observed["snapshot"] == mod["stage_stamp"](stage, seed["volumes"]),
+        and observed["snapshot"] == mod["stage_stamp"](stage, rows),
         "The sealed stage changed after its checksum audit",
     )
     return stage
@@ -726,6 +750,8 @@ def perform(phase, seed, binding, cold, sealed, digest, profile_sha, program):
             "sha256": cold["sha256"],
             "identities": record(state / "volumes.json")["identities"],
         }
+        if "fileScope" in binding:
+            mark["fileScope"] = binding["fileScope"]
         if phase == "verify":
             must(record(state / "restored.json") == mark, "The exact restored volume set is required")
         else:
@@ -740,7 +766,7 @@ def perform(phase, seed, binding, cold, sealed, digest, profile_sha, program):
             else {}
         )
         writers = channel.open_writers() if phase == "verify" else set()
-        for row in seed["volumes"]:
+        for row in accepted_rows(seed, binding):
             tag = row["tag"]
             target = paths[tag]
             checked_grant(seed, binding)
@@ -757,9 +783,11 @@ def perform(phase, seed, binding, cold, sealed, digest, profile_sha, program):
             result.update(
                 verified=True,
                 metadata=logical,
-                clusters=validate_services(seed, binding, paths, docker, security),
                 validatorProfileSha256=profile_sha,
             )
+            clusters = validate_services(seed, binding, paths, docker, security)
+            if "fileScope" not in binding:
+                result["clusters"] = clusters
         evidence(seed, binding, cold, sealed, mod, root)
         validator_security(checked_grant(seed, binding), profile_sha)
         rechecked, config = docker_client(state, binding)

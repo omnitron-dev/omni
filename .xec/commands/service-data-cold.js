@@ -22,7 +22,7 @@ print('Both registered bootstrap runs attest the reviewed service helper.')`;
 export async function retainedServiceDefinition(
   phase,
   spec,
-  { sourceBootstrap, receiverBootstrap, stop, grants, receipt, warmIdleSeconds }
+  { sourceBootstrap, receiverBootstrap, stop, grants, receipt, warmIdleSeconds, postgresReplicas = false }
 ) {
   if (!['seed', 'cold', 'seal'].includes(phase)) throw Error('Expected a retained seed, cold or seal operation');
   const source = seedBootstrap(spec, sourceBootstrap, 'source');
@@ -37,6 +37,7 @@ export async function retainedServiceDefinition(
     stop,
     receipt,
     warmIdleSeconds,
+    postgresReplicas,
     installedDigest: source.helper,
   });
   const index = graph.steps.findIndex((s) => s.name === (phase === 'seed' ? 'check-receiver' : 'confirm-stop'));
@@ -59,7 +60,7 @@ export async function retainedServiceDefinition(
   };
   graph.steps[index].dependsOn = [gate.name];
   graph.steps.splice(index, 0, gate);
-  graph.name = 'service-data-' + spec.id + '-retained-' + phase;
+  graph.name = 'service-data-' + spec.id + '-retained-' + phase + (postgresReplicas ? '-files' : '');
   if (graph.steps.some((s) => Buffer.byteLength(s.run) > 22 * 1024))
     throw Error('Retained service command exceeds the SSH management budget');
   return graph;
@@ -76,7 +77,8 @@ export function command(program) {
       .command(phase + ' <spec>')
       .requiredOption('--source-bootstrap <file>', 'Original successful source bootstrap Pipeline')
       .requiredOption('--receiver-bootstrap <file>', 'Original successful receiver bootstrap Pipeline')
-      .requiredOption('--stop <uuid>', 'Confirmed full source stack stop');
+      .requiredOption('--stop <uuid>', 'Confirmed full source stack stop')
+      .option('--postgres-replicas', 'Accept only flatnode, merged, Redis and MinIO files');
     if (phase === 'cold') cmd.requiredOption('--grants <file>', 'Admitted source and receiver grants');
     else cmd.requiredOption('--cold <file>', 'Completed source cold receipt');
     cmd.action(async (file, o) => {
@@ -86,6 +88,7 @@ export function command(program) {
         stop: o.stop,
         grants: o.grants ? await load(o.grants) : undefined,
         receipt: o.cold ? await load(o.cold) : undefined,
+        postgresReplicas: Boolean(o.postgresReplicas),
       });
       await new Promise((resolve, reject) =>
         process.stdout.write(JSON.stringify(graph, null, 2) + '\n', (e) => (e ? reject(e) : resolve()))

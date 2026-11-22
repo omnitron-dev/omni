@@ -175,6 +175,96 @@ test('the retained cold and seal gates re-read each registered bootstrap and kee
   await assert.rejects(retainedColdDefinition('cold', seed, { ...base, grants, receiverBootstrap: source }));
 });
 
+test('the four-tree branch retains the full grant, excludes all PostgreSQL mounts and cannot satisfy full acceptance', async () => {
+  const spec = structuredClone(seed);
+  const extras = [
+    ['postgres-data', 'postgres-wal', '/mnt/wal', '401'],
+    ['nominatim-data', 'nominatim-tblspc-98765', '/srv/space', '402'],
+  ];
+  const maps = structuredClone(donor);
+  for (const [parent, tag, target, inode] of extras) {
+    spec.volumes.push({ ...spec.volumes.find((r) => r.tag === parent), volume: 'vol-' + tag, tag, target, inode });
+    maps[tag] = maps[parent];
+  }
+  const observed = structuredClone(evidence);
+  observed.steps[0].output = JSON.stringify({ maps });
+  const options = { postgresReplicas: true };
+  const full = await adoptionBinding(spec, observed);
+  const files = await adoptionBinding(spec, observed, options);
+  assert.equal(full.spec, files.spec);
+  assert.notDeepEqual(full, files);
+  const tags = ['minio-data', 'nominatim-flatnode', 'nominatim-merged', 'redis-data'];
+  assert.deepEqual(Object.keys(files.volumes).sort(), tags);
+  assert.deepEqual(files.donorMaps, full.donorMaps);
+  const stage = spec.stageParent + '/service-data-' + id;
+  const helper = '1774d8587171e5481ba010493223470fdc6e737f858806dd4d9ae3238edde3ff';
+  const bootstrap = (side, op) => ({
+    id: op,
+    status: 'success',
+    review: { digest: 'a'.repeat(64) },
+    steps: [
+      observation('helper-part-1', spec[side + 'Node'], { helperSha256: helper, part: 1, total: 1 }),
+      observation('bootstrap-' + side, spec[side + 'Node'], {
+        side,
+        spec: full.spec,
+        ...(side === 'receiver' && { stage }),
+      }),
+    ],
+  });
+  const receiver = bootstrap('receiver', id);
+  const input = { sourceBootstrap: bootstrap('source', run), receiverBootstrap: receiver, stop: run };
+  const admitted = { spec: full.spec, keySha256: 'SHA256:' + 'C'.repeat(43), expires: 123 };
+  const grants = { source: { ...admitted, side: 'source' }, receiver: { ...admitted, side: 'receiver', stage } };
+  const trees = Object.fromEntries(tags.map((tag) => [tag, { bytes: 7, files: 1, sha256: 'd'.repeat(64) }]));
+  const cold = {
+    id,
+    spec: full.spec,
+    stop: run,
+    fileScope: files.fileScope,
+    trees,
+    sha256: hash(JSON.stringify(trees)),
+  };
+  const sealed = {
+    id,
+    spec: full.spec,
+    stop: run,
+    fileScope: files.fileScope,
+    sha256: cold.sha256,
+    stage,
+    sealed: true,
+  };
+  const exporter = (phase, opts) => adoptionDefinition(phase, spec, observed, cold, sealed, receiver, opts);
+  for (const graph of [
+    await retainedColdDefinition('cold', spec, { ...options, ...input, grants }),
+    await retainedColdDefinition('seal', spec, { ...options, ...input, receipt: cold }),
+    await exporter('restore', options),
+    await exporter('verify', options),
+  ]) {
+    await checkPipelineDefinition(graph);
+    assert(graph.name.endsWith('-files'));
+    assert(graph.steps.every((s) => Buffer.byteLength(s.run) <= 22 * 1024));
+    assert(graph.steps.some((s) => s.name === 'confirm-stop'));
+    assert(graph.steps.some((s) => s.name === 'recheck-stop'));
+  }
+  await assert.rejects(exporter('restore', {}), /exact stack stop and volume set/);
+  await assert.rejects(retainedColdDefinition('seal', spec, { ...input, receipt: cold }), /volume set/);
+  for (const broken of [Object.keys(full.volumes), tags.slice(1), [...tags.slice(1), 'postgres-data']]) {
+    const changed = Object.fromEntries(broken.sort().map((tag) => [tag, trees['redis-data']]));
+    await assert.rejects(
+      retainedColdDefinition('seal', spec, {
+        ...options,
+        ...input,
+        receipt: { ...cold, trees: changed, sha256: hash(JSON.stringify(changed)) },
+      }),
+      /volume set/
+    );
+  }
+  await assert.rejects(
+    adoptionDefinition('verify', spec, observed, cold, { ...sealed, fileScope: undefined }, receiver, options),
+    /matching sealed/
+  );
+});
+
 test('a precise source and rootless destination observation bind new named volumes through the normal stop and pin gates', async () => {
   const b = await adoptionBinding(seed, evidence);
   assert.deepEqual(b.maps, maps);

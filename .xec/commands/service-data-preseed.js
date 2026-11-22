@@ -29,6 +29,20 @@ const digest = (value) =>
 const encode = (value) => Buffer.from(JSON.stringify(value)).toString('base64');
 const quote = (value) => "'" + value.replaceAll("'", "'\\''") + "'";
 const load = async (path) => JSON.parse(await fs.readFile(path, 'utf8'));
+export const replicaFileScope = 'postgres-replicas';
+const replicaFiles = ['nominatim-flatnode', 'nominatim-merged', 'redis-data', 'minio-data'];
+export const serviceFileRows = (spec, postgresReplicas) =>
+  postgresReplicas ? spec.volumes.filter((row) => replicaFiles.includes(row.tag)) : spec.volumes;
+
+export async function fileScopeModule() {
+  const source = await fs.readFile(new URL('../service-data-preseed/file_scope.py', import.meta.url));
+  return (
+    "import base64,gzip,sys,types\nf=types.ModuleType('service_file_scope');sys.modules[f.__name__]=f\n" +
+    "exec(compile(gzip.decompress(base64.b64decode('" +
+    gzipSync(source).toString('base64') +
+    "')),'service-file-scope','exec'),f.__dict__)\n"
+  );
+}
 
 function validate(spec) {
   if (!validEndpoints(spec)) throw Error('Invalid service-data endpoints');
@@ -127,17 +141,28 @@ if hashlib.sha256(b).hexdigest()!=d: sys.exit('Installed helper differs from rev
 const checkedRunner =
   checkedSource + "\ns=b.decode();exec(compile(s,'service-data','exec'),{'__name__':'__main__','SELF':s})";
 
-async function checkedRedisRunner() {
+async function checkedRedisRunner(postgresReplicas = false) {
   const files = await Promise.all(
     ['redis_aof.py', 'cold_compat.py'].map((file) =>
       fs.readFile(new URL('../service-data-adopt/' + file, import.meta.url), 'utf8')
     )
   );
+  let dispatch = "compat['run'](m)";
+  if (postgresReplicas) {
+    const worker = await fs.readFile(new URL('../service-data-preseed/replica_files.py', import.meta.url), 'utf8');
+    dispatch =
+      "compat['install'](m)\n" +
+      (await fileScopeModule()) +
+      "a={};exec(compile(gzip.decompress(base64.b64decode('" +
+      gzipSync(worker).toString('base64') +
+      "')),'service-replica-files','exec'),a);a['run'](m)";
+  }
   return (
     checkedSource +
     "\nimport base64,gzip,json,types\nr,t=json.loads(gzip.decompress(base64.b64decode('" +
     packed(files) +
-    "')))\nredis=types.ModuleType('redis_aof');sys.modules['redis_aof']=redis\nexec(compile(r,'redis-aof','exec'),redis.__dict__)\ns=b.decode();m={'__name__':'checked_seed','SELF':s};exec(compile(s,'service-data','exec'),m)\ncompat={};exec(compile(t,'checked-redis-compat','exec'),compat);compat['run'](m)"
+    "')))\nredis=types.ModuleType('redis_aof');sys.modules['redis_aof']=redis\nexec(compile(r,'redis-aof','exec'),redis.__dict__)\ns=b.decode();m={'__name__':'checked_seed','SELF':s};exec(compile(s,'service-data','exec'),m)\ncompat={};exec(compile(t,'checked-redis-compat','exec'),compat);" +
+    dispatch
   );
 }
 
@@ -176,7 +201,7 @@ function installSteps(source, program, spec, side) {
 export async function serviceDataDefinition(
   phase,
   spec,
-  { grants, stop, receipt, installedDigest, warmIdleSeconds } = {}
+  { grants, stop, receipt, installedDigest, warmIdleSeconds, postgresReplicas = false } = {}
 ) {
   const phases = [
     'bootstrap-source',
@@ -193,6 +218,8 @@ export async function serviceDataDefinition(
   if (!phases.includes(phase)) throw Error('Invalid service-data operation');
   const transferring = ['seed', 'cold'].includes(phase),
     final = ['cold', 'seal'].includes(phase);
+  if (typeof postgresReplicas !== 'boolean' || (postgresReplicas && !final))
+    throw Error('The PostgreSQL replica file scope requires a fenced cold or seal operation');
   if (installedDigest !== undefined && ((!final && phase !== 'seed') || !hash(installedDigest)))
     throw Error('Retained service helpers require a transfer review and an exact installed SHA');
   if (
@@ -226,10 +253,11 @@ export async function serviceDataDefinition(
     (receipt.id !== spec.id ||
       receipt.spec !== digest(spec) ||
       receipt.stop !== stop ||
+      receipt.fileScope !== (postgresReplicas ? replicaFileScope : undefined) ||
       !receipt.trees ||
       receipt.sha256 !== digest(receipt.trees) ||
       Object.keys(receipt.trees).sort().join() !==
-        spec.volumes
+        serviceFileRows(spec, postgresReplicas)
           .map((r) => r.tag)
           .sort()
           .join() ||
@@ -241,8 +269,8 @@ export async function serviceDataDefinition(
   const program = await receiverProgram();
   const toolDigest = installedDigest ?? bytesSha(program);
   const transferRunner =
-    phase === 'cold'
-      ? await checkedRedisRunner()
+    phase === 'cold' || postgresReplicas
+      ? await checkedRedisRunner(postgresReplicas)
       : warmIdleSeconds === undefined
         ? checkedRunner
         : await checkedWarmRunner(warmIdleSeconds);
@@ -272,7 +300,10 @@ export async function serviceDataDefinition(
           'python3 -I -c ' +
           quote(fence) +
           ' ' +
-          encode([{ project: spec.project, stack: spec.stack, sourceNode: spec.sourceNode, sourceIp: spec.sourceIp }, stop]),
+          encode([
+            { project: spec.project, stack: spec.stack, sourceNode: spec.sourceNode, sourceIp: spec.sourceIp },
+            stop,
+          ]),
       });
     } else {
       steps.push({
@@ -283,7 +314,11 @@ export async function serviceDataDefinition(
         timeout: 86400000,
         run:
           '/usr/bin/python3 -I -c ' +
-          quote(action === 'cold' || action === 'seed' ? transferRunner : checkedRunner) +
+          quote(
+            action === 'cold' || action === 'seed' || (postgresReplicas && action !== 'receiver-grant')
+              ? transferRunner
+              : checkedRunner
+          ) +
           ' ' +
           [toolDigest, action, packed(spec), env].map(quote).join(' '),
       });
@@ -311,7 +346,7 @@ export async function serviceDataDefinition(
   if (steps.some((step) => Buffer.byteLength(step.run) > 22 * 1024))
     throw Error('Private service Pipeline step exceeds the bounded SSH management command size');
   return {
-    name: 'service-data-' + spec.id + '-' + phase,
+    name: 'service-data-' + spec.id + '-' + phase + (postgresReplicas ? '-files' : ''),
     description: 'Reviewed staging of registered service volumes.',
     triggers: [{ type: 'manual', config: {} }],
     steps,
@@ -372,7 +407,10 @@ export function command(program) {
       sub.option('--receiver-bootstrap <file>', 'Completed receiver bootstrap for the retained helper');
     }
     if (['seed', 'cold'].includes(phase)) sub.requiredOption('--grants <file>', 'Both verified endpoint receipts');
-    if (['cold', 'seal'].includes(phase)) sub.requiredOption('--stop <id>', 'Exact current full stack stop operation');
+    if (['cold', 'seal'].includes(phase))
+      sub
+        .requiredOption('--stop <id>', 'Exact current full stack stop operation')
+        .option('--postgres-replicas', 'Accept only flatnode, merged, Redis and MinIO files');
     if (phase === 'seal') sub.requiredOption('--receipt <file>', 'Exact source cold receipt');
     sub.action(async (file, options) => {
       if (Boolean(options.sourceBootstrap) !== Boolean(options.receiverBootstrap))
@@ -383,6 +421,7 @@ export function command(program) {
         stop: options.stop,
         receipt: options.receipt && (await load(options.receipt)),
         warmIdleSeconds: options.idleTimeout,
+        postgresReplicas: Boolean(options.postgresReplicas),
       };
       let graph;
       if (options.sourceBootstrap) {

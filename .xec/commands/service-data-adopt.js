@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
-import { serviceDataDefinition } from './service-data-preseed.js';
+import { fileScopeModule, replicaFileScope, serviceDataDefinition, serviceFileRows } from './service-data-preseed.js';
 
 const script = new URL('../service-data-adopt/endpoint.py', import.meta.url);
 const redisSource = new URL('../service-data-adopt/redis_aof.py', import.meta.url);
@@ -33,6 +33,7 @@ async function adoptionWorker() {
     'import base64,gzip,sys,types\nredis=types.ModuleType("redis_aof");sys.modules[redis.__name__]=redis\nexec(compile(gzip.decompress(base64.b64decode("' +
     gzipSync(redis).toString('base64') +
     '")),"redis-aof","exec"),redis.__dict__)\n' +
+    (await fileScopeModule()) +
     endpoint
   );
 }
@@ -85,7 +86,8 @@ function checkedOutput(evidence, name, node) {
   return matches[0].output;
 }
 
-export async function adoptionBinding(spec, evidence) {
+export async function adoptionBinding(spec, evidence, { postgresReplicas = false } = {}) {
+  if (typeof postgresReplicas !== 'boolean') throw Error('Invalid PostgreSQL replica file scope');
   await serviceDataDefinition('status', spec);
   evidence = checkedRun(evidence);
   const { maps: donor } = JSON.parse(checkedOutput(evidence, 'source-volume-namespace', spec.sourceNode)),
@@ -114,7 +116,8 @@ export async function adoptionBinding(spec, evidence) {
     donorMaps: donor,
     enginePid: target.daemonPid,
     maps: target.maps,
-    volumes: Object.fromEntries(spec.volumes.map((r) => [r.tag, r.volume])),
+    ...(postgresReplicas && { fileScope: replicaFileScope }),
+    volumes: Object.fromEntries(serviceFileRows(spec, postgresReplicas).map((r) => [r.tag, r.volume])),
   };
 }
 
@@ -172,16 +175,17 @@ export async function adoptionDefinition(
   cold,
   sealed,
   bootstrap,
-  { validatorApparmor = false } = {}
+  { validatorApparmor = false, postgresReplicas = false } = {}
 ) {
   if (!['restore', 'verify'].includes(phase)) throw Error('Unknown service adoption phase');
-  const binding = await adoptionBinding(spec, evidence);
+  const binding = await adoptionBinding(spec, evidence, { postgresReplicas });
   const boot = seedBootstrap(spec, bootstrap);
-  const sourceGraph = await serviceDataDefinition('seal', spec, { stop: cold.stop, receipt: cold });
+  const sourceGraph = await serviceDataDefinition('seal', spec, { stop: cold.stop, receipt: cold, postgresReplicas });
   if (
     sealed.sealed !== true ||
     sealed.id !== spec.id ||
     sealed.spec !== binding.spec ||
+    sealed.fileScope !== binding.fileScope ||
     sealed.stop !== cold.stop ||
     sealed.sha256 !== cold.sha256 ||
     sealed.stage !== spec.stageParent + '/service-data-' + spec.id
@@ -228,7 +232,7 @@ export async function adoptionDefinition(
   if (steps.some((s) => Buffer.byteLength(s.run) > 22 * 1024))
     throw Error('Rootless restore exceeds the bounded SSH management command size');
   return {
-    name: 'service-data-adopt-' + spec.id + '-' + phase,
+    name: 'service-data-adopt-' + spec.id + '-' + phase + (postgresReplicas ? '-files' : ''),
     description: 'Restore sealed service data into fresh, unattached rootless Docker volumes.',
     triggers: [{ type: 'manual', config: {} }],
     steps,
@@ -321,8 +325,11 @@ export function command(program) {
   entry
     .command('binding <spec>')
     .requiredOption('--namespaces <file>', 'Completed namespace observation run')
+    .option('--postgres-replicas', 'Reserve only flatnode, merged, Redis and MinIO volumes')
     .action(async (file, o) => {
-      const binding = await adoptionBinding(await load(file), await load(o.namespaces));
+      const binding = await adoptionBinding(await load(file), await load(o.namespaces), {
+        postgresReplicas: Boolean(o.postgresReplicas),
+      });
       await print({ binding, sha256: digest(binding) });
     });
   for (const phase of ['restore', 'verify'])
@@ -332,6 +339,7 @@ export function command(program) {
       .requiredOption('--cold <file>', 'Fenced source cold receipt')
       .requiredOption('--bootstrap <file>', 'Completed receiver bootstrap Pipeline status')
       .requiredOption('--seal <file>', 'Sealed target receipt')
+      .option('--postgres-replicas', 'Restore or verify only flatnode, merged, Redis and MinIO volumes')
       .option('--validator-apparmor', 'Use the independently admitted, enforcing read-only validator profile')
       .action(async (file, o) =>
         print(
@@ -342,7 +350,7 @@ export function command(program) {
             await load(o.cold),
             await load(o.seal),
             await load(o.bootstrap),
-            { validatorApparmor: Boolean(o.validatorApparmor) }
+            { validatorApparmor: Boolean(o.validatorApparmor), postgresReplicas: Boolean(o.postgresReplicas) }
           )
         )
       );

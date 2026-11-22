@@ -4,6 +4,8 @@
 
 `project` packaging delivers application inputs. `backup` writes a local database dump or bucket archive. `files copy` relays 256 KiB frames through its master and limits a transfer to 100 GiB and 10,000 entries. `block-preseed` admits closed public block/undo pairs. Private service staging has a separate grant and stage.
 
+When both PostgreSQL clusters move through physical replication, the existing cold, seal and rootless adoption commands can accept exactly flatnode, merged, Redis and MinIO from the admitted warm stage. The original full-volume mode remains the default. [Four-tree file acceptance](../service-data-adopt/README.md#file-acceptance-with-two-physical-postgresql-replicas)
+
 ## Declare the volume set
 
 Use one UUIDv4 for the whole migration. Carry the endpoint fields from the [block preseed registration](../block-preseed/README.md), replacing `blocks` and `firstActive` with `project`, `stack`, `clusters` and `volumes`. The two PostgreSQL system identifiers in `clusters.postgres` and `clusters.nominatim` are decimal strings. Each volume row has the following fields.

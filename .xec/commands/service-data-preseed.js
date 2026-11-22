@@ -339,3 +339,5 @@ export function command(program) {
     );
   }
 }
+
+export { checkedRunner, installSteps };

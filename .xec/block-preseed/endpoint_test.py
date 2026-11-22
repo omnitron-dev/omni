@@ -2,14 +2,37 @@ import io
 import os
 import pathlib
 import struct
+import time
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import endpoint as e
 
 
 class BlockPreseed(unittest.TestCase):
+    def test_legacy_ssh_expiry_matches_native_standard_time_in_summer_and_winter(self):
+        original = os.environ.get('TZ')
+        try:
+            for zone in ('UTC', 'America/New_York', 'Europe/Berlin'):
+                os.environ['TZ'] = zone
+                time.tzset()
+                for epoch in (1783501200, 1795305600):
+                    encoded = e.legacy_ssh_expiry(epoch)
+                    self.assertRegex(encoded, r'^[0-9]{14}$')
+                    parsed = time.strptime(encoded, '%Y%m%d%H%M%S')
+                    self.assertEqual(int(time.mktime((*parsed[:8], 0))), epoch)
+        finally:
+            if original is None:
+                os.environ.pop('TZ', None)
+            else:
+                os.environ['TZ'] = original
+            time.tzset()
+        with patch.object(e.subprocess, 'run', return_value=Mock(stdout=b'OpenSSH_9.1p1')):
+            self.assertEqual(e.ssh_expiry(1795305600), '20261122000000Z')
+        with patch.object(e.subprocess, 'run', return_value=Mock(stdout=b'unknown option -- V\nOpenSSH_8.9p1 Ubuntu')):
+            self.assertRegex(e.ssh_expiry(1795305600), r'^[0-9]{14}$')
+
     def test_source_priority_targets_this_process_and_fails_on_an_unapplied_policy(self):
         with patch.object(e.os, 'setpriority') as nice, patch.object(e.os, 'getpriority', return_value=19), \
                 patch.object(e.shutil, 'which', return_value='/usr/bin/ionice'), patch.object(e, 'run') as ionice:

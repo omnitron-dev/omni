@@ -325,6 +325,31 @@ def matches_seal(sealed, offer):
     return sealed['manifest'] == offer['manifest'] and ('offer' not in sealed or sealed['offer'] == digest(canonical(offer)))
 
 
+def legacy_ssh_expiry(epoch):
+    # Pre-9.1 OpenSSH parses fourteen digits with mktime and tm_isdst=0. Encode
+    # standard local time even during DST, then prove that the parser obtains the approved epoch.
+    local = time.gmtime(epoch - time.timezone)
+    require(int(time.mktime((*local[:8], 0))) == epoch, 'The legacy SSH time zone cannot represent this exact expiry.')
+    return time.strftime('%Y%m%d%H%M%S', local)
+
+
+def ssh_expiry(epoch):
+    result = subprocess.run(['/usr/sbin/sshd', '-V'], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, timeout=10)
+    version = re.search(rb'OpenSSH_([0-9]+)\.([0-9]+)', result.stdout)
+    require(version, 'Could not establish the receiving OpenSSH date format.')
+    if tuple(map(int, version.groups())) >= (9, 1):
+        return datetime.datetime.fromtimestamp(epoch, datetime.timezone.utc).strftime('%Y%m%d%H%M%SZ')
+    previous = os.environ.pop('TZ', None)
+    try:
+        time.tzset()
+        return legacy_ssh_expiry(epoch)
+    finally:
+        if previous is not None:
+            os.environ['TZ'] = previous
+        time.tzset()
+
+
 def grant(spec, offer, state, validate=check_offer, remember=False):
     stage = stage_path(spec)
     journal = state / 'stage.json'
@@ -360,7 +385,7 @@ def grant(spec, offer, state, validate=check_offer, remember=False):
         if remember:
             write_record(state / ('approved-' + token + '.json'), {'offer': token})
         write_record(state / 'permit.json', {'spec': spec, 'offer': offer, 'token': token, 'identity': binding['identity']}, 0o640, user.pw_gid)
-        expiry = datetime.datetime.fromtimestamp(offer['expires'], datetime.timezone.utc).strftime('%Y%m%d%H%M%SZ')
+        expiry = ssh_expiry(offer['expires'])
         line = 'restrict,from="{}",expiry-time="{}",command="/usr/bin/python3 -I {} receive {} {}" {}\n'.format(
             ipaddress.IPv4Address(spec['sourceIp']), expiry, program, spec['id'], token, offer['publicKey'])
         write_keys(state, line, user.pw_gid)
@@ -632,7 +657,10 @@ def entry(args, profile=None):
             result = (profile.send if profile else send)(spec, offer, state)
         elif action in ('seal', 'revoke'):
             reviewed = offer if action == 'seal' else None
-            result = revoke(spec, state, reviewed, profile.verify, profile.allowed, 0o400) if profile else revoke(spec, state, reviewed)
+            # Revoked stages are root-only (0700). A resumable profile may allow the next
+            # dedicated stage owner to rehash complete objects retained under an earlier UID.
+            mode = getattr(profile, 'retained_mode', 0o400) if reviewed is None else 0o400
+            result = revoke(spec, state, reviewed, profile.verify, profile.allowed, mode) if profile else revoke(spec, state, reviewed)
         else:
             for item in ('identity', 'identity.next', 'identity.next.pub'):
                 (state / item).unlink(missing_ok=True)

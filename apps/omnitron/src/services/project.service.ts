@@ -4117,6 +4117,25 @@ export class ProjectService extends EventEmitter {
    * Validate that a stack's infrastructure config satisfies all app requirements.
    * Returns issues if infrastructure is missing for apps that need it.
    */
+  /** Public digest of the admitted release's symbolic bindings on one pinned recipient. */
+  async reviewStackHostBindings(selection: import('../infrastructure/host-binding-review.js').HostBindingSelection) {
+    const { project, stack: stackName, release: requested, nodeId } = selection;
+    const config = await this.loadProjectConfig(project);
+    const stack = this.resolveStacks(config, project)[stackName];
+    const nodes = stack?.nodes?.filter(node => node.nodeId === nodeId) ?? [];
+    if (!stack || stack.type === 'local' || nodes.length !== 1 || !this.resolveNodeCredentials)
+      throw Error('A registered remote stack with an explicitly pinned recipient is required');
+    const node = nodes[0]!;
+    const target = await this.resolveNodeCredentials(node.host, node.port ?? 9700, nodeId);
+    if (!target?.expectedHostFingerprint) throw Error('The SSH registration must have an approved host key');
+    const release = await this.admitRelease(project, stackName, stack, config, requested, 'check');
+    if (!release.remoteDefinitions) throw Error('The admitted release has no captured remote application declarations');
+    const services = await this.collectDeclaredServices(project, stack, config, { definitions: release.remoteDefinitions });
+    const { reviewHostBindings } = await import('../infrastructure/host-binding-review.js');
+    return reviewHostBindings({ project, stack: stackName, nodeId, release: release.id, commit: release.manifest.project.commit,
+      manifestSha256: release.manifestSha256, sshFingerprint: target.expectedHostFingerprint }, services, stack.serviceOverrides);
+  }
+
   /**
    * What each node of a stack would find and do on its host for the services
    * the stack declares — asked, not done (`host-inspection.ts`).

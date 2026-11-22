@@ -347,7 +347,7 @@ function planAdoption(
   return { actions, refusals: [], adopts: true };
 }
 
-function withMarker(content: string): string {
+export function withMarker(content: string): string {
   return content.includes(OMNITRON_CONFIG_MARKER) ? content : `${OMNITRON_CONFIG_MARKER}\n${content}`;
 }
 

@@ -324,6 +324,15 @@ export class ProjectRpcService {
   assertSdkMutable(): void { this.projectService.assertSdkMutable(); }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
+  async reviewStackHostBindings(data: import('../infrastructure/host-binding-review.js').HostBindingSelection) {
+    if (!data || Object.keys(data).sort().join(',') !== 'nodeId,project,release,stack' ||
+        !Object.values(data).every(value => typeof value === 'string' && value.length > 0 && value.length <= 128))
+      throw Errors.badRequest('Select the registered project, stack, exact release and nodeId');
+    const scope = await this.projectService.resolveProjectStack({ project: data.project, stack: data.stack }, { readOnly: true });
+    return this.projectService.reviewStackHostBindings({ ...scope, release: data.release, nodeId: data.nodeId });
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
   async reviewStackMigrations(data: { project: string; stack: string; app?: string }) {
     const scope = await this.projectService.resolveProjectStack(data, { readOnly: true });
     const report = await this.projectService.reviewStackMigrations(scope);

@@ -225,6 +225,8 @@ existing files against the publication receipt. A changed digest at the same
 version requires explicit reconciliation. Data directories and service activation
 use the ordinary bare-metal plan.
 
+Administrators can inspect a prepared set of public Bitcoin Core and Monero units on a registered node while the services remain inactive. The inspection records the service identities, unit hashes and canonical config path occupancy. [Passive host binding inspection](../../.xec/host-bindings/README.md)
+
 ## Source SDK development
 
 Use a complete Omni checkout with its ordinary frozen installation. From a consumer project:

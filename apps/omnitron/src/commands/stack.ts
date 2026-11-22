@@ -51,6 +51,23 @@ function formatDuration(ms: number): string {
 // Commands
 // =============================================================================
 
+export async function stackHostBindingReviewCommand(project: string, stack: string, release: string, nodeId: string) {
+  const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
+  try {
+    const service = await client.service<IProjectRpcService>('OmnitronProject');
+    const report = await service.reviewStackHostBindings({ project, stack, release, nodeId });
+    if (!emitJson(report)) {
+      note(report.bindings.map(binding => binding.unit + '  ' + binding.user + '  ' + binding.config).join('\n'), 'Passive host binding review');
+      emitSuccess(report.digest);
+    }
+  } catch {
+    emitError('The registered release and recipient could not be reviewed for passive host preparation');
+    process.exitCode = 1;
+  } finally {
+    await client.disconnect();
+  }
+}
+
 export async function stackListCommand(options?: { project?: string }): Promise<void> {
   const client = createDaemonClient();
   try {

@@ -510,6 +510,16 @@ stack
   });
 
 stack
+  .command('review-host-bindings <project> <stack>')
+  .description('Review the public configuration schema and unit digests for passive mainnet host preparation')
+  .requiredOption('--release <id>', 'Exact admitted application release')
+  .requiredOption('--node-id <id>', 'Pinned recipient in the stack registration')
+  .structuredAction(async (project, stackName, options) => {
+    const { stackHostBindingReviewCommand } = await import('../commands/stack.js');
+    await stackHostBindingReviewCommand(project, stackName, options.release, options.nodeId);
+  });
+
+stack
   .command('diagnose <project> <stack>')
   .description('Inspect stack prerequisites without starting, provisioning or migrating')
   .structuredAction(async (projectName, stackName) => {

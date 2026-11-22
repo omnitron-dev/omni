@@ -418,6 +418,7 @@ export interface IProjectRpcService {
   getStackMigration(data: { project: string; stack: string; operationId: string }): Promise<import('./execution-operations.js').OperationReceipt | null>;
   resumeInstalledStack(data: { project: string; stack: string }): Promise<import('./project.js').InstalledStackResumeResult>;
   reviewStackStart(data: { project: string; stack: string } & import('./project.js').StackStartOptions): Promise<import('./project.js').StackStartReview>;
+  reviewStackHostBindings(data: import('../../infrastructure/host-binding-review.js').HostBindingSelection): Promise<import('../../infrastructure/host-binding-review.js').HostBindingReview>;
   startStack(data: { project: string; stack: string } & import('./project.js').StackStartOptions): Promise<IStackInfo>;
   /** Would this stack take this release? The deployment's own decision, asked in advance. */
   checkRelease(data: { project: string; stack: string; release: string; prepare?: boolean }): Promise<import('./project.js').ReleaseAdmission>;

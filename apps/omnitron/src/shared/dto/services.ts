@@ -419,6 +419,7 @@ export interface IProjectRpcService {
   resumeInstalledStack(data: { project: string; stack: string }): Promise<import('./project.js').InstalledStackResumeResult>;
   reviewStackStart(data: { project: string; stack: string } & import('./project.js').StackStartOptions): Promise<import('./project.js').StackStartReview>;
   reviewStackHostBindings(data: import('./host-bindings.js').HostBindingSelection): Promise<import('./host-bindings.js').HostBindingReview>;
+  inspectMoneroWallet(data: import('./host-bindings.js').WalletMembershipRequest): Promise<import('./host-bindings.js').WalletMembershipReceipt>;
   installReviewedHostConfigs(data: import('./host-bindings.js').HostConfigInstallRequest): Promise<import('./host-bindings.js').HostConfigReceipt>;
   startStack(data: { project: string; stack: string } & import('./project.js').StackStartOptions): Promise<IStackInfo>;
   /** Would this stack take this release? The deployment's own decision, asked in advance. */

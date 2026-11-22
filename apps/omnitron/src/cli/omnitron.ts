@@ -495,6 +495,14 @@ hostConfig.command('receive <ticket>').description('Authorize one passive instal
     } catch { emitError('The local host configuration authorization or installation did not complete'); process.exitCode = 1; }
   });
 
+stack.command('verify-wallet-addresses <project> <stack>')
+  .description('Verify issued Monero mainnet subaddresses from salted fingerprints on stdin')
+  .allowExcessArguments(false)
+  .structuredAction(async (projectName, stackName) => {
+    const { verifyWalletAddressesCommand } = await import('../commands/wallet-membership.js');
+    await verifyWalletAddressesCommand(projectName, stackName);
+  });
+
 stack.command('install-host-configs <project> <stack>').description('Install three reviewed configurations on an authorized passive recipient')
   .allowExcessArguments(false)
   .requiredOption('--release <id>', 'Exact admitted release')

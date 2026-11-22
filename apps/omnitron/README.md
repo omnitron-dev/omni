@@ -190,6 +190,24 @@ Preparation checks the current project registration, both stack release policies
 
 The host-binding review identifies expected units, public template hashes and the recipient. A preservation review also needs a positive observation of each resource from that recipient. For a native host service this includes the running process and service identity, executable, unit, protected configuration and storage bindings. A successful source check alone authorizes no cutover. The prepared start command supports inspection. Switching an existing deployment requires a separately verified handoff from its current owner.
 
+### Verify an existing Monero wallet before moving a stack
+
+A stack administrator can check whether the active mainnet wallet owns the deposit addresses that the application has already issued in account zero. Supply a private JSON request on standard input.
+
+```sh
+omnitron --json stack verify-wallet-addresses acme prod < wallet-membership.json
+```
+
+| Request field | Value |
+| --- | --- |
+| `nodeId`, `fingerprint` | Registered source node ID and its approved SSH host fingerprint |
+| `unit`, `port` | Active Linux unit (`monero-wallet-rpc.service` or `monero-walletd.service`) and its numeric RPC port |
+| `userRef`, `passwordRef` | Names of the two vault references declared in the mainnet `monero-wallet-rpc` service override |
+| `nonce` | A fresh 32-byte random value encoded as 64 lowercase hex characters |
+| `members` | One lowercase SHA-256 per distinct issued subaddress, computed over the ASCII text `nonce + ":" + address`, with 1 to 8,192 entries |
+
+The node checks the process that owns the listening socket and connects to it locally. The controller answers the wallet's HTTP Digest challenge over the registered SSH connection. The query reads account zero. Its receipt gives the fingerprint of the primary address, the number checked, and the number matched. The CLI succeeds only when every supplied subaddress matches. Keep the receipt alongside the ledger observation and compare it again after restoring the wallet, before enabling payouts.
+
 ### Move one stopped remote stack to its prepared recipient
 
 #### Prepare the disabled receiver allocation

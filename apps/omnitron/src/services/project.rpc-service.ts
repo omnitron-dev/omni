@@ -324,6 +324,15 @@ export class ProjectRpcService {
   assertSdkMutable(): void { this.projectService.assertSdkMutable(); }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
+  async inspectMoneroWallet(request: import('../shared/dto/host-bindings.js').WalletMembershipRequest) {
+    const { checkWalletMembership } = await import('../infrastructure/monero-wallet-inspection.js');
+    checkWalletMembership(request);
+    const scope = await this.projectService.resolveProjectStack({ project: request.project, stack: request.stack }, { readOnly: true });
+    if (scope.project !== request.project || scope.stack !== request.stack) throw Errors.badRequest('An exact registered project and stack are required');
+    return this.projectService.inspectMoneroWallet(request);
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
   async installReviewedHostConfigs(data: import('../shared/dto/host-bindings.js').HostConfigInstallRequest) {
     const { checkRequest } = await import('../infrastructure/host-config-transfer.js');
     checkRequest(data);

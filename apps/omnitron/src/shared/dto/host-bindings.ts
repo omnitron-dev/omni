@@ -24,3 +24,23 @@ export interface HostBindingReview extends HostBindingSelection {
 export type HostConfigGrant = { ticket: string; nodeId: string; review: string };
 export type HostConfigInstallRequest = HostConfigGrant & { project: string; stack: string; release: string; prepared: string };
 export type HostConfigReceipt = HostConfigGrant & { protocol: 1; files: Array<{ profile: HostBindingProfile; receipt: string }> };
+
+export interface WalletMembershipRequest {
+  project: string;
+  stack: string;
+  nodeId: string;
+  fingerprint: string;
+  unit: 'monero-walletd.service' | 'monero-wallet-rpc.service';
+  port: number;
+  userRef: string;
+  passwordRef: string;
+  nonce: string;
+  members: string[];
+}
+
+export interface WalletMembershipReceipt {
+  primarySha256: string;
+  membershipSha256: string;
+  checked: number;
+  matched: number;
+}

@@ -4446,6 +4446,48 @@ export class ProjectService extends EventEmitter {
     return infrastructure;
   }
 
+  /** Read the original mainnet wallet through its registered node. The password stays in the controller. */
+  async inspectMoneroWallet(request: import('../shared/dto/host-bindings.js').WalletMembershipRequest) {
+    const { checkWalletMembership, checkWalletProfile, inspectMoneroWallet } = await import('../infrastructure/monero-wallet-inspection.js');
+    checkWalletMembership(request);
+    const { project, stack, nodeId } = request;
+    await this.ensureConfig(project);
+    const binding = () => {
+      const baseline = this.registeredRemoteScope(project, stack);
+      const placement = this.placement(project, stack);
+      if (placement && placement.registration !== baseline.fingerprint) throw Error('Remote stack registration changed');
+      const declared = placement?.selected
+        ? this.placementConfiguration(project, stack, placement)?.stacks?.[stack]
+        : baseline.stack;
+      const target = this.placementRecipient(nodeId, placement?.selected ?? placement?.origin);
+      const node = declared?.nodes?.[0];
+      if (!declared || !node || declared.nodes?.length !== 1 || (node.nodeId && node.nodeId !== nodeId) ||
+          node.host !== target.host || (node.port ?? 9700) !== target.port || target.fingerprint !== request.fingerprint)
+        throw Error('Wallet inspection requires the selected registered node and its approved SSH key');
+      return { registration: baseline.fingerprint, target, references: checkWalletProfile(declared, request) };
+    };
+    const initial = binding();
+    const current = () => {
+      if (!isDeepStrictEqual(binding(), initial)) throw Error('Wallet registration or profile changed during inspection');
+    };
+    const ssh = await this.resolveNodeCredentials?.(initial.target.host, initial.target.port, nodeId);
+    if (!ssh || ssh.username !== 'root' || ssh.expectedHostFingerprint !== initial.target.fingerprint)
+      throw Error('No authorized administrative route to the registered wallet node');
+    const { meshManagementIdentity } = await import('../cluster/mesh-link.js');
+    if (meshManagementIdentity(nodeId, ssh) !== initial.target.managementIdentity) throw Error('Wallet management route changed');
+    const receipt = await inspectMoneroWallet(ssh, request, async () => {
+      current();
+      if (!this.secrets) throw Error('Controller vault unavailable');
+      const { user: userRef, password: passwordRef } = initial.references;
+      const [user, password] = await Promise.all([this.secrets.get(userRef), this.secrets.get(passwordRef)]);
+      current();
+      if (!user || !password) throw Error('Declared wallet profile unavailable');
+      return { user, password };
+    });
+    current();
+    return receipt;
+  }
+
   /** An independently authorized local installer accepts only bindings from the saved release and recipient. */
   @RecoveryMutation()
   async installReviewedHostConfigs(request: import('../shared/dto/host-bindings.js').HostConfigInstallRequest) {

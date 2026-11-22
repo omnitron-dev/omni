@@ -73,6 +73,16 @@ pnpm exec xec service-data-preseed seed spec.json --grants grants.json > seed.pi
 
 The two admission receipts must name the same spec and key fingerprint. `seed` may run while the source is serving. It transfers with low source priority and `rateKiB`, reuses completed files, and keeps partials only on the receiver. Its receipt is `provisional`. The warm pass excludes each PostgreSQL data directory's active WAL, postmaster PID and temporary statistics. For relocated WAL, the warm pass also skips the separate WAL tree. The MinIO scope covers its physical configured volume and `.minio.sys`. Serving access and object versions require the reviewed matching deployment, encryption configuration and any external KMS on restoration.
 
+If a large warm transfer reports rsync exit 30, the sender exceeded its inactivity limit. A previously received basis file can take time to read even on an established SSH connection. Reuse the same spec, stage, endpoint receipts and bootstrap helpers. Confirm the previous run is terminal and the named stage still has its original device/inode. Supply the two complete successful bootstrap Pipeline status responses to bind the historical helper. The source and receiver reacquire their existing operation locks.
+
+```sh
+pnpm exec xec service-data-preseed seed spec.json --grants grants.json \
+  --source-bootstrap source-bootstrap.json --receiver-bootstrap receiver-bootstrap.json \
+  --idle-timeout 1800 > resume-warm.pipeline.json
+```
+
+The ordinary warm idle timeout is 90 seconds. The explicit option accepts 90–1800 seconds and caps each native rsync invocation at the earlier of the two original grant expirations. It preserves the SSH keepalive, rate limit, read-only exports, partial directory and return-code checks. The step reports the volume role, exit code and counts of recognized error categories on stderr. Filenames and raw rsync errors stay out of Pipeline receipts. If the grant expires or the receiver closes the stage, the original endpoint enforcement stops the transfer.
+
 After the normal full `stack stop` has retired the source writers, use the exact controller `stopOperation.id`. Preserve the old named volumes, OCI images, project configuration, secrets and routing for rollback. The receiving roles must still be offline.
 
 The cold and seal graphs read the completed stop on both sides of their data operations. Each checks the recipient's operation ID and observation time. A standalone controller can record a recipient by its mesh address. The graph resolves that address and daemon port to the unique source registration whose SSH key it checked. A conflicting node ID, cluster authority or registration stops the operation.

@@ -50,6 +50,64 @@ const pub = Buffer.concat([
 const key = 'ssh-ed25519 ' + pub.toString('base64'),
   fp = 'SHA256:' + createHash('sha256').update(pub).digest('base64').replace(/=+$/, '');
 const stop = '4cea20df-2e35-412a-a497-ccbb0cc75024';
+test('ordinary seed can resume the admitted helper with an explicit bounded idle timeout', async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'retained-warm-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const exp = Math.floor(Date.now() / 1000) + 1800,
+    c = await grantContract(spec, key, exp, '11', '12');
+  const common = { spec: c.source.spec, keySha256: fp, expires: exp };
+  const grants = { source: { ...common, side: 'source' }, receiver: { ...common, side: 'receiver', stage: c.stage } };
+  const helper = '1774d8587171e5481ba010493223470fdc6e737f858806dd4d9ae3238edde3ff';
+  const boot = (side, id) => ({
+    id,
+    status: 'success',
+    review: { digest: 'e'.repeat(64) },
+    steps: [
+      ['helper-part-1', { part: 1, total: 1, helperSha256: helper }],
+      ['bootstrap-' + side, { side, spec: c.source.spec, stage: c.stage }],
+    ].map(([name, v]) => ({
+      name,
+      nodeId: spec[side + 'Node'],
+      status: 'success',
+      exitCode: 0,
+      outputTruncated: false,
+      output: JSON.stringify(v),
+    })),
+  });
+  const input = { spec, grants, source: boot('source', stop), receiver: boot('receiver', spec.id) };
+  const file = (name) => path.join(dir, name + '.json');
+  await Promise.all(Object.entries(input).map(([n, v]) => fs.writeFile(file(n), JSON.stringify(v))));
+  const exe = path.resolve('node_modules/.bin/xec'),
+    base = ['service-data-preseed', 'seed', file('spec'), '--grants', file('grants')];
+  const env = { ...process.env, PATH: path.dirname(process.execPath) + path.delimiter + process.env.PATH };
+  const cli = (more) => run(exe, [...base, ...more], { maxBuffer: 1024 ** 2, env });
+  const old = await serviceDataDefinition('seed', spec, { grants });
+  assert(!old.steps.at(-1).run.includes('registered-warm-budget'));
+  const result = JSON.parse(
+    (
+      await cli([
+        '--source-bootstrap',
+        file('source'),
+        '--receiver-bootstrap',
+        file('receiver'),
+        '--idle-timeout',
+        '1800',
+      ])
+    ).stdout
+  );
+  await checkPipelineDefinition(result);
+  assert.deepEqual(
+    result.steps.map((s) => s.name),
+    ['registered-pins', 'registered-seed-helpers', 'check-receiver', 'seed']
+  );
+  assert(result.steps.filter((s) => s.nodeId).every((s) => s.run.includes(helper)));
+  assert(result.steps.at(-1).run.includes('registered-warm-budget'));
+  assert(result.steps.every((s) => Buffer.byteLength(s.run) <= 22 * 1024));
+  await assert.rejects(cli(['--source-bootstrap', file('source')]), /Both endpoint/);
+  await assert.rejects(serviceDataDefinition('seed', spec, { grants, warmIdleSeconds: 1801 }), /idle timeout/);
+  await assert.rejects(serviceDataDefinition('cold', spec, { grants, stop, warmIdleSeconds: 90 }), /Only a warm seed/);
+});
+
 test('independent grants and a fresh controller stop are necessary for each supported entry point', async () => {
   const expiry = Math.floor(Date.now() / 1000) + 1800,
     contract = await grantContract(spec, key, expiry, '11', '12');

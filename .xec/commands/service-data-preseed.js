@@ -141,6 +141,19 @@ async function checkedRedisRunner() {
   );
 }
 
+async function checkedWarmRunner(seconds) {
+  const profile = await fs.readFile(new URL('../service-data-preseed/warm_transfer.py', import.meta.url), 'utf8');
+  return (
+    checkedSource +
+    "\nimport base64,gzip,json\ns=b.decode();m={'__name__':'checked_seed','SELF':s};exec(compile(s,'service-data','exec'),m)\n" +
+    "p=json.loads(gzip.decompress(base64.b64decode('" +
+    packed(profile) +
+    "')));a={};exec(compile(p,'registered-warm-budget','exec'),a);a['run'](m," +
+    seconds +
+    ')'
+  );
+}
+
 function installSteps(source, program, spec, side) {
   const digest = bytesSha(program);
   const bundled = gzipSync(program, { level: 9 });
@@ -160,7 +173,11 @@ function installSteps(source, program, spec, side) {
   });
 }
 
-export async function serviceDataDefinition(phase, spec, { grants, stop, receipt, installedDigest } = {}) {
+export async function serviceDataDefinition(
+  phase,
+  spec,
+  { grants, stop, receipt, installedDigest, warmIdleSeconds } = {}
+) {
   const phases = [
     'bootstrap-source',
     'bootstrap-receiver',
@@ -176,8 +193,13 @@ export async function serviceDataDefinition(phase, spec, { grants, stop, receipt
   if (!phases.includes(phase)) throw Error('Invalid service-data operation');
   const transferring = ['seed', 'cold'].includes(phase),
     final = ['cold', 'seal'].includes(phase);
-  if (installedDigest !== undefined && (!final || !hash(installedDigest)))
-    throw Error('Historical service helpers require a cold/seal review and an exact installed SHA');
+  if (installedDigest !== undefined && ((!final && phase !== 'seed') || !hash(installedDigest)))
+    throw Error('Retained service helpers require a transfer review and an exact installed SHA');
+  if (
+    warmIdleSeconds !== undefined &&
+    (phase !== 'seed' || !Number.isSafeInteger(warmIdleSeconds) || warmIdleSeconds < 90 || warmIdleSeconds > 1800)
+  )
+    throw Error('Only a warm seed accepts a reviewed rsync idle timeout between 90 and 1800 seconds');
   if (Boolean(grants) !== transferring || Boolean(stop) !== final || Boolean(receipt) !== (phase === 'seal'))
     throw Error('Seed/cold require both grants, cold/seal the stop operation and seal the source cold receipt');
   if (stop && !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(stop)) throw Error('Invalid stack stop operation');
@@ -218,7 +240,12 @@ export async function serviceDataDefinition(phase, spec, { grants, stop, receipt
     throw Error('Invalid cold receipt for this exact stack stop and volume set');
   const program = await receiverProgram();
   const toolDigest = installedDigest ?? bytesSha(program);
-  const coldRunner = phase === 'cold' ? await checkedRedisRunner() : checkedRunner;
+  const transferRunner =
+    phase === 'cold'
+      ? await checkedRedisRunner()
+      : warmIdleSeconds === undefined
+        ? checkedRunner
+        : await checkedWarmRunner(warmIdleSeconds);
   const pins = registeredPinsStep(
     Object.fromEntries(
       ['sourceNode', 'receiverNode', 'sourceFingerprint', 'receiverFingerprint'].map((k) => [k, spec[k]])
@@ -256,7 +283,7 @@ export async function serviceDataDefinition(phase, spec, { grants, stop, receipt
         timeout: 86400000,
         run:
           '/usr/bin/python3 -I -c ' +
-          quote(action === 'cold' ? coldRunner : checkedRunner) +
+          quote(action === 'cold' || action === 'seed' ? transferRunner : checkedRunner) +
           ' ' +
           [toolDigest, action, packed(spec), env].map(quote).join(' '),
       });
@@ -335,22 +362,41 @@ export function command(program) {
     'revoke',
   ]) {
     const sub = cmd.command(phase + ' <spec>').description('Export the ' + phase + ' Omnitron pipeline');
+    if (phase === 'seed') {
+      sub.option(
+        '--idle-timeout <seconds>',
+        'Bound this warm rsync inactivity to 90–1800 seconds and the remaining grant',
+        Number
+      );
+      sub.option('--source-bootstrap <file>', 'Completed source bootstrap for the retained helper');
+      sub.option('--receiver-bootstrap <file>', 'Completed receiver bootstrap for the retained helper');
+    }
     if (['seed', 'cold'].includes(phase)) sub.requiredOption('--grants <file>', 'Both verified endpoint receipts');
     if (['cold', 'seal'].includes(phase)) sub.requiredOption('--stop <id>', 'Exact current full stack stop operation');
     if (phase === 'seal') sub.requiredOption('--receipt <file>', 'Exact source cold receipt');
-    sub.action(async (file, options) =>
-      print(
-        JSON.stringify(
-          await serviceDataDefinition(phase, await load(file), {
-            grants: options.grants && (await load(options.grants)),
-            stop: options.stop,
-            receipt: options.receipt && (await load(options.receipt)),
-          }),
-          null,
-          2
-        ) + '\n'
-      )
-    );
+    sub.action(async (file, options) => {
+      if (Boolean(options.sourceBootstrap) !== Boolean(options.receiverBootstrap))
+        throw Error('Both endpoint bootstrap receipts are required for a retained seed');
+      const spec = await load(file);
+      const inputs = {
+        grants: options.grants && (await load(options.grants)),
+        stop: options.stop,
+        receipt: options.receipt && (await load(options.receipt)),
+        warmIdleSeconds: options.idleTimeout,
+      };
+      let graph;
+      if (options.sourceBootstrap) {
+        const { retainedServiceDefinition } = await import('./service-data-cold.js');
+        graph = await retainedServiceDefinition(phase, spec, {
+          ...inputs,
+          sourceBootstrap: await load(options.sourceBootstrap),
+          receiverBootstrap: await load(options.receiverBootstrap),
+        });
+      } else {
+        graph = await serviceDataDefinition(phase, spec, inputs);
+      }
+      await print(JSON.stringify(graph, null, 2) + '\n');
+    });
   }
 }
 

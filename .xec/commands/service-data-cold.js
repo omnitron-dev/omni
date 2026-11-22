@@ -19,30 +19,31 @@ for node,h in json.loads(gzip.decompress(base64.b64decode(sys.argv[1]))):
         if step.get('nodeId')!=node or step.get('status')!='success' or step.get('exitCode')!=0 or step.get('outputTruncated') is not False or hashlib.sha256(step['output'].encode()).hexdigest()!=digest:sys.exit('Seed helper attestation differs')
 print('Both registered bootstrap runs attest the reviewed service helper.')`;
 
-export async function retainedColdDefinition(
+export async function retainedServiceDefinition(
   phase,
   spec,
-  { sourceBootstrap, receiverBootstrap, stop, grants, receipt }
+  { sourceBootstrap, receiverBootstrap, stop, grants, receipt, warmIdleSeconds }
 ) {
-  if (!['cold', 'seal'].includes(phase)) throw Error('Expected a retained cold or seal operation');
+  if (!['seed', 'cold', 'seal'].includes(phase)) throw Error('Expected a retained seed, cold or seal operation');
   const source = seedBootstrap(spec, sourceBootstrap, 'source');
   const receiver = seedBootstrap(spec, receiverBootstrap);
   const current = createHash('sha256')
     .update(await receiverProgram())
     .digest('hex');
   if (source.id === receiver.id || source.helper !== receiver.helper || ![qualified, current].includes(source.helper))
-    throw Error('This historical service-data helper has not been qualified for working-copy AOF validation');
+    throw Error('This historical service-data helper has not been qualified for the retained operation');
   const graph = await serviceDataDefinition(phase, spec, {
     grants,
     stop,
     receipt,
+    warmIdleSeconds,
     installedDigest: source.helper,
   });
-  const stopIndex = graph.steps.findIndex((s) => s.name === 'confirm-stop');
-  if (stopIndex < 1) throw Error('Missing normal cold stop gate');
+  const index = graph.steps.findIndex((s) => s.name === (phase === 'seed' ? 'check-receiver' : 'confirm-stop'));
+  if (index < 1) throw Error('Missing native grant or stop gate');
   const gate = {
     name: 'registered-seed-helpers',
-    dependsOn: graph.steps[stopIndex].dependsOn,
+    dependsOn: graph.steps[index].dependsOn,
     retries: 0,
     timeout: 150000,
     run:
@@ -56,13 +57,15 @@ export async function retainedColdDefinition(
         ])
       ).toString('base64'),
   };
-  graph.steps[stopIndex].dependsOn = [gate.name];
-  graph.steps.splice(stopIndex, 0, gate);
+  graph.steps[index].dependsOn = [gate.name];
+  graph.steps.splice(index, 0, gate);
   graph.name = 'service-data-' + spec.id + '-retained-' + phase;
   if (graph.steps.some((s) => Buffer.byteLength(s.run) > 22 * 1024))
-    throw Error('Retained cold command exceeds the SSH management budget');
+    throw Error('Retained service command exceeds the SSH management budget');
   return graph;
 }
+
+export { retainedServiceDefinition as retainedColdDefinition };
 
 export function command(program) {
   const entry = program
@@ -77,7 +80,7 @@ export function command(program) {
     if (phase === 'cold') cmd.requiredOption('--grants <file>', 'Admitted source and receiver grants');
     else cmd.requiredOption('--cold <file>', 'Completed source cold receipt');
     cmd.action(async (file, o) => {
-      const graph = await retainedColdDefinition(phase, await load(file), {
+      const graph = await retainedServiceDefinition(phase, await load(file), {
         sourceBootstrap: await load(o.sourceBootstrap),
         receiverBootstrap: await load(o.receiverBootstrap),
         stop: o.stop,

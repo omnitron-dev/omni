@@ -51,6 +51,26 @@ function formatDuration(ms: number): string {
 // Commands
 // =============================================================================
 
+export async function stackSelectPlacementCommand(project: string, stack: string, options: {
+  fromNode: string; release?: string; prepared?: string; restoreRegistration?: boolean; review?: string;
+}) {
+  const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
+  try {
+    if (options.restoreRegistration ? options.release || options.prepared : !options.release || !options.prepared)
+      throw Error('Choose --release with --prepared or --restore-registration');
+    const destination = options.restoreRegistration ? { registered: true as const } : { release: options.release!, prepared: options.prepared! };
+    const request = { project, stack, fromNodeId: options.fromNode, destination };
+    const svc = await client.service<IProjectRpcService>('OmnitronProject');
+    const result = options.review === undefined ? await svc.reviewRemotePlacement(request) : await svc.selectRemotePlacement({ ...request, review: options.review });
+    if (!emitJson(result)) {
+      note([result.fromNodeId + ' → ' + result.toNodeId, 'Stop ' + result.stopId, 'Generation ' + result.generation, result.digest].join('\n'),
+        options.review === undefined ? 'Remote placement review' : 'Selected remote placement');
+    }
+  } catch (error) {
+    emitError((error as Error).message); process.exitCode = 1;
+  } finally { await client.disconnect(); }
+}
+
 export async function stackHostBindingReviewCommand(project: string, stack: string, release: string, nodeId: string, prepared?: string) {
   const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
   try {

@@ -190,6 +190,23 @@ Preparation checks the current project registration, both stack release policies
 
 The host-binding review identifies expected units, public template hashes and the recipient. A preservation review also needs a positive observation of each resource from that recipient. For a native host service this includes the running process and service identity, executable, unit, protected configuration and storage bindings. A successful source check alone authorizes no cutover. The prepared start command supports inspection. Switching an existing deployment requires a separately verified handoff from its current owner.
 
+### Move one stopped remote stack to its prepared recipient
+
+Before the maintenance window, retain the source capture, canonical release store and exact checkout on durable controller storage. Enroll both nodes with stable IDs and approved SSH host keys. Prepare the release above. At the receiver, verify each restored named volume against its data-adoption receipt and its declared mount target. A first `reconcile` creates missing containers on the declared volumes. A missing volume can be created empty by the container engine. Verify protected host configuration with its native installer, including the expected file owner, mode and content digest. The host reconciler also checks the binary, unit, activation state and data directory.
+
+After ordinary reviewed `stack stop` completes on the source, an administrator can review and select the replacement. Use a full stop that records the logical allocation, definition and execution revision on the recipient. A stop with `--keep-infrastructure` retains ownership and cannot be used for this handoff. Supply the registered ID even if the original single-node declaration predates stable IDs.
+
+```sh
+omnitron stack select-placement acme prod --from-node "$old_id" --release "$release" --prepared "$prepared_digest" --json
+omnitron stack select-placement acme prod --from-node "$old_id" --release "$release" --prepared "$prepared_digest" --review "$placement_digest" --json
+omnitron stack start acme prod --infrastructure reconcile
+omnitron stack status acme prod --json
+```
+
+Selection rechecks the stopped owner on its enrolled connection and commits the placement to this stack’s existing target journal. The receipt binds both node identities, the confirmed stop, the release source and the journal generation. The old applications must still be stopped when the first deployment takes its lease. An accepted selection survives controller restarts. Status, stop and automatic attachment use the selected recipient. Deployment uses its verified archives and producer declarations. The registered development stack retains its own configuration. Existing cluster-managed allocations continue to require their recipient-fenced deployment adapter.
+
+For a return to the original registration, first complete a reviewed full stop on the replacement. Run `select-placement acme prod --from-node "$new_id" --restore-registration --json`, then repeat with its `--review` digest. A return checks the original stable endpoint, SSH enrollment and clean Git commit. To deploy there, specify a release at that exact commit. Data promotion, recovery and signer custody each require their own positive evidence before enabling writers.
+
 Runtime-only recovery uses `--infrastructure preserve`. Review the intended release and current resources before stopping applications:
 
 ```sh

@@ -6,6 +6,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { create } from 'tar';
+import { DaemonStateStore } from '../../src/daemon/daemon-state-store.service.js';
+import { StackTargets } from '../../src/project/stack-targets.js';
 import { ProjectService } from '../../src/services/project.service.js';
 import { ProjectRpcService } from '../../src/services/project.rpc-service.js';
 import { METADATA_KEYS } from '@omnitron-dev/titan/decorators';
@@ -179,6 +181,20 @@ describe('prepared source of one registered remote release', () => {
     expect(connector.invokeOnSlave).not.toHaveBeenCalled();
   });
 
+  it('sends the first reconcile through provisionStack on the enrolled recipient', async () => {
+    const f = fixture();
+    const apply = vi.fn(async () => ({ ready: true, running: ['sample-test-db'] }));
+    const mesh = { pinnedService: vi.fn(() => apply), addSlave: vi.fn(), invokeOnSlave: vi.fn() };
+    const provision = Reflect.get(f.service, 'provisionNodeInfrastructure').bind(f.service);
+    const owner = { project: 'sample', stack: 'test' };
+    const authority = { mode: 'reconcile', managementIdentity: 'fixture-management' };
+    await expect(provision(mesh, candidateNode, {}, {}, owner, source, undefined, authority)).resolves.toMatchObject({ ready: true });
+    expect(mesh.pinnedService).toHaveBeenCalledWith(candidateNode.host, candidateNode.port, nodeId, authority.managementIdentity, 'OmnitronInfra');
+    expect(apply).toHaveBeenCalledWith('provisionStack', expect.objectContaining({ ...owner, infrastructure: 'reconcile' }));
+    expect(mesh.addSlave).not.toHaveBeenCalled();
+    expect(mesh.invokeOnSlave).not.toHaveBeenCalled();
+  });
+
   it('rejects release topology derived from a secret even when the project returns only its hash', async () => {
     const derived = path.join(root, 'derived'), scope = path.join(root, 'derived-store');
     git(root, 'clone', '-q', '--no-local', source, derived);
@@ -190,6 +206,209 @@ describe('prepared source of one registered remote release', () => {
     manifest.project.commit = git(derived, 'rev-parse', 'HEAD'); fs.writeFileSync(file, JSON.stringify(manifest));
     await expect(captureRemoteSource('sample', 'test', id, derived, scope)).rejects.toThrow(/depend on runtime bindings/);
     expect(fs.existsSync(path.join(scope, '.remote-sources'))).toBe(false);
+  });
+
+  it('selects only after an observed full stop, preserves the source and routes restart, status, stop and the reverse placement to the selected peer', async () => {
+    const f = fixture();
+    const service = f.service;
+    const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+    const store = new DaemonStateStore(log as never, path.join(root, 'placement.db'));
+    Object.assign(service, { daemonStateStore: store });
+    delete (service as unknown as { resolveStacks?: unknown }).resolveStacks;
+    const serving = {
+      host: oldNode.host,
+      port: 9700,
+      fingerprint: 'SHA256:' + 'B'.repeat(43),
+      pin: 'c'.repeat(64),
+      managementIdentity: 'serving-pinned-management',
+    };
+    service.setReleaseRecipientResolver((key) => (key === oldNode.nodeId ? serving : f.recipient()));
+    const incumbent = { ...oldNode };
+    delete (incumbent as { nodeId?: string }).nodeId;
+    // A pre-pinned mutating registry was not required when this old incumbent was first deployed.
+    const registeredSource = path.join(root, 'legacy-serving');
+    git(root, 'clone', '-q', '--no-local', original, registeredSource);
+    fs.writeFileSync(path.join(registeredSource, 'omnitron.stacks.json'), JSON.stringify(stacks(incumbent as typeof oldNode)));
+    git(registeredSource, 'add', 'omnitron.stacks.json');
+    git(registeredSource, 'commit', '-qm', 'legacy recipient');
+    f.registration.path = registeredSource;
+    const before = fs.readFileSync(marker, 'utf8');
+    const inv = {
+      protocol: 1,
+      project: 'sample',
+      stack: 'test',
+      applications: true,
+      definition: 'b'.repeat(64),
+      containers: [],
+      execution: {
+        project: 'sample',
+        stack: 'deployed',
+        phase: 'stopped',
+        revision: 9,
+        apps: [{ name: 'sample/deployed/main', generation: 'generation-A' }],
+      },
+    };
+    const read = vi.fn(async (method: string, body?: { operationId: string }) => {
+      if (method === 'status') return { apps: [] };
+      if (method === 'getState') return { services: {} };
+      if (method === 'inspectNodeStackStop') return structuredClone(inv);
+      if (method === 'prepareNodeStackStop') return { ...structuredClone(inv), operationId: 'replacement-stop' };
+      if (method === 'executeNodeStackStop') {
+        inv.execution.revision++;
+        inv.execution.phase = 'stopped';
+        return {
+          protocol: 1,
+          project: 'sample',
+          stack: 'test',
+          operationId: body!.operationId,
+          outcome: 'stopped',
+          observedAt: '2026-01-01T00:03:00Z',
+          applications: {
+            project: 'sample',
+            stack: 'deployed',
+            operationId: body!.operationId,
+            revision: inv.execution.revision,
+            stopped: ['sample/deployed/main'],
+          },
+          removedContainers: [],
+        };
+      }
+      return {};
+    });
+    const pinnedService = vi.fn(() => read),
+      invokeOnSlave = vi.fn();
+    const base = { apps: [{ name: 'main', bootstrap: 'apps/main/src/bootstrap.mjs' }] };
+    const nativeResolve = Reflect.get(ProjectService.prototype, 'resolveStacks').bind(service);
+    const launches: Array<{ root?: string; host: string; commit: string; config: unknown }> = [];
+    const enable = vi.fn(),
+      audit = vi.fn();
+    Object.assign(service, {
+      stackStates: new Map(),
+      startsInFlight: new Map(),
+      stopsInFlight: new Map(),
+      readColdBatch: async () => null,
+      configRegistry: new Map([['sample', { config: base }]]),
+      getLoadedConfig: () => base,
+      loadProjectConfig: async () => base,
+      orchestrator: { list: () => [] },
+      infraManager: { getInstance: () => undefined },
+      updateEnabledStacks: enable,
+      assertStackMutable: vi.fn(),
+      nodeStackStop: { assertMutable: vi.fn() },
+      emit: vi.fn(),
+      audit: { record: audit },
+      logger: { ...Reflect.get(service, 'logger'), debug: vi.fn() },
+      startRemoteStack: async (
+        _p: string,
+        _s: string,
+        cfg: { nodes: Array<{ host: string }> },
+        ecosystem: unknown,
+        release: { placement: { root: string; recheck(): Promise<void> }; manifest: { project: { commit: string } } },
+      ) => {
+        await release.placement.recheck();
+        launches.push({
+          root: release.placement.root,
+          host: cfg.nodes[0]!.host,
+          commit: release.manifest.project.commit,
+          config: ecosystem,
+        });
+        return { nodes: 1, reached: 1, skipped: [] };
+      },
+    });
+    service.setSlaveConnector({ pinnedService, invokeOnSlave, getConnections: () => [] } as never);
+    const saved = (node: typeof oldNode, revision = 9) => ({
+      id: 'stop-' + node.nodeId,
+      phase: 'stopped',
+      intentCommitted: true,
+      completedAt: '2026-01-01T00:02:00Z',
+      nodes: [
+        {
+          node: node.host + ':9700',
+          nodeId: node.nodeId,
+          outcome: 'stopped',
+          operationId: 'source-operation',
+          observedAt: '2026-01-01T00:02:00Z',
+          definition: inv.definition,
+          execution: { project: 'sample', stack: 'deployed', revision },
+        },
+      ],
+    });
+    const stopKey = 'stack:sample/test:last-stop';
+    try {
+      const ready = await service.prepareRemoteReleaseSource('sample', 'test', id, f.input);
+      const req = {
+        project: 'sample',
+        stack: 'test',
+        fromNodeId: oldNode.nodeId,
+        destination: { release: id, prepared: ready.digest },
+      };
+      await expect(service.reviewRemotePlacement(req)).rejects.toThrow(/full stop/);
+      store.kvSetSync(stopKey, { ...saved(oldNode), keepInfrastructure: true });
+      await expect(service.reviewRemotePlacement(req)).rejects.toThrow(/full stop/);
+      store.kvSetSync(stopKey, saved(oldNode, 8));
+      await expect(service.reviewRemotePlacement(req)).rejects.toThrow(/generation/);
+      store.kvSetSync(stopKey, saved(oldNode));
+      const obsolete = await service.reviewRemotePlacement(req);
+      const journal = new StackTargets(store);
+      journal.remember(req, []);
+      await expect(service.selectRemotePlacement({ ...req, review: obsolete.digest })).rejects.toThrow(/review changed/);
+      const review = await service.reviewRemotePlacement(req);
+      expect(nativeResolve(base, 'sample').test.nodes[0].host).toBe(oldNode.host);
+      const route = await service.selectRemotePlacement({ ...req, review: review.digest });
+      expect(route).toEqual(review);
+      await expect(service.selectRemotePlacement({ ...req, review: review.digest })).resolves.toEqual(route);
+      expect(new StackTargets(store).inspect(req).placement?.receipt).toEqual(route);
+      expect(journal.inspect({ project: 'sample', stack: 'dev' })).toEqual({ version: 1, revision: 0, nodes: [] });
+      inv.execution.phase = 'running';
+      await expect(service.startStack('sample', 'test', { source: 'operator' })).rejects.toThrow(/stopped execution/);
+      expect(launches).toHaveLength(0);
+      inv.execution.phase = 'stopped';
+      const checks = await service.checkRelease('sample', 'test', id);
+      expect(checks.ok).toBe(true);
+      const preserve = await service.reviewStackStart('sample', 'test', { infrastructure: 'preserve' });
+      expect(preserve.selection).toEqual({ release: id, preparedSource: ready.digest, nodeId });
+      expect(nativeResolve(base, 'sample').test.nodes[0]).toEqual(candidateNode);
+      expect(nativeResolve(base, 'sample').dev.type).toBe('local');
+      const wrong = await service
+        .startStack('sample', 'test', { source: 'operator', release: 'some-other-release' })
+        .catch((error) => error);
+      expect(wrong.message).toMatch(/different immutable release/);
+      const call = Reflect.get(service, 'callStackTarget').bind(service);
+      await call({ project: 'sample', stack: 'test' }, candidateNode, 'OmnitronDaemon', 'status');
+      expect(pinnedService).toHaveBeenLastCalledWith(candidateNode.host, 9700, nodeId, 'fixture-management', 'OmnitronDaemon');
+      await expect(
+        call({ project: 'sample', stack: 'test' }, oldNode, 'OmnitronProject', 'prepareNodeStackStop', {}),
+      ).rejects.toThrow(/outside/);
+      pinnedService.mockClear();
+      const fresh = await service.getStackStatus('sample', 'test');
+      expect(fresh).toMatchObject({ connectedNodes: 1, totalNodes: 1, totalApps: 1, onlineApps: 0 });
+      expect(service.getStack('sample', 'test').selectedRelease).toEqual({ id, manifestSha256: manifestSha });
+      await service.startStack('sample', 'test', { source: 'boot' });
+      expect(pinnedService.mock.calls.length).toBeGreaterThan(1);
+      expect(pinnedService.mock.calls.every((args) => (args as unknown[])[2] === nodeId)).toBe(true);
+      expect(launches).toHaveLength(0);
+      await service.startStack('sample', 'test', { source: 'operator', infrastructure: 'reconcile' });
+      expect(launches).toHaveLength(1);
+      expect(launches[0]).toMatchObject({ root: source, host: candidateNode.host, commit: releaseCommit });
+      expect(fs.readFileSync(marker, 'utf8')).toBe(before);
+      const restore = { project: 'sample', stack: 'test', fromNodeId: nodeId, destination: { registered: true as const } };
+      await expect(service.reviewRemotePlacement(restore)).rejects.toThrow(/full stop/);
+      inv.execution.phase = 'running';
+      const stopReview = await service.reviewStackStop('sample', 'test');
+      expect(stopReview.digest).toBeTruthy();
+      await service.stopStack('sample', 'test', stopReview.digest!);
+      expect(read).toHaveBeenCalledWith('executeNodeStackStop', expect.objectContaining({ operationId: 'replacement-stop' }));
+      const back = await service.reviewRemotePlacement(restore);
+      await service.selectRemotePlacement({ ...restore, review: back.digest });
+      expect(nativeResolve(base, 'sample').test.nodes[0].nodeId).toBe(oldNode.nodeId);
+      expect(launches).toHaveLength(1);
+      expect(invokeOnSlave).not.toHaveBeenCalled();
+      await expect(service.startStack('sample', 'test', { source: 'operator' })).rejects.toThrow(
+        /explicitly verified immutable release/,
+      );
+    } finally {
+      await store.dispose();
+    }
   });
 
   it('refuses a source digest on the mutating public start before resolving the incumbent stack', async () => {

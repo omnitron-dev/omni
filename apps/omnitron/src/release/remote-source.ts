@@ -38,6 +38,12 @@ async function git(directory: string, args: string[], alternates?: string): Prom
   return (await exec('git', ['-C', directory, ...args], { env, timeout: 30_000 })).stdout.trimEnd();
 }
 
+export async function cleanRegisteredCommit(directory: string): Promise<string | null> {
+  const head = () => git(directory, ['rev-parse', '--verify', 'HEAD']);
+  const commit = await head();
+  return /^[a-f0-9]{40}$/.test(commit) && (await treeEqualsCommit(directory, commit)).equal && await head() === commit ? commit : null;
+}
+
 /** Recheck a private source before importing any of its declarations. A shared immutable
  * commit establishes project lineage even when the producer used a private local mirror. */
 export async function verifyRemoteSourceTree(source: string, registered: string, commit: string, directory = ''): Promise<void> {

@@ -47,6 +47,11 @@ import { currentActor, describeFailure } from './audit.service.js';
 import { publicLaunchFailure } from '../project/launch-failure.js';
 import { nodeApplicationNames, resolveNodePlacements, stackNodeKey } from '../project/stack-placement.js';
 import { StackTargets, type StackTarget } from '../project/stack-targets.js';
+import { confirmStoppedPlacement, remotePlacementReview, type PlacementEndpoint, type PlacementRequest, type PlacementReceipt, type RemotePlacement } from '../project/remote-placement.js';
+import { cleanRegisteredCommit, remoteReleaseSourceKey, type ReleaseRecipient } from '../release/remote-source.js';
+import { defineEcosystem } from '../config/define-ecosystem.js';
+import { readCapturedSourceSync } from '../release/source-data.js';
+
 import { configurationInfo, publicStackName, validateConfigurationNames, type ConfigurationImport, type RuntimeStackScope } from '../project/configuration-catalog.js';
 import { nodePlacement, observeStack } from '../project/stack-observation.js';
 import { getCachedBootstrapDefinition } from '../orchestrator/bootstrap-loader.js';
@@ -165,7 +170,10 @@ interface PreparedRemoteSourceRecord {
   registration: string;
   recipient: string;
 }
-type AdmittedRelease = LoadedRelease & { readonly remoteDefinitions?: Map<string, IAppDefinition> };
+type AdmittedRelease = LoadedRelease & {
+  readonly remoteDefinitions?: Map<string, IAppDefinition>;
+  readonly placement?: { root: string; nodeId: string; target: ReleaseRecipient; recheck: () => Promise<void> };
+};
 
 class LocalReleaseStopRequired extends Error {}
 class DeclarationRefreshRequired extends Error {}
@@ -399,6 +407,7 @@ export class ProjectService extends EventEmitter {
   private clusterStop?: { recipient: StopRecipient; election: LeaderElection | undefined };
   private installedResume?: InstalledStackResume;
   private coordinatingResume = false;
+  private placementConfigurations?: Map<string, IEcosystemConfig>;
 
   private get resumingInstalled(): boolean { return this.coordinatingResume || this.installedResume?.busy === true; }
   private hostedInfrastructure: () => InfrastructureService | undefined = () => undefined;
@@ -1847,15 +1856,17 @@ export class ProjectService extends EventEmitter {
       digest: null, targets: [], deferred: ['Application startup and application health; framework setup and migrations are forbidden in preserve mode'] };
     let candidate: string | undefined;
     try {
-      const remote = context.remoteSource;
+      const active = context.remoteSource || retained ? null : this.placement(project, stackName)?.selected;
+      if (active && (options.workingTree || (options.release && options.release !== active.release))) throw Error('Start review must use the selected immutable remote release');
+      const remote = context.remoteSource ?? (active ? await this.preparedRemoteRelease(project, stackName, active.release, active.prepared) : undefined);
       const config = remote?.opened.config ?? this.getLoadedConfig(project);
       if (!config) throw Error('Project configuration is not loaded');
       const stack = remote?.opened.stackConfig ?? this.resolveStacks(config, project)[stackName];
       if (!stack) throw Error('Stack is not declared');
-      this.assertStartAuthority({ project, stack: stackName }, stack);
+      if (!remote) this.assertStartAuthority({ project, stack: stackName }, stack);
       const local = stack.type === 'local' && !stack.managedOrigin;
       const prior = local ? this.localSelection(project, stackName).read().release : null;
-      const id = options.release ?? (options.workingTree ? undefined : prior?.id);
+      const id = remote?.receipt.release ?? options.release ?? (options.workingTree ? undefined : prior?.id);
       if (local) candidate = id;
       report.selection = id ? { release: id, ...(remote && { preparedSource: remote.receipt.digest, nodeId: remote.receipt.nodeId }) } : { workingTree: true };
       const release = remote?.admitted ?? (retained ? await this.retainedRelease(project, stackName, stack, retained)
@@ -2051,12 +2062,21 @@ export class ProjectService extends EventEmitter {
     workingTree = false,
     infrastructure?: { mode: 'reconcile' | 'preserve'; review: string | undefined; explicitReconcile: boolean; cold?: ColdStartPermit; retained?: RuntimeRestartStack },
   ): Promise<IStackInfo> {
-    const config = infrastructure?.mode === 'preserve' ? this.getLoadedConfig(projectName) : await this.loadProjectConfig(projectName);
+    const route = this.placement(projectName, stackName);
+    const automaticAttachment = source === 'boot' || source === 'auto-resume';
+    if (route && !route.selected && !automaticAttachment && (!releaseId || allowDirty || workingTree))
+      throw Error('Restored placement requires an explicitly verified immutable release before deployment');
+    if (route?.selected && (workingTree || allowDirty || (releaseId && releaseId !== route.selected.release)))
+      throw Error('This remote stack is bound to a different immutable release; review a new placement first');
+    const bound = route?.selected && !automaticAttachment ? await this.preparedRemoteRelease(projectName, stackName, route.selected.release, route.selected.prepared) : undefined;
+    const config = bound?.opened.config ?? (route?.selected ? this.placementConfiguration(projectName, stackName, route) :
+      infrastructure?.mode === 'preserve' ? this.getLoadedConfig(projectName) : await this.loadProjectConfig(projectName));
     if (!config) throw Error('Project configuration must be loaded before preservation');
     for (const entry of config.apps) assertApplicationInstances(entry);
-    const stacks = this.resolveStacks(config, projectName);
-    const stackConfig = stacks[stackName];
+    const stackConfig = route?.selected ? config.stacks?.[stackName] : this.resolveStacks(config, projectName)[stackName];
     if (!stackConfig) throw new Error(`Stack '${stackName}' not found in project '${projectName}'`);
+    if (route) this.placementRecipient((route.selected ?? route.origin).nodeId, route.selected ?? route.origin);
+    if (route && !automaticAttachment) await this.verifyPlacementDonor({ project: projectName, stack: stackName }, route);
     known.type = stackConfig.type;
     ownsStackInfrastructure(stackConfig); // Reject ambiguous ownership before attachment, build, migration or provisioning.
 
@@ -2072,7 +2092,7 @@ export class ProjectService extends EventEmitter {
     if (infrastructure?.mode === 'preserve') {
       if (infrastructure.cold && infrastructure.retained) claimColdStart(this.daemonStateStore, infrastructure.cold);
       preservation = await this.reviewStackStartIntent(projectName, stackName, { infrastructure: 'preserve', ...(releaseId && { release: releaseId }), ...(workingTree && { workingTree: true }) }, {
-        retained: infrastructure.retained, prepare: Boolean(infrastructure.cold && infrastructure.retained),
+        ...(bound && { remoteSource: bound }), retained: infrastructure.retained, prepare: Boolean(infrastructure.cold && infrastructure.retained),
       });
       if (!preservation.digest || preservation.digest !== infrastructure.review) throw Error('Stack launch or native infrastructure changed since review; no startup effects were admitted');
       if (infrastructure.cold) {
@@ -2090,14 +2110,31 @@ export class ProjectService extends EventEmitter {
       throw new Error('Only an independently managed local stack can change its local release selection');
     const selector = local ? this.localSelection(projectName, stackName) : null;
     const prior = selector?.read();
-    const requested = releaseId ?? (workingTree ? undefined : prior?.release?.id);
+    const requested = bound?.receipt.release ?? releaseId ?? (workingTree ? undefined : prior?.release?.id);
     let release: AdmittedRelease | null = null;
     if (requested) {
       known.release = requested;
-      if (this.receiveRelease && releaseId && source === 'operator') await this.fetchMissingRelease(releaseId);
-      release = infrastructure?.retained ? await this.retainedRelease(projectName, stackName, stackConfig, infrastructure.retained)
-        : await this.admitRelease(projectName, stackName, stackConfig, config, requested);
+      if (!bound && this.receiveRelease && releaseId && source === 'operator') await this.fetchMissingRelease(releaseId);
+      release = bound?.admitted ?? (infrastructure?.retained ? await this.retainedRelease(projectName, stackName, stackConfig, infrastructure.retained)
+        : await this.admitRelease(projectName, stackName, stackConfig, config, requested));
       if (!release) throw Error('Retained restart has lost its selected release');
+      if (route) {
+        const endpoint = route.selected ?? route.origin;
+        const root = bound?.opened.sourceRoot ?? this.registry.get(projectName)!.path;
+        const target = this.placementRecipient(endpoint.nodeId, endpoint);
+        const manifest = release.manifestSha256, commit = release.manifest.project.commit;
+        const recheck = async () => {
+          await this.verifyPlacementDonor({ project: projectName, stack: stackName }, route);
+          if (!isDeepStrictEqual(this.placement(projectName, stackName), route) || !isDeepStrictEqual(this.placementRecipient(endpoint.nodeId, endpoint), target))
+            throw Error('Active release placement changed before deployment');
+          if (bound) await this.preparedRemoteRelease(projectName, stackName, requested, bound.receipt.digest);
+          else if (commit !== route.originCommit || await cleanRegisteredCommit(root) !== route.originCommit ||
+              (await this.admitRelease(projectName, stackName, stackConfig, config, requested)).manifestSha256 !== manifest)
+            throw Error('The restored registration and immutable release must identify the original clean commit');
+        };
+        if (!bound) await recheck();
+        release = { ...release, placement: { root, nodeId: endpoint.nodeId, target, recheck } };
+      }
       if (prior?.release?.id === requested && prior.release.manifestSha256 !== release.manifestSha256)
         throw new Error('The selected release manifest changed on disk; restore its original bytes');
     } else if (stackConfig.release?.mode === 'required') {
@@ -2135,8 +2172,9 @@ export class ProjectService extends EventEmitter {
     // decide what the bundle is built from.
     const treeInputs: string[] = [];
     if (projectForTree) {
-      treeInputs.push(projectForTree.path);
-      const staticAbs = this.staticDirOf(stackConfig.infrastructure, projectForTree.path);
+      const treeRoot = bound?.opened.sourceRoot ?? projectForTree.path;
+      treeInputs.push(treeRoot);
+      const staticAbs = bound ? null : this.staticDirOf(stackConfig.infrastructure, treeRoot);
       if (staticAbs) {
         const { linkedSourceDirs } = await import('./bundle-builder.js');
         const pkgDir = staticAbs.replace(/\/[^/]+\/?$/, '');
@@ -2296,7 +2334,7 @@ export class ProjectService extends EventEmitter {
         }
       } else {
         this.rememberStackTargets(projectName, stackName, stackConfig, config);
-        reach = await this.startRemoteStack(projectName, stackName, stackConfig, config, release, reinstall, preservation, infrastructure?.explicitReconcile);
+        reach = await this.startRemoteStack(projectName, stackName, stackConfig, config, release, reinstall, preservation, infrastructure?.explicitReconcile || !!route);
       }
 
       state.status = 'running';
@@ -2323,6 +2361,8 @@ export class ProjectService extends EventEmitter {
       if (stackConfig.type === 'local') state.status = info.status;
       const outcome = notUp.length === 0 ? 'ok' : state.status === 'error' ? 'failed' : 'partial';
       if (outcome === 'ok') {
+        if (route && !route.activated) new StackTargets(this.daemonStateStore)
+          .activated({ project: projectName, stack: stackName }, route.receipt.digest);
         this.emit('stack:started', projectName, stackName, stackConfig.type, info.apps.length, info.nodes?.length ?? 0);
         this.logger.info({ project: projectName, stack: stackName, source }, 'Stack started');
       } else {
@@ -2463,7 +2503,7 @@ export class ProjectService extends EventEmitter {
         try {
           if (!this.slaveConnector) throw new Error('Node RPC is unavailable');
           const request = this.stopRequest(scope, node, keepInfrastructure);
-          const inventory = await this.slaveConnector.invokeOnSlave(node.host, node.port, 'OmnitronProject', 'inspectNodeStackStop', [request]) as NodeStackStopInventory;
+          const inventory = await this.callStackTarget(scope, node, 'OmnitronProject', 'inspectNodeStackStop', request) as NodeStackStopInventory;
           this.validateStopInventory(request, inventory);
           targets.push({ node: endpoint, inventory });
         } catch (error) { targets.push({ node: endpoint, reason: describeFailure(error) }); }
@@ -2510,7 +2550,7 @@ export class ProjectService extends EventEmitter {
     persist();
     try {
       // Complete every read-only admission check before sending any stop.
-      const prepared: Array<{ host: string; port: number; plan: NodeStackStopPlan; permit: StopPermit | undefined }> = [];
+      const prepared: Array<{ host: string; port: number; nodeId?: string; plan: NodeStackStopPlan; permit: StopPermit | undefined }> = [];
       const cluster = this.clusterStop;
       if (cluster && !cluster.election?.isLeader) throw new Error('Stack stop requires the elected controller of this cluster');
       let managedPlan: NodeStackStopPlan | null = null;
@@ -2544,11 +2584,11 @@ export class ProjectService extends EventEmitter {
           let plan: NodeStackStopPlan;
           try {
             const request = this.stopRequest(scope, node, keepInfrastructure);
-            plan = await this.slaveConnector.invokeOnSlave(node.host, node.port, 'OmnitronProject', 'prepareNodeStackStop', [request]) as NodeStackStopPlan;
+            plan = await this.callStackTarget(scope, node, 'OmnitronProject', 'prepareNodeStackStop', request) as NodeStackStopPlan;
             this.validateStopInventory(request, plan);
             if (!plan.operationId) throw new Error('Invalid node stop plan');
             const permit = cluster?.election?.authorizeStop(plan);
-            prepared.push({ host: node.host, port: node.port, plan, permit });
+            prepared.push({ ...node, plan, permit });
             if (permit && request.audience) progress.nodes[index]!.authority = { ...request.audience, epoch: permit.epoch };
           } catch (error) {
             progress.nodes[index]!.outcome = 'unknown';
@@ -2619,11 +2659,10 @@ export class ProjectService extends EventEmitter {
           const item = progress.nodes[index]!;
           item.outcome = 'stopping'; persist();
           try {
-            const receipt = await this.slaveConnector!.invokeOnSlave(target.host, target.port, 'OmnitronProject',
-              'executeNodeStackStop', [{ project: projectName, stack: stackName, operationId: target.plan.operationId,
+            const receipt = await this.callStackTarget(scope, target, 'OmnitronProject',
+              'executeNodeStackStop', { project: projectName, stack: stackName, operationId: target.plan.operationId,
                 ...(keepInfrastructure && { keepInfrastructure: true }),
-                ...(target.permit && { permit: target.permit }) }],
-              { retryOnDisconnect: true }) as NodeStackStopReceipt;
+                ...(target.permit && { permit: target.permit }) }, true) as NodeStackStopReceipt;
             if (receipt?.protocol !== 1 || receipt.operationId !== target.plan.operationId || receipt.project !== projectName ||
                 receipt.stack !== stackName || receipt.outcome !== 'stopped' ||
                 (receipt.keepInfrastructure === true) !== keepInfrastructure ||
@@ -2632,6 +2671,12 @@ export class ProjectService extends EventEmitter {
                   (receipt.authority?.epoch !== target.permit.epoch || receipt.authority.nodeId !== target.plan.audience!.nodeId ||
                    receipt.authority.clusterId !== target.plan.audience!.clusterId))) throw new Error('Invalid node stop acknowledgement');
             item.outcome = 'stopped'; item.operationId = receipt.operationId; item.observedAt = receipt.observedAt;
+            if (target.plan.execution && receipt.applications?.operationId === receipt.operationId &&
+                receipt.applications.project === target.plan.execution.project && receipt.applications.stack === target.plan.execution.stack &&
+                Number.isSafeInteger(receipt.applications.revision)) {
+              item.definition = target.plan.definition;
+              item.execution = { project: receipt.applications.project, stack: receipt.applications.stack, revision: receipt.applications.revision };
+            }
           } catch (error) {
             item.outcome = 'unknown'; item.reason = describeFailure(error);
             failures.push(`${item.node}: ${item.reason}`);
@@ -2732,14 +2777,8 @@ export class ProjectService extends EventEmitter {
   /** Inspect an administrator-approved detached source without changing the registered launch configuration. */
   private async inspectRemoteReleaseSource(project: string, name: string, releaseId: string, input: RemoteReleaseSourceInput, saved?: PreparedRemoteSourceRecord) {
     const { openRemoteReleaseSource } = await import('../release/remote-source.js');
-    const baseline = () => {
-      const registration = this.registry.get(project), config = this.getLoadedConfig(project);
-      const stack = config && this.resolveStacks(config, project)[name];
-      if (!registration || !stack || stack.type !== 'remote') throw Error('A currently registered remote stack is required');
-      return { registration, stack, fingerprint: stackDefinitionFingerprint([registration.name, registration.path, registration.registeredAt, stack]) };
-    };
+    const baseline = () => this.registeredRemoteScope(project, name);
     const before = baseline();
-    this.assertStartAuthority({ project, stack: name }, before.stack);
     if (!this.releaseRecipient) throw Error('Registered recipient proof unavailable');
     const target = this.releaseRecipient(input.nodeId);
     if (saved && (before.fingerprint !== saved.registration || saved.recipient !== target.pin))
@@ -2763,7 +2802,6 @@ export class ProjectService extends EventEmitter {
 
   @RecoveryMutation()
   async prepareRemoteReleaseSource(project: string, stack: string, release: string, input: RemoteReleaseSourceInput): Promise<PreparedRemoteReleaseSource> {
-    const { remoteReleaseSourceKey } = await import('../release/remote-source.js');
     // Reject malformed scope before looking up a filesystem input.
     remoteReleaseSourceKey(project, stack, input?.manifestSha256);
     const { receipt, record } = await this.inspectRemoteReleaseSource(project, stack, release, input);
@@ -2775,7 +2813,6 @@ export class ProjectService extends EventEmitter {
   }
 
   private async preparedRemoteRelease(project: string, stack: string, release: string, digest: string) {
-    const { remoteReleaseSourceKey } = await import('../release/remote-source.js');
     const record = this.daemonStateStore.kvGetSync<PreparedRemoteSourceRecord>(remoteReleaseSourceKey(project, stack, digest), { strict: true });
     if (!record || record.release !== release) throw Error('No prepared remote release source for this registration and release');
     const result = await this.inspectRemoteReleaseSource(project, stack, release, record.input, record);
@@ -2801,6 +2838,154 @@ export class ProjectService extends EventEmitter {
     const { reviewHostBindings } = await import('../infrastructure/host-binding-review.js');
     return reviewHostBindings({ project, stack, release, nodeId, commit: receipt.commit, manifestSha256: receipt.manifestSha256,
       sshFingerprint: receipt.sshFingerprint }, services, opened.stackConfig.serviceOverrides);
+  }
+
+  /** Bindings live with the deployment obligation journal. Absence means the registered project supplies the stack. */
+  private placement(project: string, stack: string): RemotePlacement | undefined {
+    return new StackTargets(this.daemonStateStore).inspect({ project, stack }).placement;
+  }
+
+  private placementRecipient(nodeId: string, expected?: PlacementEndpoint): ReleaseRecipient {
+    const target = this.releaseRecipient?.(nodeId);
+    if (!target || (expected && (expected.nodeId !== nodeId || target.host !== expected.host ||
+        target.port !== expected.port || target.pin !== expected.pin))) throw Error('The selected fleet registration or approved SSH connection has changed');
+    return target;
+  }
+
+  /** A release-bound stack uses its enrolled session for effects, health, stop and recovery reads. */
+  private async callStackTarget(scope: StackExecutionScope, node: { host: string; port?: number; nodeId?: string },
+    service: string, method: string, payload?: unknown, retryOnDisconnect = false): Promise<unknown> {
+    const placement = this.placement(scope.project, scope.stack);
+    const connector = this.getSlaveConnector(), port = node.port ?? 9700;
+    if (placement) {
+      const selected = placement.selected ?? placement.origin, recipient = this.placementRecipient(selected.nodeId, selected);
+      if (node.host !== selected.host || port !== selected.port || node.nodeId !== selected.nodeId)
+        throw Error('Remote operation is outside the selected deployment recipient');
+      return connector.pinnedService(node.host, port, selected.nodeId, recipient.managementIdentity, service)(method, payload);
+    }
+    return connector.invokeOnSlave(node.host, port, service, method, payload === undefined ? [] : [payload],
+      ...(retryOnDisconnect ? [{ retryOnDisconnect: true }] : []));
+  }
+
+  private placementConfiguration(project: string, stack: string, placement: RemotePlacement): IEcosystemConfig | undefined {
+    const selected = placement.selected;
+    if (!selected) return undefined;
+    const saved = this.daemonStateStore.kvGetSync<PreparedRemoteSourceRecord>(remoteReleaseSourceKey(project, stack, selected.prepared), { strict: true });
+    if (!saved || saved.release !== selected.release || saved.registration !== placement.registration || saved.recipient !== selected.pin ||
+        saved.input.nodeId !== selected.nodeId || saved.input.manifestSha256 !== selected.manifestSha256) throw Error('Active remote release source is missing or has changed');
+    const key = selected.prepared;
+    const prior = this.placementConfigurations?.get(key);
+    if (prior) return prior;
+    const payload = readCapturedSourceSync(saved.input.storeRoot, saved.input.declarationsSha256, saved.input.sourceRoot);
+    if (payload.project !== project || payload.stack !== stack || payload.release !== selected.release || payload.manifestSha256 !== selected.manifestSha256)
+      throw Error('The active release configuration differs from its receipt');
+    const config = defineEcosystem(payload.config);
+    const node = config.stacks?.[stack]?.nodes?.[0];
+    if (config.stacks?.[stack]?.type !== 'remote' || config.stacks[stack]!.nodes?.length !== 1 || node?.nodeId !== selected.nodeId ||
+        node.host !== selected.host || (node.port ?? 9700) !== selected.port) throw Error('Active release placement differs from its registered endpoint');
+    (this.placementConfigurations ??= new Map()).set(key, config);
+    return config;
+  }
+
+  private registeredRemoteScope(project: string, stack: string) {
+    const registration = this.registry.get(project), config = this.getLoadedConfig(project);
+    const declaration = registration && config && resolveProjectStacks(config, registration.path, project)[stack];
+    if (!registration || !config || declaration?.type !== 'remote') throw Error('A currently registered remote stack is required');
+    return { registration, config, stack: declaration, fingerprint: stackDefinitionFingerprint([registration.name, registration.path, registration.registeredAt, declaration]) };
+  }
+
+  /** Repeating this check in the SQLite transaction closes races with local starts, stops, registration and recovery. */
+  private placementIdle(scope: StackExecutionScope): void {
+    const key = stackExecutionKey(scope);
+    if (this.startsInFlight.has(key) || this.stopsInFlight.has(key) || this.rereading?.has(scope.project) || this.resumingInstalled ||
+        this.ownershipFrozen || this.reconcilingStacks || this.registry.get(scope.project)?.enabledStacks?.includes(scope.stack))
+      throw Error('This allocation is enabled or a lifecycle operation is active');
+    this.migrations.assertIdle(scope);
+    if (this.clusterStop) throw Error('Cluster replacement requires a recipient-fenced deployment adapter');
+  }
+
+  private async inspectRemotePlacement(request: PlacementRequest) {
+    const { project, stack, fromNodeId, destination } = request, scope = { project, stack };
+    stackExecutionKey(scope);
+    if (!destination || typeof destination !== 'object' ||
+        !('registered' in destination ? destination.registered === true && Object.keys(destination).length === 1 :
+          typeof destination.release === 'string' && /^[a-f0-9]{64}$/.test(destination.prepared) && Object.keys(destination).length === 2))
+      throw Error('Choose a complete prepared release or restore its recorded original registration');
+    this.placementIdle(scope);
+    const journal = new StackTargets(this.daemonStateStore), current = journal.inspect(scope);
+    const baseline = this.registeredRemoteScope(project, stack);
+    const previous = current.placement, expected = previous?.selected ?? previous?.origin;
+    if (previous && previous.registration !== baseline.fingerprint) throw Error('The original registered stack has changed');
+    const old = this.placementRecipient(fromNodeId, expected);
+    const originNode = baseline.stack.nodes?.[0];
+    if (!originNode || baseline.stack.nodes?.length !== 1 || (!previous?.selected &&
+        (originNode.host !== old.host || (originNode.port ?? 9700) !== old.port || (originNode.nodeId && originNode.nodeId !== fromNodeId))))
+      throw Error('The source identity does not match the current single-recipient allocation');
+    const from: PlacementEndpoint = { nodeId: fromNodeId, host: old.host, port: old.port, pin: old.pin };
+    const candidate = 'registered' in destination ? null : await this.preparedRemoteRelease(project, stack, destination.release, destination.prepared);
+    if (!candidate && !previous?.selected) throw Error('There is no previous registered placement to restore');
+    const endpoint = candidate?.target ?? this.placementRecipient(previous!.origin.nodeId, previous!.origin);
+    const to: PlacementEndpoint = candidate ? { nodeId: candidate.receipt.nodeId, host: endpoint.host, port: endpoint.port, pin: endpoint.pin } : previous!.origin;
+    if (to.nodeId !== fromNodeId && to.host === from.host && to.port === from.port)
+      throw Error('Two recipient identities cannot hand off the same endpoint');
+    if (candidate && previous?.selected?.prepared === candidate.receipt.digest)
+      throw Error('This release source is already selected');
+    const stopKey = 'stack:' + stackExecutionKey(scope) + ':last-stop';
+    const stop = this.daemonStateStore.kvGetSync<StackStopProgress>(stopKey, { strict: true });
+    if (!stop || stop.phase !== 'stopped' || stop.supersededAt || stop.keepInfrastructure || current.nodes.length)
+      throw Error('Complete a full stop on every source recipient before changing placement');
+    const currentSource = this.getSlaveConnector().pinnedService(from.host, from.port, fromNodeId, old.managementIdentity, 'OmnitronProject');
+    const observation = await currentSource('inspectNodeStackStop', { ...scope, applications: true }) as NodeStackStopInventory;
+    const cleanCommit = previous && candidate ? null : await cleanRegisteredCommit(baseline.registration.path);
+    const originCommit = previous ? previous.originCommit : cleanCommit;
+    if (!candidate && (!originCommit || cleanCommit !== originCommit))
+      throw Error('The original checkout is unavailable or has changed; prepare its exact immutable release instead');
+    const receipt = remotePlacementReview(scope, current.revision, baseline.fingerprint, originCommit, from, to, candidate?.receipt ?? null, stop, observation);
+    const acknowledgement = stop.nodes[0]!;
+    const sourceStop: StackStopProgress = { id: stop.id, phase: 'stopped', startedAt: stop.startedAt, completedAt: stop.completedAt!,
+      intentCommitted: true, nodes: [{ node: acknowledgement.node, outcome: 'stopped', operationId: acknowledgement.operationId!,
+        observedAt: acknowledgement.observedAt!, definition: acknowledgement.definition!, execution: acknowledgement.execution! }] };
+    const value: RemotePlacement = { registration: baseline.fingerprint, origin: previous?.origin ?? from, originCommit, activated: false, from, sourceStop, selected: candidate ? {
+      ...to, release: candidate.receipt.release, manifestSha256: candidate.receipt.manifestSha256, prepared: candidate.receipt.digest,
+    } : null, receipt };
+    const recheck = () => {
+      this.placementIdle(scope);
+      if (this.registeredRemoteScope(project, stack).fingerprint !== baseline.fingerprint ||
+          !isDeepStrictEqual(this.daemonStateStore.kvGetSync(stopKey, { strict: true }), stop) ||
+          !isDeepStrictEqual(this.placementRecipient(fromNodeId), old) || !isDeepStrictEqual(this.placementRecipient(to.nodeId), endpoint))
+        throw Error('Stop receipt, source registration or selected recipient changed during placement review');
+    };
+    recheck();
+    return { value, revision: current.revision, recheck };
+  }
+
+  private async verifyPlacementDonor(scope: StackExecutionScope, placement: RemotePlacement): Promise<void> {
+    if (placement.activated) return;
+    const from = placement.from, old = this.placementRecipient(from.nodeId, from);
+    const rpc = this.getSlaveConnector().pinnedService(from.host, from.port, from.nodeId, old.managementIdentity, 'OmnitronProject');
+    const observation = await rpc('inspectNodeStackStop', { ...scope, applications: true }) as NodeStackStopInventory;
+    confirmStoppedPlacement(scope, from, placement.sourceStop, observation);
+    if (!isDeepStrictEqual(this.placement(scope.project, scope.stack), placement)) throw Error('Selected placement changed before launch');
+  }
+
+  async reviewRemotePlacement(request: PlacementRequest): Promise<PlacementReceipt> {
+    return (await this.inspectRemotePlacement(request)).value.receipt;
+  }
+
+  @RecoveryMutation()
+  async selectRemotePlacement(request: PlacementRequest & { review: string }): Promise<PlacementReceipt> {
+    if (!/^[a-f0-9]{64}$/.test(request.review)) throw Error('An exact placement review digest is required');
+    await this.requireNoColdBatch();
+    const previous = this.placement(request.project, request.stack);
+    if (previous?.receipt.digest === request.review && previous.receipt.fromNodeId === request.fromNodeId &&
+        ('registered' in request.destination ? previous.selected === null : previous.selected?.prepared === request.destination.prepared &&
+          previous.selected.release === request.destination.release)) return previous.receipt;
+    const { value, revision, recheck } = await this.inspectRemotePlacement(request);
+    if (value.receipt.digest !== request.review) throw Error('Remote placement review changed; inspect the current stop and recipient again');
+    new StackTargets(this.daemonStateStore).select(request, revision, value, recheck);
+    this.stackStates.delete(stackExecutionKey(request));
+    this.placementConfigurations?.clear();
+    return value.receipt;
   }
 
   /** Where releases are kept on this master — `~/.omnitron/releases`. */
@@ -2901,13 +3086,16 @@ export class ProjectService extends EventEmitter {
     let preparedArtifactVolumes: import('../shared/dto/project.js').PreparedArtifactVolume[] | undefined;
     let declarationReason: string | undefined;
     try {
-      const config = await this.loadProjectConfig(projectName);
+      const selected = this.placement(projectName, stackName)?.selected;
+      if (selected && selected.release !== releaseId) throw Error('This stack is bound to a different immutable remote release');
+      const bound = selected ? await this.preparedRemoteRelease(projectName, stackName, releaseId, selected.prepared) : undefined;
+      const config = bound?.opened.config ?? await this.loadProjectConfig(projectName);
       const stacks = this.resolveStacks(config, projectName);
       const stackConfig = stacks[stackName];
       if (!stackConfig) throw new Error(`Stack '${stackName}' not found in project '${projectName}'`);
       this.assertStartAuthority({ project: projectName, stack: stackName }, stackConfig);
-      if (prepare && this.receiveRelease) await this.fetchMissingRelease(releaseId);
-      const release = await this.admitRelease(projectName, stackName, stackConfig, config, releaseId, 'check');
+      if (!bound && prepare && this.receiveRelease) await this.fetchMissingRelease(releaseId);
+      const release = bound?.admitted ?? await this.admitRelease(projectName, stackName, stackConfig, config, releaseId, 'check');
       let retiring: string[] = [];
       if (stackConfig.type === 'local') {
         const inspected = artifactVolumeBindings(mergeInfrastructure(config, stackConfig)).length
@@ -3405,14 +3593,18 @@ export class ProjectService extends EventEmitter {
    * (`stack.start`, `details.release`) — or null: no trail, no start, or a
    * start that was not a release.
    */
-  private async releaseRunningOn(projectName: string, stackName: string): Promise<string | null> {
-    if (!this.audit) return null;
+  private async releaseRunningOn(projectName: string, stackName: string, requireHistory = false): Promise<string | null> {
+    if (!this.audit) {
+      if (requireHistory) throw Error('The prior release history for this registered stack is unavailable');
+      return null;
+    }
     try {
       const rows = await this.audit.latestPerResource('stack.start');
       const row = rows.find((r) => r.resourceId === `${projectName}/${stackName}`);
       const release = row?.details?.['release'];
       return typeof release === 'string' && release !== '[object]' ? release : null;
     } catch (err) {
+      if (requireHistory) throw Error('The prior release history for this registered stack is unavailable', { cause: err });
       this.logger.warn(
         { project: projectName, stack: stackName, error: (err as Error).message },
         'The audit trail could not be read — which release runs on this stack is unknown',
@@ -3467,13 +3659,22 @@ export class ProjectService extends EventEmitter {
     const project = this.registry.get(projectName);
     if (!project) throw new Error(`Project '${projectName}' is not in the registry`);
 
-    const staged = await tool.stageOperatorTool(fs.realpathSync(project.path), toolPath ?? tool.OPERATOR_ACCOUNT_TOOL);
+    const placement = this.placement(projectName, stackName);
+    const selected = placement?.selected;
+    const bound = selected ? await this.preparedRemoteRelease(projectName, stackName, selected.release, selected.prepared) : null;
+    const staged = await tool.stageOperatorTool(bound?.opened.sourceRoot ?? fs.realpathSync(project.path), toolPath ?? tool.OPERATOR_ACCOUNT_TOOL);
     const target = await this.targetForStackNode(nodes[0]!);
     const machine = `${target.host}:${target.sshPort ?? 22}`;
     const containerPrefix = stackConfig.settings?.containerPrefix ?? `${projectName}-${stackName}`;
     const { shellEscape } = await import('../shared/shell-escape.js');
     try {
       return await this.deployer.underLease(target, `${purpose} on ${projectName}/${stackName}`, async () => {
+        if (placement) {
+          const participant = selected ?? placement.origin;
+          if (staged.commit !== (bound?.receipt.commit ?? placement.originCommit) || !isDeepStrictEqual(this.placement(projectName, stackName), placement) ||
+              target.expectedHostFingerprint !== this.placementRecipient(participant.nodeId, participant).fingerprint)
+            throw Error('Operator tool or recipient differs from the selected placement');
+        }
         const { remoteDir } = await this.deployer.uploadStaticBundle(target, staged.dir, '/opt/omnitron/operator');
         try {
           return await work({
@@ -3582,7 +3783,7 @@ export class ProjectService extends EventEmitter {
     // here says which ran, and a file among them that changed since is
     // refused now — not at the migration step, after the build and the
     // transfer. See `release/migrations.ts`.
-    const running = await this.releaseRunningOn(projectName, stackName);
+    const running = await this.releaseRunningOn(projectName, stackName, !!source);
     if (!running) {
       this.logger.info(
         { project: projectName, stack: stackName },
@@ -3592,7 +3793,12 @@ export class ProjectService extends EventEmitter {
       let previous: import('../release/manifest.js').ReleaseManifest | undefined;
       try {
         const liveStore = await this.releaseStore();
-        const priorStore = source && store !== liveStore && !fs.existsSync(path.join(liveStore, running)) ? store : liveStore;
+        let priorStore = liveStore;
+        if (source && !fs.existsSync(path.join(liveStore, running))) {
+          const current = this.placement(projectName, stackName)?.selected;
+          const record = current?.release === running ? this.daemonStateStore.kvGetSync<PreparedRemoteSourceRecord>(remoteReleaseSourceKey(projectName, stackName, current.prepared), { strict: true }) : null;
+          priorStore = record?.input.storeRoot ?? store;
+        }
         previous = (await loadRelease(running, priorStore)).manifest;
       } catch (err) {
         if (source) throw Error('The prior release for this registered stack is unavailable for migration comparison', { cause: err });
@@ -4301,6 +4507,7 @@ export class ProjectService extends EventEmitter {
     return readings;
   }
 
+  /** Validate the stack's infrastructure against its application requirements. */
   async validateStackInfrastructure(
     projectName: string,
     stackName: string,
@@ -4723,7 +4930,10 @@ export class ProjectService extends EventEmitter {
     // it, and given back when this deployment is done — `node-deploy-lease.ts`.
     const targets = new Map<string, DeployTarget>();
     for (const node of nodes) {
-      targets.set(`${node.host}:${node.port ?? 9700}`, await this.targetForStackNode(node));
+      const target = await this.targetForStackNode(node);
+      if (release?.placement && (node.nodeId !== release.placement.nodeId || target.expectedHostFingerprint !== release.placement.target.fingerprint ||
+          target.host !== release.placement.target.host)) throw Error('Deployment SSH route differs from the selected recipient');
+      targets.set(`${node.host}:${node.port ?? 9700}`, target);
     }
     phases.enter(`leasing ${nodes.length} node(s)`);
     const waited = new Set<string>();
@@ -4744,7 +4954,8 @@ export class ProjectService extends EventEmitter {
           const missing = [...leases.unreachable].map(([node, reason]) => `${node}: ${reason}`).join(', ');
           throw Error('Release deployment requires every selected node to be reachable before activation: ' + missing);
         }
-        if (waited.size && release) {
+        if (release?.placement) await release.placement.recheck();
+        else if (waited.size && release) {
           const current = await this.admitRelease(projectName, stackName, stackConfig, ecosystemConfig, release.id);
           if (current.manifestSha256 !== release.manifestSha256) throw Error('Release changed while waiting for the target');
         }
@@ -4793,7 +5004,8 @@ export class ProjectService extends EventEmitter {
           const lock = preservation ? null : await this.holdForDeployment(target, projectName, stackName, stackConfig, ecosystemConfig, release, phases);
           if (lock) locks.set(nodeKey, lock);
           phases.enter(`provisioning ${node.host}`);
-          const provisioned = preservation ? true : await this.deployer.provisionSlaveNode(
+          // Native release admission already verified the installed runtime through this pinned SSH route.
+          const provisioned = preservation || release?.placement ? true : await this.deployer.provisionSlaveNode(
             target,
             master.host,
             masterPort,
@@ -4844,10 +5056,10 @@ export class ProjectService extends EventEmitter {
                 stack: stackName,
                 overrides: await this.resolveOverrideSecrets(projectName, stackConfig.serviceOverrides),
               },
-              project?.path,
+              release?.placement?.root ?? project?.path,
               release?.staticsDir ?? undefined,
-              preservation ? { mode: 'preserve', review: preservation.targets.find(preservedTarget => preservedTarget.node === nodeKey)?.infrastructure?.digest ?? undefined }
-                : reconcile ? { mode: 'reconcile' } : undefined,
+              preservation || reconcile ? { ...(preservation ? { mode: 'preserve' as const, review: preservation.targets.find(preservedTarget => preservedTarget.node === nodeKey)?.infrastructure?.digest ?? undefined } : { mode: 'reconcile' as const }),
+                ...(release?.placement && { managementIdentity: release.placement.target.managementIdentity, leasedTarget: target }) } : undefined,
             );
             if (!infrastructure.ready) {
               if (release || preservation) {
@@ -4892,7 +5104,7 @@ export class ProjectService extends EventEmitter {
             connector,
             node,
             CREDENTIALED_SERVICES.filter(service => Boolean(nodeInfra?.[service] || nodeInfra?.services?.[service] || declaredServices[service])),
-            { project: projectName, stack: stackName },
+            { project: projectName, stack: stackName }, release?.placement?.target.managementIdentity,
           );
           const deployedInfra = overlayCredentials(
             nodeInfra as Record<string, unknown> | undefined,
@@ -4980,7 +5192,7 @@ export class ProjectService extends EventEmitter {
           // 4. Connect master to slave daemon via Netron TCP
           await leases.confirm(nodeKey, `joining ${node.host} to the mesh`);
           phases.enter(`joining ${node.host} to the mesh`);
-          await connector.addSlave({
+          if (!release?.placement) await connector.addSlave({
             host: node.host,
             port: node.port ?? 9700,
             label: node.label,
@@ -5220,13 +5432,14 @@ export class ProjectService extends EventEmitter {
     node: import('../config/types.js').IStackNode,
     /** The services this stack declares — each must be answered for. */
     declared: readonly string[],
-    scope: StackExecutionScope,
+    scope: StackExecutionScope, managementIdentity?: string,
   ): Promise<Record<string, Record<string, unknown>>> {
+    const pinned = managementIdentity ? connector.pinnedService(node.host, node.port ?? 9700, node.nodeId!, managementIdentity, 'OmnitronInfra') : undefined;
     const out: Record<string, Record<string, unknown>> = {};
     for (const service of declared) {
       let info: Record<string, unknown> | null;
       try {
-        info = (await connector.invokeOnSlave(
+        info = (pinned ? await pinned('getConnectionInfo', { service, ...scope }) : await connector.invokeOnSlave(
           node.host,
           node.port ?? 9700,
           'OmnitronInfra',
@@ -5282,6 +5495,7 @@ export class ProjectService extends EventEmitter {
      * second of 000 a deployment costs.
      */
     owner?: { project: string; stack: string } | undefined,
+    leasedTarget?: DeployTarget,
   ): Promise<{ dirs: Record<string, string>; roots: Record<string, string> }> {
     // Both spellings, like the config reader beside it: a stack may declare
     // the gateway as a preset service or through the legacy top-level block,
@@ -5350,7 +5564,7 @@ export class ProjectService extends EventEmitter {
       // user and credential. Passing a bare `{ host }` is how the first
       // attempt failed: `Failed to connect to 37.27.130.185`, an error about
       // credentials that were sitting in the registry all along.
-      const target = await this.targetForStackNode(node);
+      const target = leasedTarget ?? await this.targetForStackNode(node);
       // Shared by every stack on the NODE — the literal names no project and
       // no stack — which is why the link inside it is per stack.
       const gatewayRoot = '/opt/omnitron/stack-static/gateway';
@@ -5513,7 +5727,7 @@ export class ProjectService extends EventEmitter {
     projectRoot?: string | undefined,
     /** A release's static bundle, shipped as it was built — see `shipStackStatics`. */
     releasedStatics?: string | undefined,
-    authority?: { mode: 'review' | 'preserve' | 'reconcile'; review?: string | undefined; managementIdentity?: string },
+    authority?: { mode: 'review' | 'preserve' | 'reconcile'; review?: string | undefined; managementIdentity?: string; leasedTarget?: DeployTarget },
   ): Promise<{ ready: boolean; detail: string; preservation?: import('../shared/dto/project.js').ExistingInfrastructureReview }> {
     const host = node.host;
     const port = node.port ?? 9700;
@@ -5531,7 +5745,7 @@ export class ProjectService extends EventEmitter {
     try {
       const shippedDirs = new Map<string, string>();
       const preserving = authority?.mode === 'review' || authority?.mode === 'preserve';
-      const configFiles = projectRoot ? await this.readStackConfigFiles(infrastructure, projectRoot, shippedDirs, services, preserving) : {};
+      const configFiles = projectRoot ? await this.readStackConfigFiles(infrastructure, projectRoot, shippedDirs, services, preserving || !!pinned) : {};
       // A service's bind mounts inside its shipped directory name the node's
       // copy, not this machine's path — the stack's own services and the ones
       // its apps require alike. See `shipped-config.ts`.
@@ -5547,7 +5761,7 @@ export class ProjectService extends EventEmitter {
       // RPC argument, which is held whole on both sides and blocks the call
       // it rides on. Config files are 65 KB and ride along; a build does not.
       const shipped = projectRoot && !preserving
-        ? await this.shipStackStatics(infrastructure, projectRoot, node, releasedStatics, owner)
+        ? await this.shipStackStatics(infrastructure, projectRoot, node, releasedStatics, owner, authority?.leasedTarget)
         : { dirs: {}, roots: {} };
       const staticRoots = shipped.dirs;
       const staticLinkRoots = shipped.roots;
@@ -5564,7 +5778,7 @@ export class ProjectService extends EventEmitter {
       const request = { config: configForNode, services: servicesForNode, ...(owner ?? {}), configFiles, staticRoots, staticLinkRoots,
         ...(preserving ? { infrastructure: 'preserve', staticDigests, ...(authority?.review && { review: authority.review }) }
           : authority?.mode === 'reconcile' ? { infrastructure: 'reconcile' } : {}) };
-      const report = (pinned ? await pinned('reviewStack', request) :
+      const report = (pinned ? await pinned(authority?.mode === 'review' ? 'reviewStack' : 'provisionStack', request) :
         await connector.invokeOnSlave(host, port, 'OmnitronInfra', authority?.mode === 'review' ? 'reviewStack' : 'provisionStack',
           [request], { retryOnDisconnect: true })) as ({ ready?: boolean; detail?: string; running?: string[]; failed?: unknown[]; missing?: string[]; preservation?: import('../shared/dto/project.js').ExistingInfrastructureReview }
         & Partial<import('../shared/dto/project.js').ExistingInfrastructureReview>) | undefined;
@@ -5769,9 +5983,23 @@ export class ProjectService extends EventEmitter {
     if (typeof project === 'string' && this.retainedConfiguration?.value.projects.some(([name, loaded]) => name === project &&
       isDeepStrictEqual(loaded.config, config))) return config.stacks ?? {};
     if (!project) return config.stacks ?? {};
-    if (typeof project !== 'string') return resolveProjectStacks(config, project.path, project.name);
-    const directory = path.dirname(this.getUserStacksPath(project));
-    return resolveProjectStacks(config, directory, project);
+    const name = typeof project === 'string' ? project : project.name;
+    const directory = typeof project === 'string' ? path.dirname(this.getUserStacksPath(project)) : project.path;
+    const stacks = resolveProjectStacks(config, directory, name);
+    for (const [stack, declaration] of Object.entries(stacks)) {
+      const placement = this.placement(name, stack);
+      if (!placement) continue;
+      const selected = this.placementConfiguration(name, stack, placement);
+      if (selected) stacks[stack] = selected.stacks![stack]!;
+      else {
+        const node = declaration.nodes?.[0], origin = placement.origin;
+        if (declaration.type !== 'remote' || declaration.nodes?.length !== 1 || node?.host !== origin.host ||
+            (node.port ?? 9700) !== origin.port || (node.nodeId && node.nodeId !== origin.nodeId))
+          throw Error('Restored remote placement differs from its original registration');
+        stacks[stack] = { ...declaration, nodes: [{ ...node, nodeId: origin.nodeId }] };
+      }
+    }
+    return stacks;
   }
 
   /**
@@ -6279,6 +6507,7 @@ export class ProjectService extends EventEmitter {
     info: IStackInfo,
   ): Promise<{ info: IStackInfo; answered: number }> {
     if (info.type !== 'remote' && info.type !== 'cluster') return { info, answered: 0 };
+    const scope = { project: projectName, stack: info.name };
     const nodes = [...(info.config.nodes ?? [])];
     // Keep the last actual runtime footprint visible if its source configuration changes.
     // Unadmitted target plans are never evidence that a workload ran on a node.
@@ -6297,9 +6526,9 @@ export class ProjectService extends EventEmitter {
     for (let offset = 0; offset < nodes.length; offset += 4) {
       placements.push(...await Promise.all(nodes.slice(offset, offset + 4).map(async node => {
         const [processAnswer, infrastructureAnswer, healthAnswer] = await Promise.allSettled([
-          this.slaveConnector!.invokeOnSlave(node.host, node.port ?? 9700, 'OmnitronDaemon', 'status', []),
+          this.callStackTarget(scope, node, 'OmnitronDaemon', 'status'),
           this.remoteInfraStatus(projectName, info.name, node),
-          this.slaveConnector!.invokeOnSlave(node.host, node.port ?? 9700, 'OmnitronDaemon', 'getHealth', [{}]),
+          this.callStackTarget(scope, node, 'OmnitronDaemon', 'getHealth', {}),
         ]);
         const status = processAnswer.status === 'fulfilled'
           ? processAnswer.value as import('../config/types.js').DaemonStatusDto : null;
@@ -6330,13 +6559,8 @@ export class ProjectService extends EventEmitter {
   ): Promise<IStackInfraStatus | null> {
     if (!this.slaveConnector) return null;
     try {
-      const state = (await this.slaveConnector.invokeOnSlave(
-        node.host,
-        node.port ?? 9700,
-        'OmnitronInfra',
-        'getState',
-        [],
-      )) as import('../infrastructure/types.js').InfrastructureState | null;
+      const scope = { project: projectName, stack: stackName };
+      const state = (await this.callStackTarget(scope, node, 'OmnitronInfra', 'getState')) as import('../infrastructure/types.js').InfrastructureState | null;
 
       const prefix = `${projectName}-${stackName}-`;
       const services: IStackInfraStatus['services'] = {};
@@ -6348,13 +6572,7 @@ export class ProjectService extends EventEmitter {
       // cache of it.
       const entries: Array<[string, import('../infrastructure/types.js').ContainerState]> = state?.services
         ? Object.entries(state.services)
-        : ((await this.slaveConnector.invokeOnSlave(
-            node.host,
-            node.port ?? 9700,
-            'OmnitronInfra',
-            'listContainers',
-            [],
-          )) as import('../infrastructure/types.js').ContainerState[] ?? [])
+        : ((await this.callStackTarget(scope, node, 'OmnitronInfra', 'listContainers')) as import('../infrastructure/types.js').ContainerState[] ?? [])
             .map((c) => [c.name, c]);
 
       const owned = entries.filter(([, service]) => service.project || service.stack
@@ -6386,7 +6604,8 @@ export class ProjectService extends EventEmitter {
     const prefix = `${projectName}/${stackName}/`;
 
     // Build app list from config — include both running and stopped apps.
-    const ecosystemConfig = this.getLoadedConfig(projectName);
+    const placement = this.placement(projectName, stackName);
+    const ecosystemConfig = placement?.selected ? this.placementConfiguration(projectName, stackName, placement) : this.getLoadedConfig(projectName);
     const configuredApps = ecosystemConfig ? this.resolveStackApps(config, ecosystemConfig) : [];
     // A bare handle carries no project/stack ownership. Assigning it by basename
     // admitted the same process into every project that configured "api". Only an
@@ -6540,7 +6759,8 @@ export class ProjectService extends EventEmitter {
       else status = 'error';
     }
 
-    const selectedRelease = config.type === 'local' && !config.managedOrigin ? this.localSelection(projectName, stackName).read().release : null;
+    const selectedRelease = placement?.selected ? { id: placement.selected.release, manifestSha256: placement.selected.manifestSha256 } :
+      config.type === 'local' && !config.managedOrigin ? this.localSelection(projectName, stackName).read().release : null;
     const policy = this.infrastructurePolicy(projectName, stackName);
     return {
       name: stackName,

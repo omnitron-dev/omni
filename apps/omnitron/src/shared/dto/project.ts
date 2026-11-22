@@ -260,6 +260,7 @@ export interface StackStopProgress {
   completedAt?: string;
   error?: string;
   nodes: Array<{ node: string; nodeId?: string; outcome: 'checking' | 'prepared' | 'stopping' | 'stopped' | 'unknown'; operationId?: string; observedAt?: string; reason?: string;
+    definition?: string; execution?: { project: string; stack: string; revision: number };
     authority?: { clusterId: string; nodeId: string; epoch: string } }>;
 }
 

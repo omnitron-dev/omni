@@ -553,6 +553,19 @@ stack
   });
 
 stack
+  .command('select-placement <project> <stack>')
+  .description('Review and durably select a stopped remote stack’s release and recipient')
+  .requiredOption('--from-node <id>', 'Registered stable identity of the stopped source')
+  .option('--release <id>', 'Previously admitted immutable destination release')
+  .option('--prepared <digest>', 'Previously admitted source for this release and recipient')
+  .option('--restore-registration', 'Return to the recorded original registration after stopping the selected recipient')
+  .option('--review <digest>', 'Commit exactly this review to the deployment target journal')
+  .structuredAction(async (projectName, stackName, options) => {
+    const { stackSelectPlacementCommand } = await import('../commands/stack.js');
+    await stackSelectPlacementCommand(projectName, stackName, options);
+  });
+
+stack
   .command('prepare-release <project> <stack> <release>')
   .description('Fetch a missing release from the configured store and verify it against the target stack')
   .option('--source <directory>', 'Administrator-approved separate clean controller checkout at the release commit')

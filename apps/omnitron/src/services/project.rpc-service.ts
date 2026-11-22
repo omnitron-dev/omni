@@ -401,6 +401,18 @@ export class ProjectRpcService {
    * the disk to check them, and it is the question an operator asks before
    * pressing Deploy.
    */
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async reviewRemotePlacement(data: import('../project/remote-placement.js').PlacementRequest) {
+    const scope = await this.projectService.resolveProjectStack(data, { readOnly: true });
+    return this.projectService.reviewRemotePlacement({ ...data, ...scope });
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async selectRemotePlacement(data: import('../project/remote-placement.js').PlacementRequest & { review: string }) {
+    const scope = await this.projectService.resolveProjectStack(data, { readOnly: true });
+    return this.projectService.selectRemotePlacement({ ...data, ...scope });
+  }
+
   /** Local paths can load project code. Only an administrator may introduce a new source. */
   @Public({ auth: { roles: ADMIN_ROLES } })
   async prepareRemoteReleaseSource(data: { project: string; stack: string; release: string; input: import('../shared/dto/project.js').RemoteReleaseSourceInput }) {

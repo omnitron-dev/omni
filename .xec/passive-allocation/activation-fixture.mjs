@@ -2,11 +2,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { execFile, spawn } from 'node:child_process';
-import { promisify } from 'node:util';
+import { spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
-const exec = promisify(execFile);
 const sha = data => createHash('sha256').update(data).digest('hex');
 const smokeNames = ['passive-smoke-one', 'passive-smoke-two'];
 
@@ -39,18 +37,14 @@ export async function buildSmokeRelease(sdk, work, store, id, file, target, comm
 
 export async function activateSmoke({ sdk, pkg, work, release, owner, client, logger, project, stack, dir }) {
   assert.deepEqual(release.files.map(a => a.app), smokeNames);
-  const { installFrozenApplicationCommand } = await sdk('release/frozen-installation');
   const { releaseArtifactOrigins } = await sdk('release/origin');
   const { RemoteDeployer } = await sdk('services/remote-deployer.service');
   const root = path.join(work, 'active'), origins = releaseArtifactOrigins(release.manifest, release.manifestSha256);
-  const landed = [], apps = [], expected = await owner();
+  const apps = [], artifacts = [];
   for (const a of release.files) {
-    const directory = path.join(root, project, a.app, a.version);
-    await fs.mkdir(directory, { recursive: true, mode: 0o700 });
-    await fs.copyFile(a.path, path.join(directory, path.basename(a.path)));
     const { origin, artifact } = origins.find(v => v.app === a.app);
-    await exec('/bin/sh', ['-c', installFrozenApplicationCommand(directory, path.basename(a.path), artifact.launch, origin, expected, '', pkg)]);
-    landed.push({ app: a.app, version: a.version, launch: artifact.launch });
+    artifacts.push({ app: a.app, version: a.version, path: a.path, size: a.bytes,
+      checksum: a.sha256, tarballSha256: a.sha256, release: origin, launch: artifact.launch });
     apps.push({ name: a.app, script: artifact.launch.file });
   }
   const mapper = s => s.replaceAll('/opt/omnitron/projects', path.dirname(dir)).replaceAll('/opt/omnitron/artifacts', root);
@@ -59,8 +53,20 @@ export async function activateSmoke({ sdk, pkg, work, release, owner, client, lo
   const remote = new RemoteDeployer(logger, {});
   // Isolated transport and filesystem roots. The publisher, CLI, project RPC and process owner are native.
   Object.assign(remote, {
-    inspectInstalledBundle: async () => ({ applicationRuntime: await owner() }), appsOnline: async () => new Set(),
-    sshExec: async (_target, command, _timeout, stdin) => {
+    inspectInstalledBundle: async () => ({ root: pkg, applicationRuntime: await owner() }),
+    verifySSH: async target => assert.equal(target.host, 'fixture.invalid'),
+    scpTransfer: async (target, source, destination) => {
+      assert.equal(target.host, 'fixture.invalid');
+      await fs.copyFile(source, mapper(destination));
+    },
+    askNodeStatus: async () => {
+      await client.refresh();
+      const data = { apps: client.orchestrator.list(), pid: process.pid };
+      return { raw: JSON.stringify({ ok: true, data }), words: '', code: 0 };
+    },
+    sshExec: async (target, command, _timeout, stdin) => {
+      assert.equal(target.host, 'fixture.invalid');
+      if (command.startsWith('docker network inspect ')) return '';
       if (command.startsWith('omnitron stack start ')) {
         const cfg = (await import(pathToFileURL(path.join(dir, 'omnitron.config.mjs')).href + '?before-start')).default;
         assert.deepEqual(cfg.apps.map(e => e.name), smokeNames);
@@ -79,7 +85,14 @@ export async function activateSmoke({ sdk, pkg, work, release, owner, client, lo
       });
     },
   });
-  await remote.registerNodeApps({ host: 'fixture.invalid' }, project, apps, landed, undefined, undefined, stack, expected);
+  const published = await remote.deployToStack([{ host: 'fixture.invalid' }], artifacts, project,
+    { stack, apps, concurrency: 1, migrations: [] });
+  assert.equal(published.length, artifacts.length);
+  for (const result of published) {
+    assert.equal(result.status, 'success', result.error);
+    const checksum = path.join(root, project, result.app, result.directory ?? result.version, '.artifact-sha256');
+    assert.equal((await fs.readFile(checksum, 'utf8')).trim(), artifacts.find(a => a.app === result.app).checksum);
+  }
   assert.ok(checkedBeforeStart);
   await client.refresh();
   const byName = new Map(client.orchestrator.list().map(a => [a.name, a]));

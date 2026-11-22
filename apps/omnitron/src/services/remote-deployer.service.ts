@@ -69,7 +69,7 @@ import { withNodeLeases, type LeaseRunner } from './node-deploy-lease.js';
 import { hostOperationBarrierCommand, type HostOperationAllowance } from './host-operation-barrier.js';
 import { migrationOutput } from './migration-output.js';
 import { prepareRemoteMigration } from './migration-process.js';
-import { migrationDatabaseEnvironment, validateMigrationDestinations, validateMigrationOwners, orderMigrationPlacements, type MigrationRequest } from './migration-target.js';
+import { migrationDatabaseEnvironment, migrationExecutionTimeout, validateMigrationDestinations, validateMigrationOwners, orderMigrationPlacements, type MigrationRequest } from './migration-target.js';
 import { prepareNodeConfigPublication, restoreNodeConfigCommand } from './node-registration.js';
 
 
@@ -842,8 +842,9 @@ export class RemoteDeployer {
         // Do not publish a new boot configuration until every candidate is installed and migrated.
         const migrationFailed = await this.migrateNodeApps(target, project, landed, migrations.filter(request => landed.some(entry => entry.app === request.app)), artifacts, Object.fromEntries(options.apps.map(app => [app.name, { ...app.env, ...options.appEnv?.[app.name] }])));
         if (migrationFailed.size) {
+          const causes = [...migrationFailed].map(([app, message]) => `${app}: ${message}`).join('; ');
           for (const result of results.filter(r => r.node === nodeKey && r.status === 'success')) {
-            result.status = 'failed'; result.error = `database migrations failed; existing code retained: ${migrationFailed.get(result.app) ?? 'another application failed'}`;
+            result.status = 'failed'; result.error = `Database migration phase incomplete; candidate applications were not activated. ${causes}`;
             this.emitProgress(nodeKey, result.app, 'failed', 80, result.error);
           }
           continue;
@@ -1119,20 +1120,26 @@ export class RemoteDeployer {
       const { request } = item;
       this.emitProgress(`${target.host}:${target.daemonPort ?? 9700}`, request.app, 'installing', 75,
         `Applying ${request.service}/${request.database} migrations...`);
+      let submitted = false;
       try {
         await item.verify?.();
         const migration = prepareRemoteMigration({ cwd: item.directory, script: item.script, mode: request.mode,
           ...(item.verifiedRoot ? { verifiedRoot: item.verifiedRoot } : {}),
           ...(item.node ? { node: item.node } : {}) }, item.env);
-        const said = await this.sshExec(target, migration.command, 600_000, migration.stdin);
+        const timeout = migrationExecutionTimeout(request.migrationTimeoutMs);
+        submitted = true;
+        const said = await this.sshExec(target, migration.command, timeout, migration.stdin);
         for (const line of migrationOutput(said).map(redactDiagnosticText))
           this.logger.info({ node: target.host, app: request.app, database: request.database, line }, 'Migration said');
         this.logger.info({ node: target.host, app: request.app, database: request.database }, 'Database migrations applied on the node');
       } catch (error) {
         const message = redactDiagnosticText((error as Error).message);
-        failed.set(request.app, message);
+        const diagnostic = submitted
+          ? `${message}. Check active migration sessions and the ${request.service}/${request.database} migration ledger before retrying; the database may already have committed changes.`
+          : message;
+        failed.set(request.app, diagnostic);
         this.logger.error({ node: target.host, app: request.app, database: request.database, error: message },
-          'Database migrations failed on the node — candidate applications will not be started');
+          'Migration phase did not finish on the node');
         break;
       }
     }

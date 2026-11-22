@@ -110,7 +110,7 @@ it.each(['timeout', 'abort'] as const)('waits for process exit after %s and neve
   const [actual] = await localMigrationTargets(legacyPlan(), timed.entries, timed.dev, timed.verify);
   expect(actual!.sealed).toBe(true);
   const abort = new AbortController();
-  const running = executeLocalMigration(actual!, {}, { timeoutMs: mode === 'timeout' ? 800 : 5000, signal: abort.signal });
+  const running = executeLocalMigration({ ...actual!, migrationTimeoutMs: mode === 'timeout' ? 800 : 5000 }, {}, { signal: abort.signal });
   const verdict = expect(running).rejects.toThrow('outcome may be unknown');
   for (let i = 0; i < 100 && !await fs.stat(marker).then(() => true, () => false); i++) await new Promise(resolve => setTimeout(resolve, 20));
   const pid = Number(await fs.readFile(marker, 'utf8'));

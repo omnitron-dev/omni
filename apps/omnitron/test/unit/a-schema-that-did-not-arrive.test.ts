@@ -88,7 +88,8 @@ describe('new code is not started on a schema it does not match', () => {
 
     const payments = results.find((r: any) => r.app === 'payments');
     expect(payments.status).toBe('failed');
-    expect(payments.error).toMatch(/database migrations failed; existing code retained/);
+    expect(payments.error).toContain('candidate applications were not activated');
+    expect(payments.error).toContain('postgres/payments migration ledger');
     expect(payments.error).toMatch(/relation "wallets" does not exist/);
     // The claim is about what did NOT happen: nothing restarted it onto the
     // code whose schema is missing.

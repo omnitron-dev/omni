@@ -15,6 +15,14 @@ export interface MigrationRequest {
   mode: 'script' | 'config';
   source: string;
   release: string;
+  migrationTimeoutMs?: number;
+}
+/** The local runner and remote execution lease enforce the same declared budget. */
+export function migrationExecutionTimeout(value: unknown): number {
+  if (value === undefined) return 3_600_000;
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1 || value > 86_400_000)
+    throw Error('migrationTimeoutMs must be a whole number of milliseconds between 1 and 86400000');
+  return value;
 }
 export type MigrationRequiredFiles = Readonly<Record<string, readonly string[]>>;
 export type VerifyMigrationEntries = (apps: readonly string[], files: MigrationRequiredFiles) => Promise<IEcosystemAppEntry[]>;
@@ -58,7 +66,8 @@ export function requestedMigrations(services: Readonly<Record<string, IServiceRe
     for (const [database, config] of Object.entries(databases)) {
       if (!config || typeof config !== 'object' || Array.isArray(config)) throw Error(`Invalid migration declaration for ${service}/${database}`);
       if (Object.hasOwn(config, 'migrationDir')) throw Error(`migrationDir is not an executable migration binding for ${service}/${database}; declare migrate.config and migrate.releaseConfig`);
-      const value = (config as { migrate?: unknown }).migrate;
+      const { migrate: value, migrationTimeoutMs } = config as { migrate?: unknown; migrationTimeoutMs?: unknown };
+      const timeout = migrationExecutionTimeout(migrationTimeoutMs);
       if (value === undefined || value === false) continue;
       const identity = `${service}/${database}`;
       const bindings = value === true ? [legacy(database, service)] : (Array.isArray(value) ? value : [value]).map(input => {
@@ -77,7 +86,7 @@ export function requestedMigrations(services: Readonly<Record<string, IServiceRe
         const previous = programs.get(key);
         if (previous) throw Error(`Migration program for ${binding.app} is declared more than once (${previous}, ${identity})`);
         programs.set(key, identity);
-        requests.push(binding);
+        requests.push(migrationTimeoutMs === undefined ? binding : { ...binding, migrationTimeoutMs: timeout });
       }
     }
   }
@@ -89,6 +98,7 @@ export function validateMigrationOwners(requests: readonly MigrationRequest[], e
   for (const request of requests) {
     if (!request || !['script', 'config'].includes(request.mode) || typeof request.database !== 'string' || !request.database ||
         typeof request.service !== 'string' || !request.service) throw Error('Invalid normalized migration request');
+    migrationExecutionTimeout(request.migrationTimeoutMs);
     migrationEntryPath(request.source, 'source'); migrationEntryPath(request.release, 'release');
     if (!/\.[cm]?js$/.test(request.release)) throw Error('A released migration must name a compiled JavaScript module');
     const owners = entries.filter(entry => entry.name === request.app);

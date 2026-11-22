@@ -36,6 +36,8 @@ export interface PostgresDatabaseConfig {
   password?: string | SecretRef;
   /** Explicit pre-start ownership. true retains the conventional application script. */
   migrate?: boolean | MigrationBinding | MigrationBinding[];
+  /** Execution time per declared migration program, in milliseconds (default one hour, maximum one day). */
+  migrationTimeoutMs?: number;
   /** @deprecated This field was never executed. Declare migrate.config/releaseConfig instead. */
   migrationDir?: string;
   /**

@@ -230,12 +230,14 @@ The CLI is organized into command groups:
 - `omnitron stack start <project> <stack>` -- Start stack
 - `omnitron stack stop <project> <stack>` -- Stop stack
 - `omnitron stack status <project> <stack>` -- Stack detail
+- `omnitron stack progress <project> <stack>` shows the latest recorded deployment step for each application and its operation ID. After a client acknowledgement times out, inspect progress and stack status before submitting another start.
 - `omnitron stack runtime <project> <stack>` -- Runtime status JSON
 - `omnitron stack account <project> <stack> --username <name> [--role <role>] [--display-name <text>] [--vault-key <key>]` -- Make a named account with a platform role on a remote stack's node (the project's `scripts/operator-account.mjs` at its HEAD commit, under the node's deploy lease). The password comes back sealed to a key made for the run (the SSH layer masks anything that looks like a password) and goes to the daemon's vault only — read it with `omnitron secret get <key>`
 - `omnitron stack account <project> <stack> --show <name>` -- What the stand holds under a name: id, role, status, when made, last active; never a secret
 - `omnitron stack account <project> <stack> --remove <name> --id <uuid> [--vault-key <key>]` -- Take the account with that name AND id away, then its password from the vault
 
 ### Infrastructure
+- PostgreSQL database declarations accept `migrationTimeoutMs` alongside `migrate`. Each declared program has one hour to execute by default. Choose a whole number from 1 to 86,400,000 milliseconds for large table rewrites, index builds or a shorter maintenance window. Local and remote deployments use this value. A client timeout can precede the execution deadline. If a submitted migration loses its acknowledgement, check active database sessions and the migration ledger before another deployment. A database can finish the statement after the controller reports the interrupted step.
 - `omnitron tor [project] [stack] --json` inspects public onion hostname files on the current host. Each item includes the physical Docker ID, container status and hostname observation. A running container with a successful empty search returns `observation: "read"` and an empty `services` list. A stopped container returns `"not-running"`. Failed reads return a nonzero exit code with the observations available. Check the portal through Tor separately to verify reachability.
 - For a restricted onion service, supply each server-side public client entry in `hiddenServices[].authorizedClients` as `descriptor:x25519:<base32-public-key>`. Omnitron validates the 32-byte key before installing the single-line authorization file. Keep each client's private credential on that client. [Tor client authorization](https://community.torproject.org/onion-services/advanced/client-auth/)
 - `omnitron infra up` -- Provision the current standalone ecosystem’s declared containers

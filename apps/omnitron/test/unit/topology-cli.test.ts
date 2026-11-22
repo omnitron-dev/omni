@@ -6,13 +6,26 @@ import { setEnvOverride, resetEnvCache } from '../../src/shared/env-config.js';
 import { topologyCommand } from '../../src/commands/topology.js';
 import { stackReleaseAdmissionCommand, stackStartCommand } from '../../src/commands/stack.js';
 const api = vi.hoisted(() => ({ getTopologyWorkspace: vi.fn(), saveTopologyDraft: vi.fn(), refreshTopologyMetadata: vi.fn(),
-  checkRelease: vi.fn(), reviewStackStart: vi.fn(), disconnect: vi.fn(async () => {}) }));
+  checkRelease: vi.fn(), reviewStackStart: vi.fn(), startStack: vi.fn(), disconnect: vi.fn(async () => {}) }));
 vi.mock('../../src/daemon/daemon-client.js', async importOriginal => ({
   ...await importOriginal<typeof import('../../src/daemon/daemon-client.js')>(),
   createDaemonClient: () => ({ service: async () => api, disconnect: api.disconnect }),
 }));
 afterEach(() => { vi.restoreAllMocks(); resetEnvCache(); });
 describe('portable topology CLI documents', () => {
+  it('directs a lost start acknowledgement to the deployment progress for its own stack', async () => {
+    api.startStack.mockRejectedValueOnce(Object.assign(new Error('Client deadline'), { code: 408 }));
+    setEnvOverride({ OMNITRON_OUTPUT: 'json' });
+    const output = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const previous = process.exitCode;
+    try {
+      await stackStartCommand('sample', 'research/local');
+      const response = JSON.parse(String(output.mock.lastCall?.[0]));
+      expect(response).toMatchObject({ ok: false, outcome: 'unknown', reason: 'client-timeout' });
+      expect(response.error).toContain("omnitron stack progress 'sample' 'research/local'");
+      expect(api.startStack).toHaveBeenCalledOnce();
+    } finally { process.exitCode = previous; }
+  });
   it('refreshes declarations for a complete project through the administrative RPC', async () => {
     api.refreshTopologyMetadata.mockResolvedValue({ refreshed: 3, failures: [] });
     setEnvOverride({ OMNITRON_OUTPUT: 'json' });

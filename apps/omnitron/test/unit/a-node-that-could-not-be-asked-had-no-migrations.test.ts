@@ -89,7 +89,8 @@ describe('a node that could not be asked, taken to have no migrations', () => {
 
     const payments = results.find((r: any) => r.app === 'payments');
     expect(payments.status).toBe('failed');
-    expect(payments.error).toMatch(/database migrations failed/);
+    expect(payments.error).toContain('Database migration phase incomplete');
+    expect(payments.error).not.toContain('database may already have committed');
     expect(payments.error).toMatch(/Timed out while waiting for handshake/);
     // What did NOT happen is the claim: nothing migrated it, and nothing
     // started the code that expects the migrated schema.

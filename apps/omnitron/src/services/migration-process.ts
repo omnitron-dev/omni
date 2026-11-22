@@ -2,7 +2,7 @@ import { ExecutionEngine } from '@xec-sh/core';
 import { redactDiagnosticText } from '@omnitron-dev/titan/diagnostics';
 import { commandFailure } from '../execution/command-failure.js';
 import { shellEscape } from '../shared/shell-escape.js';
-import type { LocalMigrationTarget } from './migration-target.js';
+import { migrationExecutionTimeout, type LocalMigrationTarget } from './migration-target.js';
 import { prepareMigrationConfiguration } from '../migration/configuration.js';
 import { closureLibraryDirectories, withClosureLibraryPath } from '../release/closure-library-path.js';
 import { assertReleaseLoaderEnvironment } from '../release/target-runtime.js';
@@ -46,7 +46,7 @@ export function prepareRemoteMigration(target: { cwd: string; script: string; no
  * killed local process/stdio. Explicit empty loader variables override Xec 0.11's inherited environment. */
 export async function executeLocalMigration(target: LocalMigrationTarget, env: NodeJS.ProcessEnv,
   options: { signal?: AbortSignal; timeoutMs?: number; validate?: boolean } = {}) {
-  const deadline = AbortSignal.timeout(options.timeoutMs ?? 600_000);
+  const deadline = AbortSignal.timeout(options.timeoutMs ?? (options.validate ? 600_000 : migrationExecutionTimeout(target.migrationTimeoutMs)));
   const signal = options.signal ? AbortSignal.any([options.signal, deadline]) : deadline;
   const closureEnv = target.sealed ? withClosureLibraryPath(env, { verifiedRoot: target.cwd }, process.env) : undefined;
   const engine = new ExecutionEngine({ defaultTimeout: 0, adapters: { local: { killSignal: 'SIGKILL' } } });

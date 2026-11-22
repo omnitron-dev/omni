@@ -17,8 +17,8 @@ vi.mock('../../src/services/wait-for-postgres.js', () => ({ waitForPostgres: pro
 const roots: string[] = [];
 afterEach(async () => { probe.mockClear(); for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
 const binding = (name = 'portal'): MigrationBinding => ({ app: 'owner-api', config: `src/database/${name}.ts`, releaseConfig: `dist/database/${name}.js` });
-function services(migrate: unknown, database = 'api') {
-  return normalizeInfraConfig({ services: { primary: { preset: 'postgres', config: { databases: { [database]: { migrate } } } } } }, createDefaultRegistry());
+function services(migrate: unknown, database = 'api', migrationTimeoutMs?: unknown) {
+  return normalizeInfraConfig({ services: { primary: { preset: 'postgres', config: { databases: { [database]: { migrate, migrationTimeoutMs } } } } } }, createDefaultRegistry());
 }
 async function workspace() {
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'migration-binding-'))); roots.push(root);
@@ -30,6 +30,14 @@ async function workspace() {
 }
 
 describe('explicit migration ownership', () => {
+  it('carries the database execution deadline into script and configuration plans', () => {
+    for (const declaration of [true, [binding(), binding('history')]]) {
+      const requests = requestedMigrations(services(declaration, 'api', 2_400_000));
+      expect(requests.map(request => request.migrationTimeoutMs)).toEqual(requests.map(() => 2_400_000));
+    }
+    for (const invalid of [0, -1, 1.5, '600000', null, NaN, 86_400_001])
+      expect(() => requestedMigrations(services(true, 'api', invalid))).toThrow('migrationTimeoutMs');
+  });
   it('keeps database, service, alias and source cwd independent', async () => {
     const f = await workspace();
     const requests = requestedMigrations(services(binding()));

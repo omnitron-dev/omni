@@ -351,16 +351,18 @@ export async function stackStatusCommand(projectName: string, stackName: string)
 function reportLifecycleError(
   err: unknown,
   action: string,
-  details: Record<string, unknown>
+  details: { project: string; stack: string; release?: string },
+  inspectTransfers = false
 ): void {
+  const scope = [details.project, details.stack].map(shellEscape).join(' ');
+  const inspect = `Check \`omnitron stack ${inspectTransfers ? 'progress' : 'status'} ${scope}\` before retrying.`;
   if (isRequestTimeout(err)) {
     emitError(
-      `Stopped waiting for ${action}. The daemon has not been told to stop — the operation is probably still running. ` +
-        `Check with \`omnitron list\` or \`omnitron doctor\` before doing anything else.`,
+      `Stopped waiting for ${action}. The daemon may still be working. ${inspect}`,
       { ...details, outcome: 'unknown', reason: 'client-timeout' }
     );
   } else if (isLostRpcAcknowledgement(err)) {
-    emitError(`Acknowledgement unavailable for ${action}: ${(err as Error).message}. Inspect the stack before retrying.`,
+    emitError(`Acknowledgement unavailable for ${action}: ${(err as Error).message}. ${inspect}`,
       { ...details, outcome: 'unknown', reason: 'connection-lost' });
   } else {
     emitError(`Failed: ${(err as Error).message}`, details);
@@ -499,7 +501,7 @@ export async function stackStartCommand(
     reportLifecycleError(err, `stack ${projectName}/${stackName} to start`, {
       project: projectName,
       stack: stackName,
-    });
+    }, true);
   } finally {
     await client.disconnect();
   }

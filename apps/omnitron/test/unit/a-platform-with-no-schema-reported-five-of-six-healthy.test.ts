@@ -8,7 +8,7 @@ const target = { host: '127.0.0.2', daemonPort: 9700, username: 'fixture' };
 const apps = ['api', 'worker'];
 const legacy = (app = 'api'): MigrationRequest => ({ service: 'postgres', database: app, app, mode: 'script', source: 'src/database/migrate.ts', release: 'dist/database/migrate.js' });
 function fixture(options: { missing?: string; failure?: string; sealed?: boolean; drift?: boolean } = {}) {
-  const mutations: string[] = [], preparations: string[] = [];
+  const mutations: string[] = [], preparations: string[] = [], deadlines: number[] = [];
   const service = Object.create(RemoteDeployer.prototype) as any;
   const origin = { releaseId: 'fixture', manifestSha256: 'a'.repeat(64), artifactSha256: 'b'.repeat(64), artifactBytes: 100,
     app: 'api', frameworkCommit: 'c'.repeat(40) };
@@ -18,11 +18,12 @@ function fixture(options: { missing?: string; failure?: string; sealed?: boolean
     inspectInstalledBundle: async () => ({ applicationRuntime: { root: '/verified/framework', executable: '/verified/node', commit: 'c'.repeat(40), execution: { mode: 'resident', protocol: 1, ownerId: 'fixture', pid: 42, epoch: 1 } } }),
     deployToNode: vi.fn(async (_target: unknown, artifact: { app: string; version: string }) => ({ app: artifact.app, version: artifact.version,
       status: 'success', node: '127.0.0.2:9700', unchanged: false, ...(options.sealed ? { migrationNode: '/verified/node' } : {}) })),
-    sshExec: async (_target: unknown, command: string, _timeout: unknown, stdin: string) => {
+    sshExec: async (_target: unknown, command: string, timeout: number, stdin: string) => {
       if (command.includes('.omnitron-release.json')) return options.drift && ++checks > 1 ? 'stale' : 'verified';
       if (command.startsWith('test -f')) { preparations.push(command); return options.missing && command.includes(options.missing) ? 'no' : 'yes'; }
       if (command.includes('validated:true')) { preparations.push('config validated'); return '{"validated":true}'; }
       mutations.push(command);
+      deadlines.push(timeout);
       expect(command).not.toContain('private-password');
       expect(JSON.parse(stdin).DATABASE_URL).toContain('private-password');
       if (options.failure && command.includes(options.failure)) throw Error('schema refused');
@@ -37,7 +38,7 @@ function fixture(options: { missing?: string; failure?: string; sealed?: boolean
       apps: apps.map(name => ({ name, script: 'dist/main.js' })), stack: 'test', migrations,
       appEnv: env ?? Object.fromEntries(apps.map(app => [app, { DATABASE_URL: `postgres://u:private-password@localhost/${app}` }])),
     });
-  return { run, service, preparations, mutations };
+  return { run, service, preparations, mutations, deadlines };
 }
 
 it('does not discover migration files from DATABASE_URL when no owner opted in', async () => {
@@ -49,6 +50,7 @@ it('runs only the declared legacy owner and retains full node activation orderin
   const f = fixture();
   expect((await f.run([legacy()])).every((result: any) => result.status === 'success')).toBe(true);
   expect(f.mutations).toHaveLength(1); expect(f.mutations[0]).toContain('/api/');
+  expect(f.deadlines).toEqual([3_600_000]);
   expect(f.service.registerNodeApps).toHaveBeenCalledOnce();
 });
 it('prepares every declared member before running any and refuses a missing one', async () => {
@@ -65,7 +67,9 @@ it('refuses wrong database and missing owners before transferring any artifact',
 });
 it('stops after a failed migration and never activates the partially prepared node', async () => {
   const f = fixture({ failure: '/api/' });
-  expect((await f.run([legacy(), legacy('worker')])).every((result: any) => result.status === 'failed')).toBe(true);
+  const results = await f.run([{ ...legacy(), migrationTimeoutMs: 2_400_000 }, legacy('worker')]);
+  expect(results.every((result: any) => result.status === 'failed' && result.error.includes('postgres/api migration ledger'))).toBe(true);
+  expect(f.deadlines).toEqual([2_400_000]);
   expect(f.mutations).toHaveLength(1); expect(f.service.registerNodeApps).not.toHaveBeenCalled();
 });
 it('requires release authority for explicit configs before transfer', async () => {

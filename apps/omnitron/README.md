@@ -179,6 +179,8 @@ The response can also report `state: "requires-stop"`; capture the declarations
 and review preservation before scheduling that stop. Console's Releases view
 offers the same operations according to the signed-in user's role.
 
+With the OpenResty gateway, select `GATEWAY_UPSTREAM_TRANSPORT=unix` when the template connects to host applications through private Unix sockets. Mount the receiving node's socket volume read-only in that gateway. Omnitron opens the stack-to-host TCP firewall rule only for a declared OpenResty gateway using TCP. The socket units and their application endpoints belong to the node's provisioning configuration.
+
 ### Confirm remote application startup
 
 A remote release registers its boot definitions and starts the selected stack on the receiving node. The node records a single startup request and its result in the private `.registration-<operation>` directory alongside the project configuration. If the SSH reply is lost, the controller reads the result for that same operation and checks it against the published configuration and expected applications. Console shows **Awaiting confirmation** when the result is unavailable or incomplete. The controller preserves both definitions and the existing processes. Before submitting another deployment, compare the receiver's application generations, selected release and registration identified in the diagnostic.

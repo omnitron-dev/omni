@@ -747,8 +747,10 @@ export class RemoteDeployer {
       appEnv?: Readonly<Record<string, Record<string, string>>> | undefined;
       /** Explicit normalized ownership; absence never authorizes filesystem discovery. */
       migrations?: readonly MigrationRequest[];
-      /** The stack these apps belong to — names the docker network to open from. */
+      /** The source stack that owns these applications. */
       stack?: string | undefined;
+      /** Derived from the admitted gateway declaration. */
+      gatewayNeedsHostTcp?: boolean;
       /** Ship and restart every app past the node's record — `stack start --reinstall`. */
       force?: boolean | undefined;
       /** The project's alert sink, for the node's own alert engine — see `NodeConfigInput.alertSink`. */
@@ -869,7 +871,7 @@ export class RemoteDeployer {
 
         // And the path from the gateway to them, which is the one crossing
         // no configuration can open by itself. See `gateway-reachability`.
-        if (options.stack) await this.openGatewayPath(administrativeTarget(target), project, options.stack);
+        if (options.stack && options.gatewayNeedsHostTcp) await this.openGatewayPath(administrativeTarget(target), project, options.stack);
 
         // What the node is running right now, asked once for the whole node
         // rather than once per app: the decision below needs it for every

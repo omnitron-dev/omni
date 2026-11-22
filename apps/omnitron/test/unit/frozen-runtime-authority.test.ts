@@ -38,10 +38,18 @@ describe('verified application execution authority', () => {
     });
     return service;
   }
+  it('leaves the host firewall alone for a socket gateway', async () => {
+    const service = splitAccountFixture(true);
+    const [result] = await service.deployToStack([login], [artifact], 'fixture', {
+      stack: 'test', gatewayNeedsHostTcp: false, apps: [{ name: artifact.app, script: launch.file }],
+    });
+    expect(result.status).toBe('success');
+    expect(service.openGatewayPath).not.toHaveBeenCalled();
+  });
   it.each([true, false])('installs through the service store and admits later effects only after its receipt: %s', async confirmed => {
     const service = splitAccountFixture(confirmed);
     const [result] = await service.deployToStack([login], [artifact], 'fixture', {
-      stack: 'test', apps: [{ name: artifact.app, script: launch.file }],
+      stack: 'test', gatewayNeedsHostTcp: true, apps: [{ name: artifact.app, script: launch.file }],
     });
     expect(service.scpTransfer).not.toHaveBeenCalled();
     expect(service.sshExecData).toHaveBeenCalledOnce();

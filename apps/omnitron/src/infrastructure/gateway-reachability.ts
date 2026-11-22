@@ -32,6 +32,22 @@
  * firewall needs nothing done to it.
  */
 
+import type { InfrastructureConfig, IServiceRequirement } from './types.js';
+
+/** Only a declared OpenResty gateway using host TCP needs a host firewall rule. */
+export function needsHostGatewayRule(infrastructure?: InfrastructureConfig, appGateway?: IServiceRequirement): boolean {
+  const gateway = infrastructure?.services?.['gateway'] ?? appGateway;
+  const legacy = infrastructure?.gateway;
+  if (!gateway && !legacy) return false;
+  const preset = gateway && ('preset' in gateway ? gateway.preset : gateway._preset);
+  if (gateway && preset !== 'openresty') return false;
+  const config = gateway && ('preset' in gateway ? gateway.config : gateway._presetConfig);
+  const env = config?.['env'] ?? legacy?.env;
+  if (env === undefined) return true;
+  if (!env || typeof env !== 'object' || Array.isArray(env)) return false;
+  return !('GATEWAY_UPSTREAM_TRANSPORT' in env) || env.GATEWAY_UPSTREAM_TRANSPORT === 'tcp';
+}
+
 /** The ports a gateway proxies to, as `resolveGateway` declares them. */
 export const GATEWAY_UPSTREAM_PORTS = [3001, 3002, 3003, 3004, 3005, 3006, 3007] as const;
 

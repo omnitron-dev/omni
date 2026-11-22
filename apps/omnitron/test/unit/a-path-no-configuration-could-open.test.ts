@@ -33,6 +33,7 @@ import { describe, it, expect } from 'vitest';
 
 import {
   isPrivateSubnet,
+  needsHostGatewayRule,
   reachabilityRule,
   reachabilityCommand,
   GATEWAY_UPSTREAM_PORTS,
@@ -115,5 +116,21 @@ describe('it touches a host only where it has to', () => {
 
   it('opens tcp only', () => {
     expect(command).toContain('proto tcp');
+  });
+});
+
+
+describe('gateway transport owns the decision to open host TCP', () => {
+  it('uses the effective template transport for preset and legacy declarations', () => {
+    const env = { GATEWAY_UPSTREAM_TRANSPORT: 'unix' };
+    expect(needsHostGatewayRule({ services: { gateway: { preset: 'openresty', config: { env } } } })).toBe(false);
+    expect(needsHostGatewayRule({ gateway: { env } })).toBe(false);
+    expect(needsHostGatewayRule({ services: { gateway: { preset: 'openresty' } } })).toBe(true);
+    expect(needsHostGatewayRule({ gateway: { env } }, { _preset: 'openresty', ports: {}, env: {} })).toBe(false);
+  });
+
+  it('requires an owned template before issuing a firewall change', () => {
+    expect(needsHostGatewayRule()).toBe(false);
+    expect(needsHostGatewayRule({ services: { gateway: { preset: 'caddy' } } })).toBe(false);
   });
 });

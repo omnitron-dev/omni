@@ -40,6 +40,7 @@ import { publicStack } from '../project/public-stack.js';
 import { TopologyStateStore } from '../project/topology-state.js';
 import { TopologyControl } from '../project/topology-control.js';
 import { artifactVolumeBindings, artifactVolumeEntries, bindArtifactVolumes } from '../release/artifact-volumes.js';
+import { needsHostGatewayRule } from '../infrastructure/gateway-reachability.js';
 import { mergeInfrastructure, mergeInferredInfrastructure } from '../infrastructure/merge-config.js';
 export { mergeInfrastructure } from '../infrastructure/merge-config.js';
 import type { TopologyScope, TopologySpec, TopologyPlan, TopologyWorkspace } from '../shared/dto/topology.js';
@@ -5234,6 +5235,7 @@ export class ProjectService extends EventEmitter {
               appEnv,
               migrations: preservation ? [] : migrationRequests.filter(request => selectedNames.has(request.app)),
               stack: stackName,
+              gatewayNeedsHostTcp: needsHostGatewayRule(nodeInfra, declaredServices['gateway']),
               // Past the node's record of what each app runs: ship and restart all.
               ...(reinstall ? { force: true } : {}),
               // The node counts its own alarms and hands them to this project's

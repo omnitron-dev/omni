@@ -248,6 +248,12 @@ print(json.dumps({'ok':True,'data':run}))
     postgresSwitchoverDefinition('promote', spec, binding, { stop: randomUUID(), evidence }),
     /receipt|reviewed command/i
   );
+  const replacement = structuredClone(binding);
+  replacement.candidates.postgres.container = '9'.repeat(64);
+  await assert.rejects(
+    postgresSwitchoverDefinition('promote', spec, replacement, { stop, evidence }),
+    /reviewed command|another switchover/
+  );
   await assert.rejects(
     postgresSwitchoverDefinition('replay', spec, binding, { stop, evidence: { source: evidence.source } }),
     /prerequisite/

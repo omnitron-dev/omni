@@ -63,8 +63,17 @@ guardian without this protocol refuses before cancelling work.
 
 `backend upgrade --check --json` exposes the reviewed controller grant,
 configuration digest and backup receipts. The private resolved snapshot stays on
-the node. A standalone upgrade is an immediate operation with a fresh in-memory
-admission; a separate `--check` invocation is inspection, not a saved approval.
+the node. A standalone upgrade takes a fresh review by default. To apply the
+exact check that an operator approved, keep its JSON response in an owner-only
+file and pass it to the upgrade. The guardian checks that the target, controller,
+configuration and scope of backup cancellation still agree before draining.
+
+```sh
+umask 077
+omnitron --json backend upgrade "$dist" --check > backend-check.json
+omnitron --json backend upgrade "$dist" --from-check backend-check.json
+```
+
 Managed plans retain these values, and CLI and Console display the
 per-node cancellation scope before applying. A completed attempt is observed;
 new attempts, changed revisions, unknown outcomes and foreign operations refuse.

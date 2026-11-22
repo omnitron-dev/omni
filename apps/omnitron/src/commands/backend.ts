@@ -2,7 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import type { BackendRpcService } from '../daemon/backend.rpc-service.js';
-import { replaceBackend, recoverBackend, abortBackendReplacement } from '../daemon/backend-upgrade.js';
+import { replaceBackend, recoverBackend, abortBackendReplacement, type BackendReplacementPreflight } from '../daemon/backend-upgrade.js';
 import { emitJson, emitError, emitInfo, emitStep } from './output.js';
 import { RuntimeInstallation, assertOrdinaryRecoveryAllowed } from '../daemon/runtime-installation.js';
 import { PidManager } from '../daemon/pid-manager.js';
@@ -13,7 +13,8 @@ import { executionDirectory } from '../daemon/execution-launcher.js';
 import { readSavedDaemonConfig, savedDaemonOverrides } from '../config/saved.js';
 import { assertBackendMigrationsCompatible, backendSchemaScope, previewBackendColdStart, type BackendArtifact } from '../daemon/backend-candidate.js';
 import { BackendRecoveryJournal } from '../daemon/backend-recovery-journal.js';
-import { assertBackendHandoffReview, checkpointInstanceHome } from '../daemon/backend-handoff-types.js';
+import { assertBackendHandoffAdmission, assertBackendHandoffReview, checkpointInstanceHome } from '../daemon/backend-handoff-types.js';
+import { readPrivateRecord } from '../daemon/execution-journal.js';
 import { privateControlClient } from '../daemon/private-control-client.js';
 import type { BackendControlService } from '../daemon/backend-control.js';
 import { readManagedRuntime } from '../daemon/managed-runtime.js';
@@ -262,8 +263,17 @@ export async function backendStatusCommand(): Promise<void> {
   finally { await client.disconnect(); }
 }
 
-export async function backendUpgradeCommand(directory: string, options: { check?: boolean; schemaPlan?: string }): Promise<void> {
+export async function backendUpgradeCommand(directory: string, options: { check?: boolean; fromCheck?: string; schemaPlan?: string }): Promise<void> {
   try {
+    let admission;
+    if (options.fromCheck) {
+      if (options.check) throw Error('Use --check to prepare or --from-check to apply the saved review');
+      const saved = await readPrivateRecord<{ ok: boolean; data?: BackendReplacementPreflight }>(path.resolve(options.fromCheck));
+      if (saved?.ok !== true || saved.data?.checked !== true || !saved.data.admission?.targetRuntimeHash)
+        throw Error('Supply the successful JSON response from backend upgrade --check for this destination');
+      admission = saved.data.admission;
+      assertBackendHandoffAdmission(admission);
+    }
     // A socket chosen for another instance must keep its own RPC authority.
     const target = getEnv().OMNITRON_SOCKET ?? DEFAULT_SOCKET_PATH;
     if (path.resolve(target) === path.resolve(DEFAULT_SOCKET_PATH)) {
@@ -282,6 +292,7 @@ export async function backendUpgradeCommand(directory: string, options: { check?
       await backend.status();
     } finally { await client.disconnect(); }
     const result = await replaceBackend(path.resolve(directory), { checkOnly: options.check === true, progress: emitStep,
+      ...(admission && { admission }),
       ...(options.schemaPlan ? { schemaPlan: path.resolve(options.schemaPlan) } : {}) });
     if (!emitJson(result)) emitInfo('checked' in result ? `Candidate ${result.build.commit} verified; no activation performed`
       : `Backend PID ${result.pid}; execution owner PID ${result.ownerPid} retained; epoch ${result.epoch}`);

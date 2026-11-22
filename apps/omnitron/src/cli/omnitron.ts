@@ -235,8 +235,9 @@ backend.command('status').description('Show backend and execution-owner capabili
 });
 backend.command('upgrade <dist>').description('Activate a built backend artifact; retain application processes')
   .option('--check', 'Validate compatibility without draining or activating')
+  .option('--from-check <file>', 'Apply the reviewed target, controller and backup scope from a saved JSON check')
   .option('--schema-plan <path>', 'Require the exact applied expansion plan for a schema-changing upgrade or rollback')
-  .structuredAction(async (dist: string, options: { check?: boolean; schemaPlan?: string }) => {
+  .structuredAction(async (dist: string, options: { check?: boolean; fromCheck?: string; schemaPlan?: string }) => {
     const { backendUpgradeCommand } = await import('../commands/backend.js');
     await backendUpgradeCommand(dist, options);
   });

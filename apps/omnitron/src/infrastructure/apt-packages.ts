@@ -73,7 +73,7 @@ export async function inspectAptPackages(policy: AptPackagePolicy, host: Host): 
     host.run([...cLocale, 'apt-cache', 'policy', '--', ...names]),
     host.run([...cLocale, 'apt-cache', 'madison', '--', ...names]),
     host.run([...cLocale, 'apt-mark', 'showhold', '--', ...names]),
-    policy.repository ? host.readFile('/etc/os-release') : null,
+    policy.repository ? host.readFile('/etc/os-release').catch(() => null) : null,
   ]);
   const failed = [selection, available, holds].find((result) => !result.ok);
   if (failed) return names.map((name) => blocked(name, 'Cannot read APT package state: ' + diagnostic(failed.stderr)));

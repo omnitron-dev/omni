@@ -25,6 +25,7 @@
 
 import { bindService, secretValues } from './service-binding.js';
 import { binaryReleaseCommand } from './binary-release.js';
+import type { PrivateConfigEvidence } from './private-host-config.js';
 import type { AptPackagePolicy, BareMetalBinaryRelease, IServiceHealthCheck, IServiceOverride, SecretRef } from './types.js';
 import { aptChanges, type AptChange, type AptDependency, type AptPackageReading, type AptTransaction } from './apt-packages.js';
 
@@ -71,11 +72,13 @@ export interface BareMetalObservation {
   dataDirExists: boolean;
   unitKnown: boolean;
   unitActive: boolean;
+  /** A start is in progress; enqueuing another is unnecessary. */
+  unitActivating?: true;
   unitEnabled: boolean;
-  /** Current contents of `configFile`, or null when it is not there. */
-  configContent: string | null;
+  /** Bytes read locally, evidence from the private installer, or confirmed absence. */
+  configContent: string | null | PrivateConfigEvidence;
   /** Current contents of `unitFile`, or null when it is not there. */
-  unitContent?: string | null | undefined;
+  unitContent?: string | null | { state: 'unreadable' } | undefined;
   /** Both ends of a takeover — observed only when the stack declares one. */
   adoption?: AdoptionObservation | undefined;
 }
@@ -107,8 +110,8 @@ export type BareMetalAction =
       setAside: { file: string; as: string } | undefined;
     }
   | { type: 'create-data-dir'; path: string; owner: string | undefined }
-  | { type: 'write-config'; path: string; content: string; owner: string | undefined; mode: string }
-  | { type: 'write-unit'; path: string; content: string }
+  | { type: 'write-config'; path: string; content: string; owner: string | undefined; mode: string; absent?: true }
+  | { type: 'write-unit'; path: string; content: string; absent?: true }
   | { type: 'daemon-reload' }
   | { type: 'enable-unit'; unit: string }
   | { type: 'start-unit'; unit: string }
@@ -138,9 +141,19 @@ export const OMNITRON_CONFIG_MARKER = '# managed-by: omnitron';
 /** Config files hold RPC credentials. 0640, owned by the service's user. */
 export const CONFIG_MODE = '0640';
 
+export function hostFileRefusals(observed: Pick<BareMetalObservation, 'configContent' | 'unitContent'>): string[] {
+  const refusals: string[] = [];
+  if (typeof observed.configContent === 'object' && observed.configContent?.state === 'unreadable')
+    refusals.push('The declared configuration could not be read or verified against its installer receipt.');
+  if (typeof observed.unitContent === 'object' && observed.unitContent?.state === 'unreadable')
+    refusals.push('The declared systemd unit file could not be read.');
+  return refusals;
+}
+
 export function planBareMetal(spec: BareMetalSpec, observed: BareMetalObservation): BareMetalPlan {
   const actions: BareMetalAction[] = [];
-  const refusals: string[] = [];
+  const refusals = hostFileRefusals(observed);
+  if (refusals.length) return { actions, refusals };
 
   if (spec.apt !== undefined) {
     const packages = observed.packages ?? [];
@@ -197,14 +210,14 @@ export function planBareMetal(spec: BareMetalSpec, observed: BareMetalObservatio
   } else if (spec.configFile && spec.configContent !== undefined) {
     const wanted = withMarker(spec.configContent);
     if (observed.configContent === null) {
-      actions.push({ type: 'write-config', path: spec.configFile, content: wanted, owner: spec.user, mode: CONFIG_MODE });
+      actions.push({ type: 'write-config', path: spec.configFile, content: wanted, owner: spec.user, mode: CONFIG_MODE, absent: true });
       configChanged = true;
-    } else if (!observed.configContent.includes(OMNITRON_CONFIG_MARKER)) {
+    } else if (typeof observed.configContent === 'string' && !observed.configContent.includes(OMNITRON_CONFIG_MARKER)) {
       refusals.push(
         `${spec.configFile} was not written by omnitron, so it is left alone. ` +
           `Add \`${OMNITRON_CONFIG_MARKER}\` to its first line to let this manage it.`,
       );
-    } else if (normalise(observed.configContent) !== normalise(wanted)) {
+    } else if (typeof observed.configContent === 'string' && normalise(observed.configContent) !== normalise(wanted)) {
       actions.push({ type: 'write-config', path: spec.configFile, content: wanted, owner: spec.user, mode: CONFIG_MODE });
       configChanged = true;
     }
@@ -218,16 +231,16 @@ export function planBareMetal(spec: BareMetalSpec, observed: BareMetalObservatio
     const current = observed.unitContent ?? null;
 
     if (current === null) {
-      actions.push({ type: 'write-unit', path, content: wanted });
+      actions.push({ type: 'write-unit', path, content: wanted, absent: true });
       unitChanged = true;
-    } else if (!current.includes(OMNITRON_CONFIG_MARKER)) {
+    } else if (typeof current === 'string' && !current.includes(OMNITRON_CONFIG_MARKER)) {
       // Same rule as a config file, and for a stronger reason: a unit
       // somebody else wrote is how their service starts.
       refusals.push(
         `${path} was not written by omnitron, so it is left alone. ` +
           `Add \`${OMNITRON_CONFIG_MARKER}\` to it to let this manage it.`,
       );
-    } else if (normalise(current) !== normalise(wanted)) {
+    } else if (typeof current === 'string' && normalise(current) !== normalise(wanted)) {
       actions.push({ type: 'write-unit', path, content: wanted });
       unitChanged = true;
     }

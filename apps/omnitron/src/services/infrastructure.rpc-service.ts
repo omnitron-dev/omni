@@ -596,6 +596,7 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     overrides: Record<string, import('../infrastructure/types.js').IServiceOverride>,
   ): Promise<{
     settled: string[];
+    awaitingObservation: string[];
     failed: Array<{ name: string; status: string; error: string | null }>;
     refusals: string[];
   }> {
@@ -604,6 +605,7 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     const { createNullLogger } = await import('@omnitron-dev/titan/module/logger');
 
     const settled: string[] = [];
+    const awaitingObservation: string[] = [];
     const failed: Array<{ name: string; status: string; error: string | null }> = [];
     const refusals: string[] = [];
 
@@ -628,18 +630,16 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
       const spec = selectBareMetal(name, requirement as never, overrides[name] as never);
       if (!spec) continue;
 
-      if (spec.apt !== undefined) {
-        try {
-          aptRefresh ??= import('../infrastructure/apt-packages.js').then(({ refreshAptIndices }) => refreshAptIndices(host));
-          await aptRefresh;
-        } catch (error) {
-          const reason = (error as Error).message;
-          refusals.push(reason);
-          failed.push({ name, status: 'refused', error: reason });
-          continue;
-        }
+      let observed;
+      try {
+        observed = await observeBareMetal(spec, host, () => aptRefresh ??=
+          import('../infrastructure/apt-packages.js').then(({ refreshAptIndices }) => refreshAptIndices(host)));
+      } catch (error) {
+        const reason = (error as Error).message;
+        refusals.push(reason);
+        failed.push({ name, status: 'refused', error: reason });
+        continue;
       }
-      const observed = await observeBareMetal(spec, host);
       const plan = planBareMetal(spec, observed);
 
       if (plan.refusals.length > 0) {
@@ -650,18 +650,23 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
 
       if (isSettled(plan)) {
         settled.push(name);
+        if (observed.unitActivating) awaitingObservation.push(name);
         continue;
       }
 
-      const result = await applyBareMetal(plan.actions, host, logger, name);
+      const evidence = observed.configContent;
+      const attested = typeof evidence === 'object' && evidence?.state === 'verified-private' ? { spec, receipt: evidence.receipt } : undefined;
+      const result = await applyBareMetal(plan.actions, host, logger, name, attested);
       if (result.failed) {
         failed.push({ name, status: 'failed', error: result.failed.error });
       } else {
         settled.push(name);
+        if (result.applied.some(action => action.type === 'start-unit' || action.type === 'restart-unit'))
+          awaitingObservation.push(name);
       }
     }
 
-    return { settled, failed, refusals };
+    return { settled, awaitingObservation, failed, refusals };
   }
 
   /**

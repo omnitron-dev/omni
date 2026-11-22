@@ -1,5 +1,7 @@
 # Native runtime fixtures
 
+`private_host_config_test.py` exercises the Linux installer CLI and the public infrastructure inspection and provisioning handlers with four separate UIDs, actual file permissions and ACLs, and a simulated systemd. Run it in a new networkless disposable Linux Docker container with Python 3, Node, shadow utilities and `OMNITRON_DISPOSABLE_HOST_CONFIG_TEST=1`. Pass the native `dist/cli/omnitron.js` and `dist/services/infrastructure.rpc-service.js` entries from a runnable installation. The fixture requires empty profile paths, creates its own service accounts, and emits a JSON qualification receipt.
+
 `managed-backend.mjs` exercises the ordinary managed backend and guardian transition,
 recovery and rollback paths with disposable sealed runtimes. Its private application
 must retain its PID and continue serving HTTP; owner RPC, migration history and the

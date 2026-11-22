@@ -466,6 +466,21 @@ topology.command('apply <project> <stack> <plan>')
 
 const stack = program.command('stack').aliases(['stacks']).description('Manage deployment stacks across projects');
 
+program.command('host-config').description('Local Linux installer evidence')
+  .command('attest <profile>').description('Attest the installed root-owned private config for a supported service profile')
+  .allowExcessArguments(false)
+  .structuredAction(async profile => {
+    const { attestInstalledHostConfig } = await import('../infrastructure/private-host-config.js');
+    const { emitError, emitJson, emitSuccess } = await import('../commands/output.js');
+    try {
+      const result = await attestInstalledHostConfig(profile);
+      if (!emitJson(result)) emitSuccess('Recorded installer receipt ' + result.receipt + ' for ' + result.profile);
+    } catch {
+      emitError('Could not attest the fixed root-owned configuration, service group and protected installer directory');
+      process.exitCode = 1;
+    }
+  });
+
 stack
   .command('list')
   .description('List all stacks across all projects')

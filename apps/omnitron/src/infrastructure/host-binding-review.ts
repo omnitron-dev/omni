@@ -4,7 +4,7 @@ import { bindService } from './service-binding.js';
 import type { IServiceOverride, IServiceRequirement } from './types.js';
 
 /** Only these application configuration formats have been reviewed for passive preparation. */
-const PROFILES = {
+export const HOST_BINDING_PROFILES = {
   bitcoin: {
     unit: 'bitcoind', user: 'bitcoin', config: '/etc/bitcoin/bitcoin.conf', chainDataDir: '/var/lib/bitcoind',
     directives: ['rpcauth=${secret:rpc_auth}'],
@@ -19,7 +19,7 @@ const PROFILES = {
   },
 } as const;
 
-type Profile = keyof typeof PROFILES;
+export type HostBindingProfile = keyof typeof HOST_BINDING_PROFILES;
 export interface HostBindingSelection { project: string; stack: string; release: string; nodeId: string }
 export interface HostBindingReview extends HostBindingSelection {
   protocol: 1;
@@ -34,8 +34,8 @@ export interface HostBindingReview extends HostBindingSelection {
 const sha = (value: string) => createHash('sha256').update(value).digest('hex');
 const slots = (content: string) => [...content.matchAll(/\$\{secret:([\w-]+)\}/g)].map(match => match[1]!);
 
-function reviewBinding(name: Profile, requirement: IServiceRequirement, override?: IServiceOverride) {
-  const profile = PROFILES[name];
+function reviewBinding(name: HostBindingProfile, requirement: IServiceRequirement, override?: IServiceOverride) {
+  const profile = HOST_BINDING_PROFILES[name];
   const effective = bindService(requirement, override);
   const secretNames = profile.directives.flatMap(slots);
   const refs: Array<[string, string]> = [];
@@ -85,7 +85,7 @@ export function reviewHostBindings(
   if (![target.project, target.stack, target.nodeId].every(label => typeof label === 'string' && /^[\w][\w.-]{0,127}$/.test(label)) ||
       !/^[a-f0-9]{40}$/.test(target.commit) || !/^[a-f0-9]{64}$/.test(target.manifestSha256) ||
       !/^SHA256:[A-Za-z0-9+/]{43}$/.test(target.sshFingerprint)) throw Error('Incomplete registered release or recipient identity');
-  const rows = (Object.keys(PROFILES) as Profile[]).map(name => {
+  const rows = (Object.keys(HOST_BINDING_PROFILES) as HostBindingProfile[]).map(name => {
     if (!declared[name] || Object.keys(overrides).some(key => key.endsWith('/' + name)))
       throw Error(`One unambiguous deployed service binding is required for ${name}`);
     return reviewBinding(name, declared[name], overrides[name]);

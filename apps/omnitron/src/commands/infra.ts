@@ -417,7 +417,8 @@ function printInspection(
   }
   for (const file of inspection.configKeys) {
     const values = Object.entries(file.values).map(([k, v]) => `${k}=${v ?? '(unset)'}`).join(' ');
-    log.info(`config ${file.path}: ${file.exists ? values : 'absent'}${file.refused.length ? ` · refused ${file.refused.join(', ')}` : ''}`);
+    const state = file.exists === null ? 'unreadable' : file.exists ? values : 'absent';
+    log.info(`config ${file.path}: ${state}${file.refused.length ? ` · refused ${file.refused.join(', ')}` : ''}`);
   }
 }
 

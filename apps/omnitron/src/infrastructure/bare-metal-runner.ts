@@ -14,8 +14,9 @@
  */
 
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
-import type { AdoptionObservation, BareMetalAction, BareMetalObservation, BareMetalSpec } from './bare-metal-plan.js';
+import { hostFileRefusals, type AdoptionObservation, type BareMetalAction, type BareMetalObservation, type BareMetalSpec } from './bare-metal-plan.js';
 import { aptChanges, inspectAptPackages, installAptPackages, previewAptTransaction } from './apt-packages.js';
+import { privateHostConfigEvidence, type PrivateConfigEvidence } from './private-host-config.js';
 
 export interface CommandResult {
   ok: boolean;
@@ -30,7 +31,8 @@ export interface HostRunner {
   /** Run a command line through a shell — only for operator-declared commands. */
   shell(command: string, options?: { timeoutMs?: number }): Promise<CommandResult>;
   readFile(path: string): Promise<string | null>;
-  writeFile(path: string, content: string, options: { mode: string; owner?: string | undefined }): Promise<void>;
+  privateConfigEvidence?(spec: BareMetalSpec): Promise<PrivateConfigEvidence | null>;
+  writeFile(path: string, content: string, options: { mode: string; owner?: string | undefined; absent?: true | undefined }): Promise<void>;
   exists(path: string): Promise<boolean>;
   /**
    * rename(2): on one filesystem, and never a copy — across two it fails. A
@@ -39,8 +41,25 @@ export interface HostRunner {
   rename(from: string, to: string): Promise<void>;
 }
 
-export async function observeBareMetal(spec: BareMetalSpec, host: HostRunner): Promise<BareMetalObservation> {
-  const [installed, userExists, dataDirExists, unit, configContent, packages] = await Promise.all([
+async function observedFile(host: HostRunner, path: string): Promise<string | null | { state: 'unreadable' }> {
+  try { return await host.readFile(path); } catch { return { state: 'unreadable' }; }
+}
+
+async function observedConfig(host: HostRunner, spec: BareMetalSpec): Promise<BareMetalObservation['configContent']> {
+  if (!spec.configFile) return null;
+  try { return await host.privateConfigEvidence?.(spec) ?? await observedFile(host, spec.configFile); }
+  catch { return { state: 'unreadable' }; }
+}
+
+export async function observeBareMetal(
+  spec: BareMetalSpec, host: HostRunner, refreshPackages?: () => Promise<void>,
+): Promise<BareMetalObservation> {
+  const unitPath = spec.systemdUnit ? (spec.unitFile ?? `/etc/systemd/system/${spec.systemdUnit}.service`) : null;
+  const [configContent, unitContent] = await Promise.all([observedConfig(host, spec),
+    spec.unitContent !== undefined && unitPath ? observedFile(host, unitPath) : null]);
+  // A refresh writes the APT indices. Ordinary inspection passes no refresh operation.
+  if (spec.apt && refreshPackages && !hostFileRefusals({ configContent, unitContent }).length) await refreshPackages();
+  const [installed, userExists, dataDirExists, unit, packages] = await Promise.all([
     // No `validateCommand` means "assume present": the declaration did not
     // give a way to check, and guessing "absent" would run an install every
     // pass.
@@ -48,12 +67,9 @@ export async function observeBareMetal(spec: BareMetalSpec, host: HostRunner): P
     spec.user ? host.run(['id', '-u', spec.user]).then((r) => r.ok) : Promise.resolve(true),
     spec.dataDir ? host.exists(spec.dataDir) : Promise.resolve(true),
     observeUnit(spec.systemdUnit, host),
-    spec.configFile ? host.readFile(spec.configFile) : Promise.resolve(null),
     spec.apt !== undefined ? inspectAptPackages(spec.apt, host) : undefined,
   ]);
 
-  const unitPath = spec.systemdUnit ? (spec.unitFile ?? `/etc/systemd/system/${spec.systemdUnit}.service`) : null;
-  const unitContent = spec.unitContent !== undefined && unitPath ? await host.readFile(unitPath) : null;
   const adoption =
     spec.adopt && spec.dataDir ? await observeAdoption(spec.adopt, spec.dataDir, spec.configFile, host) : undefined;
   const changes = aptChanges(packages ?? []);
@@ -67,6 +83,7 @@ export async function observeBareMetal(spec: BareMetalSpec, host: HostRunner): P
     dataDirExists,
     unitKnown: unit.known,
     unitActive: unit.active,
+    ...(unit.activating && { unitActivating: true }),
     unitEnabled: unit.enabled,
     configContent,
     unitContent,
@@ -104,7 +121,7 @@ async function observeAdoption(
 async function observeUnit(
   unit: string | undefined,
   host: HostRunner,
-): Promise<{ known: boolean; active: boolean; enabled: boolean }> {
+): Promise<{ known: boolean; active: boolean; enabled: boolean; activating?: true }> {
   if (!unit) return { known: false, active: false, enabled: false };
 
   // One call, three answers. `systemctl show` succeeds for a unit systemd
@@ -120,6 +137,7 @@ async function observeUnit(
     // unit still `activating` — a daemon loading a chain's index — or
     // mid-`reload` was planned to start again on every pass.
     active: ['active', 'activating', 'reloading'].includes(read('ActiveState')),
+    ...(read('ActiveState') === 'activating' && { activating: true }),
     // `static` and `enabled-runtime` are both "it will come up"; only
     // `disabled` and `masked` are not.
     enabled: ['enabled', 'enabled-runtime', 'static', 'indirect'].includes(read('UnitFileState')),
@@ -131,11 +149,17 @@ export async function applyBareMetal(
   host: HostRunner,
   logger: ILogger,
   service: string,
+  privateConfig?: { spec: BareMetalSpec; receipt: string } | undefined,
 ): Promise<{ applied: BareMetalAction[]; failed: { action: BareMetalAction; error: string } | null }> {
   const applied: BareMetalAction[] = [];
 
   for (const action of actions) {
     try {
+      if (privateConfig) {
+        const latest = await host.privateConfigEvidence?.(privateConfig.spec);
+        if (latest?.state !== 'verified-private' || latest.receipt !== privateConfig.receipt)
+          throw Error('The private configuration changed since inspection. Reinspect the service before applying its plan.');
+      }
       await applyOne(action, host);
       applied.push(action);
       logger.info({ service, action: describe(action) }, 'Bare-metal service reconciled');
@@ -216,14 +240,14 @@ async function applyOne(action: BareMetalAction, host: HostRunner): Promise<void
     }
 
     case 'write-config':
-      await host.writeFile(action.path, action.content, { mode: action.mode, owner: action.owner });
+      await host.writeFile(action.path, action.content, { mode: action.mode, owner: action.owner, ...(action.absent && { absent: true }) });
       return;
 
     case 'write-unit':
       // 0644 and root-owned: systemd refuses to read a unit that is group-
       // or world-writable, and a unit holds no secret — the config it points
       // at does.
-      await host.writeFile(action.path, action.content, { mode: '0644' });
+      await host.writeFile(action.path, action.content, { mode: '0644', ...(action.absent && { absent: true }) });
       return;
 
     case 'daemon-reload': {
@@ -359,13 +383,36 @@ export function localHost(): HostRunner {
       }
     },
 
+    privateConfigEvidence: privateHostConfigEvidence,
+
     async readFile(path) {
       const fs = await import('node:fs/promises');
+      const { constants } = await import('node:fs');
+      const { dirname } = await import('node:path');
+      let file;
       try {
-        return await fs.readFile(path, 'utf-8');
-      } catch {
-        return null;
+        file = await fs.open(path, constants.O_RDONLY | constants.O_NONBLOCK);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        // A dangling symlink and a truly missing configuration both fail open(2) with ENOENT.
+        let ancestor = path;
+        for (;;) {
+          let known;
+          try { known = await fs.lstat(ancestor); }
+          catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; }
+          if (known) {
+            if (ancestor === path || !(await fs.stat(ancestor)).isDirectory()) throw Error('Host file path changed or is unavailable');
+            return null;
+          }
+          const parent = dirname(ancestor);
+          if (ancestor === parent) throw error;
+          ancestor = parent;
+        }
       }
+      try {
+        if (!(await file.stat()).isFile()) throw Error('Host file is not regular');
+        return await file.readFile('utf8');
+      } finally { await file.close(); }
     },
 
     async writeFile(path, content, options) {
@@ -388,29 +435,28 @@ export function localHost(): HostRunner {
 
       // Same directory as the destination so the rename is atomic — across
       // filesystems it is a copy, and a copy is not.
-      const staging = `${path}.omnitron-${process.pid}`;
+      const { randomUUID } = await import('node:crypto');
+      const staging = `${path}.omnitron-${randomUUID()}`;
       const mode = Number.parseInt(options.mode, 8);
-      await fs.writeFile(staging, content, { mode, encoding: 'utf-8' });
-      await fs.chmod(staging, mode);
-
-      if (options.owner) {
-        const { execFile } = await import('node:child_process');
-        const { promisify } = await import('node:util');
-        try {
-          await promisify(execFile)('chown', [`${options.owner}:${options.owner}`, staging]);
-        } catch (err) {
-          // Left as it was written, it is root's, 0640 — a file its own
-          // account cannot read, reported as written.
-          await fs.rm(staging, { force: true });
-          const e = err as { stderr?: string; message?: string };
-          throw new Error(
-            `could not give ${path} to ${options.owner}: ${firstLine(e.stderr?.trim() || e.message || '')}`,
-            { cause: err },
-          );
+      const file = await fs.open(staging, 'wx', mode);
+      try {
+        await file.writeFile(content, 'utf8');
+        await file.chmod(mode);
+        if (options.owner) {
+          const { execFile } = await import('node:child_process');
+          const { promisify } = await import('node:util');
+          try { await promisify(execFile)('chown', [`${options.owner}:${options.owner}`, staging]); }
+          catch (err) {
+            const e = err as { stderr?: string; message?: string };
+            throw new Error(`could not give ${path} to ${options.owner}: ${firstLine(e.stderr?.trim() || e.message || '')}`, { cause: err });
+          }
         }
+        if (options.absent) await fs.link(staging, path);
+        else await fs.rename(staging, path);
+      } finally {
+        await file.close();
+        await fs.rm(staging, { force: true });
       }
-
-      await fs.rename(staging, path);
     },
 
     async exists(path) {

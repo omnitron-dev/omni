@@ -171,6 +171,8 @@ export function describeProvisioning(outcome: ProvisioningOutcome): string {
 /** What the node did about services that are not containers (`reconcileHostServices`). */
 export interface HostServicesOutcome {
   settled: readonly string[];
+  /** Successful job submissions whose native running state has not been observed. */
+  awaitingObservation?: readonly string[];
   /** Refused by the plan, or failed while it was carried out. */
   failed: ReadonlyArray<{ name: string; status: string; error: string | null }>;
 }
@@ -189,7 +191,13 @@ export function provisioningVerdict(
   outcome: ProvisioningOutcome,
   hosted: HostServicesOutcome,
 ): { ready: boolean; detail: string } {
-  if (hosted.failed.length === 0) return { ready: outcome.ready, detail: describeProvisioning(outcome) };
+  if (hosted.failed.length === 0) {
+    if (outcome.empty && hosted.settled.length) {
+      if (hosted.awaitingObservation?.length) return { ready: false, detail: `Awaiting host service start (${hosted.awaitingObservation.join(', ')})` };
+      return { ready: true, detail: `Host services ready (${hosted.settled.join(', ')})` };
+    }
+    return { ready: outcome.ready, detail: describeProvisioning(outcome) };
+  }
   const notUp = hosted.failed.map((f) => `${f.name} ${f.status}: ${f.error?.replace(/:\s*$/, '').trim() || 'no reason given'}`);
   const containers = outcome.ready || outcome.empty ? '' : `${describeProvisioning(outcome)}; `;
   return { ready: false, detail: `${containers}host services NOT up — ${notUp.join('; ')}` };

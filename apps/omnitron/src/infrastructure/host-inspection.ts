@@ -44,7 +44,7 @@ export interface HostInspectionRequest {
   configKeys?: Array<{ path: string; keys: string[] }> | undefined;
 }
 
-export type FileState = 'absent' | 'matches' | 'differs' | 'not-managed' | 'not-declared';
+export type FileState = 'absent' | 'matches' | 'differs' | 'not-managed' | 'not-declared' | 'unreadable' | 'verified-private';
 
 export interface DiskReading {
   mount: string;
@@ -157,7 +157,7 @@ export interface HostInspection {
     disk: DiskReading | null;
   }>;
   snaps: Array<{ name: string; installed: boolean; version: string | null; revision: string | null }>;
-  configKeys: Array<{ path: string; exists: boolean; values: Record<string, string | null>; refused: string[] }>;
+  configKeys: Array<{ path: string; exists: boolean | null; values: Record<string, string | null>; refused: string[] }>;
 }
 
 export interface MemoryReading {
@@ -218,7 +218,7 @@ export async function inspectHost(request: HostInspectionRequest, deps: Inspecti
  * not, since the kernel keeps free memory filled with reclaimable cache.
  */
 async function readMemory(host: HostRunner): Promise<MemoryReading | null> {
-  const content = await host.readFile('/proc/meminfo');
+  const content = await host.readFile('/proc/meminfo').catch(() => null);
   if (!content) return null;
   const bytes = (key: string) => {
     const kib = new RegExp(`^${key}:\\s+(\\d+) kB$`, 'm').exec(content)?.[1];
@@ -319,7 +319,8 @@ async function readOnHost(spec: BareMetalSpec, host: HostRunner): Promise<NonNul
 }
 
 /** How a file on the host stands against the one a deployment would write — never its content. */
-export function fileState(wanted: string | undefined, current: string | null): FileState {
+export function fileState(wanted: string | undefined, current: import('./bare-metal-plan.js').BareMetalObservation['configContent']): FileState {
+  if (typeof current === 'object' && current !== null) return current.state;
   if (wanted === undefined) return 'not-declared';
   if (current === null) return 'absent';
   if (!current.includes(OMNITRON_CONFIG_MARKER)) return 'not-managed';
@@ -466,7 +467,7 @@ async function processesOf(
     .map(Number);
   return Promise.all(
     pids.map(async (pid) => {
-      const content = (await host.readFile(`/proc/${pid}/cgroup`)) ?? '';
+      const content = await host.readFile(`/proc/${pid}/cgroup`).catch(() => null) ?? '';
       // cgroup v2 is one `0::<path>` line; v1 names systemd's hierarchy.
       const cgroup = /^0::(.*)$/m.exec(content)?.[1] ?? /name=systemd:(.*)$/m.exec(content)?.[1] ?? null;
       const inUnit =
@@ -545,7 +546,9 @@ async function readConfigKeys(
   host: HostRunner
 ): Promise<HostInspection['configKeys'][number]> {
   const refused = wanted.keys.filter((key) => CREDENTIAL.test(key));
-  const content = await host.readFile(wanted.path);
+  let content: string | null;
+  try { content = await host.readFile(wanted.path); }
+  catch { return { path: wanted.path, exists: null, values: {}, refused }; }
   const values: Record<string, string | null> = {};
   for (const key of wanted.keys.filter((k) => !refused.includes(k))) {
     // The last assignment wins, as bitcoind and monerod read their files.
@@ -700,7 +703,9 @@ async function readCookie(
     return { error: `a cookie is named inside the data directory, and \`${file}\` is not` };
   }
   const path = `${dataDir.replace(/\/+$/, '')}/${file}`;
-  const content = (await host.readFile(path))?.trim();
+  let content: string | undefined;
+  try { content = (await host.readFile(path))?.trim(); }
+  catch { return { error: `cannot read the daemon cookie at ${path}` }; }
   if (!content) return { error: `no ${path} — the daemon writes it while it runs` };
   const colon = content.indexOf(':');
   if (colon <= 0) return { error: `${path} holds no \`user:secret\`` };

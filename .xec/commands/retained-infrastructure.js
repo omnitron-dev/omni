@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { stripTypeScriptTypes } from 'node:module';
 import { runRetainedReview } from '../retained-infrastructure/review.mjs';
 import { runSourceOperation } from '../retained-infrastructure/operation.mjs';
+import { activationDefinition } from '../retained-infrastructure/activation.mjs';
 
 const root = new URL('../retained-infrastructure/', import.meta.url);
 
@@ -31,6 +32,12 @@ export function command(program) {
   const retained = program.command('retained-infrastructure').description('Review and passively recover a released legacy container allocation');
   retained.command('bundle <new-directory>').description('Produce the independent public source-host Node helper')
     .allowExcessArguments(false).action(async folder => process.stdout.write(JSON.stringify(await buildRetainedBundle(folder)) + '\n'));
+  retained.command('start-one <request>').description('Export a registered Pipeline for one exact passive source container')
+    .requiredOption('--expect <sha>', 'Independently admitted SHA-256 of the complete public activation request')
+    .allowExcessArguments(false).action(async (file, options) => {
+      const graph = await activationDefinition(await fs.readFile(file), options.expect);
+      process.stdout.write(JSON.stringify(graph, null, 2) + '\n');
+    });
   for (const mode of ['review', 'seal', 'create-stopped']) {
     const sub = retained.command(mode + ' <declaration>')
       .requiredOption('--expect <sha>', 'Independent SHA-256 of the complete declared release')

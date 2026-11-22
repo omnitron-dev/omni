@@ -10,6 +10,7 @@ import subprocess
 import sys
 from contextlib import contextmanager
 from pathlib import Path
+from typing import NamedTuple
 
 from pg_switch_proof import (
     IMMUTABLE, applied, control_fields, file_digest, identity, inode_flags, promoted, require, terminal,
@@ -19,6 +20,21 @@ MAJORS = {"postgres": 17, "nominatim": 14}
 SOCKET = "/run/omnitron-pg"
 TIMEOUT = 90
 ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"}
+REQUIRED_TOOLS = {"sh", "postgres", "psql", "pg_verifybackup", "pg_waldump", "pg_controldata"}
+ALLOWED_TOOLS = REQUIRED_TOOLS | {"pg_receivewal", "pg_basebackup"}
+TOOL_ROOT = Path("/var/lib/omnitron-pg-preparation")
+LABEL_GUARD = ('label=; IFS= read -r label < /proc/self/attr/apparmor/current || test -n "$label"; '
+               'test "$label" = "$1" || exit 93; shift; exec "$@"')
+
+
+class AttachedTools(NamedTuple):
+    source: Path
+    inside: Path
+    programs: dict
+
+
+def guarded_command(profile, executable):
+    return ["-ec", LABEL_GUARD, "omnitron-pg", profile + " (enforce)", str(executable)]
 
 
 def command(args, env, timeout=TIMEOUT):
@@ -39,6 +55,7 @@ class Engine:
         require(stat.S_ISSOCK(st.st_mode) and st.st_uid == uid, "Unexpected Docker socket owner")
         self.env = {**ENV, "DOCKER_HOST": "unix://" + str(socket)}
         self.image_volumes = {}
+        self.image_tools = {}
         self.root = Path(self.run("info", "--format", "{{.DockerRootDir}}"))
         security = json.loads(self.run("info", "--format", "{{json .SecurityOptions}}"))
         require(("name=rootless" in security) == (uid != 0) and self.root.is_absolute()
@@ -71,6 +88,31 @@ class Engine:
         if image not in self.image_volumes:
             self.image_volumes[image] = json.loads(self.run("image", "inspect", "--format", "{{json .Config.Volumes}}", image)) or {}
         return self.image_volumes[image]
+
+    def native_programs(self, image, major, names):
+        key = image, major, tuple(sorted(names))
+        if key not in self.image_tools:
+            # This image-only process can see no site data, channel or host tools.
+            args = ["run", "--rm", "--pull", "never", "--network", "none", "--read-only", "--cap-drop", "ALL",
+                    "--security-opt", "no-new-privileges", "--user", "postgres", "--pids-limit", "32", "-e", image_path(major)]
+            for path in self.defaults(image):
+                require(path.startswith("/") and not any(c in path for c in ",:") and ".." not in Path(path).parts,
+                        "Unexpected vendor image volume")
+                args.extend(["--tmpfs", path + ":ro,noexec,nosuid,nodev,size=4096"])
+            rows = self.run(*args, "--entrypoint", "/bin/sh", image, "-ec",
+                            'for tool do file=$(command -v "$tool"); sha256sum "$file"; done',
+                            "image-digests", *key[2]).splitlines()
+            programs = {}
+            for name, line in zip(key[2], rows):
+                fields = line.split()
+                require(len(fields) == 2 and re.fullmatch(r"[0-9a-f]{64}", fields[0])
+                        and Path(fields[1]).name == name and Path(fields[1]).parent in (
+                            Path("/bin"), Path("/usr/bin"), Path("/usr/local/bin"), Path(f"/usr/lib/postgresql/{major}/bin")),
+                        "Unexpected native image program")
+                programs[name] = Path(fields[1]), fields[0]
+            require(len(rows) == len(names) == len(programs), "Incomplete native image tool inventory")
+            self.image_tools[key] = programs
+        return self.image_tools[key]
 
 
 def overlaps(path, other):
@@ -176,7 +218,33 @@ def verified_profile(declaration):
     return name
 
 
-def running_postmaster(pid, root, socket, target, profile):
+def attached_tools(engine, generation, major, image, entrypoint, profile, mounts, argv):
+    require(re.fullmatch(r"[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}", generation), "Invalid physical operation ID")
+    inside = Path("/opt") / ("omnitron-pg-" + generation[:8]) / "bin"
+    if entrypoint != str(inside / "sh"):
+        return None
+    source = TOOL_ROOT / generation / "entries" / str(major)
+    matching = [m for m in mounts if m.get("Destination") == str(inside)]
+    require(profile and len(matching) == 1 and matching[0].get("Type") == "bind" and matching[0].get("RW") is False
+            and matching[0].get("Source") == str(source), "The profile-attached PostgreSQL tool directory differs")
+    for p in (source, *source.parents):
+        st = p.lstat()
+        require(stat.S_ISDIR(st.st_mode) and st.st_uid == 0 and not st.st_mode & 0o022, "Unsafe native tool directory")
+    files = {p.name for p in source.iterdir()}
+    require("sh" in files and files <= ALLOWED_TOOLS, "Unexpected profile-attached PostgreSQL tool inventory")
+    programs = engine.native_programs(image, major, REQUIRED_TOOLS | files)
+    for name in files:
+        _, wanted = programs[name]
+        st = (source / name).lstat()
+        require(stat.S_ISREG(st.st_mode) and st.st_uid == 0 and not st.st_mode & 0o222 and st.st_mode & 0o111
+                and file_digest(source, name, 128 * 1024**2)["sha256"] == wanted,
+                "A profile-attached tool differs from the reviewed PostgreSQL image")
+    guarded = guarded_command(profile, programs["postgres"][0])
+    require(isinstance(argv, list) and argv[:len(guarded)] == guarded, "The attached shell must start the reviewed native postmaster")
+    return AttachedTools(source, inside, programs)
+
+
+def running_postmaster(pid, root, socket, target, profile, attached=None):
     require(type(pid) is int and pid > 1, "Private postmaster PID is missing")
     fd = os.open(f"/proc/{pid}", os.O_DIRECTORY | os.O_RDONLY | os.O_NOFOLLOW)
     try:
@@ -185,6 +253,22 @@ def running_postmaster(pid, root, socket, target, profile):
                 and os.path.samestat((proc / "root" / target.lstrip("/")).stat(), root.stat())
                 and os.path.samestat((proc / "root" / SOCKET.lstrip("/")).stat(), socket.stat()),
                 "The running postmaster does not own both reviewed mounts")
+        if attached:
+            owner = root.stat()
+            fields = dict(line.split(":", 1) for line in (proc / "status").read_text().splitlines() if ":" in line)
+            image_path, wanted = attached.programs["postgres"]
+            with (proc / "exe").open("rb") as program:
+                checksum = hashlib.sha256()
+                for chunk in iter(lambda: program.read(1024 * 1024), b""):
+                    checksum.update(chunk)
+                require(os.path.samestat(os.fstat(program.fileno()), (proc / "root" / str(image_path).lstrip("/")).stat())
+                        and checksum.hexdigest() == wanted,
+                        "The postmaster executable differs from the native image")
+            require(set(fields["Uid"].split()) == {str(owner.st_uid)} and set(fields["Gid"].split()) == {str(owner.st_gid)}
+                    and all(int(fields[k], 16) == 0 for k in ("CapEff", "CapPrm", "CapBnd", "CapAmb"))
+                    and fields["NoNewPrivs"].strip() == "1"
+                    and (proc / "ns/net").stat().st_ino != Path("/proc/1/ns/net").stat().st_ino,
+                    "The profile-attached postmaster owner or isolation differs")
         enabled = Path("/sys/module/apparmor/parameters/enabled")
         if profile or (enabled.exists() and enabled.read_text().strip().upper() == "Y"):
             label = proc / "attr/apparmor/current"
@@ -209,15 +293,18 @@ class Candidate:
     def check(self):
         cid = self.bind["container"]
         fmt = ('{"id":{{json .Id}},"image":{{json .Image}},"state":{{json .State.Status}},"entry":{{json .Path}},'
+               '"argv":{{if ge (len .Args) 5}}{{json (slice .Args 0 5)}}{{else}}null{{end}},'
                '"pid":{{json .State.Pid}},'
                '"net":{{json .HostConfig.NetworkMode}},"networks":{{json .NetworkSettings.Networks}},'
                '"ports":{{json .HostConfig.PortBindings}},"restart":{{json .HostConfig.RestartPolicy.Name}},'
                '"pidMode":{{json .HostConfig.PidMode}},"privileged":{{json .HostConfig.Privileged}},'
                '"caps":{{json .HostConfig.CapDrop}},"opt":{{json .HostConfig.SecurityOpt}},'
                '"added":{{json .HostConfig.CapAdd}},"devices":{{json .HostConfig.Devices}},'
-               '"requests":{{json .HostConfig.DeviceRequests}},"ipc":{{json .HostConfig.IpcMode}},'
+               '"requests":{{json .HostConfig.DeviceRequests}},"ipc":{{json .HostConfig.IpcMode}},"tmpfs":{{json .HostConfig.Tmpfs}},'
                '"ro":{{json .HostConfig.ReadonlyRootfs}},"apparmor":{{json .AppArmorProfile}},"labels":{{json .Config.Labels}}}')
         c = json.loads(self.engine.run("inspect", "--type", "container", "--format", fmt, cid))
+        mounts = self.engine.mounts(cid)
+        self.tools = attached_tools(self.engine, self.generation, self.major, self.row["image"], c["entry"], self.profile, mounts, c["argv"])
         live = self.phase != "base"
         options = set(c["opt"] or [])
         allowed = {"no-new-privileges", "no-new-privileges=true"}
@@ -225,7 +312,7 @@ class Candidate:
             allowed.add("apparmor=" + self.profile)
         require(c["id"] == cid and c["image"] == self.row["image"]
                 and (c["state"] == "running" if live else c["state"] in ("created", "exited"))
-                and c["entry"] in ("postgres", "/usr/local/bin/postgres", f"/usr/lib/postgresql/{self.major}/bin/postgres")
+                and (self.tools or c["entry"] in ("postgres", "/usr/local/bin/postgres", f"/usr/lib/postgresql/{self.major}/bin/postgres"))
                 and c["net"] == "none" and set(c["networks"] or {}) <= {"none"} and not c["ports"]
                 and c["restart"] in ("", "no") and c["privileged"] is False and not c["pidMode"]
                 and c["ro"] is True and "ALL" in {cap.upper() for cap in c["caps"] or []}
@@ -234,17 +321,23 @@ class Candidate:
                 and (c["apparmor"] in ("", self.profile) and "apparmor=" + self.profile in options
                      if self.profile else c["apparmor"] in ("", "docker-default"))
                 and c["labels"].get("omnitron.pg-switchover") == self.generation, "Candidate is not private and pinned")
-        mounts = self.engine.mounts(cid)
         for name, path, target in [(self.bind["volume"], self.root, self.row["target"]), (self.socket_name, self.socket, SOCKET)]:
             matches = [m for m in mounts if m.get("Destination") == target]
             require(len(matches) == 1 and matches[0].get("Type") == "volume" and matches[0].get("Name") == name
                     and matches[0].get("RW") is True and matches[0].get("Source") == str(path), "Private holder mount differs")
         attachments(self.engine, [self.root, self.socket], cid)
+        protected = [Path(self.row["target"]), Path(SOCKET)]
+        if self.tools:
+            protected.extend([self.tools.inside, Path("/proc"), *[p for p, _ in self.tools.programs.values()]])
+            require(all(not overlaps(Path(path), target) for path in (c["tmpfs"] or {}) for target in protected),
+                    "A private holder tmpfs hides its kernel proof or reviewed mounts")
         for m in mounts:
             if m["Destination"] in (self.row["target"], SOCKET):
                 continue
+            if self.tools and m["Destination"] == str(self.tools.inside):
+                continue
             if m.get("Type") == "tmpfs":
-                require(all(not overlaps(Path(m["Destination"]), Path(target)) for target in (self.row["target"], SOCKET)),
+                require(all(not overlaps(Path(m["Destination"]), target) for target in protected),
                         "Anonymous mount hides candidate data or its private socket")
                 continue
             require(m.get("Type") == "bind" and m.get("Destination") == "/run/omnitron-source" and m.get("RW") is False,
@@ -253,7 +346,7 @@ class Candidate:
         require(st.st_uid == self.root.stat().st_uid and stat.S_IMODE(st.st_mode) == 0o700
                 and self.engine.volume(self.bind) == self.root, "Private socket owner/mode or candidate volume changed")
         if live:
-            running_postmaster(c["pid"], self.root, self.socket, self.row["target"], self.profile)
+            running_postmaster(c["pid"], self.root, self.socket, self.row["target"], self.profile, self.tools)
 
     def run(self, name, *args, timeout=TIMEOUT):
         cmd = ["run", "--rm", "--pull", "never", "--network", "none", "--read-only", "--cap-drop", "ALL",
@@ -263,12 +356,21 @@ class Candidate:
                f"type=volume,source={self.socket_name},target={SOCKET},readonly,volume-nocopy"]
         if self.profile:
             cmd.extend(["--security-opt", "apparmor=" + self.profile])
+        protected = [self.row["target"], SOCKET]
+        if self.tools:
+            protected.extend([str(self.tools.inside), "/proc", *[str(p) for p, _ in self.tools.programs.values()]])
         defaults = self.engine.defaults(self.row["image"])
         for target in sorted(set(defaults) - {self.row["target"], SOCKET}):
             require(target.startswith("/") and "," not in target and ":" not in target
-                    and not any(overlaps(Path(target), Path(used)) for used in (self.row["target"], SOCKET)),
+                    and not any(overlaps(Path(target), Path(used)) for used in protected),
                     "Unexpected observer image volume")
             cmd.extend(["--tmpfs", target + ":ro,noexec,nosuid,nodev,size=4096"])
+        if self.tools:
+            require(name in REQUIRED_TOOLS - {"sh", "postgres"}, "Unexpected native observer")
+            cmd.extend(["--mount", f"type=bind,source={self.tools.source},target={self.tools.inside},readonly"])
+            # PostgreSQL locates libraries, data files and companion executables relative to its original image path.
+            return self.engine.run(*cmd, "--entrypoint", str(self.tools.inside / "sh"), self.row["image"],
+                                   *guarded_command(self.profile, self.tools.programs[name][0]), *args, timeout=timeout)
         return self.engine.run(*cmd, "--entrypoint", name, self.row["image"], *args, timeout=timeout)
 
     def sql(self, statement, physical=False):

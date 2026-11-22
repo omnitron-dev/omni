@@ -1,0 +1,17 @@
+profile omnitron-service-data-verify-v2 flags=(attach_disconnected,mediate_deleted) {
+  / r,
+  /input/ r,
+  /input/** r,
+  /work/ r,
+  /work/* rw,
+  /{,usr/}lib{,32,64}/** mr,
+  /usr/local/lib/** mr,
+  /etc/ld.so.cache r,
+  /etc/localtime r,
+  /usr/share/{locale,zoneinfo}/** r,
+  /dev/null rw,
+  /dev/urandom r,
+  /usr/{bin,local/bin}/pg_controldata mrix,
+  /usr/lib/postgresql/{14,17}/bin/pg_controldata mrix,
+  /usr/{bin,local/bin}/redis-check-{rdb,aof} mrix,
+}

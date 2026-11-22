@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
-import { preseedGraph, validEndpoints } from './block-preseed.js';
+import { registeredPinsStep, validEndpoints } from './block-preseed.js';
 
 const channel = new URL('../block-preseed/endpoint.py', import.meta.url);
 const scope = new URL('../service-data-preseed/scope.py', import.meta.url);
@@ -112,7 +112,7 @@ export async function receiverProgram() {
 
 const fenceFile = new URL('../service-data-preseed/stop_receipt.py', import.meta.url);
 
-const checkedRunner = `import hashlib,os,pathlib,re,stat,sys
+const checkedSource = `import hashlib,os,pathlib,re,stat,sys
 d=sys.argv.pop(1)
 if not re.fullmatch('[0-9a-f]{64}',d) or sys.platform!='linux' or os.geteuid()!=0: sys.exit('Invalid helper request')
 root=pathlib.Path('/var/lib/omnitron-service-data-tools')
@@ -123,8 +123,23 @@ with os.fdopen(os.open(root/d,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK),'rb') as 
  st=os.fstat(f.fileno())
  if not stat.S_ISREG(st.st_mode) or st.st_uid or st.st_nlink!=1 or stat.S_IMODE(st.st_mode)!=0o500 or not 0<st.st_size<=160*1024: sys.exit('Unsafe helper')
  b=f.read(160*1024+1)
-if hashlib.sha256(b).hexdigest()!=d: sys.exit('Installed helper differs from review')
-s=b.decode();exec(compile(s,'service-data','exec'),{'__name__':'__main__','SELF':s})`;
+if hashlib.sha256(b).hexdigest()!=d: sys.exit('Installed helper differs from review')`;
+const checkedRunner =
+  checkedSource + "\ns=b.decode();exec(compile(s,'service-data','exec'),{'__name__':'__main__','SELF':s})";
+
+async function checkedRedisRunner() {
+  const files = await Promise.all(
+    ['redis_aof.py', 'cold_compat.py'].map((file) =>
+      fs.readFile(new URL('../service-data-adopt/' + file, import.meta.url), 'utf8')
+    )
+  );
+  return (
+    checkedSource +
+    "\nimport base64,gzip,json,types\nr,t=json.loads(gzip.decompress(base64.b64decode('" +
+    packed(files) +
+    "')))\nredis=types.ModuleType('redis_aof');sys.modules['redis_aof']=redis\nexec(compile(r,'redis-aof','exec'),redis.__dict__)\ns=b.decode();m={'__name__':'checked_seed','SELF':s};exec(compile(s,'service-data','exec'),m)\ncompat={};exec(compile(t,'checked-redis-compat','exec'),compat);compat['run'](m)"
+  );
+}
 
 function installSteps(source, program, spec, side) {
   const digest = bytesSha(program);
@@ -145,7 +160,7 @@ function installSteps(source, program, spec, side) {
   });
 }
 
-export async function serviceDataDefinition(phase, spec, { grants, stop, receipt } = {}) {
+export async function serviceDataDefinition(phase, spec, { grants, stop, receipt, installedDigest } = {}) {
   const phases = [
     'bootstrap-source',
     'bootstrap-receiver',
@@ -161,6 +176,8 @@ export async function serviceDataDefinition(phase, spec, { grants, stop, receipt
   if (!phases.includes(phase)) throw Error('Invalid service-data operation');
   const transferring = ['seed', 'cold'].includes(phase),
     final = ['cold', 'seal'].includes(phase);
+  if (installedDigest !== undefined && (!final || !hash(installedDigest)))
+    throw Error('Historical service helpers require a cold/seal review and an exact installed SHA');
   if (Boolean(grants) !== transferring || Boolean(stop) !== final || Boolean(receipt) !== (phase === 'seal'))
     throw Error('Seed/cold require both grants, cold/seal the stop operation and seal the source cold receipt');
   if (stop && !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(stop)) throw Error('Invalid stack stop operation');
@@ -200,16 +217,13 @@ export async function serviceDataDefinition(phase, spec, { grants, stop, receipt
   )
     throw Error('Invalid cold receipt for this exact stack stop and volume set');
   const program = await receiverProgram();
-  const pins = preseedGraph(
-    'offer',
+  const toolDigest = installedDigest ?? bytesSha(program);
+  const coldRunner = phase === 'cold' ? await checkedRedisRunner() : checkedRunner;
+  const pins = registeredPinsStep(
     Object.fromEntries(
       ['sourceNode', 'receiverNode', 'sourceFingerprint', 'receiverFingerprint'].map((k) => [k, spec[k]])
-    ),
-    null,
-    '',
-    'service-data',
-    ''
-  ).steps[0];
+    )
+  );
   const env = packed([stop ?? null, receipt ?? null, grants ?? null]);
   const steps = [pins];
   const fence = final ? await fs.readFile(fenceFile, 'utf8') : '';
@@ -242,9 +256,9 @@ export async function serviceDataDefinition(phase, spec, { grants, stop, receipt
         timeout: 86400000,
         run:
           '/usr/bin/python3 -I -c ' +
-          quote(checkedRunner) +
+          quote(action === 'cold' ? coldRunner : checkedRunner) +
           ' ' +
-          [bytesSha(program), action, packed(spec), env].map(quote).join(' '),
+          [toolDigest, action, packed(spec), env].map(quote).join(' '),
       });
     }
   };

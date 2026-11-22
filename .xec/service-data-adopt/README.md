@@ -1,0 +1,54 @@
+# Restoring sealed private service data into rootless Docker volumes
+
+`service-data-adopt` restores the private service volumes sealed by `service-data-preseed`. It accepts an identity-mapped donor and a registered receiver whose Docker daemon runs in a different user namespace. The destination keeps the reviewed named-volume names so an ordinary reviewed stack can later mount them. [Private service staging](../service-data-preseed/README.md)
+
+Capture the donor UID/GID maps for every volume and the destination engine's PID, UID, UID map and GID map in a reviewed Pipeline while the original registrations still exist. The rootless socket must be the daemon user's physical `/run/user/UID/docker.sock`. The daemon's maps are checked again on the target. Preserve the complete successful observation obtained from `omnitron --json pipeline status RUN --output`. The source step is named `source-volume-namespace` and returns `maps` keyed by volume tag. The receiver step is named `target-engine-namespace` and returns `daemonPid`, `daemonUid` and `maps`. Each map contains `uid_map` and `gid_map` with Linux triples in inside-ID, host-ID, count order.
+
+```sh
+pnpm exec xec service-data-adopt binding spec.json --namespaces namespaces.json > binding.json
+```
+
+The receiver owner independently grants the exact binding digest in `/etc/omnitron/service-data-adoptions/UUID.json` with `{"schema":1,"binding":"<binding SHA-256>","expires":<future Unix seconds>}`. Keep the file 0600 and its directory and ancestors root-owned and protected from other writers. The original source must remain under its recorded full stack stop, the stage closed, and all target volumes unattached. New volume names must be free on first admission. The transfer's original data and the sealed staging copy are retained independently.
+
+```sh
+pnpm exec xec service-data-adopt restore spec.json --namespaces namespaces.json --bootstrap receiver-bootstrap.json \
+  --cold cold-receipt.json --seal sealed-receipt.json > restore.pipeline.json
+pnpm exec xec service-data-adopt verify spec.json --namespaces namespaces.json --bootstrap receiver-bootstrap.json \
+  --cold cold-receipt.json --seal sealed-receipt.json > verify.pipeline.json
+```
+
+Check, save, prepare and start each definition with its own review digest. Supply the full successful receiver bootstrap Pipeline status. Both graphs use the normal full-stop gate and fetch the reviewed namespace and bootstrap runs from the controller. Every helper part must attest the same SHA-256, every output must belong to the registered receiver, and the final admission must identify the exact spec and stage. The receiver hashes the root-owned seed helper against that historical digest before validating the local seal. A later exporter can therefore restore data staged by an earlier version.
+
+The target administrator runs the stock host rsync with the sealed staging tree as its read-only fake-super source. A separate receiver process opens the exact reserved volume by device/inode, enters the pinned Docker engine's user namespace, verifies the live maps and receives as container root. The kernel maps file owners and named POSIX ACL principals independently for users and groups. A container UID of zero maps to the daemon's host UID. A container GID of zero uses the daemon's host GID. Subsequent ranges use their respective subordinate mappings. [Docker UID/GID mapping](https://docs.docker.com/engine/security/rootless/uid-gid-mapping/) · [Linux setns](https://man7.org/linux/man-pages/man2/setns.2.html) · [GNU rsync](https://download.samba.org/pub/rsync/rsync.1)
+
+For example, UID map `[[0,995,1],[1,100000,65536]]` and GID map `[[0,984,1],[1,100000,65536]]` store container root as host `995:984`. A named ACL for container user 77 and group 88 appears on the host as user 100076 and group 100087. The mappings apply equally to access and default ACLs. The receiving storage must accommodate the sealed stage and all six decoded volumes until the operator accepts the restore.
+
+The restore journal reserves fresh volumes with an operation-specific label and pins each physical inode before receiving. Interrupted restores can reuse their own reserved volumes while the approval and stop remain valid. Verification repeats GNU rsync's checksum, ownership, ACL and xattr comparison with the same namespace, independently hashes the decoded content and link topology against the cold source, and records a digest of logical owners, access/default ACLs, masks and xattrs. It checks numeric owners and ACL principals against both maps. The pinned PostgreSQL images run only `pg_controldata` with read-only volumes, a read-only root filesystem, no network or capabilities. The gate checks both major versions, system identifiers, clean shutdown and checkpoint WAL, Nominatim markers, Redis persistence validators and the MinIO format marker. The original named volumes, wallets, registry and standalone credentials stay under their own admissions.
+
+Review the resulting physical identities, tree digests and native evidence before attaching target writers. A stale stop, an already used volume name, a changed engine, an incomplete ID mapping, a writer or any mismatch holds the cutover. While the new volumes remain unattached, rollback uses the donor's preserved placement and data. Reconcile any writes accepted by the destination before changing direction.
+
+## Native validator requirements
+
+Before the stop, export and review the image-only probe. It checks the receiver's registered SSH key and engine observation, inspects the local immutable PostgreSQL image and the created container, and runs `pg_controdata --version` under the engine's stock security profile. An image-declared data volume receives a private 4 KiB read-only tmpfs. The result records the version, pinned image and number of mounted data volumes.
+
+```sh
+pnpm exec xec service-data-adopt probe spec.json --namespaces namespaces.json > probe.pipeline.json
+```
+
+Docker installations which report a specific denial reading the kernel's AppArmor profile list while selecting `docker-default` can use the supplied `omnitron-service-data-verify-v2` profile. The receiver administrator can separately review its bytes, install it as root in `/etc/apparmor.d/omnitron-service-data-verify-v2`, and load it with enforcement. Set `validatorProfileSha256` in the local adoption grant to the reviewed policy's SHA-256 and export `verify` with `--validator-apparmor`. The endpoint requires the same compiled-in digest, protected on-disk bytes and a currently enforcing kernel profile. The profile admits the native PostgreSQL and Redis checkers, their libraries, read-only `/input` and the independent Redis scratch files in `/work`. The service containers retain their own policies. [Validator policy](validator.apparmor) · [Docker AppArmor](https://docs.docker.com/engine/security/apparmor/)
+
+The target performs the same private AOF copy, host/cgroup memory checks and byte comparison as the fenced source. RDB and PostgreSQL always use read-only mounts. A failed or modified AOF holds the operation. [Redis scratch sizing and historical grants](../service-data-preseed/README.md)
+
+## Sizing the stop window
+
+Warm seeding and a final online delta reduce the bytes written and sent after fencing. The cold rsync still checksums both source and stage and independently hashes the source. Sealing repeats the two-ended checksum comparison, rehashes the source and hashes the sealed stage. On a fully warmed volume these two phases ordinarily read its logical size about four times on the donor and three times on the receiver. Changes add further reads and writes.
+
+Restore reads the sealed stage and copies the decoded bytes into the fresh, sparse-aware rootless volumes. The sender's checksum can add another full read. Verify checksums both the stage and the target and then independently hashes the target. Additional directory, metadata, ACL and native service checks also take time. Sequential SHA-256 includes the logical zeroes in sparse files. Actual disk I/O and elapsed time depend on allocated extents, cache, CPU, sustained throughput and the cold delta. Before downtime, check the two image identities, engine namespace, ACL support, tmpfs capacity, destination space, sustained read throughput, grants and the most recent warm result.
+
+## Linux acceptance fixture
+
+The kernel test runs with `python3 -B namespace_test.py RESULT_MOUNT` inside a disposable, networkless Linux guest named `service-data-fixture`. It exercises the real GNU rsync protocol bridge with access and default ACLs, distinct UID and GID mappings, a sparse file, a hard link and a PostgreSQL symlink.
+
+The full-engine test uses a separate rootless Docker daemon in that guest. Its result mount carries the reviewed `seed-program.py`, a local `engine-report.json` containing `pid`, `uid` and both `maps`, and synthetic `cluster-fixtures/{pg17,pg14,redis}.tar.gz` archives. Each contains a clean native `db/`, `native-control` output and a `validator/` root filesystem with the original image's validator and libraries. The adjacent `receipts.json` records `arch`, `bytes` and `sha256` by archive name. Run `python3 -B engine_test.py prepare RESULT_MOUNT PRESEED_TEST_DIRECTORY` in the guest. Its five `fixture-*.json` inputs feed the ordinary Xec binding, restore and verify commands above. Save their outputs as `fixture-binding.json`, `native-fixture-restore.pipeline.json` and `native-fixture-verify.pipeline.json` on the result mount. Run `python3 -B engine_test.py check RESULT_MOUNT PRESEED_TEST_DIRECTORY` to execute both receiver steps, compare native source and restored metadata, and confirm that changing a decoded object causes verification to fail.
+
+For a fixture needing the separately enforced policy, store its SHA-256 in `fixture-validator-profile.sha256` and export verify with the matching flag. Use the fixture's two bootstrap files and grants with `service-data-cold cold` and the stop ID from `fixture-cold.json` to produce `native-retained-cold.pipeline.json`. Run `python3 -B cold_test.py RESULT_MOUNT`. It checks that the emitted source command rejects the fixture receiver's host identity, then exercises the historical source's native cold validators against read-only exported trees. A separate rootful Docker fixture loads the exact previously prepared validator images from the rootless fixture and checks both PostgreSQL clusters, clean WAL, Nominatim, MinIO, Redis RDB and multipart AOF. It also exercises a corrupt AOF.

@@ -143,7 +143,10 @@ test('the ordinary CLI emits a complete graph and the full stop gate rejects a r
   const { stdout } = await run(
     path.resolve('node_modules/.bin/xec'),
     ['service-data-preseed', 'source-grant', specFile],
-    { maxBuffer: 2 * 1024 ** 2 }
+    {
+      maxBuffer: 2 * 1024 ** 2,
+      env: { ...process.env, PATH: path.dirname(process.execPath) + path.delimiter + process.env.PATH },
+    }
   );
   assert.deepEqual(JSON.parse(stdout), await serviceDataDefinition('source-grant', spec));
   const expiry = Math.floor(Date.now() / 1000) + 1800,

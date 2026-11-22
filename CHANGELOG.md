@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Studio project rooms can connect agents from multiple registered adapters, assign work to team members and share memory within the room. Project interviews produce a starter that an operator can review before creating the project.
+- Operators can edit and preview flow graphs in Console, run approved graphs from controller events, and transfer an inactive draft to another enrolled controller for review.
+- Linux nodes report degraded software RAID and NVMe faults through mesh alerts. An alert links to its reporting node and shows which storage observation triggered it.
+- A controller can prepare a disabled release allocation on a replacement node, stage verified service binaries and data, and review the transfer before activating the recipient.
+
+### Changed
+
+- Local update plans record phase timings and verify the consumer SDK, application processes and Console container before retiring the serving owner. A saved backend review can be applied from the CLI.
+- `omnitron release prune --project <name>` limits retention to one project's releases. The CLI protects active builds and accepts additional rollback release IDs with `--protect`.
+
+### Fixed
+
+- Netron React ties connections and query observers to the active backend pool. Prism marks matching navigation links as active on child routes and sizes breadcrumb icons consistently in server-rendered pages.
+- Lumen yields between pages during parallel static generation so suspended renders can finish. Serving an already published generation skips loading the renderer.
+- A release that requires its checks to pass stops before packaging when a check fails. The controller can recover the original prepared pipeline receipt after losing the RPC reply.
+
 ## [0.4.14] - 2026-11-19
 
 ### Added

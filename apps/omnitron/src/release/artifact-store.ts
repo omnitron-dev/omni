@@ -330,30 +330,16 @@ export function parseStoreConfig(raw: unknown, source: string): ReleaseStoreConf
  * The store with its key, read through `getSecret` — the daemon's
  * `OmnitronSecrets.get` in the command, a fake vault in the court.
  *
- * `resolveSecretRefs` turns a reference the vault cannot answer into an empty
- * string, which a store reports as a bad signature against a key it was never
- * given. The misses are counted here instead and refused by name, before a
- * single request is made.
+ * Required references are resolved before the first request to the store.
  */
 export async function resolveStore(
   config: ReleaseStoreConfig,
   getSecret: (key: string) => Promise<string | null>,
 ): Promise<ResolvedStore> {
-  const missing: string[] = [];
   const resolved = await resolveSecretRefs(
     { accessKey: config.accessKey, secretKey: config.secretKey } as unknown as Record<string, unknown>,
-    async (key) => {
-      const value = await getSecret(key);
-      if (value === null || value === '') missing.push(key);
-      return value;
-    },
+    getSecret,
   );
-  if (missing.length > 0) {
-    throw new Error(
-      `The artifact store's key is not in the daemon's vault: it holds no ${missing.map((k) => `'${k}'`).join(' and ')}. ` +
-        '`omnitron secret list` shows what it holds; `omnitron secret set <key> …` adds one.',
-    );
-  }
   const accessKeyId = resolved['accessKey'];
   const secretAccessKey = resolved['secretKey'];
   if (typeof accessKeyId !== 'string' || typeof secretAccessKey !== 'string') {

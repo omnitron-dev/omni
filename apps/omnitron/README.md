@@ -192,6 +192,11 @@ Startup repeats release, environment and native-resource checks. Omitting `--rev
 
 ### Versioned Linux service binaries
 
+Stack service overrides can refer to vault entries with `{ "secret": "key" }`.
+The controller resolves each referenced key once per configuration. A missing
+required entry stops delivery before credentials are sent to the node. The
+error lists the missing names. Use `omnitron secret list` to check them.
+
 A bare-metal service can declare `binaryRelease` in its configuration or in a network
 variant. Declare the release name, version, executable names and one archive per
 Linux machine architecture. Pin each archive's SHA-256 from the verified upstream

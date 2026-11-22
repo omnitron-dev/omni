@@ -96,17 +96,10 @@ describe('the network is the stack\'s answer, not the declaration\'s', () => {
 });
 
 describe('an override names its credentials; the app needs their values', () => {
-  const logger = (() => {
-    const errors: Array<Record<string, unknown>> = [];
-    const warns: Array<Record<string, unknown>> = [];
-    const l: Record<string, unknown> = {
-      info() {}, debug() {}, trace() {}, fatal() {},
-      warn(o: Record<string, unknown>) { warns.push(o); },
-      error(o: Record<string, unknown>) { errors.push(o); },
-      child() { return l; },
-    };
-    return { l, errors, warns };
-  })();
+  const logger = {
+    info() {}, debug() {}, trace() {}, fatal() {}, warn() {}, error() {},
+    child() { return this; },
+  };
 
   const overrides = {
     'monero-daemon': {
@@ -130,7 +123,7 @@ describe('an override names its credentials; the app needs their values', () => 
   const service = (secrets?: { get(key: string): Promise<string | null> }) => {
     const orchestrator = { list: () => [], listHandleNames: () => [] } as never;
     const stateStore = { selectProjectsSync: () => [], kvGetSync: () => null, save() {}, load: () => null, get: () => null, set() {} } as never;
-    return new ProjectService(logger.l as never, orchestrator, stateStore, { secrets: secrets as never }) as unknown as {
+    return new ProjectService(logger as never, orchestrator, stateStore, { secrets: secrets as never }) as unknown as {
       resolveOverrideSecrets(project: string, o: unknown): Promise<Record<string, never>>;
     };
   };
@@ -160,32 +153,18 @@ describe('an override names its credentials; the app needs their values', () => 
     expect(out['monero-daemon']!.external.ports).toEqual({ rpc: 28082 });
   });
 
-  it('names a key the vault does not hold', async () => {
-    // It resolves to an empty string, which the application reports as an
-    // authentication failure against a credential it was never given. The
-    // log has to carry the key, or nobody can tell those two apart.
-    logger.errors.length = 0;
-    const svc = service({ get: async () => null });
-
-    await svc.resolveOverrideSecrets('sample', overrides);
-
-    const said = logger.errors.find((e) => Array.isArray(e['missing']));
-    expect(said, 'the missing keys are reported').toBeTruthy();
-    expect(said!['missing']).toEqual([
-      'monero.mainnet.rpc_user',
-      'monero.mainnet.rpc_password',
-    ]);
+  it.each([null, ''])('refuses unresolved service bindings before deployment', async (value) => {
+    const svc = service({ get: async () => value });
+    await expect(svc.resolveOverrideSecrets('sample', overrides)).rejects.toThrow(
+      /'monero\.mainnet\.rpc_user', 'monero\.mainnet\.rpc_password'/,
+    );
   });
 
-  it('says so when there is no vault at all rather than passing placeholders quietly', async () => {
-    logger.warns.length = 0;
+  it('requires a vault for references and accepts literal configuration without one', async () => {
     const svc = service(undefined);
-
-    const out = await svc.resolveOverrideSecrets('sample', overrides);
-
-    expect(logger.warns.some((w) => Array.isArray(w['services']))).toBe(true);
-    // Unchanged, not half-resolved.
-    expect(out).toBe(overrides as never);
+    await expect(svc.resolveOverrideSecrets('sample', overrides)).rejects.toThrow(/vault for project 'sample' is unavailable/);
+    const literal = { index: { networkMode: 'mainnet' } };
+    await expect(svc.resolveOverrideSecrets('sample', literal)).resolves.toEqual(literal);
   });
 
   it('does nothing when a stack overrides nothing', async () => {
@@ -214,9 +193,17 @@ describe('the resolver that had no caller', () => {
     });
   });
 
-  it('prefers a declared default over an empty string', async () => {
+  it('uses an explicit default when a reference is absent', async () => {
     const out = await resolveSecretRefs({ a: { secret: 'missing', default: 'fallback' } }, async () => null);
 
     expect(out['a']).toBe('fallback');
+  });
+
+  it('reads a repeated key once across arrays and nested objects', async () => {
+    let reads = 0;
+    const config = { one: { secret: 'shared' }, nested: [{ two: { secret: 'shared' } }] };
+    const out = await resolveSecretRefs(config, async () => String(++reads));
+    expect(out).toEqual({ one: '1', nested: [{ two: '1' }] });
+    expect(config.one).toEqual({ secret: 'shared' });
   });
 });

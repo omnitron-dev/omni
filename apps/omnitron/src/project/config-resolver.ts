@@ -769,31 +769,46 @@ function allocateRedisDBsLegacy(
 // =============================================================================
 
 /**
- * Walk the config tree and resolve `{ secret: 'key' }` references
- * using the SecretsService. Returns a new config with secrets inlined.
+ * Resolve a configuration against one reading of each referenced vault key.
+ * Report all required keys that are missing before returning the configuration.
  */
 export async function resolveSecretRefs(
   config: Record<string, unknown>,
   getSecret: (key: string) => Promise<string | null>
 ): Promise<Record<string, unknown>> {
-  const result: Record<string, unknown> = {};
+  const readings = new Map<string, string | null>();
+  const missing = new Set<string>();
 
-  for (const [key, value] of Object.entries(config)) {
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
-      const obj = value as Record<string, unknown>;
-      if ('secret' in obj && typeof obj['secret'] === 'string') {
-        // Resolve secret reference: { secret: 'key' } → actual value
-        const secretValue = await getSecret(obj['secret'] as string);
-        result[key] = secretValue ?? obj['default'] ?? '';
-      } else {
-        // Recurse into nested objects
-        result[key] = await resolveSecretRefs(obj, getSecret);
-      }
-    } else {
-      result[key] = value;
+  async function resolve(value: unknown): Promise<unknown> {
+    if (!value || typeof value !== 'object') return value;
+    if (Array.isArray(value)) {
+      const items: unknown[] = [];
+      for (const item of value) items.push(await resolve(item));
+      return items;
     }
+    const record = value as Record<string, unknown>;
+    const key = record['secret'];
+    if (!Object.hasOwn(record, 'secret') || typeof key !== 'string') return resolveObject(record);
+    if (!readings.has(key)) readings.set(key, await getSecret(key));
+    const stored = readings.get(key);
+    if (stored) return stored;
+    const fallback = record['default'];
+    if (Object.hasOwn(record, 'default') && fallback != null && fallback !== '') return fallback;
+    missing.add(key);
+    return undefined;
   }
 
-  return result;
+  async function resolveObject(record: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const entries: Array<[string, unknown]> = [];
+    for (const [name, value] of Object.entries(record)) entries.push([name, await resolve(value)]);
+    return Object.fromEntries(entries);
+  }
+
+  const resolved = await resolveObject(config);
+  if (missing.size) {
+    const keys = [...missing].map(key => `'${key}'`).join(', ');
+    throw new Error(`Missing required vault credentials ${keys}. Check the names with omnitron secret list.`);
+  }
+  return resolved;
 }
 

@@ -5051,53 +5051,20 @@ export class ProjectService extends EventEmitter {
     }
   }
 
-  /**
-   * A stack's service overrides with their secret references resolved.
-   *
-   * An override names its credentials rather than carrying them:
-   *
-   *     "secrets": { "rpc_password": { "secret": "monero.mainnet.rpc_password" } }
-   *
-   * `resolveSecretRefs` has existed for that since it was written and had no
-   * caller at all, so the synchronous resolver downstream turned every one of
-   * these into the literal string `<secret:monero.mainnet.rpc_password>` and
-   * handed it to the application as a password.
-   *
-   * A key the vault does not hold resolves to an empty string, which an
-   * application reports as an authentication failure against a credential it
-   * was never given. That is worth a line naming the key.
-   */
+  /** Resolve the stack's declared service credentials before delivery to its node. */
   private async resolveOverrideSecrets(
     projectName: string,
     overrides: IStackConfig['serviceOverrides'],
   ): Promise<IStackConfig['serviceOverrides']> {
     if (!overrides || Object.keys(overrides).length === 0) return overrides;
-    if (!this.secrets) {
-      this.logger.warn(
-        { project: projectName, services: Object.keys(overrides) },
-        'No secrets store here — service overrides keep their references, and an app given one as a password cannot authenticate',
-      );
-      return overrides;
-    }
-
-    const missing: string[] = [];
     const { resolveSecretRefs } = await import('../project/config-resolver.js');
     const resolved = await resolveSecretRefs(
       overrides as unknown as Record<string, unknown>,
       async (key) => {
-        const value = await this.secrets!.get(key);
-        if (value === null) missing.push(key);
-        return value;
+        if (!this.secrets) throw new Error(`The vault for project '${projectName}' is unavailable while resolving '${key}'.`);
+        return this.secrets.get(key);
       },
     );
-
-    if (missing.length > 0) {
-      this.logger.error(
-        { project: projectName, missing },
-        'These secrets are named by the stack and absent from the vault — the apps will be given an empty credential',
-      );
-    }
-
     return resolved as unknown as IStackConfig['serviceOverrides'];
   }
 

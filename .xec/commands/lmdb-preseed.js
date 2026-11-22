@@ -86,25 +86,27 @@ export async function lmdbDefinition(phase, spec, offer, binary) {
   return graph;
 }
 
-export async function preparedDataDefinition(spec, offer, seal, reserveBytes) {
+export async function preparedDataDefinition(spec, offer, seal, reserveBytes, status = false) {
   validate(spec);
   validateOffer(spec, offer);
-  if (!range(reserveBytes, 0, 16 * 1024 ** 4) || seal?.sealed !== true || seal.format !== format ||
+  if (typeof status !== 'boolean' || !range(reserveBytes, 0, 16 * 1024 ** 4) || seal?.sealed !== true || seal.format !== format ||
       seal.manifest !== offer.manifest || !hash(seal.offer) || !hash(seal.sha256) ||
       seal.stage !== path.posix.join(spec.stageParent, 'block-preseed-' + spec.id) ||
       !range(seal.bytes, 1, spec.maxBytes) || !range(seal.database?.height, offer.anchor.height, Number.MAX_SAFE_INTEGER))
     throw Error('Use the successful seal from the receiver, the original offer and an explicit free-space reserve.');
   const source = embedChannel(await fs.readFile(shared)) +
     await fs.readFile(new URL('../lmdb-preseed/materialize.py', import.meta.url), 'utf8');
-  const args = [spec, offer, seal, reserveBytes].map(value => b64(JSON.stringify(value)));
+  const args = [spec, offer, seal, reserveBytes, status].map(value => b64(JSON.stringify(value)));
   const run = pythonCommand(source)(...args);
   if (Buffer.byteLength(run) > 24 * 1024) throw Error('Data preparation exceeds the management command size.');
+  const phase = status ? 'inspect-preparation' : 'prepare-data';
   return {
-    name: 'private-lmdb-preseed-' + spec.id + '-prepare-data',
-    description: 'Prepare an independent Monero data directory from the sealed receiver snapshot.',
+    name: 'private-lmdb-preseed-' + spec.id + '-' + phase,
+    description: status ? 'Inspect the existing Monero preparation and its durable receiver receipt.' :
+      'Prepare an independent Monero data directory from the sealed receiver snapshot.',
     triggers: [{ type: 'manual', config: {} }],
     steps: [registeredPinsStep(spec), {
-      name: 'prepare-data', nodeId: spec.receiverNode, dependsOn: ['registered-pins'], retries: 0, timeout: 86400000, run,
+      name: phase, nodeId: spec.receiverNode, dependsOn: ['registered-pins'], retries: 0, timeout: status ? 60000 : 86400000, run,
     }],
   };
 }
@@ -149,13 +151,14 @@ export function command(program) {
     .requiredOption('--release <file>', 'Installed binary, SHA-256 and declared service identity')
     .action(async (file, options) => print(await daemonCheckDefinition(await readJson(file), await readJson(options.release))));
   op.command('prepare-data <spec>').description('Prepare an independent data directory beside the sealed snapshot')
+    .option('--status', 'Inspect the current receiver operation without acquiring its lock')
     .requiredOption('--offer <file>', 'Original public source offer')
     .requiredOption('--seal <file>', 'Successful receiver seal JSON')
     .requiredOption('--reserve-bytes <bytes>', 'Free space to retain after a full copy')
     .action(async (file, options) => {
       if (!/^(0|[1-9]\d*)$/.test(options.reserveBytes)) throw Error('Use an integer free-space reserve in bytes.');
       await print(await preparedDataDefinition(await readJson(file), await readJson(options.offer),
-        await readJson(options.seal), Number(options.reserveBytes)));
+        await readJson(options.seal), Number(options.reserveBytes), Boolean(options.status)));
     });
   for (const phase of ['offer', 'copy', 'accept', 'revoke']) {
     const sub = op.command(phase + ' <spec>').description('Export the ' + phase + ' pipeline');

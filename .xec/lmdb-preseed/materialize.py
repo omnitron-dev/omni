@@ -1,5 +1,6 @@
 """Materialize one sealed mainnet database in the layout consumed by monerod."""
 import base64
+import contextlib
 import hashlib
 import json
 import os
@@ -43,16 +44,65 @@ def check_tree(tree, seal):
     return file_identity(lmdb / 'data.mdb', [seal['bytes']])
 
 
-def materialize(state, stage, op, seal, reserve):
+def data_request(stage, op, seal, reserve):
     source = private_dir(stage) / 'data.mdb'
     ch.require({p.name for p in stage.iterdir()} == {'data.mdb'}, 'Only the sealed database can be prepared.')
-    size = seal['bytes']
-    original = file_identity(source, [size])
+    return {'stage': str(stage), 'source': file_identity(source, [seal['bytes']]),
+            'seal': ch.digest(ch.canonical(seal)), 'destination': str(stage.parent / ('monero-data-' + op)),
+            'reserveBytes': reserve}
+
+
+def preparation_owner(lock):
+    try:
+        st = lock.lstat()
+    except FileNotFoundError:
+        return None
+    ch.require(stat.S_ISREG(st.st_mode) and st.st_uid == 0 and st.st_nlink == 1,
+               'Invalid receiver operation lock.')
+    for line in Path('/proc/locks').read_text().splitlines():
+        fields = line.split()
+        if len(fields) < 8 or fields[1:4] != ['FLOCK', 'ADVISORY', 'WRITE']:
+            continue
+        major, minor, ino = fields[5].split(':')
+        if (int(major, 16), int(minor, 16), int(ino)) == (os.major(st.st_dev), os.minor(st.st_dev), st.st_ino):
+            return int(fields[4])
+    return None
+
+
+def observe_preparation(state, stage, op, seal, reserve):
+    request = data_request(stage, op, seal, reserve)
+    intent, ready = state / 'prepare-data-intent.json', state / 'prepare-data-ready.json'
+    pid = preparation_owner(state / 'admin.lock')
+    if pid is not None:
+        return {'state': 'busy', 'ownerPid': pid}
+    destination = Path(request['destination'])
+    scratch = stage.parent / ('.preparing-monero-data-' + op)
+    if not intent.exists():
+        ch.require(not any(os.path.lexists(p) for p in (ready, destination, scratch)), 'Unowned candidate state.')
+        return {'state': 'not-started'}
+    ch.require(ch.record(intent) == request, 'The recorded data preparation differs.')
+    if (state / 'daemon-check-intent.json').exists():
+        return {'state': 'daemon-check-started'}
+    if not ready.exists():
+        ch.require(not os.path.lexists(destination), 'Candidate published without its receipt.')
+        return {'state': 'interrupted'}
+    result = ch.record(ready)
+    tree = destination if destination.exists() else scratch
+    ch.require(check_tree(tree, seal) == result['fileIdentity'] and
+               [tree.stat().st_dev, tree.stat().st_ino] == result['directoryIdentity'] and
+               result['bytes'] == seal['bytes'] and result['sha256'] == seal['sha256'] and
+               result['database'] == seal['database'] and result['dataDir'] == str(destination) and
+               result['sourceStage'] == str(stage), 'The prepared candidate differs from its sealed receipt.')
+    return {'state': 'prepared' if tree == destination else 'awaiting-publication', 'receipt': result}
+
+
+def materialize(state, stage, op, seal, reserve):
+    request = data_request(stage, op, seal, reserve)
+    original, size = request['source'], seal['bytes']
+    destination = Path(request['destination'])
     parent = stage.parent
-    destination = parent / ('monero-data-' + op)
+    source = stage / 'data.mdb'
     scratch = parent / ('.preparing-monero-data-' + op)
-    request = {'stage': str(stage), 'source': original, 'seal': ch.digest(ch.canonical(seal)),
-               'destination': str(destination), 'reserveBytes': reserve}
     intent = state / 'prepare-data-intent.json'
     ready = state / 'prepare-data-ready.json'
     if intent.exists():
@@ -109,14 +159,15 @@ def materialize(state, stage, op, seal, reserve):
     return result
 
 
-def main(spec, offer, seal, reserve):
+def main(spec, offer, seal, reserve, status=False):
     os.umask(0o077)
     ch.require(sys.platform == 'linux' and os.geteuid() == 0 and ch.ID.fullmatch(spec['id']) and
                spec['receiverFingerprint'] == ch.fingerprint(ch.key_text(ch.HOST_KEY)) and
                spec['payload'] == 'monero-lmdb-compact-v1' and spec['nettype'] == 'mainnet' and
-               isinstance(reserve, int) and 0 <= reserve <= 16 * 1024 ** 4, 'Unexpected recipient or specification.')
+               isinstance(reserve, int) and 0 <= reserve <= 16 * 1024 ** 4 and type(status) is bool,
+               'Unexpected recipient or specification.')
     state = ch.physical(ch.ROOT / spec['id'], True)
-    with ch.lock(state / 'admin.lock', True):
+    with contextlib.nullcontext() if status else ch.lock(state / 'admin.lock', True):
         stage = ch.stage_path(spec)
         ch.same_stage(stage, ch.record(state / 'stage.json'))
         ch.require(ch.record(state / 'spec.json') == spec and seal == ch.record(state / 'sealed.json') and
@@ -124,6 +175,8 @@ def main(spec, offer, seal, reserve):
                    seal['sealed'] is True and seal['manifest'] == offer['manifest'] and seal['stage'] == str(stage) and
                    seal['format'] == spec['payload'] and 0 < seal['bytes'] <= spec['maxBytes'] and
                    re.fullmatch('[0-9a-f]{64}', seal['sha256']), 'The confirmed receiver seal differs.')
+        if status:
+            return observe_preparation(state, stage, spec['id'], seal, reserve)
         return materialize(state, stage, spec['id'], seal, reserve)
 
 

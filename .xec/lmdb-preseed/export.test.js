@@ -40,6 +40,11 @@ test('preparing an independent database uses the sealed bytes on the registered 
   assert.equal(graph.steps[1].nodeId, spec.receiverNode);
   assert.equal(graph.steps[1].retries, 0);
   assert(graph.steps.every(s => Buffer.byteLength(s.run) <= 24 * 1024));
+  const observation = await preparedDataDefinition(spec, offer, seal, 4096, true);
+  await checkPipelineDefinition(observation);
+  assert.equal(observation.steps[1].name, 'inspect-preparation');
+  assert.equal(observation.steps[1].nodeId, spec.receiverNode);
+  assert.equal(observation.steps[1].retries, 0);
   for (const change of [{ sealed: false }, { stage: '/' }, { manifest: '0'.repeat(64) }, { bytes: spec.maxBytes + 1 }])
     await assert.rejects(preparedDataDefinition(spec, offer, { ...seal, ...change }, 4096), /successful seal/);
   await assert.rejects(preparedDataDefinition(spec, offer, seal, -1), /free-space reserve/);

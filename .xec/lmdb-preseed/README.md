@@ -77,6 +77,8 @@ pnpm exec xec lmdb-preseed prepare-data spec.json --offer source-offer.json \
 
 Submit the definition through the same Pipeline lifecycle. The receiver checks its original disk and seal receipts, reserves the named candidate, and copies only `data.mdb`. A copy-on-write clone is used where supported. Capacity checks allow for a full copy and the requested free-space reserve. Before publishing the directory, the receiver reads back its SHA-256 and checks that it has a separate inode. A retried run can finish a prepared rename and returns the original receipt for an intact candidate.
 
+If the controller loses the reply, run the same export with `--status` and submit its inspection Pipeline. A `busy` result identifies the process holding this operation's lock. Wait for it to finish. A `prepared` result includes the original receipt after checking the published directory and file identities. For `interrupted` or `awaiting-publication`, the original preparation can resume under its lock. Once daemon qualification has started, use its receipt to track the candidate.
+
 The receipt's `dataDir` contains `lmdb/data.mdb` in the layout expected by `monerod`. Before connecting it to peers, verify the release that will serve it.
 
 ```sh

@@ -71,6 +71,25 @@ class PrepareData(unittest.TestCase):
             self.prepare()
         self.assertEqual(prep.file_hash(self.source), self.seal['sha256'])
 
+    def test_observation_after_disconnect_never_restarts_the_copy(self):
+        def status():
+            return prep.main(self.spec, self.offer, self.seal, 0, status=True)
+
+        self.assertEqual(status(), {'state': 'not-started'})
+        self.assertFalse((self.state / 'admin.lock').exists())
+        with ch.lock(self.state / 'admin.lock', True):
+            self.assertEqual(status(), {'state': 'busy', 'ownerPid': os.getpid()})
+        with patch.object(prep.os, 'rename', side_effect=OSError('interrupted')):
+            with self.assertRaises(OSError):
+                self.prepare()
+        with patch.object(prep.subprocess, 'run', side_effect=AssertionError('unexpected second copy')):
+            self.assertEqual(status()['state'], 'awaiting-publication')
+            completed = self.prepare()
+            self.assertEqual(status(), {'state': 'prepared', 'receipt': completed})
+            (Path(completed['dataDir']) / 'lmdb/data.mdb').write_bytes(b'changed')
+            with self.assertRaises(ch.Refusal):
+                status()
+
     def test_resume_between_ready_receipt_and_publication(self):
         with patch.object(prep.os, 'rename', side_effect=OSError('fixture interruption')):
             with self.assertRaises(OSError):

@@ -73,6 +73,10 @@ export async function blockPreseedDefinition(phase, spec, offer) {
   return preseedGraph(phase, spec, value, source, 'block-preseed', 'Direct transfer of reviewed closed public block and undo segments.');
 }
 
+export function registeredPinsStep(spec) {
+  return { name: 'registered-pins', run: 'python3 -I -c ' + quote(inspectPins) + ' ' + encode(spec), timeout: 90000 };
+}
+
 export function preseedGraph(phase, spec, offer, program, name, description, tool) {
   const loader = 'import sys; s=sys.stdin.read(); exec(compile(s,"block-preseed","exec"),{"__name__":"__main__","SELF":s})';
   const endpoint = (name, role, dependsOn) => ({
@@ -81,7 +85,7 @@ export function preseedGraph(phase, spec, offer, program, name, description, too
       'python3 -I -c ' + quote(loader) + ' ' + name + ' ' + encode(spec) + ' ' +
         encode(offer) + " <<'OMNITRON_PRESEED_PY'\n" + program + '\nOMNITRON_PRESEED_PY',
   });
-  const steps = [{ name: 'registered-pins', run: 'python3 -I -c ' + quote(inspectPins) + ' ' + encode(spec), timeout: 90000 }];
+  const steps = [registeredPinsStep(spec)];
   for (const part of tool || []) steps.push({ ...part, nodeId: spec[(phase === 'offer' ? 'source' : 'receiver') + 'Node'],
     retries: 0, timeout: 120000, dependsOn: [steps.at(-1).name] });
   const checked = [tool ? 'checked-helper' : 'registered-pins'];

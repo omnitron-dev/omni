@@ -465,6 +465,8 @@ Repeated readings update the open incident. A lost reading keeps it open. After 
 
 ### Operational records
 
+The controller allows one outstanding write for its own fleet heartbeat. When PostgreSQL is slow to commit, later ticks skip the pending write. The fleet row keeps its last recorded heartbeat until a write succeeds. Session cleanup follows the same scheduling rule.
+
 CLI ranked log levels are minimum severities; `--level unknown` selects records without a recognized level. Console's level filters select exact values. Capture, storage and remote delivery are separate states: a live log line does not prove durable delivery.
 
 Use reviewed rollout plans and reconciliation for backend or owner transitions. Lost replies remain visible in operation receipts. Do not infer successful mutation from a local timeout or replace unresolved operations with an unreviewed retry.

@@ -528,17 +528,29 @@ describe('Scheduler Service', () => {
     });
 
     it('should prevent overlapping executions when configured', async () => {
-      let executionCount = 0;
-      const handler = vi.fn(async () => {
-        executionCount++;
-        await new Promise((resolve) => setTimeout(resolve, 200));
-      });
-
-      scheduler.addInterval('no-overlap', 50, handler, { preventOverlap: true });
-      await scheduler.onStart();
-      await new Promise((resolve) => setTimeout(resolve, 300));
-
-      expect(executionCount).toBeLessThan(3);
+      const release = Promise.withResolvers<void>();
+      const handler = vi.fn(() => release.promise);
+      const save = vi.spyOn(persistence, 'saveExecutionResult');
+      vi.useFakeTimers();
+      try {
+        const job = scheduler.addInterval('no-overlap', 50, handler, { preventOverlap: true });
+        await scheduler.onStart();
+        await vi.advanceTimersByTimeAsync(250);
+        expect(handler).toHaveBeenCalledTimes(1);
+        expect(job.isRunning).toBe(true);
+        expect(job.executionCount).toBe(0);
+        expect(save).not.toHaveBeenCalled();
+        release.resolve();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(job.isRunning).toBe(false);
+        expect(job.executionCount).toBe(1);
+        expect(save).toHaveBeenCalledTimes(1);
+      } finally {
+        release.resolve();
+        await vi.advanceTimersByTimeAsync(0);
+        await scheduler.onStop();
+        vi.useRealTimers();
+      }
     });
   });
 

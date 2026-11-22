@@ -521,6 +521,53 @@ describe('Scheduler Executor', () => {
       expect(result.status).toBe('success');
       expect(attempts).toBe(2);
     });
+
+    it('reserves a protected name while it waits for execution capacity', async () => {
+      const bounded = new SchedulerExecutor({ maxConcurrent: 1, queueSize: 1 });
+      const release = Promise.withResolvers<void>();
+      const first = bounded.executeJob(createMockJob('busy', () => release.promise));
+      const handler = vi.fn();
+      const job = createMockJob('heartbeat', handler, { preventOverlap: true });
+      const queued = bounded.executeJob(job);
+      try {
+        expect((await bounded.executeJob(job)).status).toBe('cancelled');
+        expect(bounded.getQueuedJobCount()).toBe(1);
+      } finally {
+        release.resolve();
+        await Promise.all([first, queued]);
+      }
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['deadline', 'cancellation'])('keeps the name reserved after %s until the handler settles', async (end) => {
+      const bounded = new SchedulerExecutor({ maxConcurrent: 1 });
+      const entered = Promise.withResolvers<string>();
+      const release = Promise.withResolvers<void>();
+      const handler = vi.fn((context: IJobExecutionContext) => {
+        entered.resolve(context.executionId);
+        return release.promise;
+      });
+      const job = createMockJob('heartbeat', handler, { preventOverlap: true, timeout: 30,
+        retry: { maxAttempts: 3, delay: 1 } });
+      vi.useFakeTimers();
+      try {
+        const started = bounded.executeJob(job);
+        const executionId = await entered.promise;
+        if (end === 'deadline') await vi.advanceTimersByTimeAsync(31);
+        else bounded.cancelJob(executionId);
+        expect((await started).status).toBe('failure');
+        expect(bounded.getActiveHandlerCount()).toBe(1);
+        expect((await bounded.executeJob(job)).status).toBe('cancelled');
+        expect(handler).toHaveBeenCalledTimes(1);
+        release.resolve();
+        await Promise.resolve();
+        expect((await bounded.executeJob(job)).status).toBe('success');
+        expect(handler).toHaveBeenCalledTimes(2);
+      } finally {
+        release.resolve();
+        vi.useRealTimers();
+      }
+    });
   });
 
   describe('Job Cancellation', () => {

@@ -33,8 +33,8 @@ function heartbeatJob(fleetService: Record<string, unknown>) {
   const jobs = new Map<string, () => Promise<void>>();
   const scheduler = {
     addInterval: vi.fn((name: string, _ms: number, fn: () => Promise<void>) => jobs.set(name, fn)),
-  } as never;
-  registerDaemonJobs(scheduler, {
+  };
+  registerDaemonJobs(scheduler as never, {
     logger,
     orchestrator: { list: () => [] } as never,
     authService: null,
@@ -49,7 +49,7 @@ function heartbeatJob(fleetService: Record<string, unknown>) {
   const job = jobs.get('fleet-heartbeat');
   if (!job) throw new Error('fleet-heartbeat did not register');
   const said = (level: string) => lines.filter((l) => l.level === level && /heartbeat/i.test(l.msg));
-  return { job, said };
+  return { job, said, scheduler };
 }
 
 describe('a heartbeat for a row called self', () => {
@@ -68,10 +68,11 @@ describe('a heartbeat for a row called self', () => {
 
   it('beats the row this daemon registered', async () => {
     const heartbeat = vi.fn(async () => 1);
-    const { job, said } = heartbeatJob({ heartbeat, selfNodeId: '40655c07-4824-46b8-b793-af9fce7a383e' });
+    const { job, said, scheduler } = heartbeatJob({ heartbeat, selfNodeId: '40655c07-4824-46b8-b793-af9fce7a383e' });
 
     await job();
 
+    expect(scheduler.addInterval).toHaveBeenCalledWith('fleet-heartbeat', 1000, job, { preventOverlap: true });
     expect(heartbeat).toHaveBeenCalledWith('40655c07-4824-46b8-b793-af9fce7a383e');
     expect(said('warn')).toEqual([]);
   });

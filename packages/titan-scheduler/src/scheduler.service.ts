@@ -478,6 +478,10 @@ export class SchedulerService implements ILifecycle {
    * the status/result/next-execution handling.
    */
   private async runJob(job: IScheduledJob): Promise<void> {
+    if (this.executor.hasExclusiveExecution(job.name)) {
+      this.passOver(job);
+      return;
+    }
     // Update job status
     this.registry.updateJobStatus(job.name, JobStatus.RUNNING);
     this.registry.markJobRunning(job.name, true);

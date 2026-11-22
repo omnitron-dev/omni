@@ -45,16 +45,9 @@ export class SchedulerExecutor {
    */
   private runningJobs: Map<string, { controller: AbortController; job: IScheduledJob }> = new Map();
 
-  /**
-   * SC-4: authoritative set of job NAMES currently executing, owned solely by
-   * the executor. The `preventOverlap` gate check-and-sets this synchronously
-   * (no await between `has()` and `add()`), so two concurrent ticks of the same
-   * job can't both pass — unlike the former `job.isRunning` read, which tested
-   * the service's display flag that it had already set for THIS run. Retries
-   * (attempt > 1) deliberately bypass the gate so a failing job's own retry
-   * chain isn't self-cancelled.
-   */
+  /** Reserve a protected name across queueing, retries and handler settlement. */
   private readonly runningJobNames = new Map<string, string>();
+  private readonly pendingExclusiveHandlers = new Set<string>();
   private activeHandlers = 0;
   private jobQueue: Array<{
     job: IScheduledJob;
@@ -70,11 +63,20 @@ export class SchedulerExecutor {
     @Optional() @Inject(SCHEDULER_LISTENERS_TOKEN) private readonly listeners?: IJobListener[]
   ) {}
 
+  hasExclusiveExecution(name: string): boolean {
+    return this.runningJobNames.has(name);
+  }
+
   /**
    * Execute a job
    */
   async executeJob(job: IScheduledJob, context?: Partial<IJobExecutionContext>): Promise<IJobExecutionResult> {
     const executionId = this.generateExecutionId();
+    if (this.hasExclusiveExecution(job.name)) {
+      return this.createResult(job.id, executionId, 'cancelled', undefined,
+        Errors.conflict('Job execution already in progress', { jobId: job.id }), 0);
+    }
+    if (job.options.preventOverlap) this.runningJobNames.set(job.name, executionId);
     const abortController = new AbortController();
 
     const fullContext: IJobExecutionContext = {
@@ -95,7 +97,14 @@ export class SchedulerExecutor {
       return await this.runAttempt(job, fullContext);
     } finally {
       this.runningJobs.delete(executionId);
-      if (this.runningJobNames.get(job.name) === executionId) this.runningJobNames.delete(job.name);
+      this.releaseSettledName(job.name, executionId);
+    }
+  }
+
+  private releaseSettledName(name: string, executionId: string): void {
+    if (this.runningJobNames.get(name) === executionId &&
+        !this.runningJobs.has(executionId) && !this.pendingExclusiveHandlers.has(executionId)) {
+      this.runningJobNames.delete(name);
     }
   }
 
@@ -119,26 +128,6 @@ export class SchedulerExecutor {
       if (signal.aborted) return this.cancelledResult(job, fullContext);
       if (job.options.disabled) {
         return this.createResult(job.id, executionId, 'cancelled', undefined, undefined, 0);
-      }
-
-      // SC-4: prevent overlapping executions via an atomic, executor-owned
-      // check-and-set. `has()` + `add()` run with no `await` between them, so
-      // two concurrent ticks of the same job cannot both pass (the former
-      // `job.isRunning` read tested the service's display flag, already set for
-      // THIS run — so the guard never actually fired).
-      if (job.options.preventOverlap) {
-        const owner = this.runningJobNames.get(job.name);
-        if (owner !== undefined && owner !== executionId) {
-          return this.createResult(
-            job.id,
-            executionId,
-            'cancelled',
-            undefined,
-            Errors.conflict('Job execution already in progress', { jobId: job.id }),
-            0
-          );
-        }
-        this.runningJobNames.set(job.name, executionId);
       }
 
       // Execute with timeout
@@ -215,7 +204,9 @@ export class SchedulerExecutor {
         { once: true }
       );
 
-      // Execute the job
+      // An expired deadline can settle the caller while the underlying I/O is still active.
+      const exclusive = this.runningJobNames.get(job.name) === context.executionId;
+      if (exclusive) this.pendingExclusiveHandlers.add(context.executionId);
       const executeAsync = async () => {
         try {
           const instance = job.target;
@@ -239,11 +230,17 @@ export class SchedulerExecutor {
             clearTimeout(timeoutId);
             reject(error);
           }
+        } finally {
+          this.activeHandlers--;
+          if (exclusive) {
+            this.pendingExclusiveHandlers.delete(context.executionId);
+            this.releaseSettledName(job.name, context.executionId);
+          }
         }
       };
 
       this.activeHandlers++;
-      void executeAsync().finally(() => { this.activeHandlers--; });
+      void executeAsync();
     });
   }
 
@@ -271,7 +268,8 @@ export class SchedulerExecutor {
     }
 
     // Check if we should retry
-    if (retryOptions && context.attempt < (retryOptions.maxAttempts || 3)) {
+    if (retryOptions && !this.pendingExclusiveHandlers.has(executionId) &&
+        context.attempt < (retryOptions.maxAttempts || 3)) {
       const shouldRetry = !retryOptions.retryIf || retryOptions.retryIf(error);
 
       if (shouldRetry) {

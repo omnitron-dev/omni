@@ -64,7 +64,7 @@ export function registerDaemonJobs(
       } catch (err) {
         failed('session-cleanup', 'Session cleanup failed', err);
       }
-    });
+    }, { preventOverlap: true });
     jobs.push('session-cleanup');
   } else {
     skipped.push({ job: 'session-cleanup', because: 'no auth service (master only — requires PG)' });
@@ -190,7 +190,7 @@ export function registerDaemonJobs(
       } catch (err) {
         problem('Fleet heartbeat failed', { nodeId, error: (err as Error).message });
       }
-    });
+    }, { preventOverlap: true });
     jobs.push('fleet-heartbeat');
   } else {
     skipped.push({ job: 'fleet-heartbeat', because: 'no fleet service (master only — requires PG)' });

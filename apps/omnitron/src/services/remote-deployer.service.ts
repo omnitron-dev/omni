@@ -14,6 +14,8 @@ import { checkCanonicalArchivesCommand, stageCanonicalArchivesCommand } from '..
 import { releaseOptionsForEnv } from '../release/target-runtime.js';
 import { installedReleaseCheckCommand, validOrigin } from '../release/runtime-provenance.js';
 import type { StaticAssetPublication, StaticAssetReceipt } from './static-carry-forward.js';
+import { checkPublicGatewayTree, GATEWAY_STATIC_ROOT } from './static-carry-forward.js';
+import { writePortableArchive } from '../release/portable-archive.js';
 import type { MaintenanceLock as HeldLock } from './maintenance-lock.js';
 import type { IStackNode } from '../config/types.js';
 import type { ArtifactInfo } from '../project/artifact-builder.js';
@@ -2104,9 +2106,18 @@ export class RemoteDeployer {
       // so `test -d <digest>` was always false and the same bytes crossed
       // the link again. (omni-74, after their size-matched, sum-mismatched
       // comparison.)
-      const packed = await this.execution.exec(
-        `COPYFILE_DISABLE=1 tar --no-xattrs -cf - -C ${shellEscape(localDir)} . | gzip -n > ${shellEscape(archive)}`,
-      );
+      const publicGateway = remoteRoot === GATEWAY_STATIC_ROOT;
+      // The gateway may run under a different UID on a different OS. Only
+      // public web assets use canonical archive metadata. Operator inputs
+      // keep their original access modes.
+      let packed: { exitCode: number; stderr: string } | undefined;
+      if (publicGateway) {
+        await writePortableArchive(localDir, archive, { regularFilesOnly: true });
+      } else {
+        packed = await this.execution.exec(
+          `COPYFILE_DISABLE=1 tar --no-xattrs -cf - -C ${shellEscape(localDir)} . | gzip -n > ${shellEscape(archive)}`,
+        );
+      }
       // Read, and judged whole, BEFORE it is summed. `exec` never throws, and
       // this pipeline's status is gzip's alone, so a `tar` that stopped
       // halfway left a short archive that was then summed, sent, checked
@@ -2116,10 +2127,10 @@ export class RemoteDeployer {
       // proved it left whole.
       const content = await fsp.readFile(archive).catch(() => null);
       const verdict = content ? wholeTarGz(content) : 'no archive was written';
-      if (packed.exitCode !== 0 || verdict !== true) {
-        const words = (packed.stderr || '').trim().split('\n').slice(-3).join(' | ');
+      if ((packed?.exitCode ?? 0) !== 0 || verdict !== true) {
+        const words = (packed?.stderr || '').trim().split('\n').slice(-3).join(' | ');
         throw new Error(
-          `Packing ${localDir} for the node failed (exit ${packed.exitCode}; ${verdict === true ? 'archive whole' : verdict})` +
+          `Packing ${localDir} for the node failed (exit ${packed?.exitCode ?? 0}; ${verdict === true ? 'archive whole' : verdict})` +
             (words ? `: ${words}` : '') +
             ' — nothing was sent',
         );
@@ -2180,7 +2191,7 @@ export class RemoteDeployer {
       if (!alreadyThere) {
         await this.sshExec(target, `rm -rf ${shellEscape(remoteDir)} ${shellEscape(marker)}`).catch(() => undefined);
 
-        await this.sshExec(target, `mkdir -p ${shellEscape(remoteDir)}`);
+        await this.sshExec(target, `${publicGateway ? 'umask 022 && ' : ''}mkdir -p ${shellEscape(remoteDir)}`);
         await this.uploadToNode(target, archive, remoteFile);
 
         // `uploadFile` already refuses a file that landed SHORT. That catches
@@ -2208,13 +2219,15 @@ export class RemoteDeployer {
           );
         }
 
-        await this.sshExec(target, `tar -xzf ${shellEscape(remoteFile)} -C ${shellEscape(remoteDir)} && rm -f ${shellEscape(remoteFile)}`);
+        const access = publicGateway ? ' --no-same-owner --same-permissions' : '';
+        await this.sshExec(target, `tar -xzf ${shellEscape(remoteFile)}${access} -C ${shellEscape(remoteDir)} && rm -f ${shellEscape(remoteFile)}`);
       }
       // A tab opened before this deployment asks for chunks of the build it
       // loaded; they are carried into this one, and builds nobody serves go
       // (`static-carry-forward.ts`). Before the marker: it is part of what
       // «delivered» means now.
       await this.carryPreviousBuildForward(target, remoteRoot, remoteDir);
+      if (publicGateway) await this.sshExec(target, checkPublicGatewayTree(remoteRoot, remoteDir));
       // AFTER the carry-forward, because that reads the link to find the build
       // open tabs loaded — the one being replaced.
       if (link) await this.pointStaticLinkAt(target, remoteRoot, link, digest);

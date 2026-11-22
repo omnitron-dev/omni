@@ -34,6 +34,20 @@ import { shellEscape } from '../shared/shell-escape.js';
 /** Directory names are the first 16 hex of the archive's sha256 (`uploadStaticBundle`). */
 const BUILD_DIR = '[0-9a-f]{16}';
 
+export const GATEWAY_STATIC_ROOT = '/opt/omnitron/stack-static/gateway';
+
+/** Check the gateway reader's access even when publication runs as the host administrator. */
+export function checkPublicGatewayTree(root: string, directory: string): string {
+  const parent = shellEscape(root);
+  const tree = shellEscape(directory);
+  return [
+    `test ! -L ${parent} && test ! -L ${tree} &&`,
+    `bad=$(find ${parent} -maxdepth 0 ! -perm -005 -print) && test -z "$bad" &&`,
+    `bad=$(find ${tree} \\( -perm -002 -o -perm -020 -o \\( -type d ! -perm -005 \\) -o \\( -type f ! -perm -004 \\) -o \\( ! -type f ! -type d \\) \\) -print -quit) && test -z "$bad"`,
+    `|| { echo 'Public gateway content must contain readable files and traversable directories' >&2; exit 1; }`,
+  ].join(' ');
+}
+
 /**
  * The script run on the node once a build is unpacked into `fresh`, before
  * its `.delivered` marker is written. `serving` are the build directories the
@@ -67,19 +81,23 @@ export function carryForwardScript(options: {
     // is the growth this file exists to stop.
     dryRun ? ':' : '[ -s "$FRESH.own-assets" ] || ls -1 "$FRESH/assets" 2>/dev/null > "$FRESH.own-assets"',
     'carried=0; from=0',
+    'publisher=$(id -u)',
     `for S in ${servingList}; do`,
     '  case "$S" in "$ROOT"/*) ;; *) continue ;; esac',
     '  [ "$S" = "$FRESH" ] && continue',
-    '  [ -d "$S/assets" ] || continue',
+    '  [ -d "$S/assets" ] && [ ! -L "$S" ] && [ ! -L "$S/assets" ] || continue',
+    // Old archives may have been packed with the builder's private umask.
+    // Publish independent readable copies when the previous files cannot be shared as-is.
+    '  private=$(find "$S/assets" -maxdepth 1 -type f \\( ! -user "$publisher" -o ! -perm -004 -o -perm -020 -o -perm -002 \\) -print -quit) || continue',
     '  from=$((from + 1))',
     '  if [ -s "$S.own-assets" ]; then LIST="$S.own-assets"; else LIST=$(mktemp); ls -1 "$S/assets" > "$LIST"; fi',
     '  while IFS= read -r f; do',
     '    case "$f" in ""|*/*|.*) continue ;; esac',
     '    [ -e "$FRESH/assets/$f" ] && continue',
-    '    [ -f "$S/assets/$f" ] || continue',
+    '    [ -f "$S/assets/$f" ] && [ ! -L "$S/assets/$f" ] || continue',
     dryRun
       ? '    :'
-      : '    ln "$S/assets/$f" "$FRESH/assets/$f" 2>/dev/null || cp -p "$S/assets/$f" "$FRESH/assets/$f" || continue',
+      : '    { [ -z "$private" ] && ln "$S/assets/$f" "$FRESH/assets/$f" 2>/dev/null; } || install -m 0644 "$S/assets/$f" "$FRESH/assets/$f" || continue',
     '    carried=$((carried + 1))',
     '  done < "$LIST"',
     'done',

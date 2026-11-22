@@ -13,7 +13,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -43,6 +43,20 @@ function build(n: number, assets: string[], ageMin = 0, own?: string[]): string 
 const run = (script: string) => execFileSync('bash', ['-c', script], { encoding: 'utf8' }).trim();
 
 describe('a tab from before the deployment keeps its chunks', () => {
+  it('publishes a separate readable copy of a private prior chunk', () => {
+    root = mkdtempSync(join(tmpdir(), 'carry-'));
+    const previous = build(1, ['old.js']);
+    const fresh = build(2, ['new.js']);
+    const oldChunk = join(previous, 'assets', 'old.js');
+    const newChunk = join(fresh, 'assets', 'old.js');
+    chmodSync(oldChunk, 0o600);
+    run(carryForwardScript({ root, fresh, serving: [previous], mounted: [previous], keep: 5 }));
+    expect(readFileSync(newChunk)).toEqual(readFileSync(oldChunk));
+    expect(statSync(newChunk).mode & 0o777).toBe(0o644);
+    expect(statSync(oldChunk).mode & 0o777).toBe(0o600);
+    expect(statSync(newChunk).ino).not.toBe(statSync(oldChunk).ino);
+  });
+
   it('links the served build’s own assets into the new one, and lists the new one’s own', () => {
     root = mkdtempSync(join(tmpdir(), 'carry-'));
     const prev = build(1, ['config-CUEyrA2c.js', 'index-OLD.js', 'shared-SAME.js'], 10, ['config-CUEyrA2c.js', 'index-OLD.js', 'shared-SAME.js']);

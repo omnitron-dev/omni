@@ -1,5 +1,13 @@
 # Immutable assets across application releases
 
+## Publishing a gateway frontend
+
+The controller packs public files with portable metadata. Directories have mode `0755`. Regular files have mode `0644`, with execute permission retained for executable files. The receiving account owns the unpacked files. A private build directory and a restrictive SSH umask both work with a rootless gateway.
+
+Before switching the stack's current link, publication checks access across the public tree, including when reusing a cached release. A failed check leaves the previous link in place. A previous release's private chunks are copied with readable modes for tabs that still use them.
+
+## Keeping assets for open tabs
+
 A tab retains its entry module and may request its lazy modules long after the application
 changes releases. Retaining release directories alone does not preserve those URLs if the
 reader only serves the current release's `assets` directory.

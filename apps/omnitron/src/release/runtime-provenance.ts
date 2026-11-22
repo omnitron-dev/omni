@@ -13,12 +13,13 @@ export const RELEASE_RECEIPT = '.omnitron-release.json';
 
 /** Self-contained so exactly this implementation also seals the remote candidate. */
 export async function releaseTreeDigest(directory: string, portable = false, skipDependencies = false, excludedRootEntries: readonly string[] = [],
-  inspectWorkspaceBinding?: (link: string, target: string) => Promise<boolean | undefined>): Promise<string> {
+  inspectWorkspaceBinding?: (link: string, target: string) => Promise<boolean | undefined>, publisher: 'service' | 'administrator' = 'service'): Promise<string> {
   const io = await import('node:fs/promises');
   const paths = await import('node:path');
   const { createHash } = await import('node:crypto');
   const digest = createHash('sha256'), seen = new Map<string, string>();
-  const owner = process.getuid ? BigInt(process.getuid()) : undefined;
+  const ownerUid = publisher === 'administrator' ? 0 : process.getuid?.();
+  const owner = ownerUid === undefined ? undefined : BigInt(ownerUid);
   const chunkSize = 64 * 1024, windowSize = 12;
   type Stats = import('node:fs').BigIntStats;
   type Handle = import('node:fs/promises').FileHandle;

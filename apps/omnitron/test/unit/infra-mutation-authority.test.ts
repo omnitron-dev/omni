@@ -16,6 +16,16 @@ const target = { name: 'stack-cache', containerId: 'f'.repeat(64), project: 'exa
 const owner = { project: 'example', stack: 'test', app: 'api' };
 
 describe('infrastructure mutation admission', () => {
+  it('refuses an explicitly published frontend that is missing on the recipient before provisioning', async () => {
+    const host = vi.fn();
+    const rpc = new InfrastructureRpcService(() => null, host);
+    await expect(rpc.provisionStack({
+      project: 'example', stack: 'test', config: {},
+      staticRoots: { gateway: '/opt/omnitron/stack-static/gateway/missing-fixture-publication' },
+    })).rejects.toThrow('published static directory for gateway is unavailable');
+    expect(host).not.toHaveBeenCalled();
+  });
+
   it('admits grouped and legacy ownerless provisioning before configuring any infrastructure', async () => {
     const host = vi.fn();
     const rpc = new InfrastructureRpcService(() => null, host);

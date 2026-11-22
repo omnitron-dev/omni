@@ -492,15 +492,14 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     const ALLOWED_PREFIX = '/opt/omnitron/stack-static/';
 
     for (const [service, dir] of Object.entries(roots)) {
-      if (typeof dir !== 'string' || !dir.startsWith(ALLOWED_PREFIX) || dir.includes('..')) {
-        this.logger?.error({ service, dir }, `Refusing a static path outside ${ALLOWED_PREFIX}`);
-        continue;
-      }
-      const stat = await fsp.stat(dir).catch(() => null);
-      if (!stat?.isDirectory()) {
-        this.logger?.error({ service, dir }, 'The master named a static directory this node does not have');
-        continue;
-      }
+      if (typeof dir !== 'string' || !dir.startsWith(ALLOWED_PREFIX) || dir.includes('..'))
+        throw Error(`Invalid published static directory for ${service}`);
+      const canonical = await fsp.realpath(dir).catch(() => undefined);
+      if (!canonical?.startsWith(ALLOWED_PREFIX))
+        throw Error(`The published static directory for ${service} is unavailable on this node`);
+      const stat = await fsp.stat(canonical);
+      if (!stat.isDirectory() || (service === 'gateway' && (stat.mode & 0o005) !== 0o005))
+        throw Error(`The published static directory for ${service} must be traversable by its reader`);
       out.set(service, dir);
       this.logger?.info?.({ service, dir }, 'Serving this service’s static content from the node');
     }
@@ -527,14 +526,18 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
 
   private async checkStackStatics(data: StackInfrastructureInput): Promise<Map<string, string>> {
     const { releaseTreeDigest } = await import('../release/runtime-provenance.js');
-    const { gatewayStaticLinkName } = await import('./static-carry-forward.js');
+    const { GATEWAY_STATIC_ROOT, gatewayStaticLinkName } = await import('./static-carry-forward.js');
     const io = await import('node:fs/promises');
     const roots = new Map<string, string>();
     for (const [service, digest] of Object.entries(data.staticDigests ?? {})) {
       if (service !== 'gateway' || !/^[a-f0-9]{64}$/.test(digest)) throw Error('Unsupported static preservation binding');
-      const parent = '/opt/omnitron/stack-static/gateway';
+      const parent = GATEWAY_STATIC_ROOT;
       const root = await io.realpath(`${parent}/${gatewayStaticLinkName(data.project!, data.stack!)}`);
-      if (!root.startsWith(parent + '/') || await releaseTreeDigest(root, true) !== digest) throw Error('Existing static content differs; reconcile separately');
+      if (!root.startsWith(parent + '/')) throw Error('Existing static content is outside its gateway root');
+      // A rootless daemon may verify public bytes published by its host administrator.
+      // Every entry must share the expected owner and satisfy the normal integrity checks.
+      const publisher = (await io.lstat(root)).uid === 0 ? 'administrator' : 'service';
+      if (await releaseTreeDigest(root, true, false, [], undefined, publisher) !== digest) throw Error('Existing static content differs; reconcile separately');
       roots.set(service, root);
     }
     return roots;

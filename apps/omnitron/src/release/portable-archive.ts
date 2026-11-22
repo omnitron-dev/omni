@@ -36,10 +36,11 @@ export async function releaseFileHashes(directory: string): Promise<Record<strin
 }
 
 /** Canonical archive of a staged tree, with executable bits and relative links preserved. */
-export async function writePortableArchive(directory: string, destination: string, options: { exclusive?: boolean; preserveExecutableBits?: boolean } = {}): Promise<void> {
+export async function writePortableArchive(directory: string, destination: string, options: { exclusive?: boolean; preserveExecutableBits?: boolean; regularFilesOnly?: boolean } = {}): Promise<void> {
   const cwd = await fs.realpath(directory);
   const entries: string[] = [];
-  for await (const { relative } of archiveEntries(cwd)) {
+  for await (const { relative, link } of archiveEntries(cwd)) {
+    if (options.regularFilesOnly && link) throw Error('Public content cannot contain symbolic links: ' + relative);
     if (entries.length >= 200_000) throw new Error('Release archive exceeds file count limit');
     entries.push(relative);
   }

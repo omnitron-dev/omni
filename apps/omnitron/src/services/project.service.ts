@@ -80,7 +80,7 @@ import { LOGGER_SERVICE_TOKEN, type ILogger, type ILoggerModule } from '@omnitro
 import { AUDIT_SERVICE_TOKEN, DAEMON_STATE_STORE_TOKEN, ORCHESTRATOR_TOKEN, SECRETS_SERVICE_TOKEN } from '../shared/tokens.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import type { SecretsService } from './secrets.service.js';
-import { gatewayStaticLinkName } from './static-carry-forward.js';
+import { GATEWAY_STATIC_ROOT, gatewayStaticLinkName } from './static-carry-forward.js';
 import type { AuditService } from './audit.service.js';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { ProjectRegistry } from '../project/registry.js';
@@ -5650,7 +5650,7 @@ export class ProjectService extends EventEmitter {
       const target = leasedTarget ?? await this.targetForStackNode(node);
       // Shared by every stack on the NODE — the literal names no project and
       // no stack — which is why the link inside it is per stack.
-      const gatewayRoot = '/opt/omnitron/stack-static/gateway';
+      const gatewayRoot = GATEWAY_STATIC_ROOT;
       const link = owner ? gatewayStaticLinkName(owner.project, owner.stack) : undefined;
       const deliver = () => this.deployer.uploadStaticBundle(target, abs, gatewayRoot, link);
       // Once more before giving up: `uploadStaticBundle` starts from nothing

@@ -26,7 +26,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { execSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -82,6 +82,44 @@ function digestAskedFor(asked: string[]): string {
 
 describe('a bundle is unpacked only when it arrived whole', () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it('publishes private builder output to a rootless gateway and checks cached content before switching', async () => {
+    const staging = mkdtempSync(join(tmpdir(), 'gateway-access-'));
+    try {
+      const source = join(staging, 'source');
+      const destination = join(staging, 'gateway');
+      mkdirSync(join(source, 'assets'), { recursive: true, mode: 0o700 });
+      writeFileSync(join(source, 'index.html'), 'web entry', { mode: 0o600 });
+      writeFileSync(join(source, 'assets', 'chunk.js'), 'module()', { mode: 0o600 });
+      const svc = new RemoteDeployer({ info: vi.fn(), warn: vi.fn(), debug: vi.fn() } as any, {} as any);
+      let transfers = 0;
+      const commands: string[] = [];
+      Object.assign(svc, {
+        uploadToNode: async (_target: unknown, archive: string, to: string) => {
+          copyFileSync(archive, to.replace(ROOT, destination));
+          transfers++;
+        },
+        sshExec: async (_target: unknown, command: string) => {
+          commands.push(command);
+          if (command.startsWith('for c in ')) return '';
+          return execSync('umask 077\n' + command.replaceAll(ROOT, destination), { encoding: 'utf8', stdio: 'pipe' });
+        },
+      });
+      const release = await svc.uploadStaticBundle(TARGET, source, ROOT);
+      const web = release.remoteDir.replace(ROOT, destination);
+      const mode = (file: string) => statSync(file).mode & 0o777;
+      expect([mode(web), mode(join(web, 'assets')), mode(join(web, 'assets', 'chunk.js'))]).toEqual([0o755, 0o755, 0o644]);
+      expect(readFileSync(join(web, 'index.html'), 'utf8')).toBe('web entry');
+      expect(mode(join(source, 'index.html'))).toBe(0o600);
+      await svc.uploadStaticBundle(TARGET, source, ROOT);
+      expect(transfers).toBe(1);
+      chmodSync(join(web, 'assets', 'chunk.js'), 0o600);
+      await expect(svc.uploadStaticBundle(TARGET, source, ROOT, 'current-sample-test')).rejects.toThrow(/Public gateway content/);
+      expect(commands.some(command => command.startsWith('ln -s '))).toBe(false);
+    } finally {
+      rmSync(staging, { recursive: true, force: true });
+    }
+  });
 
   it('refuses a bundle whose sum is not the one that was sent', async () => {
     const extracted: string[] = [];

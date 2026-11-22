@@ -16,7 +16,10 @@ ADMIN_UID = 0
 
 
 def system(*args):
-    answer = subprocess.run(['/usr/bin/systemctl', *args], capture_output=True, timeout=25, check=False)
+    # Reload runs the OS generators synchronously. A successful reload still needs the exact
+    # unit conditions and the original clean owner fence to be observed before any data write.
+    timeout = 180 if args == ('daemon-reload',) else 25
+    answer = subprocess.run(['/usr/bin/systemctl', *args], capture_output=True, timeout=timeout, check=False)
     require(answer.returncode == 0, 'The system service manager could not confirm the control roles')
     return answer.stdout.decode()
 

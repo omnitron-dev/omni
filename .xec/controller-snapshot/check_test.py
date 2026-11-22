@@ -137,6 +137,17 @@ d.execute('INSERT INTO entries VALUES (?)',(sys.argv[2],)); d.commit(); os._exit
         with self.assertRaises(files.Refused):
             endpoint.check_consent(spec, 'receiver', {**entry, 'side': 'receiver', 'key': 'old'}, 'different')
 
+    def test_systemd_reload_allows_time_for_generators_and_still_requires_success(self):
+        finished = subprocess.CompletedProcess([], 0, stdout=b'')
+        with patch.object(maintenance.subprocess, 'run', return_value=finished) as run:
+            maintenance.system('show', 'omnitron-owner.service')
+            self.assertEqual(run.call_args.kwargs['timeout'], 25)
+            maintenance.system('daemon-reload')
+            self.assertEqual(run.call_args.kwargs['timeout'], 180)
+        with patch.object(maintenance.subprocess, 'run', return_value=subprocess.CompletedProcess([], 1, stdout=b'')):
+            with self.assertRaises(files.Refused):
+                maintenance.system('daemon-reload')
+
     def test_empty_or_corrupt_database_does_not_seal(self):
         self.roster[0].write_bytes(b'')
         rows = self.rows()

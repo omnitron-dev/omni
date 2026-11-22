@@ -24,7 +24,7 @@ export interface TorHiddenService {
   /** `host:port` tor forwards plaintext to. */
   target: string;
   /**
-   * Public keys allowed to reach this service, as `<name>:descriptor:x25519:<base32>`.
+   * Server-side authorization entries, each `descriptor:x25519:<base32-public-key>`.
    *
    * v3 client authorization, and the strongest privacy control an onion
    * service has: without a listed key a client cannot decrypt the
@@ -39,6 +39,21 @@ export interface TorrcInputs {
   services: readonly TorHiddenService[];
   /** Appended verbatim, last, so an operator can always have the final word. */
   extra?: readonly string[] | undefined;
+}
+
+// 32 X25519 public-key bytes occupy 52 unpadded base32 characters.
+// Only the high bit of the last base32 character carries data.
+export const TOR_CLIENT_AUTH_LINE = /^descriptor:x25519:[A-Za-z2-7]{51}[AaQq]$/;
+
+/** One unquoted torrc path component, also safe to display as a terminal label. */
+export function isTorServiceName(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && Buffer.byteLength(value) <= 255 &&
+    value !== '.' && value !== '..' && !/[\p{C}\s/\\#"']/u.test(value);
+}
+
+function hiddenServiceDirectory(name: string): string {
+  if (!isTorServiceName(name)) throw new Error('Invalid Tor hidden service directory name');
+  return `/var/lib/tor/${name}`;
 }
 
 /**
@@ -144,9 +159,10 @@ export function renderTorrc(inputs: TorrcInputs): string {
   ];
 
   for (const service of inputs.services) {
+    const directory = hiddenServiceDirectory(service.name);
     lines.push(
       `# --- Hidden service: ${service.name} ---`,
-      `HiddenServiceDir /var/lib/tor/${service.name}`,
+      `HiddenServiceDir ${directory}`,
       // v3 only. v2 was removed from Tor, and its addresses were 80-bit
       // truncated hashes — brute-forceable to a lookalike.
       'HiddenServiceVersion 3',
@@ -204,9 +220,15 @@ export function authorizedClientFiles(
   const files: Array<{ path: string; content: string }> = [];
 
   for (const service of services) {
-    for (const [index, key] of (service.authorizedClients ?? []).entries()) {
+    if (service.authorizedClients === undefined) continue;
+    if (!Array.isArray(service.authorizedClients)) throw new Error('Tor authorizedClients must be an array of public client keys');
+    const directory = hiddenServiceDirectory(service.name);
+    for (const [index, key] of service.authorizedClients.entries()) {
+      if (typeof key !== 'string' || !TOR_CLIENT_AUTH_LINE.test(key)) {
+        throw new Error(`Invalid public Tor client key at index ${index}. Expected descriptor:x25519: followed by a 32-byte base32 public key.`);
+      }
       files.push({
-        path: `/var/lib/tor/${service.name}/authorized_clients/client-${index + 1}.auth`,
+        path: `${directory}/authorized_clients/client-${index + 1}.auth`,
         content: `${key}\n`,
       });
     }

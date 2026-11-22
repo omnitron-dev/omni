@@ -5,6 +5,7 @@
 import os from 'node:os';
 import { box, log, prism } from '@xec-sh/kit';
 import { listManagedContainers, execInContainer } from '../infrastructure/container-runtime.js';
+import { isTorServiceName } from '../infrastructure/presets/torrc.js';
 import type { ContainerState } from '../infrastructure/types.js';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import { emitJson, emitError, isJsonMode } from './output.js';
@@ -47,7 +48,7 @@ async function readOnions(container: string): Promise<OnionEntry[]> {
   const entries: OnionEntry[] = [];
   for (const source of raw.split('\0').filter(Boolean).sort()) {
     const service = /^\/var\/lib\/tor\/([^/]+)\/hostname$/.exec(source)?.[1];
-    if (!service || service === '.' || service === '..') throw new Error('Invalid Tor hostname location');
+    if (!isTorServiceName(service)) throw new Error('Invalid Tor hostname location');
     let onion: string | null = null;
     try {
       const content = (await execInContainer(container, ['head', '-c', '64', source])).trim();

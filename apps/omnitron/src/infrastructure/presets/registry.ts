@@ -7,7 +7,8 @@
 
 import type { IServicePreset, IPresetServiceConfig } from './types.js';
 import type { IServiceRequirement, IDockerServiceConfig } from '../types.js';
-import { renderTorrc, authorizedClientFiles, type TorHiddenService } from './torrc.js';
+import { renderTorrc, authorizedClientFiles } from './torrc.js';
+import type { ITorPresetConfig } from './tor.js';
 
 export class PresetRegistry {
   private readonly presets = new Map<string, IServicePreset>();
@@ -105,10 +106,7 @@ export class PresetRegistry {
       // could read without starting a container and nothing could test — and
       // a hardening line dropped by a quoting mistake looks exactly like one
       // that was never written.
-      const torCfg = (config.config ?? {}) as {
-        hiddenServices?: TorHiddenService[];
-        extraTorrc?: string[];
-      };
+      const torCfg = (config.config ?? {}) as Partial<ITorPresetConfig>;
       const services = Array.isArray(torCfg.hiddenServices) ? torCfg.hiddenServices : [];
       dockerEnv['OMNITRON_TORRC'] = renderTorrc({ services, extra: torCfg.extraTorrc });
 

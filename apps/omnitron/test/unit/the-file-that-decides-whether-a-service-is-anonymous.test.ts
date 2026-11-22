@@ -139,8 +139,12 @@ describe('client authorization', () => {
   });
 
   it('writes each key where tor reads it', () => {
+    const publicEntries = [
+      'descriptor:x25519:N2NU7BSRL6YODZCYPN4CREB54TYLKGIE2KYOQWLFYC23ZJVCE5DQ',
+      'descriptor:x25519:' + 'B'.repeat(51) + 'Q',
+    ];
     const files = authorizedClientFiles([
-      { ...service, authorizedClients: ['descriptor:x25519:AAAA', 'descriptor:x25519:BBBB'] },
+      { ...service, authorizedClients: publicEntries },
     ]);
 
     // Not torrc lines: tor reads these out of the service directory, and a
@@ -150,6 +154,19 @@ describe('client authorization', () => {
       '/var/lib/tor/portal/authorized_clients/client-1.auth',
       '/var/lib/tor/portal/authorized_clients/client-2.auth',
     ]);
-    expect(files[0]!.content).toBe('descriptor:x25519:AAAA\n');
+    expect(files.map(file => file.content)).toEqual(publicEntries.map(key => key + '\n'));
+  });
+
+  it('refuses malformed entries without including the supplied value in the error', () => {
+    const invalid = 'descriptor:x25519:INVALID';
+    expect(() => authorizedClientFiles([{ ...service, authorizedClients: [invalid] }]))
+      .toThrow('Invalid public Tor client key at index 0. Expected descriptor:x25519: followed by a 32-byte base32 public key.');
+    expect(() => authorizedClientFiles([{ ...service, authorizedClients: null as never }])).toThrow(/must be an array/);
+  });
+
+  it('requires a single service directory for configuration and public client files', () => {
+    const ambiguous = { ...service, name: 'two/parts', authorizedClients: [] };
+    expect(() => renderTorrc({ services: [ambiguous] })).toThrow(/directory name/);
+    expect(() => authorizedClientFiles([ambiguous])).toThrow(/directory name/);
   });
 });

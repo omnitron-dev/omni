@@ -26,6 +26,7 @@ import { spawnSync } from 'node:child_process';
 import { describe, it, expect, afterEach } from 'vitest';
 
 import { CLIENT_AUTH_SHELL, torPreset } from '../../src/infrastructure/presets/tor.js';
+import { authorizedClientFiles } from '../../src/infrastructure/presets/torrc.js';
 
 const cleanup: string[] = [];
 afterEach(() => {
@@ -51,7 +52,7 @@ function which(tool: string): string | null {
 function binWith(options: { jq: boolean }): string {
   const bin = path.join(scratch(), 'bin');
   fs.mkdirSync(bin);
-  for (const tool of ['mkdir', 'chmod', 'dirname']) {
+  for (const tool of ['mkdir', 'mktemp', 'mv', 'rm', 'dirname']) {
     const at = which(tool);
     if (!at) throw new Error(`${tool} is not on this machine`);
     fs.symlinkSync(at, path.join(bin, tool));
@@ -95,10 +96,10 @@ function run(json: string | undefined, options: { jq: boolean }) {
 }
 
 function keys(dir: string, n: number) {
-  return Array.from({ length: n }, (_, i) => ({
-    path: path.join(dir, 'hs', 'authorized_clients', `client-${i}.auth`),
-    content: `descriptor:x25519:${'A'.repeat(52)}${i}`,
-  }));
+  const files = authorizedClientFiles([{ name: 'test', virtualPort: 80, target: '127.0.0.1:8080',
+    authorizedClients: Array.from({ length: n }, (_, i) => 'descriptor:x25519:' + String.fromCharCode(66 + i).repeat(51) + 'Q'),
+  }]);
+  return files.map(file => ({ ...file, path: path.join(dir, 'hs', 'authorized_clients', path.basename(file.path)) }));
 }
 
 describe('an onion that opened when its keys did not arrive', () => {
@@ -111,10 +112,17 @@ describe('an onion that opened when its keys did not arrive', () => {
     expect(r.stderr).toBe('');
     expect(r.started).toBe(true);
     for (const f of files) {
-      // `jq -r` ends the line, as it always did here; tor reads the file by line.
-      expect(fs.readFileSync(f.path, 'utf8')).toBe(`${f.content}\n`);
+      expect(fs.readFileSync(f.path, 'utf8')).toBe(f.content);
       expect(fs.statSync(f.path).mode & 0o777).toBe(0o600);
     }
+  });
+
+  it('keeps the previous file intact when a replacement entry cannot be used by Tor', () => {
+    const dir = scratch();
+    const [file] = keys(dir, 1);
+    expect(run(JSON.stringify([file]), { jq: true }).started).toBe(true);
+    expect(run(JSON.stringify([{ ...file, content: 'invalid' }]), { jq: true }).started).toBe(false);
+    expect(fs.readFileSync(file!.path, 'utf8')).toBe(file!.content);
   });
 
   it('does not start tor when there is no jq to write the keys', () => {

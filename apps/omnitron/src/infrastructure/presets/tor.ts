@@ -52,21 +52,12 @@
  */
 
 import type { IServicePreset } from './types.js';
-
-/** User-provided per-hidden-service config. */
-export interface ITorHiddenServiceConfig {
-  /** Logical name — also the directory name under /var/lib/tor/. */
-  name: string;
-  /** Port advertised on the .onion address (clients connect here). */
-  virtualPort: number;
-  /** Backend address `host:port` that tor forwards plaintext traffic to. */
-  target: string;
-}
+import { TOR_CLIENT_AUTH_LINE, type TorHiddenService } from './torrc.js';
 
 /** User-provided tor preset config. */
 export interface ITorPresetConfig {
   /** Hidden services to expose. Each gets its own .onion address. */
-  hiddenServices: ITorHiddenServiceConfig[];
+  hiddenServices: TorHiddenService[];
   /**
    * Extra raw torrc lines appended verbatim. Use sparingly — most
    * hardening is already applied by the preset.
@@ -117,15 +108,20 @@ if [ -n "\${OMNITRON_TOR_CLIENT_AUTH_JSON:-}" ]; then
     echo 'tor: client authorization is configured and there is no jq to write its keys; not starting an onion service without them' >&2
     exit 1
   fi
-  expected=$(printf '%s' "$OMNITRON_TOR_CLIENT_AUTH_JSON" | jq -e 'length')
+  expected=$(printf '%s' "$OMNITRON_TOR_CLIENT_AUTH_JSON" | jq -e 'arrays | length')
   entries=$(printf '%s' "$OMNITRON_TOR_CLIENT_AUTH_JSON" | jq -c '.[]')
   written=0
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     path=$(printf '%s' "$f" | jq -er .path)
+    key=$(printf '%s' "$f" | jq -er '.content | strings | rtrimstr("\\n") | select(test("${TOR_CLIENT_AUTH_LINE.source}") and length == 70)')
+    [ ! -d "$path" ] || exit 1
     mkdir -p "$(dirname "$path")"
-    printf '%s' "$f" | jq -er .content > "$path"
-    chmod 600 "$path"
+    tmp=$(mktemp "$path.tmp.XXXXXX")
+    if ! printf '%s\\n' "$key" > "$tmp" || ! mv -f "$tmp" "$path"; then
+      rm -f "$tmp"
+      exit 1
+    fi
     written=$((written + 1))
   done <<CLIENT_AUTH_KEYS
 $entries

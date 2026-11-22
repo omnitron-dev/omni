@@ -237,6 +237,7 @@ The CLI is organized into command groups:
 
 ### Infrastructure
 - `omnitron tor [project] [stack] --json` inspects public onion hostname files on the current host. Each item includes the physical Docker ID, container status and hostname observation. A running container with a successful empty search returns `observation: "read"` and an empty `services` list. A stopped container returns `"not-running"`. Failed reads return a nonzero exit code with the observations available. Check the portal through Tor separately to verify reachability.
+- For a restricted onion service, supply each server-side public client entry in `hiddenServices[].authorizedClients` as `descriptor:x25519:<base32-public-key>`. Omnitron validates the 32-byte key before installing the single-line authorization file. Keep each client's private credential on that client. [Tor client authorization](https://community.torproject.org/onion-services/advanced/client-auth/)
 - `omnitron infra up` -- Provision the current standalone ecosystem’s declared containers
 - `omnitron infra down` -- Remove its declared containers and retain volumes
 - `omnitron infra status` -- Container status

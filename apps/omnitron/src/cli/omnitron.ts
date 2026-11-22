@@ -502,9 +502,9 @@ stack.command('install-host-configs <project> <stack>').description('Install thr
   .requiredOption('--review <digest>', 'Public host binding review')
   .requiredOption('--node-id <id>', 'Registered recipient')
   .requiredOption('--ticket <uuid>', 'Independent authorization opened by the recipient administrator')
-  .structuredAction(async (project, stackName, options) => {
+  .structuredAction(async (projectName, stackName, options) => {
     const { stackInstallHostConfigsCommand } = await import('../commands/stack.js');
-    await stackInstallHostConfigsCommand({ project, stack: stackName, release: options.release, prepared: options.prepared,
+    await stackInstallHostConfigsCommand({ project: projectName, stack: stackName, release: options.release, prepared: options.prepared,
       nodeId: options.nodeId, review: options.review, ticket: options.ticket });
   });
 
@@ -557,9 +557,9 @@ stack
   .requiredOption('--release <id>', 'Exact admitted application release')
   .requiredOption('--node-id <id>', 'Pinned recipient in the stack registration')
   .option('--prepared <digest>', 'Read the approved source and recipient for a replacement release')
-  .structuredAction(async (project, stackName, options) => {
+  .structuredAction(async (projectName, stackName, options) => {
     const { stackHostBindingReviewCommand } = await import('../commands/stack.js');
-    await stackHostBindingReviewCommand(project, stackName, options.release, options.nodeId, options.prepared);
+    await stackHostBindingReviewCommand(projectName, stackName, options.release, options.nodeId, options.prepared);
   });
 
 stack
@@ -1132,9 +1132,9 @@ release
   .description('Capture portable remote deployment declarations on the isolated qualified producer')
   .requiredOption('--source <directory>', 'Clean qualified source checkout with its build dependencies')
   .requiredOption('--release-root <directory>', 'Canonical release store on this producer')
-  .structuredAction(async (project, stack, id, options) => {
+  .structuredAction(async (projectName, stackName, id, options) => {
     const { captureRemoteSourceCommand } = await import('../commands/release.js');
-    await captureRemoteSourceCommand(project, stack, id, options.source, options.releaseRoot);
+    await captureRemoteSourceCommand(projectName, stackName, id, options.source, options.releaseRoot);
   });
 
 release

@@ -401,7 +401,9 @@ export function localHost(): HostRunner {
           try { known = await fs.lstat(ancestor); }
           catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; }
           if (known) {
-            if (ancestor === path || !(await fs.stat(ancestor)).isDirectory()) throw Error('Host file path changed or is unavailable');
+            if (ancestor === path || !(await fs.stat(ancestor)).isDirectory()) {
+              throw Error('Host file path changed or is unavailable', { cause: error });
+            }
             return null;
           }
           const parent = dirname(ancestor);

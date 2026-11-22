@@ -15,7 +15,12 @@ export async function stopPrivateFixtureStack(project) {
   assert.equal(review.targets.length, 1);
   const target = review.targets[0];
   assert.equal(target.node, 'local'); assert.equal(target.reason, undefined);
-  if (target.runtime) assert.deepEqual(target.runtime, scope);
+  if (target.runtime) {
+    assert.equal(target.runtime.project, scope.project);
+    assert.equal(target.runtime.stack, scope.stack);
+    if (target.runtime.phase !== undefined) assert.equal(target.runtime.phase, 'running');
+    if (target.runtime.revision !== undefined) assert.ok(Number.isSafeInteger(target.runtime.revision) && target.runtime.revision >= 0);
+  }
   assert.deepEqual(target.applications, ['probe/local/counter']);
   assert.deepEqual(target.containers, [], 'Counter fixture must own no infrastructure');
   const stopped = await project.stopStack({ ...scope, review: review.digest });

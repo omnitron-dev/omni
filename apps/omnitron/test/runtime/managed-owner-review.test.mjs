@@ -141,7 +141,7 @@ const review = () => ({ ...scope, digest: 'ab'.repeat(32), targets: [
 ] });
 
 test('counter stop uses the same digest-bound empty footprint with old and new review replies', async () => {
-  for (const runtime of [undefined, scope]) {
+  for (const runtime of [undefined, scope, { ...scope, phase: 'running', revision: 0 }]) {
     const evidence = review();
     if (runtime) evidence.targets[0].runtime = runtime;
     const calls = [];
@@ -161,6 +161,9 @@ for (const [name, change] of [
   ['multiple targets', value => { value.targets.push({ ...value.targets[0] }); }],
   ['uncertain inventory', value => { value.targets[0].reason = 'unreachable'; }],
   ['another runtime', value => { value.targets[0].runtime = { project: 'other', stack: 'local' }; }],
+  ['another runtime stack', value => { value.targets[0].runtime = { ...scope, stack: 'other' }; }],
+  ['stopping runtime', value => { value.targets[0].runtime = { ...scope, phase: 'stopping', revision: 1 }; }],
+  ['invalid runtime revision', value => { value.targets[0].runtime = { ...scope, phase: 'running', revision: -1 }; }],
   ['another application', value => { value.targets[0].applications.push('other/local/app'); }],
   ['owned infrastructure', value => { value.targets[0].containers.push('database'); }],
   ['missing infrastructure evidence', value => { delete value.targets[0].containers; }],

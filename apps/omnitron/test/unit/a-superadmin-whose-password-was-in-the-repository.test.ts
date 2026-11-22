@@ -248,6 +248,7 @@ describe('the service', () => {
     const log = (...args: unknown[]) => logged.push(args);
     svc = Object.create(ProjectService.prototype);
     Object.assign(svc, {
+      daemonStateStore: { kvGetSync: () => null },
       logger: { info: vi.fn(log), warn: vi.fn(log), error: vi.fn(log), debug: vi.fn(log) },
       secrets: {
         get: async (key: string) => vault.get(key) ?? null,
@@ -264,7 +265,7 @@ describe('the service', () => {
         dev: { type: 'local', apps: 'all' },
         wide: { type: 'remote', apps: 'all', nodes: [{ nodeId: 'n1' }, { nodeId: 'n2' }] },
       }),
-      targetForStackNode: async () => ({ host: '37.27.130.185', sshPort: 22 }),
+      targetForStackNode: async () => ({ host: '192.0.2.10', sshPort: 22 }),
       deployer: {
         underLease: vi.fn(async (_target: unknown, _purpose: string, work: () => Promise<unknown>) => work()),
         uploadStaticBundle: vi.fn(async (_target: unknown, dir: string) => {
@@ -297,7 +298,7 @@ describe('the service', () => {
       username: 'superadmin',
       role: 'superadmin',
       id: ID,
-      node: '37.27.130.185:22',
+      node: '192.0.2.10:22',
       vaultKey: accountVaultKey('sample', 'test', 'superadmin'),
       commit: HEAD,
     });
@@ -348,7 +349,7 @@ describe('the service', () => {
   it('leaves the vault untouched when the stand refuses, and still removes the stage', async () => {
     make = () => ({ stdout: '', stderr: "'superadmin' already exists on this stand — choose another name; nothing was changed", code: 1 });
 
-    await expect(makeIt()).rejects.toThrow(/sample\/test on 37\.27\.130\.185:22: the stand refused: 'superadmin' already exists/);
+    await expect(makeIt()).rejects.toThrow("sample/test on 192.0.2.10:22: the stand refused: 'superadmin' already exists");
 
     expect(svc.secrets.set).not.toHaveBeenCalled();
     expect(commands.some((c) => c.includes("'--show="))).toBe(false);
@@ -384,7 +385,7 @@ describe('the service', () => {
   });
 
   it('shows what the stand holds', async () => {
-    expect(await svc.showOperatorAccount('sample', 'test', 'superadmin')).toEqual({ node: '37.27.130.185:22', commit: HEAD, account: SHOWN });
+    expect(await svc.showOperatorAccount('sample', 'test', 'superadmin')).toEqual({ node: '192.0.2.10:22', commit: HEAD, account: SHOWN });
     showRun = { stdout: '', stderr: 'could not read superadmin: docker gone', code: 1 };
     await expect(svc.showOperatorAccount('sample', 'test', 'superadmin')).rejects.toThrow(/could not read superadmin: exit 1: .*docker gone/);
     expect(removedTheStage()).toBe(true);
@@ -396,7 +397,7 @@ describe('the service', () => {
     expect(await svc.removeOperatorAccount('sample', 'test', { username: 'superadmin', id: ID })).toEqual({
       username: 'superadmin',
       id: ID,
-      node: '37.27.130.185:22',
+      node: '192.0.2.10:22',
       commit: HEAD,
       vaultKeyRemoved: 'sample.test.account.superadmin.password',
     });
@@ -417,7 +418,7 @@ describe('the audit rows', () => {
     username: 'superadmin',
     role: 'superadmin',
     id: ID,
-    node: '37.27.130.185:22',
+    node: '192.0.2.10:22',
     vaultKey: 'sample.test.account.superadmin.password',
     commit: HEAD,
   };
@@ -432,14 +433,14 @@ describe('the audit rows', () => {
       action: 'stack.account.create',
       resourceType: 'stack',
       resourceId: 'sample/test',
-      details: { username: 'superadmin', role: 'superadmin', id: ID, node: '37.27.130.185:22', vault: MADE.vaultKey, commit: HEAD },
+      details: { username: 'superadmin', role: 'superadmin', id: ID, node: '192.0.2.10:22', vault: MADE.vaultKey, commit: HEAD },
       outcome: 'ok',
     });
   });
 
   it('records a refused make as failed, with its words', async () => {
     const record = vi.fn(async () => undefined);
-    const refused = new Error("sample/test on 37.27.130.185:22: the stand refused: 'superadmin' already exists");
+    const refused = new Error("sample/test on 192.0.2.10:22: the stand refused: 'superadmin' already exists");
     const rpc = new ProjectRpcService(
       {
         resolveProjectStack: async (scope: unknown) => scope,
@@ -458,14 +459,14 @@ describe('the audit rows', () => {
 
   it('records a removal both ways', async () => {
     const record = vi.fn(async () => undefined);
-    const removed = { username: 'superadmin', id: ID, node: '37.27.130.185:22', commit: HEAD, vaultKeyRemoved: null };
+    const removed = { username: 'superadmin', id: ID, node: '192.0.2.10:22', commit: HEAD, vaultKeyRemoved: null };
     const ok = new ProjectRpcService({ resolveProjectStack: async (scope: unknown) => scope, removeOperatorAccount: vi.fn(async () => removed) } as never, { record } as never);
     await ok.removeStackAccount({ project: 'sample', stack: 'test', username: 'superadmin', id: ID });
     expect(record).toHaveBeenCalledWith({
       action: 'stack.account.remove',
       resourceType: 'stack',
       resourceId: 'sample/test',
-      details: { username: 'superadmin', id: ID, node: '37.27.130.185:22', commit: HEAD, vault: null },
+      details: { username: 'superadmin', id: ID, node: '192.0.2.10:22', commit: HEAD, vault: null },
       outcome: 'ok',
     });
 
@@ -531,14 +532,14 @@ describe('`stack account` on the command line', () => {
           username: 'superadmin',
           role: 'superadmin',
           id: ID,
-          node: '37.27.130.185:22',
+          node: '192.0.2.10:22',
           vaultKey: 'sample.test.account.superadmin.password',
           commit: HEAD,
         }),
       },
     );
     expect(exitCode).toBe(0);
-    expect(said).toContain('Made superadmin (superadmin) on sample/test at 37.27.130.185:22');
+    expect(said).toContain('Made superadmin (superadmin) on sample/test at 192.0.2.10:22');
     expect(said).toContain('omnitron secret get sample.test.account.superadmin.password');
   });
 
@@ -560,7 +561,7 @@ describe('`stack account` on the command line', () => {
       { show: 'superadmin' },
       {
         showStackAccount: async () => ({
-          node: '37.27.130.185:22',
+          node: '192.0.2.10:22',
           commit: HEAD,
           account: { username: 'superadmin', id: ID, role: 'superadmin', status: 'active', createdAt: '2026-09-23T18:04:18Z', lastActiveAt: null },
         }),
@@ -575,13 +576,13 @@ describe('`stack account` on the command line', () => {
         removeStackAccount: async () => ({
           username: 'superadmin',
           id: ID,
-          node: '37.27.130.185:22',
+          node: '192.0.2.10:22',
           commit: HEAD,
           vaultKeyRemoved: 'sample.test.account.superadmin.password',
         }),
       },
     );
-    expect(removed.said).toContain(`Removed superadmin (id ${ID}) from sample/test at 37.27.130.185:22`);
+    expect(removed.said).toContain(`Removed superadmin (id ${ID}) from sample/test at 192.0.2.10:22`);
     expect(removed.said).toContain('and its password from the vault (sample.test.account.superadmin.password)');
   });
 

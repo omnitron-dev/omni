@@ -130,11 +130,12 @@ describe('on the node', () => {
     const repo = repoWith(['scripts/operator-account.mjs', PROBE_LEFTOVERS_TOOL]);
     const svc: any = Object.create(ProjectService.prototype);
     Object.assign(svc, {
+      daemonStateStore: { kvGetSync: () => null },
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
       registry: { get: () => ({ name: 'sample', path: repo }), list: () => [] },
       loadProjectConfig: async () => ({}),
       resolveStacks: () => ({ test: { type: 'remote', apps: 'all', nodes: [{ nodeId: 'n1' }] } }),
-      targetForStackNode: async () => ({ host: '37.27.130.185', sshPort: 22 }),
+      targetForStackNode: async () => ({ host: '192.0.2.10', sshPort: 22 }),
       deployer: {
         underLease: async (_t: unknown, _p: string, work: () => Promise<unknown>) => work(),
         uploadStaticBundle: async () => ({ remoteDir: '/opt/omnitron/operator/abc', bytes: 1 }),
@@ -150,7 +151,7 @@ describe('on the node', () => {
     });
     try {
       const found = await svc.probeLeftovers('sample', 'test', { mode: 'census' });
-      expect(found).toMatchObject({ node: '37.27.130.185:22', mode: 'census', report: REPORT });
+      expect(found).toMatchObject({ node: '192.0.2.10:22', mode: 'census', report: REPORT });
       expect(found.lines).toContain('organisations nobody who stays belongs to: 95');
       expect(commands[0]!.endsWith(`node ${PROBE_LEFTOVERS_TOOL}`)).toBe(true);
       expect(commands.some((c) => c.startsWith("rm -rf '/opt/omnitron/operator/abc'"))).toBe(true);
@@ -175,11 +176,12 @@ describe('on the node', () => {
     const reached = vi.fn();
     const svc: any = Object.create(ProjectService.prototype);
     Object.assign(svc, {
+      daemonStateStore: { kvGetSync: () => null },
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
       registry: { get: () => ({ name: 'sample', path: repo }), list: () => [] },
       loadProjectConfig: async () => ({}),
       resolveStacks: () => ({ test: { type: 'remote', apps: 'all', nodes: [{ nodeId: 'n1' }] } }),
-      targetForStackNode: async () => ({ host: '37.27.130.185', sshPort: 22 }),
+      targetForStackNode: async () => ({ host: '192.0.2.10', sshPort: 22 }),
       deployer: { underLease: reached, uploadStaticBundle: reached, readFromNode: reached, runOnNode: reached },
     });
     try {
@@ -203,7 +205,7 @@ describe('`stack account --leftovers` on the command line', () => {
         service: async () => ({
           probeLeftovers: async (data: { mode: string }) => {
             asked.push(data);
-            return { node: '37.27.130.185:22', commit: '83db4a79cafe', mode: data.mode, report: REPORT, lines: ['organisations nobody who stays belongs to: 95'] };
+            return { node: '192.0.2.10:22', commit: '83db4a79cafe', mode: data.mode, report: REPORT, lines: ['organisations nobody who stays belongs to: 95'] };
           },
         }),
         disconnect: async () => undefined,
@@ -233,7 +235,7 @@ describe('`stack account --leftovers` on the command line', () => {
     expect(asked).toEqual([{ project: 'sample', stack: 'test', mode: 'census' }]);
     expect(said).toContain('organisations nobody who stays belongs to: 95');
     expect(said.at(-1)).toBe(
-      'census of what the probes left on sample/test at 37.27.130.185:22 — the tool at 83db4a79; nothing was removed',
+      'census of what the probes left on sample/test at 192.0.2.10:22 — the tool at 83db4a79; nothing was removed',
     );
   });
 
@@ -241,7 +243,7 @@ describe('`stack account --leftovers` on the command line', () => {
     const { said, asked } = await run({ leftovers: 'apply', also: 'e2eeprobe' });
     expect(asked).toEqual([{ project: 'sample', stack: 'test', mode: 'apply', also: ['e2eeprobe'] }]);
     expect(said.at(-1)).toBe(
-      "removal of what the probes left on sample/test at 37.27.130.185:22 — the tool at 83db4a79, named: e2eeprobe; committed where its invariants held — the tool's lines above say what went",
+      "removal of what the probes left on sample/test at 192.0.2.10:22 — the tool at 83db4a79, named: e2eeprobe; committed where its invariants held — the tool's lines above say what went",
     );
   });
 
@@ -249,7 +251,7 @@ describe('`stack account --leftovers` on the command line', () => {
     const { said, asked } = await run({ leftovers: 'rehearse', also: 'e2eeprobe, e2e2609221947,daomaker' });
     expect(asked).toEqual([{ project: 'sample', stack: 'test', mode: 'rehearse', also: ['e2eeprobe', 'e2e2609221947', 'daomaker'] }]);
     expect(said.at(-1)).toBe(
-      'rehearsal of removing what the probes left on sample/test at 37.27.130.185:22 — the tool at 83db4a79, named: e2eeprobe, e2e2609221947, daomaker; nothing was removed',
+      'rehearsal of removing what the probes left on sample/test at 192.0.2.10:22 — the tool at 83db4a79, named: e2eeprobe, e2e2609221947, daomaker; nothing was removed',
     );
   });
 

@@ -89,11 +89,12 @@ describe('the service', () => {
     const commands: string[] = [];
     const svc: any = Object.create(ProjectService.prototype);
     Object.assign(svc, {
+      daemonStateStore: { kvGetSync: () => null },
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
       registry: { get: () => ({ name: 'sample', path: process.cwd() }), list: () => [] },
       loadProjectConfig: async () => ({}),
       resolveStacks: () => ({ test: { type: 'remote', apps: 'all', nodes: [{ nodeId: 'n1' }] } }),
-      targetForStackNode: async () => ({ host: '37.27.130.185', sshPort: 22 }),
+      targetForStackNode: async () => ({ host: '192.0.2.10', sshPort: 22 }),
       deployer: {
         underLease: async (_t: unknown, _p: string, work: () => Promise<unknown>) => work(),
         uploadStaticBundle: async () => ({ remoteDir: '/opt/omnitron/operator/abc', bytes: 1 }),
@@ -122,7 +123,7 @@ describe('the service', () => {
     svc.registry = { get: () => ({ name: 'sample', path: repo }), list: () => [] };
     try {
       const answer = await svc.censusOperatorAccounts('sample', 'test');
-      expect(answer).toMatchObject({ node: '37.27.130.185:22', census: CENSUS });
+      expect(answer).toMatchObject({ node: '192.0.2.10:22', census: CENSUS });
       expect(commands.some((c) => c.endsWith("'--census'"))).toBe(true);
       expect(commands.some((c) => c.startsWith("rm -rf '/opt/omnitron/operator/abc'"))).toBe(true);
     } finally {
@@ -157,9 +158,9 @@ describe('`stack account --census` on the command line', () => {
   }
 
   it('prints the counts and says a published password plainly', async () => {
-    const { said, exitCode } = await run({ census: true }, async () => ({ node: '37.27.130.185:22', commit: 'c', census: CENSUS }));
+    const { said, exitCode } = await run({ census: true }, async () => ({ node: '192.0.2.10:22', commit: 'c', census: CENSUS }));
     expect(exitCode).toBe(0);
-    expect(said).toContain('sample/test at 37.27.130.185:22: 12 account(s)');
+    expect(said).toContain('sample/test at 192.0.2.10:22: 12 account(s)');
     expect(said).toContain('  roles: user 9, superadmin 2, admin 1');
     expect(said).toContain('  MFA: 0 enabled · 0 secret(s) sealed · 0 plain · 0 with backup codes');
     expect(said).toContain('  seeded admin: active, admin, opens with the PUBLISHED password');
@@ -167,7 +168,7 @@ describe('`stack account --census` on the command line', () => {
   });
 
   it('prints who holds privilege, since when, and what a new JWT_SECRET would take away', async () => {
-    const { said } = await run({ census: true }, async () => ({ node: '37.27.130.185:22', commit: 'c', census: { ...CENSUS, ...BLOCKS } }));
+    const { said } = await run({ census: true }, async () => ({ node: '192.0.2.10:22', commit: 'c', census: { ...CENSUS, ...BLOCKS } }));
     expect(said).toContain(
       '  privileged: 21 (made: 2026-06-14 1, 2026-09-22 20) · 1 open with a password the repository publishes · 2 ever signed in',
     );

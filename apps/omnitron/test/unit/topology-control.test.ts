@@ -247,14 +247,10 @@ describe('target intent is separate from executable configuration', () => {
     expect(reopened.configured).toEqual(spec);
     expect(config.stacks.prod.apps).toEqual(['api', 'worker']);
     expect(reopened.observed.config.nodes).toHaveLength(2);
-    const resolve = (
-      ProjectService.prototype as unknown as {
-        resolveStacks(config: unknown, project: { name: string; path: string }): Record<string, unknown>;
-      }
-    ).resolveStacks;
-    expect(resolve.call({ topologyState: topology }, config, { name: 'sample', path: dir })['prod']).toEqual(
-      stack
-    );
+    const projects: {
+      resolveStacks(config: unknown, project: { name: string; path: string }): Record<string, unknown>;
+    } = Object.assign(Object.create(ProjectService.prototype), { topologyState: topology, daemonStateStore: db });
+    expect(projects.resolveStacks(config, { name: 'sample', path: dir })['prod']).toEqual(stack);
   });
 
   it('uses the provisioner binding rules and never invents stateless recovery guarantees', () => {

@@ -54,7 +54,7 @@ export function confirmStoppedPlacement(scope: StackExecutionScope, from: Placem
   const acknowledgement = stop?.nodes[0];
   if (!stop || stop.phase !== 'stopped' || !stop.intentCommitted || stop.keepInfrastructure || stop.supersededAt ||
       !stop.completedAt || stop.nodes.length !== 1 || acknowledgement?.outcome !== 'stopped' || !acknowledgement.operationId ||
-      !acknowledgement.observedAt || !acknowledgement.execution || !acknowledgement.definition ||
+      !acknowledgement.observedAt || !acknowledgement.execution || !digest.test(acknowledgement.definition ?? '') ||
       acknowledgement.node !== stackNodeKey(from.host, from.port) || (acknowledgement.nodeId && acknowledgement.nodeId !== from.nodeId))
     throw Error('A completed full stop with the source execution revision and released infrastructure is required');
   const execution = observed.execution;

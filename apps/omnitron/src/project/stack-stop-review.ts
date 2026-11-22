@@ -16,7 +16,10 @@ export function stackStopReview(scope: StackExecutionScope, targets: StopReviewT
       audience ? [audience.clusterId, audience.nodeId] : null,
       execution ? [execution.project, execution.stack, execution.phase, execution.revision, execution.apps.map(a => [a.name, a.generation])] : null,
       containers.map(c => [c.id, c.name])]);
-    return { node, ...(execution && { runtime: { project: execution.project, stack: execution.stack } }),
+    return { node, ...(/^[a-f0-9]{64}$/.test(inventory.definition) && { definitionSha256: inventory.definition }),
+      ...(execution && { runtime: { project: execution.project, stack: execution.stack,
+        ...(Number.isSafeInteger(execution.revision) && execution.revision >= 0 && { revision: execution.revision }),
+        ...(['running', 'stopping', 'stopped', 'starting'].includes(execution.phase) && { phase: execution.phase }) } }),
       applications: execution?.apps.map(app => app.name) ?? [], containers: containers.map(container => container.name) };
   });
   const digest = targets.length && evidence.length === targets.length

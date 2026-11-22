@@ -3,7 +3,7 @@ import { ProjectService } from '../../src/services/project.service.js';
 import { StackTargets } from '../../src/project/stack-targets.js';
 const project = 'sample', stack = 'prod';
 function inventory(host: string) {
-  return { protocol: 1, project, stack, applications: true, definition: 'current',
+  return { protocol: 1, project, stack, applications: true, definition: 'c'.repeat(64),
     execution: { project, stack: 'deployed', revision: 1, phase: 'running', apps: [{ name: 'sample/deployed/api', generation: 'one' }] },
     containers: [{ id: 'a'.repeat(64), name: 'db' }], operationId: host };
 }
@@ -115,6 +115,7 @@ describe('stack stop coordinator', () => {
     const review = await service.reviewStackStop(project, stack);
     expect(review.digest).toMatch(/^[0-9a-f]{64}$/);
     expect(review.targets.map((target: { node: string }) => target.node)).toEqual(['one.test:9700', 'two.test:9700']);
+    expect(review.targets[0]).toMatchObject({ definitionSha256: 'c'.repeat(64), runtime: { project, stack: 'deployed', revision: 1, phase: 'running' } });
     expect(calls).toEqual(['one.test:inspectNodeStackStop', 'two.test:inspectNodeStackStop']);
     expect(data.size).toBe(0);
     expect(service.registry.setStackEnabled).not.toHaveBeenCalled();

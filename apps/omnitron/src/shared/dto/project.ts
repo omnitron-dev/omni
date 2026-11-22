@@ -226,7 +226,8 @@ export interface StackStopReview {
   digest: string | null;
   targets: Array<{
     node: string;
-    runtime?: RuntimeStackScope;
+    runtime?: RuntimeStackScope & { revision?: number; phase?: import('./stack-execution.js').StackExecutionPlan['phase'] };
+    definitionSha256?: string;
     applications?: string[];
     containers?: string[];
     reason?: string;

@@ -47,12 +47,17 @@ describe('literal source highlighting', () => {
   });
 
   it.each([
-    '"' + 'x'.repeat(2048) + '";\r\nconst tail = 1;',
-    Array.from({ length: 200 }, () => 'const text = "' + 'x'.repeat(1000) + '";').join('\n'),
-  ])('bounds long lines and total tokenized text without dropping source or resuming a broken grammar state', async source => {
+    { source: '"' + 'x'.repeat(2048) + '";\r\nconst tail = 1;', minColored: 0, maxColored: 0 },
+    {
+      source: Array.from({ length: 200 }, (_, index) => `const text${index} = "${'x'.repeat(1000)}";`).join('\n'),
+      minColored: 1,
+      maxColored: 31,
+    },
+  ])('bounds long lines and total tokenized text without dropping source or resuming a broken grammar state', async ({ source, minColored, maxColored }) => {
     const result = await highlightCode(source, 'ts');
     const plain = result.lines.findIndex(line => line.tokens.every(token => Object.keys(token.style).length === 0));
-    expect(plain).toBeGreaterThanOrEqual(0);
+    expect(plain).toBeGreaterThanOrEqual(minColored);
+    expect(plain).toBeLessThanOrEqual(maxColored);
     expect(result.lines.slice(plain).every(line => line.tokens.every(token => Object.keys(token.style).length === 0))).toBe(true);
     expect(result.lines.map(line => line.tokens.map(token => token.content).join('') + line.ending).join('')).toBe(source);
   });

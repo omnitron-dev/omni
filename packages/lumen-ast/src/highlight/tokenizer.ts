@@ -28,7 +28,8 @@ const DEFAULT_ROOT_STYLE = '--shiki-light:#24292e;--shiki-dark:#e1e4e8;--shiki-l
 const MAX_FULL_TOKENIZE_LINES = 2500;
 const PARTIAL_TOKENIZE_HEAD = 400;
 const MAX_TOKENIZE_LINE_LENGTH = 2048;
-const MAX_TOKENIZE_CHARACTERS = 131_072;
+const TOKENIZE_COLUMN_BLOCK = 128;
+const MAX_TOKENIZE_WORK = 131_072;
 let highlighter: HighlighterCore | undefined;
 const loading = new Map<string, Promise<void>>();
 
@@ -87,11 +88,16 @@ export function tokenizeCode(code: string, language: string): HighlightedSource 
   let rootStyle = DEFAULT_ROOT_STYLE;
   if (code && engine.getLoadedLanguages().includes(lang)) {
     const limit = lines.length <= MAX_FULL_TOKENIZE_LINES ? lines.length : PARTIAL_TOKENIZE_HEAD;
-    let count = 0, characters = 0;
+    let count = 0, work = 0;
     while (count < limit) {
       const length = lines[count]!.length;
-      if (length > MAX_TOKENIZE_LINE_LENGTH || characters + length + 1 > MAX_TOKENIZE_CHARACTERS) break;
-      characters += length + 1;
+      if (length > MAX_TOKENIZE_LINE_LENGTH) break;
+      // TextMate scans within a line. A long line can cost much more than
+      // the same number of characters split across ordinary source lines.
+      const width = length + 1;
+      const lineWork = width * Math.ceil(width / TOKENIZE_COLUMN_BLOCK);
+      if (work + lineWork > MAX_TOKENIZE_WORK) break;
+      work += lineWork;
       count++;
     }
     if (count) {

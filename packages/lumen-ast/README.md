@@ -43,6 +43,8 @@ Use verified identity and explicit role grants for an authenticated audience. Ap
 | `/typst` | Node-only PDF compilation with bundled engine and fonts. |
 | `/mcp` | Node-only MCP integration. |
 
+Literal code highlighting colors a prefix of complete lines and preserves the full source and its original line endings. The server and browser compute the same prefix. Each 128-column block increases the cost assigned to that line, which bounds the work spent coloring wide generated code. Lines beyond the budget remain readable and selectable.
+
 Island props reject cycles, accessors, BigInt and other values JSON cannot preserve. Source, depth and output limits are explicit; rendering a theorem or diagram does not prove its claims.
 
 Twoslash uses actual default libraries from the exact TypeScript dependency. Browser execution reads the embedded library set without filesystem or network access. Ordinary package modules are emitted as native ESM with declarations. Only the math tokenizer is bundled separately, excluding its unused legacy KaTeX renderer; bundled third-party notices are included in `licenses`.

@@ -324,6 +324,15 @@ export class ProjectRpcService {
   assertSdkMutable(): void { this.projectService.assertSdkMutable(); }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
+  async installReviewedHostConfigs(data: import('../infrastructure/host-config-transfer.js').HostConfigInstallRequest) {
+    const { checkRequest } = await import('../infrastructure/host-config-transfer.js');
+    checkRequest(data);
+    const scope = await this.projectService.resolveProjectStack({ project: data.project, stack: data.stack }, { readOnly: true });
+    if (scope.project !== data.project || scope.stack !== data.stack) throw Errors.badRequest('An exact registered project and stack are required');
+    return this.projectService.installReviewedHostConfigs(data);
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
   async reviewStackHostBindings(data: import('../infrastructure/host-binding-review.js').HostBindingSelection) {
     if (!data || Object.keys(data).sort().join(',') !== 'nodeId,project,release,stack' ||
         !Object.values(data).every(value => typeof value === 'string' && value.length > 0 && value.length <= 128))

@@ -466,8 +466,8 @@ topology.command('apply <project> <stack> <plan>')
 
 const stack = program.command('stack').aliases(['stacks']).description('Manage deployment stacks across projects');
 
-program.command('host-config').description('Local Linux installer evidence')
-  .command('attest <profile>').description('Attest the installed root-owned private config for a supported service profile')
+const hostConfig = program.command('host-config').description('Local Linux service configuration installer');
+hostConfig.command('attest <profile>').description('Attest the installed root-owned private config for a supported service profile')
   .allowExcessArguments(false)
   .structuredAction(async profile => {
     const { attestInstalledHostConfig } = await import('../infrastructure/private-host-config.js');
@@ -479,6 +479,33 @@ program.command('host-config').description('Local Linux installer evidence')
       emitError('Could not attest the fixed root-owned configuration, service group and protected installer directory');
       process.exitCode = 1;
     }
+  });
+
+hostConfig.command('receive <ticket>').description('Authorize one passive installation on this Linux recipient')
+  .allowExcessArguments(false)
+  .requiredOption('--review <digest>', 'Approved public host binding review')
+  .requiredOption('--node-id <id>', 'Approved recipient registration')
+  .requiredOption('--expires <utc>', 'Authorization deadline within the next ten minutes')
+  .structuredAction(async (ticket, options) => {
+    const { emitError, emitJson, emitSuccess } = await import('../commands/output.js');
+    try {
+      const { receiveHostConfigs } = await import('../infrastructure/host-config-installer.js');
+      const result = await receiveHostConfigs({ ticket, nodeId: options.nodeId, review: options.review }, Date.parse(options.expires));
+      if (!emitJson(result)) emitSuccess('Accepted the three reviewed host configurations for ' + result.ticket);
+    } catch { emitError('The local host configuration authorization or installation did not complete'); process.exitCode = 1; }
+  });
+
+stack.command('install-host-configs <project> <stack>').description('Install three reviewed configurations on an authorized passive recipient')
+  .allowExcessArguments(false)
+  .requiredOption('--release <id>', 'Exact admitted release')
+  .requiredOption('--prepared <digest>', 'Saved administrative source and recipient approval')
+  .requiredOption('--review <digest>', 'Public host binding review')
+  .requiredOption('--node-id <id>', 'Registered recipient')
+  .requiredOption('--ticket <uuid>', 'Independent authorization opened by the recipient administrator')
+  .structuredAction(async (project, stackName, options) => {
+    const { stackInstallHostConfigsCommand } = await import('../commands/stack.js');
+    await stackInstallHostConfigsCommand({ project, stack: stackName, release: options.release, prepared: options.prepared,
+      nodeId: options.nodeId, review: options.review, ticket: options.ticket });
   });
 
 stack

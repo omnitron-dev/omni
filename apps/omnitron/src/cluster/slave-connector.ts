@@ -504,7 +504,7 @@ export class SlaveConnector {
       throw Error('The verified management connection is unavailable');
     const peer = conn.peer;
     return (method: string, payload: unknown, beforeSend?: () => Promise<void>) =>
-      this.callOnSlave(host, port, service, method, [payload], true, id, peer, async () => {
+      this.callOnSlave(host, port, service, method, payload === undefined ? [] : [payload], true, id, peer, async () => {
         if (beforeSend) await beforeSend();
         if (conn.link !== link || link.managementIdentity !== managementIdentity || !conn.authenticated ||
             !link.expiresAt || link.expiresAt <= Date.now())

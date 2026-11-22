@@ -51,6 +51,19 @@ function formatDuration(ms: number): string {
 // Commands
 // =============================================================================
 
+export async function stackInstallHostConfigsCommand(request: import('../infrastructure/host-config-transfer.js').HostConfigInstallRequest) {
+  const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
+  try {
+    const service = await client.service<IProjectRpcService>('OmnitronProject');
+    const receipt = await service.installReviewedHostConfigs(request);
+    if (!emitJson(receipt)) emitSuccess('Accepted the three reviewed host configurations for ' + receipt.ticket);
+  } catch (error) {
+    const { hostConfigCommandFailure } = await import('../infrastructure/host-config-transfer.js');
+    emitError(hostConfigCommandFailure(error)); process.exitCode = 1;
+  }
+  finally { await client.disconnect(); }
+}
+
 export async function stackSelectPlacementCommand(project: string, stack: string, options: {
   fromNode: string; release?: string; prepared?: string; restoreRegistration?: boolean; review?: string;
 }) {

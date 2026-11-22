@@ -17,7 +17,7 @@ for (const [name, unit, user, config, fields] of [
   ['monero-wallet-rpc', 'monero-wallet-rpc', 'monero-wallet', '/etc/monero/monero-wallet-rpc.conf',
     'daemon-login=${secret:daemon_user}:${secret:daemon_password}\nrpc-login=${secret:rpc_user}:${secret:rpc_password}'],
 ] as const) {
-  services[name] = { bareMetal: { variants: { mainnet: { systemdUnit: unit, user, configFile: config,
+  services[name] = { env: {}, ports: {}, bareMetal: { variants: { mainnet: { systemdUnit: unit, user, configFile: config,
     dataDir: name === 'bitcoin' ? '/var/lib/bitcoind' : '/var/lib/monero/.bitmonero',
     configTemplate: fields + '\n', unitTemplate: '[Service]\nUser=${user}\nExecStart=/usr/bin/fixture-service\n' } } } };
   overrides[name] = { networkMode: 'mainnet', provisioning: 'bareMetal',
@@ -37,7 +37,7 @@ describe('public review of passive host bindings', () => {
     expect(plan.bindings).toHaveLength(3);
     expect(JSON.stringify(plan)).not.toMatch(/fixture\.private|ExecStart|\$\{secret/);
     const rotated = structuredClone(overrides);
-    rotated.bitcoin!.secrets!.rpc_auth = { secret: 'another.fixture.ref' };
+    rotated['bitcoin']!.secrets!['rpc_auth'] = { secret: 'another.fixture.ref' };
     expect(reviewHostBindings(target, services, rotated).digest).not.toBe(plan.digest);
     expect(reviewHostBindings({ ...target, nodeId: 'second' }, services, overrides).digest).not.toBe(plan.digest);
     expect(reviewHostBindings({ ...target, manifestSha256: 'd'.repeat(64) }, services, overrides).digest).not.toBe(plan.digest);
@@ -45,15 +45,15 @@ describe('public review of passive host bindings', () => {
 
   it('refuses literals, unsupported credential directives and other privileged or ambiguous variants', () => {
     const literal = structuredClone(overrides);
-    literal.bitcoin!.secrets!.rpc_auth = 'fixture-literal';
+    literal['bitcoin']!.secrets!['rpc_auth'] = 'fixture-literal';
     expect(() => reviewHostBindings(target, services, literal)).toThrow(/declared vault reference/);
     const variant = structuredClone(services);
-    variant.bitcoin!.bareMetal!.variants!.mainnet!.configTemplate += 'rpcpassword=fixture\n';
+    variant['bitcoin']!.bareMetal!.variants!['mainnet']!.configTemplate += 'rpcpassword=fixture\n';
     expect(() => reviewHostBindings(target, variant, overrides)).toThrow(/admitted public credential/);
-    variant.bitcoin!.bareMetal!.variants!.mainnet!.configTemplate = services.bitcoin!.bareMetal!.variants!.mainnet!.configTemplate!;
-    variant.bitcoin!.bareMetal!.variants!.mainnet!.unitTemplate += 'ExecStartPre=+/usr/bin/fixture\n';
+    variant['bitcoin']!.bareMetal!.variants!['mainnet']!.configTemplate = services['bitcoin']!.bareMetal!.variants!['mainnet']!.configTemplate!;
+    variant['bitcoin']!.bareMetal!.variants!['mainnet']!.unitTemplate += 'ExecStartPre=+/usr/bin/fixture\n';
     expect(() => reviewHostBindings(target, variant, overrides)).toThrow(/unprivileged/);
-    expect(() => reviewHostBindings(target, services, { ...overrides, 'app/bitcoin': overrides.bitcoin! })).toThrow(/unambiguous/);
+    expect(() => reviewHostBindings(target, services, { ...overrides, 'app/bitcoin': overrides['bitcoin']! })).toThrow(/unambiguous/);
   });
 
   it('rejects caller-supplied secret selectors, credentials, public keys or templates before any project access', async () => {

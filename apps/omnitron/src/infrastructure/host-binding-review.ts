@@ -30,6 +30,8 @@ export interface HostBindingReview extends HostBindingSelection {
   bindings: Array<{ name: string; unit: string; user: string; config: string; chainDataDir: string | null; unitSha256: string; templateSha256: string }>;
   digest: string;
 }
+export type HostBindingSubject = HostBindingSelection & { commit: string; manifestSha256: string; sshFingerprint: string };
+export const HOST_BINDING_NAMES = Object.keys(HOST_BINDING_PROFILES) as HostBindingProfile[];
 
 const sha = (value: string) => createHash('sha256').update(value).digest('hex');
 const slots = (content: string) => [...content.matchAll(/\$\{secret:([\w-]+)\}/g)].map(match => match[1]!);
@@ -42,7 +44,7 @@ function reviewBinding(name: HostBindingProfile, requirement: IServiceRequiremen
   const symbolic: Record<string, string> = {};
   for (const field of secretNames) {
     const ref = effective.secrets[field];
-    if (!ref || typeof ref !== 'object' || typeof ref.secret !== 'string' || !/^[\w./:-]{1,256}$/.test(ref.secret))
+    if (!ref || typeof ref !== 'object' || Object.keys(ref).length !== 1 || typeof ref.secret !== 'string' || !/^[\w./:-]{1,256}$/.test(ref.secret))
       throw Error(`${name} requires a declared vault reference for ${field}`);
     refs.push([field, ref.secret]);
     symbolic[field] = '${secret:' + field + '}';
@@ -74,18 +76,25 @@ function reviewBinding(name: HostBindingProfile, requirement: IServiceRequiremen
       /\$\{|^\s*(?:(?:PermissionsStartOnly|Environment|EnvironmentFile)\s*=|Exec\w+\s*=\s*[-@:+!|]*[+!]|(?:Load|Set)Credential(?:Encrypted)?\s*=)/mi.test(unit) ||
       /^\s*Exec\w+\s*=.*(?:--?(?:rpcpassword|rpcauth|rpc-login|daemon-login)\b)/mi.test(unit))
     throw Error(`${name} unit does not match the reviewed unprivileged service identity`);
-  return { binding: { name, unit: profile.unit + '.service', user: profile.user, config: profile.config, chainDataDir: profile.chainDataDir,
+  return { template: withMarker(config), binding: { name, unit: profile.unit + '.service', user: profile.user, config: profile.config, chainDataDir: profile.chainDataDir,
     unitSha256: sha(withMarker(unit)), templateSha256: sha(withMarker(config)) }, refs };
 }
 
-export function reviewHostBindings(
-  target: HostBindingSelection & { commit: string; manifestSha256: string; sshFingerprint: string },
+export function hostBindingDigest(target: Omit<HostBindingReview, 'digest'>) {
+  return sha(JSON.stringify([1, target.project, target.stack, target.release, target.commit, target.manifestSha256,
+    target.nodeId, target.sshFingerprint, target.referencesSha256, target.bindings.map(b =>
+      [b.name, b.unit, b.user, b.config, b.chainDataDir, b.unitSha256, b.templateSha256])]));
+}
+
+/** Internal release material. Only the public review is an RPC result. */
+export function hostBindingMaterial(
+  target: HostBindingSubject,
   declared: Record<string, IServiceRequirement>, overrides: Record<string, IServiceOverride> = {},
-): HostBindingReview {
+) {
   if (![target.project, target.stack, target.nodeId].every(label => typeof label === 'string' && /^[\w][\w.-]{0,127}$/.test(label)) ||
       !/^[a-f0-9]{40}$/.test(target.commit) || !/^[a-f0-9]{64}$/.test(target.manifestSha256) ||
       !/^SHA256:[A-Za-z0-9+/]{43}$/.test(target.sshFingerprint)) throw Error('Incomplete registered release or recipient identity');
-  const rows = (Object.keys(HOST_BINDING_PROFILES) as HostBindingProfile[]).map(name => {
+  const rows = HOST_BINDING_NAMES.map(name => {
     if (!declared[name] || Object.keys(overrides).some(key => key.endsWith('/' + name)))
       throw Error(`One unambiguous deployed service binding is required for ${name}`);
     return reviewBinding(name, declared[name], overrides[name]);
@@ -93,7 +102,14 @@ export function reviewHostBindings(
   const bindings = rows.map(row => row.binding);
   // Include the source reference mapping in the review, without returning its vault key names.
   const referencesSha256 = sha(JSON.stringify(rows.map(row => row.refs)));
-  const digest = sha(JSON.stringify([1, target.project, target.stack, target.release, target.commit, target.manifestSha256,
-    target.nodeId, target.sshFingerprint, referencesSha256, bindings.map(b => [b.name, b.unit, b.user, b.config, b.chainDataDir, b.unitSha256, b.templateSha256])]));
-  return { protocol: 1, ...target, referencesSha256, bindings, digest };
+  const subject = { protocol: 1 as const, ...target, referencesSha256, bindings };
+  const review: HostBindingReview = { ...subject, digest: hostBindingDigest(subject) };
+  return { review, templates: Object.fromEntries(rows.map(row => [row.binding.name, row.template])),
+    references: Object.fromEntries(rows.map(row => [row.binding.name,
+      Object.fromEntries(row.refs.map(([slot, key]) => [slot, { secret: key }]))])) };
+}
+
+export function reviewHostBindings(target: HostBindingSubject, declared: Record<string, IServiceRequirement>,
+  overrides: Record<string, IServiceOverride> = {}): HostBindingReview {
+  return hostBindingMaterial(target, declared, overrides).review;
 }

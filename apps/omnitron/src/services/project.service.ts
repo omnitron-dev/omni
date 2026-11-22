@@ -4427,10 +4427,48 @@ export class ProjectService extends EventEmitter {
     return infrastructure;
   }
 
-  /**
-   * Validate that a stack's infrastructure config satisfies all app requirements.
-   * Returns issues if infrastructure is missing for apps that need it.
-   */
+  /** An independently authorized local installer accepts only bindings from the saved release and recipient. */
+  @RecoveryMutation()
+  async installReviewedHostConfigs(request: import('../infrastructure/host-config-transfer.js').HostConfigInstallRequest) {
+    const { checkRequest } = await import('../infrastructure/host-config-transfer.js');
+    checkRequest(request);
+    const { project, stack, release, prepared, nodeId, ticket, review } = request;
+    const { receipt, opened, admitted, target: recipient } = await this.preparedRemoteRelease(project, stack, release, prepared);
+    const currentRecipient = () => isDeepStrictEqual(this.releaseRecipient?.(nodeId), recipient);
+    if (!currentRecipient() || receipt.nodeId !== nodeId || recipient.fingerprint !== receipt.sshFingerprint || !admitted.remoteDefinitions)
+      throw Error('Prepared release and registered recipient do not match');
+    const declared = await this.collectDeclaredServices(project, opened.stackConfig, opened.config, { definitions: admitted.remoteDefinitions });
+    const { hostBindingMaterial } = await import('../infrastructure/host-binding-review.js');
+    const material = hostBindingMaterial({ project, stack, release, nodeId, commit: receipt.commit, manifestSha256: receipt.manifestSha256,
+      sshFingerprint: recipient.fingerprint }, declared, opened.stackConfig.serviceOverrides);
+    if (material.review.digest !== review) throw Error('The reviewed host configuration has changed');
+    const ssh = await this.resolveNodeCredentials?.(recipient.host, recipient.port, nodeId);
+    if (!ssh || ssh.username !== 'root' || ssh.expectedHostFingerprint !== recipient.fingerprint)
+      throw Error('A registered administrative SSH route with the approved host key is required');
+    const { meshManagementIdentity } = await import('../cluster/mesh-link.js');
+    const identity = meshManagementIdentity(nodeId, ssh);
+    if (identity !== recipient.managementIdentity) throw Error('The saved administrative route changed');
+    const call = this.getSlaveConnector().pinnedService(recipient.host, recipient.port, nodeId, identity, 'OmnitronDaemon');
+    const recheck = async () => {
+      const current = await this.preparedRemoteRelease(project, stack, release, prepared);
+      if (current.receipt.digest !== receipt.digest || !currentRecipient())
+        throw Error('The saved source or recipient changed');
+      await call('ping', undefined);
+      if (!currentRecipient()) throw Error('The registered recipient changed during verification');
+    };
+    await recheck();
+    const { connectHostConfigInstaller, installOverHostConfigChannel } = await import('../infrastructure/host-config-delivery.js');
+    const deadline = AbortSignal.timeout(600000);
+    const channel = await connectHostConfigInstaller(ssh, ticket, deadline);
+    deadline.addEventListener('abort', channel.close, { once: true });
+    try {
+      return await installOverHostConfigChannel({ nodeId, ticket, review }, material, channel.stream, recheck, async key => {
+        if (!this.secrets) throw Error('The controller vault is unavailable');
+        return this.secrets.get(key);
+      });
+    } finally { deadline.removeEventListener('abort', channel.close); channel.close(); }
+  }
+
   /** Public digest of the admitted release's symbolic bindings on one pinned recipient. */
   async reviewStackHostBindings(selection: import('../infrastructure/host-binding-review.js').HostBindingSelection) {
     const { project, stack: stackName, release: requested, nodeId } = selection;

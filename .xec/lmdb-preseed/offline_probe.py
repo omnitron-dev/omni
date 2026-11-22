@@ -3,7 +3,6 @@ import json
 import os
 from pathlib import Path
 import signal
-import socket
 import subprocess
 import sys
 import time
@@ -38,11 +37,18 @@ def check_chain(call, database):
             'nettype': info['nettype'], 'offline': True, 'peers': 0}
 
 
-def probe(binary, directory, database, uid, gid):
+def check_isolation(uid, gid):
     status = dict(line.split(':', 1) for line in Path('/proc/self/status').read_text().splitlines() if ':' in line)
+    # The service denies AF_NETLINK. procfs reports this process's own network namespace.
+    interfaces = {line.partition(':')[0].strip()
+                  for line in Path('/proc/self/net/dev').read_text().splitlines()[2:]}
     if (os.geteuid() != uid or uid == 0 or os.getegid() != gid or int(status['CapEff'].strip(), 16) != 0 or
-            status['NoNewPrivs'].strip() != '1' or {name for _, name in socket.if_nameindex()} != {'lo'}):
+            status['NoNewPrivs'].strip() != '1' or interfaces != {'lo'}):
         raise ValueError('The official daemon requires an unprivileged, loopback-only service.')
+
+
+def probe(binary, directory, database, uid, gid):
+    check_isolation(uid, gid)
     root = Path(directory)
     child = subprocess.Popen([binary, '--offline', '--non-interactive', '--no-zmq', '--no-igd',
                               '--disable-dns-checkpoints', '--check-updates', 'disabled', '--data-dir', directory,
@@ -79,4 +85,7 @@ def probe(binary, directory, database, uid, gid):
 
 
 if __name__ == '__main__':
-    print(json.dumps(probe(sys.argv[1], sys.argv[2], json.loads(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5]))))
+    try:
+        print(json.dumps(probe(sys.argv[1], sys.argv[2], json.loads(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5]))))
+    except OSError as error:
+        sys.exit('Native service OS error (errno ' + str(error.errno) + ').')

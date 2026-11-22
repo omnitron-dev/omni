@@ -1,6 +1,22 @@
 import unittest
+from unittest.mock import patch
 
-from offline_probe import check_chain
+from offline_probe import check_chain, check_isolation
+
+
+class ServiceIsolation(unittest.TestCase):
+    def test_only_loopback_is_accepted_with_network_socket_creation_restricted(self):
+        for interfaces in (['lo'], [], ['lo', 'eth0']):
+            stats = 'header\nheader\n' + ''.join('  ' + name + ': 0 0 0\n' for name in interfaces)
+            with self.subTest(interfaces=interfaces), patch('offline_probe.os.geteuid', return_value=988), \
+                    patch('offline_probe.os.getegid', return_value=980), \
+                    patch('offline_probe.Path.read_text', side_effect=['CapEff:\t0\nNoNewPrivs:\t1\n', stats]), \
+                    patch('socket.if_nameindex', side_effect=OSError(97, 'Address family not supported')):
+                if interfaces == ['lo']:
+                    check_isolation(988, 980)
+                else:
+                    with self.assertRaisesRegex(ValueError, 'loopback-only'):
+                        check_isolation(988, 980)
 
 
 class NativeHeaders(unittest.TestCase):

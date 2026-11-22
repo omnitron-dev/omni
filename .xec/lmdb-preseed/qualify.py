@@ -62,8 +62,14 @@ def isolated(op, release, data, database):
         result = subprocess.run(command, capture_output=True, text=True, stdin=subprocess.DEVNULL)
         if result.returncode:
             # Preserve the useful controlled diagnostic without printing raw daemon logs.
-            detail = next((line[12:] for line in reversed(result.stderr.splitlines())
-                           if line.startswith('ValueError: ') and len(line) < 145), '')
+            detail = ''
+            for line in reversed(result.stderr.splitlines()):
+                if line.startswith('ValueError: ') and len(line) < 145:
+                    detail = line[12:]
+                    break
+                if re.fullmatch(r'Native service OS error \(errno (?:\d+|None)\)\.', line):
+                    detail = line
+                    break
             raise ch.Refusal('Isolated monerod qualification failed.' + (' ' + detail if detail else ''))
         observed = json.loads(result.stdout)
         ch.require(observed.get('cleanShutdown') is True and observed.get('tip') == database['tip'] and

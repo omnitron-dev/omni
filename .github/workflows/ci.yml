@@ -134,6 +134,13 @@ jobs:
           npx --yes --package=node@22.12.0 -- node scripts/ci/check-runtime-consumer.mjs "$RUNNER_TEMP/omnitron-npm-consumer" --expect-unsupported
       - name: Rehearse package publication against a loopback registry
         run: node --test scripts/ci/release.test.mjs scripts/ci/xec-qualification.test.mjs scripts/ci/xec-update.test.mjs scripts/ci/xec-sdk-watch.test.js apps/omnitron/test/runtime/runtime-update.test.mjs apps/omnitron/test/runtime/local-stack-inventory.test.mjs apps/omnitron/test/runtime/runtime-update-cli.test.mjs scripts/ci/xec-native-delivery.test.mjs scripts/ci/package-imports.test.mjs scripts/ci/dependency-audit.test.js
+      - name: Verify registered node transfers and native chain observations
+        run: |
+          node --import tsx --test .xec/*/export.test.js
+          python3 -B .xec/block-preseed/endpoint_test.py
+          python3 -B .xec/bitcoin-cold/scope_test.py
+          python3 -B .xec/lmdb-preseed/stream_test.py
+          python3 -B .xec/lmdb-preseed/offline_probe_test.py
       - name: Console publication, recovery and runtime fixture cleanup
         run: >-
           node --test

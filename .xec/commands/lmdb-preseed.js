@@ -109,6 +109,28 @@ export async function preparedDataDefinition(spec, offer, seal, reserveBytes) {
   };
 }
 
+export async function daemonCheckDefinition(spec, release) {
+  validate(spec);
+  if (!release || Object.keys(release).sort().join() !== 'binary,gid,sha256,uid,user' ||
+      typeof release.binary !== 'string' || !/^\/opt\/omnitron\/binaries\/monero\/\d+(?:\.\d+){2,3}\/monerod$/.test(release.binary) ||
+      !hash(release.sha256) || typeof release.user !== 'string' || !/^[a-z_][a-z0-9_-]{0,30}$/.test(release.user) ||
+      !range(release.uid, 1, 0xfffffffe) || !range(release.gid, 1, 0xfffffffe))
+    throw Error('Use a pinned monerod release and the non-root service user with its numeric UID and GID.');
+  const probe = await fs.readFile(new URL('../lmdb-preseed/offline_probe.py', import.meta.url), 'utf8');
+  const source = embedChannel(await fs.readFile(shared)) + 'OFFLINE_PROBE = ' + JSON.stringify(probe) + '\n' +
+    await fs.readFile(new URL('../lmdb-preseed/qualify.py', import.meta.url), 'utf8');
+  const run = pythonCommand(source)(...[spec, release].map(value => b64(JSON.stringify(value))));
+  if (Buffer.byteLength(run) > 24 * 1024) throw Error('Offline qualification exceeds the management command size.');
+  return {
+    name: 'private-lmdb-preseed-' + spec.id + '-check-daemon',
+    description: 'Open the prepared database with the official daemon in a loopback-only Linux service.',
+    triggers: [{ type: 'manual', config: {} }],
+    steps: [registeredPinsStep(spec), {
+      name: 'check-daemon', nodeId: spec.receiverNode, dependsOn: ['registered-pins'], retries: 0, timeout: 600000, run,
+    }],
+  };
+}
+
 async function readJson(name) {
   const raw = await fs.readFile(name, 'utf8');
   try { return JSON.parse(raw); } catch { throw Error('Invalid snapshot input JSON.'); }
@@ -123,6 +145,9 @@ export function command(program) {
   const op = program.command('lmdb-preseed').description('Stage a private compact Monero LMDB snapshot between registered Linux nodes');
   op.command('build-helper <upstream> <output>').requiredOption('--machine <arch>', 'Linux glibc architecture, x86_64 or aarch64')
     .action(async (upstream, output, options) => print(await buildHelper(upstream, output, options.machine)));
+  op.command('check-daemon <spec>').description('Check the prepared chain with the pinned daemon offline')
+    .requiredOption('--release <file>', 'Installed binary, SHA-256 and declared service identity')
+    .action(async (file, options) => print(await daemonCheckDefinition(await readJson(file), await readJson(options.release))));
   op.command('prepare-data <spec>').description('Prepare an independent data directory beside the sealed snapshot')
     .requiredOption('--offer <file>', 'Original public source offer')
     .requiredOption('--seal <file>', 'Successful receiver seal JSON')

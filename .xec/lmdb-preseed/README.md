@@ -77,7 +77,15 @@ pnpm exec xec lmdb-preseed prepare-data spec.json --offer source-offer.json \
 
 Submit the definition through the same Pipeline lifecycle. The receiver checks its original disk and seal receipts, reserves the named candidate, and copies only `data.mdb`. A copy-on-write clone is used where supported. Capacity checks allow for a full copy and the requested free-space reserve. Before publishing the directory, the receiver reads back its SHA-256 and checks that it has a separate inode. A retried run can finish a prepared rename and returns the original receipt for an intact candidate.
 
-The receipt's `dataDir` contains `lmdb/data.mdb` in the layout expected by `monerod`. Its root-only permissions isolate the candidate until the reviewed service transition. Use that path when configuring the stack's existing `bareMetal.adopt.from` on the same filesystem. The operator can verify the official daemon in isolation and select the point at which it may connect to peers. The original sealed snapshot remains available for recovery.
+The receipt's `dataDir` contains `lmdb/data.mdb` in the layout expected by `monerod`. Before connecting it to peers, verify the release that will serve it.
+
+```sh
+pnpm exec xec lmdb-preseed check-daemon spec.json --release monerod-release.json > check-daemon-pipeline.json
+```
+
+Supply the installed `binary` under `/opt/omnitron/binaries/monero/<version>/`, its verified `sha256`, and the service account's `user`, numeric `uid` and `gid`. The receiver binds the independent database file into a transient systemd service. The daemon runs as the declared non-login account with a private loopback network. Its lockfile, peer state and logs live in a temporary directory. The check reads the mainnet genesis, original checkpoint and snapshot tip through the daemon's own RPC and waits for a clean shutdown. The receipt records the daemon SHA-256, height and headers. Repeating the check on the same verified file returns that receipt. [Monero daemon options](https://docs.getmonero.org/interacting/monerod-reference/) · [Node RPC](https://docs.getmonero.org/rpc-library/monerod-rpc/)
+
+Use the verified `dataDir` as the stack's `bareMetal.adopt.from` on the same filesystem. The original sealed snapshot remains available for recovery.
 
 ## Interruptions, credentials and retries
 
@@ -97,6 +105,7 @@ Use the reviewed CLI lifecycle above for either definition. `revoke` disables ne
 ```sh
 node --import tsx --test .xec/lmdb-preseed/export.test.js .xec/block-preseed/export.test.js
 python3 -B .xec/lmdb-preseed/stream_test.py
+python3 -B .xec/lmdb-preseed/offline_probe_test.py
 python3 -B .xec/block-preseed/endpoint_test.py
 ```
 

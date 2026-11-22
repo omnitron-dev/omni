@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import test from 'node:test';
 import { checkPipelineDefinition } from '../../apps/omnitron/src/services/pipeline-definition.ts';
-import { lmdbDefinition, preparedDataDefinition } from '../commands/lmdb-preseed.js';
+import { daemonCheckDefinition, lmdbDefinition, preparedDataDefinition } from '../commands/lmdb-preseed.js';
 import { sha } from './build.js';
 
 const elf = randomBytes(70 * 1024);
@@ -19,6 +19,17 @@ const offer = { protocol: 1, id: spec.id, spec: 'a'.repeat(64), publicKey: 'ssh-
   manifest: 'b'.repeat(64), issued: 100, expires: 100 + 60 * spec.ttlMinutes, format: spec.payload,
   sourceFreeFloorBytes: 8 * 1024 ** 3, pollSeconds: 5, anchor: { nettype: 'mainnet', height: 8, checkpointHeight: 1,
     genesis: 'c'.repeat(64), tip: 'd'.repeat(64), checkpointHash: 'e'.repeat(64) } };
+
+test('offline native verification is bound to an installed daemon, service account and receiving node', async () => {
+  const release = { binary: '/opt/omnitron/binaries/monero/0.18.5.4/monerod', sha256: '7'.repeat(64), user: 'monero', uid: 925, gid: 926 };
+  const graph = await daemonCheckDefinition(spec, release);
+  await checkPipelineDefinition(graph);
+  assert.equal(graph.steps[1].nodeId, spec.receiverNode);
+  assert.equal(graph.steps[1].retries, 0);
+  assert(Buffer.byteLength(graph.steps[1].run) <= 24 * 1024);
+  for (const change of [{ uid: 0 }, { gid: 0 }, { binary: '/tmp/monerod' }, { sha256: 'missing' }])
+    await assert.rejects(daemonCheckDefinition(spec, { ...release, ...change }), /pinned monerod/);
+});
 
 test('preparing an independent database uses the sealed bytes on the registered receiver', async () => {
   const seal = { sealed: true, stage: spec.stageParent + '/block-preseed-' + spec.id, manifest: offer.manifest,

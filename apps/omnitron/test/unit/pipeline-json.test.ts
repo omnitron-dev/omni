@@ -6,7 +6,8 @@ const { service } = vi.hoisted(() => ({ service: { prepareRun: vi.fn(), resumeRu
 vi.mock('node:fs/promises', async (importOriginal) => ({
   ...await importOriginal<typeof import('node:fs/promises')>(), readFile: vi.fn(),
 }));
-vi.mock('../../src/daemon/daemon-client.js', () => ({
+vi.mock('../../src/daemon/daemon-client.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../src/daemon/daemon-client.js')>(),
   createDaemonClient: () => ({ service: async () => service, disconnect: async () => {} }),
 }));
 import { pipelineCheckCommand, pipelineListCommand, pipelineStatusCommand, pipelineSaveCommand, pipelineRunCommand, pipelineStartCommand, pipelineReconcileCommand } from '../../src/commands/pipeline.js';
@@ -90,6 +91,30 @@ describe('pipeline CLI uses the shared machine output protocol', () => {
     expect(service.getPipeline).not.toHaveBeenCalled();
     expect(service.listPipelines).not.toHaveBeenCalled();
     expect(service.startRun).not.toHaveBeenCalled();
+  });
+  it.each([true, false])('recovers a lost preparation receipt with the same private parameters (prepare only = %s)', async prepare => {
+    const id = '990fed79-57f3-4af5-857c-340dd29c8937';
+    const expectedRevision = 'a'.repeat(64);
+    const receipt = { id: 'ce9658f5-6225-48b5-a916-b7bb2a01ad70', status: 'awaiting-review', review: { digest: 'b'.repeat(64) } };
+    const params = { branch: 'main' };
+    vi.mocked(readFile).mockResolvedValueOnce(JSON.stringify(params));
+    service.prepareRun.mockRejectedValueOnce(Object.assign(Error('Timed out'), { code: 408 })).mockResolvedValueOnce(receipt);
+    service.startRun.mockResolvedValueOnce({ ...receipt, status: 'running' });
+    const output = await capture(() => pipelineRunCommand(id, { runId: receipt.id, expectedRevision, paramsFile: 'params.json', prepare }));
+    const request = { id, expectedRevision, runId: receipt.id, params };
+    expect(service.prepareRun.mock.calls).toEqual([[request], [request]]);
+    expect(service.startRun.mock.calls).toEqual(prepare ? [] : [[{ runId: receipt.id, expectedDigest: receipt.review.digest, params }]]);
+    expect(JSON.parse(output.out).data.status).toBe(prepare ? 'awaiting-review' : 'running');
+  });
+  it('reports a second lost preparation under the original run ID', async () => {
+    const id = '990fed79-57f3-4af5-857c-340dd29c8937';
+    const runId = 'ce9658f5-6225-48b5-a916-b7bb2a01ad70';
+    service.prepareRun.mockRejectedValue(Object.assign(Error('Socket closed'), { code: 'ECONNRESET' }));
+    const output = await capture(() => pipelineRunCommand(id, { runId, expectedRevision: 'a'.repeat(64) }));
+    expect(service.prepareRun).toHaveBeenCalledTimes(2);
+    expect(service.startRun).not.toHaveBeenCalled();
+    expect(output.exitCode).toBe(1);
+    expect(JSON.parse(output.err).error).toContain(runId);
   });
   it.each([
     ['nightly', 'a'.repeat(64)],

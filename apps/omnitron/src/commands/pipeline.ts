@@ -8,7 +8,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { log } from '@xec-sh/kit';
 import { readFile } from 'node:fs/promises';
 import type { IOmnitronPipelinesService } from '../shared/dto/services.js';
-import type { PipelineDef } from '../shared/dto/pipelines.js';
+import type { PipelineDef, PipelineRun } from '../shared/dto/pipelines.js';
 import { emitJson, emitError } from './output.js';
 
 /**
@@ -106,8 +106,19 @@ export async function pipelineRunCommand(id: string, options: { paramsFile?: str
         expectedRevision: target.revision,
         ...(params !== undefined ? { params } : {}),
       };
-      const prepared = await svc.prepareRun(request);
-      return options.prepare ? prepared : svc.startRun({ runId, expectedDigest: prepared.review!.digest, params });
+      const finish = (service: IOmnitronPipelinesService, prepared: PipelineRun) => options.prepare
+        ? prepared : service.startRun({ runId, expectedDigest: prepared.review!.digest, params });
+      let prepared: PipelineRun;
+      try {
+        prepared = await svc.prepareRun(request);
+      } catch (error) {
+        const { isRequestTimeout } = await import('../daemon/daemon-client.js');
+        const { isLostRpcAcknowledgement } = await import('../shared/dto/services.js');
+        if (!isRequestTimeout(error) && !isLostRpcAcknowledgement(error)) throw error;
+        // The server matches the original actor, revision and private parameters before returning its receipt.
+        return withPipelines(async reconnected => finish(reconnected, await reconnected.prepareRun(request)));
+      }
+      return finish(svc, prepared);
     });
     if (['failed', 'interrupted', 'cancelled'].includes(run.status)) process.exitCode = 1;
     if (!emitJson(run)) log.success(`Pipeline run ${run.id}: ${run.status}${run.review ? ` · review ${run.review.digest}` : ''}`);

@@ -1,20 +1,5 @@
 /**
- * `omnitron tor [project] [stack]` — inspect Tor hidden service onion addresses.
- *
- * Reads `/var/lib/tor/<name>/hostname` from a running tor container via
- * `docker exec`, and lists each hidden service with its .onion address.
- * Useful since onions are not knowable until tor has generated the keys
- * (first start) and never appear in logs unless tor is run with debug
- * verbosity.
- *
- * Whose onion, and on which machine, is part of the answer. The command took
- * the first container on THIS machine whose name ended in `-tor` and printed
- * its onions under a bare «Tor Hidden Services» — measured 2026-09-23, the
- * dev stack's (`sample-dev-tor`: portal `ohtohqkc5pknagnl…onion`), which is not
- * the test portal (`6me2nawd…c7cid.onion`, on 37.27.130.185), and nothing on
- * screen said which it was; the container was named only under --json.
- *
- * Supports `--json` for scripting.
+ * Inspect public onion hostnames and the physical Tor containers that own them.
  */
 
 import os from 'node:os';
@@ -37,14 +22,14 @@ interface OnionEntry {
  * service resolver gives it (e.g. `sample-dev-tor`, `omnitron-tor`).
  */
 function isTor(c: ContainerState): boolean {
-  return c.service === 'tor' || /(^|-)tor$/i.test(c.name);
+  return c.service ? c.service === 'tor' : /(^|-)tor$/i.test(c.name);
 }
 
 /** Whether a container belongs to the stack asked about: labels first, name second. */
 function belongsTo(c: ContainerState, project: string | undefined, stack: string | undefined): boolean {
   if (!project) return true;
   if (c.project || c.stack) return c.project === project && (!stack || c.stack === stack);
-  return c.name.startsWith(stack ? `${project}-${stack}-` : `${project}-`);
+  return stack ? c.name === `${project}-${stack}-tor` : c.name.startsWith(`${project}-`);
 }
 
 /** `project/stack` as the container's labels say, or its name when they do not. */
@@ -53,44 +38,42 @@ function stackOf(c: ContainerState): string {
 }
 
 /**
- * List the directories under /var/lib/tor that look like hidden services
- * (i.e. contain a `hostname` file) and read each hostname.
+ * Use the inspected Docker ID throughout, even if the container name is reused.
  */
 async function readOnions(container: string): Promise<OnionEntry[]> {
-  // `find` (BusyBox-compatible) lists hidden-service hostname files — more
-  // portable across container shells than glob expansion in a quoted
-  // `sh -c '...'`, which has shown up as empty output via some runtime
-  // adapters. We avoid `-printf` (not in BusyBox find).
-  let raw: string;
-  try {
-    raw = await execInContainer(container, [
-      'find',
-      '/var/lib/tor',
-      '-mindepth', '2',
-      '-maxdepth', '2',
-      '-name', 'hostname',
-      '-type', 'f',
-    ]);
-  } catch {
-    return [];
-  }
-
-  const paths = raw.split('\n').map((s) => s.trim()).filter(Boolean);
+  const raw = await execInContainer(container, [
+    'find', '/var/lib/tor', '-mindepth', '2', '-maxdepth', '2', '-name', 'hostname', '-type', 'f', '-print0',
+  ]);
   const entries: OnionEntry[] = [];
-  for (const p of paths) {
-    // Service name is the parent dir of hostname.
-    const dir = p.replace(/\/hostname$/, '');
-    const service = dir.split('/').pop() ?? '';
+  for (const source of raw.split('\0').filter(Boolean).sort()) {
+    const service = /^\/var\/lib\/tor\/([^/]+)\/hostname$/.exec(source)?.[1];
+    if (!service || service === '.' || service === '..') throw new Error('Invalid Tor hostname location');
     let onion: string | null = null;
     try {
-      const content = await execInContainer(container, ['cat', p]);
-      onion = content.trim() || null;
+      const content = (await execInContainer(container, ['head', '-c', '64', source])).trim();
+      if (/^[a-z2-7]{56}\.onion$/.test(content)) onion = content;
     } catch {
-      // hostname unreadable (permissions, race) — leave null
+      // Report the affected service even when its hostname disappeared after discovery.
     }
-    entries.push({ service, onion, source: p });
+    entries.push({ service, onion, source });
   }
   return entries;
+}
+
+async function inspectTor(c: ContainerState) {
+  const identity = { container: c.name, containerId: c.containerId ?? null, status: c.status, project: c.project ?? null, stack: c.stack ?? null };
+  if (c.containerId && (c.status === 'exited' || c.status === 'dead' || c.status === 'created')) {
+    return { ...identity, observation: 'not-running', services: [] };
+  }
+  if (c.containerId && c.status === 'running') {
+    try {
+      const services = await readOnions(c.containerId);
+      return { ...identity, observation: services.some(entry => !entry.onion) ? 'unavailable' : 'read', services };
+    } catch {
+      // Discovery failed for this physical container. Other stacks can still be inspected.
+    }
+  }
+  return { ...identity, observation: 'unavailable', services: [] };
 }
 
 /**
@@ -120,13 +103,10 @@ async function explainAbsence(project: string, stack: string): Promise<void> {
     }
     const hosts = info.nodes.map((n) => n.host);
     const where = hosts.length > 0 ? hosts.join(', ') : 'its node';
-    const message =
-      `${project}/${stack} is a ${info.type} stack: its tor container ${container} runs on ${where}, not on this machine. ` +
-      'No daemon RPC reads an onion address from a node, so none is printed here.';
-    if (emitError(message, { project, stack, container, hosts })) return;
-    for (const host of hosts) {
-      log.info(`  On the node: ssh <user>@${host} docker exec ${container} sh -c 'cat /var/lib/tor/*/hostname'`);
-    }
+    emitError(
+      `Tor container ${container} is declared for ${project}/${stack} on ${where}. Run 'omnitron tor ${project} ${stack}' there to inspect it.`,
+      { project, stack, container, hosts },
+    );
   } catch (err) {
     emitError(`No tor container for ${project}/${stack} on this machine, and the daemon could not say where it runs: ${(err as Error).message}`);
   } finally {
@@ -135,8 +115,14 @@ async function explainAbsence(project: string, stack: string): Promise<void> {
 }
 
 export async function torCommand(project?: string, stack?: string): Promise<void> {
-  const here = (await listManagedContainers()).filter(isTor);
-  const chosen = here.filter((c) => belongsTo(c, project, stack));
+  let chosen: ContainerState[];
+  try {
+    chosen = (await listManagedContainers({ orThrow: true })).filter(c => isTor(c) && belongsTo(c, project, stack));
+  } catch {
+    process.exitCode = 1;
+    emitError('Could not inspect managed containers on this machine.');
+    return;
+  }
 
   if (chosen.length === 0) {
     process.exitCode = 1;
@@ -159,15 +145,12 @@ export async function torCommand(project?: string, stack?: string): Promise<void
   }
 
   const machine = os.hostname();
-  const found = [];
-  for (const c of chosen) {
-    found.push({ container: c.name, project: c.project ?? null, stack: c.stack ?? null, services: await readOnions(c.name) });
-  }
-
-  // One container keeps the old top-level `container` and `services`, so a
-  // script written against them still reads them; `containers` holds every
-  // one, each with its stack, and `machine` says whose disk they are on.
-  if (emitJson({ machine: 'this machine', hostname: machine, containers: found, ...(found.length === 1 ? found[0] : {}) })) {
+  const found = await Promise.all(chosen.map(inspectTor));
+  const result = { machine: 'this machine', hostname: machine, containers: found, ...(found.length === 1 ? found[0] : {}) };
+  if (found.some(c => c.observation === 'unavailable')) {
+    process.exitCode = 1;
+    if (emitError('Could not read all public Tor hostnames.', { data: result })) return;
+  } else if (emitJson(result)) {
     return;
   }
 
@@ -175,16 +158,19 @@ export async function torCommand(project?: string, stack?: string): Promise<void
     // Short enough for the box border, which cuts a long title: the host
     // name goes in the body.
     const title = `Tor · stack ${stackOf(chosen[i]!)} · ${c.container} · this machine`;
+    if (c.observation === 'not-running') {
+      log.info(`${title} (${machine}): ${c.status}. Hostnames were not read.`);
+      continue;
+    }
     if (c.services.length === 0) {
-      log.warn(`${title} (${machine}): running, but no hidden services have been published yet.`);
-      log.info('Tor needs ~30-90s after first start to generate keys and publish HSes.');
-      log.info(`Try 'docker logs ${c.container}' to see bootstrap progress.`);
+      if (c.observation === 'read') log.info(`${title} (${machine}): running. No public hostname files found.`);
+      else log.warn(`${title} (${machine}): ${c.status}, public hostnames unavailable.`);
       continue;
     }
     const lines: string[] = [prism.dim(`on ${machine}`)];
     for (const e of c.services) {
       if (!e.onion) {
-        lines.push(`${prism.yellow('?')} ${prism.bold(e.service)}: ${prism.dim('not yet generated')}`);
+        lines.push(`${prism.yellow('?')} ${prism.bold(e.service)}: ${prism.dim('public hostname unavailable')}`);
         continue;
       }
       lines.push(`${prism.green('●')} ${prism.bold(e.service)}: ${prism.cyan(e.onion)}`);

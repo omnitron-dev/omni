@@ -1641,6 +1641,20 @@ export class OmnitronDaemon {
     const { configuredFileRoots } = await import('../files/file-config.js');
     const { FileNodeRpcService } = await import('../files/file-node.rpc-service.js');
     const fileState = await container.resolveAsync<import('./daemon-state-store.service.js').DaemonStateStore>(DAEMON_STATE_STORE_TOKEN);
+    const { RetainedBindings } = await import('../services/retained-bindings.js');
+    const { RetainedBindingsRpcService } = await import('../services/retained-bindings.rpc-service.js');
+    await this.app.netron.peer.exposeService(new RetainedBindingsRpcService(new RetainedBindings(
+      path.dirname(path.dirname(fileState.dbPath)), fileState, secretsService, async () => {
+        const execution = this.execution;
+        const check = () => {
+          if (!this.backendAdmitted || this.isShuttingDown || this.preparingBackend || this.handingOffBackend || this.execution !== execution)
+            throw Error('The daemon is transferring authority');
+        };
+        check();
+        if (execution) await execution.controlledOwnerSnapshot();
+        check();
+      },
+    )));
     const fileNode = this.fileNode = new FileNode(configuredFileRoots(dc.files), fileState);
     await this.app.netron.peer.exposeService(new FileNodeRpcService(fileNode));
 

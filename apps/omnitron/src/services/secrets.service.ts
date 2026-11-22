@@ -37,6 +37,7 @@ import {
 } from '../shared/tokens.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import { DEFAULT_SECRETS_PASSPHRASE } from '../config/defaults.js';
+import { bindingReference, safeBinding, type BindingOrigin, type BindingRole } from '../infrastructure/retained-binding-ticket.js';
 
 const scryptAsync = promisify(scrypt);
 
@@ -158,10 +159,24 @@ export class SecretsService {
   // Public API
   // ===========================================================================
 
-  /**
-   * Get a secret by key.
-   * Returns null if the key doesn't exist or the secrets file is missing.
-   */
+  /** Internal fixed profile for the admitted retained-infrastructure provider. No key selector is accepted. */
+  async withRetainedBindings<T>(origin: BindingOrigin, project: string, stack: string,
+    consume: (selected: Partial<Record<BindingRole, string>>) => Promise<T>): Promise<T> {
+    if (![project, stack].every(s => /^[a-z][a-z0-9-]{0,62}$/.test(s)) || !['source', 'master'].includes(origin))
+      throw Error('Invalid retained binding scope');
+    const roles: BindingRole[] = origin === 'source' ? ['postgres', 'minio'] : ['nominatim'];
+    const selected = await this.access(async () => {
+      const stored = await this.load(), result: Partial<Record<BindingRole, string>> = {};
+      for (const role of roles) {
+        const key = bindingReference(role, project, stack);
+        if (Object.hasOwn(stored, key) && safeBinding(stored[key])) result[role] = stored[key];
+      }
+      return result;
+    });
+    return consume(selected);
+  }
+
+  /** Get a secret by key, or null if it is absent. */
   async get(key: string): Promise<string | null> {
     return this.access(async () => {
       const secrets = await this.load();

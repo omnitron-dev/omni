@@ -115,7 +115,12 @@ export function containerSpecHash(config: ResolvedContainer): string {
   return specificationHash(config, 2);
 }
 
-/** Schema 1 omitted enforced resources. Its use is restricted to verified metadata migration. */
+/** Read-only comparison with a historical creation receipt. New containers always use the current schema. */
+export function legacyContainerSpecHash(config: ResolvedContainer): string {
+  return specificationHash(config, 1);
+}
+
+/** Schema 1 omitted enforced resources. */
 function specificationHash(config: ResolvedContainer, schema: 1 | 2): string {
   const resources = containerResources(config);
   const sortedEnv = Object.keys(config.environment)
@@ -171,7 +176,7 @@ export function containerSpecHashMatches(config: ResolvedContainer, actual: Cont
   if (actual.specHash === current && schema !== '1') return true;
   return Boolean(migration && migration.fromSchema === 1 && migration.toSchema === 2 && schema !== '2' &&
     migration.containerId === actual.containerId && /^[a-f0-9]{64}$/.test(migration.containerId) &&
-    migration.fromHash === actual.specHash && migration.fromHash === specificationHash(config, 1) &&
+    migration.fromHash === actual.specHash && migration.fromHash === legacyContainerSpecHash(config) &&
     migration.toHash === current && containerResourcesMatch(config, actual) &&
     Object.entries(config.labels).every(([key, value]) => actual.labels?.[key] === value));
 }
@@ -179,7 +184,7 @@ export function containerSpecHashMatches(config: ResolvedContainer, actual: Cont
 /** A legacy spec binds the static settings and omits the native resource limits. */
 export function hasLegacyContainerSpec(config: ResolvedContainer, actual: ContainerState): boolean {
   const schema = actual.labels?.[SPEC_HASH_SCHEMA_LABEL];
-  return (schema === undefined || schema === '1') && actual.specHash === specificationHash(config, 1) &&
+  return (schema === undefined || schema === '1') && actual.specHash === legacyContainerSpecHash(config) &&
     Boolean(actual.containerId && /^[a-f0-9]{64}$/.test(actual.containerId)) &&
     Object.entries(config.labels).every(([key, value]) => actual.labels?.[key] === value);
 }

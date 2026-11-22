@@ -10,8 +10,10 @@
 import { OutputCommand, prepareCommandOutput } from './output-command.js';
 import { CLI_VERSION } from '../config/defaults.js';
 import { exitAfterOutput } from './exit-after-output.js';
+import { registerRetainedBindings } from '../commands/retained-bindings.js';
 
 const program = new OutputCommand();
+registerRetainedBindings(program);
 let foregroundDaemonRunning = false;
 
 program.command('migrate [action]')

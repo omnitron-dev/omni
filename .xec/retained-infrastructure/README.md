@@ -8,6 +8,8 @@ Use the accepted project release and its original infrastructure resolver to pro
 
 Represent each private environment field with `{"binding":"registered-reference"}`. An authorized provider for those exact references supplies a pipe or socket already open on the source. Its JSON envelope has `protocol`, `project`, `stack`, `declarationSha256`, and a `bindings` object. The header must match the independently selected file. The provider owns retrieval, scope admission and any authorized cross-host delivery. The publisher never opens a vault, reads container commands or environment, or requests different credentials after a refusal.
 
+The three-field PostgreSQL, MinIO and Nominatim profile has a native two-owner provider. See [Historical binding approval](retained-bindings.md) for enrollment, match receipts and separate source-consumer authorization.
+
 For a service with a native config digest, include `publicRoot` and `publicFiles` on its service row. Each public file has its absolute native path, SHA-256 and numeric permission mode from the admitted release. The verifier compares the complete list beneath each declared configuration mount and recomputes the historical config digest. Named-volume contents stay inside their services. An independently qualified, public-only startup archive can be bound by a top-level `supplement` containing `role`, `bytes`, `sha256` and an absolute `/usr/local/libexec/` entrypoint. Qualify the archive's complete file manifest, its entrypoint and the original image together before selecting it. The acknowledged replacement receives a fingerprint for the revised startup declaration.
 
 ## Verify and seal before retirement

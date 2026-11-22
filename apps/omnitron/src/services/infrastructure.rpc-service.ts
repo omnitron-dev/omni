@@ -678,8 +678,8 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
    */
   @Public({ auth: { roles: CONTROL_PLANE_ROLES } })
   async inspectHostServices(
-    data: import('../infrastructure/host-inspection.js').HostInspectionRequest,
-  ): Promise<import('../infrastructure/host-inspection.js').HostInspection> {
+    data: import('../shared/dto/host-inspection.js').HostInspectionRequest,
+  ): Promise<import('../shared/dto/host-inspection.js').HostInspection> {
     const { inspectHost, reachTcp, jsonRpcCall } = await import('../infrastructure/host-inspection.js');
     const { localHost } = await import('../infrastructure/bare-metal-runner.js');
     const os = await import('node:os');

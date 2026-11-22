@@ -1,9 +1,9 @@
 import type { Duplex } from 'node:stream';
+import type { HostConfigGrant, HostConfigReceipt } from '../shared/dto/host-bindings.js';
 import type { SSHTarget } from '../execution/execution.service.js';
 import { resolveSecretRefs } from '../project/config-resolver.js';
 import type { hostBindingMaterial } from './host-binding-review.js';
-import { checkHello, checkInstallReceipt, fields, hostConfigAuthenticationFailure, hostConfigForwardFailure, HostConfigFrames, renderInstalledConfigs, required, sameGrant, socketPath,
-  type HostConfigGrant, type HostConfigReceipt } from './host-config-transfer.js';
+import { checkHello, checkInstallReceipt, fields, hostConfigAuthenticationFailure, hostConfigForwardFailure, HostConfigFrames, renderInstalledConfigs, required, sameGrant, socketPath } from './host-config-transfer.js';
 
 export async function connectHostConfigInstaller(target: SSHTarget, ticket: string, signal: AbortSignal) {
   required(target.username === 'root' && target.expectedHostFingerprint && /^SHA256:[A-Za-z0-9+/]{43}$/.test(target.expectedHostFingerprint));

@@ -1,13 +1,6 @@
+import type { AptPackageReading } from '../shared/dto/host-inspection.js';
 import type { HostRunner } from './bare-metal-runner.js';
 import type { AptPackagePolicy } from './types.js';
-
-export interface AptPackageReading {
-  name: string;
-  installed: string | null;
-  candidate: string | null;
-  state: 'current' | 'install' | 'upgrade' | 'blocked';
-  detail: string;
-}
 
 type Host = Pick<HostRunner, 'run' | 'readFile'>;
 const packageName = /^[a-z0-9][a-z0-9+.-]+$/;

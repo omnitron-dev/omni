@@ -347,6 +347,8 @@ export interface ContainerHealthCheck {
 // Unified Service Requirements (app-level infrastructure declarations)
 // =============================================================================
 
+export type Provisioning = 'external' | 'docker' | 'bareMetal' | 'disabled' | 'none';
+
 /**
  * Declares what an app needs from an infrastructure service,
  * independent of how it is provisioned.

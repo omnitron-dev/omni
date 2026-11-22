@@ -24,9 +24,7 @@
  * borrowed from the laptop.
  */
 
-import type { IServiceOverride, IServiceRequirement, SecretRef } from './types.js';
-
-export type Provisioning = 'external' | 'docker' | 'bareMetal' | 'disabled' | 'none';
+import type { IServiceOverride, IServiceRequirement, Provisioning, SecretRef } from './types.js';
 
 export interface ServiceBinding {
   /**

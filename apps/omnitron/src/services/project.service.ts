@@ -47,7 +47,7 @@ import { currentActor, describeFailure } from './audit.service.js';
 import { publicLaunchFailure } from '../project/launch-failure.js';
 import { nodeApplicationNames, resolveNodePlacements, stackNodeKey } from '../project/stack-placement.js';
 import { StackTargets, type StackTarget } from '../project/stack-targets.js';
-import { confirmStoppedPlacement, remotePlacementReview, type PlacementEndpoint, type PlacementRequest, type PlacementReceipt, type RemotePlacement } from '../project/remote-placement.js';
+import { confirmStoppedPlacement, remotePlacementReview, type PlacementEndpoint, type RemotePlacement } from '../project/remote-placement.js';
 import { cleanRegisteredCommit, remoteReleaseSourceKey, type ReleaseRecipient } from '../release/remote-source.js';
 import { defineEcosystem } from '../config/define-ecosystem.js';
 import { readCapturedSourceSync } from '../release/source-data.js';
@@ -117,6 +117,8 @@ import type {
   IStackAppStatus,
   IStackInfraStatus,
   IProjectRequirements,
+  PlacementReceipt,
+  PlacementRequest,
   ISyncStatus,
 } from '../shared/dto/project.js';
 import { summariseSync } from './sync-summary.js';
@@ -4429,7 +4431,7 @@ export class ProjectService extends EventEmitter {
 
   /** An independently authorized local installer accepts only bindings from the saved release and recipient. */
   @RecoveryMutation()
-  async installReviewedHostConfigs(request: import('../infrastructure/host-config-transfer.js').HostConfigInstallRequest) {
+  async installReviewedHostConfigs(request: import('../shared/dto/host-bindings.js').HostConfigInstallRequest) {
     const { checkRequest } = await import('../infrastructure/host-config-transfer.js');
     checkRequest(request);
     const { project, stack, release, prepared, nodeId, ticket, review } = request;
@@ -4470,7 +4472,7 @@ export class ProjectService extends EventEmitter {
   }
 
   /** Public digest of the admitted release's symbolic bindings on one pinned recipient. */
-  async reviewStackHostBindings(selection: import('../infrastructure/host-binding-review.js').HostBindingSelection) {
+  async reviewStackHostBindings(selection: import('../shared/dto/host-bindings.js').HostBindingSelection) {
     const { project, stack: stackName, release: requested, nodeId } = selection;
     const config = await this.loadProjectConfig(project);
     const stack = this.resolveStacks(config, project)[stackName];
@@ -4501,10 +4503,10 @@ export class ProjectService extends EventEmitter {
    */
   async inspectStackHost(
     data: { project: string; stack: string } & Omit<
-      import('../infrastructure/host-inspection.js').HostInspectionRequest,
+      import('../shared/dto/host-inspection.js').HostInspectionRequest,
       'services' | 'overrides'
     >,
-  ): Promise<Array<{ node: string; inspection?: import('../infrastructure/host-inspection.js').HostInspection; error?: string }>> {
+  ): Promise<Array<{ node: string; inspection?: import('../shared/dto/host-inspection.js').HostInspection; error?: string }>> {
     const config = await this.loadProjectConfig(data.project);
     const stackConfig = this.resolveStacks(config, data.project)[data.stack];
     if (!stackConfig) throw new Error(`No stack '${data.stack}' in ${data.project}`);
@@ -4520,7 +4522,7 @@ export class ProjectService extends EventEmitter {
     const { project: _project, stack: _stack, ...asked } = data;
     const connector = this.getSlaveConnector();
 
-    const readings: Array<{ node: string; inspection?: import('../infrastructure/host-inspection.js').HostInspection; error?: string }> = [];
+    const readings: Array<{ node: string; inspection?: import('../shared/dto/host-inspection.js').HostInspection; error?: string }> = [];
     for (const node of nodes) {
       const host = node.host;
       const port = node.port ?? 9700;
@@ -4536,7 +4538,7 @@ export class ProjectService extends EventEmitter {
           'inspectHostServices',
           [{ services, overrides, ...asked }],
           { retryOnDisconnect: true },
-        )) as import('../infrastructure/host-inspection.js').HostInspection;
+        )) as import('../shared/dto/host-inspection.js').HostInspection;
         readings.push({ node: `${host}:${port}`, inspection });
       } catch (err) {
         readings.push({ node: `${host}:${port}`, error: (err as Error).message });

@@ -27,7 +27,8 @@ import { InfrastructureService } from '../infrastructure/infrastructure.service.
 import { resolveInfrastructureDefinition } from '../infrastructure/infrastructure-definition.js';
 import type { ContainerState } from '../infrastructure/types.js';
 import { summariseProvisioning } from '../infrastructure/provisioning-outcome.js';
-import { probeFields, type ProbeReading } from '../infrastructure/host-inspection.js';
+import type { ProbeReading } from '../shared/dto/host-inspection.js';
+import { probeFields } from '../infrastructure/host-inspection.js';
 import {
   listManagedContainers,
   getContainerLogs,
@@ -331,7 +332,7 @@ function formatProbe(reading: ProbeReading): string {
 
 function printInspection(
   target: string,
-  reading: { node: string; inspection?: import('../infrastructure/host-inspection.js').HostInspection; error?: string },
+  reading: { node: string; inspection?: import('../shared/dto/host-inspection.js').HostInspection; error?: string },
 ): void {
   if (!reading.inspection) {
     log.error(`${target} on ${reading.node}: ${reading.error ?? 'no answer'}`);

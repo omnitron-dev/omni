@@ -27,7 +27,8 @@ import { bindService, secretValues } from './service-binding.js';
 import { binaryReleaseCommand } from './binary-release.js';
 import type { PrivateConfigEvidence } from './private-host-config.js';
 import type { AptPackagePolicy, BareMetalBinaryRelease, IServiceHealthCheck, IServiceOverride, SecretRef } from './types.js';
-import { aptChanges, type AptChange, type AptDependency, type AptPackageReading, type AptTransaction } from './apt-packages.js';
+import type { AptPackageReading } from '../shared/dto/host-inspection.js';
+import { aptChanges, type AptChange, type AptDependency, type AptTransaction } from './apt-packages.js';
 
 /** A declared bare-metal service, with its `networkMode` variant applied. */
 export interface BareMetalSpec {

@@ -1,10 +1,8 @@
 import { createHash } from 'node:crypto';
 import type { Duplex } from 'node:stream';
-import { HOST_BINDING_NAMES, HOST_BINDING_PROFILES, hostBindingDigest, type HostBindingProfile, type HostBindingReview } from './host-binding-review.js';
+import { HOST_BINDING_NAMES, type HostBindingReview, type HostConfigGrant, type HostConfigInstallRequest, type HostConfigReceipt } from '../shared/dto/host-bindings.js';
+import { HOST_BINDING_PROFILES, hostBindingDigest } from './host-binding-review.js';
 
-export type HostConfigGrant = { ticket: string; nodeId: string; review: string };
-export type HostConfigInstallRequest = HostConfigGrant & { project: string; stack: string; release: string; prepared: string };
-export type HostConfigReceipt = HostConfigGrant & { protocol: 1; files: Array<{ profile: HostBindingProfile; receipt: string }> };
 export type HostConfigHello = { grant: HostConfigGrant; review: HostBindingReview; templates: Record<string, string> };
 export const hostConfigAuthenticationFailure = 'The registered administrative SSH route could not authenticate the connection';
 export const hostConfigForwardFailure = 'The registered administrative SSH route cannot reach the authorized host configuration listener';

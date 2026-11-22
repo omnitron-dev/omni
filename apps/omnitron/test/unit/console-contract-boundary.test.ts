@@ -13,7 +13,14 @@ it('checks Console contracts without loading CLI, daemon, database or service im
   const program = ts.createProgram(parsed.fileNames, parsed.options);
   const source = path.join(root, 'src');
   const implementationDirectories = ['commands', 'daemon', 'database', 'services'];
-  const implementation = program.getSourceFiles().map(file => path.relative(source, file.fileName))
-    .filter(file => implementationDirectories.some(dir => file.startsWith(dir + path.sep)));
+  const infrastructureContracts = new Set([
+    'infrastructure/types.ts', 'infrastructure/presets/types.ts',
+    'infrastructure/config-payload.ts', 'infrastructure/host-ingress-types.ts',
+  ]);
+  const implementation = program.getSourceFiles()
+    .map(file => path.relative(source, file.fileName).split(path.sep).join('/'))
+    .filter(file => implementationDirectories.some(dir => file.startsWith(dir + '/')) ||
+      (file.startsWith('infrastructure/') && !infrastructureContracts.has(file)) ||
+      file === 'project/remote-placement.ts');
   expect(implementation).toEqual([]);
 });

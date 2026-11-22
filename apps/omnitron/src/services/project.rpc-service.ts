@@ -284,10 +284,10 @@ export class ProjectRpcService {
   @Public({ auth: { roles: ADMIN_ROLES } })
   async inspectStackHost(
     data: { project: string; stack: string } & Omit<
-      import('../infrastructure/host-inspection.js').HostInspectionRequest,
+      import('../shared/dto/host-inspection.js').HostInspectionRequest,
       'services' | 'overrides'
     >,
-  ): Promise<Array<{ node: string; inspection?: import('../infrastructure/host-inspection.js').HostInspection; error?: string }>> {
+  ): Promise<Array<{ node: string; inspection?: import('../shared/dto/host-inspection.js').HostInspection; error?: string }>> {
     return this.projectService.inspectStackHost(await this.projectService.resolveProjectStack(data));
   }
 
@@ -324,7 +324,7 @@ export class ProjectRpcService {
   assertSdkMutable(): void { this.projectService.assertSdkMutable(); }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
-  async installReviewedHostConfigs(data: import('../infrastructure/host-config-transfer.js').HostConfigInstallRequest) {
+  async installReviewedHostConfigs(data: import('../shared/dto/host-bindings.js').HostConfigInstallRequest) {
     const { checkRequest } = await import('../infrastructure/host-config-transfer.js');
     checkRequest(data);
     const scope = await this.projectService.resolveProjectStack({ project: data.project, stack: data.stack }, { readOnly: true });
@@ -333,7 +333,7 @@ export class ProjectRpcService {
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
-  async reviewStackHostBindings(data: import('../infrastructure/host-binding-review.js').HostBindingSelection) {
+  async reviewStackHostBindings(data: import('../shared/dto/host-bindings.js').HostBindingSelection) {
     if (!data || Object.keys(data).sort().join(',') !== 'nodeId,project,release,stack' ||
         !Object.values(data).every(value => typeof value === 'string' && value.length > 0 && value.length <= 128))
       throw Errors.badRequest('Select the registered project, stack, exact release and nodeId');
@@ -411,13 +411,13 @@ export class ProjectRpcService {
    * pressing Deploy.
    */
   @Public({ auth: { roles: ADMIN_ROLES } })
-  async reviewRemotePlacement(data: import('../project/remote-placement.js').PlacementRequest) {
+  async reviewRemotePlacement(data: import('../shared/dto/project.js').PlacementRequest) {
     const scope = await this.projectService.resolveProjectStack(data, { readOnly: true });
     return this.projectService.reviewRemotePlacement({ ...data, ...scope });
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
-  async selectRemotePlacement(data: import('../project/remote-placement.js').PlacementRequest & { review: string }) {
+  async selectRemotePlacement(data: import('../shared/dto/project.js').PlacementRequest & { review: string }) {
     const scope = await this.projectService.resolveProjectStack(data, { readOnly: true });
     return this.projectService.selectRemotePlacement({ ...data, ...scope });
   }

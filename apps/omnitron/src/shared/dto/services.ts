@@ -418,16 +418,16 @@ export interface IProjectRpcService {
   getStackMigration(data: { project: string; stack: string; operationId: string }): Promise<import('./execution-operations.js').OperationReceipt | null>;
   resumeInstalledStack(data: { project: string; stack: string }): Promise<import('./project.js').InstalledStackResumeResult>;
   reviewStackStart(data: { project: string; stack: string } & import('./project.js').StackStartOptions): Promise<import('./project.js').StackStartReview>;
-  reviewStackHostBindings(data: import('../../infrastructure/host-binding-review.js').HostBindingSelection): Promise<import('../../infrastructure/host-binding-review.js').HostBindingReview>;
-  installReviewedHostConfigs(data: import('../../infrastructure/host-config-transfer.js').HostConfigInstallRequest): Promise<import('../../infrastructure/host-config-transfer.js').HostConfigReceipt>;
+  reviewStackHostBindings(data: import('./host-bindings.js').HostBindingSelection): Promise<import('./host-bindings.js').HostBindingReview>;
+  installReviewedHostConfigs(data: import('./host-bindings.js').HostConfigInstallRequest): Promise<import('./host-bindings.js').HostConfigReceipt>;
   startStack(data: { project: string; stack: string } & import('./project.js').StackStartOptions): Promise<IStackInfo>;
   /** Would this stack take this release? The deployment's own decision, asked in advance. */
-  reviewRemotePlacement(data: import('../../project/remote-placement.js').PlacementRequest): Promise<import('../../project/remote-placement.js').PlacementReceipt>;
-  selectRemotePlacement(data: import('../../project/remote-placement.js').PlacementRequest & { review: string }): Promise<import('../../project/remote-placement.js').PlacementReceipt>;
+  reviewRemotePlacement(data: import('./project.js').PlacementRequest): Promise<import('./project.js').PlacementReceipt>;
+  selectRemotePlacement(data: import('./project.js').PlacementRequest & { review: string }): Promise<import('./project.js').PlacementReceipt>;
   prepareRemoteReleaseSource(data: { project: string; stack: string; release: string; input: import('./project.js').RemoteReleaseSourceInput }): Promise<import('./project.js').PreparedRemoteReleaseSource>;
   checkRemoteReleaseSource(data: { project: string; stack: string; release: string; digest: string }): Promise<import('./project.js').PreparedRemoteReleaseSource>;
   reviewPreparedStackStart(data: { project: string; stack: string; release: string; digest: string }): Promise<import('./project.js').StackStartReview>;
-  reviewPreparedHostBindings(data: { project: string; stack: string; release: string; digest: string; nodeId: string }): Promise<import('../../infrastructure/host-binding-review.js').HostBindingReview>;
+  reviewPreparedHostBindings(data: { project: string; stack: string; release: string; digest: string; nodeId: string }): Promise<import('./host-bindings.js').HostBindingReview>;
   checkRelease(data: { project: string; stack: string; release: string; prepare?: boolean }): Promise<import('./project.js').ReleaseAdmission>;
   reviewStackStop(data: { project: string; stack: string; keepInfrastructure?: boolean }): Promise<import('./project.js').StackStopReview>;
   stopStack(data: { project: string; stack: string; review?: string; keepInfrastructure?: boolean }): Promise<IStackInfo>;
@@ -437,11 +437,11 @@ export interface IProjectRpcService {
   /** What each node of a stack would find and do on its host — read, never changed. */
   inspectStackHost(
     data: { project: string; stack: string } & Omit<
-      import('../../infrastructure/host-inspection.js').HostInspectionRequest,
+      import('./host-inspection.js').HostInspectionRequest,
       'services' | 'overrides'
     >,
   ): Promise<
-    Array<{ node: string; inspection?: import('../../infrastructure/host-inspection.js').HostInspection; error?: string }>
+    Array<{ node: string; inspection?: import('./host-inspection.js').HostInspection; error?: string }>
   >;
   createStack(data: {
     project: string;
@@ -581,8 +581,8 @@ export interface IOmnitronInfraService {
   getState(): Promise<InfrastructureState | null>;
   /** What `provisionStack` would find and do on this host — read, never changed. */
   inspectHostServices(
-    data: import('../../infrastructure/host-inspection.js').HostInspectionRequest,
-  ): Promise<import('../../infrastructure/host-inspection.js').HostInspection>;
+    data: import('./host-inspection.js').HostInspectionRequest,
+  ): Promise<import('./host-inspection.js').HostInspection>;
   listContainers(): Promise<ContainerState[]>;
   getConnectionInfo(data: { service: string; project?: string; stack?: string }): Promise<Record<string, unknown> | null>;
   startContainer(data: { name: string }): Promise<{ success: boolean }>;

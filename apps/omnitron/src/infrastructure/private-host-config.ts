@@ -5,12 +5,12 @@ import { chmod, lstat, mkdir, open, readdir, rename, unlink } from 'node:fs/prom
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { OMNITRON_CONFIG_MARKER, withMarker, type BareMetalSpec } from './bare-metal-plan.js';
-import { HOST_BINDING_PROFILES, type HostBindingProfile } from './host-binding-review.js';
+import { HOST_BINDING_NAMES, type HostBindingProfile } from '../shared/dto/host-bindings.js';
+import { HOST_BINDING_PROFILES } from './host-binding-review.js';
 
 const DIRECTORY = '/var/lib/omnitron-host-config-proofs';
 const READ = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 const MAX_CONFIG = 128 * 1024;
-const profiles = Object.keys(HOST_BINDING_PROFILES) as HostBindingProfile[];
 const run = promisify(execFile);
 
 export type PrivateConfigEvidence = { state: 'verified-private'; receipt: string } | { state: 'unreadable' };
@@ -179,7 +179,7 @@ export async function attestInstalledHostConfig(name: string, expected?: { stamp
 /** A verifier reads only the root-issued private record and metadata of the installed config. */
 export async function privateHostConfigEvidence(spec: BareMetalSpec): Promise<PrivateConfigEvidence | null> {
   if (process.platform !== 'linux' || !spec.configFile) return null;
-  const profile = profiles.find(name => HOST_BINDING_PROFILES[name].config === spec.configFile);
+  const profile = HOST_BINDING_NAMES.find(name => HOST_BINDING_PROFILES[name].config === spec.configFile);
   if (!profile) return null;
   const recordPath = join(DIRECTORY, profile + '.json');
   try {

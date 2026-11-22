@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { HOST_BINDING_NAMES, type HostBindingProfile, type HostBindingReview, type HostBindingSelection } from '../shared/dto/host-bindings.js';
 import { selectBareMetal, withMarker } from './bare-metal-plan.js';
 import { bindService } from './service-binding.js';
 import type { IServiceOverride, IServiceRequirement } from './types.js';
@@ -17,21 +18,9 @@ export const HOST_BINDING_PROFILES = {
     unit: 'monero-wallet-rpc', user: 'monero-wallet', config: '/etc/monero/monero-wallet-rpc.conf', chainDataDir: null,
     directives: ['daemon-login=${secret:daemon_user}:${secret:daemon_password}', 'rpc-login=${secret:rpc_user}:${secret:rpc_password}'],
   },
-} as const;
+} as const satisfies Record<HostBindingProfile, unknown>;
 
-export type HostBindingProfile = keyof typeof HOST_BINDING_PROFILES;
-export interface HostBindingSelection { project: string; stack: string; release: string; nodeId: string }
-export interface HostBindingReview extends HostBindingSelection {
-  protocol: 1;
-  commit: string;
-  manifestSha256: string;
-  sshFingerprint: string;
-  referencesSha256: string;
-  bindings: Array<{ name: string; unit: string; user: string; config: string; chainDataDir: string | null; unitSha256: string; templateSha256: string }>;
-  digest: string;
-}
 export type HostBindingSubject = HostBindingSelection & { commit: string; manifestSha256: string; sshFingerprint: string };
-export const HOST_BINDING_NAMES = Object.keys(HOST_BINDING_PROFILES) as HostBindingProfile[];
 
 const sha = (value: string) => createHash('sha256').update(value).digest('hex');
 const slots = (content: string) => [...content.matchAll(/\$\{secret:([\w-]+)\}/g)].map(match => match[1]!);

@@ -1,4 +1,4 @@
-import type { PreparedRemoteReleaseSource, StackStopProgress } from '../shared/dto/project.js';
+import type { PlacementReceipt, PreparedRemoteReleaseSource, StackStopProgress } from '../shared/dto/project.js';
 import type { StackExecutionScope } from '../shared/dto/stack-execution.js';
 import { stackDefinitionFingerprint, type NodeStackStopInventory } from './node-stack-stop.js';
 import { stackNodeKey } from './stack-placement.js';
@@ -16,13 +16,6 @@ export interface RemotePlacement {
   activated: boolean;
   selected: RemotePlacementSource | null;
   receipt: PlacementReceipt;
-}
-export interface PlacementRequest extends StackExecutionScope {
-  fromNodeId: string;
-  destination: { release: string; prepared: string } | { registered: true };
-}
-export interface PlacementReceipt extends StackExecutionScope {
-  digest: string; generation: number; fromNodeId: string; toNodeId: string; stopId: string; release: string | null;
 }
 const digest = /^[a-f0-9]{64}$/;
 const name = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;

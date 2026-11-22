@@ -51,7 +51,7 @@ function formatDuration(ms: number): string {
 // Commands
 // =============================================================================
 
-export async function stackInstallHostConfigsCommand(request: import('../infrastructure/host-config-transfer.js').HostConfigInstallRequest) {
+export async function stackInstallHostConfigsCommand(request: import('../shared/dto/host-bindings.js').HostConfigInstallRequest) {
   const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
   try {
     const service = await client.service<IProjectRpcService>('OmnitronProject');

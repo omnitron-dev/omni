@@ -81,6 +81,8 @@ A receipt link with `?rollout=…` opens the same operation after reload. If ack
 
 ## Contributing
 
+Define RPC requests and receipts in `src/shared/dto` of the Omnitron package. Console and the daemon compile against those contracts. Service implementations own host inspection, credential delivery and lifecycle decisions.
+
 Use Prism and the shared theme for controls, visible focus and responsive layout. Preserve existing permission gates and confirmation flows. The shared `RowActions` component owns overflow-menu ordering; `usePolledResource.refresh` joins a fresh read after mutations. Reuse those mechanisms instead of adding page-specific polling or retry loops.
 
 ## Documentation

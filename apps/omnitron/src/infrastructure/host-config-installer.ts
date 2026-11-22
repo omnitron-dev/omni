@@ -6,10 +6,11 @@ import { createServer, type Socket } from 'node:net';
 import { basename, dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { withKernelFileLock } from '@xec-sh/ops/utils/file-lock';
-import { HOST_BINDING_NAMES, HOST_BINDING_PROFILES, type HostBindingProfile } from './host-binding-review.js';
+import { HOST_BINDING_NAMES, type HostBindingProfile, type HostConfigGrant, type HostConfigReceipt } from '../shared/dto/host-bindings.js';
+import { HOST_BINDING_PROFILES } from './host-binding-review.js';
 import { attestInstalledHostConfig, hasHostConfigEvidence, hostConfigFileIdentity, privateHostConfigEvidence, requireModeOnly, rootDirectories, serviceGroups, unchangedInstalledHostConfig } from './private-host-config.js';
 import { checkGrant, checkHello, checkInstallReceipt, fields, HostConfigFrames, renderInstalledConfigs, required, sameGrant, socketPath,
-  type HostConfigGrant, type HostConfigHello, type HostConfigReceipt } from './host-config-transfer.js';
+  type HostConfigHello } from './host-config-transfer.js';
 
 const runtime = '/run/omnitron-host-config';
 const storage = '/var/lib/omnitron-host-config-install';
@@ -197,7 +198,7 @@ async function publish(grant: HostConfigGrant, journal: Journal, contents: Recor
   const receipt = await preflight(grant, journal); required(receipt); return receipt;
 }
 
-async function handle(socket: Socket, grant: HostConfigGrant, expires: number) {
+async function handleInstallRequest(socket: Socket, grant: HostConfigGrant, expires: number) {
   const remaining = () => required(Date.now() < expires);
   const frames = new HostConfigFrames(socket);
   const hello: HostConfigHello = await frames.read(); checkHello(hello, grant); remaining();
@@ -240,7 +241,7 @@ export async function receiveHostConfigs(grant: HostConfigGrant, expires: number
         server.on('connection', socket => {
           if (client) { socket.destroy(); return; }
           client = socket; socket.on('error', () => {});
-          handle(socket, grant, expires).then(resolve, () => reject(Error('Authorized host configuration installation did not complete')))
+          handleInstallRequest(socket, grant, expires).then(resolve, () => reject(Error('Authorized host configuration installation did not complete')))
             .finally(() => { clearTimeout(timer); socket.destroySoon(); });
         });
         server.listen(path);

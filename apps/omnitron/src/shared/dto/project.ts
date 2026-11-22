@@ -280,6 +280,14 @@ export interface PreparedArtifactVolume {
   artifactSha256: string;
 }
 
+export interface PlacementRequest extends RuntimeStackScope {
+  fromNodeId: string;
+  destination: { release: string; prepared: string } | { registered: true };
+}
+export interface PlacementReceipt extends RuntimeStackScope {
+  digest: string; generation: number; fromNodeId: string; toNodeId: string; stopId: string; release: string | null;
+}
+
 /** Controller-local, administrator-selected input for a single remote replacement. */
 export interface RemoteReleaseSourceInput {
   sourceRoot: string;

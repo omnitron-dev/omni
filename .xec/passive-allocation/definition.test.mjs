@@ -7,8 +7,31 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { allocationInput, passiveAllocationDefinition } from '../commands/passive-allocation.js';
+import { readReceiver, runReceiverPhase } from './receiver.mjs';
 
 const digest = c => c.repeat(64);
+test('only a transient pre-lease observation can be repeated, with fresh evidence', async () => {
+  for (const [phase, code, succeeds, count] of [
+    ['inspect', 408, true, 2], ['inspect', 'ECONNRESET', true, 2],
+    ['stage', 408, false, 1], ['inspect', 'EACCES', false, 1],
+  ]) {
+    let attempts = 0;
+    const run = () => runReceiverPhase(phase, () => readReceiver('Project inventory', () => {
+      if (++attempts === 1) throw Object.assign(new Error('private wrapper argument'), { code });
+      return 'fresh inventory';
+    }));
+    if (succeeds) assert.equal(await run(), 'fresh inventory');
+    else await assert.rejects(run, { message: code === 408 ? 'Project inventory timed out' : 'Project inventory unavailable' });
+    assert.equal(attempts, count);
+  }
+  let attempts = 0;
+  await assert.rejects(() => runReceiverPhase('inspect', () => readReceiver('Process inventory', () => {
+    attempts++;
+    throw Object.assign(new Error('private wrapper argument'), { code: 'EPIPE' });
+  })), { message: 'Process inventory lost its connection' });
+  assert.equal(attempts, 2);
+});
+
 function sample(change = () => {}) {
   const prepared = { protocol: 1, project: 'example', stack: 'prod', release: 'release-1', commit: 'c'.repeat(40),
     manifestSha256: digest('a'), digest: digest('b'), nodeId: 'receiver', sshFingerprint: 'SHA256:' + 'P'.repeat(43) };

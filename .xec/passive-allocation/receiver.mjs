@@ -11,6 +11,28 @@ const exec = promisify(execFile);
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const hash = /^[a-f0-9]{64}$/;
 class AllocationRefusal extends Error {}
+class TemporaryReadFailure extends AllocationRefusal {}
+
+// Only fixed operation names and known error codes may enter the Pipeline journal.
+export async function readReceiver(operation, read) {
+  try { return await read(); } catch (error) {
+    if (error instanceof AllocationRefusal) throw error;
+    const code = error?.code;
+    if ([408, 'REQUEST_TIMEOUT', 'ETIMEDOUT'].includes(code))
+      throw new TemporaryReadFailure(operation + ' timed out');
+    if (code === 'ECONNRESET' || code === 'EPIPE')
+      throw new TemporaryReadFailure(operation + ' lost its connection');
+    throw new AllocationRefusal(operation + ' unavailable');
+  }
+}
+
+export async function runReceiverPhase(phase, run) {
+  try { return await run(); } catch (error) {
+    if (phase !== 'inspect' || !(error instanceof TemporaryReadFailure)) throw error;
+    // The pre-lease inspection has no side effects. Reacquire its socket and all observations once.
+    return run();
+  }
+}
 const configName = 'omnitron.config.mjs';
 const markerName = '.omnitron-passive.json';
 const missing = e => e.code === 'ENOENT';
@@ -123,14 +145,14 @@ export async function checkAllocationParents(artifacts, projects, allowedProject
 
 async function emptyRecipient(ports, scope, directory, claimed) {
   await ports.checkParents(scope.project);
-  const rows = await ports.projects.listProjects();
+  const rows = await readReceiver('Project inventory', () => ports.projects.listProjects());
   if (!Array.isArray(rows)) throw new AllocationRefusal('Recipient project inventory unavailable');
   const own = rows.length === 1 && rows[0].name === scope.project && rows[0].path === directory &&
     rows[0].enabledStacks?.length === 0 && rows[0].runningStacks === 0;
   if (rows.length && (!own || !claimed)) throw new AllocationRefusal('Recipient project registry is occupied or enabled');
-  const handles = await ports.processes();
+  const handles = await readReceiver('Process inventory', () => ports.processes());
   if (!Array.isArray(handles) || handles.length) throw new AllocationRefusal('Recipient execution owner already has application handles');
-  const containers = await ports.containers();
+  const containers = await readReceiver('Container inventory', () => ports.containers());
   if (!Array.isArray(containers) || containers.length) throw new AllocationRefusal('Recipient owns physical stack containers');
   return own;
 }
@@ -236,9 +258,10 @@ async function main() {
   await assertPrivateControlSocket(socket);
   const client = createDaemonClient(socket);
   try {
-    const projects = await client.service('OmnitronProject');
+    const projects = await readReceiver('Project service connection', () => client.service('OmnitronProject'));
     const owner = async () => {
-      const { stdout } = await exec('/bin/sh', ['-c', managedHostCommand({ operation: 'inspect' })], { maxBuffer: 1048576 });
+      const { stdout } = await readReceiver('Execution owner inspection', () =>
+        exec('/bin/sh', ['-c', managedHostCommand({ operation: 'inspect' })], { maxBuffer: 1048576 }));
       const { bundle } = JSON.parse(stdout);
       if (bundle?.root !== root || bundle.managed?.backendArtifact !== spec.backend || bundle.managed?.ownerArtifact !== spec.ownerArtifact)
         throw new AllocationRefusal('Serving backend or execution owner changed');
@@ -267,12 +290,13 @@ async function main() {
       return;
     }
     const receipt = await stagePassiveAllocation(spec, directory, ports);
-    process.stdout.write(JSON.stringify(receipt) + '\n');
+    // A separate line per field keeps all application digests readable in the bounded journal.
+    process.stdout.write(JSON.stringify(receipt, null, 2) + '\n');
   } finally { await client.disconnect(); }
 }
 
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
-  main().catch(e => {
+  runReceiverPhase(process.argv[2], main).catch(e => {
     // Child command diagnostics can contain wrapper arguments. Only return our own fixed failure messages.
     const message = e instanceof AllocationRefusal ? e.message : 'Native receiver verification failed';
     process.stderr.write(message + '\n'); process.exitCode = 1;

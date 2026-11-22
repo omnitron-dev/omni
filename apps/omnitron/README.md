@@ -39,6 +39,8 @@ The generated `omnitron.starter.json` records the selected composition and the
 README lists its commands. Xec and Kysera standalone projects work with their
 own dependencies and commands. Run `npm install` in the project directory when
 the manifest lists dependencies. The default Node worker uses the standard library.
+Titan starters pin the exact Titan version installed with the Omnitron CLI or
+controller that generates the project.
 
 An automation or database project also includes `npm run --silent pipeline`.
 It prints a manual Pipeline definition for the working directory on the
@@ -72,6 +74,7 @@ omnitron project add my-project "$PWD"
 ```
 
 The write creates only `omnitron.config.ts` with empty `apps` and `stacks`.
+The controller can read this TypeScript configuration in CommonJS and ES module projects.
 Existing configurations can be reviewed and registered directly. Project
 scripts and database connections are managed by their existing tools. The
 operator can also register the same directory in **Projects → Add existing project**.

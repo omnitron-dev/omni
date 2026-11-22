@@ -35,6 +35,11 @@ function configurationData(value: unknown, field = 'config', reading = new Set<o
 try {
   const file = process.argv[2], phase = process.argv[3];
   if (!file || (phase !== 'runtime' && phase !== 'release')) throw Error('Invalid ecosystem read request');
+  if (file.endsWith('.ts') && !process.versions['bun']) {
+    // Node can dispatch an imported .ts file through CommonJS in the project's package scope.
+    const { register } = await import('tsx/cjs/api');
+    register();
+  }
   const mod = await import(pathToFileURL(file).href);
   const exported = mod.default ?? { ...mod };
   const raw = typeof exported === 'function' ? await exported(Object.freeze({ phase })) : exported;

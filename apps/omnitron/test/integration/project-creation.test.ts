@@ -45,15 +45,20 @@ afterAll(async () => {
   finally { await store.dispose(); vi.unstubAllEnvs(); fs.rmSync(home, { recursive: true, force: true }); }
 });
 
+function verifiedDependencyDirectory(name: string, version: string) {
+  const require = createRequire(import.meta.url);
+  const location = require.resolve.paths(name)?.map(root => path.join(root, name)).find(dir => fs.existsSync(path.join(dir, 'package.json')));
+  if (!location) throw Error('Missing installed dependency ' + name);
+  const pkg = JSON.parse(fs.readFileSync(path.join(location, 'package.json'), 'utf8'));
+  expect({ name: pkg.name, version: pkg.version }).toEqual({ name, version });
+  return location;
+}
+
 // Exercise the installed public packages without a network install. Each generated
 // project receives only its own declared direct dependencies.
 function installFixtureDependencies(directory: string, dependencies: Record<string, string>) {
-  const require = createRequire(import.meta.url);
   for (const [name, version] of Object.entries(dependencies)) {
-    const location = require.resolve.paths(name)?.map(root => path.join(root, name)).find(dir => fs.existsSync(path.join(dir, 'package.json')));
-    if (!location) throw Error('Missing installed dependency ' + name);
-    const pkg = JSON.parse(fs.readFileSync(path.join(location, 'package.json'), 'utf8'));
-    expect({ name: pkg.name, version: pkg.version }).toEqual({ name, version });
+    const location = verifiedDependencyDirectory(name, version);
     const target = path.join(directory, 'node_modules', name);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.symlinkSync(location, target, 'dir');
@@ -85,6 +90,9 @@ it('checks the whole needs matrix and only includes the requested driver and fra
         expect(deps).not.toContain('@omnitron-dev/omnitron');
         const drivers = { sqlite: 'better-sqlite3', postgresql: 'pg', mysql: 'mysql2' };
         expect(deps.filter(dep => Object.values(drivers).includes(dep))).toEqual(persistence === 'none' ? [] : [drivers[persistence]]);
+        const pkg = JSON.parse(files.find(file => file.path === 'package.json')!.content);
+        expect(pkg.dependencies).toEqual(manifest.dependencies);
+        for (const [name, version] of Object.entries(manifest.dependencies)) verifiedDependencyDirectory(name, version);
         for (const command of Object.values(manifest.commands))
           expect(files.map(file => file.path)).toContain(command.slice('node '.length));
         expect(JSON.parse(files.find(file => file.path === 'omnitron.starter.json')!.content)).toEqual(manifest);

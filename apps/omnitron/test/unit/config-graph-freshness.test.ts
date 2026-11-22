@@ -14,6 +14,14 @@ const write = (name: string, value: string) => { const file = path.join(root, na
 const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 
 describe('fresh ecosystem module graphs', () => {
+  it('reads a TypeScript default export in a CommonJS project', async () => {
+    write('package.json', JSON.stringify({ type: 'commonjs' }));
+    const file = write('omnitron.config.ts', `const name: string = 'worker';
+      export default { apps: [{name, script: 'worker.cjs'}], stacks: {dev: {apps: [name]}} };`);
+    const config = await loadEcosystemConfigFile(file);
+    expect(config.apps.map(app => app.name)).toEqual(['worker']);
+    expect(config.stacks?.['dev']?.apps).toEqual(['worker']);
+  });
   it.each(['mjs', 'ts', 'cjs'])('re-evaluates transitive %s imports and new exports without changing the root file', async extension => {
     const esm = extension !== 'cjs';
     const selected = write('selected.' + extension, esm ? "export const selection = 'first';" : "exports.selection = 'first';");

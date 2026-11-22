@@ -1,3 +1,6 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { join } from 'node:path';
 import { isProjectStarterNeeds, type ProjectStarterNeeds, type ProjectStarterManifest } from '../shared/dto/project.js';
 import type { PipelineDef } from '../shared/dto/pipelines.js';
 
@@ -19,6 +22,17 @@ const databaseDrivers = {
   mysql: { dependency: 'mysql2', version: '3.24.6', dialect: 'MysqlDialect',
     imports: "import mysql from 'mysql2';", options: '{ pool: mysql.createPool(databaseUrl) }' },
 } as const;
+
+function installedTitanVersion(): string {
+  const dependency = '@omnitron-dev/titan';
+  const directories = createRequire(import.meta.url).resolve.paths(dependency) ?? [];
+  const file = directories.map(directory => join(directory, dependency, 'package.json')).find(existsSync);
+  if (!file) throw Error('Cannot find the installed Titan package for the project starter');
+  const { name, version } = JSON.parse(readFileSync(file, 'utf8'));
+  if (name !== dependency || typeof version !== 'string' || !version)
+    throw Error('The installed Titan package must declare its name and version');
+  return version;
+}
 
 function databaseModule(engine: keyof typeof databaseDrivers, connectionVariable: string): string {
   const driver = databaseDrivers[engine];
@@ -122,7 +136,7 @@ ${needs.persistence === 'none' ? '  console.log(JSON.stringify({ checked, node: 
     effects.push('A data command or service start creates starter_events if needed, writes one event and reads it back.');
   }
   if (needs.service !== 'none') {
-    if (needs.service === 'titan') manifest.dependencies['@omnitron-dev/titan'] = '0.4.14';
+    if (needs.service === 'titan') manifest.dependencies['@omnitron-dev/titan'] = installedTitanVersion();
     manifest.app = 'worker';
     manifest.stack = 'dev';
     manifest.commands['start'] = 'node omnitron-worker.js';

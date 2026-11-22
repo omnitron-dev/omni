@@ -139,6 +139,7 @@ jobs:
         run: |
           node --import tsx --test .xec/*/export.test.js
           python3 -B .xec/block-preseed/endpoint_test.py
+          python3 -B .xec/controller-snapshot/check_test.py
           python3 -B .xec/bitcoin-cold/scope_test.py
           python3 -B .xec/lmdb-preseed/stream_test.py
           python3 -B .xec/lmdb-preseed/offline_probe_test.py

@@ -360,6 +360,8 @@ export class ProjectRpcService {
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async startStack(data: { project: string; stack: string } & import('../shared/dto/project.js').StackStartOptions): Promise<IStackInfo> {
+    if (Object.hasOwn(data, 'prepared') || Object.hasOwn(data, 'preparedSource'))
+      throw Errors.badRequest('A prepared remote source is for inspection; it cannot activate a replacement');
     const logicalName = data.stack;
     data = await this.projectService.resolveProjectStack(data);
     // The report an operator acts on, and a script exits on: `only 0/6 apps
@@ -399,6 +401,31 @@ export class ProjectRpcService {
    * the disk to check them, and it is the question an operator asks before
    * pressing Deploy.
    */
+  /** Local paths can load project code. Only an administrator may introduce a new source. */
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async prepareRemoteReleaseSource(data: { project: string; stack: string; release: string; input: import('../shared/dto/project.js').RemoteReleaseSourceInput }) {
+    const scope = await this.projectService.resolveProjectStack(data, { readOnly: true });
+    return this.projectService.prepareRemoteReleaseSource(scope.project, scope.stack, data.release, data.input);
+  }
+
+  @Public({ auth: { roles: OPERATOR_ROLES } })
+  async checkRemoteReleaseSource(data: { project: string; stack: string; release: string; digest: string }) {
+    const scope = await this.projectService.resolveProjectStack(data, { readOnly: true });
+    return this.projectService.checkRemoteReleaseSource(scope.project, scope.stack, data.release, data.digest);
+  }
+
+  @Public({ auth: { roles: OPERATOR_ROLES } })
+  async reviewPreparedStackStart(data: { project: string; stack: string; release: string; digest: string }) {
+    const scope = await this.projectService.resolveProjectStack(data, { readOnly: true });
+    return this.projectService.reviewPreparedStackStart(scope.project, scope.stack, data.release, data.digest);
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async reviewPreparedHostBindings(data: { project: string; stack: string; release: string; digest: string; nodeId: string }) {
+    const scope = await this.projectService.resolveProjectStack(data, { readOnly: true });
+    return this.projectService.reviewPreparedHostBindings(scope.project, scope.stack, data.release, data.digest, data.nodeId);
+  }
+
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async checkRelease(data: { project: string; stack: string; release: string; prepare?: boolean }): Promise<import('../shared/dto/project.js').ReleaseAdmission> {
     data = await this.projectService.resolveProjectStack(data);

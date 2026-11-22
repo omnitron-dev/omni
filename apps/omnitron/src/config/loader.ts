@@ -5,7 +5,7 @@
 import { resolveAppPath } from './app-path.js';
 import path from 'node:path';
 import fs from 'node:fs';
-import { readInFreshProcess, moduleReaderEntry } from '../shared/fresh-module-reader.js';
+import { readInFreshProcess, moduleReaderEntry, type IsolatedModuleReader } from '../shared/fresh-module-reader.js';
 import type { IEcosystemConfig } from './types.js';
 import { defineEcosystem } from './define-ecosystem.js';
 
@@ -38,7 +38,11 @@ function stampProjectRoot(config: IEcosystemConfig, projectRoot: string): IEcosy
 
 export type EcosystemPhase = 'runtime' | 'release';
 /** One read gets a fresh native module graph. Default: 60 seconds, maximum: 10 minutes. */
-export interface EcosystemLoadOptions { timeoutMs?: number }
+export interface EcosystemLoadOptions {
+  timeoutMs?: number;
+  /** Complete environment for an offline producer's project reader. */
+  isolated?: IsolatedModuleReader;
+}
 
 export async function loadEcosystemConfig(cwd: string = process.cwd(), phase: EcosystemPhase = 'runtime', options: EcosystemLoadOptions = {}): Promise<IEcosystemConfig> {
   for (const name of CONFIG_FILE_NAMES) {
@@ -72,7 +76,8 @@ export async function loadEcosystemConfigFile(filePath: string, phase: Ecosystem
   }
   const raw = await readInFreshProcess({ entryPath: moduleReaderEntry(import.meta.url, 'loader-child'),
     args: [path.resolve(filePath), phase], timeoutMs: options.timeoutMs ?? 60_000,
-    label: 'the ecosystem configuration', typescript: true }) as IEcosystemConfig;
+    label: 'the ecosystem configuration', typescript: true,
+    ...(options.isolated && { isolated: options.isolated }) }) as IEcosystemConfig;
 
   if (!raw || !Array.isArray(raw.apps)) {
     throw new Error(`Invalid config in ${filePath}: 'apps' must be an array`);

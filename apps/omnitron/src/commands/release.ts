@@ -470,6 +470,12 @@ function cannotShow(id: string, err: unknown): void {
 }
 
 /** One release, in full: what it was built from, what it says, what it carries, where it runs. */
+export async function captureRemoteSourceCommand(project: string, stack: string, id: string, source: string, store: string): Promise<void> {
+  const { captureRemoteSource } = await import('../release/source-capture.js');
+  const receipt = await captureRemoteSource(project, stack, id, source, store);
+  if (!emitJson(receipt)) log.success(receipt.file + ' (' + receipt.declarationsSha256 + ')');
+}
+
 export async function releaseShowCommand(id: string): Promise<void> {
   const { loadRelease } = await import('../release/load.js');
   let release: Awaited<ReturnType<typeof loadRelease>>;

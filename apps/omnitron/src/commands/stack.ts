@@ -51,11 +51,13 @@ function formatDuration(ms: number): string {
 // Commands
 // =============================================================================
 
-export async function stackHostBindingReviewCommand(project: string, stack: string, release: string, nodeId: string) {
+export async function stackHostBindingReviewCommand(project: string, stack: string, release: string, nodeId: string, prepared?: string) {
   const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
   try {
     const service = await client.service<IProjectRpcService>('OmnitronProject');
-    const report = await service.reviewStackHostBindings({ project, stack, release, nodeId });
+    const report = prepared !== undefined
+      ? await service.reviewPreparedHostBindings({ project, stack, release, nodeId, digest: prepared })
+      : await service.reviewStackHostBindings({ project, stack, release, nodeId });
     if (!emitJson(report)) {
       note(report.bindings.map(binding => binding.unit + '  ' + binding.user + '  ' + binding.config).join('\n'), 'Passive host binding review');
       emitSuccess(report.digest);
@@ -338,10 +340,24 @@ function declarationRefreshCommand(project: string, stack: string, release?: str
     (release ? ' --release ' + shellEscape(release) : '');
 }
 
-export async function stackReleaseAdmissionCommand(project: string, stack: string, release: string, prepare: boolean): Promise<void> {
+export async function stackReleaseAdmissionCommand(project: string, stack: string, release: string, prepare: boolean,
+  options: { source?: string; releaseRoot?: string; manifest?: string; declarations?: string; nodeId?: string; prepared?: string } = {}): Promise<void> {
   const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
   try {
     const service = await client.service<IProjectRpcService>('OmnitronProject');
+    if (options.prepared !== undefined || [options.source, options.releaseRoot, options.manifest, options.declarations, options.nodeId].some(value => value !== undefined)) {
+      const selection = [options.source, options.releaseRoot, options.manifest, options.declarations, options.nodeId];
+      if (options.prepared !== undefined && selection.some(value => value !== undefined))
+        throw Error('Choose a prepared source digest or a complete new source');
+      if (options.prepared === undefined && (!prepare || !selection.every(value => typeof value === 'string' && value.length > 0)))
+        throw Error('New remote sources require prepare-release with --source, --release-root, --manifest, --declarations and --node-id');
+      const receipt = options.prepared !== undefined
+        ? await service.checkRemoteReleaseSource({ project, stack, release, digest: options.prepared })
+        : await service.prepareRemoteReleaseSource({ project, stack, release, input: { sourceRoot: options.source!, storeRoot: options.releaseRoot!,
+          manifestSha256: options.manifest!, declarationsSha256: options.declarations!, nodeId: options.nodeId! } });
+      if (!emitJson(receipt)) emitSuccess('Prepared remote release ' + receipt.release + ' on ' + receipt.nodeId + ' (' + receipt.digest + ')');
+      return;
+    }
     const report = await service.checkRelease({ project, stack, release, prepare });
     const accepted = report.ok || (prepare && report.state === 'requires-stop');
     if (!accepted) process.exitCode = 1;
@@ -359,7 +375,7 @@ export async function stackReleaseAdmissionCommand(project: string, stack: strin
 export async function stackStartCommand(
   projectName: string,
   stackName: string,
-  opts?: import('../shared/dto/project.js').StackStartOptions & { dryRun?: boolean },
+  opts?: import('../shared/dto/project.js').StackStartOptions & { dryRun?: boolean; prepared?: string },
 ): Promise<void> {
   // Starting a stack boots every app in it; a minute is not enough.
   const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
@@ -368,8 +384,12 @@ export async function stackStartCommand(
     if (opts?.infrastructure !== undefined && !['preserve', 'reconcile'].includes(opts.infrastructure)) throw Error('Use --infrastructure preserve or reconcile');
     if (opts?.dryRun && opts.review) throw Error('Use --review when executing a previously inspected start');
     if (opts?.dryRun && opts.infrastructure === 'reconcile') throw Error('Start --dry-run reviews preservation; reconcile requires a separately approved infrastructure change');
-    const review = opts?.dryRun || opts?.infrastructure === 'preserve'
-      ? await svc.reviewStackStart({ project: projectName, stack: stackName, ...opts, infrastructure: 'preserve' }) : null;
+    if (opts?.prepared !== undefined && (!opts.dryRun || !opts.release || opts.workingTree || opts.allowDirty || opts.reinstall))
+      throw Error('A prepared remote source is for --dry-run with the exact --release; activation requires a separate handoff');
+    const review = opts?.prepared !== undefined
+      ? await svc.reviewPreparedStackStart({ project: projectName, stack: stackName, release: opts.release!, digest: opts.prepared })
+      : opts?.dryRun || opts?.infrastructure === 'preserve'
+        ? await svc.reviewStackStart({ project: projectName, stack: stackName, ...opts, infrastructure: 'preserve' }) : null;
     if (review && (review.protocol !== 1 || review.infrastructure !== 'preserve')) throw Error('Controller did not confirm preservation capability; no start was requested');
     if (opts?.dryRun && review) {
       if (!review.digest) process.exitCode = 1;

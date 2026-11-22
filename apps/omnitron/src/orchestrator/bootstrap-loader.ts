@@ -35,7 +35,7 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { readInFreshProcess, moduleReaderEntry } from '../shared/fresh-module-reader.js';
+import { readInFreshProcess, moduleReaderEntry, type IsolatedModuleReader } from '../shared/fresh-module-reader.js';
 import { withClosureLibraryPath } from '../release/closure-library-path.js';
 import type { IAppDefinition } from '../config/types.js';
 
@@ -91,6 +91,8 @@ function canLoadTypeScript(): boolean {
 }
 
 export interface LoadBootstrapOptions {
+  /** Complete environment for a fresh offline declaration read. */
+  isolated?: IsolatedModuleReader;
   /** An admitted installed release; library discovery cannot leave this root. */
   releaseRoot?: string;
   /** Skip cache and prefer source .ts over compiled dist/ */
@@ -135,10 +137,10 @@ export async function loadBootstrapConfig(
       (typeof options.freshModuleGraph === 'object' ? options.freshModuleGraph.timeoutMs : undefined) ??
       FRESH_GRAPH_TIMEOUT_MS;
     const env = withClosureLibraryPath(undefined, options.releaseRoot
-      ? { verifiedRoot: options.releaseRoot } : [resolved]);
+      ? { verifiedRoot: options.releaseRoot } : [resolved], options.isolated?.env ?? process.env);
     const definition = await readInFreshProcess({ entryPath: moduleReaderEntry(import.meta.url, 'bootstrap-loader-child'),
       args: [resolved, options.devMode ? 'development' : 'production'], timeoutMs, label: 'the definition',
-      ...(env && { env }) });
+      ...(env && { env }), ...(options.isolated && { isolated: options.isolated }) });
     assertDefinition(definition, bootstrapPath);
     // As every dev load has done: the cache is not read, and is left holding
     // the latest read for a production load of the same path.

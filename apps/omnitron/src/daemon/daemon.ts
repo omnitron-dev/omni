@@ -1623,6 +1623,7 @@ export class OmnitronDaemon {
         // reads config files, the node registry keeps its secrets in the
         // daemon's vault.
         projectService.setNodeCredentialResolver(registeredSshTarget);
+        projectService.setReleaseRecipientResolver(id => nodeManager.peerReviewTarget(id));
         this.meshHandle = startMesh({ registry: nodeManager, connector, logger: meshLogger });
       } catch (err) {
         // A master with no mesh still supervises its own apps, so this does

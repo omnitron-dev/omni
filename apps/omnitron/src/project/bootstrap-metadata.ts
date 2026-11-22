@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import type { IsolatedModuleReader } from '../shared/fresh-module-reader.js';
 import type { IAppDefinition } from '../config/types.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import { bootstrapDefinitionSource, loadBootstrapConfig } from '../orchestrator/bootstrap-loader.js';
@@ -46,13 +47,13 @@ export function metadataSourceChanged(metadata: BootstrapMetadata): boolean {
   catch { return true; }
 }
 
-export async function readBootstrapMetadata(bootstrap: string, devMode = false, timeoutMs = 30_000, releaseRoot?: string): Promise<{
+export async function readBootstrapMetadata(bootstrap: string, devMode = false, timeoutMs = 30_000, releaseRoot?: string, isolated?: IsolatedModuleReader): Promise<{
   metadata: BootstrapMetadata; definition: IAppDefinition;
 }> {
   const source = bootstrapDefinitionSource(bootstrap, devMode);
   const before = hash(fs.readFileSync(source));
   const definition = await loadBootstrapConfig(bootstrap, { devMode, freshModuleGraph: { timeoutMs },
-    ...(releaseRoot && { releaseRoot }) });
+    ...(releaseRoot && { releaseRoot }), ...(isolated && { isolated }) });
   const metadata = captureBootstrapMetadata(bootstrap, source, definition);
   if (metadata.source.sha256 !== before || bootstrapDefinitionSource(bootstrap, devMode) !== source)
     throw new Error('Bootstrap changed during declaration capture; retry against a stable revision');

@@ -168,6 +168,28 @@ The response can also report `state: "requires-stop"`; capture the declarations
 and review preservation before scheduling that stop. Console's Releases view
 offers the same operations according to the signed-in user's role.
 
+### Prepare a remote replacement from its own release source
+
+A controller can keep serving the registered project checkout while an administrator prepares another commit of the same project for one registered remote node. On a credential-free build machine, use the qualified checkout with its build dependencies and the canonical release store. This command evaluates the configuration in release mode and captures bootstrap infrastructure declarations. Its readers have a private home and receive synthetic values for symbolic stack bindings.
+
+```sh
+omnitron release capture-source acme prod "$release" --source "$qualified_checkout" --release-root "$producer_store" --json
+```
+
+Transfer the returned `.remote-sources/<declarations-sha256>.json` to the same relative path in the controller's release store. Supply a separate physical checkout at the manifest's exact commit. The controller can keep both on an external volume. Authenticate the declaration digest through the producer's delivery channel along with the manifest digest. A source capture is independent of the canonical release manifest. Projects whose topology depends on secret values must make their release declarations independent of those values.
+
+```sh
+omnitron stack prepare-release acme prod "$release" --source "$checkout" --release-root "$store" \
+  --manifest "$manifest_sha256" --declarations "$declarations_sha256" --node-id "$node_id" --json
+omnitron stack check-release acme prod "$release" --prepared "$prepared_digest" --json
+omnitron stack review-host-bindings acme prod --release "$release" --node-id "$node_id" --prepared "$prepared_digest" --json
+omnitron stack start acme prod --release "$release" --prepared "$prepared_digest" --infrastructure preserve --dry-run --json
+```
+
+Preparation checks the current project registration, both stack release policies, Git history, source and verified archive bytes, stable node ID, approved SSH host key and the recipient's execution runtime. Subsequent checks repeat admission. Changing the registration, source, manifest, declaration bytes or recipient invalidates the receipt. Operators can inspect an administrator's digest. The prepared source is scoped to this release and logical stack.
+
+The host-binding review identifies expected units, public template hashes and the recipient. A preservation review also needs a positive observation of each resource from that recipient. For a native host service this includes the running process and service identity, executable, unit, protected configuration and storage bindings. A successful source check alone authorizes no cutover. The prepared start command supports inspection. Switching an existing deployment requires a separately verified handoff from its current owner.
+
 Runtime-only recovery uses `--infrastructure preserve`. Review the intended release and current resources before stopping applications:
 
 ```sh

@@ -17,6 +17,8 @@ const MODULE_READ_RESULT_BYTES = 16 * 1024 * 1024;
 export type FreshModuleAnswer =
   | { type: typeof FRESH_MODULE_ANSWER; ok: true; value: unknown }
   | { type: typeof FRESH_MODULE_ANSWER; ok: false; message: string; name?: string | undefined; stack?: string | undefined };
+/** Complete environment and working directory for a qualified producer process. */
+export interface IsolatedModuleReader { env: NodeJS.ProcessEnv; cwd: string }
 export interface FreshModuleReadOptions {
   entryPath: string;
   args: string[];
@@ -24,6 +26,7 @@ export interface FreshModuleReadOptions {
   label: string;
   typescript?: boolean;
   env?: NodeJS.ProcessEnv;
+  isolated?: IsolatedModuleReader;
 }
 /** Locate the checked-in child beside source or compiled caller; never a cwd guess. */
 export function moduleReaderEntry(callerUrl: string, name: string): string {
@@ -134,7 +137,8 @@ export function readInFreshProcess(options: FreshModuleReadOptions): Promise<unk
     try {
       child = fork(entryPath, args, {
         execArgv,
-        env: { ...process.env, ...options.env, [FRESH_MODULE_MARK]: '1' },
+        env: { ...(options.isolated?.env ?? process.env), ...options.env, [FRESH_MODULE_MARK]: '1' },
+        ...(options.isolated && { cwd: options.isolated.cwd }),
         // Configuration output is bounded and private. Only a redacted error tail
         // may leave this reader; stdout must not corrupt CLI JSON or leak secrets.
         stdio: ['ignore', 'pipe', 'pipe', 'ipc'],

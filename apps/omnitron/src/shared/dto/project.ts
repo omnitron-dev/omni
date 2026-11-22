@@ -209,7 +209,7 @@ export interface StackStartReview {
   project: string;
   stack: string;
   infrastructure: 'preserve';
-  selection?: { release?: string; workingTree?: true };
+  selection?: { release?: string; workingTree?: true; preparedSource?: string; nodeId?: string };
   checkedAt: string;
   digest: string | null;
   targets: Array<{ node: string; infrastructure?: ExistingInfrastructureReview; reason?: string; refreshDeclarations?: { release?: string } }>;
@@ -276,6 +276,27 @@ export interface PreparedArtifactVolume {
   releaseId: string;
   manifestSha256: string;
   artifactSha256: string;
+}
+
+/** Controller-local, administrator-selected input for a single remote replacement. */
+export interface RemoteReleaseSourceInput {
+  sourceRoot: string;
+  storeRoot: string;
+  manifestSha256: string;
+  declarationsSha256: string;
+  nodeId: string;
+}
+export interface PreparedRemoteReleaseSource {
+  protocol: 1;
+  project: string;
+  stack: string;
+  release: string;
+  manifestSha256: string;
+  declarationsSha256: string;
+  commit: string;
+  nodeId: string;
+  sshFingerprint: string;
+  digest: string;
 }
 
 export interface ReleaseAdmission {

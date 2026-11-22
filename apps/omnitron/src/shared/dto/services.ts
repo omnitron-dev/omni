@@ -421,6 +421,10 @@ export interface IProjectRpcService {
   reviewStackHostBindings(data: import('../../infrastructure/host-binding-review.js').HostBindingSelection): Promise<import('../../infrastructure/host-binding-review.js').HostBindingReview>;
   startStack(data: { project: string; stack: string } & import('./project.js').StackStartOptions): Promise<IStackInfo>;
   /** Would this stack take this release? The deployment's own decision, asked in advance. */
+  prepareRemoteReleaseSource(data: { project: string; stack: string; release: string; input: import('./project.js').RemoteReleaseSourceInput }): Promise<import('./project.js').PreparedRemoteReleaseSource>;
+  checkRemoteReleaseSource(data: { project: string; stack: string; release: string; digest: string }): Promise<import('./project.js').PreparedRemoteReleaseSource>;
+  reviewPreparedStackStart(data: { project: string; stack: string; release: string; digest: string }): Promise<import('./project.js').StackStartReview>;
+  reviewPreparedHostBindings(data: { project: string; stack: string; release: string; digest: string; nodeId: string }): Promise<import('../../infrastructure/host-binding-review.js').HostBindingReview>;
   checkRelease(data: { project: string; stack: string; release: string; prepare?: boolean }): Promise<import('./project.js').ReleaseAdmission>;
   reviewStackStop(data: { project: string; stack: string; keepInfrastructure?: boolean }): Promise<import('./project.js').StackStopReview>;
   stopStack(data: { project: string; stack: string; review?: string; keepInfrastructure?: boolean }): Promise<IStackInfo>;

@@ -225,7 +225,7 @@ export class NodeManagerService extends EventEmitter {
   peerReviewTarget(id: string) {
     const { node, fingerprint, pin } = this.reviewedMeshRegistration(id);
     const ssh = { host: node.host, port: node.sshPort, username: node.sshUser, expectedHostFingerprint: fingerprint };
-    return { host: node.host, port: node.daemonPort, pin, managementIdentity: meshManagementIdentity(id, ssh) };
+    return { host: node.host, port: node.daemonPort, pin, fingerprint, managementIdentity: meshManagementIdentity(id, ssh) };
   }
 
   /** Pin reviewed mesh observations to the registered machine and its approved host key. */

@@ -529,9 +529,10 @@ stack
   .description('Review the public configuration schema and unit digests for passive mainnet host preparation')
   .requiredOption('--release <id>', 'Exact admitted application release')
   .requiredOption('--node-id <id>', 'Pinned recipient in the stack registration')
+  .option('--prepared <digest>', 'Read the approved source and recipient for a replacement release')
   .structuredAction(async (project, stackName, options) => {
     const { stackHostBindingReviewCommand } = await import('../commands/stack.js');
-    await stackHostBindingReviewCommand(project, stackName, options.release, options.nodeId);
+    await stackHostBindingReviewCommand(project, stackName, options.release, options.nodeId, options.prepared);
   });
 
 stack
@@ -545,17 +546,23 @@ stack
 stack
   .command('check-release <project> <stack> <release>')
   .description('Read the deployment admission decision for a local or remote stack')
-  .structuredAction(async (projectName, stackName, release) => {
+  .option('--prepared <digest>', 'Recheck an exact prepared replacement source')
+  .structuredAction(async (projectName, stackName, release, options) => {
     const { stackReleaseAdmissionCommand } = await import('../commands/stack.js');
-    await stackReleaseAdmissionCommand(projectName, stackName, release, false);
+    await stackReleaseAdmissionCommand(projectName, stackName, release, false, options);
   });
 
 stack
   .command('prepare-release <project> <stack> <release>')
   .description('Fetch a missing release from the configured store and verify it against the target stack')
-  .structuredAction(async (projectName, stackName, release) => {
+  .option('--source <directory>', 'Administrator-approved separate clean controller checkout at the release commit')
+  .option('--release-root <directory>', 'Physical controller directory containing canonical releases')
+  .option('--manifest <sha256>', 'SHA-256 of the qualified release manifest')
+  .option('--declarations <sha256>', 'SHA-256 of the separately qualified producer declarations')
+  .option('--node-id <id>', 'Registered stable identity declared by the candidate remote stack')
+  .structuredAction(async (projectName, stackName, release, options) => {
     const { stackReleaseAdmissionCommand } = await import('../commands/stack.js');
-    await stackReleaseAdmissionCommand(projectName, stackName, release, true);
+    await stackReleaseAdmissionCommand(projectName, stackName, release, true, options);
   });
 
 stack
@@ -573,6 +580,7 @@ stack
   .option('--working-tree', 'Return a stopped local stack to its registered working tree')
   .option('--infrastructure <mode>', 'preserve: verify existing resources and forbid provisioning/setup/migrations; reconcile: explicitly authorize normal infrastructure deployment')
   .option('--dry-run', 'Review launch admission and existing native infrastructure without startup effects')
+  .option('--prepared <digest>', 'Inspect the candidate source and recipient with --release and --dry-run')
   .option('--review <digest>', 'Start in preserve mode only if launch and infrastructure still match this review')
   // For an operator who doubts a node's record of what an app runs: every
   // artifact is shipped and every app restarted, whatever the record says.
@@ -583,6 +591,7 @@ stack
       allowDirty: options.allowDirty === true,
       ...(typeof options.release === 'string' ? { release: options.release } : {}),
       ...(options.workingTree === true ? { workingTree: true } : {}),
+      ...(typeof options.prepared === 'string' ? { prepared: options.prepared } : {}),
       ...(typeof options.infrastructure === 'string' ? { infrastructure: options.infrastructure as 'preserve' | 'reconcile' } : {}),
       ...(options.dryRun === true ? { dryRun: true } : {}),
       ...(typeof options.review === 'string' ? { review: options.review } : {}),
@@ -1076,6 +1085,16 @@ release
   .structuredAction(async (projectName: string, options: { inspectInstalled?: boolean }) => {
     const { releaseStatusCommand } = await import('../commands/release.js');
     await releaseStatusCommand(projectName, options);
+  });
+
+release
+  .command('capture-source <project> <stack> <release>')
+  .description('Capture portable remote deployment declarations on the isolated qualified producer')
+  .requiredOption('--source <directory>', 'Clean qualified source checkout with its build dependencies')
+  .requiredOption('--release-root <directory>', 'Canonical release store on this producer')
+  .structuredAction(async (project, stack, id, options) => {
+    const { captureRemoteSourceCommand } = await import('../commands/release.js');
+    await captureRemoteSourceCommand(project, stack, id, options.source, options.releaseRoot);
   });
 
 release

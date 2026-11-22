@@ -9,7 +9,7 @@ import { readSavedDaemonConfig } from '../config/saved.js';
 import { observeStackHealth, type HealthAnswers } from '../project/stack-health.js';
 import { LocalReleaseSelection } from '../project/local-release-selection.js';
 import { StackMigrations, migrationReviewDigest, type PreparedStackMigrations } from '../project/stack-migrations.js';
-import type { StackMigrationReview, StackMigrationRequest, ProjectStarterNeeds } from '../shared/dto/project.js';
+import type { PreparedRemoteReleaseSource, RemoteReleaseSourceInput, StackMigrationReview, StackMigrationRequest, ProjectStarterNeeds } from '../shared/dto/project.js';
 import { planLocalMigrations, executeMigrationPlan, inspectMigrationDependencies } from './migration-execution.js';
 import { inspectMigrationSdk } from '../../bin/sdk.js';
 import { assertExecutionCapabilities } from '../daemon/execution-capabilities.js';
@@ -159,6 +159,12 @@ import type { InfrastructureService, InfrastructureStartMode } from '../infrastr
 import type { InfrastructureHealthContext } from '../monitoring/infrastructure-health.js';
 import { ExecutionService, type SSHTarget } from '../execution/execution.service.js';
 
+interface PreparedRemoteSourceRecord {
+  input: RemoteReleaseSourceInput;
+  release: string;
+  registration: string;
+  recipient: string;
+}
 type AdmittedRelease = LoadedRelease & { readonly remoteDefinitions?: Map<string, IAppDefinition> };
 
 class LocalReleaseStopRequired extends Error {}
@@ -694,6 +700,12 @@ export class ProjectService extends EventEmitter {
    */
   setNodeCredentialResolver(resolve: (host: string, port: number, nodeId?: string) => Promise<SSHTarget | null>): void {
     this.resolveNodeCredentials = resolve;
+  }
+
+  private releaseRecipient?: (id: string) => import('../release/remote-source.js').ReleaseRecipient;
+
+  setReleaseRecipientResolver(resolve: (id: string) => import('../release/remote-source.js').ReleaseRecipient): void {
+    this.releaseRecipient = resolve;
   }
 
   private resolveNodeCredentials: ((host: string, port: number, nodeId?: string) => Promise<SSHTarget | null>) | null = null;
@@ -1823,6 +1835,7 @@ export class ProjectService extends EventEmitter {
 
   private async reviewStackStartIntent(project: string, stackName: string, options: StackStartOptions = {}, context: {
     retained?: RuntimeRestartStack | undefined; prepare?: boolean;
+    remoteSource?: Awaited<ReturnType<ProjectService['preparedRemoteRelease']>>;
     /** Only the caller's current inspection; never cached between preparations or starts. */
     installation?: Awaited<ReturnType<ProjectService['installedRelease']>> | undefined;
   } = {}): Promise<StackStartReview> {
@@ -1834,18 +1847,19 @@ export class ProjectService extends EventEmitter {
       digest: null, targets: [], deferred: ['Application startup and application health; framework setup and migrations are forbidden in preserve mode'] };
     let candidate: string | undefined;
     try {
-      const config = this.getLoadedConfig(project);
+      const remote = context.remoteSource;
+      const config = remote?.opened.config ?? this.getLoadedConfig(project);
       if (!config) throw Error('Project configuration is not loaded');
-      const stack = this.resolveStacks(config, project)[stackName];
+      const stack = remote?.opened.stackConfig ?? this.resolveStacks(config, project)[stackName];
       if (!stack) throw Error('Stack is not declared');
       this.assertStartAuthority({ project, stack: stackName }, stack);
       const local = stack.type === 'local' && !stack.managedOrigin;
       const prior = local ? this.localSelection(project, stackName).read().release : null;
       const id = options.release ?? (options.workingTree ? undefined : prior?.id);
       if (local) candidate = id;
-      report.selection = id ? { release: id } : { workingTree: true };
-      const release = retained ? await this.retainedRelease(project, stackName, stack, retained)
-        : id ? await this.admitRelease(project, stackName, stack, config, id, 'check') : null;
+      report.selection = id ? { release: id, ...(remote && { preparedSource: remote.receipt.digest, nodeId: remote.receipt.nodeId }) } : { workingTree: true };
+      const release = remote?.admitted ?? (retained ? await this.retainedRelease(project, stackName, stack, retained)
+        : id ? await this.admitRelease(project, stackName, stack, config, id, 'check') : null);
       if (!release && stack.release?.mode === 'required') throw Error('A verified release is required');
       if (release && prior && prior.id === id && prior.manifestSha256 !== release.manifestSha256) throw Error('Selected release changed');
       const installation = local && release ? context.installation ?? await this.installedRelease(project, stackName, stack, config, release, prepare, undefined, undefined, undefined, retained) : undefined;
@@ -1855,7 +1869,6 @@ export class ProjectService extends EventEmitter {
       for (const entry of entries) assertApplicationInstances(entry);
       resolveStartupOrder(entries);
       const definitions = retained ? new Map(retained.declarations) : (release as AdmittedRelease | null)?.remoteDefinitions ?? this.preservationDefinitions(project, stackName, entries);
-      const environment = retained?.environment ?? await this.stackEnvFor(project, stackName, stack, entries.map(entry => entry.name));
       const effective = mergeInferredInfrastructure(buildInfraFromRequirements(requirementsFromDefinitions(definitions)),
         installation?.infrastructure ?? mergeInfrastructure(config, stack));
       const normalized = normalizeInfraConfig(effective ?? {}, createDefaultRegistry());
@@ -1864,7 +1877,11 @@ export class ProjectService extends EventEmitter {
       if (Object.entries(requirements).some(([name, requirement]) => {
         const binding = bindService(requirement, stack.serviceOverrides?.[name]);
         return binding.provisioning === 'bareMetal' || binding.provisioning === 'none';
-      })) throw Error('This infrastructure resource has no verifiable native preservation identity');
+      })) {
+        report.targets.push({ node: 'preflight', reason: 'A host resource has no verifiable native preservation identity' });
+        return report;
+      }
+      const environment = retained?.environment ?? await this.stackEnvFor(project, stackName, stack, entries.map(entry => entry.name));
       if (stack.type === 'local') {
         const infrastructure = await this.infraManager.reviewPreservation(project, stackName, stack, effective ?? {}, definitions, this.registry.get(project)!.path);
         report.targets.push({ node: 'local', infrastructure });
@@ -1872,7 +1889,8 @@ export class ProjectService extends EventEmitter {
         const services = await this.collectDeclaredServices(project, stack, config, { definitions });
         for (const { node } of resolveNodePlacements(stack, entries)) {
           const infrastructure = await this.reviewNodeInfrastructure(node, mergeInfrastructure(config, stack) ?? {}, services,
-            { project, stack: stackName, overrides: await this.resolveOverrideSecrets(project, stack.serviceOverrides) }, this.registry.get(project)!.path, release?.staticsDir ?? undefined);
+            { project, stack: stackName, overrides: await this.resolveOverrideSecrets(project, stack.serviceOverrides) }, remote?.opened.sourceRoot ?? this.registry.get(project)!.path,
+            release?.staticsDir ?? undefined, remote?.target.managementIdentity);
           report.targets.push({ node: stackNodeKey(node.host, node.port ?? 9700), infrastructure });
         }
       }
@@ -1884,6 +1902,7 @@ export class ProjectService extends EventEmitter {
       if (report.targets.length && report.targets.every(target => target.infrastructure?.digest)) report.digest = stackDefinitionFingerprint([
         'omnitron/stack-start/preserve/v1', { project, stack: stackName }, this.registry.get(project)!.registeredAt,
         stack, retained?.entries ?? entries, [...definitions], environment, release?.manifestSha256 ?? null, launch,
+        ...(remote ? ['prepared remote replacement', remote.receipt.digest] : []),
         report.targets.map(target => [target.node, target.infrastructure!.digest]),
       ]);
     } catch (error) {
@@ -2710,6 +2729,80 @@ export class ProjectService extends EventEmitter {
     });
   }
 
+  /** Inspect an administrator-approved detached source without changing the registered launch configuration. */
+  private async inspectRemoteReleaseSource(project: string, name: string, releaseId: string, input: RemoteReleaseSourceInput, saved?: PreparedRemoteSourceRecord) {
+    const { openRemoteReleaseSource } = await import('../release/remote-source.js');
+    const baseline = () => {
+      const registration = this.registry.get(project), config = this.getLoadedConfig(project);
+      const stack = config && this.resolveStacks(config, project)[name];
+      if (!registration || !stack || stack.type !== 'remote') throw Error('A currently registered remote stack is required');
+      return { registration, stack, fingerprint: stackDefinitionFingerprint([registration.name, registration.path, registration.registeredAt, stack]) };
+    };
+    const before = baseline();
+    this.assertStartAuthority({ project, stack: name }, before.stack);
+    if (!this.releaseRecipient) throw Error('Registered recipient proof unavailable');
+    const target = this.releaseRecipient(input.nodeId);
+    if (saved && (before.fingerprint !== saved.registration || saved.recipient !== target.pin))
+      throw Error('Prepared stack registration or recipient changed; prepare it again');
+    const opened = await openRemoteReleaseSource(before.registration, name, releaseId, input, target);
+    const admitted = await this.admitRelease(project, name, opened.stackConfig, opened.config, releaseId, 'check',
+      { ...opened, fingerprint: target.fingerprint, registeredStack: before.stack });
+    if (!admitted.remoteDefinitions) throw Error('Remote release has no verified application declarations');
+    await opened.verifyTree();
+    if (baseline().fingerprint !== before.fingerprint || !isDeepStrictEqual(this.releaseRecipient(input.nodeId), target))
+      throw Error('Registered stack or recipient changed during release source admission');
+    const evidence = { protocol: 1 as const, project, stack: name, release: releaseId, manifestSha256: admitted.manifestSha256,
+      commit: admitted.manifest.project.commit, declarationsSha256: input.declarationsSha256, nodeId: input.nodeId, sshFingerprint: target.fingerprint };
+    // Never put resolved configuration, environment values or credentials into the source receipt.
+    const digest = stackDefinitionFingerprint(['omnitron/remote-release-source/v1', evidence, before.fingerprint, target.pin,
+      opened.sourceRoot, opened.storeRoot, opened.config, opened.stackConfig, [...admitted.remoteDefinitions].map(([app, definition]) =>
+        [app, definition.requires, definition.omnitronConfig])]);
+    const record: PreparedRemoteSourceRecord = { input, release: releaseId, registration: before.fingerprint, recipient: target.pin };
+    return { receipt: { ...evidence, digest } satisfies PreparedRemoteReleaseSource, opened, admitted, record, target };
+  }
+
+  @RecoveryMutation()
+  async prepareRemoteReleaseSource(project: string, stack: string, release: string, input: RemoteReleaseSourceInput): Promise<PreparedRemoteReleaseSource> {
+    const { remoteReleaseSourceKey } = await import('../release/remote-source.js');
+    // Reject malformed scope before looking up a filesystem input.
+    remoteReleaseSourceKey(project, stack, input?.manifestSha256);
+    const { receipt, record } = await this.inspectRemoteReleaseSource(project, stack, release, input);
+    this.daemonStateStore.kvUpdateSync<PreparedRemoteSourceRecord>(remoteReleaseSourceKey(project, stack, receipt.digest), prior => {
+      if (prior && !isDeepStrictEqual(prior, record)) throw Error('Conflicting prepared release record');
+      return prior ?? record;
+    });
+    return receipt;
+  }
+
+  private async preparedRemoteRelease(project: string, stack: string, release: string, digest: string) {
+    const { remoteReleaseSourceKey } = await import('../release/remote-source.js');
+    const record = this.daemonStateStore.kvGetSync<PreparedRemoteSourceRecord>(remoteReleaseSourceKey(project, stack, digest), { strict: true });
+    if (!record || record.release !== release) throw Error('No prepared remote release source for this registration and release');
+    const result = await this.inspectRemoteReleaseSource(project, stack, release, record.input, record);
+    if (result.receipt.digest !== digest) throw Error('Prepared release source, declarations, registration or recipient changed; prepare it again');
+    return result;
+  }
+
+  async checkRemoteReleaseSource(project: string, stack: string, release: string, digest: string): Promise<PreparedRemoteReleaseSource> {
+    return (await this.preparedRemoteRelease(project, stack, release, digest)).receipt;
+  }
+
+  async reviewPreparedStackStart(project: string, stack: string, release: string, digest: string): Promise<StackStartReview> {
+    const remoteSource = await this.preparedRemoteRelease(project, stack, release, digest);
+    const report = await this.reviewStackStartIntent(project, stack, { release, infrastructure: 'preserve' }, { remoteSource });
+    report.deferred.push('Replacement activation requires a separately confirmed handoff from the serving recipient');
+    return report;
+  }
+
+  async reviewPreparedHostBindings(project: string, stack: string, release: string, digest: string, nodeId: string) {
+    const { receipt, opened, admitted } = await this.preparedRemoteRelease(project, stack, release, digest);
+    if (receipt.nodeId !== nodeId) throw Error('Host binding review names a different prepared recipient');
+    const services = await this.collectDeclaredServices(project, opened.stackConfig, opened.config, { definitions: admitted.remoteDefinitions! });
+    const { reviewHostBindings } = await import('../infrastructure/host-binding-review.js');
+    return reviewHostBindings({ project, stack, release, nodeId, commit: receipt.commit, manifestSha256: receipt.manifestSha256,
+      sshFingerprint: receipt.sshFingerprint }, services, opened.stackConfig.serviceOverrides);
+  }
+
   /** Where releases are kept on this master — `~/.omnitron/releases`. */
   private async releaseStore(): Promise<string> {
     const { releasesRoot } = await import('../release/load.js');
@@ -3454,12 +3547,14 @@ export class ProjectService extends EventEmitter {
     config: IEcosystemConfig,
     releaseId: string,
     purpose: 'deploy' | 'check' = 'deploy',
+    source?: { sourceRoot: string; storeRoot: string; release: LoadedRelease; declarations: import('../release/source-capture.js').CapturedSource['declarations']; fingerprint: string; registeredStack: IStackConfig },
   ): Promise<AdmittedRelease> {
     if (stackConfig.type === 'local' && stackConfig.managedOrigin)
       throw new Error('A node allocation takes its release from its owning controller');
     const { loadRelease, treeEqualsCommit } = await import('../release/load.js');
     const { decideStackRelease } = await import('../release/manifest.js');
-    const release = await loadRelease(releaseId, await this.releaseStore());
+    const store = source?.storeRoot ?? await this.releaseStore();
+    const release = source?.release ?? await loadRelease(releaseId, store);
 
     const configuredApps = this.resolveStackApps(stackConfig, config);
     if (stackConfig.type !== 'local' && configuredApps.some(entry => entry.releaseFrom || release.manifest.artifacts.some(artifact => artifact.app === entry.name && artifact.origin)))
@@ -3473,7 +3568,11 @@ export class ProjectService extends EventEmitter {
     // refusal that read «nothing has been verified on 'test'» while there
     // was no way for anything to be. See `release/attest.ts`.
     const { loadAttestations } = await import('../release/attest.js');
-    const attestations = loadAttestations(release.id, await this.releaseStore());
+    const attestations = loadAttestations(release.id, store);
+    if (source) {
+      const baseline = decideStackRelease(release.manifest, source.registeredStack.release, apps, attestations);
+      if (baseline.action === 'refuse') throw Error('The registered stack release policy refuses this source: ' + baseline.because);
+    }
     const verdict = decideStackRelease(release.manifest, stackConfig.release, apps, attestations);
     if (verdict.action === 'refuse') {
       throw new Error(`Refusing release ${release.id} for ${projectName}/${stackName}: ${verdict.because}.`);
@@ -3492,8 +3591,11 @@ export class ProjectService extends EventEmitter {
     } else if (running !== release.id) {
       let previous: import('../release/manifest.js').ReleaseManifest | undefined;
       try {
-        previous = (await loadRelease(running, await this.releaseStore())).manifest;
+        const liveStore = await this.releaseStore();
+        const priorStore = source && store !== liveStore && !fs.existsSync(path.join(liveStore, running)) ? store : liveStore;
+        previous = (await loadRelease(running, priorStore)).manifest;
       } catch (err) {
+        if (source) throw Error('The prior release for this registered stack is unavailable for migration comparison', { cause: err });
         this.logger.warn(
           { project: projectName, stack: stackName, running, error: (err as Error).message },
           'The release running on this stack could not be read — its migrations are not compared',
@@ -3539,7 +3641,7 @@ export class ProjectService extends EventEmitter {
     }
     // Only what the definition reads has to be the release's. A failed input
     // inventory cannot be replaced by a narrower or unverified comparison.
-    const root = fs.realpathSync(project.path);
+    const root = source?.sourceRoot ?? fs.realpathSync(project.path);
     // Local admission materializes the verified package itself. On remote deployments
     // the old single-project bootstrap still supplies its code declarations; its data
     // file must come from the admitted archive, including when that file is absent.
@@ -3550,9 +3652,13 @@ export class ProjectService extends EventEmitter {
       for (const entry of entries) {
         if (entry.bootstrap) archived.set(entry.name, await readArchiveInfrastructure(release, entry.name));
       }
-      remoteDefinitions = purpose === 'check'
-        ? this.preservationDefinitions(projectName, stackName, entries, archived)
-        : await this.loadAppDefinitions(projectName, stackConfig, config, entries, archived);
+      if (source) {
+        const { remoteSourceDeclarations } = await import('../release/remote-source.js');
+        remoteDefinitions = await remoteSourceDeclarations(root, commit, entries, archived, source.declarations);
+      } else {
+        remoteDefinitions = purpose === 'check' ? this.preservationDefinitions(projectName, stackName, entries, archived)
+          : await this.loadAppDefinitions(projectName, stackConfig, config, entries, archived);
+      }
     }
     let inputs: string[] | undefined;
     try {
@@ -3583,7 +3689,7 @@ export class ProjectService extends EventEmitter {
     // A frozen application supplies its own SDK; a controller build is not its runtime.
     const { refuseReleaseOwners } = await import('../release/owner-admission.js');
     const incompatible = stackConfig.type === 'local' ? null : refuseReleaseOwners(release.manifest, stackConfig, configuredApps,
-      await this.askReleaseOwners(stackConfig, configuredApps));
+      await this.askReleaseOwners(stackConfig, configuredApps, source?.fingerprint));
     if (incompatible) {
       throw new Error(`Refusing release ${release.id} for ${projectName}/${stackName}: ${incompatible}.`);
     }
@@ -3619,12 +3725,14 @@ export class ProjectService extends EventEmitter {
   /** Inspect exactly the nodes that will execute applications. Delivery repeats
    * this OS/private-Netron proof; version suffixes never substitute for it. */
   private async askReleaseOwners(
-    stackConfig: IStackConfig, apps: readonly IEcosystemAppEntry[],
+    stackConfig: IStackConfig, apps: readonly IEcosystemAppEntry[], expectedFingerprint?: string,
   ): Promise<Array<import('../release/owner-admission.js').ReleaseOwnerAnswer>> {
     return Promise.all(
       resolveNodePlacements(stackConfig, apps).filter(placement => placement.apps.length).map(async ({ node }) => {
         try {
-          const bundle = await this.deployer.inspectInstalledBundle(await this.targetForStackNode(node));
+          const target = await this.targetForStackNode(node);
+          if (expectedFingerprint && target.expectedHostFingerprint !== expectedFingerprint) throw Error('Release recipient SSH key changed');
+          const bundle = await this.deployer.inspectInstalledBundle(target);
           return { host: node.host, port: node.port ?? 9700,
             ...(bundle.applicationRuntime && { runtime: bundle.applicationRuntime }) };
         } catch (err) {
@@ -5373,9 +5481,9 @@ export class ProjectService extends EventEmitter {
     node: import('../config/types.js').IStackNode, infrastructure: InfrastructureConfig,
     services: Record<string, IServiceRequirement>,
     owner: { project: string; stack: string; overrides?: Record<string, import('../infrastructure/types.js').IServiceOverride> | undefined },
-    projectRoot: string, releasedStatics?: string,
+    projectRoot: string, releasedStatics?: string, managementIdentity?: string,
   ): Promise<import('../shared/dto/project.js').ExistingInfrastructureReview> {
-    const result = await this.provisionNodeInfrastructure(this.getSlaveConnector(), node, infrastructure, services, owner, projectRoot, releasedStatics, { mode: 'review' });
+    const result = await this.provisionNodeInfrastructure(this.getSlaveConnector(), node, infrastructure, services, owner, projectRoot, releasedStatics, { mode: 'review', ...(managementIdentity && { managementIdentity }) });
     if (!result.preservation || result.preservation.protocol !== 1 || result.preservation.mode !== 'preserve')
       throw Error('Recipient does not confirm infrastructure preservation capability; update or inspect the node before recovery');
     return result.preservation;
@@ -5405,22 +5513,19 @@ export class ProjectService extends EventEmitter {
     projectRoot?: string | undefined,
     /** A release's static bundle, shipped as it was built — see `shipStackStatics`. */
     releasedStatics?: string | undefined,
-    authority?: { mode: 'review' | 'preserve' | 'reconcile'; review?: string | undefined },
+    authority?: { mode: 'review' | 'preserve' | 'reconcile'; review?: string | undefined; managementIdentity?: string },
   ): Promise<{ ready: boolean; detail: string; preservation?: import('../shared/dto/project.js').ExistingInfrastructureReview }> {
     const host = node.host;
     const port = node.port ?? 9700;
 
-    await connector.addSlave({ host, port, label: node.label });
-
-    // `addSlave` starts the connection and returns; invoking straight after
-    // races it. Measured: "Slave 37.27.130.185:9700 not connected", against
-    // a node the master connected to successfully two seconds later.
-    if (!(await connector.waitUntilConnected(host, port, 60_000))) {
-      this.logger.error(
-        { node: `${host}:${port}` },
-        'This node did not join the mesh within a minute — its infrastructure cannot be brought up from here',
-      );
-      return { ready: false, detail: 'the node did not join the mesh within a minute' };
+    const pinned = authority?.managementIdentity
+      ? connector.pinnedService(host, port, node.nodeId!, authority.managementIdentity, 'OmnitronInfra') : undefined;
+    if (!pinned) {
+      await connector.addSlave({ host, port, label: node.label });
+      if (!(await connector.waitUntilConnected(host, port, 60_000))) {
+        this.logger.error({ node: `${host}:${port}` }, 'Node did not join the mesh before infrastructure review or provisioning');
+        return { ready: false, detail: 'the node did not join the mesh within a minute' };
+      }
     }
 
     try {
@@ -5456,16 +5561,12 @@ export class ProjectService extends EventEmitter {
       // restarted this node's daemon, so the mesh connection the master holds
       // was established to the process that exited. `provisionStack` is a
       // reconciler, so applying it twice is applying it once.
-      const report = (await connector.invokeOnSlave(
-        host,
-        port,
-        'OmnitronInfra',
-        authority?.mode === 'review' ? 'reviewStack' : 'provisionStack',
-        [{ config: configForNode, services: servicesForNode, ...(owner ?? {}), configFiles, staticRoots, staticLinkRoots,
-          ...(preserving ? { infrastructure: 'preserve', staticDigests, ...(authority?.review && { review: authority.review }) }
-            : authority?.mode === 'reconcile' ? { infrastructure: 'reconcile' } : {}) }],
-        { retryOnDisconnect: true },
-      )) as ({ ready?: boolean; detail?: string; running?: string[]; failed?: unknown[]; missing?: string[]; preservation?: import('../shared/dto/project.js').ExistingInfrastructureReview }
+      const request = { config: configForNode, services: servicesForNode, ...(owner ?? {}), configFiles, staticRoots, staticLinkRoots,
+        ...(preserving ? { infrastructure: 'preserve', staticDigests, ...(authority?.review && { review: authority.review }) }
+          : authority?.mode === 'reconcile' ? { infrastructure: 'reconcile' } : {}) };
+      const report = (pinned ? await pinned('reviewStack', request) :
+        await connector.invokeOnSlave(host, port, 'OmnitronInfra', authority?.mode === 'review' ? 'reviewStack' : 'provisionStack',
+          [request], { retryOnDisconnect: true })) as ({ ready?: boolean; detail?: string; running?: string[]; failed?: unknown[]; missing?: string[]; preservation?: import('../shared/dto/project.js').ExistingInfrastructureReview }
         & Partial<import('../shared/dto/project.js').ExistingInfrastructureReview>) | undefined;
 
       const preservation = authority?.mode === 'review' ? report as import('../shared/dto/project.js').ExistingInfrastructureReview : report?.preservation;

@@ -138,6 +138,31 @@ async function readJson(name) {
   try { return JSON.parse(raw); } catch { throw Error('Invalid snapshot input JSON.'); }
 }
 
+export async function dataPlacementDefinition(spec, verification, dataDir) {
+  validate(spec);
+  const verified = verification?.steps?.find(step => step.name === 'check-daemon');
+  if (dataDir !== '/var/lib/monero/.bitmonero' || verification?.status !== 'success' ||
+      verified?.status !== 'success' || verified.nodeId !== spec.receiverNode || verified.outputTruncated ||
+      typeof verified.output !== 'string')
+    throw Error('Use the successful receiver daemon check and the declared mainnet service directory.');
+  const output = verified.output.trim();
+  const observation = JSON.parse(output);
+  if (observation.native?.cleanShutdown !== true || observation.native.nettype !== 'mainnet' ||
+      observation.native.offline !== true || !hash(observation.sealedSha256) ||
+      observation.dataDir !== path.posix.join(spec.stageParent, 'monero-data-' + spec.id))
+    throw Error('The receiver check does not attest this prepared mainnet data directory.');
+  // Preserve the exact native signature. Nanosecond timestamps can exceed Number.MAX_SAFE_INTEGER.
+  const code = embedChannel(await fs.readFile(shared)) +
+    await fs.readFile(new URL('../lmdb-preseed/place.py', import.meta.url), 'utf8');
+  const run = pythonCommand(code)(...[spec, dataDir, sha(output)].map(value => b64(JSON.stringify(value))));
+  if (Buffer.byteLength(run) > 24 * 1024) throw Error('Placement exceeds the management command size.');
+  return { name: 'private-lmdb-preseed-' + spec.id + '-place-data',
+    description: 'Place a verified mainnet directory for an inactive service on the receiving node.',
+    triggers: [{ type: 'manual', config: {} }], steps: [registeredPinsStep(spec), {
+      name: 'place-data', nodeId: spec.receiverNode, dependsOn: ['registered-pins'], retries: 0, timeout: 60000, run,
+    }] };
+}
+
 async function print(value) {
   await new Promise((resolve, reject) => process.stdout.write(JSON.stringify(value, null, 2) + '\n',
     error => error ? reject(error) : resolve()));
@@ -160,6 +185,11 @@ export function command(program) {
       await print(await preparedDataDefinition(await readJson(file), await readJson(options.offer),
         await readJson(options.seal), Number(options.reserveBytes), Boolean(options.status)));
     });
+  op.command('place-data <spec>').description('Place the qualified public data before service activation')
+    .requiredOption('--verification <file>', 'Successful check-daemon Pipeline status with output')
+    .requiredOption('--data-dir <path>', 'Canonical mainnet data directory from the service declaration')
+    .action(async (file, options) => print(await dataPlacementDefinition(await readJson(file),
+      await readJson(options.verification), options.dataDir)));
   for (const phase of ['offer', 'copy', 'accept', 'revoke']) {
     const sub = op.command(phase + ' <spec>').description('Export the ' + phase + ' pipeline');
     if (phase !== 'revoke') sub.requiredOption('--helper <file>', 'Exact locally qualified ELF payload');

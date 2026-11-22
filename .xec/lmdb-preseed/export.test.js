@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import test from 'node:test';
 import { checkPipelineDefinition } from '../../apps/omnitron/src/services/pipeline-definition.ts';
-import { daemonCheckDefinition, lmdbDefinition, preparedDataDefinition } from '../commands/lmdb-preseed.js';
+import { daemonCheckDefinition, dataPlacementDefinition, lmdbDefinition, preparedDataDefinition } from '../commands/lmdb-preseed.js';
 import { sha } from './build.js';
 
 const elf = randomBytes(70 * 1024);
@@ -29,6 +29,21 @@ test('offline native verification is bound to an installed daemon, service accou
   assert(Buffer.byteLength(graph.steps[1].run) <= 24 * 1024);
   for (const change of [{ uid: 0 }, { gid: 0 }, { binary: '/tmp/monerod' }, { sha256: 'missing' }])
     await assert.rejects(daemonCheckDefinition(spec, { ...release, ...change }), /pinned monerod/);
+});
+
+test('passive placement binds the native output and the declared service path', async () => {
+  const dataDir = '/var/lib/monero/.bitmonero';
+  const observed = { dataDir: spec.stageParent + '/monero-data-' + spec.id, sealedSha256: 'd'.repeat(64),
+    native: { cleanShutdown: true, nettype: 'mainnet', offline: true } };
+  const checked = { name: 'check-daemon', nodeId: spec.receiverNode, status: 'success', output: JSON.stringify(observed) };
+  const status = { status: 'success', steps: [checked] };
+  const graph = await dataPlacementDefinition(spec, status, dataDir);
+  await checkPipelineDefinition(graph);
+  assert.equal(graph.steps[1].name, 'place-data');
+  assert(Buffer.byteLength(graph.steps[1].run) <= 24 * 1024);
+  for (const change of [{ nodeId: spec.sourceNode }, { outputTruncated: true }, { status: 'failed' }])
+    await assert.rejects(dataPlacementDefinition(spec, { ...status, steps: [{ ...checked, ...change }] }, dataDir));
+  await assert.rejects(dataPlacementDefinition(spec, status, '/var/lib/another-service'));
 });
 
 test('preparing an independent database uses the sealed bytes on the registered receiver', async () => {

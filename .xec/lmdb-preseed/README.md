@@ -87,7 +87,14 @@ pnpm exec xec lmdb-preseed check-daemon spec.json --release monerod-release.json
 
 Supply the installed `binary` under `/opt/omnitron/binaries/monero/<version>/`, its verified `sha256`, and the service account's `user`, numeric `uid` and `gid`. The receiver binds the independent database file into a transient systemd service. The service checks `/proc/self/net/dev` for a single loopback interface before starting the daemon as the declared non-login account. Its lockfile, peer state and logs live in a temporary directory. The check reads the mainnet genesis, original checkpoint and snapshot tip through the daemon's own RPC and waits for a clean shutdown. The receipt records the daemon SHA-256, height and headers. Repeating the check on the same verified file returns that receipt. [Monero daemon options](https://docs.getmonero.org/interacting/monerod-reference/) · [Node RPC](https://docs.getmonero.org/rpc-library/monerod-rpc/)
 
-Use the verified `dataDir` as the stack's `bareMetal.adopt.from` on the same filesystem. The original sealed snapshot remains available for recovery.
+For ordinary stack provisioning, use the verified `dataDir` as the stack's `bareMetal.adopt.from` on the same filesystem. To stage data for an inactive service whose release already declares the conventional directory, use the successful daemon check from `omnitron --json pipeline status RUN --output`.
+
+```sh
+pnpm exec xec lmdb-preseed place-data spec.json --verification daemon-check-run.json \
+  --data-dir /var/lib/monero/.bitmonero > place-data-pipeline.json
+```
+
+Both Monero services must be inactive and the declared destination must be free. The receiver matches the working file with its identity after native shutdown, moves its directory on the same filesystem and gives the declared service account ownership. A retry uses the recorded directory and file identities. The original sealed snapshot retains its own SHA-256. Service activation uses the normal stack plan.
 
 ## Interruptions, credentials and retries
 

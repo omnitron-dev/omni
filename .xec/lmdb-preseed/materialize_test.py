@@ -24,6 +24,7 @@ def load_module(name, path):
 
 ch = load_module('omnitron_preseed_channel', HERE.parent / 'block-preseed' / 'endpoint.py')
 prep = load_module('prepare_data', HERE / 'materialize.py')
+placement = load_module('place_data', HERE / 'place.py')
 
 
 @unittest.skipUnless(sys.platform == 'linux' and os.getuid() == 0, 'requires a private root-owned Linux fixture')
@@ -114,6 +115,51 @@ class PrepareData(unittest.TestCase):
         (self.stage / 'unrelated').touch()
         with self.assertRaises(ch.Refusal):
             self.prepare(16 * 1024 ** 4)
+
+    def test_passive_placement_preserves_original_and_replays_an_interrupted_handoff(self):
+        r = self.prepare()
+        source = Path(r['dataDir'])
+        target = self.stage.parent / 'service-home' / '.bitmonero'
+        uid, gid = 64101, 64103
+        args = self.state, source, target, r['directoryIdentity'], r['fileIdentity'], uid, gid, 'test-proof'
+        write = ch.write_record
+
+        def interrupted(path, value):
+            if path.name == 'place-data-ready.json':
+                raise OSError('receipt interrupted')
+            write(path, value)
+
+        with patch.object(ch, 'write_record', side_effect=interrupted), self.assertRaisesRegex(OSError, 'interrupted'):
+            placement.publish(*args)
+        self.assertFalse(source.exists())
+        self.assertEqual(target.stat().st_uid, 0)
+        result = placement.publish(*args)
+        self.assertEqual(result, placement.publish(*args))
+        data = target / 'lmdb/data.mdb'
+        self.assertEqual([data.stat().st_uid, data.stat().st_gid], [uid, gid])
+        self.assertEqual([data.stat().st_dev, data.stat().st_ino], r['fileIdentity'][:2])
+        self.assertEqual(self.source.read_bytes(), data.read_bytes())
+        self.assertEqual(self.source.stat().st_uid, 0)
+        data.write_bytes(b'changed')
+        with self.assertRaises(ch.Refusal):
+            placement.publish(*args)
+
+    def test_passive_placement_refuses_occupied_path_and_changed_input(self):
+        r = self.prepare()
+        source = Path(r['dataDir'])
+        target = self.stage.parent / 'service-home' / 'empty-target'
+        args = self.state, source, target, r['directoryIdentity'], r['fileIdentity'], 64101, 64103, 'test-proof'
+        target.parent.mkdir()
+        target.parent.chmod(0o711)
+        target.mkdir(mode=0o711)
+        with self.assertRaises(ch.Refusal):
+            placement.publish(*args)
+        self.assertTrue(source.is_dir())
+        target.rmdir()
+        (source / 'lmdb/data.mdb').write_bytes(b'altered')
+        with self.assertRaises(ch.Refusal):
+            placement.publish(*args)
+        self.assertFalse(target.exists())
 
 
 if __name__ == '__main__':

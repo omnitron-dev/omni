@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.16] - 2026-11-23
+
 ### Changed
 
 - Remote deployments record the recipient's startup result and distinguish health checks still in progress, a partial start and a lost connection. Retrying a reviewed deployment can reuse the installed files and the receiving node's receipt.

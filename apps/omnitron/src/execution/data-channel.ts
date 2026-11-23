@@ -48,9 +48,27 @@ export function throughDataChannel(command: string): string {
  * fully quoted command, including the lease guard. A truncated stdin frame
  * must finish verification before the remote shell can execute any of it. */
 export function dataChannelRequest(command: string): { command: string; stdin?: Buffer } {
-  const inline = throughDataChannel(command);
-  if (Buffer.byteLength(inline) <= 16 * 1024) return { command: inline };
-  const stdin = Buffer.from('{\n' + command + '\n} </dev/null\n');
+  return sshCommandFrame(command, throughDataChannel);
+}
+
+/** Keep ordinary command output on the masked SSH channel. Application input
+ * travels on stdin, including when a large command also needs that channel. */
+export function sshCommandRequest(command: string, input?: string | Buffer): { command: string; stdin?: Buffer } {
+  return sshCommandFrame(command, value => value, input);
+}
+
+function sshCommandFrame(command: string, wrap: (value: string) => string, input?: string | Buffer): { command: string; stdin?: Buffer } {
+  const inline = wrap(command);
+  const bytes = input === undefined ? undefined : Buffer.from(input);
+  if (Buffer.byteLength(inline) <= 16 * 1024) return { command: inline, ...(bytes && { stdin: bytes }) };
+  // A literal here-document carries arbitrary bytes without putting application
+  // input in the SSH command line. Verify the entire frame before running it.
+  const feed = bytes === undefined ? '' : `{
+base64 -d <<'OMNITRON_SSH_STDIN'
+${bytes.toString('base64')}
+OMNITRON_SSH_STDIN
+} | `;
+  const stdin = Buffer.from(feed + '{\n' + command + (bytes === undefined ? '\n} </dev/null\n' : '\n}\n'));
   const digest = createHash('sha256').update(stdin).digest('hex');
   const receive = [
     'body=$(cat && printf .) || exit 1',
@@ -59,7 +77,7 @@ export function dataChannelRequest(command: string): { command: string; stdin?: 
     'test "${sum%% *}" = ' + digest + " || { echo 'Incomplete SSH command frame' >&2; exit 1; }",
     'printf %s "$body" | /bin/sh',
   ].join('\n');
-  return { command: throughDataChannel(receive), stdin };
+  return { command: wrap(receive), stdin };
 }
 
 /** The stdout the command printed, or why the channel cannot be read. */

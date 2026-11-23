@@ -70,6 +70,10 @@ export async function exerciseKernelSSH({ sdk, home, previous, entry, installati
     const proof = await driver.underLease(target, 'inspect managed kernel', () => driver.readFromNode(target, inspect));
     assert.notEqual(proof.code, 0);
     assert.match(proof.stderr, /no installed managed supervisor/);
+    const plain = await driver.underLease(target, 'exercise ordinary managed command', () =>
+      driver.runOnNode(target, '# ' + 'x'.repeat(48 * 1024) + '\nprintf plain-input-ok'));
+    assert.equal(plain.code, 0);
+    assert.equal(plain.stdout.trim(), 'plain-input-ok');
     const frame = dataChannelRequest(guarded);
     const incomplete = await ssh({ ...login, port: 2222 }, frame.command, { stdin: frame.stdin.subarray(0, -1) });
     assert.notEqual(incomplete.exitCode, 0);

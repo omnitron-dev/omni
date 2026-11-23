@@ -20,7 +20,7 @@
 import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 
-import { dataChannelRequest, fromDataChannel, throughDataChannel } from '../../src/execution/data-channel.js';
+import { dataChannelRequest, fromDataChannel, sshCommandRequest, throughDataChannel } from '../../src/execution/data-channel.js';
 import { ExecutionService } from '../../src/execution/execution.service.js';
 import { LeaseHeldError, parseAcquire } from '../../src/services/node-deploy-lease.js';
 import { RemoteDeployer } from '../../src/services/remote-deployer.service.js';
@@ -99,6 +99,21 @@ it('checks the entire large SSH script before executing it and preserves its out
   expect(incomplete.status).not.toBe(0);
   expect(incomplete.stderr).toContain('Incomplete SSH command frame');
   expect(incomplete.stdout).toBe('');
+});
+
+it('frames a large ordinary installation command with its own binary input and keeps its exit status', () => {
+  const data = Buffer.from([0, 10, 255, 34, 92, 97]);
+  const script = ['#' + 'x'.repeat(49152), 'cat', 'exit 9'].join('\n');
+  const request = sshCommandRequest(script, data);
+  expect(Buffer.byteLength(request.command)).toBeLessThan(16384);
+  const run = (input: Buffer) => spawnSync('/bin/sh', ['-c', request.command], { input });
+  const complete = run(request.stdin!);
+  expect(complete.status).toBe(9);
+  expect(complete.stdout).toEqual(data);
+  const truncated = run(request.stdin!.subarray(0, -2));
+  expect(truncated.status).not.toBe(0);
+  expect(truncated.stdout).toHaveLength(0);
+  expect(truncated.stderr.toString()).toContain('Incomplete SSH command frame');
 });
 
 describe('a refused deployment names who holds the node', () => {

@@ -57,7 +57,7 @@ import {
 } from './host-upgrade.js';
 import { gunzipSync } from 'node:zlib';
 import { shellEscape } from '../shared/shell-escape.js';
-import { dataChannelRequest, fromDataChannel } from '../execution/data-channel.js';
+import { dataChannelRequest, fromDataChannel, sshCommandRequest } from '../execution/data-channel.js';
 import { commandFailure } from '../execution/command-failure.js';
 import { activateManagedTarget, managedApplicationCommand, managedHostCommand, planManagedRollout, reconcileManagedTarget, workingTreeConnectionProbe,
   type ManagedHostEvidence, type ManagedHostRequest, type ManagedRolloutObservation, type ManagedSelection } from './managed-rollout.js';
@@ -1927,7 +1927,8 @@ export class RemoteDeployer {
   private async sshExec(target: DeployTarget, command: string, timeout = 60_000, stdin?: string): Promise<string> {
     await this.confirmLease(target, 'remote command');
     const guarded = this.guardedCommand(target, command, timeout);
-    const result = await this.execution.ssh(sshTargetOf(target), guarded.command, { timeout: guarded.timeout, ...(stdin !== undefined && { stdin }) });
+    const request = sshCommandRequest(guarded.command, stdin);
+    const result = await this.execution.ssh(sshTargetOf(target), request.command, { timeout: guarded.timeout, ...(request.stdin && { stdin: request.stdin }) });
     if (result.exitCode !== 0) {
       const detail = result.stderr || result.stdout || `exit ${result.exitCode}`;
       throw new Error(`ssh ${target.username ?? 'root'}@${target.host}: ${detail}`);
@@ -1961,7 +1962,8 @@ export class RemoteDeployer {
   ): Promise<{ stdout: string; stderr: string; code: number }> {
     await this.confirmLease(target, 'remote command');
     const guarded = this.guardedCommand(target, command, timeoutMs);
-    const result = await this.execution.ssh(sshTargetOf(target), guarded.command, { timeout: guarded.timeout });
+    const request = sshCommandRequest(guarded.command);
+    const result = await this.execution.ssh(sshTargetOf(target), request.command, { timeout: guarded.timeout, ...(request.stdin && { stdin: request.stdin }) });
     return { stdout: result.stdout, stderr: result.stderr, code: result.exitCode ?? -1 };
   }
 

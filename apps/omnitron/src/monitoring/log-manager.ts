@@ -327,12 +327,24 @@ export class LogManager {
       for (;;) {
         const batch = this.journal!.peek(100, 2 * 1024 * 1024, 'file');
         if (!batch.length) break;
-        for (const item of batch) {
-          if (performance.now() >= this.mirrorDeadline) return;
-          const { app, record } = item.value;
-          await this.appendMirror(app, 'app', record);
-          if (record.level === 'error' || record.level === 'fatal') await this.appendMirror(app, 'error', record);
-          this.journal!.acknowledge([item], 'file');
+        let written: typeof batch = [];
+        const acknowledgeWritten = () => {
+          if (written.length) {
+            const synced = written;
+            written = [];
+            this.journal!.acknowledge(synced, 'file');
+          }
+        };
+        try {
+          for (const item of batch) {
+            if (performance.now() >= this.mirrorDeadline) return;
+            const { app, record } = item.value;
+            await this.appendMirror(app, 'app', record, acknowledgeWritten);
+            if (record.level === 'error' || record.level === 'fatal') await this.appendMirror(app, 'error', record, acknowledgeWritten);
+            written.push(item);
+          }
+        } finally {
+          acknowledgeWritten();
         }
       }
       runtimeDiagnostics.resolve('logs.file-mirror');
@@ -345,16 +357,24 @@ export class LogManager {
     return this.mirrorRunning;
   }
 
-  private appendMirror(app: string, type: LogType, record: LogRecord): Promise<void> {
-    return this.enqueue(this.getLogFilePath(app, type), () => this.appendMirrorFile(app, type, record));
+  private appendMirror(app: string, type: LogType, record: LogRecord, beforeRotation: () => void): Promise<void> {
+    return this.enqueue(this.getLogFilePath(app, type), () => this.appendMirrorFile(app, type, record, beforeRotation));
   }
 
-  private async appendMirrorFile(app: string, type: LogType, record: LogRecord): Promise<void> {
+  private async appendMirrorFile(app: string, type: LogType, record: LogRecord, beforeRotation: () => void): Promise<void> {
     const file = this.getLogFilePath(app, type);
     let intent = this.journal!.fileIntent(record.id!, file);
     if (!intent) {
-      try { if ((await fs.promises.stat(file)).size >= this.getMaxSizeBytes(app)) await this.rotateFile(app, type); }
-      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+      const current = await fs.promises.stat(file).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') return null;
+        throw error;
+      });
+      if (current && current.size >= this.getMaxSizeBytes(app)) {
+        // Replay identifies an append by inode and offset. Commit the preceding
+        // records before moving that inode out of the live path.
+        beforeRotation();
+        if (!this.journal!.hasFileIntent(file)) await this.rotateFile(app, type);
+      }
     }
     const output = await fs.promises.open(file, 'a+', PRIVATE_FILE_MODE);
     try {

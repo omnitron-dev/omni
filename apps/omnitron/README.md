@@ -85,6 +85,8 @@ omnitron logs project/stack/app
 omnitron stop project/stack/app
 ```
 
+The execution owner keeps captured application output in its private SQLite journal. It syncs each record to the application log and, for errors, to the error log as well. It commits file delivery acknowledgements in batches of up to 100 records and before rotating a log. After an interruption it checks the bytes at the recorded file offsets before resuming. Database delivery has its own acknowledgement.
+
 `stop` requires a responsive daemon and fails when completion cannot be confirmed. `stop all` stops managed applications; `down` explicitly shuts down the daemon. Inspect the current process and operation state after a lost acknowledgement before issuing another mutation.
 
 ### Running a separate local daemon

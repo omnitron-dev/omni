@@ -6,7 +6,7 @@ import {
   acquireReleaseLock, assertCleanReleaseTree, assertReleaseHead, commitReleaseVersion,
   createGithubRelease, discoverReleasePackages, ensureReleaseTag, loadPreparedRelease,
   planRelease, prepareReleaseArtifacts, publishPreparedRelease, registryAddress,
-  pushReleaseRefs, registryArtifactMatches, releaseCommand, ReleaseCommandError, releaseNotes, verifyRemoteReleaseTag,
+  pushReleaseRefs, registryArtifactMatches, releaseCommand, ReleaseCommandError, verifyRemoteReleaseTag,
 } from '@xec-sh/ops/release';
 import semver from 'semver';
 import policy, { assertBuildDependencies } from '../release-policy.mjs';
@@ -16,6 +16,7 @@ import { assertReleaseVersionAvailable } from '../release-registry.js';
 import { prepareVersionQualification } from '../version-qualification.js';
 import { releaseBuildContext, finalizePreparationBuild, assertReleaseProducerApi, verifyPublicationPreparation } from '../release/build.js';
 import { releasePreparation } from '../release/recipe.js';
+import { projectReleaseNotes } from '../release/notes.js';
 
 const defaultRoot = fileURLToPath(new URL('../../', import.meta.url));
 const repository = policy.repository;
@@ -98,7 +99,7 @@ async function runRelease(version, operation, values, root = defaultRoot) {
       const buildContext = await releaseBuildContext(root, commit);
       const prepared = await prepareReleaseArtifacts(root, version, await releasePreparation(root, commit, buildContext));
       await finalizePreparationBuild(root, version, buildContext);
-      const notes = await releaseNotes(root, version, repository);
+      const notes = await projectReleaseNotes(root, prepared, repository);
       await writeFile(path.join(root, '.release-artifacts', version, prepared.commit, 'NOTES.md'), notes);
       await ensureReleaseTag(root, version);
       if (values.previous || values.fromQualified) await qualify();
@@ -116,7 +117,7 @@ async function runRelease(version, operation, values, root = defaultRoot) {
     const registry = registryAddress(typeof values.registry === 'string' ? values.registry : undefined);
     if (operation !== 'finish') await verifyRemoteReleaseTag(root, version, true);
     const finishGithub = async () => {
-      console.log(await createGithubRelease(root, version, repository, await releaseNotes(root, version, repository)));
+      console.log(await createGithubRelease(root, version, repository, await projectReleaseNotes(root, prepared, repository)));
     };
     if (operation === 'github') {
       for (const artifact of prepared.artifacts) {

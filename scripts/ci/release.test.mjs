@@ -12,10 +12,27 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { discoverReleasePackages } from '@xec-sh/ops/release';
 import { supersedeDraft } from '../../.xec/supersede-draft.mjs';
+import { changelogSection } from '../../.xec/release/notes.js';
 import { assertPipelineSucceeded } from '../lib/pipeline-result.mjs';
 import './release-registry.test.mjs';
 import './build-dependencies.test.js';
 import { command as registerRelease } from '../../.xec/commands/release.js';
+
+test('release notes preserve authored Markdown and only the references used by this version', () => {
+  const document = [
+    '[guide]: https://example.org/guide', '', '## Unreleased', '', 'Pending changes.', '',
+    '## [1.2.3] - 2026-11-23', '', '### Fixed', '', 'Read the [guide][guide].', '',
+    '~~~md', '## [1.2.2]', '~~~', '', '## [1.2.2]', '', 'Earlier changes.', '',
+    '[1.2.3]: https://example.org/release', '[unused]: https://example.org/unused',
+  ].join('\r\n');
+  const notes = changelogSection(document, '1.2.3');
+  assert.match(notes, /### Fixed/);
+  assert.match(notes, /~~~md\r\n## \[1\.2\.2\]\r\n~~~/);
+  assert.match(notes, /\[guide\]: https:\/\/example\.org\/guide/);
+  assert.doesNotMatch(notes, /Pending changes|Earlier changes|unused/);
+  assert.equal(changelogSection(document, '2.0.0'), '');
+  assert.throws(() => changelogSection(document + '\n## 1.2.3\n', '1.2.3'), /Duplicate/);
+});
 
 const run = promisify(execFile);
 const repo = fileURLToPath(new URL('../../', import.meta.url));
@@ -169,7 +186,10 @@ const fs = require('node:fs');
 const [cmd, op, tag] = process.argv.slice(2);
 const state = process.env.FIXTURE_GITHUB_STATE;
 if (cmd === 'api') { if (fs.existsSync(state)) console.log(fs.readFileSync(state, 'utf8')); }
-else if (cmd === 'release' && op === 'create' && process.argv.includes('--verify-tag')) fs.writeFileSync(state, tag, { flag: 'wx' });
+else if (cmd === 'release' && op === 'create' && process.argv.includes('--verify-tag')) {
+  fs.writeFileSync(state, tag, { flag: 'wx' });
+  fs.copyFileSync(process.argv[process.argv.indexOf('--notes-file') + 1], state + '.body');
+}
 else if (cmd === 'release' && op === 'view' && fs.readFileSync(state, 'utf8') === tag) {
   console.log(JSON.stringify({ tagName: tag, isPrerelease: true, isDraft: false, url: 'https://github.com/omnitron-dev/omni/releases/tag/' + tag }));
 } else process.exit(1);
@@ -364,6 +384,10 @@ for (const name of ['base', 'client']) writeFileSync('packages/' + name + '/inde
   interrupt = false;
   await release('--finish', '--registry', registry);
   assert.equal(await fs.readFile(githubState, 'utf8'), 'v' + version);
+  const preparedNotes = await fs.readFile(path.join(producerDirectory, 'NOTES.md'), 'utf8');
+  assert.equal(await fs.readFile(githubState + '.body', 'utf8'), preparedNotes);
+  assert.match(preparedNotes, /Preserve the release receipt/);
+  assert.doesNotMatch(preparedNotes, /Original release|Committed history/);
   assert.equal(store.size, 2);
   const receipts = (await fs.readFile(path.join(workspace, '.release-artifacts', version, commit, 'publication.jsonl'), 'utf8'))
     .trim().split('\n').map(line => JSON.parse(line));

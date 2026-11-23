@@ -58,6 +58,8 @@ Preparation builds and packs once against the exact source commit. Xec retains t
 
 Finish verifies the accepted archive inventory, canonical producer/acceptance receipts and recorded source, recipe, policy and dependency lockfile. It publishes those exact bytes without repeating builds, consumer checks or runtime-tree hashing. The publisher may use a different Node version or environment from the recorded producer. Missing acceptance, failed cleanup or changed evidence prevents publication.
 
+GitHub Release notes come from the matching section of the committed changelog. Preparation writes them to `NOTES.md`, and publication regenerates them from the same commit. A release with no authored entries still lists the package count and links to its source. [Changelog](CHANGELOG.md)
+
 Runtime qualification is a separate operation:
 
 ```sh

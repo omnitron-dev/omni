@@ -9,6 +9,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import React, { type ReactNode } from 'react';
 import { AuthProvider, useAuth } from '../src/auth/context.js';
+import { NetronReactClient } from '../src/core/client.js';
 
 function makeMockClient() {
   return {
@@ -25,6 +26,39 @@ function makeMockClient() {
 }
 
 describe('NR-9: AuthProvider.login', () => {
+  it.each([undefined, 'memory', 'session', 'local'] as const)(
+    'uses the selected storage across provider and transport clients (%s)',
+    async (storage) => {
+      localStorage.clear();
+      sessionStorage.clear();
+      const onLogin = async () => ({
+        success: true,
+        context: { userId: 'reader', roles: [], permissions: [] },
+        metadata: { accessToken: 'test-token' },
+      });
+      const wrapper = ({ children }: { children: ReactNode }) => (
+        <AuthProvider config={{ storage }} onLogin={onLogin}>{children}</AuthProvider>
+      );
+      const view = renderHook(() => useAuth(), { wrapper });
+      try {
+        await act(async () => { await view.result.current.login({}); });
+        expect(view.result.current.token).toBe('test-token');
+        expect(localStorage.getItem('netron_auth_token')).toBe(storage === 'local' ? 'test-token' : null);
+        expect(sessionStorage.getItem('netron_auth_token')).toBe(storage === 'session' ? 'test-token' : null);
+        const reader = new NetronReactClient({ url: 'http://localhost', auth: { storage } }).getAuth()!;
+        try {
+          expect(reader.getToken() ?? null).toBe(storage === 'session' || storage === 'local' ? 'test-token' : null);
+        } finally {
+          reader.destroy();
+        }
+      } finally {
+        view.unmount();
+        localStorage.clear();
+        sessionStorage.clear();
+      }
+    },
+  );
+
   it('throws a clear configuration error when no onLogin handler is provided', async () => {
     const client = makeMockClient();
     const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider client={client}>{children}</AuthProvider>;

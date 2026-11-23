@@ -50,6 +50,8 @@ Query callbacks run for the mounted observer and its current request. Pass query
 
 ## Documentation
 
+Authentication uses per-client memory by default. Set `auth.storage` on `NetronReactClient` or `config.storage` on a standalone `AuthProvider` to `session` for the browser tab or `local` to persist across browser sessions. Pass the same `AuthenticationClient` to the transport and provider when they represent the same signed-in user.
+
 [Public API](src/index.ts) · [Package exports](package.json) · [Transport client](../netron-browser/README.md) · [Omni](../../README.md)
 
 ## License

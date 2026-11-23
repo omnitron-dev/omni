@@ -7,7 +7,7 @@ import {
   NetronClient,
   HttpClient,
   WebSocketClient,
-  AuthenticationClient,
+  type AuthenticationClient,
   ConnectionState,
   type ConnectionMetrics,
 } from '@omnitron-dev/netron-browser';
@@ -27,6 +27,7 @@ import { QueryCache } from '../cache/query-cache.js';
 import { MutationCache } from '../cache/mutation-cache.js';
 import { SubscriptionManager } from '../cache/subscription-manager.js';
 import { ServiceRegistry } from '../service/registry.js';
+import { resolveAuthClient } from './auth-client.js';
 
 /**
  * Default client configuration
@@ -75,7 +76,7 @@ export class NetronReactClient {
 
     // Initialize auth client if configured
     if (this.config.auth) {
-      this.initializeAuth();
+      this.authClient = resolveAuthClient(this.config.auth);
     }
   }
 
@@ -100,28 +101,6 @@ export class NetronReactClient {
       transport: config.transport ?? DEFAULT_CONFIG.transport!,
       protocols: config.protocols,
     } as Required<NetronReactClientConfig>;
-  }
-
-  /**
-   * Initialize authentication client
-   */
-  private initializeAuth(): void {
-    if (this.config.auth.client) {
-      this.authClient = this.config.auth.client;
-    } else {
-      this.authClient = new AuthenticationClient({
-        storage:
-          this.config.auth.storage === 'session'
-            ? undefined // Use session storage
-            : this.config.auth.storage === 'memory'
-              ? undefined // Use memory storage
-              : undefined, // Use local storage (default)
-        autoRefresh: this.config.auth.autoRefresh ?? true,
-        refreshThreshold: this.config.auth.refreshThreshold ?? 5 * 60 * 1000,
-        refreshConfig: this.config.auth.refreshEndpoint ? { endpoint: this.config.auth.refreshEndpoint } : undefined,
-        logoutConfig: this.config.auth.logoutEndpoint ? { endpoint: this.config.auth.logoutEndpoint } : undefined,
-      });
-    }
   }
 
   // ============================================================================

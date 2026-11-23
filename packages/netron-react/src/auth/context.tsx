@@ -4,11 +4,13 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import {
-  AuthenticationClient,
+  type AuthenticationClient,
   type AuthContext as NetronAuthContext,
   type AuthResult,
   type AuthCredentials,
 } from '@omnitron-dev/netron-browser';
+import type { AuthConfig } from '../core/types.js';
+import { resolveAuthClient } from '../core/auth-client.js';
 
 // ============================================================================
 // Types
@@ -71,13 +73,7 @@ export interface AuthProviderProps {
   /** Netron AuthenticationClient instance */
   client?: AuthenticationClient;
   /** Auth configuration */
-  config?: {
-    refreshEndpoint?: string;
-    logoutEndpoint?: string;
-    storage?: 'local' | 'session' | 'memory';
-    autoRefresh?: boolean;
-    refreshThreshold?: number;
-  };
+  config?: Omit<AuthConfig, 'client'>;
   /** Called when authenticated */
   onAuthenticated?: (user: User) => void;
   /** Called when logged out */
@@ -124,17 +120,7 @@ export function AuthProvider({
   children,
 }: AuthProviderProps): React.JSX.Element {
   // Create or use provided client
-  const [authClient] = useState<AuthenticationClient>(() => {
-    if (externalClient) return externalClient;
-
-    return new AuthenticationClient({
-      storage: config?.storage === 'session' ? undefined : config?.storage === 'memory' ? undefined : undefined,
-      autoRefresh: config?.autoRefresh ?? true,
-      refreshThreshold: config?.refreshThreshold ?? 5 * 60 * 1000,
-      refreshConfig: config?.refreshEndpoint ? { endpoint: config.refreshEndpoint } : undefined,
-      logoutConfig: config?.logoutEndpoint ? { endpoint: config.logoutEndpoint } : undefined,
-    });
-  });
+  const [authClient] = useState(() => externalClient ?? resolveAuthClient(config));
 
   // State
   const [isAuthenticated, setIsAuthenticated] = useState(() => authClient.isAuthenticated());

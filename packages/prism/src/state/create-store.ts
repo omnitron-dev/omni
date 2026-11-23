@@ -16,11 +16,11 @@ import { immer } from 'zustand/middleware/immer';
 /**
  * Options for creating a Prism store.
  */
-export interface CreateStoreOptions<T> {
+export interface CreateStoreOptions<T, Stored = T> {
   /** Store name for DevTools and persistence */
   name: string;
   /** Enable persistence to localStorage */
-  persist?: boolean | Partial<PersistOptions<T>>;
+  persist?: boolean | Partial<PersistOptions<T, Stored>>;
   /** Enable Redux DevTools (default: true in development) */
   devtools?: boolean;
 }
@@ -57,29 +57,29 @@ type ImmerMiddleware = ['zustand/immer', never];
  * Narrower than `createPrismStore`'s union: the `persist` API is guaranteed,
  * because this factory always installs the middleware.
  */
-export type PersistedStore<T extends object> = UseBoundStore<StoreApi<T>> & {
+export type PersistedStore<T extends object, Stored = T> = UseBoundStore<StoreApi<T>> & {
   /** Apply application defaults once, without replacing saved preferences or later edits. */
   initializeDefaults: (defaults: Partial<T>) => void | Promise<void>;
   persist: {
     hasHydrated: () => boolean;
     rehydrate: () => Promise<void> | void;
     clearStorage: () => void;
-    setOptions: (options: Partial<PersistOptions<T>>) => void;
+    setOptions: (options: Partial<PersistOptions<T, Stored>>) => void;
     onHydrate: (fn: (state: T) => void) => () => void;
     onFinishHydration: (fn: (state: T) => void) => () => void;
-    getOptions: () => Partial<PersistOptions<T>>;
+    getOptions: () => Partial<PersistOptions<T, Stored>>;
   };
 };
 
-export function createPrismStore<T extends object>(
+export function createPrismStore<T extends object, Stored = T>(
   initializer: StateCreator<T, [ImmerMiddleware], []>,
-  options: CreateStoreOptions<T>
+  options: CreateStoreOptions<T, Stored>
 ) {
   const { name, persist: persistOption, devtools: devtoolsOption = true } = options;
   const enableDevtools = devtoolsOption && typeof window !== 'undefined';
 
   // Prepare persist config
-  const persistConfig: PersistOptions<T> | null = persistOption
+  const persistConfig: PersistOptions<T, Stored> | null = persistOption
     ? {
         name: `prism-${name}`,
         ...(typeof persistOption === 'object' ? persistOption : {}),
@@ -169,11 +169,11 @@ function mergeCompatibleFields<T extends object>(persisted: unknown, current: T)
  * default `migrate` that preserves settings across a version bump — see
  * `mergeCompatibleFields`.
  */
-export function createPersistedStore<T extends object>(
+export function createPersistedStore<T extends object, Stored = T>(
   initializer: StateCreator<T, [ImmerMiddleware], []>,
   name: string,
-  persistOptions?: Partial<PersistOptions<T>>
-): PersistedStore<T> {
+  persistOptions?: Partial<PersistOptions<T, Stored>>
+): PersistedStore<T, Stored> {
   // `createPrismStore` decides its middleware chain at runtime (devtools are
   // enabled only in a browser), so its return type is a union in which one
   // branch carries no `persist` API. This function always persists — the
@@ -181,7 +181,7 @@ export function createPersistedStore<T extends object>(
   // `persist.rehydrate()`. Stating the narrower type here is what makes
   // those reachable; without it a caller has to cast, which is how a store
   // that does not persist would look identical to one that does.
-  const store = createPrismStore(initializer, {
+  const store = createPrismStore<T, Stored>(initializer, {
     name,
     persist: {
       version: 1,
@@ -191,7 +191,7 @@ export function createPersistedStore<T extends object>(
       // runs every load and decides how it combines with the current
       // defaults; zustand's own is a shallow spread, which would let a
       // stored field of the wrong shape overwrite a good default.
-      migrate: (persisted: unknown) => persisted as T,
+      migrate: (persisted: unknown) => persisted as Stored,
       merge: (persisted: unknown, current: T) => mergeCompatibleFields(persisted, current),
       storage: {
         getItem: (key) => {
@@ -219,7 +219,7 @@ export function createPersistedStore<T extends object>(
       },
       ...persistOptions,
     },
-  }) as PersistedStore<T>;
+  }) as PersistedStore<T, Stored>;
   let initialized = false;
   store.initializeDefaults = (defaults) => {
     if (initialized || Object.keys(defaults).length === 0) return undefined;

@@ -8,8 +8,8 @@
  * @module core/provider-stack
  */
 
-import type { ReactNode, ComponentType, FC } from 'react';
-import { createElement, useMemo } from 'react';
+import type { ReactNode, ComponentType, ComponentProps, FC } from 'react';
+import { createElement } from 'react';
 
 /**
  * A provider component with its props.
@@ -25,6 +25,24 @@ export type SimpleProvider = ComponentType<{ children: ReactNode }>;
  * Provider entry that can be a simple component or a tuple with props.
  */
 export type ProviderConfig = SimpleProvider | ProviderEntry;
+
+type AnyProvider = ComponentType<any>;
+type RuntimeProvider = SimpleProvider | readonly [AnyProvider, object];
+type EntryProps<Entry> = Entry extends readonly [infer Provider extends AnyProvider, object]
+  ? readonly [Provider, Omit<ComponentProps<Provider>, 'children'>]
+  : SimpleProvider;
+type ProviderList<List extends readonly RuntimeProvider[]> = List & {
+  readonly [K in keyof List]: EntryProps<NoInfer<List[K]>>;
+};
+function hasProps(entry: RuntimeProvider): entry is readonly [AnyProvider, object] {
+  return Array.isArray(entry);
+}
+
+function renderProviders(providers: readonly RuntimeProvider[], children: ReactNode): ReactNode {
+  return providers.reduceRight<ReactNode>((child, entry) => hasProps(entry)
+    ? createElement(entry[0], { ...entry[1], children: child })
+    : createElement(entry, { children: child }), children);
+}
 
 /**
  * Options for createProviderStack.
@@ -59,16 +77,8 @@ export interface ProviderStackOptions {
  * }
  * ```
  */
-export function composeProviders(providers: ProviderConfig[]): FC<{ children: ReactNode }> {
-  const ComposedProviders: FC<{ children: ReactNode }> = ({ children }) =>
-    // Build the provider tree from inside-out (reverse iteration)
-    providers.reduceRight<ReactNode>((acc, provider) => {
-      if (Array.isArray(provider)) {
-        const [Component, props] = provider;
-        return createElement(Component, { ...props, children: acc });
-      }
-      return createElement(provider, { children: acc });
-    }, children);
+export function composeProviders<const C extends readonly RuntimeProvider[]>(providers: ProviderList<C>): FC<{ children: ReactNode }> {
+  const ComposedProviders: FC<{ children: ReactNode }> = ({ children }) => renderProviders(providers, children);
   ComposedProviders.displayName = 'ComposedProviders';
   return ComposedProviders;
 }
@@ -98,21 +108,19 @@ export function composeProviders(providers: ProviderConfig[]): FC<{ children: Re
  * const SimpleProviders = createAppProviders();
  * ```
  */
-export function createProviderStack(
-  baseProviders: ProviderConfig[],
+export function createProviderStack<const Base extends readonly RuntimeProvider[]>(
+  baseProviders: ProviderList<Base>,
   options: ProviderStackOptions = {}
-): (config?: {
-  prepend?: ProviderConfig[];
-  append?: ProviderConfig[];
-  replace?: ProviderConfig[];
-}) => FC<{ children: ReactNode }> {
+) {
   const { displayName = 'ProviderStack' } = options;
 
-  return (config = {}) => {
+  return <const Before extends readonly RuntimeProvider[], const After extends readonly RuntimeProvider[], const Replacement extends readonly RuntimeProvider[]>(
+    config: { prepend?: ProviderList<Before>; append?: ProviderList<After>; replace?: ProviderList<Replacement> } = {}
+  ): FC<{ children: ReactNode }> => {
     const { prepend = [], append = [], replace } = config;
 
     const providers = replace ?? [...prepend, ...baseProviders, ...append];
-    const Component = composeProviders(providers);
+    const Component: FC<{ children: ReactNode }> = ({ children }) => renderProviders(providers, children);
     Component.displayName = displayName;
 
     return Component;
@@ -122,9 +130,9 @@ export function createProviderStack(
 /**
  * Props for ProviderStack component.
  */
-export interface ProviderStackProps {
+export interface ProviderStackProps<C extends readonly RuntimeProvider[] = readonly RuntimeProvider[]> {
   /** Provider configurations */
-  providers: ProviderConfig[];
+  providers: ProviderList<C>;
   /** Child components */
   children: ReactNode;
 }
@@ -149,9 +157,8 @@ export interface ProviderStackProps {
  * }
  * ```
  */
-export function ProviderStack({ providers, children }: ProviderStackProps): ReactNode {
-  const Provider = useMemo(() => composeProviders(providers), [providers]);
-  return <Provider>{children}</Provider>;
+export function ProviderStack<const C extends readonly RuntimeProvider[]>({ providers, children }: ProviderStackProps<C>): ReactNode {
+  return renderProviders(providers, children);
 }
 
 /**

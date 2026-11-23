@@ -1,13 +1,18 @@
 import { StrictMode } from 'react';
 import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { DataGridBlock, useDataGridBlock } from './data-grid-block.js';
-import type { DataGridFetchResult } from './types.js';
+import type { DataGridBlockProps, DataGridFetchResult, UseDataGridBlockReturn } from './types.js';
 
 const columns = [{ field: 'name', headerName: 'Name', width: 200 }];
 const rows = [{ id: 1, name: 'Alpha North' }, { id: 2, name: 'Beta South' }];
 
 describe('DataGridBlock quick search', () => {
+  it('accepts the model handlers returned by the server-data hook', () => {
+    type Handlers = 'onPaginationChange' | 'onSortChange' | 'onFilterChange';
+    expectTypeOf<Pick<UseDataGridBlockReturn, Handlers>>().toMatchTypeOf<Required<Pick<DataGridBlockProps, Handlers>>>();
+  });
+
   it('filters real rows, keeps focus across toolbar updates and clears with Escape', async () => {
     const onFilterChange = vi.fn();
     const grid = () => <DataGridBlock columns={columns} rows={rows} disableVirtualization onFilterChange={onFilterChange}

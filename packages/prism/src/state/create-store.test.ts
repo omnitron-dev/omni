@@ -33,6 +33,23 @@ beforeEach(() => {
 
 type Settings = Record<string, unknown> & { set: (patch: Record<string, unknown>) => void };
 
+it('restores a typed preference projection and keeps transient fields and actions from the initializer', () => {
+  type Profile = { mode: string; draft: string; choose: (mode: string) => void };
+  const openStore = () => createPersistedStore<Profile, Pick<Profile, 'mode'>>(
+    set => ({ mode: 'light', draft: '', choose: mode => set({ mode }) }),
+    storageKey,
+    { partialize: state => ({ mode: state.mode }) },
+  );
+  const first = openStore();
+  first.setState({ draft: 'editing' });
+  first.getState().choose('dark');
+  expect(JSON.parse(backing.get(`prism-${storageKey}`)!).state).toEqual({ mode: 'dark' });
+  const restored = openStore();
+  expect(restored.getState()).toMatchObject({ mode: 'dark', draft: '' });
+  restored.getState().choose('light');
+  expect(restored.getState().mode).toBe('light');
+});
+
 /**
  * One storage key per test.
  *

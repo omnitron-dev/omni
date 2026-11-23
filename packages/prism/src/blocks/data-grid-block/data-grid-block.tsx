@@ -780,17 +780,17 @@ export function useDataGridBlock<R extends Record<string, unknown> = Record<stri
     []
   );
 
-  const handlePaginationChange = useCallback((model: GridPaginationModel, _details: GridCallbackDetails) => {
+  const handlePaginationChange = useCallback((model: GridPaginationModel) => {
     setPaginationModel(model);
   }, []);
 
-  const handleSortChange = useCallback((model: GridSortModel, _details: GridCallbackDetails) => {
+  const handleSortChange = useCallback((model: GridSortModel) => {
     setSortModel(model);
     // Reset to first page on sort change
     setPaginationModel((prev) => ({ ...prev, page: 0 }));
   }, []);
 
-  const handleFilterChange = useCallback((model: GridFilterModel, _details: GridCallbackDetails) => {
+  const handleFilterChange = useCallback((model: GridFilterModel) => {
     setFilterModel(model);
     // Reset to first page on filter change
     setPaginationModel((prev) => ({ ...prev, page: 0 }));

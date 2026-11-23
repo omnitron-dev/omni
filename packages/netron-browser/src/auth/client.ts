@@ -20,14 +20,6 @@ import { scheduleDeadline } from './deadline.js';
  * Default options
  */
 const DEFAULT_OPTIONS = {
-  // NB-3: secure-by-default. Previously the default was LocalTokenStorage, which
-  // persisted BOTH the access token AND the long-lived refresh token to
-  // localStorage — readable by any same-origin XSS (the refresh token being the
-  // highest-value exfil target), and contradicting the closed platform's
-  // HttpOnly-cookie auth model. The default is now MemoryTokenStorage (tokens
-  // live only in JS memory for the session; nothing is written to web storage).
-  // Apps that explicitly want persistence opt in via `storage`/`storageKey`.
-  storage: new MemoryTokenStorage(),
   storageKey: 'netron_auth_token',
   autoRefresh: true,
   refreshThreshold: 5 * 60 * 1000, // 5 minutes
@@ -113,9 +105,8 @@ export class AuthenticationClient {
   private transport?: import('./client-token-transport.js').IClientTokenTransport;
 
   constructor(options: AuthOptions = {}) {
-    // Initialize storage with custom key if provided
     const storage =
-      options.storage || (options.storageKey ? new LocalTokenStorage(options.storageKey) : DEFAULT_OPTIONS.storage);
+      options.storage ?? (options.storageKey ? new LocalTokenStorage(options.storageKey) : new MemoryTokenStorage());
 
     this.options = {
       storage,

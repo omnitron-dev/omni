@@ -73,7 +73,7 @@ export const useTokenStore = createUIStore<TokenStoreState>(
  * }
  * ```
  */
-export const useAuthStore = createPersistedStore<AuthStoreState>(
+export const useAuthStore = createPersistedStore<AuthStoreState, Pick<AuthStoreState, 'status' | 'sessionId'>>(
   (set) => ({
     status: 'loading',
     sessionId: null,
@@ -113,11 +113,7 @@ export const useAuthStore = createPersistedStore<AuthStoreState>(
   'auth',
   {
     // Only persist non-sensitive data
-    partialize: (state) =>
-      (({
-        status: state.status,
-        sessionId: state.sessionId
-      }) as AuthStoreState),
+    partialize: (state) => ({ status: state.status, sessionId: state.sessionId }),
   }
 );
 

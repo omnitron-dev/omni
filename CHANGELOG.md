@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Titan project starters use the generator's installed Titan version. The controller loads TypeScript declarations in CommonJS projects.
 - Linux deployment uses the enrolled service account to stage management binaries and verify signed APT candidates. Named Docker volumes retain their identity during preparation. A gateway that uses private Unix sockets leaves the host TCP firewall unchanged.
 - Common's `defer<T>()` returns a complete, typed promise handle. Rotif releases waiting publishers when shutdown interrupts startup, clears its background timers and preserves colons in subscription patterns shared between processes.
+- Netron browser authentication clients own independent in-memory sessions by default. Prism preserves component state when a provider list is rebuilt and checks the types used by provider props, server data grids and persisted store projections.
 
 ## [0.4.15] - 2026-11-22
 

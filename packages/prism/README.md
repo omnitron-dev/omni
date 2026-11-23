@@ -9,6 +9,8 @@ Prism provides UI components and composition tools for React applications. It bu
 - Research Markdown rendering, validated widgets, diagrams and source-preserving editing.
 - Shared providers and styles for applications using the Omni frontend packages.
 
+`ProviderStack` checks each provider's required props and preserves mounted children when its props change. The handlers from `useDataGridBlock` can be passed directly to `DataGridBlock`. Store factories accept a second type argument for the persisted projection when a store saves selected fields with `partialize`.
+
 ## Quick start
 
 ```sh

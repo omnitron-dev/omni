@@ -38,6 +38,8 @@ For a fixed HTTP endpoint, import `HttpClient` from `@omnitron-dev/netron-browse
 
 ## Invocation lifetime
 
+Each `AuthenticationClient` owns its default in-memory token storage. Pass an explicit storage adapter to share session storage intentionally. A `storageKey` without an adapter opts into browser local storage.
+
 `invoke` accepts a local `signal` and `timeout`. HTTP cancellation aborts Fetch; WebSocket cancellation releases the local pending call and ignores a late reply. Neither can undo work already admitted by the server.
 
 HTTP retries require both configured retry policy and an invocation marked `idempotent: true`. A timeout covers attempts, backoff, body consumption and response middleware. The client validates the RPC envelope and request identity; it does not infer a schema for arbitrary result data.

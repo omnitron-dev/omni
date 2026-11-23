@@ -354,11 +354,11 @@ export interface UseDataGridBlockReturn<R = Record<string, unknown>> {
   /** Filter model */
   filterModel: GridFilterModel;
   /** Pagination change handler */
-  onPaginationChange: (model: GridPaginationModel, details: GridCallbackDetails) => void;
+  onPaginationChange: (model: GridPaginationModel, details?: GridCallbackDetails) => void;
   /** Sort change handler */
-  onSortChange: (model: GridSortModel, details: GridCallbackDetails) => void;
+  onSortChange: (model: GridSortModel, details?: GridCallbackDetails) => void;
   /** Filter change handler */
-  onFilterChange: (model: GridFilterModel, details: GridCallbackDetails) => void;
+  onFilterChange: (model: GridFilterModel, details?: GridCallbackDetails) => void;
   /** Refresh data */
   refresh: () => void;
   /** Reset to initial state */

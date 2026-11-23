@@ -44,4 +44,21 @@ describe('AuthenticationClient storage default (NB-3)', () => {
       expect(ctx).toContain('opt-in-refresh');
     }
   });
+
+  it('keeps the default in-memory session local to each client', () => {
+    const first = new AuthenticationClient();
+    const second = new AuthenticationClient();
+    try {
+      first.setToken('first-session');
+      second.setToken('second-session');
+      expect(first.getToken()).toBe('first-session');
+      expect(second.getToken()).toBe('second-session');
+      const fresh = new AuthenticationClient();
+      try { expect(fresh.isAuthenticated()).toBe(false); }
+      finally { fresh.destroy(); }
+    } finally {
+      first.destroy();
+      second.destroy();
+    }
+  });
 });

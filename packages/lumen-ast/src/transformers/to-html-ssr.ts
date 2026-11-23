@@ -13,6 +13,7 @@ import { LumenMacroRegistry } from '../katex/macro-registry.js';
 import { renderKaTeX } from '../katex/render-math.js';
 import { renderFileTree } from './file-tree.js';
 import { element, text } from './html-tree.js';
+import { tableAlignments } from './table.js';
 
 export interface SsrOptions {
   macros?: Record<string, string> | LumenMacroRegistry;
@@ -176,14 +177,16 @@ function generatedFragment(html: string): ElementContent[] {
   });
 }
 
-function renderNodesToTree(nodes: LumenNode[], context: SsrContext, phrasing = false): ElementContent[] {
-  return nodes.flatMap(node => renderNode(node, context, phrasing));
+function renderNodesToTree(nodes: LumenNode[], context: SsrContext, phrasing = false, htmlAncestors: readonly string[] = []): ElementContent[] {
+  return nodes.flatMap(node => renderNode(node, context, phrasing, htmlAncestors));
 }
 
-function renderNode(node: LumenNode, context: SsrContext, phrasing: boolean): ElementContent[] {
+function renderNode(node: LumenNode, context: SsrContext, phrasing: boolean, htmlAncestors: readonly string[]): ElementContent[] {
   if (phrasing && BLOCK_NODES.has(node.type))
     throw new TypeError(`Inline content cannot contain ${node.type}; use a separate block`);
-  const children = (inline = phrasing) => renderNodesToTree(node.children ?? [], context, inline);
+  const render = (nodes: LumenNode[], inline = phrasing, ancestors = htmlAncestors) =>
+    renderNodesToTree(nodes, context, inline, ancestors);
+  const children = (inline = phrasing) => render(node.children ?? [], inline);
 
   switch (node.type) {
     case 'root':
@@ -264,7 +267,7 @@ function renderNode(node: LumenNode, context: SsrContext, phrasing: boolean): El
     }
 
     case 'containerDirective': {
-      if (node.name === 'filetree') return [renderFileTree(node, nodes => renderNodesToTree(nodes, context, true))];
+      if (node.name === 'filetree') return [renderFileTree(node, nodes => render(nodes, true))];
       return children();
     }
 
@@ -313,7 +316,7 @@ function renderNode(node: LumenNode, context: SsrContext, phrasing: boolean): El
         className: ['lumen-widget', 'lumen-portal-island'], dataWidget: name,
         dataLumenIsland: `lumen-widget-${ordinal}-${safeIslandName}`, dataComponent: name,
         dataHydrate: hydrate, dataProps: propsJson,
-      }, renderNodesToTree(source ? widgetChildren.slice(0, -1) : widgetChildren, context, phrasing));
+      }, render(source ? widgetChildren.slice(0, -1) : widgetChildren));
       island.data = { lumen: { kind: 'widget', name, props: propsObj, ordinal } };
       if (!source || !block) return [island];
       const resolvedSource = {
@@ -334,14 +337,16 @@ function renderNode(node: LumenNode, context: SsrContext, phrasing: boolean): El
 
     case 'htmlElement': {
       const tagName = String(node.tagName);
-      const safe = safeHtmlElement(tagName, node.attributes ?? {}, children(phrasing || PHRASING_CONTAINERS.has(tagName)));
-      if (safe && phrasing && BLOCK_HTML_ELEMENTS.has(safe.tagName))
+      const safe = safeHtmlElement(tagName, node.attributes ?? {}, htmlAncestors);
+      if (!safe) return [];
+      if (phrasing && BLOCK_HTML_ELEMENTS.has(safe.tagName))
         throw new TypeError(`Inline content cannot contain <${safe.tagName}>; use a separate block`);
-      return safe ? [safe] : [];
+      safe.children = render(node.children ?? [], phrasing || PHRASING_CONTAINERS.has(tagName), [...htmlAncestors, tagName]);
+      return [safe];
     }
 
     case 'rawHtmlPlaceholder': {
-      return renderNodesToTree(normalizeLumenHtml([{ type: 'rawHtmlPlaceholder', raw: String(node.raw ?? '') }]), context, phrasing);
+      return render(normalizeLumenHtml([{ type: 'rawHtmlPlaceholder', raw: String(node.raw ?? '') }]));
     }
 
     case 'blockquote':
@@ -353,8 +358,26 @@ function renderNode(node: LumenNode, context: SsrContext, phrasing: boolean): El
     case 'listItem':
       return [element('li', {}, children())];
 
-    case 'table':
-      return [element('table', { tabIndex: 0 }, [element('tbody', {}, children())])];
+    case 'table': {
+      // GFM reserves the first row for column headings. Authored HTML tables
+      // follow the htmlElement path and retain their own row and column roles.
+      const align = tableAlignments(node);
+      const [heading, ...rows] = (node.children ?? []).map((row, index) => {
+        if (row.type !== 'tableRow') throw new TypeError('Markdown table requires tableRow children');
+        const cells = (row.children ?? []).map((cell, column) => {
+          if (cell.type !== 'tableCell') throw new TypeError('Markdown tableRow requires tableCell children');
+          const properties = index === 0 ? { scope: 'col' } : {};
+          const alignment = align?.[column];
+          return element(index === 0 ? 'th' : 'td',
+            alignment ? { ...properties, align: alignment } : properties, render(cell.children ?? [], true));
+        });
+        return element('tr', {}, cells);
+      });
+      const sections: ElementContent[] = [];
+      if (heading) sections.push(element('thead', {}, [heading]));
+      if (rows.length) sections.push(element('tbody', {}, rows));
+      return [element('table', { tabIndex: 0 }, sections)];
+    }
 
     case 'tableRow':
       return [element('tr', {}, children())];

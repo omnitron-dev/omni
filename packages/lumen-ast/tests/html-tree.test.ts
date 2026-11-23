@@ -87,7 +87,10 @@ graph TD
     const tree = toHtmlTree(ast);
     expect(htmlNodes(tree).some(node => node.type === 'raw' || node.type === 'lumenEmbedded')).toBe(false);
     expect(domShape(htmlFragment(toHtmlSsr(ast)))).toEqual(domShape(tree));
-    expect(elements(tree).filter(node => node.tagName === 'table')[0]?.children[0]).toMatchObject({ tagName: 'tbody' });
+    expect(elements(tree).find(node => node.tagName === 'table')?.children).toMatchObject([
+      { tagName: 'thead', children: [{ tagName: 'tr', children: [{ tagName: 'th' }, { tagName: 'th' }] }] },
+      { tagName: 'tbody', children: [{ tagName: 'tr', children: [{ tagName: 'td' }, { tagName: 'td' }] }] },
+    ]);
   });
 
   it('keeps widget identity, validated detached props and ordinal metadata without serializing render authority', () => {

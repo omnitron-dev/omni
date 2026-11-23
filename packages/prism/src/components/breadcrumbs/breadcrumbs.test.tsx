@@ -9,6 +9,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { createTheme, ThemeProvider } from '@mui/material/styles';
 
 import { Breadcrumbs } from './breadcrumbs.js';
 
@@ -38,6 +39,24 @@ describe('Breadcrumbs', () => {
 
     expect(screen.getByRole('link', { name: 'Dashboard' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Orders' })).not.toBeInTheDocument();
+  });
+
+  it('uses the consumer palette variables for ancestors, current page and separator', () => {
+    const theme = createTheme({
+      cssVariables: { cssVarPrefix: 'trail', colorSchemeSelector: 'class' },
+      colorSchemes: { light: true, dark: true },
+    });
+    const { container } = render(<ThemeProvider theme={theme}>
+      <Breadcrumbs links={[{ name: 'Library', href: '/library' }, { name: 'Books' }]} />
+    </ThemeProvider>);
+    function cssFor(node: Element) {
+      const selector = `.${node.className}`;
+      return Array.from(document.styleSheets).flatMap(sheet => Array.from(sheet.cssRules))
+        .map(rule => rule.cssText).filter(rule => rule.startsWith(selector)).join('');
+    }
+    expect(cssFor(screen.getByText('Library'))).toContain('--trail-palette-text-secondary');
+    expect(cssFor(screen.getByText('Books'))).toContain('--trail-palette-text-primary');
+    expect(cssFor(container.querySelector('.MuiBreadcrumbs-separator span')!)).toContain('--trail-palette-text-disabled');
   });
 
   it('sizes the icon when the server emits an inline stylesheet before it', () => {

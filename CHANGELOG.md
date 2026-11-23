@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Lumen preserves table headings and column alignment in HTML, Markdown and PDF exports. Authored HTML tables retain their cells. Prism breadcrumbs follow the active color scheme even before hydration.
+
 ## [0.4.15] - 2026-11-22
 
 ### Added

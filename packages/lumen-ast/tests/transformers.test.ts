@@ -36,6 +36,25 @@ Unitary evolution is reversible.
     expect(html).toContain('thm-unitary');
   });
 
+  it('renders GFM column headers and keeps the first data row as cells', async () => {
+    const ast = await parseDocument('| **Metric** | Unit |\n| --- | ---: |\n| Free space | GiB |');
+    const html = toHtmlSsr(ast);
+    expect(html).toContain('<thead><tr><th scope="col"><strong>Metric</strong></th><th scope="col" align="right">Unit</th></tr></thead>');
+    expect(html).toContain('<tbody><tr><td>Free space</td><td align="right">GiB</td></tr></tbody>');
+    expect(toTypst(ast)).toContain('align: (auto, right,)');
+    expect(toTypst(ast)).toContain('table.header(');
+    expect(toHtmlSsr(await parseDocument(toCleanMarkdown(ast)))).toBe(html);
+    expect((await compileTypst(ast)).length).toBeGreaterThan(0);
+    const headerOnly = toHtmlSsr(await parseDocument('| Name |\n| --- |'));
+    expect(headerOnly).toContain('<thead><tr><th scope="col">Name</th></tr></thead>');
+    expect(headerOnly).not.toContain('<tbody>');
+    const authoredAst = await parseDocument('<table><tbody><tr><td>Value</td></tr></tbody></table>');
+    const authored = toHtmlSsr(authoredAst);
+    expect(authored).toContain('<td>Value</td>');
+    expect(authored).not.toContain('<th');
+    expect(toCleanMarkdown(authoredAst)).toContain('<td>Value</td>');
+  });
+
   it('transforms AST to clean Markdown for LLMs and mirrors', async () => {
     const ast = await parseDocument(sampleDoc, 'docs/qc.pdx');
     const cleanMd = toCleanMarkdown(ast);

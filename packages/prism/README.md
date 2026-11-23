@@ -35,7 +35,7 @@ export function App() {
 
 `PrismThemeProvider` suits applications that own appearance preferences. `PrismProvider` also supplies settings and localization. Configure control appearance through the shared theme and preserve visible keyboard focus.
 
-Prism does not force smooth document scrolling. Keep native fragment navigation immediate; opt into animation for a specific interaction and respect reduced-motion preferences.
+Keep native fragment navigation immediate and respect reduced-motion preferences when adding animation. Breadcrumb links use the secondary text color. The current page uses the primary text color. Both follow the provider’s palette in static markup and after a theme change.
 
 For a server-rendered site, use `PrismProvider modeStorageKey="site-theme"` and place `PrismThemeScript` from `@omnitron-dev/prism/core` before visible content. Both use `defaultMode="system"` unless specified. MUI owns persistence and operating-system changes; both palettes are emitted before React loads, with a CSS system fallback when JavaScript or storage is unavailable. A controlled `mode` and `onModeChange` instead keep ownership in the parent; do not combine them with `modeStorageKey`. Without either, the provider uses Prism's settings store.
 

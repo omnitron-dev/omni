@@ -11,6 +11,7 @@ import { LumenMacroRegistry } from '../katex/macro-registry.js';
 import { isInteractiveHtmlElement } from './safe-html.js';
 import { renderNodesToHtml, sanitizeUrl } from './to-html-ssr.js';
 import { readFileTree } from './file-tree.js';
+import { tableAlignments } from './table.js';
 
 type MarkdownNode = Parameters<typeof toMarkdown>[0];
 type MarkdownContent = Extract<MarkdownNode, { type: 'root' }>['children'][number];
@@ -255,10 +256,7 @@ function mapNode(node: LumenNode, options: CleanMarkdownOptions): MarkdownConten
         if (child.type !== 'tableRow') throw new TypeError('Markdown table requires tableRow children');
         return child;
       });
-      const align = Array.isArray(node['align'])
-        ? node['align'].map((value) => (value === 'left' || value === 'right' || value === 'center' ? value : null))
-        : undefined;
-      return [{ type: 'table', align, children: rows }];
+      return [{ type: 'table', align: tableAlignments(node), children: rows }];
     }
     case 'tableRow': {
       const cells = children().map((child) => {

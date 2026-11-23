@@ -5,6 +5,7 @@ The shared document compiler for Lumen. It parses Markdown and PDX into the `pri
 ## Capabilities
 
 - Data-only frontmatter, document diagnostics, headings, links and mathematical environments.
+- Markdown table headers and column alignment carry through to HTML, Markdown mirrors and Typst PDF. HTML tables retain the header and data cells the author declares.
 - KaTeX math, Shiki highlighting and Twoslash queries using the pinned TypeScript compiler.
 - Audience projection before rendering, indexing and export; one semantic HTML tree for static output and component rendering.
 - Shared island-prop validation, bounded code execution, and separate Node-only PDF and MCP entries.

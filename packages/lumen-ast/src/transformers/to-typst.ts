@@ -5,6 +5,7 @@
 import { tex2typst } from 'tex2typst';
 import type { LumenDocumentAst, LumenNode } from '../ast/types.js';
 import { readFileTree, fileTreeTypstLines } from './file-tree.js';
+import { tableAlignments } from './table.js';
 
 export interface TypstOptions {
   paperSize?: string;
@@ -304,14 +305,19 @@ function serializeSingleTypstNode(node: LumenNode): string {
       }
 
       const flatCells = serializedRows
-        .map((r) => {
+        .map((r, index) => {
           const padded = [...r];
           while (padded.length < maxCols) padded.push('[]');
-          return padded.join(', ');
+          const cells = padded.join(', ');
+          return index === 0 ? `table.header(${cells})` : cells;
         })
         .join(',\n  ');
 
-      return `#table(\n  columns: ${maxCols},\n  ${flatCells}\n)\n\n`;
+      const align = tableAlignments(node);
+      const alignOption = align?.some(Boolean)
+        ? `  align: (${Array.from({ length: maxCols }, (_, column) => align[column] ?? 'auto').join(', ')},),\n`
+        : '';
+      return `#table(\n  columns: ${maxCols},\n${alignOption}  ${flatCells}\n)\n\n`;
     }
 
     case 'link':

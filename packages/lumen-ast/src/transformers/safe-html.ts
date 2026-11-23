@@ -1,5 +1,6 @@
 import { defaultSchema, sanitize, type Schema } from 'hast-util-sanitize';
-import type { Element, ElementContent, Properties, Root } from 'hast';
+import type { Element, Properties, Root } from 'hast';
+import { element } from './html-tree.js';
 
 const ISLAND_TAGS = new Set(['div', 'section', 'aside', 'span']);
 
@@ -45,17 +46,18 @@ const schema: Schema = {
   },
 };
 
-/** Sanitize authored tag/attributes without flattening the safe semantic children. */
+/** Sanitize the element in its real placement before rendering its children. */
 export function safeHtmlElement(
   tagName: string,
   attributes: Record<string, unknown>,
-  children: ElementContent[]
+  ancestors: readonly string[]
 ): Element | undefined {
-  const candidate: Element = { type: 'element', tagName, properties: attributes as Properties, children: [] };
-  const tree = sanitize({ type: 'root', children: [candidate] } as Root, schema);
-  if (tree.type !== 'root') return undefined;
-  const safe = tree.children[0];
-  if (safe?.type !== 'element') return undefined;
-  safe.children = children;
-  return safe;
+  const candidate = element(tagName, attributes as Properties);
+  // The sanitizer checks its traversal stack for constrained tags such as td.
+  const required = schema.ancestors?.[tagName]?.find(name => ancestors.includes(name));
+  const branch = required ? element(required, {}, [candidate]) : candidate;
+  const tree = sanitize({ type: 'root', children: [branch] } as Root, schema);
+  const first = tree.type === 'root' ? tree.children[0] : undefined;
+  const safe = required && first?.type === 'element' ? first.children[0] : first;
+  return safe?.type === 'element' && safe.tagName === tagName ? safe : undefined;
 }

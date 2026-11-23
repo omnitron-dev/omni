@@ -122,7 +122,7 @@ const BreadcrumbsSeparator = styled('span')(({ theme }) => ({
   width: 4,
   height: 4,
   borderRadius: '50%',
-  backgroundColor: theme.palette.text.disabled,
+  backgroundColor: (theme.vars ?? theme).palette.text.disabled,
 }));
 
 /**
@@ -150,11 +150,11 @@ const ItemRoot = styled('div', {
   alignItems: 'center',
   gap: theme.spacing(0.5),
   display: 'inline-flex',
-  color: theme.palette.text.secondary,
+  color: (theme.vars ?? theme).palette.text.secondary,
   ...(disabled && {
     cursor: 'default',
     pointerEvents: 'none',
-    color: theme.palette.text.primary,
+    color: (theme.vars ?? theme).palette.text.primary,
     fontWeight: 600,
   }),
 }));

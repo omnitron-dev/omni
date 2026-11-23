@@ -1,58 +1,52 @@
-/**
- * A failed initialization must FAIL, not hang.
- *
- * `NotificationManager`'s constructor kicks off `loadLuaScripts().then(…)` and
- * resolves `initializationDefer` on the last line of that callback. Six public
- * methods open with `await this.initializationDefer.promise`. Anything that
- * threw earlier in the callback therefore left the promise pending forever —
- * every publish and every subscribe waiting on an event that could no longer
- * happen, with no timeout on that path — while the rejection itself had no
- * handler and would end the process.
- *
- * The regression shape is a HANG, so these tests assert with an explicit race
- * against a short timer: a test that merely awaited would fail by timing out
- * after two minutes, which is a far worse signal.
- */
-import { describe, it, expect, vi } from 'vitest';
-
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { defer } from '@omnitron-dev/common';
 import { NotificationManager } from '../src/rotif/rotif.js';
+import { getTestRedisUrl } from './rotif/helpers/test-utils.js';
 
-/** Resolve to 'pending' if `p` has not settled within `ms`. */
-async function settledWithin<T>(p: Promise<T>, ms = 500): Promise<'resolved' | 'rejected' | 'pending'> {
-  let timer: NodeJS.Timeout | undefined;
-  const guard = new Promise<'pending'>((resolve) => {
-    timer = setTimeout(() => resolve('pending'), ms);
+describe('notification manager readiness', () => {
+  let manager: NotificationManager | undefined;
+
+  afterEach(async () => {
+    try {
+      await manager?.destroy();
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
-  try {
-    return await Promise.race([
-      p.then(
-        () => 'resolved' as const,
-        () => 'rejected' as const
-      ),
-      guard,
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
 
-describe('NotificationManager initialization failure', () => {
-  it('rejects waitUntilReady() instead of leaving it pending forever', async () => {
-    const manager = new NotificationManager({
-      redis: { host: '127.0.0.1', port: 6399, lazyConnect: true, maxRetriesPerRequest: 1 },
+  function start() {
+    const scripts = defer<void>();
+    vi.spyOn(NotificationManager.prototype, 'loadLuaScripts').mockReturnValueOnce(scripts.promise);
+    manager = new NotificationManager({
+      redis: getTestRedisUrl(0),
       disableDelayed: true,
       enableHealthCheck: false,
-    } as never);
-
-    // Force the post-load step to throw, which is what a malformed Redis URL
-    // does through `subscribeToPatternUpdates` -> `createConnection`.
-    vi.spyOn(manager as never, 'subscribeToPatternUpdates' as never).mockImplementation(() => {
-      throw new Error('cannot open pattern-updates connection');
     });
+    return { manager, scripts };
+  }
 
-    const outcome = await settledWithin((manager as unknown as { initializationDefer: { promise: Promise<unknown> } }).initializationDefer.promise);
-    expect(outcome, 'initialization promise never settled — every publish would hang').not.toBe('pending');
-
-    await manager.stop?.().catch(() => undefined);
+  it('propagates initialization failures to readiness and waiting publishers', async () => {
+    const { manager, scripts } = start();
+    const failure = new Error('cannot open pattern updates');
+    const startup = manager as unknown as { subscribeToPatternUpdates(): void };
+    vi.spyOn(startup, 'subscribeToPatternUpdates').mockImplementation(() => { throw failure; });
+    const waiters = Promise.all([
+      expect(manager.waitUntilReady()).rejects.toBe(failure),
+      expect(manager.publish('notice', 'queued')).rejects.toBe(failure),
+    ]);
+    scripts.resolve();
+    await waiters;
   });
+
+  it.each(['stopAll', 'destroy'] as const)('%s releases callers while initialization is pending', async (shutdown) => {
+    const { manager, scripts } = start();
+    const waiters = Promise.all([
+      expect(manager.waitUntilReady()).rejects.toThrow('stopped during initialization'),
+      expect(manager.publish('notice', 'queued')).rejects.toThrow('stopped during initialization'),
+    ]);
+    await manager[shutdown]();
+    await waiters;
+    scripts.resolve();
+    await expect(manager.waitUntilReady()).rejects.toThrow('stopped during initialization');
+  }, 5_000);
 });

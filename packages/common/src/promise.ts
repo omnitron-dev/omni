@@ -25,34 +25,21 @@ export function runExclusive<T>(resource: object, operation: () => T | PromiseLi
   return result;
 }
 
-// Define the Deferred type
-export type Deferred = {
-  resolve?: (value: any) => void;
-  reject?: (reason?: any) => void;
-  promise?: Promise<any>;
+export type Deferred<T = any> = {
+  resolve?: (value: T | PromiseLike<T>) => void;
+  reject?: (reason?: unknown) => void;
+  promise?: Promise<T>;
 };
 
-/**
- * @typedef Deferred
- * @property {Function} resolve
- * @property {Function} reject
- * @property {Promise} promise
- */
-
-/**
- * Creates a promise and returns an interface to control the state
- *
- * @returns {Deferred} An object containing the promise and methods to resolve or reject it
- */
-export const defer = (): Deferred => {
-  const deferred: Deferred = {};
-
-  deferred.promise = new Promise((resolve, reject) => {
-    deferred.resolve = resolve;
-    deferred.reject = reject;
+/** Creates a promise together with the functions that settle it. */
+export const defer = <T = any>(): Required<Deferred<T>> => {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((onResolve, onReject) => {
+    resolve = onResolve;
+    reject = onReject;
   });
-
-  return deferred;
+  return { promise, resolve, reject };
 };
 
 /**

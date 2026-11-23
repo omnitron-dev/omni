@@ -26,6 +26,8 @@ Add this dynamic module to the `imports` of an existing Titan application.
 
 Use a dedicated configured Redis service and register consumers for the channels you publish. The `./rotif` entry exposes the messaging layer directly.
 
+Await `waitUntilReady()` before handing a Rotif manager to publishers. Shutting down during startup rejects waiting callers and releases background timers. Managers that share a Redis database receive the complete subscription pattern, including colons in channel names.
+
 Delivery rejects if no consumer accepts the event or a matching stream fails to acknowledge publication. Reuse stable event identities when retrying partial fan-out. A broker receipt confirms queue acceptance, not end-user delivery; consumers must make external effects idempotent.
 
 Importing `./diagnostics` does not enable a messenger or publish events. Pass an explicitly configured notification module to its adapter. Observer failures are reported without resending notifications whose delivery already committed.

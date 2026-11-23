@@ -5,7 +5,7 @@ import { minimatch } from 'minimatch';
 import { Redis, RedisOptions } from 'ioredis';
 import { createHash } from 'node:crypto';
 import { generateUuidV7 } from '@omnitron-dev/titan/utils';
-import { defer, Deferred, delay as delayMs } from '@omnitron-dev/common';
+import { defer, delay as delayMs } from '@omnitron-dev/common';
 
 import { Errors } from '@omnitron-dev/titan/errors';
 import { describeError } from '@omnitron-dev/titan/diagnostics';
@@ -96,7 +96,7 @@ export class NotificationManager {
   /** Timeout ID for delayed message scheduler */
   private delayTimeoutId?: NodeJS.Timeout;
   private activePatterns = new Set<string>();
-  private initializationDefer: Deferred;
+  private readonly initializationDefer = defer<boolean>();
   private subClient?: Redis;
   private dlqClient?: Redis;
   /**
@@ -187,58 +187,34 @@ export class NotificationManager {
       this.logger.info('Redis successfully connected');
     });
 
-    this.initializationDefer = defer();
     // Nobody may be awaiting `initializationDefer.promise` at the moment it
     // rejects below, and an unobserved rejection is itself fatal. This marks it
     // observed without consuming it: every real `await` still sees the error.
-    this.initializationDefer.promise?.catch(() => undefined);
+    this.initializationDefer.promise.catch(() => undefined);
 
     this.loadLuaScripts().then(() => {
       // Guard against race condition: check if instance was destroyed before starting async operations
       if (!this.active) return;
 
-      if (!this.config.disableDelayed) {
-        setImmediate(() => {
-          this.startDelayScheduler();
-        });
-      }
-      // Start DLQ auto-cleanup if configured
-      if (this.config.dlqCleanup?.enabled) {
-        this.dlqManager.startAutoCleanup();
-      }
       // Subscribe to pattern updates after Lua scripts are loaded
       this.subscribeToPatternUpdates();
 
+      if (this.config.dlqCleanup?.enabled) {
+        this.dlqManager.startAutoCleanup();
+      }
       // Start health check if enabled (default: true)
       if (this.config.enableHealthCheck !== false) {
         this.startHealthCheck();
       }
-
-      this.initializationDefer.resolve?.(true);
+      if (!this.config.disableDelayed) {
+        setImmediate(() => {
+          if (this.active) this.startDelayScheduler();
+        });
+      }
+      this.initializationDefer.resolve(true);
     }).catch((err: unknown) => {
-      // Without this the whole manager hangs rather than fails.
-      //
-      // Six methods open with `await this.initializationDefer.promise` —
-      // `publish`, `subscribe`, `subscribeToDLQ`, `runLuaScript`,
-      // `waitUntilReady` and the batch helper. The deferred is resolved on the
-      // last line of the `then` above, so anything that threw before it left
-      // the promise pending FOREVER: every publish and every subscribe for the
-      // life of the process waited on an event that could no longer happen,
-      // with no timeout anywhere on that path. The rejection also had no
-      // handler, which ends the process by default — the two failure modes
-      // raced each other.
-      //
-      // It is not hypothetical. `subscribeToPatternUpdates` calls
-      // `createConnection`, and `new Redis(...)` throws synchronously on a
-      // malformed connection string; `dlqManager.startAutoCleanup` and
-      // `startHealthCheck` run there too. (`loadLuaScripts` itself cannot
-      // reject — it swallows everything, because the scripts are an optional
-      // optimisation.)
-      //
-      // Rejecting is the honest outcome: a caller learns the manager never
-      // came up, instead of waiting for it.
       this.logger.error({ err }, 'Rotif initialization failed — the manager will not accept work');
-      this.initializationDefer.reject?.(err);
+      this.initializationDefer.reject(err);
     });
   }
 
@@ -417,25 +393,21 @@ export class NotificationManager {
     await this.initializationDefer.promise;
   }
 
-  /**
-   * Destroy the notification manager and clean up resources
-   * @returns {Promise<void>}
-   */
-  async destroy(): Promise<void> {
-    // Stop active operations
+  private stopBackgroundWork(): void {
     this.active = false;
+    this.initializationDefer.reject(new Error('NotificationManager stopped during initialization'));
+    clearInterval(this.delayTimeoutId);
+    this.delayTimeoutId = undefined;
+    clearInterval(this.healthCheckTimer);
+    this.healthCheckTimer = undefined;
+    this.dlqManager.stopAutoCleanup();
+  }
 
-    // Clear delay scheduler interval
-    if (this.delayTimeoutId) {
-      clearInterval(this.delayTimeoutId);
-      this.delayTimeoutId = undefined;
-    }
-
-    // Clear health check timer
-    if (this.healthCheckTimer) {
-      clearInterval(this.healthCheckTimer);
-      this.healthCheckTimer = undefined;
-    }
+  /** Destroy the notification manager and close its connections. */
+  async destroy(): Promise<void> {
+    this.stopBackgroundWork();
+    for (const client of this.readClients) client.disconnect();
+    this.readClients.clear();
 
     // Clear patterns
     this.activePatterns.clear();
@@ -787,19 +759,11 @@ export class NotificationManager {
 
     this.logger.info('Stopping all subscriptions');
 
-    if (this.delayTimeoutId) {
-      clearInterval(this.delayTimeoutId);
-    }
-
-    // Stop DLQ auto-cleanup
-    this.dlqManager.stopAutoCleanup();
-
     // Unsubscribe all first
     const unsubscribePromises = Array.from(this.subscriptions.values()).map((sub) => sub.unsubscribe(false));
     await Promise.all(unsubscribePromises);
 
-    // Now mark as inactive to stop loops
-    this.active = false;
+    this.stopBackgroundWork();
 
     // Wait for DLQ subscription to stop if it exists (with timeout)
     if (this.dlqSubscriptionPromise) {
@@ -1007,11 +971,10 @@ export class NotificationManager {
       });
 
       this.subClient.on('message', (_, message) => {
-        const [action, pattern] = message.split(':');
-        if (action === 'add') {
-          this.activePatterns.add(pattern as string);
-        } else if (action === 'remove') {
-          this.activePatterns.delete(pattern as string);
+        if (message.startsWith('add:')) {
+          this.activePatterns.add(message.slice('add:'.length));
+        } else if (message.startsWith('remove:')) {
+          this.activePatterns.delete(message.slice('remove:'.length));
         }
       });
 
@@ -1044,7 +1007,7 @@ export class NotificationManager {
     }
 
     const subscriptions = new Set<Subscription>();
-    const readyDefer = defer();
+    const readyDefer = defer<void>();
 
     // This loop's own connection, used only for the blocking read below.
     // Named so `CLIENT LIST` on a live Redis says which loop each connection
@@ -1329,7 +1292,7 @@ export class NotificationManager {
     const loopEntry = {
       loopPromise: null as any, // Will be set below
       subscriptions,
-      readyPromise: readyDefer.promise!,
+      readyPromise: readyDefer.promise,
       readClient,
     };
     this.consumerLoops.set(loopKey, loopEntry);
@@ -1344,7 +1307,7 @@ export class NotificationManager {
       const idleThreshold = this.config.pendingIdleThreshold ?? 60000;
 
       // Mark the loop as ready before starting to process messages
-      readyDefer.resolve?.(undefined);
+      readyDefer.resolve();
 
       while (this.active && this.consumerLoops.get(loopKey) === loopEntry) {
         if (subscriptions.size === 0) {
@@ -1504,7 +1467,7 @@ export class NotificationManager {
       }
     })();
 
-    await readyDefer.promise!; // Wait for the loop to be ready before returning
+    await readyDefer.promise;
     return subscriptions;
   }
 

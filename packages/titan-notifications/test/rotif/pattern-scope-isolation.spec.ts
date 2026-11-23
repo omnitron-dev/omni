@@ -20,7 +20,7 @@
  * reconnecting repaired the set: the divergence only ever arrived over Pub/Sub.
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 
 import { NotificationManager } from '../../src/rotif/rotif.js';
 import { getTestRedisConfig, isRedisInMockMode } from './helpers/test-utils.js';
@@ -89,22 +89,20 @@ describeOrSkip('pattern registrations are scoped to their database', () => {
     expect(streams).not.toContain('rotif:stream:test.*');
   }, 60_000);
 
-  it('still shares patterns between managers on the same database', async () => {
-    // The channel is narrowed, not disabled — this is how a rotif cluster
-    // learns that a peer started consuming a new pattern.
+  it('adds and removes the complete channel pattern across managers in one database', async () => {
     const first = await managerOnDb(DB_A);
     const second = await managerOnDb(DB_A);
 
-    await second.subscribe('shared.*', async (msg) => {
+    const pattern = 'shared:orders:created';
+    const subscription = await second.subscribe(pattern, async (msg) => {
       await msg.ack();
     });
 
-    const deadline = Date.now() + 5_000;
-    const active = () => (first as unknown as { activePatterns: Set<string> }).activePatterns;
-    while (!active().has('shared.*') && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    }
-
-    expect([...active()]).toContain('shared.*');
+    const patterns = (first as unknown as { activePatterns: Set<string> }).activePatterns;
+    await vi.waitFor(() => expect(patterns.has(pattern)).toBe(true), { timeout: 5_000 });
+    expect(typeof await first.publish(pattern, { order: 1 })).toBe('string');
+    await subscription!.unsubscribe(true);
+    await vi.waitFor(() => expect(patterns.has(pattern)).toBe(false), { timeout: 5_000 });
+    expect(await first.publish(pattern, { order: 2 })).toBeNull();
   }, 60_000);
 });

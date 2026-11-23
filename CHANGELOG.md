@@ -7,9 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Remote deployments record the recipient's startup result and distinguish health checks still in progress, a partial start and a lost connection. Retrying a reviewed deployment can reuse the installed files and the receiving node's receipt.
+- A stopped stack can move to a newer release on the same node after Omnitron verifies its previous declaration and the current execution. Operators can set a database migration deadline for local and remote deployments.
+- The execution owner batches acknowledgements for application log writes and commits them before rotating a log. A Pipeline can record its completed outcome after journal storage recovers while the same daemon is serving.
+
 ### Fixed
 
 - Lumen preserves table headings and column alignment in HTML, Markdown and PDF exports. Authored HTML tables retain their cells. Prism breadcrumbs follow the active color scheme even before hydration.
+- Lumen bounds syntax highlighting on wide lines while preserving the full source text in the browser and the generated page.
+- Titan project starters use the generator's installed Titan version. The controller loads TypeScript declarations in CommonJS projects.
+- Linux deployment uses the enrolled service account to stage management binaries and verify signed APT candidates. Named Docker volumes retain their identity during preparation. A gateway that uses private Unix sockets leaves the host TCP firewall unchanged.
+- Common's `defer<T>()` returns a complete, typed promise handle. Rotif releases waiting publishers when shutdown interrupts startup, clears its background timers and preserves colons in subscription patterns shared between processes.
 
 ## [0.4.15] - 2026-11-22
 

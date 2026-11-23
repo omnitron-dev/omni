@@ -85,47 +85,96 @@ export function nodeStackActivationCommand(directory: string, operation: string,
     const project=${JSON.stringify(project)}, stack=${JSON.stringify(stack)};
     const snapshot=path.join(directory,'.registration-'+operation);
     const resultFile=path.join(snapshot,'start-result.json');
+    const requested=path.join(snapshot,'start-requested');
     const expected=JSON.parse(fs.readFileSync(path.join(snapshot,'activation.json'),'utf8'));
     const sameConfig=()=>fs.existsSync(path.join(directory,'omnitron.config.mjs')) &&
       expected.hash===createHash('sha256').update(fs.readFileSync(path.join(directory,'omnitron.config.mjs'))).digest('hex');
     const syncDirectory=()=>{const fd=fs.openSync(snapshot,'r');try{fs.fsyncSync(fd)}finally{fs.closeSync(fd)}};
     const writeNew=(file,value)=>{const fd=fs.openSync(file,'wx',0o600);try{fs.writeFileSync(fd,value);fs.fsyncSync(fd)}finally{fs.closeSync(fd)}};
-    let result={operation,project,stack,confirmed:false,apps:[]};
+    const unconfirmed=(reason)=>({operation,project,stack,confirmed:false,apps:[],reason});
+    const parse=(output)=>{try{return JSON.parse(output)}catch{return null}};
+    function startResult(child) {
+      if (child.error || child.signal) {
+        return unconfirmed(['ENOENT','EACCES'].includes(child.error?.code) ? 'cli-unavailable' : 'cli-interrupted');
+      }
+      const reply = parse(child.stdout);
+      const report = reply ?? parse(child.stderr);
+      if (report?.ok === false) {
+        const scoped = report.project === project && report.stack === stack && report.outcome === 'unknown';
+        return unconfirmed(scoped && ['client-timeout','connection-lost'].includes(report.reason) ? report.reason : 'cli-error');
+      }
+      const data = reply?.data;
+      if (reply?.ok !== true || data?.action !== 'started' || data.project !== project || data.stack !== stack) {
+        return unconfirmed('invalid-reply');
+      }
+      if (['partial','failed'].includes(data.outcome)) {
+        const receipt = unconfirmed(data.outcome);
+        if (Number.isSafeInteger(data.online) && Number.isSafeInteger(data.total) && data.online >= 0 && data.total >= data.online) {
+          receipt.online = data.online;
+          receipt.total = data.total;
+        }
+        return receipt;
+      }
+      if (child.status !== 0 || data.outcome !== 'confirmed') return unconfirmed('invalid-reply');
+      const apps = Array.isArray(data.apps) ? data.apps : [];
+      const names = new Set(apps.map(app => app?.name));
+      const matches = apps.length > 0 && apps.length === names.size && data.total === apps.length && data.online === data.total &&
+        apps.every(app => typeof app?.name === 'string' && app.status === 'online') &&
+        expected.apps.length === names.size && new Set(expected.apps).size === names.size &&
+        expected.apps.every(name => names.has(name) || names.has(project+'/'+stack+'/'+name));
+      return matches ? {operation,project,stack,confirmed:true,apps:[...names]} : unconfirmed('application-set');
+    }
+    let result=unconfirmed('configuration-changed');
     if (sameConfig()) {
       if (!${readOnly} && !fs.existsSync(resultFile)) {
         let claimed=false;
-        try {writeNew(path.join(snapshot,'start-requested'),operation);syncDirectory();claimed=true}
+        try {writeNew(requested,operation);syncDirectory();claimed=true}
         catch(error){if(error.code!=='EEXIST')throw error}
         if(claimed){
           const child=spawnSync('omnitron',['--json','stack','start',project,stack],{encoding:'utf8',maxBuffer:16*1024*1024,stdio:['ignore','pipe','pipe']});
-          let reply;
-          try{reply=JSON.parse(child.stdout)}catch{}
-          const data=reply?.data;
-          if(child.status===0 && reply?.ok===true && data?.action==='started' && data.project===project && data.stack===stack &&
-             data.outcome==='confirmed' && Array.isArray(data.apps) && data.apps.length>0 && data.total===data.apps.length &&
-             data.online===data.total && data.apps.every(app=>typeof app?.name==='string' && app.status==='online')){
-            const names=new Set(data.apps.map(app=>app.name));
-            const matches=expected.apps.length===names.size && new Set(expected.apps).size===names.size &&
-              expected.apps.every(name=>names.has(name) || names.has(project+'/'+stack+'/'+name));
-            if(matches)result={operation,project,stack,confirmed:true,apps:[...names]};
-          }
-          writeNew(resultFile+'.part',JSON.stringify(result));fs.renameSync(resultFile+'.part',resultFile);syncDirectory();
+          writeNew(resultFile+'.part',JSON.stringify(startResult(child)));fs.renameSync(resultFile+'.part',resultFile);syncDirectory();
         }
       }
-      if(fs.existsSync(resultFile) && sameConfig()) result=JSON.parse(fs.readFileSync(resultFile,'utf8'));
-      else result.confirmed=false;
+      if(!sameConfig()) result=unconfirmed('configuration-changed');
+      else if(fs.existsSync(resultFile)) result=JSON.parse(fs.readFileSync(resultFile,'utf8'));
+      else result=unconfirmed(fs.existsSync(requested)?'result-pending':'not-requested');
     }
     process.stdout.write(JSON.stringify(result));`);
 }
 
-export function confirmedNodeStackActivation(raw: string, operation: string, project: string, stack: string, expected: string[]): boolean {
+const startDiagnostics = {
+  'configuration-changed': 'The published node configuration changed',
+  'not-requested': 'No start request was recorded on the node',
+  'result-pending': 'The node recorded the start request and has no final result yet',
+  'cli-unavailable': 'The node could not launch its CLI',
+  'cli-interrupted': 'The node CLI was interrupted',
+  'cli-error': 'The node CLI returned an error for the start request',
+  'client-timeout': 'The node CLI timed out waiting for the daemon',
+  'connection-lost': 'The node CLI lost its connection to the daemon',
+  'invalid-reply': 'The node CLI did not return a valid start result',
+  partial: 'The node reported a partial start',
+  failed: 'The node reported a failed start',
+  'application-set': 'The node did not confirm the complete registered application set',
+};
+
+/** Return only diagnostics from the scoped receipt that are safe to display off-node. */
+export function nodeStackActivationIssue(raw: string, operation: string, project: string, stack: string, expected: string[]): string | undefined {
+  const unknown = 'A matching startup confirmation is unavailable';
   try {
     const receipt = JSON.parse(raw);
-    if (receipt.operation !== operation || receipt.project !== project || receipt.stack !== stack ||
-        receipt.confirmed !== true || !Array.isArray(receipt.apps) || expected.length === 0) return false;
-    const online = new Set(receipt.apps);
-    return expected.every(name => online.has(name) || online.has(`${project}/${stack}/${name}`));
-  } catch { return false; }
+    if (receipt?.operation !== operation || receipt.project !== project || receipt.stack !== stack || !expected.length) return unknown;
+    if (receipt.confirmed === true && Array.isArray(receipt.apps)) {
+      const online = new Set(receipt.apps);
+      return expected.every(name => online.has(name) || online.has(`${project}/${stack}/${name}`)) ? undefined : startDiagnostics['application-set'];
+    }
+    if (receipt.confirmed !== false || typeof receipt.reason !== 'string' || !Object.hasOwn(startDiagnostics, receipt.reason)) return unknown;
+    const detail = startDiagnostics[receipt.reason as keyof typeof startDiagnostics];
+    if ((receipt.reason === 'partial' || receipt.reason === 'failed') && Number.isSafeInteger(receipt.online) &&
+        Number.isSafeInteger(receipt.total) && receipt.online >= 0 && receipt.total >= receipt.online) {
+      return `${detail} (${receipt.online}/${receipt.total} applications online)`;
+    }
+    return detail;
+  } catch { return unknown; }
 }
 
 export class NodeRegistrationUnconfirmed extends Error {}

@@ -70,7 +70,7 @@ import { hostOperationBarrierCommand, type HostOperationAllowance } from './host
 import { migrationOutput } from './migration-output.js';
 import { prepareRemoteMigration } from './migration-process.js';
 import { migrationDatabaseEnvironment, migrationExecutionTimeout, validateMigrationDestinations, validateMigrationOwners, orderMigrationPlacements, type MigrationRequest } from './migration-target.js';
-import { confirmedNodeStackActivation, nodeStackActivationCommand, NodeRegistrationUnconfirmed, prepareNodeConfigPublication, restoreNodeConfigCommand } from './node-registration.js';
+import { nodeStackActivationIssue, nodeStackActivationCommand, NodeRegistrationUnconfirmed, prepareNodeConfigPublication, restoreNodeConfigCommand } from './node-registration.js';
 import { LONG_REQUEST_TIMEOUT } from '../shared/dto/services.js';
 
 
@@ -1226,9 +1226,8 @@ export class RemoteDeployer {
           // This command only reads the first request's result on the same node.
           receipt = await this.sshExec(target, nodeStackActivationCommand(dir, operation, project, NODE_STACK, true));
         }
-        if (!confirmedNodeStackActivation(receipt, operation, project, NODE_STACK, landed.map(entry => entry.app))) {
-          throw Error('The node has not confirmed this registration and its complete application set');
-        }
+        const issue = nodeStackActivationIssue(receipt, operation, project, NODE_STACK, landed.map(entry => entry.app));
+        if (issue) throw new NodeRegistrationUnconfirmed(issue);
       }
 
       this.logger.info(
@@ -1249,7 +1248,8 @@ export class RemoteDeployer {
       return { changed };
     } catch (err) {
       if (activationSubmitted || (err as { code?: string } | null)?.code === 'EXECUTION_OUTCOME_UNKNOWN') {
-        const message = `Node registration ${operation} is unconfirmed. Inspect the running applications and the registration in ${dir}/.registration-${operation} before retrying.`;
+        const detail = err instanceof NodeRegistrationUnconfirmed ? ` ${err.message}.` : '';
+        const message = `Node registration ${operation} is unconfirmed.${detail} Inspect the running applications and the registration in ${dir}/.registration-${operation} before retrying.`;
         this.logger.warn({ host: target.host, project, operation }, message);
         throw new NodeRegistrationUnconfirmed(message, { cause: err });
       }

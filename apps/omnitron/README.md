@@ -187,6 +187,8 @@ With the OpenResty gateway, select `GATEWAY_UPSTREAM_TRANSPORT=unix` when the te
 
 A remote release registers its boot definitions and starts the selected stack on the receiving node. The node records a single startup request and its result in the private `.registration-<operation>` directory alongside the project configuration. If the SSH reply is lost, the controller reads the result for that same operation and checks it against the published configuration and expected applications. Console shows **Awaiting confirmation** when the result is unavailable or incomplete. The controller preserves both definitions and the existing processes. Before submitting another deployment, compare the receiver's application generations, selected release and registration identified in the diagnostic.
 
+The registration diagnostic distinguishes a pending result, a CLI timeout, a lost daemon connection and a changed configuration. If the daemon reports a partial or failed start, the receipt includes its count of online applications when available. The controller can read these diagnostics after a lost SSH reply. Raw CLI output stays on the node.
+
 ### Prepare a remote replacement from its own release source
 
 A controller can keep serving the registered project checkout while an administrator prepares another commit of the same project for one registered remote node. On a credential-free build machine, use the qualified checkout with its build dependencies and the canonical release store. This command evaluates the configuration in release mode and captures bootstrap infrastructure declarations. Its readers have a private home and receive synthetic values for symbolic stack bindings.

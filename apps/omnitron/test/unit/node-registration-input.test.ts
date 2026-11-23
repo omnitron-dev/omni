@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
-import { confirmedNodeStackActivation, nodeStackActivationCommand, prepareNodeConfigPublication } from '../../src/services/node-registration.js';
+import { nodeStackActivationIssue, nodeStackActivationCommand, prepareNodeConfigPublication } from '../../src/services/node-registration.js';
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -54,55 +54,99 @@ it('does not echo a candidate module exception containing credential data', asyn
   await expect(stat(join(request.directory, 'omnitron.config.mjs'))).rejects.toMatchObject({ code: 'ENOENT' });
 });
 
-async function activation(outcome: 'confirmed' | 'partial', reported = ['api', 'web']) {
+async function activation(outcome: 'confirmed' | 'partial', reported = ['api', 'web'], failure?: Record<string, unknown>) {
   const request = await publication('export default { apps: [{ name: "api" }, { name: "web" }] };');
   execFileSync('/bin/sh', ['-c', request.command], { input: request.stdin });
   const calls = join(request.directory, 'calls');
   const expectedArgs = ['--json', 'stack', 'start', 'fixture', 'deployed'];
   const apps = reported.map(name => ({ name: 'fixture/deployed/' + name, status: 'online' }));
-  const reply = { ok: true, data: { project: 'fixture', stack: 'deployed', action: 'started', outcome, total: 2, online: 2, apps } };
+  const reply = failure ?? { ok: true, data: { project: 'fixture', stack: 'deployed', action: 'started', outcome, total: 2, online: outcome === 'partial' ? 1 : 2, apps } };
   const command = [
     '#!/usr/bin/env node',
     "const fs = require('node:fs');",
     'if (JSON.stringify(process.argv.slice(2)) !== ' + JSON.stringify(JSON.stringify(expectedArgs)) + ') process.exit(2);',
     'fs.appendFileSync(' + JSON.stringify(calls) + ', "1");',
-    'console.log(' + JSON.stringify(JSON.stringify(reply)) + ');',
+    `console.${failure ? 'error' : 'log'}(` + JSON.stringify(JSON.stringify(reply)) + ');',
+    `process.exitCode = ${failure || outcome === 'partial' ? 1 : 0};`,
   ].join('\n');
   await writeFile(join(request.directory, 'omnitron'), command, { mode: 0o700 });
   const run = (readOnly = false) => execFileSync('/bin/sh', [
     '-c', nodeStackActivationCommand(request.directory, 'test', 'fixture', 'deployed', readOnly),
   ], { env: { ...process.env, PATH: request.directory + ':' + process.env['PATH'] }, encoding: 'utf8' });
-  const confirmed = (raw: string) => confirmedNodeStackActivation(raw, 'test', 'fixture', 'deployed', ['api', 'web']);
-  return { directory: request.directory, calls, run, confirmed };
+  const issue = (raw: string) => nodeStackActivationIssue(raw, 'test', 'fixture', 'deployed', ['api', 'web']);
+  return { directory: request.directory, calls, run, issue };
 }
 
 it('recovers a lost stack reply without dispatching twice or accepting a superseded configuration', async () => {
   const a = await activation('confirmed');
-  expect(a.confirmed(a.run(true))).toBe(false);
+  expect(a.issue(a.run(true))).toBe('No start request was recorded on the node');
   await expect(stat(a.calls)).rejects.toMatchObject({ code: 'ENOENT' });
   a.run(); // The node completed the request. Its first reply never reached the caller.
   const reply = a.run(true);
-  expect(a.confirmed(reply)).toBe(true);
-  expect(confirmedNodeStackActivation(reply, 'other', 'fixture', 'deployed', ['api'])).toBe(false);
-  expect(confirmedNodeStackActivation(reply, 'test', 'fixture', 'deployed', ['other'])).toBe(false);
-  expect(a.confirmed(a.run())).toBe(true);
+  expect(a.issue(reply)).toBeUndefined();
+  expect(nodeStackActivationIssue(reply, 'other', 'fixture', 'deployed', ['api'])).toContain('unavailable');
+  expect(nodeStackActivationIssue(reply, 'test', 'fixture', 'deployed', ['other'])).toContain('application set');
+  expect(a.issue(a.run())).toBeUndefined();
   expect(await readFile(a.calls, 'utf8')).toBe('1');
   await writeFile(join(a.directory, 'omnitron.config.mjs'), 'export default { apps: [] };');
-  expect(a.confirmed(a.run(true))).toBe(false);
-  expect(a.confirmed(a.run())).toBe(false);
+  expect(a.issue(a.run(true))).toMatch(/configuration changed/);
+  expect(a.issue(a.run())).toMatch(/configuration changed/);
   expect(await readFile(a.calls, 'utf8')).toBe('1');
 });
 
 it('retains an incomplete response without starting the stack again', async () => {
   const a = await activation('partial');
-  expect(a.confirmed(a.run())).toBe(false);
-  expect(a.confirmed(a.run())).toBe(false);
+  expect(a.issue(a.run())).toContain('partial start (1/2 applications online)');
+  expect(a.issue(a.run(true))).toContain('partial start (1/2 applications online)');
+  expect(await readFile(a.calls, 'utf8')).toBe('1');
+});
+
+it('reads an outstanding request while the original process still owns startup', async () => {
+  const a = await activation('confirmed');
+  await writeFile(join(a.directory, '.registration-test/start-requested'), 'test', { flag: 'wx' });
+  expect(a.issue(a.run(true))).toMatch(/no final result yet/);
+  expect(a.issue(a.run())).toMatch(/no final result yet/);
+  await expect(stat(a.calls)).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
+it('requires a successful stdout reply even if stderr contains the shape of a confirmation', async () => {
+  const apps = ['api', 'web'].map(name => ({ name, status: 'online' }));
+  const a = await activation('confirmed', [], { ok: true, data: {
+    action: 'started', project: 'fixture', stack: 'deployed', outcome: 'confirmed', total: 2, online: 2, apps,
+  } });
+  expect(a.issue(a.run(true))).toMatch(/No start request/);
+  expect(a.issue(a.run())).toMatch(/valid start result/);
   expect(await readFile(a.calls, 'utf8')).toBe('1');
 });
 
 it('requires the complete registered app set even if the node reports a successful start', async () => {
   const a = await activation('confirmed', ['api', 'another']);
-  expect(a.confirmed(a.run())).toBe(false);
-  expect(a.confirmed(a.run(true))).toBe(false);
+  expect(a.issue(a.run())).toContain('application set');
+  expect(a.issue(a.run(true))).toContain('application set');
   expect(await readFile(a.calls, 'utf8')).toBe('1');
+});
+
+it.each([
+  ['client-timeout', 'timed out waiting for the daemon'],
+  ['connection-lost', 'lost its connection to the daemon'],
+  ['unrecognized-private-reason', 'CLI returned an error'],
+])('retains the CLI diagnostic %s from stderr without copying private process output', async (reason, message) => {
+  const a = await activation('confirmed', [], { ok: false, project: 'fixture', stack: 'deployed', outcome: 'unknown',
+    reason, error: 'synthetic-private-error-text', details: { value: 'synthetic-private-field' } });
+  const original = a.run();
+  expect(a.issue(original)).toContain(message);
+  expect(a.run(true)).toBe(original);
+  expect(a.run()).toBe(original);
+  const stored = await readFile(join(a.directory, '.registration-test/start-result.json'), 'utf8');
+  expect(JSON.parse(stored)).toEqual(JSON.parse(original));
+  expect(stored).not.toMatch(/synthetic-private|unrecognized-private-reason/);
+  expect(await readFile(a.calls, 'utf8')).toBe('1');
+});
+
+it('keeps an older inconclusive receipt and rejects unrecognized receiver diagnostics', () => {
+  const response = { operation: 'test', project: 'fixture', stack: 'deployed', confirmed: false, apps: [] };
+  const read = (fields: object) => nodeStackActivationIssue(JSON.stringify({ ...response, ...fields }), 'test', 'fixture', 'deployed', ['api']);
+  expect(read({})).toMatch(/unavailable/);
+  expect(read({ reason: '__proto__' })).toMatch(/unavailable/);
+  expect(read({ reason: 'client-timeout', operation: 'stale' })).toMatch(/unavailable/);
 });

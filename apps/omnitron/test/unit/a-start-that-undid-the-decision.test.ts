@@ -110,7 +110,7 @@ describe('the order the deployment asks in', () => {
     fs.readFileSync(path.join(here, '../../src/services/remote-deployer.service.ts'), 'utf8'),
   );
 
-  async function registration(onlineNames: string[], confirmed: boolean) {
+  async function registration(onlineNames: string[], confirmed: boolean, reason?: string) {
     const events: string[] = [];
     const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     const service = new RemoteDeployer(logger as never, {} as never);
@@ -141,7 +141,7 @@ describe('the order the deployment asks in', () => {
       }
       if (command === nodeStackActivationCommand(dir, operation, 'fixture', 'deployed', true)) {
         events.push('read receipt');
-        return JSON.stringify({ operation, project: 'fixture', stack: 'deployed', confirmed, apps: ['api'] });
+        return JSON.stringify({ operation, project: 'fixture', stack: 'deployed', confirmed, apps: ['api'], reason });
       }
       events.push('unexpected remote effect');
       throw Error('Unexpected remote operation');
@@ -166,6 +166,12 @@ describe('the order the deployment asks in', () => {
   it('preserves the boot definitions and reports an unconfirmed start when no receipt exists', async () => {
     const { result, events } = await registration([], false);
     await expect(result).rejects.toBeInstanceOf(NodeRegistrationUnconfirmed);
+    expect(events).toEqual(['publish', 'register', 'observe', 'start', 'read receipt']);
+  });
+
+  it('includes a receiver-confirmed CLI timeout in the operator diagnostic after losing the SSH reply', async () => {
+    const { result, events } = await registration([], false, 'client-timeout');
+    await expect(result).rejects.toThrow(/unconfirmed.*timed out waiting for the daemon/);
     expect(events).toEqual(['publish', 'register', 'observe', 'start', 'read receipt']);
   });
 

@@ -184,9 +184,14 @@ describe('backup retirement shares the application lifecycle', () => {
     const restore = vi.spyOn(privateMethods(), 'pgRestoreLocal').mockResolvedValue(undefined);
     const deleting = rpc.deleteBackup({ backupId: 'deleting' });
     await vi.waitFor(() => expect(removing).toHaveBeenCalledWith(file));
+    const lookup = vi.spyOn(store, 'selectBackupsSync');
     const restoring = expect(backups.restoreBackup('deleting')).rejects.toThrow('changed while waiting for its archive');
-    release.resolve();
-    await deleting; await restoring;
+    try {
+      await vi.waitFor(() => expect(lookup).toHaveBeenCalled());
+    } finally {
+      release.resolve();
+      await Promise.all([deleting, restoring]);
+    }
     expect(restore).not.toHaveBeenCalled();
     expect(backups.activeOperationCount()).toBe(0);
   });
@@ -194,11 +199,21 @@ describe('backup retirement shares the application lifecycle', () => {
   it('serializes concurrent deletions without claiming a second successful mutation', async () => {
     const file = archive('twice');
     const unlink = vi.spyOn(fs.promises, 'unlink');
-    const first = rpc.deleteBackup({ backupId: 'twice' });
-    const second = expect(rpc.deleteBackup({ backupId: 'twice' })).rejects.toThrow('changed while waiting for its archive');
-    await expect(first).resolves.toEqual({ success: true });
-    await second;
+    const outcomes = await Promise.allSettled([
+      rpc.deleteBackup({ backupId: 'twice' }),
+      rpc.deleteBackup({ backupId: 'twice' }),
+    ]);
+    expect(outcomes.filter(result => result.status === 'fulfilled')).toEqual([
+      { status: 'fulfilled', value: { success: true } },
+    ]);
+    expect(outcomes.filter(result => result.status === 'rejected')).toEqual([
+      { status: 'rejected', reason: expect.objectContaining({
+        message: expect.stringMatching(/^Backup 'twice' (changed while waiting for its archive|not found)$/),
+      }) },
+    ]);
     expect(unlink.mock.calls.filter(([filename]) => filename === file)).toHaveLength(1);
+    expect(fs.existsSync(file)).toBe(false);
+    expect(store.selectBackupsSync()).toEqual([]);
     expect(backups.activeOperationCount()).toBe(0);
   });
 

@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Lumen preserves table headings and column alignment in HTML, Markdown and PDF exports. Authored HTML tables retain their cells. Prism breadcrumbs follow the active color scheme even before hydration.
-- Lumen bounds syntax highlighting on wide lines while preserving the full source text in the browser and the generated page.
+- Lumen bounds syntax highlighting on wide lines while preserving the full source text in the browser and the generated page. Code comments meet a 4.5:1 contrast ratio on both default backgrounds.
 - Titan project starters use the generator's installed Titan version. The controller loads TypeScript declarations in CommonJS projects.
 - Linux deployment uses the enrolled service account to stage management binaries and verify signed APT candidates. Named Docker volumes retain their identity during preparation. A gateway that uses private Unix sockets leaves the host TCP firewall unchanged.
 - Common's `defer<T>()` returns a complete, typed promise handle. Rotif releases waiting publishers when shutdown interrupts startup, clears its background timers and preserves colons in subscription patterns shared between processes.

@@ -57,7 +57,12 @@ export function resolveHighlightLanguage(raw: string): string {
 /** Shared engine for the synchronous compiler and the lazy browser entry point. */
 export function getCodeTokenizer(): HighlighterCore {
   highlighter ??= createHighlighterCoreSync({
-    themes: [githubLight, githubDark], langs: [], engine: createJavaScriptRegexEngine(),
+    themes: [
+      { ...githubLight, colorReplacements: { '#6a737d': '#57606a' } },
+      { ...githubDark, colorReplacements: { '#6a737d': '#8b949e' } },
+    ],
+    langs: [],
+    engine: createJavaScriptRegexEngine(),
   });
   return highlighter;
 }

@@ -588,7 +588,7 @@ Use reviewed rollout plans and reconciliation for backend or owner transitions. 
 
 [CLI](src/cli/omnitron.ts) · [Public API and exports](package.json) · [Console](webapp/README.md) · [Omni](../../README.md) · [Project documentation](https://omnitron.dev)
 
-The [single-owner access recovery proposal](OWNER-ACCESS-RECOVERY.md) describes the trust boundary between an installation and an application, the proposed v1 protocol and its acceptance criteria.
+[Installation owner recovery](OWNER-ACCESS-RECOVERY.md) covers commissioning a controller, pairing an application account and reconciling password changes after an interrupted connection.
 
 ## License
 

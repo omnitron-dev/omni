@@ -17,6 +17,7 @@ export interface SavedDaemonConfig {
   releaseStore?: unknown;
   releaseBuildConcurrency?: number;
   cluster?: IDaemonConfig['cluster'];
+  ownerRecovery?: IDaemonConfig['ownerRecovery'];
   executionHost?: IDaemonConfig['executionHost'];
   role: DaemonRole;
   master?: { host: string; port: number };
@@ -97,6 +98,7 @@ export function savedDaemonOverrides(saved: SavedDaemonConfig | null): Partial<I
   return {
     role: saved.role,
     ...(saved.releaseBuildConcurrency !== undefined ? { releaseBuildConcurrency: saved.releaseBuildConcurrency } : {}),
+    ...(saved.ownerRecovery !== undefined ? { ownerRecovery: saved.ownerRecovery } : {}),
     ...(saved.cluster !== undefined ? { cluster: saved.cluster } : {}),
     ...(saved.master ? { master: saved.master } : {}),
     ...(saved.requestRateLimit ? { requestRateLimit: saved.requestRateLimit } : {}),

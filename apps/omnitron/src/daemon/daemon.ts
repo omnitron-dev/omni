@@ -294,6 +294,7 @@ export class OmnitronDaemon {
   private kernelRollouts?: import('../services/kernel-rollout.service.js').KernelRolloutService;
   private nodeManagerRpcService: import('../services/node-manager.rpc-service.js').NodeManagerRpcService | null = null;
   private terminalRpcService: import('../services/terminal.rpc-service.js').TerminalRpcService | null = null;
+  private ownerRecovery: import('../owner-recovery/authority.js').OwnerRecoveryAuthority | null = null;
   private fileNode: import('../files/file-node.js').FileNode | null = null;
   private filesRpcService: import('../files/files.rpc-service.js').FilesRpcService | null = null;
   private pipelineService: import('../services/pipeline.service.js').PipelineService | null = null;
@@ -1675,6 +1676,18 @@ export class OmnitronDaemon {
       const authService = await container.resolveAsync<AuthService>(AUTH_SERVICE_TOKEN);
       const authRpcService = new AuthRpcService(authService, this.app.netron);
       await this.app.netron.peer.exposeService(authRpcService);
+      if (dc.ownerRecovery) {
+        try {
+          const { OwnerRecoveryAuthority, readRecoveryAuthorityConfig } = await import('../owner-recovery/authority.js');
+          const { OwnerRecoveryRpcService } = await import('../owner-recovery/rpc-service.js');
+          this.ownerRecovery = new OwnerRecoveryAuthority(readRecoveryAuthorityConfig(dc.ownerRecovery.authorityFile));
+          await this.app.netron.peer.exposeService(new OwnerRecoveryRpcService(this.ownerRecovery));
+        } catch {
+          this.ownerRecovery?.close();
+          this.ownerRecovery = null;
+          loggerModule.logger.error('Owner recovery unavailable. Verify the commissioned authority, generation and independent continuity store.');
+        }
+      }
       const { loadHostFlowRegistry } = await import('../flows/component-packs.js');
       const flowRegistry = loadHostFlowRegistry();
       for (const diagnostic of flowRegistry.diagnostics)
@@ -2985,6 +2998,11 @@ export class OmnitronDaemon {
       await this.startupWork?.catch(() => undefined);
       await this.healthMonitorStartup;
     }, ShutdownPriority.First - 1, true);
+
+    app.registerShutdownTask('close-owner-recovery-authority', async () => {
+      this.ownerRecovery?.close();
+      this.ownerRecovery = null;
+    }, ShutdownPriority.First);
 
     app.registerShutdownTask('close-recovery-journal', async () => {
       await this.recoveryMonitor?.close(this.stopApplicationsOnExit || this.handingOffBackend);

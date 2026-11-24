@@ -1778,6 +1778,13 @@ node
   });
 
 const access = program.command('access').description('Console roles, effective RPC permissions and human accounts');
+access.command('sign-owner-recovery <manifest>').description('Sign a reviewed recovery enrollment on the offline commissioning host')
+  .requiredOption('--key-file <file>', 'Private Ed25519 commissioning key file')
+  .requiredOption('--output <file>', 'New file for the public signed enrollment')
+  .structuredAction(async (manifest, options) => {
+    const { signOwnerRecoveryCommand } = await import('../commands/sign-owner-recovery.js');
+    await signOwnerRecoveryCommand(manifest, options);
+  });
 access.command('show').description('Show effective permissions from the running daemon').structuredAction(async () => {
   const { accessCommand } = await import('../commands/access.js'); await accessCommand('show');
 });

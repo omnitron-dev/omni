@@ -716,6 +716,8 @@ export interface IWatchConfig {
 // =============================================================================
 
 export interface IDaemonConfig {
+  /** Absolute path to operator-commissioned recovery authority policy. Enabled on a controller only. */
+  ownerRecovery?: { authorityFile: string };
   /** Concurrent release builds on this controller. Further independent projects wait in submission order. */
   releaseBuildConcurrency?: number;
   /** Keep supervised applications in a resident owner while backend processes are replaced. */

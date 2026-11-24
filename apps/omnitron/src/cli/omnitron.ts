@@ -1083,7 +1083,7 @@ release
   .option('--detach', 'Submit to the controller and return a build ID for CLI or Console')
   .option('--publish', 'Build on the controller and publish verified artifacts to its configured release store')
   .option('--project-commit <sha>', "The project commit to build (default: the project checkout's HEAD)")
-  .option('--omni-commit <sha>', "Linked checkout revision, or the exact full commit to require from registry packages")
+  .option('--omni-commit <sha>', 'SDK revision for linked checkouts. Full upstream Git commit required for vendored archives and optional for registry packages')
   .option('--framework-repository <repository>', 'Override the committed SDK source repository for this build')
   .option('--framework-ref <ref>', 'Require a full refs/heads/... or refs/tags/... in the selected SDK repository')
   .option('--keep-source', 'Keep the clones after a successful build')

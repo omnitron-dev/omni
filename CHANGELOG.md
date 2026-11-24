@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Project releases can require committed SDK archives with `omnitron.release.frameworkInput: "vendored"`. The producer reproduces each archive from the specified upstream commit before installing the project.
+
 ### Fixed
 
 - Titan Storage copies S3 objects whose keys contain Unicode, spaces or literal percent escapes while preserving the original key.

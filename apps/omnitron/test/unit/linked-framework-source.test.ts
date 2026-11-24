@@ -84,4 +84,14 @@ it('builds from declared and explicit sources when the nominal developer SDK is 
   const diagnostic = await runReleaseBuild('consumer', { omniCommit: sha, forStack: 'production', skipGates: true });
   expect(diagnostic.manifest.gates[0]?.status).toBe('not-run');
   expect(diagnostic.manifest.artifacts.map(artifact => artifact.app)).toEqual(['worker']);
+
+  const manifestPath = path.join(project, 'package.json');
+  const original = await fs.readFile(manifestPath, 'utf8');
+  const restricted = JSON.parse(original);
+  restricted.omnitron.release.frameworkInput = 'vendored';
+  await fs.writeFile(manifestPath, JSON.stringify(restricted));
+  const projectCommit = await commit(project);
+  await fs.writeFile(manifestPath, original);
+  await expect(runReleaseBuild('consumer', { projectCommit, omniCommit: selectedSha,
+    frameworkSource: { repository: '../override-origin' } })).rejects.toThrow('requires vendored');
 }, 120_000);

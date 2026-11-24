@@ -5,6 +5,7 @@ import { frameworkRepositoryMetadata, parseFrameworkSource, type FrameworkSource
 import { networkRepository, sourceRefContains } from './source.js';
 import { sourcePublication } from './source.js';
 import type { ReleaseSource } from './manifest.js';
+import type { FrameworkLayout } from './layout.js';
 
 export type FrameworkStep = (command: string, args: string[], cwd: string, env: NodeJS.ProcessEnv) => Promise<void>;
 
@@ -18,11 +19,15 @@ export function projectFrameworkSource(manifest: unknown, override?: unknown): F
   return selected === undefined ? undefined : parseFrameworkSource(selected);
 }
 
-export function assertFrameworkInput(manifest: { omnitron?: { release?: { frameworkInput?: unknown } } }, layout: string): void {
+export function assertFrameworkInput(manifest: { omnitron?: { release?: { frameworkInput?: unknown } } }, layout: FrameworkLayout['kind']): void {
   const required = manifest.omnitron?.release?.frameworkInput;
   if (required === undefined) return;
-  if (required !== 'registry') throw Error('Unsupported omnitron.release.frameworkInput. Use registry or omit the setting.');
-  if (layout !== required) throw Error('This project requires npm registry framework inputs for releases. Commit the published versions and their frozen registry lockfile.');
+  if (required !== 'registry' && required !== 'vendored')
+    throw Error('Unsupported omnitron.release.frameworkInput. Use registry, vendored, or omit the setting.');
+  if (layout === required) return;
+  if (required === 'vendored')
+    throw Error('This project requires vendored framework inputs for releases. Commit the SDK archives and their frozen file: lockfile, then supply the full upstream --omni-commit.');
+  throw Error('This project requires npm registry framework inputs for releases. Commit the published versions and their frozen registry lockfile.');
 }
 
 /** A legacy package may omit repository metadata. The packager's own declared

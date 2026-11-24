@@ -47,11 +47,16 @@ describe('one operator-selected framework source', () => {
 });
 
 it('enforces the committed distribution policy before creating release artifacts', () => {
-  const project = { omnitron: { release: { frameworkInput: 'registry' } } };
-  expect(() => assertFrameworkInput(project, 'registry')).not.toThrow();
-  for (const layout of ['linked', 'vendored']) {
-    expect(() => assertFrameworkInput(project, layout)).toThrow('requires npm registry');
+  const registry = { omnitron: { release: { frameworkInput: 'registry' } } };
+  const vendored = { omnitron: { release: { frameworkInput: 'vendored' } } };
+  expect(() => assertFrameworkInput(registry, 'registry')).not.toThrow();
+  expect(() => assertFrameworkInput(vendored, 'vendored')).not.toThrow();
+  for (const layout of ['linked', 'vendored'] as const)
+    expect(() => assertFrameworkInput(registry, layout)).toThrow('requires npm registry');
+  for (const layout of ['linked', 'registry'] as const)
+    expect(() => assertFrameworkInput(vendored, layout)).toThrow('requires vendored');
+  for (const layout of ['registry', 'vendored', 'linked'] as const)
     expect(() => assertFrameworkInput({}, layout)).not.toThrow();
-  }
-  expect(() => assertFrameworkInput({ omnitron: { release: { frameworkInput: 'unknown' } } }, 'registry')).toThrow('Unsupported');
+  for (const frameworkInput of ['linked', 'unknown', null])
+    expect(() => assertFrameworkInput({ omnitron: { release: { frameworkInput } } }, 'registry')).toThrow('Unsupported');
 });

@@ -170,6 +170,18 @@ Installed bootstrap applications repeat release and runtime verification before 
 
 Application entries do not replicate a whole application with `instances`. Author configuration and activation targets containing a value other than `1` are refused before infrastructure changes, owner stop fences or launch. This includes imported releases. Historical process observations remain readable. Configure `process.instances` in `defineSystem()` and resize a declared pool with `omnitron scale <app> <count> --process <pool>`. The application's instance count remains `1`; process observations report the actual worker counts.
 
+### Require a framework source for project releases
+
+Set `omnitron.release.frameworkInput` in the workspace root’s committed `package.json` to require a delivery channel for the SDK. Use `registry` for published packages with SHA-512 integrity in the frozen lockfile. Use `vendored` for SDK archives committed alongside the project. Omitting the setting lets the build select the channel from the lockfile.
+
+For a vendored release, commit the `.tgz` files and the pnpm lockfile that resolves every framework package to its project-relative `file:` archive. Supply the full upstream commit when building on the target platform.
+
+```sh
+omnitron release build "$PROJECT" --project-commit "$PROJECT_COMMIT" --omni-commit "$SDK_COMMIT"
+```
+
+The producer checks each committed Git blob against the lockfile’s SHA-512, builds the selected framework commit in a clean checkout, and packs its workspaces again. Each reproduced archive must match the original bytes before the producer installs the project. The release records the verified source commit, tree and package integrities.
+
 ## Starting with existing infrastructure
 
 For a newly built or previously published release on an independently owned local

@@ -35,7 +35,10 @@ it('reads a regular Git blob under the registered directory and rejects symlinks
   await verifyCommittedArchive(sub, sha, pin);
   await expect(verifyCommittedArchive(sub, sha, { ...pin, file: 'vendor/link.tgz' })).rejects.toThrow(/committed regular file/);
   await expect(verifyCommittedArchive(sub, sha, { ...pin, integrity: 'wrong' })).rejects.toThrow(/lockfile SHA-512/);
-  expect(() => requireFrameworkCommit('main')).toThrow(/full upstream Git commit/);
+});
+
+it.each([undefined, 'main', '1234abcd'])('requires a full upstream commit for a vendored input (%s)', value => {
+  expect(() => requireFrameworkCommit(value)).toThrow(/full upstream Git commit/);
 });
 
 // Git checkout, the source's multi-step build, pnpm pack, canonicalization and

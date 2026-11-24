@@ -275,7 +275,7 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
             />
             <TextField
               label="Framework commit"
-              placeholder="From project lockfile or linked checkout"
+              placeholder="Full Git commit for vendored archives"
               value={omniCommit}
               onChange={(e) => setOmniCommit(e.target.value)}
               size="small"

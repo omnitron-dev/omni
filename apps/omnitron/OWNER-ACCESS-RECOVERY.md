@@ -1,6 +1,6 @@
 # Recovering application access as the installation owner
 
-**Version 1, opt-in on main.** One human who enrolled recovery credentials before losing access can replace the password of their paired account in a participating application. The controller verifies the owner. The application alone receives the new password, changes the account and attests to the outcome. The controller on main exposes the versioned Netron interface when commissioned. The published 0.4.16 controller predates this interface.
+**Protocol v1 requires Omnitron 0.4.17 or later.** One person who enrolled recovery credentials before losing access can replace the password of their paired account in a participating application. A commissioned controller exposes the Netron recovery interface and verifies the owner. The application receives the new password, changes the account and signs a receipt for the outcome.
 
 ## What the platform already guarantees
 

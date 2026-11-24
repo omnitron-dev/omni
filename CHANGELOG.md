@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - An installation owner can enroll a passkey and offline codes in Console to recover access to a paired application. Netron binds each approval to one account and operation. Application replicas can reconcile cancellation or a lost response through a signed receipt.
+- Application developers can use `@omnitron-dev/titan-auth/owner-recovery` to sign and verify recovery grants and receipts. Titan exposes the current HTTP request's origin through `readRequestOrigin` and omits recovery payloads from Netron audit logs.
+
+### Changed
+
+- GitHub release notes use the entries from the matching version in this changelog.
 
 ## [0.4.16] - 2026-11-23
 

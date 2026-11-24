@@ -20,6 +20,10 @@
       "types": "./dist/preset/session-authority.d.ts",
       "default": "./dist/preset/session-authority.js"
     },
+    "./owner-recovery": {
+      "types": "./dist/owner-recovery.d.ts",
+      "default": "./dist/owner-recovery.js"
+    },
     "./access": {
       "types": "./dist/access/index.d.ts",
       "default": "./dist/access/index.js"

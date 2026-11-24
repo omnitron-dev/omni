@@ -102,6 +102,12 @@ function currentMetadata(): Map<string, unknown> | null {
   return getInvocationResponseContext()?.metadata ?? null;
 }
 
+/** Browser Origin observed by the HTTP transport. Compare with an enrolled
+ * origin for browser-only calls. It is not evidence of caller identity. */
+export function readRequestOrigin(): string | null {
+  return getInvocationResponseContext()?.requestHeaders?.['origin'] ?? null;
+}
+
 /**
  * Request the framework issue the given tokens to the client. Idempotent
  * (last call wins). Service code calls this from signin/refresh handlers.

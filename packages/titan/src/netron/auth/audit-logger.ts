@@ -366,6 +366,8 @@ export function isSensitiveFieldName(name: string): boolean {
   const last = words[words.length - 1];
   if (!last) return false;
   if (SECRET_NOUNS.has(last)) return true;
+  if (last === 'continuation' || last === 'assertion') return true;
+  if ((last === 'code' || last === 'codes') && words.some(w => w === 'recovery' || w === 'backup' || w === 'offline')) return true;
   if (last === 'key' || last === 'keys') return words.some((w) => SECRET_KEY_QUALIFIERS.has(w));
   return false;
 }
@@ -466,8 +468,10 @@ export class AuditLogger {
         },
         'Audit event logged'
       );
-    } catch (error) {
-      this.logger.error({ error, event }, 'Failed to log audit event');
+    } catch {
+      // Preparation or a storage adapter can fail before redaction has
+      // finished. Never hand the original event or adapter exception to logs.
+      this.logger.error({ service: event.service, method: event.method }, 'Failed to log audit event');
     }
   }
 
@@ -520,12 +524,15 @@ export class AuditLogger {
    * Prepare event for logging (apply filters and size limits)
    */
   private prepareEvent(event: AuditEvent): EnhancedAuditEvent {
+    // These versioned protocol services carry proofs and passwords in both
+    // directions. Keep the invocation decision even with payload tracing on.
+    const recovery = /^(?:Omnitron|Application)OwnerRecovery(?:@[^@]+)?$/.test(event.service);
     const enhancedEvent: EnhancedAuditEvent = {
       timestamp: event.timestamp,
       service: event.service,
       method: event.method,
       success: true,
-      metadata: event.metadata,
+      metadata: recovery ? undefined : event.metadata,
     };
 
     // Add user info if enabled
@@ -534,25 +541,25 @@ export class AuditLogger {
     }
 
     // Add args if enabled
-    if (this.config.includeArgs && event.args) {
+    if (!recovery && this.config.includeArgs && event.args) {
       enhancedEvent.args = this.sanitizeData(event.args);
     }
 
     // Add result if enabled
-    if (this.config.includeResult && event.result !== undefined) {
+    if (!recovery && this.config.includeResult && event.result !== undefined) {
       enhancedEvent.result = this.sanitizeData(event.result);
     }
 
     // Add auth decision if present
     if (event.authDecision) {
-      enhancedEvent.authDecision = event.authDecision;
+      enhancedEvent.authDecision = recovery ? { allowed: event.authDecision.allowed } : event.authDecision;
       // Determine success from auth decision
       enhancedEvent.success = event.authDecision.allowed;
     }
 
     // Add error if present
     if ('error' in event && event.error) {
-      enhancedEvent.error = String(event.error);
+      enhancedEvent.error = recovery ? 'Owner recovery invocation failed' : String(event.error);
       enhancedEvent.success = false;
     }
 

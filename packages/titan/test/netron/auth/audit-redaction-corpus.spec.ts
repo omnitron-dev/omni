@@ -30,6 +30,7 @@ const SECRETS = [
   'apiKey', 'api_key', 'secretKey', 'privateKey', 'encryptionKey',
   'sessionKey', 'signingKey', 'masterKey',
   'credentials', 'authorization', 'set-cookie',
+  'continuation', 'assertion', 'backupCodes', 'offlineCode', 'recovery_codes', 'reviewToken', 'enrollmentToken',
 ];
 
 const BENIGN = [

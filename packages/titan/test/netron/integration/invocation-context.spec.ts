@@ -6,7 +6,7 @@ import { HttpServer } from '../../../src/netron/transport/http/server.js';
 import { WebSocketTransport } from '../../../src/netron/transport/websocket/index.js';
 import { AuthenticationManager } from '../../../src/netron/auth/authentication-manager.js';
 import { getCurrentInvocationContext } from '../../../src/netron/invocation-context.js';
-import { readRequestCookie } from '../../../src/netron/auth/token-issuance.js';
+import { readRequestCookie, readRequestOrigin } from '../../../src/netron/auth/token-issuance.js';
 import { Service, Public } from '../../../src/decorators/core.js';
 import { createNullLogger } from '../../../src/types/logger.js';
 import type { NetronReadableStream } from '../../../src/netron/streams/index.js';
@@ -23,6 +23,7 @@ const observe = () => {
     applicationScope: applicationScope.getStore()?.userId ?? null,
     applicationRoles: applicationScope.getStore()?.roles ?? [],
     cookie: readRequestCookie('fixture'),
+    origin: readRequestOrigin(),
   };
 };
 const gates = new Map<string, { entered: ReturnType<typeof createDeferred<void>>; release: ReturnType<typeof createDeferred<void>> }>();
@@ -111,7 +112,7 @@ describe('Netron authoritative invocation context over actual transports', () =>
 
   async function invoke(method: string, token?: string, input: unknown[] = []) {
     const response = await fetch(url + '/netron/invoke', {
-      method: 'POST', headers: { 'content-type': 'application/json', cookie: 'fixture=http-cookie', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+      method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://app.example', cookie: 'fixture=http-cookie', ...(token ? { authorization: `Bearer ${token}` } : {}) },
       body: JSON.stringify({ id: crypto.randomUUID(), service: 'InvocationProbe', method, input,
         context: { userId: 'forged-admin', metadata: { authContext: identities.alice } } }),
     });
@@ -126,12 +127,12 @@ describe('Netron authoritative invocation context over actual transports', () =>
     await Promise.all([...gates.values()].map((gate) => gate.entered.promise));
     gates.get('ws')!.release.resolve();
     const ws = await second;
-    expect(ws.before).toMatchObject({ userId: 'bob', roles: ['reader'], transport: 'websocket' });
+    expect(ws.before).toMatchObject({ userId: 'bob', roles: ['reader'], transport: 'websocket', origin: null });
     expect(ws.after).toEqual(ws.before);
     gates.get('http')!.release.resolve();
     const ordinary = await first;
     expect(ordinary.status).toBe(200);
-    expect(ordinary.body.data.before).toMatchObject({ userId: 'alice', roles: ['staff'], transport: 'http', method: 'observe' });
+    expect(ordinary.body.data.before).toMatchObject({ userId: 'alice', roles: ['staff'], transport: 'http', method: 'observe', origin: 'https://app.example' });
     expect(ordinary.body.data.after).toEqual(ordinary.body.data.before);
   });
 

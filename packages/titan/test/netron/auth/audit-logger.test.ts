@@ -722,6 +722,18 @@ describe('AuditLogger Integration Tests', () => {
         expect(events[0].args).toEqual([10, 20]);
       });
 
+      it.each(['OmnitronOwnerRecovery@1.0.0', 'ApplicationOwnerRecovery'])('omits recovery payloads from %s even when tracing', async service => {
+        auditLogger = new AuditLogger(logger, { includeArgs: true, includeResult: true, async: false });
+        await auditLogger.logAuth({
+          timestamp: new Date(), service, method: 'approve', userId: 'subject',
+          args: ['private-material'], result: 'private-material', metadata: { message: 'private-material' },
+          authDecision: { allowed: false, reason: 'private-material' },
+        });
+        const [event] = await auditLogger.query();
+        expect(event).toMatchObject({ service, method: 'approve', success: false });
+        expect(JSON.stringify(event)).not.toContain('private-material');
+      });
+
       it('should exclude args when includeArgs is false', async () => {
         auditLogger = new AuditLogger(logger, { includeArgs: false });
 

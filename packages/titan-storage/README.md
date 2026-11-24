@@ -26,6 +26,8 @@ Provide Titan config and logger modules, then inject `STORAGE_ADAPTER`. Configur
 
 For S3, select `backend: 's3'` and configure `storage.s3`. Applications own authorization, quotas, content validation and retention. Local multipart bookkeeping is process-local; use S3 when sessions must survive process restarts or span instances. Permission and I/O errors remain errors; only a missing object means absence.
 
+Pass the original object keys to `copy({ sourceKey, destinationKey })`, including any Unicode characters, spaces or percent signs. The S3 adapter encodes the source for the `CopyObject` header. For example, `reports/a%2Fb` and `reports/a/b` identify different objects.
+
 ## Documentation
 
 [Public API](src/index.ts) · [Package exports](package.json) · [Omni](../../README.md)

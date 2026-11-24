@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Titan Storage copies S3 objects whose keys contain Unicode, spaces or literal percent escapes while preserving the original key.
+
 ## [0.4.17] - 2026-11-24
 
 ### Added

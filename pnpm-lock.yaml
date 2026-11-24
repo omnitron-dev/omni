@@ -2135,6 +2135,9 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: ^3.1161.0
         version: 3.1161.0
+      '@smithy/core':
+        specifier: ^3.38.1
+        version: 3.38.1
       '@smithy/node-http-handler':
         specifier: ^4.14.1
         version: 4.14.1

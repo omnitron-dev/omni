@@ -18,6 +18,7 @@ import {
   type GetObjectCommandInput,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { escapeUriPath } from '@smithy/core/protocols';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { Agent as HttpAgent } from 'http';
 import { Agent as HttpsAgent } from 'https';
@@ -244,7 +245,7 @@ export class S3Adapter implements StorageAdapter {
   async copy(options: CopyOptions): Promise<{ etag: string; versionId?: string }> {
     const command = new CopyObjectCommand({
       Bucket: this.bucket,
-      CopySource: `${this.bucket}/${options.sourceKey}`,
+      CopySource: escapeUriPath(`${this.bucket}/${options.sourceKey}`),
       Key: options.destinationKey,
       Metadata: options.metadata,
       MetadataDirective: options.metadataDirective || 'COPY',

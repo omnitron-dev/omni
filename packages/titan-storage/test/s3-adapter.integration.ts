@@ -374,10 +374,12 @@ describe('S3Adapter Integration Tests', () => {
   });
 
   describe('copy()', () => {
-    it('should copy an object to a new key', async () => {
+    it.each([
+      ['original.txt', 'copied.txt'],
+      ['Архив/отчёт 100%.txt', 'Копии/итог 50%.txt'],
+      ['objects/literal%2F+%20?#.txt', 'copies/literal%2F+%20?#.txt'],
+    ])('copies the exact source %s to %s', async (sourceKey, destKey) => {
       const content = Buffer.from('original content');
-      const sourceKey = 'original.txt';
-      const destKey = 'copied.txt';
 
       await adapter.put(sourceKey, content, {
         contentType: 'text/plain',

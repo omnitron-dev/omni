@@ -53,6 +53,8 @@ function step(state: State, event: Event): State {
     case 'readReceipt':
       if (state.controller === 'claimed' && state.receipt !== 'absent') return { ...state, controller: state.receipt };
       break;
+    default:
+      throw new Error(`Unhandled recovery event: ${event satisfies never}`);
   }
   return state;
 }

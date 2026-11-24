@@ -188,6 +188,7 @@
     "vitest": "^5.0.5"
   },
   "files": [
+    "OWNER-ACCESS-RECOVERY.md",
     "bin/sdk.js",
     "bin/sdk-transition.js",
     "bin/sdk-operation.js",

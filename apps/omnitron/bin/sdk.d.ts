@@ -1,6 +1,8 @@
 export interface DevelopmentSdkStatus {
-  mode: 'development' | 'registry';
+  mode: 'development' | 'registry' | 'vendored';
   verifiedImports: number;
+  projectCommit?: string;
+  frameworkCommit?: string;
   source?: string;
   distributionLock?: 'present' | 'absent' | 'manager-only';
   distributionLockChanged?: boolean;

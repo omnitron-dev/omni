@@ -419,9 +419,20 @@ Cancellation observed through publication of the writer's admission releases the
 
 Snapshot work has bounded parallelism: at most 16 file readers and four independent copies. File order, modes, symbolic links and content digests remain part of the retained proof. Every admitted writer settles before failed staging data is removed; an incomplete copy cannot authorize a build. `sdk recover` verifies the retained bytes and current ownership before restoration, preserving foreign edits and reporting an uncertain interrupted writer explicitly.
 
-The first selection may ask pnpm to generate its package-manager metadata. That metadata is not a registry application lock. A missing or stale registry baseline requires a normal registry installation before `sdk registry` can restore it. Ordinary `pnpm run` commands use the selected profile without extra flags.
+### Returning to the project's SDK
 
-`sdk status` validates registry importers with pnpm's frozen lockfile check, including overrides and relative local dependencies. Framework packages must still resolve to registry archives with SHA512 integrity; file and link overrides for them are refused. Inspection uses the installed pnpm matching the project's exact package-manager pin (qualified with pnpm 12.16.1), keeps its temporary cache separate, and runs no install scripts or custom manifest hooks. A lock that requires those hooks, an unsupported pnpm command, or stale dependency configuration fails explicitly. This checks existing installation provenance and lock freshness offline; pnpm's `--trust-lockfile` skips a new supply-chain policy lookup, so status is not a fresh registry security audit.
+Run `omnitron sdk status` in the workspace to check the current installation. After using `sdk dev`, restore the distribution selected by the project's lockfile and `omnitron.release.frameworkInput` policy.
+
+| SDK distribution | Command | What Omnitron verifies |
+| --- | --- | --- |
+| Published packages | `omnitron sdk registry` | Each direct framework import resolves to its locked npm archive, version and SHA-512 in pnpm's installation receipt. |
+| Committed archives | `omnitron sdk vendored` | The lockfile and each working archive match the project commit. Omnitron checks the SHA-512, pnpm's installed package and peer snapshots, and the files of each installed framework package reachable from the workspace. |
+
+Both commands accept `--project-dir` and `--stack`. Stop consumers before changing an active selection. The CLI retains the previous installation and verifies the restored distribution before closing the dev profile. Ordinary `pnpm run` commands then use the restored SDK. Use `sdk recover` to restore the retained files after an interrupted transition.
+
+For committed archives, `sdk status` reports `mode: "vendored"` and the consumer's `projectCommit`. When the packages record an upstream revision, it also reports `frameworkCommit`. A workspace can use just the SDK packages it needs. The native application release build separately reproduces its archives with `--omni-commit`.
+
+Inspection uses the project's pinned pnpm to check frozen importers, overrides, relative dependencies and application patch hashes offline. It reads patch paths from the effective pnpm configuration and verifies the lock in a temporary workspace, preserving comments and formatting in the project's copy. Install scripts and custom manifest hooks stay disabled during inspection. Run a normal pnpm installation to establish a missing registry application lock. The package-manager bootstrap record alone cannot establish a distribution.
 
 `--no-watch` checks the selected installation, Turbo inputs and output hashes under both workspace locks. If they match the saved build, the command can finish while applications are serving. It keeps their existing receipts and the recovery snapshot. If an install or rebuild is needed, stop the affected source stacks first. Omnitron retains a recovery snapshot before changing shared dependencies or outputs.
 

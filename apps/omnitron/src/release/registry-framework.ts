@@ -151,11 +151,8 @@ async function registryArchive(pkg: RegistryPackage, options: RegistryTransportO
   return withRegistryArchive(pkg, options, (input, signal) => inspectFrameworkArchive(pkg, input, signal));
 }
 
-/** Compare the exact compressed bytes and record the installed file tree. A
- * reproduced commit is supplied only after building a clean upstream checkout. */
-export async function inspectFrameworkArchive(
-  pkg: RegistryPackage, input: Readable, signal?: AbortSignal, reproducedCommit?: string,
-): Promise<PackageEvidence> {
+/** Shared byte and file evidence for published archives and the project's committed SDK. */
+export async function inspectFrameworkContents(pkg: RegistryPackage, input: Readable, signal?: AbortSignal) {
   const label = pkg.name + '@' + pkg.version;
   const archiveHash = createHash('sha512');
   const files = new Map<string, FileEvidence>();
@@ -189,17 +186,25 @@ export async function inspectFrameworkArchive(
   const metadata = archiveManifest(records.get('package.json'), label);
   if (metadata?.name !== pkg.name || metadata.version !== pkg.version)
     throw Error('Framework archive name or version differs from the lockfile: ' + label);
+  const stamp = pkg.name === CORE ? parseBuildStamp(JSON.parse(records.get('dist/BUILD.json')?.toString('utf8') ?? 'null')) : null;
+  if (pkg.name === CORE && (!stamp || stamp.dirty !== false || stamp.timeBasis !== 'source'))
+    throw Error('The Omnitron build stamp does not confirm its clean release commit: ' + label);
+  return { files, nodes: archiveNodes(files, records, metadata), metadata, stamp };
+}
+
+/** A reproduced commit is supplied only after building a clean upstream checkout. */
+export async function inspectFrameworkArchive(
+  pkg: RegistryPackage, input: Readable, signal?: AbortSignal, reproducedCommit?: string,
+): Promise<PackageEvidence> {
+  const { files, nodes, metadata, stamp } = await inspectFrameworkContents(pkg, input, signal);
+  const label = pkg.name + '@' + pkg.version;
   const commit = reproducedCommit ?? metadata.gitHead;
   if (typeof commit !== 'string' || !SHA.test(commit))
     throw Error('No exact source commit in the npm archive for ' + label + '; use a release with a packed gitHead or a linked checkout');
   if (metadata.gitHead !== undefined && metadata.gitHead !== commit)
     throw Error('Framework archive names a different Git commit: ' + label);
-  if (pkg.name === CORE) {
-    const stamp = parseBuildStamp(JSON.parse(records.get('dist/BUILD.json')?.toString('utf8') ?? 'null'));
-    if (stamp?.commit !== commit || stamp.dirty !== false || stamp.timeBasis !== 'source')
-      throw Error('The Omnitron build stamp does not confirm its clean release commit: ' + label);
-  }
-  const nodes = archiveNodes(files, records, metadata);
+  if (stamp && stamp.commit !== commit)
+    throw Error('The Omnitron build stamp does not confirm its clean release commit: ' + label);
   return { commit, files, nodes, metadata, ...(metadata.repository !== undefined && { repository: metadata.repository }) };
 }
 
@@ -311,26 +316,30 @@ export async function resolveRegistryFramework(packages: RegistryPackage[], opti
   return verifiedFramework({ ...source, registry: { packages } }, verified);
 }
 
+export async function verifyFrameworkPackageFiles(evidence: Pick<PackageEvidence, 'nodes'>, directory: string): Promise<void> {
+  const visited = new Set<string>();
+  async function verify(installed: string, packed: string): Promise<void> {
+    const real = await fs.realpath(installed), identity = packed + '\0' + real;
+    if (visited.has(identity)) return;
+    visited.add(identity);
+    const node = evidence.nodes.get(packed)!;
+    await verifyTree(real, node.files);
+    for (const [dependency, target] of node.dependencies) {
+      const resolved = await resolveInstalledDependency(real, dependency);
+      if (!resolved) throw Error('Installed bundled dependency is missing: ' + dependency);
+      await verify(resolved, target);
+    }
+  }
+  await verify(directory, '');
+}
+
 export function verifiedFramework(source: ReleaseSource, verified: ReadonlyMap<string, PackageEvidence>): RegistryFramework {
   return {
     source,
     async verifyPackage(name, directory) {
       const evidence = verified.get(name);
       if (!evidence) throw Error('Framework package is absent from the verified framework lock: ' + name);
-      const visited = new Set<string>();
-      const verify = async (installed: string, packed: string): Promise<void> => {
-        const real = await fs.realpath(installed), identity = packed + '\0' + real;
-        if (visited.has(identity)) return;
-        visited.add(identity);
-        const node = evidence.nodes.get(packed)!;
-        await verifyTree(real, node.files);
-        for (const [dependency, target] of node.dependencies) {
-          const resolved = await resolveInstalledDependency(real, dependency);
-          if (!resolved) throw Error('Installed bundled dependency is missing: ' + dependency);
-          await verify(resolved, target);
-        }
-      };
-      await verify(directory, '');
+      await verifyFrameworkPackageFiles(evidence, directory);
     },
   };
 }

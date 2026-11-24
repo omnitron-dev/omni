@@ -20,6 +20,12 @@ export interface InstalledPackage {
 }
 const validName = (name: string) => /^(?:@[\w.-]+\/)?[\w.-]+$/.test(name) &&
   name.split('/').every(part => part !== '.' && part !== '..' && !part.startsWith('.'));
+
+export function requiresInstalledDependency(manifest: Pick<PackageInfo, 'dependencies' | 'optionalDependencies' | 'peerDependencies' | 'peerDependenciesMeta'>, name: string) {
+  return !Object.hasOwn(manifest.optionalDependencies ?? {}, name) &&
+    (Object.hasOwn(manifest.dependencies ?? {}, name) ||
+      Object.hasOwn(manifest.peerDependencies ?? {}, name) && !manifest.peerDependenciesMeta?.[name]?.optional);
+}
 const readManifest = async (root: string, inspectPackage?: (root: string) => Promise<void>): Promise<PackageInfo> => {
   if (inspectPackage) await inspectPackage(root);
   const meta = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8')) as PackageInfo;
@@ -30,7 +36,7 @@ const readManifest = async (root: string, inspectPackage?: (root: string) => Pro
 
 /** Resolve the installed *production* graph. Real paths distinguish different peer
  * bindings of the same version; discovery order is stable and cycles are finite. */
-export async function installedGraph(source: string, overlays: ReadonlyMap<string, string> = new Map(), allowedRoots?: readonly string[],
+export async function installedGraph(source: string | readonly string[], overlays: ReadonlyMap<string, string> = new Map(), allowedRoots?: readonly string[],
   inspectPackage?: (root: string) => Promise<void>): Promise<InstalledPackage[]> {
   const packages: InstalledPackage[] = [], known = new Map<string, number>();
   async function visit(directory: string): Promise<number> {
@@ -54,12 +60,12 @@ export async function installedGraph(source: string, overlays: ReadonlyMap<strin
     for (const name of names) {
       const target = await resolveInstalledDependency(root, name);
       if (target) item.dependencies.set(name, await visit(target));
-      else if (!Object.hasOwn(metadata.optionalDependencies ?? {}, name) && !metadata.peerDependenciesMeta?.[name]?.optional)
+      else if (requiresInstalledDependency(metadata, name))
         throw Error('Missing installed dependency: ' + metadata.name + ' → ' + name);
     }
     return id;
   }
-  await visit(source);
+  for (const root of typeof source === 'string' ? [source] : source) await visit(root);
   return packages;
 }
 

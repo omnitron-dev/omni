@@ -154,7 +154,7 @@ export type FrameworkLayout =
   | { kind: 'registry'; packages: RegistryPackage[]; importers: string[] }
   | { kind: 'vendored'; packages: VendoredPackage[]; importers: string[] };
 
-export function readFrameworkLayout(lockfile: string): FrameworkLayout {
+export function readFrameworkLayout(lockfile: string, { requireCore = true } = {}): FrameworkLayout {
   const graph = readGraph(lockfile);
   const linked = layoutOf(graph.links);
   if (linked && 'refusal' in linked) throw Error(linked.refusal);
@@ -179,7 +179,7 @@ export function readFrameworkLayout(lockfile: string): FrameworkLayout {
       throw Error('Cannot combine local framework packages and npm release inputs');
   }
   const archives = graph.vendored.length ? graph.vendored : graph.packages;
-  if (!archives.some(pkg => pkg.name === '@omnitron-dev/omnitron'))
+  if (requireCore && !archives.some(pkg => pkg.name === '@omnitron-dev/omnitron'))
     throw Error('The lockfile must include @omnitron-dev/omnitron with a verifiable archive or checkout');
   if (new Set(archives.map(pkg => pkg.name)).size !== archives.length)
     throw Error('Multiple versions of the same framework package cannot identify one release');

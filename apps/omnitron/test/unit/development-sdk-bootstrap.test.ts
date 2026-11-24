@@ -106,6 +106,8 @@ afterEach(async () => {
 });
 const initialize = () => sdkCommand(['init', '--project-dir', consumer]);
 const select = (checkout?: string) => sdkCommand(['dev', ...(checkout ? [checkout] : []), '--project-dir', consumer, '--no-watch']);
+const runCli = (...args: string[]) => exec(process.execPath, ['--import', pathToFileURL(require.resolve('tsx/esm')).href,
+  path.resolve(import.meta.dirname, '../../src/cli/omnitron.ts'), ...args], { cwd: consumer, timeout: 60_000 });
 
 it('previews the actual development selection while the installed SDK still serves its verified build', async () => {
   await initialize();
@@ -119,23 +121,20 @@ it('previews the actual development selection while the installed SDK still serv
   const prior = await fs.readFile(journal, 'utf8');
   await fs.rm(path.join(source, '.turbo'), { recursive: true, force: true });
   const unchanged = await filesystemSnapshot(root);
-  const cli = path.resolve(import.meta.dirname, '../../src/cli/omnitron.ts');
-  const run = (...args: string[]) => exec(process.execPath, ['--import', pathToFileURL(require.resolve('tsx/esm')).href, cli, ...args],
-    { cwd: consumer, timeout: 60_000 });
   const prepare = ['--json', 'sdk', 'prepare', '--project-dir', consumer];
-  const reviewed = JSON.parse((await run(...prepare, '--check')).stdout).data;
+  const reviewed = JSON.parse((await runCli(...prepare, '--check')).stdout).data;
   expect(reviewed).toMatchObject({ action: 'reuse', snapshotRequired: false, reuseDigest: expect.stringMatching(/^[a-f0-9]{64}$/) });
   const args = ['dev', source, '--project-dir', consumer, '--no-watch', '--reuse-only', reviewed.reuseDigest];
   const strict = () => sdkCommand(args);
-  expect((await run('sdk', ...args)).stdout).toContain('Reused the reviewed development SDK build');
+  expect((await runCli('sdk', ...args)).stdout).toContain('Reused the reviewed development SDK build');
   expect(await filesystemSnapshot(root)).toEqual(unchanged);
 
   const manifestPath = path.join(consumer, 'package.json'), manifest = await json(manifestPath);
   await write(manifestPath, { ...manifest, scripts: { ...manifest.scripts, inspect: 'node --version' }, exports: './build.js' });
-  const observed = JSON.parse((await run('--json', 'sdk', 'status', '--project-dir', consumer)).stdout).data;
+  const observed = JSON.parse((await runCli('--json', 'sdk', 'status', '--project-dir', consumer)).stdout).data;
   expect(observed).toMatchObject({ build: { status: 'current' }, distributionLockChanged: false, consumerProfileChanged: true });
   const changed = await filesystemSnapshot(root);
-  const response = await run(...prepare, '--check');
+  const response = await runCli(...prepare, '--check');
   expect(JSON.parse(response.stdout)).toEqual({ ok: true, data: {
     root: consumer, source, action: 'rebind', snapshotRequired: true, reason: expect.stringContaining('consumer profile input digest'),
   } });
@@ -147,7 +146,7 @@ it('previews the actual development selection while the installed SDK still serv
   } finally { reads.mockRestore(); }
   expect(await filesystemSnapshot(root)).toEqual(changed);
   await expect(inspectMigrationSdk(consumer)).rejects.toThrow('Development SDK inputs differ from the selected profile');
-  const { token } = JSON.parse((await run(...prepare)).stdout).data;
+  const { token } = JSON.parse((await runCli(...prepare)).stdout).data;
   expect(await json(active())).toEqual(original);
   await expect(inspectMigrationSdk(consumer)).rejects.toThrow('Development SDK inputs differ from the selected profile');
   await sdkCommand(['dev', '--project-dir', consumer, '--no-watch', '--prepared', token]);
@@ -231,11 +230,8 @@ it('leaves the reuse decision unconfirmed when it requires a custom pnpm hook fr
 
 it('prepares a serving checkout through the public CLI, binds revisions and manager metadata, selects once and recovers', async () => {
   await initialize();
-  const cli = path.resolve(import.meta.dirname, '../../src/cli/omnitron.ts');
-  const run = (...args: string[]) => exec(process.execPath, ['--import', pathToFileURL(require.resolve('tsx/esm')).href, cli, ...args],
-    { cwd: consumer, timeout: 60_000 });
   const prepare = async () => {
-    const response = JSON.parse((await run('--json', 'sdk', 'prepare', source, '--project-dir', consumer)).stdout);
+    const response = JSON.parse((await runCli('--json', 'sdk', 'prepare', source, '--project-dir', consumer)).stdout);
     expect(response.ok).toBe(true);
     return response.data;
   };
@@ -254,7 +250,7 @@ it('prepares a serving checkout through the public CLI, binds revisions and mana
   expect(await distribution()).toBeNull();
   expect(await exists(fence)).toBe(false); expect(await exists(journal)).toBe(false); expect(await exists(active())).toBe(false);
   await fs.unlink(socket);
-  const consume = (token: string) => run('sdk', 'dev', source, '--project-dir', consumer, '--prepared', token, '--no-watch');
+  const consume = (token: string) => runCli('sdk', 'dev', source, '--project-dir', consumer, '--prepared', token, '--no-watch');
   for (const directory of [source, consumer]) {
     const candidate = directory === source ? initial : await prepare();
     await commit(directory);
@@ -271,7 +267,7 @@ it('prepares a serving checkout through the public CLI, binds revisions and mana
   expect((await json(journal)).id).toBe(candidate.token.split('.')[0]);
   expect(await inspectSdk(consumer)).toMatchObject({ mode: 'development', source, distributionLock: 'manager-only', build: { status: 'current' } });
   expect((await exec('pnpm', ['run', 'build'], { cwd: consumer })).stdout).toContain('Built with SDK value 42');
-  await run('sdk', 'recover', '--project-dir', consumer);
+  await runCli('sdk', 'recover', '--project-dir', consumer);
   expect(await distribution()).toBe(manager); expect(await exists(active())).toBe(false);
   await expect(consume(candidate.token)).rejects.toThrow(/already been used/);
   expect((await json(journal)).phase).toBe('restored');
@@ -311,6 +307,104 @@ it('honors SIGTERM between retention and the first SDK writer, and detects a new
   await consume();
   expect((await json(journal)).id).toBe(token.split('.')[0]); expect((await json(journal)).phase).toBe('committed');
 }, 90_000);
+
+async function installVendored(nodeLinker: string) {
+  const vendor = path.join(consumer, 'vendor');
+  await fs.mkdir(vendor);
+  const overrides: Record<string, string> = {};
+  const dependencies = new Map([['@omnitron-dev/lumen', '@omnitron-dev/lumen-ast'], ['@omnitron-dev/lumen-ast', '@fixture/runtime']]);
+  for (const name of ['@omnitron-dev/lumen', '@omnitron-dev/lumen-ast', '@fixture/runtime']) {
+    const slug = name.split('/')[1]!, parent = path.join(root, 'archived-' + slug);
+    const pkg = path.join(parent, 'package');
+    const dependency = dependencies.get(name);
+    await fs.mkdir(path.join(pkg, 'dist'), { recursive: true });
+    await write(path.join(pkg, 'package.json'), { name, version: '0.3.5', type: 'module', main: './dist/index.js',
+      ...(dependency && { dependencies: { [dependency]: '0.3.5' } }) });
+    await fs.writeFile(path.join(pkg, 'dist/index.js'), dependency
+      ? 'export {value} from ' + JSON.stringify(dependency) + ';\n' : 'export const value = 6;\n');
+    await create({ cwd: parent, file: path.join(vendor, slug + '.tgz'), gzip: true, portable: true }, ['package']);
+    overrides[name] = 'file:vendor/' + slug + '.tgz';
+  }
+  await fs.mkdir(path.join(consumer, 'patches'));
+  await fs.writeFile(path.join(consumer, 'patches/runtime.patch'), [
+    'diff --git a/dist/index.js b/dist/index.js', '--- a/dist/index.js', '+++ b/dist/index.js',
+    '@@ -1 +1 @@', '-export const value = 6;', '+export const value = 7;', '',
+  ].join('\n'));
+  await fs.appendFile(path.join(consumer, 'pnpm-workspace.yaml'),
+    'nodeLinker: ' + nodeLinker + '\noverrides: ' + JSON.stringify(overrides) +
+    '\npatchedDependencies:\n  "@fixture/runtime@0.3.5": patches/runtime.patch\n');
+  const file = path.join(consumer, 'package.json');
+  const manifest = await json(file);
+  await write(file, { ...manifest, dependencies: { ...manifest.dependencies, '@fixture/runtime': '0.3.5' },
+    omnitron: { release: { frameworkInput: 'vendored' } } });
+  await initialize();
+  await exec('pnpm', ['install', '--ignore-scripts'], { cwd: consumer });
+  if (nodeLinker === 'hoisted') await fs.appendFile(path.join(consumer, 'pnpm-lock.yaml'), '\n# SDK archive provenance\n');
+  await exec('git', ['add', '.'], { cwd: consumer });
+  await exec('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', '-c', 'commit.gpgsign=false',
+    'commit', '-qm', 'Pin SDK archives'], { cwd: consumer });
+}
+
+it.each(['isolated', 'hoisted'])('returns from a dev checkout to the committed vendored SDK (%s)', async linker => {
+  await installVendored(linker);
+  const lock = await distribution();
+  const state = await inspectSdk(consumer);
+  expect(state).toMatchObject({ mode: 'vendored', verifiedImports: 1, projectCommit: expect.stringMatching(/^[a-f0-9]{40}$/) });
+  await runCli('sdk', 'dev', source, '--project-dir', consumer, '--no-watch');
+  expect(await inspectSdk(consumer)).toMatchObject({ mode: 'development' });
+  const restore = () => sdkCommand(['vendored', '--project-dir', consumer]);
+  await expect(sdkCommand(['registry', '--project-dir', consumer])).rejects.toThrow('Use sdk vendored');
+  const archive = path.join(consumer, 'vendor/lumen-ast.tgz');
+  const initial = await fs.readFile(archive);
+  await fs.appendFile(archive, 'changed');
+  await expect(restore()).rejects.toThrow(/working SDK archive/);
+  expect(await exists(active())).toBe(true);
+  await fs.writeFile(archive, initial);
+  await runCli('sdk', 'vendored', '--project-dir', consumer);
+  const restored = JSON.parse((await runCli('--json', 'sdk', 'status', '--project-dir', consumer)).stdout);
+  expect(restored).toMatchObject({ ok: true, data: { mode: 'vendored', projectCommit: state.projectCommit } });
+  expect(await distribution()).toEqual(lock);
+  const { stdout } = await exec(process.execPath, ['build.js'], { cwd: consumer });
+  expect(stdout).toContain('Built with SDK value 7');
+  const direct = createRequire(path.join(consumer, 'package.json')).resolve('@omnitron-dev/lumen');
+  const nested = createRequire(direct).resolve('@omnitron-dev/lumen-ast');
+  await fs.writeFile(nested + '.replacement', 'export const value = 8;\n');
+  await fs.rename(nested + '.replacement', nested);
+  await expect(inspectSdk(consumer)).rejects.toThrow(/differs from its verified archive/);
+}, 90_000);
+
+it('detects drift in the committed lock, a nested runtime binding and the installed snapshot before selecting dev', async () => {
+  await installVendored('isolated');
+  const lock = path.join(consumer, 'pnpm-lock.yaml');
+  const original = await fs.readFile(lock, 'utf8');
+  await fs.appendFile(lock, '\n# working tree only\n');
+  await expect(inspectSdk(consumer)).rejects.toThrow('committed file: lockfile');
+  expect(await distribution()).toBe(original + '\n# working tree only\n');
+  await fs.writeFile(lock, original);
+  const patch = path.join(consumer, 'patches/runtime.patch'), patchBytes = await fs.readFile(patch, 'utf8');
+  await fs.writeFile(patch, patchBytes.replace('value = 7', 'value = 19'));
+  await expect(inspectSdk(consumer)).rejects.toThrow('Frozen vendored lock validation failed');
+  expect(await distribution()).toBe(original);
+  await fs.writeFile(patch, patchBytes);
+  const direct = createRequire(path.join(consumer, 'package.json')).resolve('@omnitron-dev/lumen');
+  const nested = createRequire(direct).resolve('@omnitron-dev/lumen-ast');
+  const runtime = createRequire(nested).resolve('@fixture/runtime');
+  const manifest = path.resolve(path.dirname(runtime), '../package.json');
+  const bytes = await fs.readFile(manifest);
+  await write(manifest + '.replacement', { ...JSON.parse(bytes.toString()), version: '0.4.0' });
+  await fs.rename(manifest + '.replacement', manifest);
+  await expect(inspectSdk(consumer)).rejects.toThrow('differs from its committed snapshot: @fixture/runtime');
+  await fs.writeFile(manifest, bytes);
+  const receipt = path.join(consumer, 'node_modules/.pnpm/lock.yaml');
+  const installed = parseAllDocuments(await fs.readFile(receipt, 'utf8')).at(-1)!.toJS();
+  const key = Object.keys(installed.snapshots).find(name => name.startsWith('@omnitron-dev/lumen@file:'))!;
+  installed.snapshots[key].dependencies['@omnitron-dev/lumen-ast'] = '0.3.5';
+  await write(receipt, installed);
+  await expect(select(source)).rejects.toThrow('installed framework snapshots differ');
+  expect(await exists(active())).toBe(false);
+  expect(await exists(path.join(consumer, '.omnitron/dev-sdk/transition.json'))).toBe(false);
+  expect(await distribution()).toBe(original);
+}, 60_000);
 
 async function installRegistry(virtualStoreDir?: string, nodeLinker = 'isolated') {
   const packages = new Map<string, { manifest: Record<string, unknown>; bytes: Buffer; integrity: string }>();

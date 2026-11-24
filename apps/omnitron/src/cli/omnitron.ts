@@ -74,9 +74,17 @@ sdk.command('dev [checkout]').description('Select a local SDK and rebuild when i
     ...(options.prepared !== undefined ? ['--prepared', options.prepared] : []),
     ...(options.reuseOnly !== undefined ? ['--reuse-only', options.reuseOnly] : []),
   ]));
-sdk.command('registry').description('Restore dependencies from the frozen distribution lock')
-  .option('--project-dir <path>', 'Consumer workspace directory', process.cwd())
-  .action(async ({ projectDir }) => (await import('../../bin/sdk.js')).sdkCommand(['registry', '--project-dir', projectDir]));
+for (const [channel, description] of Object.entries({
+  registry: 'Restore the frozen npm registry SDK',
+  vendored: 'Restore the frozen SDK archives committed with the project',
+})) {
+  sdk.command(channel).description(description)
+    .option('--project-dir <path>', 'Consumer workspace directory', process.cwd())
+    .option('--stack <name>', 'Require this local source stack to remain stopped')
+    .action(async ({ projectDir, stack }) => (await import('../../bin/sdk.js')).sdkCommand([
+      channel, '--project-dir', projectDir, ...(stack ? ['--stack', stack] : []),
+    ]));
+}
 sdk.command('recover').description('Restore the retained SDK bytes and dependency bindings without rebuilding')
   .option('--project-dir <path>', 'Consumer workspace directory', process.cwd())
   .option('--stack <name>', 'Require this local source stack to remain stopped')

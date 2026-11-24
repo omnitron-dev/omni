@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Project releases can require committed SDK archives with `omnitron.release.frameworkInput: "vendored"`. The producer reproduces each archive from the specified upstream commit before installing the project.
+- `omnitron sdk vendored` restores a project's committed SDK after local development. `sdk status` verifies the Git blobs, lockfile integrity and installed framework files, including transitive dependencies.
 
 ### Fixed
 

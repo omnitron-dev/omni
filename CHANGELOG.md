@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.17] - 2026-11-24
+
 ### Added
 
 - An installation owner can enroll a passkey and offline codes in Console to recover access to a paired application. Netron binds each approval to one account and operation. Application replicas can reconcile cancellation or a lost response through a signed receipt.

@@ -37,6 +37,7 @@ export type { AppStatus, SubProcessInfoDto } from '../../config/types.js';
 export type { BackendRuntimeStatus, IOmnitronBackendService } from './backend.js';
 export type { IOmnitronAccessService, ConsoleAccess, ConsoleCapability, ConsoleAccount, ConsoleRole } from './access.js';
 export { consolePasswordError } from './auth.js';
+export type { IOmnitronOwnerRecoveryService, OwnerRecoveryReview, OwnerPairingProof } from './owner-recovery.js';
 
 /** Stack lifecycle operations can need several minutes for cold processes to report ready. */
 export const LONG_REQUEST_TIMEOUT = 10 * 60_000;

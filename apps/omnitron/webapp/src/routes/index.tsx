@@ -10,6 +10,8 @@ import { AuthLayout } from 'src/layouts/auth-layout';
 // ---------------------------------------------------------------------------
 
 const SignInPage = lazy(() => import('src/pages/auth/sign-in'));
+const OwnerRecoveryPage = lazy(() => import('src/pages/auth/owner-recovery'));
+const OwnerEnrollmentPage = lazy(() => import('src/pages/auth/owner-enrollment'));
 const DashboardPage = lazy(() => import('src/pages/dashboard'));
 const AppsListPage = lazy(() => import('src/pages/apps/index'));
 const AppDetailPage = lazy(() => import('src/pages/apps/detail'));
@@ -64,6 +66,11 @@ export function Router() {
         }
       >
         <Route path="/auth/sign-in" element={<Page><SignInPage /></Page>} />
+      </Route>
+
+      <Route element={<AuthLayout />}>
+        <Route path="/auth/owner-recovery/enroll" element={<Page><OwnerEnrollmentPage /></Page>} />
+        <Route path="/auth/owner-recovery" element={<Page><OwnerRecoveryPage /></Page>} />
       </Route>
 
       {/* Protected console routes */}

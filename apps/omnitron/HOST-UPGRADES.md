@@ -148,6 +148,10 @@ the candidate against that exact sealed release. The migration check opens the
 candidate registry with the rollback writer present and exercises both writers
 before and after expansion. Existing Pipeline runs retain their admission
 records, including older runs created before admission was recorded.
+On a worker, the native test also compares every SQLite migration row before
+the guardian change. It verifies the checksum and execution order of the
+reviewed addition at backend activation and retains its timestamp through
+rollback, crash recovery and restart.
 
 If fleet planning reports a missing `backupOperations` counter, the serving
 backend cannot account for active backups. Waiting for a quiet interval cannot

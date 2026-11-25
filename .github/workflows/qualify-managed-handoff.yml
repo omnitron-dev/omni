@@ -60,6 +60,8 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ inputs.node }}
+      - name: Check preservation of native migration journals
+        run: node --test apps/omnitron/test/runtime/fixture-node-journal.test.mjs
       - name: Build both sealed runtimes from their own frozen workspaces
         run: |
           test "$(node -p 'process.versions.node')" = "$TARGET_NODE"

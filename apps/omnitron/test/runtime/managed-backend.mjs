@@ -9,6 +9,7 @@ import { initialRuntimeDirectories, readMasterFixture, removeOwnedFixtureRoot } 
 import { preparationOption, prepareFixture, claimPreparedFixture, consumeFixture, verifyPreparedFixture,
   assertPreparedFixtureIdle } from './fixture-preparation.mjs';
 import { verifyFixtureLogs } from './fixture-log-evidence.mjs';
+import { checkNodeJournal } from './fixture-node-journal.mjs';
 import { createFixtureUnitFiles, assertFixtureUnitFilesOwned, removeFixtureUnitFiles, authorizeFixtureUnitWrite, authorizeFixtureGuardianReplacement } from './fixture-unit-files.mjs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -406,8 +407,11 @@ if (process.argv[2] === '--backend-handoff' && path.dirname(target) === ${JSON.s
   };
   const originalHistory = migrationHistory();
   assert.ok(originalHistory.length > 0, 'The baseline did not create its migration journal');
+  let expectedHistory = originalHistory;
+  let forwardAddition;
   const assertHistoryPreserved = stage => {
-    assert.deepEqual(migrationHistory(), originalHistory, `${stage}: migration journal was rewritten`);
+    expectedHistory = checkNodeJournal(expectedHistory, migrationHistory(),
+      stage === 'backend-forward' ? forwardAddition : undefined, stage);
   };
   if (reviewedRecovery) {
     const result = await managedReviewedRecovery({ root, instance, execution, units, first, initialBackend, initialGuardian,
@@ -422,10 +426,17 @@ if (process.argv[2] === '--backend-handoff' && path.dirname(target) === ${JSON.s
     console.log(JSON.stringify({ test: 'native-reviewed-backend-recovery', root, samples, failures, verifiedLogs,
       preservedMigrationHistoryRows: originalHistory.length, ...result }));
   } else {
-  if (managementDist && !backendOnly) {
+  if (managementDist) {
     const { assertBackendMigrationsCompatible } = await import(pathToFileURL(path.join(managementDist, 'daemon/backend-candidate.js')).href);
     const compatibility = await assertBackendMigrationsCompatible(initialBackend.directory, managementDist, 'node');
-    if (compatibility?.kind === 'checksum-metadata') {
+    if (compatibility?.kind === 'node-storage-expansion' && !originalHistory.some(row => row.name === '002_host_storage_alert')) {
+      const { SLAVE_MIGRATIONS } = await import(pathToFileURL(path.join(managementDist, 'database/slave-migrations/index.js')).href);
+      const additions = SLAVE_MIGRATIONS.filter(migration => !originalHistory.some(row => row.name === migration.name));
+      assert.deepEqual(additions.map(({ name }) => name), ['002_host_storage_alert']);
+      [forwardAddition] = additions;
+      assert.match(forwardAddition.checksum, /^[a-f0-9]{64}$/);
+    }
+    if (!backendOnly && compatibility?.kind === 'checksum-metadata') {
       const supervisor = await privateControlClient(path.join(execution, 'supervisor.sock'), 'OmnitronSupervisor');
       let capable;
       try { capable = (await supervisor.service.status()).migrationChecksumMetadata === 1; } finally { await supervisor.close(); }

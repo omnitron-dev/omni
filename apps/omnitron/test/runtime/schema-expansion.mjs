@@ -42,7 +42,7 @@ async function writeLegacyRows(dist, phase) {
     assert.equal(commands, 0);
     assert.deepEqual(errors, []);
     await db.insertInto('sync_ingested').values({ nodeId: 'test-node', entryId: phase }).execute();
-    return { pipelineId: pipeline.id, runId: run.id, entryId: phase };
+    return { pipelineId: pipeline.id, runId: run.id, entryId: phase, review: saved.review ?? null };
   } finally {
     mark('closing private writer');
     await service.dispose();
@@ -82,7 +82,7 @@ try {
   const { planSchemaAdditions, planSchemaContinuation, assertSchemaHistory, historyIdentity } = await load(candidate, 'database/schema-transition-plan.js');
   const execute = promisify(execFile);
   const inspect = async directory => JSON.parse((await execute(path.resolve(candidate, '../../../node'),
-    [path.join(candidate, 'database/schema-worker.js'), 'inspect', directory],
+    [path.join(candidate, 'database/schema-worker.js'), 'inspect', directory, ...(directory === candidate ? [bridge] : [])],
     { cwd: root, env: process.env, timeout: 60000, maxBuffer: 2 * 1024 * 1024 })).stdout);
   const legacyWrite = async phase => JSON.parse((await execute(path.resolve(bridge, '../../../node'),
     ['--input-type=module', '--eval', `console.log(JSON.stringify(await (${writeLegacyRows.toString()})(${JSON.stringify(bridge)}, ${JSON.stringify(phase)})))`],
@@ -120,6 +120,15 @@ try {
     additions: additions.map(({ name, checksum, fileHash }) => ({ name, checksum, fileHash })), approvedAt: new Date().toISOString() };
   const file = policy.schemaReceiptFile(receipt.instanceHome, id);
   const initialWriter = await legacyWrite('before-expansion');
+  // A bridge that already supports reviewed runs may still hold older runs with a NULL admission.
+  let nullableId = initialWriter.runId;
+  if (initialWriter.review) {
+    const columns = ['pipelineId', 'status', 'steps', 'startedAt', 'completedAt', 'triggeredBy', 'params'];
+    const historical = await db.insertInto('pipeline_runs').columns(columns)
+      .expression(db.selectFrom('pipeline_runs').select(columns).where('id', '=', initialWriter.runId))
+      .returning('id').executeTakeFirstOrThrow();
+    nullableId = historical.id;
+  }
   const initialRows = await snapshot();
   // A new-schema journal must not become a general permission to ignore unknown history.
   const forward = await execute(path.resolve(candidate, '../../../node'), [path.join(candidate, 'cli/omnitron.js'), '--json', 'migrate', 'up', '--daemon'],
@@ -132,7 +141,14 @@ try {
       for (const [column, value] of Object.entries(row))
         assert.deepEqual(expandedRows[key][index][column], value, `Expansion changed ${key}.${column}`);
   }
-  assert.equal(expandedRows.runs.find(row => row.id === initialWriter.runId).admission, null);
+  const { readAdmission } = await load(candidate, 'services/pipeline-admission.js');
+  const checkWriter = (rows, writer) => {
+    const { admission } = rows.runs.find(row => row.id === writer.runId);
+    if (writer.review) assert.deepEqual(readAdmission(admission).review, writer.review);
+    else assert.equal(admission, null);
+  };
+  checkWriter(expandedRows, initialWriter);
+  assert.equal(expandedRows.runs.find(row => row.id === nullableId).admission, null);
   assert.equal(expandedRows.receipts.find(row => row.entryId === initialWriter.entryId).outcome, 'unverified');
   assert.deepEqual(expandedRows.columns.filter(row => row.table_name === 'pipeline_runs' && row.column_name === 'admission')
     .map(row => ({ type: row.data_type, nullable: row.is_nullable, default: row.column_default })),
@@ -149,7 +165,6 @@ try {
 
   // The candidate's ordinary service creates a real durable review, not synthetic JSON.
   const { PipelineService } = await load(candidate, 'services/pipeline.service.js');
-  const { readAdmission } = await load(candidate, 'services/pipeline-admission.js');
   const service = new PipelineService(db, { debug() {}, info() {}, warn() {}, error() {} },
     { execute() { throw Error('Admission qualification must not execute commands'); } });
   let admitted;
@@ -165,7 +180,7 @@ try {
   const afterForwardWriter = await legacyWrite('after-expansion');
   const beforeDown = await snapshot();
   assert.deepEqual(beforeDown.runs.find(row => row.id === admitted.id), admissionRow, 'Old writer changed the durable admission');
-  assert.equal(beforeDown.runs.find(row => row.id === afterForwardWriter.runId).admission, null);
+  checkWriter(beforeDown, afterForwardWriter);
   assert.equal(beforeDown.receipts.find(row => row.entryId === afterForwardWriter.entryId).outcome, 'unverified');
   for (const steps of new Set([1, names.length + 1])) {
     const unavailable = names.slice(-Math.min(steps, names.length)).reverse().join(', ');
@@ -185,7 +200,7 @@ try {
   for (const [key, identity] of [['pipelines', 'id'], ['runs', 'id'], ['receipts', 'entryId']])
     assert.deepEqual(afterCold[key].filter(row => beforeDown[key].some(previous => previous[identity] === row[identity])), beforeDown[key],
       `Old writer changed existing ${key}`);
-  assert.equal(afterCold.runs.find(row => row.id === afterColdWriter.runId).admission, null);
+  checkWriter(afterCold, afterColdWriter);
   assert.equal(afterCold.receipts.find(row => row.entryId === afterColdWriter.entryId).outcome, 'unverified');
   // A corrected binary after rollback reuses exact applied evidence, not new DDL.
   const previousView = await inspect(bridge), currentView = await inspect(candidate);
@@ -206,8 +221,11 @@ try {
     for (const writer of [initialWriter, afterForwardWriter, afterColdWriter]) {
       const run = await returned.getRunStatus(writer.runId);
       assert.equal(run.status, 'success');
-      assert.equal(run.review, undefined, 'Old nullable admission must not acquire an invented review');
+      assert.deepEqual(run.review ?? null, writer.review, 'Rollback must preserve the receipt produced by the original writer');
     }
+    const historical = await returned.getRunStatus(nullableId);
+    assert.equal(historical.status, 'success');
+    assert.equal(historical.review, undefined, 'Old nullable admission must not acquire an invented review');
   } finally { await returned.dispose(); }
   await writePrivateRecord(file, { ...receipt, database: '0'.repeat(64) });
   await assert.rejects(old.migrateOmnitronDb(db), /No matching schema expansion receipt/);

@@ -143,6 +143,12 @@ healthy target uses a new plan for its retained previous artifact. Owner updates
 Node changes, schema changes and the first coupled-to-resident transition remain
 separate maintenance operations.
 
+When an additive database migration names a compatible rollback release, qualify
+the candidate against that exact sealed release. The migration check opens the
+candidate registry with the rollback writer present and exercises both writers
+before and after expansion. Existing Pipeline runs retain their admission
+records, including older runs created before admission was recorded.
+
 If fleet planning reports a missing `backupOperations` counter, the serving
 backend cannot account for active backups. Waiting for a quiet interval cannot
 add that capability. The named counter identifies a protocol gap. A report such

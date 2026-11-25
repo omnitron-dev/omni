@@ -7,25 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- Project releases can require committed SDK archives with `omnitron.release.frameworkInput: "vendored"`. The producer reproduces each archive from the specified upstream commit before installing the project.
-- `omnitron sdk vendored` restores a project's committed SDK after local development. `sdk status` verifies the Git blobs, lockfile integrity and installed framework files, including transitive dependencies.
-
-### Fixed
-
-- Titan Storage copies S3 objects whose keys contain Unicode, spaces or literal percent escapes while preserving the original key.
-
-## [0.4.17] - 2026-11-24
+## [0.4.17] - 2026-11-25
 
 ### Added
 
 - An installation owner can enroll a passkey and offline codes in Console to recover access to a paired application. Netron binds each approval to one account and operation. Application replicas can reconcile cancellation or a lost response through a signed receipt.
 - Application developers can use `@omnitron-dev/titan-auth/owner-recovery` to sign and verify recovery grants and receipts. Titan exposes the current HTTP request's origin through `readRequestOrigin` and omits recovery payloads from Netron audit logs.
+- Project releases can require committed SDK archives with `omnitron.release.frameworkInput: "vendored"`. The producer reproduces each archive from the specified upstream commit before installing the project.
+- `omnitron sdk vendored` restores a project's committed SDK after local development. `sdk status` verifies the Git blobs, lockfile integrity and installed framework files, including transitive dependencies.
 
 ### Changed
 
 - GitHub release notes use the entries from the matching version in this changelog.
+
+### Fixed
+
+- Titan Storage copies S3 objects whose keys contain Unicode, spaces or literal percent escapes while preserving the original key.
 
 ## [0.4.16] - 2026-11-23
 

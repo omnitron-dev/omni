@@ -151,7 +151,9 @@ records, including older runs created before admission was recorded.
 On a worker, the native test also compares every SQLite migration row before
 the guardian change. It verifies the checksum and execution order of the
 reviewed addition at backend activation and retains its timestamp through
-rollback, crash recovery and restart.
+rollback, crash recovery and restart. The owner replacement and local update
+fixtures apply the same check at the first candidate backend startup. Each
+later owner change must preserve the complete recorded journal.
 
 If fleet planning reports a missing `backupOperations` counter, the serving
 backend cannot account for active backups. Waiting for a quiet interval cannot

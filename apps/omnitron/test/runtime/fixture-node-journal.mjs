@@ -1,4 +1,22 @@
 import assert from 'node:assert/strict';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+/** Derive the allowed first change from the same sealed pair the native CLI admits. */
+export async function nodeJournalTransition(previous, candidate, history) {
+  const load = relative => import(pathToFileURL(path.join(candidate, relative)).href);
+  const { assertBackendMigrationsCompatible } = await load('daemon/backend-candidate.js');
+  const compatibility = await assertBackendMigrationsCompatible(previous, candidate, 'node');
+  if (compatibility?.kind !== 'node-storage-expansion' || history.some(row => row.name === '002_host_storage_alert')) {
+    return { compatibility };
+  }
+  const { SLAVE_MIGRATIONS } = await load('database/slave-migrations/index.js');
+  const additions = SLAVE_MIGRATIONS.filter(migration => !history.some(row => row.name === migration.name));
+  assert.deepEqual(additions.map(({ name }) => name), ['002_host_storage_alert']);
+  const [addition] = additions;
+  assert.match(addition.checksum, /^[a-f0-9]{64}$/);
+  return { compatibility, addition };
+}
 
 /** Only the first forward activation may append the migration admitted by the sealed pair. */
 export function checkNodeJournal(before, after, addition, stage) {

@@ -9,7 +9,7 @@ import { initialRuntimeDirectories, readMasterFixture, removeOwnedFixtureRoot } 
 import { preparationOption, prepareFixture, claimPreparedFixture, consumeFixture, verifyPreparedFixture,
   assertPreparedFixtureIdle } from './fixture-preparation.mjs';
 import { verifyFixtureLogs } from './fixture-log-evidence.mjs';
-import { checkNodeJournal } from './fixture-node-journal.mjs';
+import { checkNodeJournal, nodeJournalTransition } from './fixture-node-journal.mjs';
 import { createFixtureUnitFiles, assertFixtureUnitFilesOwned, removeFixtureUnitFiles, authorizeFixtureUnitWrite, authorizeFixtureGuardianReplacement } from './fixture-unit-files.mjs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -427,15 +427,8 @@ if (process.argv[2] === '--backend-handoff' && path.dirname(target) === ${JSON.s
       preservedMigrationHistoryRows: originalHistory.length, ...result }));
   } else {
   if (managementDist) {
-    const { assertBackendMigrationsCompatible } = await import(pathToFileURL(path.join(managementDist, 'daemon/backend-candidate.js')).href);
-    const compatibility = await assertBackendMigrationsCompatible(initialBackend.directory, managementDist, 'node');
-    if (compatibility?.kind === 'node-storage-expansion' && !originalHistory.some(row => row.name === '002_host_storage_alert')) {
-      const { SLAVE_MIGRATIONS } = await import(pathToFileURL(path.join(managementDist, 'database/slave-migrations/index.js')).href);
-      const additions = SLAVE_MIGRATIONS.filter(migration => !originalHistory.some(row => row.name === migration.name));
-      assert.deepEqual(additions.map(({ name }) => name), ['002_host_storage_alert']);
-      [forwardAddition] = additions;
-      assert.match(forwardAddition.checksum, /^[a-f0-9]{64}$/);
-    }
+    const { compatibility, addition } = await nodeJournalTransition(initialBackend.directory, managementDist, originalHistory);
+    forwardAddition = addition;
     if (!backendOnly && compatibility?.kind === 'checksum-metadata') {
       const supervisor = await privateControlClient(path.join(execution, 'supervisor.sock'), 'OmnitronSupervisor');
       let capable;

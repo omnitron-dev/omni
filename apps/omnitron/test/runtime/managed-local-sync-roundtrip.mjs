@@ -1,3 +1,4 @@
+import { checkNodeJournal } from './fixture-node-journal.mjs';
 import assert from 'node:assert/strict';
 import { fork } from 'node:child_process';
 import fs from 'node:fs/promises';
@@ -178,7 +179,7 @@ export async function managedLocalSyncRoundtrip(context) {
       infrastructureReview: null, selection: { kind: 'working-tree' }, savedSelection: { kind: 'unreported' }, startReview: review.digest }],
     excluded: [], watches: [] };
   assertReviewedBoot(plan.stacks[0], review.digest, protocol);
-  const migrations = await history();
+  const migrations = checkNodeJournal(context.originalHistory, await history(), context.addition, 'backend-warmup');
   assert.equal(claims(), null);
   const rounds = [];
   let stopped, priorWorker = worker, manualStarts = 0;

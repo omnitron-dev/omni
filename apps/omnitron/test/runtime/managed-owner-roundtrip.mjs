@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { checkNodeJournal, nodeJournalTransition } from './fixture-node-journal.mjs';
 import { verifyFixtureLogs } from './fixture-log-evidence.mjs';
 
 /** This counter fixture owns no containers. Prove that footprint and use the
@@ -238,12 +239,16 @@ export async function managedOwnerRoundtrip(context) {
   });
   let worker = await ready(first.execution.owner.pid);
   track(first.execution.owner.pid, worker.pid, first.pid, await jobPid('backend'));
+  const originalHistory = await history();
+  assert.ok(originalHistory.length > 0, 'The baseline did not create its migration journal');
+  const { addition } = await nodeJournalTransition(initialBackend.directory, managementDist, originalHistory);
   if (context.localSyncRoundtrip) {
     const { managedLocalSyncRoundtrip } = await import('./managed-local-sync-roundtrip.mjs');
     return managedLocalSyncRoundtrip({ ...context, candidate, previous, installed, ready, probe, cli, jobPid, certificate, api,
-      retireNative, launchNative, worker, history, load, candidateRoot, lifecycleBudget: LONG_REQUEST_TIMEOUT });
+      retireNative, launchNative, worker, history, originalHistory, addition, load, candidateRoot, lifecycleBudget: LONG_REQUEST_TIMEOUT });
   }
-  const originalHistory = await history(), rounds = [];
+  let expectedHistory = originalHistory;
+  const rounds = [];
   let projects, sourceRefresh;
   for (const target of [
     { phase: 'owner-forward', owner: candidate.id, guardian: candidate.id, backend: candidate.id, commit: candidate.build.commit },
@@ -269,7 +274,7 @@ export async function managedOwnerRoundtrip(context) {
     }, 'Candidate owner and selected backend did not start');
     track(after.pid, after.execution.owner.pid);
     await certificate();
-    assert.deepEqual(await history(), originalHistory, 'Owner replacement rewrote existing migration history');
+    expectedHistory = checkNodeJournal(expectedHistory, await history(), target.phase === 'owner-forward' ? addition : undefined, target.phase);
     const stopped = await api(async client => (await client.service('OmnitronProject')).getStack({ project: 'probe', stack: 'local' }));
     assert.equal(stopped.status, 'stopped');
     assert.ok(!stopped.apps.some(a => a.status === 'online'), 'A stopped stack restarted without explicit intent');

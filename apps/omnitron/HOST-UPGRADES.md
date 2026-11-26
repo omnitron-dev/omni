@@ -14,7 +14,10 @@ contains the operation table, exact commands and review steps.
 To reuse a completed Linux qualification for a specific receiver, run
 `pnpm exec xec update fetch COMMIT --previous PREVIOUS --node-version VERSION --run RUN_ID`.
 The command checks source CI, the exact handoff and return, and the native archive.
-It uses the local build of COMMIT in `OMNITRON_DEV_CACHE` to extract the archive.
+It uses the sealed local build of COMMIT in `OMNITRON_DEV_CACHE` to extract the archive.
+With `--reader-commit SHA` it can reuse an existing local build for extraction.
+The reader's file digests, source revision, clean build stamp and native runtime must match.
+The downloaded build always has to match COMMIT and the qualification run.
 Pass the returned `runtime` directory to
 `pnpm exec xec update plan COMMIT --node NODE --runtime DIRECTORY`.
 This stages the backend and reports the receiver's admission. An owner or guardian

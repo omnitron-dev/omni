@@ -34,18 +34,19 @@ async function runUpdate(operation, target, values, options) {
   const cache = values.cacheDir ?? process.env.OMNITRON_DEV_CACHE;
   if (operation === 'fetch') {
     const runId = Number(values.run);
-    if (![target, values.previous].every(value => /^[a-f0-9]{40}$/.test(value)) || target === values.previous ||
+    const reader = values.readerCommit ?? target;
+    if (![target, values.previous, reader].every(value => /^[a-f0-9]{40}$/.test(value)) || target === values.previous ||
         !/^[1-9]\d*$/.test(values.run) || !Number.isSafeInteger(runId) || !policy.qualification.nodes.includes(values.nodeVersion))
-      throw new UserError('Use two distinct full revisions, a supported native Node version and a GitHub run ID');
+      throw new UserError('Use distinct source and previous revisions, full commit hashes, a supported native Node version and a GitHub run ID');
     const context = { commit: target, previous: values.previous, node: values.nodeVersion, name: 'Native handoff', observeOnly: true, signal: getExecutionSignal() };
     const provider = githubQualification({ root, policy, run, progress });
     await provider.ci({ ...context, name: 'Source CI' });
     const evidence = await provider.native(context, { runId });
     const base = await physicalCache(developmentCacheDirectory(cache), true);
     const directory = path.join(base, 'native-' + target + '-' + runId + '-' + evidence.attempt);
-    const localRuntime = path.join(base, [target, process.platform, process.arch, process.version].join('-'));
+    const localRuntime = path.join(base, [reader, process.platform, process.arch, process.version].join('-'));
     const { withKernelFileLock } = await import('@xec-sh/ops/utils/file-lock');
-    const runtime = await withKernelFileLock(directory + '.lock', () => retainNativeRuntime({ directory, localRuntime, evidence, context,
+    const runtime = await withKernelFileLock(directory + '.lock', () => retainNativeRuntime({ directory, localRuntime, readerCommit: reader, evidence, context,
       download: destination => provider.downloadNative(context, evidence, destination) }));
     const result = { commit: target, previous: values.previous, node: values.nodeVersion, run: evidence.url, runtime };
     output(JSON.stringify(result, null, 2));
@@ -180,6 +181,7 @@ operation inspect status; use reconciliation/recovery instead of replaying apply
     .requiredOption('--previous <commit>', 'Revision the Linux handoff updated and restored')
     .requiredOption('--node-version <version>', 'Native Node version used by the receiver')
     .requiredOption('--run <id>', 'Completed native qualification workflow run')
+    .option('--reader-commit <commit>', 'Use an existing sealed local build of this exact revision to extract the archive')
     .action((commit, values) => runUpdate('fetch', commit, values, options));
   operation('plan <commit>', 'Stage qualified runtimes on explicit registered nodes; do not activate')
     .option('--runtime <directory>', 'Sealed Linux runtime (repeat for distinct native candidates)', collect)

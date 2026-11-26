@@ -33,18 +33,21 @@ test('native delivery binds the run and verifies bytes before calling the truste
   // never execute, even when inspecting an already retained native runtime.
   await fs.writeFile(path.join(module, 'shared/runtime-artifact.js'),
     "throw Error('Artifact verifier must never execute');");
-  await fs.writeFile(path.join(module, 'BUILD.json'), JSON.stringify({ commit, dirty: false }));
+  const readerCommit = 'c'.repeat(40);
+  await fs.writeFile(path.join(module, 'BUILD.json'), JSON.stringify({ commit: readerCommit, dirty: false }));
   await fs.writeFile(path.join(module, 'release/frozen-installation.js'),
     "import fs from 'node:fs/promises'; export async function extractFrozenArchive(_archive, root) {" +
     "await fs.cp(" + JSON.stringify(extracted) + ",root,{recursive:true}); }");
   await seal(local, process.version);
   let downloads = 0, corrupt = true;
-  const options = { directory, localRuntime: local, evidence: { id: 7, attempt: 2 }, context: { commit, previous, node: '22.23.4' },
+  const options = { directory, localRuntime: local, readerCommit, evidence: { id: 7, attempt: 2 }, context: { commit, previous, node: '22.23.4' },
     download: async destination => {
       downloads++;
       await fs.writeFile(path.join(destination, 'NATIVE.json'), JSON.stringify(proof));
       await fs.writeFile(path.join(destination, 'runtime.tgz'), corrupt ? 'wrong bytes' : bytes);
     } };
+  await assert.rejects(retainNativeRuntime({ ...options, readerCommit: commit }), /Archive reader differs/);
+  assert.equal(downloads, 0);
   await assert.rejects(retainNativeRuntime(options), /checksum differs/);
   await assert.rejects(fs.access(directory), { code: 'ENOENT' });
   corrupt = false;

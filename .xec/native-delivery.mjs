@@ -13,7 +13,7 @@ async function sha256(file) {
 }
 
 /** Decode with the already qualified local SDK; never execute code from the download. */
-export async function retainNativeRuntime({ directory, localRuntime, evidence, context, download, observeOnly }) {
+export async function retainNativeRuntime({ directory, localRuntime, readerCommit, evidence, context, download, observeOnly }) {
   const load = file => import(pathToFileURL(path.join(localRuntime, 'packages/0/dist', file)).href);
   async function verify(root) {
     const proof = await json(path.join(root, 'NATIVE.json'));
@@ -45,7 +45,13 @@ export async function retainNativeRuntime({ directory, localRuntime, evidence, c
     if (await fs.lstat(directory).catch(error => { if (error.code !== 'ENOENT') throw error; return null; })) throw error;
   }
   if (observeOnly) throw Error('The qualified native runtime has not been retained: ' + context.node);
-  await verifyRuntimeArtifact(localRuntime);
+  const reader = await verifyRuntimeArtifact(localRuntime);
+  if (readerCommit) {
+    const stamp = await json(path.join(localRuntime, 'packages/0/dist/BUILD.json'));
+    if (reader.platform !== process.platform || reader.arch !== process.arch || reader.nodeVersion !== process.version ||
+        stamp.commit !== readerCommit || stamp.dirty !== false)
+      throw Error('Archive reader differs from the requested clean local build');
+  }
   const temporary = await fs.mkdtemp(path.join(path.dirname(directory), '.native-'));
   try {
     await download(temporary);

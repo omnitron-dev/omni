@@ -99,6 +99,8 @@ export interface GatewayServiceConfig {
   port?: number; // Default: 8080
   /** Path to gateway config directory (relative to project root), containing nginx.conf, lua/, maintenance.html */
   configDir?: string; // Default: 'infra/nginx'
+  /** Exact file permissions on a node, keyed by path relative to configDir. */
+  configFileModes?: Readonly<Record<string, string>>;
   /**
    * A built frontend for the gateway to serve at `/`, relative to the project
    * root — `apps/portal/dist`.
@@ -418,6 +420,8 @@ export interface IServiceRequirement {
    * project root, or absolute.
    */
   configDir?: string;
+  /** Exact file permissions on a node, keyed by path relative to configDir. */
+  configFileModes?: Readonly<Record<string, string>>;
 
   /** Bare-metal provisioning hints — used for prod stacks. */
   bareMetal?: IBareMetalServiceConfig;

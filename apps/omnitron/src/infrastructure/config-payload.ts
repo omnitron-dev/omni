@@ -235,10 +235,11 @@ export async function writeConfigFiles(
 export async function readConfigDirectory(
   dir: string,
   fs: {
-    readdir(d: string): Promise<Array<{ name: string; isDirectory(): boolean }>>;
+    readdir(d: string): Promise<Array<{ name: string; isDirectory(): boolean; isFile?(): boolean }>>;
     readFile(p: string): Promise<string>;
     stat(p: string): Promise<{ mode: number }>;
   },
+  declaredModes?: ReadonlyMap<string, string>,
 ): Promise<{ files: ConfigFile[]; skipped: string[] }> {
   const files: ConfigFile[] = [];
   const skipped: string[] = [];
@@ -254,14 +255,17 @@ export async function readConfigDirectory(
       }
       if (!isSafeRelativePath(rel)) { skipped.push(rel); continue; }
       const full = `${dir}/${rel}`;
-      // The mode comes off the file: an entrypoint is executable because
-      // someone made it so, and a payload that flattened everything to 0644
-      // would ship a script the container cannot run.
-      const { mode } = await fs.stat(full);
-      files.push({ path: rel, content: await fs.readFile(full), mode: `0${(mode & 0o777).toString(8).padStart(3, '0')}` });
+      const declared = declaredModes?.get(rel);
+      if (declared !== undefined && !entry.isFile?.()) throw Error(`Declared config file must be regular: ${rel}`);
+      const mode = declared ?? `0${((await fs.stat(full)).mode & 0o777).toString(8).padStart(3, '0')}`;
+      files.push({ path: rel, content: await fs.readFile(full), mode });
     }
   }
 
   await walk('');
+  if (declaredModes?.size) {
+    const found = new Set(files.map(file => file.path));
+    for (const file of declaredModes.keys()) if (!found.has(file)) throw Error(`Missing declared config file: ${file}`);
+  }
   return { files, skipped };
 }

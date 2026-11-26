@@ -89,7 +89,7 @@ export function expandServiceDeclarations(
       preset: 'openresty',
       image: raw.gateway.image,
       ports: raw.gateway.port ? { http: raw.gateway.port } : undefined,
-      config: { configDir: raw.gateway.configDir },
+      config: { configDir: raw.gateway.configDir, ...(raw.gateway.configFileModes && { configFileModes: raw.gateway.configFileModes }) },
       resources: raw.gateway.resources,
     }));
   }

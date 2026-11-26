@@ -20,13 +20,14 @@
  * visibly unresolved rather than becoming an empty directory.
  */
 import fs from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 
 import { InfrastructureService } from '../../src/infrastructure/infrastructure.service.js';
 import { type InfrastructureDefinition } from '../../src/infrastructure/infrastructure-definition.js';
-import { pointMountsAtShippedConfig, shippedMountPath } from '../../src/infrastructure/shipped-config.js';
+import { pointMountsAtShippedConfig, shippedDirsOf, shippedMountPath } from '../../src/infrastructure/shipped-config.js';
 import { resolveAppInfrastructure } from '../../src/infrastructure/service-resolver.js';
 import type { ResolvedContainer } from '../../src/infrastructure/types.js';
 import { InfrastructureRpcService } from '../../src/services/infrastructure.rpc-service.js';
@@ -165,6 +166,66 @@ describe('the node resolves it to its own copy', () => {
 });
 
 describe('the master ships what a service names, wherever it is declared', () => {
+  it('delivers the declared modes from the same Git revision under different checkout umasks', async () => {
+    const source = path.join(scratch, 'config-origin');
+    fs.mkdirSync(path.join(source, 'config', 'modules'), { recursive: true });
+    const modes = { 'modules/reader.js': '0644', 'private.conf': '0600', 'start.sh': '0755' };
+    const infrastructure = { services: { gateway: { preset: 'openresty', config: { configDir: 'config', configFileModes: modes } } } };
+    fs.writeFileSync(path.join(source, 'omnitron.stacks.json'), JSON.stringify({ prod: { infrastructure } }));
+    for (const file of [...Object.keys(modes), 'other.conf']) fs.writeFileSync(path.join(source, 'config', file), file + '\n');
+    fs.chmodSync(path.join(source, 'config/start.sh'), 0o755);
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: source, stdio: 'pipe' });
+    git('init', '-q');
+    git('add', '.');
+    git('-c', 'user.name=fixture', '-c', 'user.email=fixture@localhost', 'commit', '-qm', 'service config');
+    const master: any = Object.assign(Object.create(ProjectService.prototype), { logger: quiet() });
+    const node: any = new InfrastructureRpcService(() => null, vi.fn());
+    const nodeHome = path.join(scratch, 'modes-node');
+    fs.mkdirSync(nodeHome);
+    setEnvOverride({ HOME: nodeHome });
+    for (const mask of ['022', '077']) {
+      const checkout = path.join(scratch, 'checkout-' + mask);
+      git('clone', '-q', '--no-checkout', '--local', source, checkout);
+      execFileSync('/bin/sh', ['-c', 'umask "$1" && exec git checkout -q HEAD -- .', 'checkout', mask], { cwd: checkout });
+      const readMode = (file: string) => '0' + (fs.statSync(file).mode & 0o777).toString(8);
+      const config = JSON.parse(fs.readFileSync(path.join(checkout, 'omnitron.stacks.json'), 'utf8')).prod.infrastructure;
+      expect(readMode(path.join(checkout, 'config/modules/reader.js'))).toBe(mask === '077' ? '0600' : '0644');
+      const payload = await master.readStackConfigFiles(config, checkout, undefined, {}, true);
+      const roots: Map<string, string> = await node.writeStackConfigs(payload, 'sample', 'prod');
+      const root = roots.get('gateway')!;
+      for (const [file, mode] of Object.entries(modes)) {
+        expect(fs.readFileSync(path.join(root, file), 'utf8')).toBe(file + '\n');
+        expect(readMode(path.join(root, file))).toBe(mode);
+      }
+      expect(readMode(path.join(root, 'other.conf'))).toBe(readMode(path.join(checkout, 'config/other.conf')));
+      const expected = { configFiles: payload, project: 'sample', stack: 'prod' };
+      await expect(node.checkStackConfigs(expected)).resolves.toEqual(roots);
+      fs.chmodSync(path.join(root, 'modules/reader.js'), 0o600);
+      await expect(node.checkStackConfigs(expected)).rejects.toThrow();
+    }
+  });
+
+  it('rejects an invalid or incomplete mode declaration before provisioning', async () => {
+    const master: any = Object.assign(Object.create(ProjectService.prototype), { logger: quiet() });
+    const project = path.join(scratch, 'invalid-modes');
+    fs.mkdirSync(path.join(project, 'config'), { recursive: true });
+    for (const [file, mode] of [['missing.conf', '0600'], ['../outside', '0644'], ['private.key', '0644'], ['startup', '4755']] as const) {
+      const services = { worker: { configDir: 'config', configFileModes: { [file]: mode } } };
+      await expect(master.readStackConfigFiles({ services }, project)).rejects.toThrow(/config file|configFileModes/i);
+    }
+  });
+
+  it('keeps declarations for the same directory consistent across presets and requirements', () => {
+    const configFileModes = { 'reader.conf': '0644' };
+    const gateway = { preset: 'openresty', config: { configFileModes } };
+    const extra = { gateway: { configDir: './infra/nginx', configFileModes: { 'private.conf': '0600' } } };
+    const shipped = shippedDirsOf({ services: { gateway } }, extra);
+    expect(shipped).toEqual([{ service: 'gateway', dir: 'infra/nginx', modes: new Map([['reader.conf', '0644'], ['private.conf', '0600']]) }]);
+    expect(() => shippedDirsOf({ gateway: { configDir: 'elsewhere' }, services: { gateway } })).toThrow(/different configDir/);
+    expect(() => shippedDirsOf({ services: { gateway } }, { gateway: { configDir: 'infra/nginx', configFileModes: { 'reader.conf': '0600' } } }))
+      .toThrow(/conflicting configFileModes/);
+  });
+
   it('a stack service\'s own `configDir`, a preset\'s `config.configDir`, and an app requirement\'s', async () => {
     const project = path.join(scratch, 'project');
     for (const [dir, file] of [['infra/nominatim', 'cis-entrypoint.sh'], ['infra/nginx', 'nginx.conf.template'], ['infra/tiles', 'style.json']] as const) {

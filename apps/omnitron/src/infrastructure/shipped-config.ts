@@ -19,6 +19,8 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { isSafeMode, isSafeRelativePath } from './config-payload.js';
+import type { InfrastructureConfig } from './types.js';
 
 export const CONFIG_ROOT_PREFIX = 'configroot:';
 
@@ -58,11 +60,13 @@ function realOf(p: string): string {
  * (`config.configDir`) — the openresty preset's input, which is how the
  * gateway has always been shipped.
  */
-export function shippedDirOf(service: unknown): string | undefined {
-  const svc = service as { configDir?: unknown; config?: { configDir?: unknown } } | undefined;
-  const dir = svc?.configDir ?? svc?.config?.configDir;
-  return typeof dir === 'string' && dir !== '' ? dir : undefined;
+export interface ShippedDirectory {
+  service: string;
+  dir: string;
+  modes?: ReadonlyMap<string, string>;
 }
+
+type ConfigSource = { configDir?: unknown; configFileModes?: unknown };
 
 /**
  * Every service a deployment ships a directory for, with the directory as
@@ -74,17 +78,39 @@ export function shippedDirOf(service: unknown): string | undefined {
  * release's commit, since those files are read from the working tree.
  */
 export function shippedDirsOf(
-  infrastructure: { gateway?: { configDir?: string | undefined } | undefined; services?: Record<string, unknown> | undefined } | undefined,
+  infrastructure: InfrastructureConfig | undefined,
   required?: Record<string, unknown>,
-): Array<[service: string, dir: string]> {
-  const out: Array<[string, string]> = [];
-  const legacy = infrastructure?.gateway?.configDir;
-  if (typeof legacy === 'string' && legacy !== '') out.push(['gateway', legacy]);
-  for (const [name, svc] of [...Object.entries(infrastructure?.services ?? {}), ...Object.entries(required ?? {})]) {
-    const dir = shippedDirOf(svc);
-    if (dir && !out.some(([n]) => n === name)) out.push([name, dir]);
+): ShippedDirectory[] {
+  const out = new Map<string, ShippedDirectory>();
+  const declarations = [
+    ...(infrastructure?.gateway ? [['gateway', infrastructure.gateway] as const] : []),
+    ...Object.entries(infrastructure?.services ?? {}), ...Object.entries(required ?? {}),
+  ];
+  for (const [service, declaration] of declarations) {
+    const previous = out.get(service);
+    const svc = declaration as ConfigSource & { config?: ConfigSource; _presetConfig?: ConfigSource; preset?: string; _preset?: string };
+    const config = svc?.config ?? svc?._presetConfig;
+    const modes = svc?.configFileModes !== undefined ? svc.configFileModes : config?.configFileModes;
+    const openresty = service === 'gateway' && (svc === infrastructure?.gateway || (svc?.preset ?? svc?._preset) === 'openresty');
+    const dir = svc?.configDir ?? config?.configDir ?? (openresty && modes !== undefined ? 'infra/nginx' : undefined);
+    if (modes === undefined) {
+      if (!previous && typeof dir === 'string' && dir.length) out.set(service, { service, dir });
+      continue;
+    }
+    if (typeof dir !== 'string' || !dir || Object.prototype.toString.call(modes) !== '[object Object]')
+      throw Error(`${service}: configFileModes requires a configDir and a map of relative file paths to octal modes`);
+    if (previous && path.normalize(previous.dir) !== path.normalize(dir))
+      throw Error(`${service}: configFileModes refers to a different configDir from the one being shipped`);
+    const files = new Map(previous?.modes);
+    for (const [file, mode] of Object.entries(modes as Record<string, unknown>)) {
+      if (!isSafeRelativePath(file) || file.includes('\\') || typeof mode !== 'string' || !isSafeMode(mode))
+        throw Error(`${service}: invalid configFileModes entry for ${file}`);
+      if (files.has(file) && files.get(file) !== mode) throw Error(`${service}: conflicting configFileModes for ${file}`);
+      files.set(file, mode);
+    }
+    out.set(service, { service, dir: previous?.dir ?? dir, modes: files });
   }
-  return out;
+  return [...out.values()];
 }
 
 type Mount = string | { source: string; target: string; readonly?: boolean };

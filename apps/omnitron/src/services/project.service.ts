@@ -4157,7 +4157,7 @@ export class ProjectService extends EventEmitter {
     return definitionInputs(
       root,
       this.resolveStackApps(stackConfig, config).flatMap((a) => (a.bootstrap ? [resolveAppPath(root, a, a.bootstrap)] : [])),
-      shipped.map(([, dir]) => dir),
+      shipped,
     );
   }
 
@@ -4293,7 +4293,7 @@ export class ProjectService extends EventEmitter {
       if (stackConfig.type === 'local') {
         const { definitionInputs } = await import('../release/definition-inputs.js');
         const { shippedDirsOf } = await import('../infrastructure/shipped-config.js');
-        inputs = await definitionInputs(root, [], shippedDirsOf(mergeInfrastructure(config, stackConfig), {}).map(([, dir]) => dir));
+        inputs = await definitionInputs(root, [], shippedDirsOf(mergeInfrastructure(config, stackConfig)), true);
         if (!inputs.length) throw new Error('No registered configuration inputs are available');
       } else inputs = await this.deploymentReads(projectName, stackConfig, config, root, remoteDefinitions);
     } catch (err) {
@@ -6147,9 +6147,9 @@ export class ProjectService extends EventEmitter {
 
     // The stack's own services first — an app's requirement of the same name
     // is the same service, and one directory is shipped for it.
-    const candidates = shippedDirsOf(infrastructure as never, services);
+    const candidates = shippedDirsOf(infrastructure, services);
 
-    for (const [name, configDir] of candidates) {
+    for (const { service: name, dir: configDir, modes } of candidates) {
       const abs = configDir.startsWith('/')
         ? configDir
         : `${projectRoot.replace(/\/$/, '')}/${configDir.replace(/^\.\//, '')}`;
@@ -6158,7 +6158,7 @@ export class ProjectService extends EventEmitter {
           readdir: (d) => fsp.readdir(d, { withFileTypes: true }),
           readFile: (f) => fsp.readFile(f, 'utf-8'),
           stat: (f) => fsp.stat(f),
-        });
+        }, modes);
         if (files.length > 0) {
           payload[name] = files;
           shippedDirs?.set(name, abs);
@@ -6171,7 +6171,7 @@ export class ProjectService extends EventEmitter {
           this.logger.warn({ service: name, dir: abs, skipped }, 'Some files were not sent to the node');
         }
       } catch (err) {
-        if (strict) throw Error('Service configuration cannot be verified for preservation', { cause: err });
+        if (strict || modes) throw Error(`Service configuration for ${name} could not be verified: ${(err as Error).message}`, { cause: err });
         // Not fatal. A stack whose gateway config is missing still gets its
         // databases, and the gateway fails visibly rather than the whole
         // provisioning stopping before anything was done.

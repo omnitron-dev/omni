@@ -79,7 +79,7 @@ describe('admission, against the release commit', () => {
     write('gateway/config.txt', 'release-a\n');
     const commit = commitAll(root);
     const configRoot = path.join(root, 'configurations/test');
-    const inputs = await definitionInputs(configRoot, [], ['../../gateway']);
+    const inputs = await definitionInputs(configRoot, [], [{ dir: '../../gateway' }]);
     expect(inputs).toContain('../../selected.ts');
     expect(inputs).toContain('../../gateway');
     expect(await treeEqualsCommit(configRoot, commit, inputs)).toEqual({ equal: true });
@@ -196,14 +196,14 @@ describe('admission, against the release commit', () => {
     fs.mkdirSync(path.join(root, 'gateway'));
     fs.symlinkSync('../shared.txt', path.join(root, 'gateway/settings.txt'));
     const commit = commitAll(root);
-    const inputs = await definitionInputs(root, [], ['gateway']);
+    const inputs = await definitionInputs(root, [], [{ dir: 'gateway' }]);
     expect(inputs).toContain('shared.txt');
     write('shared.txt', 'second\n');
     expect(await treeEqualsCommit(root, commit, inputs)).toEqual({ equal: false, files: ['shared.txt'] });
     const foreign = project();
     fs.unlinkSync(path.join(root, 'gateway/settings.txt'));
     fs.symlinkSync(path.join(foreign.root, 'lib/apps.ts'), path.join(root, 'gateway/settings.txt'));
-    await expect(definitionInputs(root, [], ['gateway'])).rejects.toBeInstanceOf(UnverifiableDefinitionInputError);
+    await expect(definitionInputs(root, [], [{ dir: 'gateway' }])).rejects.toBeInstanceOf(UnverifiableDefinitionInputError);
   });
 
   it('refuses ignored symlink targets in shipped data without freezing regular runtime-only files', async () => {
@@ -213,10 +213,26 @@ describe('admission, against the release commit', () => {
     write('gateway/committed.txt', 'verified\n');
     write('gateway/secrets.json', '{}\n');
     const commit = commitAll(root);
-    expect(await treeEqualsCommit(root, commit, await definitionInputs(root, [], ['gateway']))).toEqual({ equal: true });
+    expect(await treeEqualsCommit(root, commit, await definitionInputs(root, [], [{ dir: 'gateway' }]))).toEqual({ equal: true });
     fs.symlinkSync('../machine-only.txt', path.join(root, 'gateway/settings.txt'));
     commitAll(root);
-    await expect(definitionInputs(root, [], ['gateway'])).rejects.toBeInstanceOf(UnverifiableDefinitionInputError);
+    await expect(definitionInputs(root, [], [{ dir: 'gateway' }])).rejects.toBeInstanceOf(UnverifiableDefinitionInputError);
+  });
+
+  it('admits declared file modes only on committed regular files and checks locally mounted permissions', async () => {
+    const { root, write } = project();
+    write('gateway/reader.conf', 'reader settings');
+    write('.gitignore', 'gateway/local.conf\n');
+    write('gateway/local.conf', 'private settings');
+    fs.symlinkSync('reader.conf', path.join(root, 'gateway/linked.conf'));
+    commitAll(root);
+    const shipped = (file: string) => [{ dir: 'gateway', modes: new Map([[file, '0644']]) }];
+    fs.chmodSync(path.join(root, 'gateway/reader.conf'), 0o600);
+    await expect(definitionInputs(root, [], shipped('reader.conf'))).resolves.toContain('gateway');
+    await expect(definitionInputs(root, [], shipped('reader.conf'), true)).rejects.toThrow(/requires mode 0644/);
+    for (const file of ['local.conf', 'linked.conf', 'missing.conf']) {
+      await expect(definitionInputs(root, [], shipped(file))).rejects.toThrow(/tracked regular file/);
+    }
   });
 
   it('treats file names as literal pathspecs and retains newlines and double-dot prefixes', async () => {

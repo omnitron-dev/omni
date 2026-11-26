@@ -35,6 +35,7 @@ import { fileURLToPath } from 'node:url';
 
 import { CONFIG_FILE_NAMES } from '../config/loader.js';
 import { isSafeRelativePath } from '../infrastructure/config-payload.js';
+import type { ShippedDirectory } from '../infrastructure/shipped-config.js';
 
 /** A partial source comparison must never hide inputs outside its Git boundary. */
 export class UnverifiableDefinitionInputError extends Error {
@@ -46,7 +47,8 @@ export async function definitionInputs(
   projectPath: string,
   bootstraps: readonly string[],
   /** Directories shipped to nodes, as declared — relative to the project, or absolute. */
-  shipped: readonly string[] = [],
+  shipped: readonly Pick<ShippedDirectory, 'dir' | 'modes'>[] = [],
+  mountedLocally = false,
 ): Promise<string[]> {
   const root = fs.realpathSync(projectPath);
   const git = async (...args: string[]) => (await promisify(execFile)('git', args, { cwd: root, maxBuffer: 16 * 1024 * 1024 })).stdout;
@@ -165,9 +167,19 @@ export async function definitionInputs(
     for (const name of names) bindPath(path.join(configDir, name));
   }
 
-  for (const dir of shipped) {
+  const trackedFiles = shipped.some(service => service.modes?.size)
+    ? new Set(index.filter(entry => /^100(?:644|755) [a-f0-9]+ 0\t/.test(entry)).map(entry => path.join(repository, entry.slice(entry.indexOf('\t') + 1))))
+    : undefined;
+  for (const { dir, modes } of shipped) {
     const base = path.resolve(root, dir);
     bindPath(base);
+    for (const [file, mode] of modes ?? []) {
+      const absolute = path.join(fs.realpathSync(base), file);
+      if (!trackedFiles?.has(absolute) || !fs.existsSync(absolute) || fs.realpathSync(absolute) !== absolute ||
+          !fs.lstatSync(absolute).isFile()) throw new UnverifiableDefinitionInputError(`Declared config file must be a tracked regular file: ${file}`);
+      if (mountedLocally && (fs.statSync(absolute).mode & 0o777) !== Number.parseInt(mode, 8))
+        throw new UnverifiableDefinitionInputError(`Locally mounted config file ${file} requires mode ${mode}`);
+    }
     // Match the actual payload reader: safe directories are traversed; file
     // symlinks are dereferenced. A directory link is not a readable payload file.
     const walk = (directory: string, prefix = '') => {

@@ -52,16 +52,19 @@ machine deployment lease. On a Linux host enrolled through a dedicated service
 account, SFTP places the qualified archive under the login's protected
 `/opt/omnitron/locks` directory. The receiver gets one read-only file
 descriptor. It rechecks the enrolled UID, GID and instance home, drops to that
-account before using its Node, and verifies the archive and installed tree.
-Allow space for the compressed archive on the administrative filesystem and
-twice the expanded tree on the runtime filesystem, each with 256 MiB headroom.
+account before using its Node. The receiver verifies the private extracted
+tree, flushes its contents, atomically renames it into the registry, and
+independently verifies the installed release. Allow space for the compressed
+archive on the administrative filesystem and one expanded tree on the runtime
+filesystem, each with 256 MiB headroom.
 Large inspection and receiver programs use SHA-256-checked SSH channel data.
 The recipient verifies the complete script before its execution.
 
 After a lost staging acknowledgment, inspect `fleet rollout status <id>`, the
 node deployment lease and execution record, the current selection and the
-target artifact. An unresolved writer requires inspected recovery. Once the
-writer is settled, a fresh stage request recognizes the verified installation
+target artifact. A receiver failure reports its exit status, elapsed time and
+last observed installation step when available. An unresolved writer requires
+inspected recovery. Once the writer is settled, a fresh stage request recognizes the verified installation
 or reuses the preserved archive bound to its catalog digest. A terminal blocked
 plan keeps its original result. Where the verified runtime tree already exists
 locally, the service owner can use `omnitron --json backend install <runtime>`

@@ -5,6 +5,7 @@ import { commandFailure } from '../execution/command-failure.js';
 import { shellEscape } from '../shared/shell-escape.js';
 import { resolveKernelBuild } from './kernel-catalog.js';
 import { loadRuntimeExtractor } from '../release/runtime-extractor.js';
+import { publishRuntimeTree, syncRuntimeEntries } from '../daemon/runtime-publication.js';
 import { managedApplicationCommand } from './managed-rollout.js';
 import { DEFAULT_LEASE_TIMING } from './node-deploy-lease.js';
 import { remoteNode } from './host-upgrade.js';
@@ -12,7 +13,21 @@ import type { RemoteDeployer, DeployTarget } from './remote-deployer.service.js'
 
 export function kernelReceiverSource(): string {
   return 'const loadRuntimeExtractor = ' + loadRuntimeExtractor.toString() + ';\n' +
+    'const syncRuntimeEntries = ' + syncRuntimeEntries.toString() + ';\n' +
+    'const publishRuntimeTree = ' + publishRuntimeTree.toString() + ';\n' +
     readFileSync(new URL('../../data/operations/stage-kernel.mjs', import.meta.url), 'utf8');
+}
+
+/** Never include the receiver's data-channel stdout in a failure receipt. */
+export function kernelStageFailure(phase: string, exit: number, stderr: string, elapsedMs: number): string {
+  let lastStep: string | undefined;
+  const diagnostics = stderr.split(/\r?\n/).filter(line => {
+    const progress = /^omnitron\.kernel\.stage (archive-digest|archive-inventory|extract|file-modes|candidate-verification|durable-publication|installed-verification)$/.exec(line);
+    if (progress) lastStep = progress[1];
+    return !line.startsWith('omnitron.kernel.stage ');
+  });
+  const detail = redactDiagnosticText(commandFailure(diagnostics.join('\n'), 'receiver did not report a diagnostic'));
+  return `Kernel staging ${phase} failed (exit ${exit}, ${Math.round(elapsedMs)} ms${lastStep ? ', last step ' + lastStep : ''}): ${detail}`;
 }
 
 /** Caller holds the node deployment lease. Only local publisher receipts can name executable bytes. */
@@ -40,11 +55,9 @@ export async function stageCatalogRuntime(
   const archivePath = path.posix.join(DEFAULT_LEASE_TIMING.dir, 'kernel-' + entry.archive + '.tgz');
   const receiver = kernelReceiverSource();
   const read = async (command: string, phase: string) => {
+    const started = performance.now();
     const result = await deployer.readFromNode(target, command, 600_000);
-    if (result.code !== 0) {
-      const reason = redactDiagnosticText(commandFailure(result.stderr, 'receiver exited ' + result.code));
-      throw Error('Kernel staging ' + phase + ' failed: ' + reason);
-    }
+    if (result.code !== 0) throw Error(kernelStageFailure(phase, result.code, result.stderr, performance.now() - started));
     return result.stdout.trim();
   };
   const invoke = async (phase: 'prepare' | 'install') => {

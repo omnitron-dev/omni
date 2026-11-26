@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { commandFailure } from '../../src/execution/command-failure.js';
-import { stageCatalogRuntime } from '../../src/services/kernel-distribution.js';
+import { kernelStageFailure, stageCatalogRuntime } from '../../src/services/kernel-distribution.js';
 import { backendHandoffAdmissionForApply } from '../../src/daemon/backend-handoff-types.js';
 import { assertKernelHandoffFence } from '../../src/daemon/backend-upgrade.js';
 import { activateManagedTarget, planManagedRollout, reconcileManagedTarget,
@@ -159,6 +159,15 @@ it('rejects an SSH alias of the coordinating owner before staging or uploading a
   expect(sender.uploadToNode).not.toHaveBeenCalled();
 });
 
+
+it('retains the last reported staging step and actual exit status after an interrupted install', () => {
+  const stderr = ['omnitron.kernel.stage extract', 'omnitron.kernel.stage durable-publication',
+    'omnitron.kernel.stage unrecognized-private-data', 'Remote command termination needs inspected recovery'].join('\n');
+  expect(kernelStageFailure('install', 124, stderr, 600008)).toBe(
+    'Kernel staging install failed (exit 124, 600008 ms, last step durable-publication): Remote command termination needs inspected recovery');
+  expect(kernelStageFailure('prepare', 1, 'Error: guardian refused', 17)).toBe(
+    'Kernel staging prepare failed (exit 1, 17 ms): guardian refused');
+});
 
 it('carries the reviewed attempts forward but gives rollback no authority over successor backups', () => {
   const reviewed = structuredClone(plan.admission);

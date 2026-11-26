@@ -9,6 +9,7 @@ import { readRuntimeManifest, verifyRuntimeArtifact } from '../shared/runtime-ar
 import type { DaemonStateStore } from './daemon-state-store.service.js';
 import type { BackendArtifact } from './backend-candidate.js';
 import { RuntimeObservationPending } from './runtime-observation.js';
+import { publishRuntimeTree } from './runtime-publication.js';
 
 export interface RuntimeSelection {
   protocol: 1;
@@ -428,32 +429,7 @@ export class RuntimeInstallation {
         mode: constants.COPYFILE_FICLONE,
       });
       await verifyRuntimeArtifact(staging, candidate.runtimeHash);
-      // Independent files may flush together; every admitted flush must settle
-      // before cleanup, and each directory follows all its descendants.
-      const sync = async (file: string, directory = false): Promise<void> => {
-        const handle = await fs.open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK |
-          (directory ? constants.O_DIRECTORY : 0));
-        try {
-          const stat = await handle.stat();
-          if (directory ? !stat.isDirectory() : !stat.isFile()) throw Error('Runtime entry changed before durability check');
-          await handle.sync();
-        } finally { await handle.close(); }
-      };
-      const syncTree = async (directory: string): Promise<void> => {
-        const entries = await fs.readdir(directory, { withFileTypes: true });
-        const files = entries.filter(entry => entry.isFile());
-        for (let offset = 0; offset < files.length; offset += 16) {
-          const results = await Promise.allSettled(files.slice(offset, offset + 16).map(entry => sync(path.join(directory, entry.name))));
-          const errors = results.flatMap(result => result.status === 'rejected' ? [result.reason] : []);
-          if (errors.length) throw new AggregateError(errors, 'Runtime files could not be made durable');
-        }
-        for (const entry of entries) if (entry.isDirectory()) await syncTree(path.join(directory, entry.name));
-        await sync(directory, true);
-      };
-      await syncTree(staging);
-      await fs.rename(staging, destination);
-      const parent = await fs.open(this.releases, 'r');
-      try { await parent.sync(); } finally { await parent.close(); }
+      await publishRuntimeTree(staging, destination);
       return await this.artifact(candidate.runtimeHash);
     } finally {
       // Only this operation's unpublished staging tree is disposable.

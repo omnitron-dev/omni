@@ -1,6 +1,6 @@
 // Runs under the pinned deployment lease using the serving managed runtime's Node.
 import fs from 'node:fs/promises';
-import { createReadStream, fstatSync } from 'node:fs';
+import { constants, createReadStream, fstatSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
@@ -8,6 +8,7 @@ import { pathToFileURL } from 'node:url';
 
 const [phase, registry, current, receipt] = process.argv.slice(1);
 const build = JSON.parse(receipt);
+const progress = name => process.stderr.write('omnitron.kernel.stage ' + name + '\n');
 const sha256 = /^[a-f0-9]{64}$/;
 if (!['prepare', 'install'].includes(phase) || !sha256.test(current) || !sha256.test(build.artifact) ||
     !sha256.test(build.archive) || !/^[a-f0-9]{40}$/.test(build.commit) || !Number.isSafeInteger(build.bytes) ||
@@ -20,7 +21,8 @@ const home = path.dirname(registry);
 const pkg = path.join(root, 'packages/0');
 const sdk = relative => import(pathToFileURL(path.join(pkg, 'dist', relative + '.js')).href);
 const { RuntimeInstallation } = await sdk('daemon/runtime-installation');
-const { verifyRuntimeArtifact } = await sdk('shared/runtime-artifact');
+const { readRuntimeManifest } = await sdk('shared/runtime-artifact');
+const { checkBackendCandidate } = await sdk('daemon/backend-candidate');
 const { readBuildStamp } = await sdk('shared/build-stamp');
 const { readManagedRuntime } = await sdk('daemon/managed-runtime');
 const { privateControlClient } = await sdk('daemon/private-control-client');
@@ -44,6 +46,8 @@ const present = async () => {
   catch (error) { if (error.code === 'ENOENT') return false; throw error; }
   const found = await installation.artifact(build.artifact);
   if (found.build.commit !== build.commit) throw Error('Installed source differs from catalog receipt');
+  // A previous receiver may have stopped between rename and the parent flush.
+  await syncRuntimeEntries([installation.releases], true);
   return true;
 };
 const capacity = async bytes => {
@@ -75,10 +79,12 @@ try {
     // the irreversible UID change. The receiver never opens an administrative path.
     const archive = () => createReadStream(null, { fd: 0, start: 0, autoClose: false });
     try {
+      progress('archive-digest');
       const sum = createHash('sha256');
       for await (const chunk of archive()) sum.update(chunk);
       if (sum.digest('hex') !== build.archive) throw Error('Kernel transfer SHA-256 mismatch');
       const tar = await loadRuntimeExtractor(pkg);
+      progress('archive-inventory');
       let expanded = 0, invalid = false;
       const entries = new Map();
       await pipeline(archive(), tar.list({ strict: true, onReadEntry(entry) {
@@ -98,29 +104,48 @@ try {
         if (parent !== '.' && entries.get(parent)?.type !== 'Directory') invalid = true;
       }
       if (invalid || expanded > 8 * 1024 ** 3) throw Error('Kernel archive exceeds limits or contains an unsafe entry');
-      await capacity(2 * expanded);
+      await capacity(expanded);
       const payload = path.join(inbox, 'payload');
       await fs.mkdir(payload, { mode: 0o700 });
+      progress('extract');
       await pipeline(archive(), tar.extract({ cwd: payload, strict: true, preserveOwner: false, preservePaths: false,
         chmod: true, umask: 0o022, dmode: 0o700, fmode: 0o600 }));
       // tar's chmod option does not restore modes of newly created regular files.
       // A receiver running with umask 077 must retain the sealed executable bits.
       // Restore only validated regular entries inside the private transfer directory;
       // never relax the receiver's process-wide umask or follow an archive link here.
-      for (const [name, entry] of entries) {
-        if (entry.type !== 'File') continue;
-        const file = path.join(payload, name), stat = await fs.lstat(file);
-        if (!stat.isFile() || stat.nlink !== 1 || stat.uid !== process.getuid() || await fs.realpath(file) !== file)
-          throw Error('Unsafe extracted kernel file: ' + name);
-        await fs.chmod(file, entry.mode & 0o777);
+      progress('file-modes');
+      const files = [...entries].filter(([, entry]) => entry.type === 'File');
+      for (let offset = 0; offset < files.length; offset += 16) {
+        const results = await Promise.allSettled(files.slice(offset, offset + 16).map(async ([name, entry]) => {
+          const file = path.join(payload, name);
+          const handle = await fs.open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+          try {
+            const stat = await handle.stat();
+            if (!stat.isFile() || stat.nlink !== 1 || stat.uid !== process.getuid() || await fs.realpath(file) !== file)
+              throw Error('Unsafe extracted kernel file: ' + name);
+            if ((stat.mode & 0o777) !== (entry.mode & 0o777)) await handle.chmod(entry.mode & 0o777);
+          } finally { await handle.close(); }
+        }));
+        const failed = results.find(result => result.status === 'rejected');
+        if (failed) throw failed.reason;
       }
-      const manifest = await verifyRuntimeArtifact(payload, build.artifact);
+      const manifest = await readRuntimeManifest(payload);
       const stamp = readBuildStamp(path.join(payload, 'packages/0/dist'));
-      if (manifest.nodeVersion !== build.nodeVersion || stamp?.commit !== build.commit || stamp.dirty !== false) throw Error('Received runtime identity differs from catalog receipt');
+      if (manifest.sha256 !== build.artifact || manifest.nodeVersion !== build.nodeVersion ||
+          stamp?.commit !== build.commit || stamp.dirty !== false) throw Error('Received runtime identity differs from catalog receipt');
       await installation.exclusive(async () => {
         confirmSelection();
-        const result = await installation.install(payload);
-        if (result.runtimeHash !== build.artifact || result.build.commit !== build.commit) throw Error('Installed runtime differs from catalog receipt');
+        if (await present()) return;
+        progress('candidate-verification');
+        const candidate = await checkBackendCandidate(path.join(payload, 'packages/0/dist'), undefined, build.artifact);
+        if (candidate.runtimeHash !== build.artifact || candidate.build.commit !== build.commit) throw Error('Candidate differs from catalog receipt');
+        // The receiver owns this private extracted tree. Publish its verified
+        // inodes directly, then independently admit the installed path.
+        progress('durable-publication');
+        await publishRuntimeTree(payload, installation.releasePath(build.artifact));
+        progress('installed-verification');
+        if (!(await present())) throw Error('Installed runtime differs from catalog receipt');
       });
       installed = true;
     } finally { await resetInbox(); }

@@ -338,6 +338,14 @@ try {
     if (wanted.operation !== 'switch') assertSelection();
     console.log(JSON.stringify(evidence));
   }
+} catch (error) {
+  // Emit the failure before Node formats a subclass as e.g. "Name [Error]"
+  // alongside its eval source. The enclosing CLI only consumes this record.
+  const reason = commandFailure(typeof error?.message === 'string' ? error.message : '', 'Managed operation failed');
+  const leasePid = error?.code === 'RUNTIME_OBSERVATION_PENDING' && error.details?.stage === 'installation' &&
+    Number.isSafeInteger(error.details.pid) && error.details.pid > 0 ? error.details.pid : null;
+  process.stderr.write(JSON.stringify({ ok: false, error: reason + (leasePid ? ' (installation PID ' + leasePid + ')' : '') }) + '\n');
+  process.exitCode = 1;
 } finally {
   try { await client.disconnect(); } finally { await registry.close(); }
 }

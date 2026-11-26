@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.18] - 2026-11-26
+
 ### Added
 
 - Fleet verifies the enrolled receiver, its current execution and migration history before a release changes placement. The CLI and Console show which migrations a previous release can read. Operators can inspect a stopped PostgreSQL and MinIO copy against its original Pipeline receipt before using it for recovery.

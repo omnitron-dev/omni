@@ -4967,16 +4967,20 @@ export class ProjectService extends EventEmitter {
       'services' | 'overrides'
     >,
   ): Promise<Array<{ node: string; inspection?: import('../shared/dto/host-inspection.js').HostInspection; error?: string }>> {
-    const config = await this.loadProjectConfig(data.project);
-    const stackConfig = this.resolveStacks(config, data.project)[data.stack];
+    const scope = { project: data.project, stack: data.stack };
+    const placement = this.placement(scope.project, scope.stack);
+    const selected = placement?.selected;
+    const bound = selected && await this.preparedRemoteRelease(scope.project, scope.stack, selected.release, selected.prepared);
+    const config = bound?.opened.config ?? await this.loadProjectConfig(data.project);
+    const stackConfig = bound?.opened.stackConfig ?? this.resolveStacks(config, data.project)[data.stack];
     if (!stackConfig) throw new Error(`No stack '${data.stack}' in ${data.project}`);
     const nodes = stackConfig.nodes ?? [];
     if (stackConfig.type === 'local' || nodes.length === 0) {
       throw new Error(`${data.project}/${data.stack} runs on no node of its own — its host is this machine`);
     }
 
-    const entries = (await this.inspectLaunch(data.project, data.stack, stackConfig, config)).entries;
-    const definitions = this.preservationDefinitions(data.project, data.stack, entries);
+    const definitions = bound?.admitted.remoteDefinitions ?? this.preservationDefinitions(data.project, data.stack,
+      (await this.inspectLaunch(data.project, data.stack, stackConfig, config)).entries);
     const services = await this.collectDeclaredServices(data.project, stackConfig, config, { external: true, definitions });
     const overrides = await this.resolveOverrideSecrets(data.project, stackConfig.serviceOverrides);
     const { project: _project, stack: _stack, ...asked } = data;
@@ -4987,18 +4991,15 @@ export class ProjectService extends EventEmitter {
       const host = node.host;
       const port = node.port ?? 9700;
       try {
-        await connector.addSlave({ host, port, label: node.label });
-        if (!(await connector.waitUntilConnected(host, port, 60_000))) {
-          throw new Error('it did not join the mesh within a minute');
+        if (!placement) {
+          await connector.addSlave({ host, port, label: node.label });
+          if (!(await connector.waitUntilConnected(host, port, 60_000)))
+            throw new Error('it did not join the mesh within a minute');
         }
-        const inspection = (await connector.invokeOnSlave(
-          host,
-          port,
-          'OmnitronInfra',
-          'inspectHostServices',
-          [{ services, overrides, ...asked }],
-          { retryOnDisconnect: true },
-        )) as import('../shared/dto/host-inspection.js').HostInspection;
+        if (!isDeepStrictEqual(this.placement(scope.project, scope.stack), placement))
+          throw Error('Stack placement changed during host inspection');
+        const inspection = await this.callStackTarget(scope, node, 'OmnitronInfra', 'inspectHostServices',
+          { ...asked, services, overrides }, true) as import('../shared/dto/host-inspection.js').HostInspection;
         readings.push({ node: `${host}:${port}`, inspection });
       } catch (err) {
         readings.push({ node: `${host}:${port}`, error: (err as Error).message });

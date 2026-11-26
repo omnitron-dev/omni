@@ -604,6 +604,19 @@ describe('prepared source of one registered remote release', () => {
       expect(preserve.selection).toEqual({ release: id, preparedSource: ready.digest, nodeId });
       expect(nativeResolve(base, 'sample').test.nodes[0]).toEqual(candidateNode);
       expect(nativeResolve(base, 'sample').dev.type).toBe('local');
+      if (registrationMode === 'original') {
+        const inspection = { project: 'sample', stack: 'test', units: ['fixture-worker.service'],
+          services: { unrelated: {} }, overrides: { unrelated: {} } };
+        const readings = await service.inspectStackHost(inspection);
+        expect(readings[0]?.inspection).toBeDefined();
+        expect(pinnedService).toHaveBeenLastCalledWith(candidateNode.host, 9700, nodeId, 'fixture-management', 'OmnitronInfra');
+        expect(read).toHaveBeenLastCalledWith('inspectHostServices', expect.objectContaining({ units: inspection.units }));
+        expect(read.mock.lastCall?.[1]).not.toMatchObject({ services: inspection.services });
+        expect(read.mock.lastCall?.[1]).not.toMatchObject({ overrides: inspection.overrides });
+        pinnedService.mockImplementationOnce(() => { throw Error('Enrollment changed'); });
+        await expect(service.inspectStackHost(inspection)).resolves.toEqual([{ node: candidateNode.host + ':9700', error: 'Enrollment changed' }]);
+        expect(invokeOnSlave).not.toHaveBeenCalled();
+      }
       const wrong = await service
         .startStack('sample', 'test', { source: 'operator', release: 'some-other-release' })
         .catch((error) => error);

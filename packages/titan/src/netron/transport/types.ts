@@ -426,9 +426,9 @@ export interface RateLimitConfig {
   globalMaxRequests?: number;
   /** Custom client identity. By default use the socket address or the explicitly trusted forwarding proxy. */
   keyGenerator?: (request: Request) => string;
-  /** Skip rate limiting for successful requests (default: false) */
+  /** Refund an admitted HTTP request and its batch items on a 2xx response (default: false). */
   skipSuccessfulRequests?: boolean;
-  /** Skip rate limiting for failed requests (default: false) */
+  /** Refund an admitted HTTP request and its batch items on a 4xx or 5xx response (default: false). */
   skipFailedRequests?: boolean;
   /** Custom message for rate limit responses */
   message?: string;

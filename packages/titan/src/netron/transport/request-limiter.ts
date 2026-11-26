@@ -47,6 +47,8 @@ function addressKey(value: string | undefined): string | undefined {
 export class TransportRequestLimiter {
   private readonly config: RateLimitConfig;
   private readonly windows = new Map<string, WindowEntry>();
+  private readonly debits = new WeakMap<RateLimitResult, { key: string; client: WindowEntry; global: WindowEntry; cost: number }[]>();
+  private readonly checkedRequests = new WeakMap<Request, RateLimitResult>();
   private globalWindow?: WindowEntry;
   private readonly whitelist: Set<string>;
   private readonly windowMs: number;
@@ -81,10 +83,16 @@ export class TransportRequestLimiter {
   }
 
   check(request: Request, remoteAddress?: string): RateLimitResult {
-    return this.consume(this.clientKey(request, remoteAddress));
+    const result = this.reserve(this.clientKey(request, remoteAddress), 1, true);
+    this.checkedRequests.set(request, result);
+    return result;
   }
 
-  consume(key: string, cost = 1): RateLimitResult {
+  consume(key: string, cost = 1, batch?: RateLimitResult): RateLimitResult {
+    return this.reserve(key, cost, !!(this.config.skipFailedRequests || this.config.skipSuccessfulRequests), batch);
+  }
+
+  private reserve(key: string, cost: number, refundable: boolean, batch?: RateLimitResult): RateLimitResult {
     if (!Number.isSafeInteger(cost) || cost < 1) throw new RangeError('Request cost must be a positive safe integer');
     const now = Date.now();
     const resetAt = now + this.windowMs;
@@ -105,17 +113,39 @@ export class TransportRequestLimiter {
     global.count += cost;
     this.windows.set(key, client);
     this.globalWindow = global;
-    return { allowed: true, remaining: this.maxRequests - client.count, resetAt: client.resetAt, limit: this.maxRequests };
+    const result = { allowed: true, remaining: this.maxRequests - client.count, resetAt: client.resetAt, limit: this.maxRequests };
+    if (refundable) {
+      const receipt = batch ?? result;
+      const charges = this.debits.get(receipt) ?? [];
+      charges.push({ key, client, global, cost });
+      this.debits.set(receipt, charges);
+    }
+    return result;
   }
 
-  /** Compatibility with callers that explicitly refund an admitted HTTP request. */
-  decrement(request: Request, remoteAddress?: string): void {
-    const key = this.clientKey(request, remoteAddress);
-    this.cleanup();
-    const window = this.windows.get(key);
-    if (!window || !this.globalWindow || this.whitelist.has(key)) return;
-    if (--window.count === 0) this.windows.delete(key);
-    this.globalWindow.count = Math.max(0, this.globalWindow.count - 1);
+  private refund(receipt: RateLimitResult): void {
+    const charges = this.debits.get(receipt);
+    if (!charges) return;
+    this.debits.delete(receipt);
+    for (const { key, client, global, cost } of charges) {
+      client.count -= cost;
+      global.count -= cost;
+      if (client.count === 0 && this.windows.get(key) === client) this.windows.delete(key);
+    }
+  }
+
+  /** Complete an HTTP request, including all admitted items of a batch. */
+  settle(receipt: RateLimitResult, status: number): void {
+    if ((status >= 200 && status < 300 && this.config.skipSuccessfulRequests) ||
+        (status >= 400 && this.config.skipFailedRequests)) this.refund(receipt);
+    else this.debits.delete(receipt);
+  }
+
+  /** Refund an earlier check exactly once, including when its window has ended. */
+  decrement(request: Request, _remoteAddress?: string): void {
+    const receipt = this.checkedRequests.get(request);
+    if (receipt) this.refund(receipt);
+    this.checkedRequests.delete(request);
   }
 
   shouldSkip(_request: Request, success: boolean): boolean {

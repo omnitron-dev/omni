@@ -6,6 +6,7 @@ import { Netron, TransportRequestLimiter } from '../../src/netron/index.js';
 import { HttpTransport } from '../../src/netron/transport/http/index.js';
 import { createRequestMessage } from '../../src/netron/transport/http/types.js';
 import { WebSocketTransport } from '../../src/netron/transport/websocket/index.js';
+import type { RateLimitConfig } from '../../src/netron/transport/types.js';
 import { createMockLogger } from './test-utils.js';
 
 const name = 'AdmissionProbe@1.0.0';
@@ -27,9 +28,10 @@ describe('shared Netron admission over live HTTP and WebSocket listeners', () =>
     for (const close of cleanup.splice(0).reverse()) await close();
   });
 
-  async function start(maxRequests: number, globalMaxRequests: number, trustProxy = false) {
+  async function start(maxRequests: number, globalMaxRequests: number, trustProxy = false,
+    outcomes: Pick<RateLimitConfig, 'skipFailedRequests' | 'skipSuccessfulRequests'> = {}) {
     const requestLimiter = new TransportRequestLimiter({ enabled: true, windowMs: 60_000,
-      maxRequests, globalMaxRequests, trustProxy });
+      maxRequests, globalMaxRequests, trustProxy, ...outcomes });
     const server = new Netron(createMockLogger());
     cleanup.push(() => server.stop());
     server.registerTransport('http', () => new HttpTransport());
@@ -53,7 +55,7 @@ describe('shared Netron admission over live HTTP and WebSocket listeners', () =>
       });
       return { status: response.status, retryAfter: response.headers.get('Retry-After'), body: await response.json() };
     };
-    return { server, service, requestLimiter, client, wsUrl: address('ws'),
+    return { server, service, requestLimiter, client, wsUrl: address('ws'), httpUrl: address('http'),
       invoke: (forwarded?: string) => post('invoke', call(), forwarded),
       batch: (length: number) => post('batch', { id: crypto.randomUUID(), requests: Array.from({ length }, call) }),
     };
@@ -122,5 +124,25 @@ describe('shared Netron admission over live HTTP and WebSocket listeners', () =>
     for (let i = 1; i <= 3; i++) expect((await invoke('198.51.100.' + i)).status).toBe(200);
     expect((await invoke('203.0.113.5')).status).toBe(429);
     expect(service.calls).toBe(5);
+  });
+
+  it('applies the final HTTP status to every admitted batch item', async () => {
+    const { requestLimiter, batch, invoke, httpUrl } = await start(2, 2, false, { skipSuccessfulRequests: true });
+    expect((await batch(2)).status).toBe(200);
+    expect(requestLimiter.getStats().globalCount).toBe(0);
+    const missing = await fetch(httpUrl + '/absent');
+    expect(missing.status).toBe(404);
+    await missing.text();
+    expect((await invoke()).status).toBe(200);
+    expect(requestLimiter.getStats().globalCount).toBe(1);
+  });
+
+  it('returns failed requests to the shared budget while successful requests still consume it', async () => {
+    const { requestLimiter, batch, invoke } = await start(1, 1, false, { skipFailedRequests: true });
+    expect((await batch(2)).status).toBe(429);
+    expect(requestLimiter.getStats().globalCount).toBe(0);
+    expect((await invoke()).status).toBe(200);
+    expect((await invoke()).status).toBe(429);
+    expect(requestLimiter.getStats().globalCount).toBe(1);
   });
 });

@@ -967,7 +967,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     let status = 500;
     try {
       if (boundFetchBody) request = this.fetchBodyBoundary.bound(request, detectRuntime() === 'bun');
-      const response = await this.route(request, pathname, key, remoteAddress);
+      const response = await this.route(request, pathname, key, rateLimitResult, remoteAddress);
       status = response.status;
       return response;
     } catch (error: any) {
@@ -978,6 +978,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       status = response.status;
       return response;
     } finally {
+      this.rateLimiter.settle(rateLimitResult, status);
       this.metrics.activeRequests--;
       this.updateMetrics(startTime, status, probe, this.heldRequests.delete(request));
     }
@@ -1019,7 +1020,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
   }
 
   /** Which handler answers this request — the dispatch `handleRequest` measures. */
-  private async route(request: Request, pathname: string, key: string, remoteAddress?: string): Promise<Response> {
+  private async route(request: Request, pathname: string, key: string, admission: RateLimitResult, remoteAddress?: string): Promise<Response> {
     // Handle CORS preflight
     if (request.method === 'OPTIONS') {
       return this.handleCorsPreflightRequest(request);
@@ -1032,7 +1033,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     }
 
     if (pathname === '/netron/batch' && request.method === 'POST') {
-      return this.throughTheGate(request, () => this.handleBatchRequest(request, key));
+      return this.throughTheGate(request, () => this.handleBatchRequest(request, key, admission));
     }
 
     if (pathname === '/netron/authenticate' && request.method === 'POST') {
@@ -1858,7 +1859,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     return context.output;
   }
 
-  private async handleBatchRequest(request: Request, key: string): Promise<Response> {
+  private async handleBatchRequest(request: Request, key: string, receipt: RateLimitResult): Promise<Response> {
     let payload: unknown;
     let invalid = 'Invalid batch request format';
     try {
@@ -1877,7 +1878,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     // all remaining items before the first handler, including sequential
     // batches. A refused batch still paid for that single inbound request.
     if (batchRequest.requests.length > 1) {
-      const admission = this.rateLimiter.consume(key, batchRequest.requests.length - 1);
+      const admission = this.rateLimiter.consume(key, batchRequest.requests.length - 1, receipt);
       if (!admission.allowed) return this.createRateLimitResponse(admission, request);
     }
 
@@ -2341,6 +2342,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
    */
   private async handleNodeRequest(req: any, res: any): Promise<void> {
     let request: Request | undefined;
+    let admission: RateLimitResult | undefined;
     let response: Response;
     try {
       const headers = new Headers();
@@ -2359,7 +2361,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         request = new Request('http://localhost/', { headers });
       }
       const key = this.rateLimiter.clientKey(request, req.socket.remoteAddress);
-      const admission = this.rateLimiter.consume(key);
+      admission = this.rateLimiter.consume(key);
       if (admission.allowed) {
         if (malformed) throw Errors.badRequest('Invalid HTTP request target or method');
         const body = await this.readNodeBody(req);
@@ -2378,6 +2380,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       // read must become a transport refusal, never an unhandled rejection that
       // terminates the process. Do not destroy the socket before flushing 413.
       if (res.destroyed || req.aborted) {
+        if (admission) this.rateLimiter.settle(admission, 499);
         res.destroy();
         return;
       }
@@ -2388,6 +2391,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         errorRequest.headers.get('X-Request-ID') || generateRequestId(),
         errorRequest
       );
+      if (admission) this.rateLimiter.settle(admission, response.status);
       // Closing the response while the sender is still uploading resets the
       // socket: fetch reports EPIPE/ECONNRESET instead of the 413 we just sent.
       // Discard the remainder without retaining chunks. Send the refusal now,

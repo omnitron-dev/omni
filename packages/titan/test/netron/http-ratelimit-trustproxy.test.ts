@@ -77,4 +77,34 @@ describe('shared transport admission', () => {
       expect(limiter.consume('0').allowed).toBe(true);
     } finally { vi.useRealTimers(); }
   });
+
+  it('refunds a batch to its original windows once, even if another window is now serving', () => {
+    vi.useFakeTimers();
+    try {
+      const limiter = new SlidingWindowRateLimiter({ enabled: true, skipSuccessfulRequests: true,
+        maxRequests: 2, globalMaxRequests: 2, windowMs: 100 });
+      const receipt = limiter.consume('a');
+      expect(limiter.consume('a', 1, receipt).allowed).toBe(true);
+      vi.advanceTimersByTime(100);
+      const next = limiter.consume('a');
+      limiter.settle(receipt, 200);
+      limiter.settle(receipt, 200);
+      expect(limiter.getStats()).toMatchObject({ activeClients: 1, globalCount: 1 });
+      limiter.settle(next, 400);
+      limiter.settle(next, 200);
+      expect(limiter.getStats().globalCount).toBe(1);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('refunds only an admitted manual check and retains concurrent requests', () => {
+    const limiter = new SlidingWindowRateLimiter({ enabled: true, maxRequests: 2 });
+    const first = req('a');
+    const second = req('b');
+    expect(limiter.check(first).allowed).toBe(true);
+    expect(limiter.check(second).allowed).toBe(true);
+    limiter.decrement(req('other'));
+    limiter.decrement(first);
+    limiter.decrement(first);
+    expect(limiter.getStats().globalCount).toBe(1);
+  });
 });

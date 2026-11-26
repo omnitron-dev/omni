@@ -21,13 +21,23 @@ async function write(root, name, body) {
   return file;
 }
 
-async function installationSnapshot() {
-  const modules = path.join(repo, 'node_modules');
-  const files = ['.modules.yaml', '.pnpm-workspace-state-v1.json', ...(await fs.readdir(path.join(modules, '.bin'))).map(n => '.bin/' + n)];
+async function installationSnapshot(modules = path.join(repo, 'node_modules')) {
+  const metadata = (await fs.readdir(modules)).filter(name =>
+    name === '.modules.yaml' || /^\.pnpm-workspace-state(?:-v\d+)?\.json$/.test(name));
+  const shims = (await fs.readdir(path.join(modules, '.bin'))).map(name => '.bin/' + name);
   const state = {};
-  for (const file of files.sort()) {
-    const bytes = await fs.readFile(path.join(modules, file));
-    state[file] = createHash('sha256').update(bytes).digest('hex');
+  for (const file of [...metadata, ...shims].sort()) {
+    const target = path.join(modules, file);
+    const stat = await fs.lstat(target);
+    const link = stat.isSymbolicLink() ? await fs.readlink(target) : null;
+    let sha256 = null;
+    try {
+      sha256 = createHash('sha256').update(await fs.readFile(target)).digest('hex');
+    } catch (error) {
+      // A workspace executable can point at dist before the first build.
+      if (link === null || error.code !== 'ENOENT') throw error;
+    }
+    state[file] = { link, mode: stat.mode & 0o777, sha256 };
   }
   async function links(directory) {
     for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
@@ -39,6 +49,27 @@ async function installationSnapshot() {
   await links(modules);
   return state;
 }
+
+test('installation snapshots distinguish an unbuilt workspace executable from a retargeted link or a new build', async t => {
+  const modules = await fs.mkdtemp(path.join(os.tmpdir(), 'scan-installation-'));
+  t.after(() => fs.rm(modules, { recursive: true, force: true }));
+  const bin = path.join(modules, '.bin');
+  await fs.mkdir(bin);
+  const shim = path.join(bin, 'example');
+  await fs.symlink('../dist/one.js', shim);
+  const unbuilt = await installationSnapshot(modules);
+  assert.equal(unbuilt['.bin/example'].link, '../dist/one.js');
+  assert.equal(unbuilt['.bin/example'].sha256, null);
+  await fs.unlink(shim);
+  await fs.symlink('../dist/two.js', shim);
+  const retargeted = await installationSnapshot(modules);
+  assert.notDeepEqual(retargeted, unbuilt);
+  await write(modules, 'dist/two.js', 'export {};');
+  const built = await installationSnapshot(modules);
+  assert.notDeepEqual(built, retargeted);
+  await write(modules, '.pnpm-workspace-state-v1.json', '{}');
+  assert.notDeepEqual(await installationSnapshot(modules), built);
+});
 
 async function fixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'scan-report-'));

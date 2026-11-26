@@ -63,6 +63,9 @@ test('a lost dispatch response is reconciled without sending another workflow', 
   assert.equal((await driver.native(context, saved, save)).id, 7);
   const before = writes;
   await driver.native({ ...context, observeOnly: true }, saved, save);
+  assert.equal((await driver.native({ ...context, observeOnly: true }, { runId: 7 })).id, 7);
+  await assert.rejects(driver.native({ ...context, previous: 'c'.repeat(40), observeOnly: true }, { runId: 7 }), /input identity differs/);
+  await assert.rejects(driver.native({ ...context, observeOnly: true }, { runId: 8 }), /input identity differs/);
   assert.equal(writes, before);
   assert.equal(posts, 1);
   await assert.rejects(driver.native({ ...context, node: '24.10.0' }, saved, save), /input identity differs/);

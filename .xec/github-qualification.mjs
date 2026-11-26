@@ -86,7 +86,12 @@ export function githubQualification({ root, policy, run, progress, poll = delay 
     }
     if (!record) throw Error(context.name + ' has an unconfirmed dispatch (' + saved?.intent +
       '). Resume to reconcile it; no duplicate request was sent.');
-    if (record.display_title !== title(saved.intent)) throw Error('Native qualification input identity differs');
+    if (context.observeOnly && saved.runId === record.id && !saved.intent) {
+      const intent = record.display_title?.slice(title('').length);
+      if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(intent)) throw Error('Invalid native qualification intent');
+      saved = { ...saved, intent };
+    }
+    if ((saved.runId && saved.runId !== record.id) || record.display_title !== title(saved.intent)) throw Error('Native qualification input identity differs');
     if (!context.observeOnly && saved.runId !== record.id) { saved = { ...saved, runId: record.id }; await save(saved); }
     return wait(record, context, workflow, 'workflow_dispatch');
   }

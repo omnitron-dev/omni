@@ -32,6 +32,8 @@ test('update help and validation are owned by the registered native command tree
   assert.match(output.join(''), /Usage:.*update local-sync/);
   assert.match(output.join(''), /--review <sha256>/);
   let calls = 0;
+  await assert.rejects(runUpdate(['fetch', 'a'.repeat(40), '--previous', 'b'.repeat(40), '--node-version', '22.23.4', '--run', '1/other'],
+    { run() { calls++; } }), /workflow|run ID/);
   for (const args of [
     ['plan', 'a'.repeat(40)], ['unknown'], ['status', 'one', 'two'],
     ['local-sync', 'unexpected'], ['local-apply', '--review', 'a'.repeat(64)],

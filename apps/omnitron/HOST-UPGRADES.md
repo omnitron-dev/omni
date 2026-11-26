@@ -11,6 +11,15 @@ workflow described below. They do not substitute for a managed backend handoff.
 The [operator procedure](https://omnitron.dev/docs/omnitron/backend-handoff)
 contains the operation table, exact commands and review steps.
 
+To reuse a completed Linux qualification for a specific receiver, run
+`pnpm exec xec update fetch COMMIT --previous PREVIOUS --node-version VERSION --run RUN_ID`.
+The command checks source CI, the exact handoff and return, and the native archive.
+It uses the local build of COMMIT in `OMNITRON_DEV_CACHE` to extract the archive.
+Pass the returned `runtime` directory to
+`pnpm exec xec update plan COMMIT --node NODE --runtime DIRECTORY`.
+This stages the backend and reports the receiver's admission. An owner or guardian
+change has its own runtime update plan.
+
 `fleet upgrade --dry-run <node>` lists transport eligibility using the controller's
 registered inventory, including when the controller runs from an installed runtime.
 An explicit source-version comparison requires a build workspace.

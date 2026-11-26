@@ -5,6 +5,9 @@ import { Pipeline } from '@xec-sh/ops/pipeline';
 import { UserError } from '@xec-sh/ops';
 import { releaseCommand, ReleaseCommandError } from '@xec-sh/ops/release';
 import { qualifiedRuntimes } from '../qualification.mjs';
+import { githubQualification } from '../github-qualification.mjs';
+import policy from '../release-policy.mjs';
+import { retainNativeRuntime } from '../native-delivery.mjs';
 import { withLocalRuntime, verifyLocalRuntime } from '../local-runtime.js';
 import { localCleanup, physicalCache } from '../local-runtime-cleanup.js';
 import { developmentCacheDirectory } from '../../apps/omnitron/bin/sdk-transition.js';
@@ -29,6 +32,25 @@ async function runUpdate(operation, target, values, options) {
   if (operation === 'local-sync' && target) throw new UserError('local-sync finalizes the current clean checkout');
   if ((values.rollback || values.reconcile) && values.cacheDir) throw new UserError('Recovery uses the reviewed installed runtime; inspect local-sync --status');
   const cache = values.cacheDir ?? process.env.OMNITRON_DEV_CACHE;
+  if (operation === 'fetch') {
+    const runId = Number(values.run);
+    if (![target, values.previous].every(value => /^[a-f0-9]{40}$/.test(value)) || target === values.previous ||
+        !/^[1-9]\d*$/.test(values.run) || !Number.isSafeInteger(runId) || !policy.qualification.nodes.includes(values.nodeVersion))
+      throw new UserError('Use two distinct full revisions, a supported native Node version and a GitHub run ID');
+    const context = { commit: target, previous: values.previous, node: values.nodeVersion, name: 'Native handoff', observeOnly: true, signal: getExecutionSignal() };
+    const provider = githubQualification({ root, policy, run, progress });
+    await provider.ci({ ...context, name: 'Source CI' });
+    const evidence = await provider.native(context, { runId });
+    const base = await physicalCache(developmentCacheDirectory(cache), true);
+    const directory = path.join(base, 'native-' + target + '-' + runId + '-' + evidence.attempt);
+    const localRuntime = path.join(base, [target, process.platform, process.arch, process.version].join('-'));
+    const { withKernelFileLock } = await import('@xec-sh/ops/utils/file-lock');
+    const runtime = await withKernelFileLock(directory + '.lock', () => retainNativeRuntime({ directory, localRuntime, evidence, context,
+      download: destination => provider.downloadNative(context, evidence, destination) }));
+    const result = { commit: target, previous: values.previous, node: values.nodeVersion, run: evidence.url, runtime };
+    output(JSON.stringify(result, null, 2));
+    return result;
+  }
   if (operation === 'local-cleanup') {
     const requested = developmentCacheDirectory(cache && path.resolve(root, cache));
     const directory = await physicalCache(requested);
@@ -153,6 +175,12 @@ operation inspect status; use reconciliation/recovery instead of replaying apply
     .description(description).allowExcessArguments(false)
     .option('--cli <executable>', 'Controller CLI for fleet operations or local status/recovery');
   const collect = (value, previous = []) => [...previous, value];
+  update.command('fetch <commit>').description('Retain a verified native runtime from a completed CI handoff for update plan')
+    .allowExcessArguments(false)
+    .requiredOption('--previous <commit>', 'Revision the Linux handoff updated and restored')
+    .requiredOption('--node-version <version>', 'Native Node version used by the receiver')
+    .requiredOption('--run <id>', 'Completed native qualification workflow run')
+    .action((commit, values) => runUpdate('fetch', commit, values, options));
   operation('plan <commit>', 'Stage qualified runtimes on explicit registered nodes; do not activate')
     .option('--runtime <directory>', 'Sealed Linux runtime (repeat for distinct native candidates)', collect)
     .requiredOption('--node <name-or-id>', 'Registered target node (repeat for each node)', collect)

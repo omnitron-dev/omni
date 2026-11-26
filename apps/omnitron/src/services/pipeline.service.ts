@@ -1,5 +1,8 @@
 import { admitPipeline, assertParameters, pipelineAdmissionCheck, readAdmission, readPrepareRun, readStartRun, type PipelineAdmission } from './pipeline-admission.js';
 import { completedStep, recoverableStep, recoveryReview } from './pipeline-recovery.js';
+import type { InspectPhysicalRestore, PhysicalRestoreEvidence } from '../shared/dto/physical-restore.js';
+import { physicalRestoreRequest } from './physical-restore-graph.js';
+import { inspectPhysicalRestore } from './physical-restore.js';
 import { pipelineWorkspaceQueries } from './pipeline-workspace.js';
 import { RecoveryMutation } from '../daemon/recovery-state.js';
 /** Durable control-plane state over Xec's execution, graph and cancellation contracts. */
@@ -134,6 +137,7 @@ export class PipelineOutput {
 
 export class PipelineService {
   activeRunCount(): number { return this.activeRuns.size; }
+  private readonly physicalInspections = new Map<string, { abort: AbortController; done: Promise<PhysicalRestoreEvidence> }>();
   private readonly activeRuns = new Map<string, ActiveRun>();
   private readonly pendingCompletions = new Map<string, PipelineCompletion>();
   private initialization: Promise<void> | undefined;
@@ -178,7 +182,9 @@ export class PipelineService {
   }
   async dispose(): Promise<void> {
     this.stopped = true;
+    for (const inspection of this.physicalInspections.values()) inspection.abort.abort(new Error('Daemon is stopping'));
     for (const run of this.activeRuns.values()) run.abort.abort(new Error('Daemon is stopping'));
+    await Promise.allSettled([...this.physicalInspections.values()].map(inspection => inspection.done));
     while (this.activeRuns.size) await Promise.allSettled([...this.activeRuns.values()].map((run) => run.done));
   }
   async createPipeline(def: PipelineDef): Promise<Pipeline> {
@@ -712,6 +718,28 @@ export class PipelineService {
       .execute();
     handle.abort.abort(new Error('Cancelled by operator'));
     await handle.done;
+  }
+  async inspectPhysicalRestore(request: InspectPhysicalRestore): Promise<PhysicalRestoreEvidence> {
+    physicalRestoreRequest(request);
+    if (this.stopped) throw Error('Daemon is stopping');
+    request = { project: request.project, stack: request.stack, verifyRunId: request.verifyRunId };
+    const key = JSON.stringify([request.verifyRunId, request.project, request.stack]);
+    const active = this.physicalInspections.get(key);
+    if (active) return active.done;
+    if (this.physicalInspections.size >= 2) throw Error('Two physical restore observations are already running');
+    const abort = new AbortController();
+    const done = this.readPhysicalRestore(request, abort.signal).finally(() => this.physicalInspections.delete(key));
+    this.physicalInspections.set(key, { abort, done });
+    return done;
+  }
+  private async readPhysicalRestore(request: InspectPhysicalRestore, signal: AbortSignal): Promise<PhysicalRestoreEvidence> {
+    await this.flushCompletion(request.verifyRunId);
+    const row = await this.db.selectFrom('pipeline_runs').selectAll().where('id', '=', request.verifyRunId).executeTakeFirst();
+    const admission = row && readAdmission(row.admission);
+    if (!row || !admission?.approvedBy || !admission.definition || !this.nodes)
+      throw Error('A pinned native adoption verification and registered nodes are required');
+    assertParameters(admission, {});
+    return inspectPhysicalRestore(request, JSON.parse(admission.definition) as Pipeline, this.mapRun(row, admission), this.nodes, this.execution, signal);
   }
   async getRunStatus(runId: string): Promise<PipelineRun | null> {
     await this.flushCompletion(runId);

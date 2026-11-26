@@ -615,7 +615,9 @@ export interface IOmnitronFleetService {
 // ============================================================================
 
 /** CI/CD pipeline definitions and runs. */
+export type { InspectPhysicalRestore, PhysicalRestoreEvidence } from './physical-restore.js';
 export interface IOmnitronPipelinesService {
+  inspectPhysicalRestore(data: import('./physical-restore.js').InspectPhysicalRestore): Promise<import('./physical-restore.js').PhysicalRestoreEvidence>;
   resumeRun(data: import('./pipelines.js').StartPipelineRun): Promise<PipelineRun>;
   reconcileRun(data: { runId: string }): Promise<PipelineRun>;
   createPipeline(data: PipelineDef): Promise<Pipeline>;

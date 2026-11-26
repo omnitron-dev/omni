@@ -1536,6 +1536,12 @@ pipeline.command('resume <runId>').description('Continue the reviewed checkpoint
     const { pipelineStartCommand } = await import('../commands/pipeline.js');
     await pipelineStartCommand(runId, options, true);
   });
+pipeline.command('physical-restore <verifyRunId> <project> <stack>')
+  .description('Verify the native stopped PostgreSQL and MinIO copy on both registered nodes')
+  .structuredAction(async (runId: string, project: string, stack: string) => {
+    const { pipelinePhysicalRestoreCommand } = await import('../commands/pipeline.js');
+    await pipelinePhysicalRestoreCommand(runId, project, stack);
+  });
 pipeline.command('reconcile <runId>').description('Read remote launch receipts and retain unknown deployment outcomes; never redeploy')
   .structuredAction(async (runId: string) => {
     const { pipelineReconcileCommand } = await import('../commands/pipeline.js');

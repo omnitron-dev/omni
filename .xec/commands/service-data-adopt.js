@@ -193,8 +193,12 @@ export async function adoptionDefinition(
     throw Error('A matching sealed cold receiver receipt is required');
   const helper = await adoptionWorker(),
     sha = createHash('sha256').update(helper).digest('hex');
-  const loader =
-    'import sys,gzip,base64,hashlib;h=sys.argv.pop(1);p=gzip.decompress(base64.b64decode(sys.argv.pop(1)));assert hashlib.sha256(p).hexdigest()==h;exec(compile(p,"service-adopt","exec"),{"__name__":"__main__","SELF":p,"__file__":"service-adopt"})';
+  const execute = 'exec(compile(p,"service-adopt","exec"),{"__name__":"__main__","SELF":p,"__file__":"service-adopt"})';
+  const loader = 'import sys,gzip,base64,hashlib;h=sys.argv.pop(1);p=gzip.decompress(base64.b64decode(sys.argv.pop(1)));assert hashlib.sha256(p).hexdigest()==h;' +
+    (phase === 'verify'
+      // The daemon keeps bounded diagnostic lines. Keep large native volume receipts readable by JSON consumers.
+      ? 'import contextlib,io,json;o=io.StringIO()\nwith contextlib.redirect_stdout(o): ' + execute + '\nprint(json.dumps(json.loads(o.getvalue()),indent=1))'
+      : execute);
   const profile = validatorApparmor
     ? createHash('sha256')
         .update(await fs.readFile(validatorProfile))

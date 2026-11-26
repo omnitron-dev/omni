@@ -5,6 +5,7 @@
  */
 
 import { Service, Public } from '@omnitron-dev/titan/decorators';
+import type { InspectPhysicalRestore } from '../shared/dto/physical-restore.js';
 import { validateRunId } from './pipeline-admission.js';
 import type { PipelineWorkspace, PreparePipelineRun, StartPipelineRun } from '../shared/dto/pipelines.js';
 import { ADMIN_ROLES } from '../shared/roles.js';
@@ -107,6 +108,12 @@ export class PipelineRpcService implements IOmnitronPipelinesService {
     await this.authorize('cancel.requested', data.runId);
     await this.pipelines.cancelRun(data.runId);
     return { success: true };
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async inspectPhysicalRestore(data: InspectPhysicalRestore) {
+    await this.authorize('physical-restore.inspect', data.verifyRunId);
+    return this.pipelines.inspectPhysicalRestore(data);
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })

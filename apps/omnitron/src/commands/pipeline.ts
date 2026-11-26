@@ -27,9 +27,9 @@ import { emitJson, emitError } from './output.js';
  * `client.service()` the same daemon answered `listPipelines()` and
  * `listRuns()` with `[]` — «No pipelines defined» was the true answer.
  */
-async function withPipelines<T>(call: (svc: IOmnitronPipelinesService) => Promise<T>): Promise<T> {
+async function withPipelines<T>(call: (svc: IOmnitronPipelinesService) => Promise<T>, timeout?: number): Promise<T> {
   const { createDaemonClient } = await import('../daemon/daemon-client.js');
-  const client = createDaemonClient();
+  const client = createDaemonClient(undefined, timeout);
   try {
     return await call(await client.service<IOmnitronPipelinesService>('OmnitronPipelines'));
   } finally {
@@ -124,6 +124,18 @@ export async function pipelineRunCommand(id: string, options: { paramsFile?: str
     if (!emitJson(run)) log.success(`Pipeline run ${run.id}: ${run.status}${run.review ? ` · review ${run.review.digest}` : ''}`);
   } catch (err) {
     emitError(`Run ${runId}: ${(err as Error).message}. Inspect pipeline status ${runId}; retain this ID when retrying.`);
+    process.exitCode = 1;
+  }
+}
+
+export async function pipelinePhysicalRestoreCommand(verifyRunId: string, project: string, stack: string): Promise<void> {
+  try {
+    const result = await withPipelines(svc => svc.inspectPhysicalRestore({ verifyRunId, project, stack }), 86_700_000);
+    if (emitJson(result)) return;
+    log.info(`Verified ${result.volumes.length} stopped physical volumes from ${result.source.nodeId} on ${result.receiver.nodeId} at ${result.verifiedAt}`);
+    log.info(`Proof SHA-256 ${result.proofDigest}`);
+  } catch (error) {
+    emitError((error as Error).message);
     process.exitCode = 1;
   }
 }

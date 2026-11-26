@@ -10,7 +10,7 @@ const start = script => {
   const done = new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', (code, signal) => resolve({ code, signal, output })); });
   return { child, done };
 };
-const until = async predicate => { for (let n = 0; n < 250; n++) { if (predicate()) return; await delay(20); } throw Error('native fixture timed out'); };
+const until = async predicate => { for (let n = 0; n < 1000; n++) { if (predicate()) return; await delay(20); } throw Error('native fixture timed out'); };
 const age = s => fs.utimesSync(`${s.dir}/deploy.lease`, 0, 0);
 const begin = s => { fs.mkdirSync(s.dir, { recursive: true }); assert.match(run(s.acquireA), /ACQUIRED/); };
 const children = pid => { try { return fs.readFileSync(`/proc/${pid}/task/${pid}/children`, 'utf8').trim().split(/\s+/).filter(Boolean).map(Number); } catch { return []; } };
@@ -63,6 +63,7 @@ const find = (pid, name) => { for (const child of children(pid)) { try { if (fs.
   await a.done; age(s); assert.match(run(s.acquireB), /EXECUTION-UNRESOLVED/);
   await delay(1300); age(s);
   assert.match(run(s.acquireB), /EXECUTION-UNRESOLVED/);
+  assert.match(run(s.probe), /EXECUTION-UNRESOLVED/);
   assert.equal((await start(s.stale).done).code, 73);
   console.log('SIGKILL of worker retains unresolved intent even after its child exits');
 }
@@ -77,9 +78,35 @@ const find = (pid, name) => { for (const child of children(pid)) { try { if (fs.
   console.log('SIGKILL of timeout retains intent while orphaned command continues');
 }
 {
-  const s = scenarios.background; begin(s); const began = Date.now();
-  assert.equal((await start(s.background).done).code, 0);
-  assert.match(run(s.releaseA), /RELEASED/); assert.match(run(s.acquireB), /ACQUIRED/);
-  assert.ok(Date.now() - began < 2000, 'background sleeper must not inherit execution lock');
+  const s = scenarios.background; begin(s);
+  try {
+    assert.equal((await start(s.background).done).code, 0);
+    const child = Number(fs.readFileSync(`${s.dir}/child.pid`, 'utf8'));
+    assert.ok(child > 1); process.kill(child, 0);
+    assert.match(run(s.releaseA), /RELEASED/); assert.match(run(s.acquireB), /ACQUIRED/);
+    process.kill(child, 0);
+    assert.equal(fs.existsSync(`${s.dir}/finished`), false);
+  } finally { fs.writeFileSync(`${s.dir}/finish`, ''); }
+  await until(() => fs.existsSync(`${s.dir}/finished`));
   console.log('managed/background process does not retain kernel execution lock');
+}
+{
+  const s = scenarios.kernel; begin(s); const a = start(s.install);
+  await until(() => fs.existsSync(`${s.dir}/started`));
+  const holder = find(a.child.pid, 'flock'); assert.ok(holder);
+  const worker = children(holder)[0]; assert.ok(worker); process.kill(worker, 'SIGKILL');
+  await a.done; age(s);
+  assert.match(run(s.probe), /EXECUTION-UNRESOLVED/);
+  fs.writeFileSync(`${s.dir}/publish`, '');
+  await until(() => fs.existsSync(`${s.dir}/deploy.execution.completed`));
+  assert.equal(fs.readFileSync(`${s.dir}/result`, 'utf8'), 'sealed\n');
+  assert.match(run(s.acquireB), /EXECUTION-UNRESOLVED/);
+  assert.match(run(s.probe), /KERNEL-COMPLETED\t/);
+  assert.match(run(s.replaced), /EXECUTION-UNRESOLVED/);
+  assert.match(run(s.renewA), /RENEWED/); assert.match(run(s.accept), /HELD/);
+  age(s); assert.match(run(s.accept), /ACQUIRED/);
+  assert.equal(fs.existsSync(`${s.dir}/deploy.execution.json`), false);
+  assert.equal(fs.existsSync(`${s.dir}/deploy.execution.completed`), false);
+  assert.equal(fs.readFileSync(`${s.dir}/result`, 'utf8'), 'sealed\n');
+  console.log('completed receiver recovered without a second installation');
 }

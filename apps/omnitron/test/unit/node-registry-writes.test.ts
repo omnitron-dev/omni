@@ -171,7 +171,7 @@ describe('editing a node', () => {
     expect((await manager.nodeToSshTarget(node)).expectedHostFingerprint).toBeUndefined();
     store.kv.set(`terminal:host-key:${node.id}`, { target: JSON.stringify([node.host, node.sshPort, node.sshUser]), fingerprint });
     expect((await manager.nodeToSshTarget(node)).expectedHostFingerprint).toBe(fingerprint);
-    expect((await manager.nodeToDeployTarget(node.id)).expectedHostFingerprint).toBe(fingerprint);
+    expect(await manager.nodeToDeployTarget(node.id)).toMatchObject({ registrationId: node.id, expectedHostFingerprint: fingerprint });
     expect((await manager.getNodeCheckTargets()).find(n => n.id === node.id)?.expectedHostFingerprint).toBe(fingerprint);
     const moved = await manager.updateNode(node.id, { sshPort: 2222 });
     expect((await manager.nodeToSshTarget(moved)).expectedHostFingerprint).toBeUndefined();

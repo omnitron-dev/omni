@@ -3,15 +3,14 @@ import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import type { KernelRollout, KernelRolloutTarget } from '../shared/dto/nodes.js';
-import type { DeployTarget } from './remote-deployer.service.js';
+import type { DeployTarget, RemoteDeployer } from './remote-deployer.service.js';
 import { describeFailure } from './audit.service.js';
-import { ManagedRolloutFailure, type ManagedRolloutObservation, type ManagedSelection } from './managed-rollout.js';
+import { ManagedRolloutFailure, pinnedRolloutEndpoint, type ManagedRolloutObservation, type ManagedSelection } from './managed-rollout.js';
 import { assertBackendHandoffAdmission } from '../daemon/backend-handoff-types.js';
 
 type Store = Pick<DaemonStateStore, 'kvGetSync' | 'kvSetSync' | 'kvUpdateSync'>;
 type Revalidate = () => Promise<void>;
-type Driver = {
-  inspectManagedRollout(target: DeployTarget, commit: string, options?: { stage?: boolean; excludeOwnerId?: string }): Promise<ManagedRolloutObservation>;
+type Driver = Pick<RemoteDeployer, 'inspectManagedRollout'> & {
   activateManagedRollout(target: DeployTarget, preflight: ManagedRolloutObservation, beforeDispatch: () => Promise<void>): Promise<void>;
   reconcileManagedRollout(target: DeployTarget, preflight: ManagedRolloutObservation, options: { detailed: true }): Promise<ManagedSelection>;
 };
@@ -39,14 +38,11 @@ type Record = {
   rollout: KernelRollout;
   requestNodes: string[] | null;
   observations: Array<{ endpoint: string; preflight: ManagedRolloutObservation } | null>;
+  /** Persisted before passive installation so a restarted request cannot change recipient. */
+  stageEndpoints?: Array<string | null>;
   writer: Writer | null;
   revision: number;
 };
-
-function pinnedEndpoint(target: DeployTarget) {
-  if (!target.expectedHostFingerprint) throw Error('Enroll a verified SSH host key before managing this node');
-  return JSON.stringify([target.expectedHostFingerprint, target.host, target.sshPort ?? 22, target.username ?? '', target.daemonPort ?? 9700]);
-}
 
 function checkIndex(index: Index | null) {
   if (index !== null && (!uuid(index.latest) || (index.active !== null && !uuid(index.active)))) throw Error('Corrupt kernel rollout index');
@@ -92,6 +88,8 @@ export class KernelRolloutService {
       if (rollout?.id !== id || typeof rollout.stage !== 'boolean' || (result.requestNodes !== null && !Array.isArray(result.requestNodes)) || !hash(rollout.commit, 40) || !states.includes(rollout.state) ||
           !Number.isSafeInteger(revision) || revision < 0 || !Array.isArray(rollout.targets) || rollout.targets.length === 0 ||
           !Array.isArray(observations) || observations.length !== rollout.targets.length ||
+          (result.stageEndpoints !== undefined && (!Array.isArray(result.stageEndpoints) ||
+            result.stageEndpoints.length !== rollout.targets.length || result.stageEndpoints.some(pin => pin !== null && typeof pin !== 'string'))) ||
           (['planning','running','uncertain'].includes(rollout.state) && !writer) ||
           (writer !== null && (!uuid(writer?.token) || !positive(writer.pid) || !Number.isFinite(writer.started) ||
             (writer.birth !== null && typeof writer.birth !== 'string') ||
@@ -187,6 +185,7 @@ export class KernelRolloutService {
         targets: ids.map(nodeId => ({ nodeId, name: nodes.find(n => n.id === nodeId)?.name ?? nodeId, state: 'pending', reason: null,
           previous: null, candidate: null, ownerId: null, ownerPid: null, backupOperations: [] })) };
       pending = { rollout, requestNodes: nodeIds ?? null, observations: ids.map(() => null), writer: this.writer, revision: (existing?.revision ?? -1) + 1 };
+      if (stage && (!existing || existing.stageEndpoints)) pending.stageEndpoints = existing?.stageEndpoints ?? ids.map(() => null);
       this.store.kvSetSync(recordKey(id), pending);
       return { latest: id, active: id };
     });
@@ -217,14 +216,25 @@ export class KernelRolloutService {
         if (!node) throw Error('Node is absent from the controller registry');
         if (node.isLocal) throw Error('Use local backend upgrade with its independent supervisor. The controller cannot certify its own handoff over this RPC.');
         const connection = await this.nodes.nodeToDeployTarget(target.nodeId);
-        const endpoint = pinnedEndpoint(connection);
+        const endpoint = pinnedRolloutEndpoint(connection);
         if (fingerprints.has(connection.expectedHostFingerprint!)) throw Error('Another target has the same SSH host key');
         fingerprints.add(connection.expectedHostFingerprint!);
-        if (rollout.stage) await revalidate?.();
+        if (rollout.stage) {
+          await revalidate?.();
+          this.change(id, (record, index) => {
+            if (index.active !== id || record.writer?.token !== this.writer.token || record.rollout.state !== 'planning')
+              throw Error('Kernel preflight writer was fenced');
+            if (!record.stageEndpoints) throw Error('Interrupted legacy staging has no recorded recipient. Review the node and create a fresh stage plan.');
+            if (record.stageEndpoints[i] !== null && record.stageEndpoints[i] !== endpoint)
+              throw Error('The registered staging endpoint changed after dispatch. Review the node and create a fresh stage plan.');
+            record.stageEndpoints[i] = endpoint;
+          });
+        }
         this.assertController();
         const localOwner = this.controllerOwner();
         const observed = rollout.stage ? await this.driver.inspectManagedRollout(connection, commit, {
           stage: true, ...(localOwner && { excludeOwnerId: localOwner }),
+          ...(revalidate && { beforeStage: async () => { await revalidate(); this.assertController(); } }),
         }) : await this.driver.inspectManagedRollout(connection, commit);
         if (!validObservation(observed, commit)) throw Error('Invalid runtime or owner evidence');
         this.assertRemoteOwner(observed.ownerId);
@@ -275,7 +285,7 @@ export class KernelRolloutService {
 
   private async connection(id: string, endpoint: string) {
     const target = await this.nodes.nodeToDeployTarget(id);
-    if (pinnedEndpoint(target) !== endpoint) throw Error('Node endpoint or enrolled identity changed after plan review');
+    if (pinnedRolloutEndpoint(target) !== endpoint) throw Error('Node endpoint or enrolled identity changed after plan review');
     return target;
   }
 

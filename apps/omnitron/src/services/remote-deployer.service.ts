@@ -65,7 +65,7 @@ import { activateManagedTarget, managedApplicationCommand, managedHostCommand, p
 /** A node that could not be asked at all — the SSH call itself failed. */
 const UNREADABLE = -3;
 const serviceAccount = Symbol('verified deployment account');
-import { withNodeLeases, type LeaseRunner } from './node-deploy-lease.js';
+import { withNodeLeases, type LeaseCandidate, type LeaseRunner } from './node-deploy-lease.js';
 import { hostOperationBarrierCommand, type HostOperationAllowance } from './host-operation-barrier.js';
 import { migrationOutput } from './migration-output.js';
 import { prepareRemoteMigration } from './migration-process.js';
@@ -130,6 +130,8 @@ export function artifactDirOnNode(project: string, app: string, version: string)
  */
 export interface DeployTarget {
   host: string;
+  /** Identity of a Fleet registration, distinct from its mutable label. */
+  registrationId?: string;
   [serviceAccount]?: ManagedApplicationAccount;
   /**
    * SSH port. Default 22.
@@ -345,7 +347,7 @@ export function wholeTarGz(archive: Buffer): true | string {
 export class RemoteDeployer {
   private readonly deploymentLeases = new AsyncLocalStorage<ReadonlyMap<string, {
     confirm(step: string): Promise<void>;
-    guard(command: string, timeoutMs?: number): string;
+    guard(command: string, timeoutMs?: number, kernelInstallScope?: string): string;
   }>>();
   /** Active deployment progress handlers */
   private readonly progressHandlers: Array<(progress: DeployProgress) => void> = [];
@@ -1699,7 +1701,8 @@ export class RemoteDeployer {
     if (pending.length) throw Error('An unfinished host upgrade must be reconciled before kernel rollout');
   }
 
-  async inspectManagedRollout(target: DeployTarget, commit: string, options: { stage?: boolean; excludeOwnerId?: string } = {}): Promise<ManagedRolloutObservation> {
+  async inspectManagedRollout(target: DeployTarget, commit: string,
+    options: { stage?: boolean; excludeOwnerId?: string; beforeStage?: () => Promise<void> } = {}): Promise<ManagedRolloutObservation> {
     this.assertManagedTarget(target);
     if (!/^[0-9a-f]{40}$/.test(commit)) throw Error('A full lowercase Git commit is required');
     const inspect = () => planManagedRollout(request => this.readManagedHost(target, request), commit);
@@ -1707,13 +1710,17 @@ export class RemoteDeployer {
       await this.checkManagedTarget(target);
       return inspect();
     }
+    const { stageCatalogRuntime } = await import('./kernel-distribution.js');
     return this.underLease(target, 'stage managed kernel', async () => {
       await this.checkManagedTarget(target);
-      const { stageCatalogRuntime } = await import('./kernel-distribution.js');
+      await options.beforeStage?.();
       const expected = await stageCatalogRuntime(this, target, commit, options.excludeOwnerId);
       const plan = await inspect();
       if (plan.candidate !== expected) throw Error('Installed runtime differs from the qualified catalog artifact');
       return plan;
+    }, async scope => {
+      await stageCatalogRuntime(this, target, commit, options.excludeOwnerId, scope);
+      await options.beforeStage?.();
     });
   }
 
@@ -1925,12 +1932,12 @@ export class RemoteDeployer {
    * to the node with no lease at all, and are exactly a second writer: the
    * activation restarts the node's daemon under whatever else is deploying.
    */
-  async underLease<T>(target: DeployTarget, purpose: string, work: () => Promise<T>): Promise<T> {
+  async underLease<T>(target: DeployTarget, purpose: string, work: () => Promise<T>, verifyKernelInstall?: LeaseCandidate['verifyKernelInstall']): Promise<T> {
     const machine = `${target.host}:${target.sshPort ?? 22}`;
     const held = this.deploymentLeases.getStore();
     if (held?.has(machine)) return work();
     return withNodeLeases(
-      [{ node: machine, machine, run: this.leaseRunner(target) }],
+      [{ node: machine, machine, run: this.leaseRunner(target), ...(verifyKernelInstall && { verifyKernelInstall }) }],
       purpose,
       this.logger,
       async (leases) => {
@@ -1938,7 +1945,7 @@ export class RemoteDeployer {
           throw new Error(`Could not reach ${machine} to lease it for ${purpose}: ${leases.unreachable.get(machine) ?? 'no answer'}`);
         }
         const context = new Map(held);
-        context.set(machine, { confirm: step => leases.confirm(machine, step), guard: (command, timeoutMs) => leases.guard(machine, command, timeoutMs) });
+        context.set(machine, { confirm: step => leases.confirm(machine, step), guard: leases.guard.bind(leases, machine) });
         return this.deploymentLeases.run(context, work);
       },
     );
@@ -1951,11 +1958,16 @@ export class RemoteDeployer {
   }
 
   /** The node holds its execution fence for the command lifetime, beyond a lost controller. */
-  private guardedCommand(target: DeployTarget, command: string, timeout: number): { command: string; timeout: number } {
+  private guardedCommand(target: DeployTarget, command: string, timeout: number, kernelInstallScope?: string): { command: string; timeout: number } {
     const lease = this.deploymentLeases.getStore()?.get(`${target.host}:${target.sshPort ?? 22}`);
     const account = target[serviceAccount];
     if (account) command = managedApplicationCommand(account, command);
-    return lease ? { command: lease.guard(command, timeout), timeout: timeout + 45_000 } : { command, timeout };
+    if (!lease) {
+      if (kernelInstallScope !== undefined) throw Error('A witnessed kernel installation requires the deployment lease');
+      return { command, timeout };
+    }
+    const guarded = kernelInstallScope === undefined ? lease.guard(command, timeout) : lease.guard(command, timeout, kernelInstallScope);
+    return { command: guarded, timeout: timeout + 45_000 };
   }
 
   private async sshExec(target: DeployTarget, command: string, timeout = 60_000, stdin?: string): Promise<string> {
@@ -2016,9 +2028,10 @@ export class RemoteDeployer {
     target: DeployTarget,
     command: string,
     timeoutMs = 600_000,
+    kernelInstallScope?: string,
   ): Promise<{ stdout: string; stderr: string; code: number }> {
     await this.confirmLease(target, 'remote data command');
-    const guarded = this.guardedCommand(target, command, timeoutMs);
+    const guarded = this.guardedCommand(target, command, timeoutMs, kernelInstallScope);
     return this.readFromNodeRaw(target, guarded.command, guarded.timeout);
   }
 

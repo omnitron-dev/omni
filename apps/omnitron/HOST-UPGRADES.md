@@ -60,14 +60,30 @@ filesystem, each with 256 MiB headroom.
 Large inspection and receiver programs use SHA-256-checked SSH channel data.
 The recipient verifies the complete script before its execution.
 
-After a lost staging acknowledgment, inspect `fleet rollout status <id>`, the
-node deployment lease and execution record, the current selection and the
-target artifact. A receiver failure reports its exit status, elapsed time and
-last observed installation step when available. An unresolved writer requires
-inspected recovery. Once the writer is settled, a fresh stage request recognizes the verified installation
-or reuses the preserved archive bound to its catalog digest. A terminal blocked
-plan keeps its original result. Where the verified runtime tree already exists
-locally, the service owner can use `omnitron --json backend install <runtime>`
+After a lost staging acknowledgment, read `omnitron fleet rollout status <id>`.
+Retry the original request ID to retrieve its receipt or finish an interrupted
+preflight on the pinned endpoint. A terminal blocked plan keeps its original
+result. To check again, run `omnitron fleet rollout plan <commit> <node> --stage --wait`
+with a fresh request ID, or open **Plan update** in Console and select staging.
+
+On a witnessed passive installation, the node records the command identity
+before execution. A separate supervisor records successful exit after the
+receiver has published, verified and cleaned up. If the lease worker disappears,
+the next staging plan can use that completion record once the original lease
+expires. It verifies the installed tree against the controller catalog, the
+registered SSH endpoint, the service owner and the original selected revision.
+The node then compares the exact intent and completion again under its locks.
+A confirmed installation proceeds to review with the existing candidate.
+Activation requires a separate apply.
+
+An active writer, a missing completion witness or changed evidence keeps the
+machine fenced. Older execution records carry only a token, command ID and
+deadline. An expired lease, an unlocked guard or an existing candidate cannot
+establish when that command finished. These cases require independent host
+inspection before recovery. The plan receipt reports the receiver exit status,
+elapsed time and last observed installation step when available.
+After the machine fence is settled, a service owner with the verified runtime
+tree already on the node can use `omnitron --json backend install <runtime>`
 and check the reported digest, `selected: false`, and original selection
 revision with `omnitron --json backend installation`.
 

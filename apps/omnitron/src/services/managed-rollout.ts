@@ -4,6 +4,7 @@ import { BACKEND_ACTIVITY_COUNTERS } from '../shared/dto/backend.js';
 import { assertReviewableBackendActivity } from '../shared/backup-admission.js';
 import { compareExecutionIdentityEvidence, describeExecutionIdentityDrift, isExecutionIdentityEvidence, type ExecutionIdentityEvidence } from '../shared/execution-identity.js';
 import type { InstalledBundle, ManagedApplicationAccount } from './host-upgrade.js';
+import type { DeployTarget } from './remote-deployer.service.js';
 import { remoteNode } from './host-upgrade.js';
 import { targetRuntime } from '../release/target-runtime.js';
 import { assertBackendHandoffAdmission, type BackendHandoffAdmission } from '../daemon/backend-handoff-types.js';
@@ -36,6 +37,12 @@ export interface ManagedRolloutObservation {
   appsDigest: string;
   selectionRevision: number;
   admission: BackendHandoffAdmission;
+}
+
+/** Persist only the public recipient coordinates. */
+export function pinnedRolloutEndpoint(target: DeployTarget): string {
+  if (!target.expectedHostFingerprint) throw Error('Enroll a verified SSH host key before managing this node');
+  return JSON.stringify([target.expectedHostFingerprint, target.host, target.sshPort ?? 22, target.username ?? '', target.daemonPort ?? 9700]);
 }
 
 export class ManagedRolloutFailure extends Error {

@@ -21,7 +21,8 @@ export async function exerciseKernelSSH({ sdk, home, previous, entry, installati
   const target = { ...login, sshPort: 2222 };
   const account = { uid: process.getuid(), gid: process.getgid(), instanceHome: home };
   const bundle = { root: path.join(previous.runtimeRoot, 'packages/0'), managed: { ...entry,
-    backendArtifact: previous.runtimeHash, ownerId: 'fixture-owner', applicationAccount: account } };
+    ownerArtifact: previous.runtimeHash, backendArtifact: previous.runtimeHash, ownerId: 'fixture-owner',
+    ownerPid: process.ppid, backendPid: process.pid, applicationAccount: account } };
   const ssh = execution.ssh.bind(execution);
   const upload = execution.uploadFile.bind(execution);
   let uploads = 0, framed = 0, maxCommandBytes = 0, loseInstall = true, loseUpload = true;

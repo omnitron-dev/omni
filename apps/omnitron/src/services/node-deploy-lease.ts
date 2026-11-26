@@ -107,6 +107,7 @@ const LEASE_FILE = 'deploy.lease';
 const GUARD_FILE = 'deploy.guard';
 const EXECUTION_GUARD_FILE = 'deploy.execution.guard';
 const EXECUTION_RECORD_FILE = 'deploy.execution.json';
+const COMPLETION_FILE = 'deploy.execution.completed';
 
 /** An administrator may deploy to an instance owned by another Linux account.
  * The machine lease must stay under exclusive administrative write access. */
@@ -155,7 +156,7 @@ function prelude(dir: string, refusalExit = 0): string[] {
     `L=${shellEscape(`${dir}/${LEASE_FILE}`)}`,
     // The holder can replace these files. Inspect them only after obtaining the metadata lock.
     ...(dir === DEFAULT_LEASE_TIMING.dir ? [
-      `if [ "$(id -u)" = 0 ]; then protected_file "$L"; protected_file "$L.tmp"; protected_file ${shellEscape(`${dir}/${EXECUTION_RECORD_FILE}`)}; fi`,
+      `if [ "$(id -u)" = 0 ]; then protected_file "$L"; protected_file "$L.tmp"; protected_file ${shellEscape(`${dir}/${EXECUTION_RECORD_FILE}`)}; protected_file ${shellEscape(`${dir}/${COMPLETION_FILE}`)}; fi`,
     ] : []),
   ];
 }
@@ -164,12 +165,27 @@ function tokenNeedle(token: string): string {
   return shellEscape(`"token":"${token}"`);
 }
 
+type KernelRecovery = true | { record: string; token: string };
+
 /** Called under the metadata lock; never waits for a command that needs that lock. */
-function executionIdle(timing: LeaseTiming): string[] {
+function executionIdle(timing: LeaseTiming, recovery?: KernelRecovery): string[] {
+  const record = shellEscape(`${timing.dir}/${EXECUTION_RECORD_FILE}`);
+  const completed = shellEscape(`${timing.dir}/${COMPLETION_FILE}`);
   return [
     `exec 8>${shellEscape(`${timing.dir}/${EXECUTION_GUARD_FILE}`)} || { echo 'NO-GUARD'; exit 0; }`,
     `flock -n 8 || { echo 'EXECUTION-BUSY'; exit 0; }`,
-    `if [ -e ${shellEscape(`${timing.dir}/${EXECUTION_RECORD_FILE}`)} ]; then echo 'EXECUTION-UNRESOLVED'; exit 0; fi`,
+    ...(recovery ? [
+      `if [ -f ${record} ] && [ -f ${completed} ] && [ "$(wc -c < ${record})" -le 1024 ] && cmp -s ${record} ${completed}; then`,
+      ...(recovery === true ? [
+        `  printf 'KERNEL-COMPLETED\\t'; cat ${record}; exit 0`,
+      ] : [
+        `  if grep -qF ${tokenNeedle(recovery.token)} "$L" && printf '%s\\n' ${shellEscape(recovery.record)} | cmp -s - ${record}; then`,
+        `    rm -- ${record} && sync -- ${shellEscape(timing.dir)} && rm -- ${completed} && sync -- ${shellEscape(timing.dir)} || { echo 'EXECUTION-UNRESOLVED'; exit 0; }`,
+        `  else echo 'EXECUTION-UNRESOLVED'; exit 0; fi`,
+      ]),
+      ...(recovery === true ? ['fi'] : ["else echo 'EXECUTION-UNRESOLVED'; exit 0; fi"]),
+    ] : []),
+    `if [ -e ${record} ]; then echo 'EXECUTION-UNRESOLVED'; exit 0; fi`,
   ];
 }
 
@@ -183,22 +199,38 @@ function executionIdle(timing: LeaseTiming): string[] {
  * Commands must synchronously finish their mutations; managed daemon startup
  * may detach the daemon, but must not detach delayed deployment writes.
  */
-export function guardScript(timing: LeaseTiming, token: string, command: string, timeoutMs = 600_000): string {
+export function guardScript(timing: LeaseTiming, token: string, command: string, timeoutMs = 600_000, kernelInstallScope?: string): string {
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 86_400_000) throw new Error('Invalid guarded command timeout');
+  if (kernelInstallScope !== undefined && !/^[a-f0-9]{64}$/.test(kernelInstallScope)) throw Error('Invalid kernel installation identity');
   const id = crypto.randomUUID();
   const file = `${timing.dir}/${EXECUTION_RECORD_FILE}`;
   const temporary = `${file}.${id}.part`;
-  const record = JSON.stringify({ schema: 1, id, token, timeoutMs });
+  const record = JSON.stringify(kernelInstallScope
+    ? { schema: 2, id, token, timeoutMs, kind: 'kernel-install', scope: kernelInstallScope, command: crypto.createHash('sha256').update(command).digest('hex') }
+    : { schema: 1, id, token, timeoutMs });
+  const completed = shellEscape(`${timing.dir}/${COMPLETION_FILE}`);
+  // GNU sync FILE fsyncs that inode. Flush the data before rename and its
+  // directory afterwards; sync -f would wait for every writer on the mount.
+  const publish = (destination: string, includeLease = false) => {
+    const part = shellEscape(temporary);
+    return `printf '%s\\n' ${shellEscape(record)} > ${part} && sync -- ${part}${includeLease ? ' "$L"' : ''} && mv -f ${part} ${destination} && sync -- ${shellEscape(timing.dir)}`;
+  };
+  // This supervisor waits for the synchronous receiver, including final cleanup,
+  // independently of the outer lease worker. Its exact intent is the witness.
+  const bounded = kernelInstallScope ? [
+    `(\n${command}\n) || exit $?`,
+    `${publish(completed)} || exit 125`,
+  ].join('\n') : command;
   const body = [
     ...prelude(timing.dir, 73),
     `command -v timeout >/dev/null 2>&1 && command -v sync >/dev/null 2>&1 || { echo 'Execution fencing requires timeout and sync' >&2; exit 73; }`,
     `if [ -e ${shellEscape(file)} ]; then echo 'Unresolved remote deployment command; inspected recovery is required' >&2; exit 73; fi`,
     `if ! [ -s "$L" ] || ! grep -qF ${tokenNeedle(token)} "$L"; then echo 'Deployment lease was lost before remote execution' >&2; exit 73; fi`,
     `umask 077`,
-    `printf '%s\\n' ${shellEscape(record)} > ${shellEscape(temporary)} && sync -f ${shellEscape(temporary)} && mv -f ${shellEscape(temporary)} ${shellEscape(file)} && sync -f ${shellEscape(timing.dir)} || exit 73`,
+    `${publish(shellEscape(file), true)} || exit 73`,
     `touch "$L" || exit 73`,
     `flock -u 9; exec 9>&-`,
-    `timeout --signal=TERM --kill-after=5s ${Math.ceil(timeoutMs / 1000)}s sh -c ${shellEscape(command)}`,
+    `timeout --signal=TERM --kill-after=5s ${Math.ceil(timeoutMs / 1000)}s sh -c ${shellEscape(bounded)}`,
     `result=$?`,
     // A timeout or killed supervisor does not prove all descendant writers
     // stopped. Retain intent; a new writer needs inspected recovery.
@@ -208,7 +240,8 @@ export function guardScript(timing: LeaseTiming, token: string, command: string,
     `exec 9>${shellEscape(`${timing.dir}/${GUARD_FILE}`)} || exit 73`,
     `flock -w 10 9 || exit 73`,
     `if ! [ -f ${shellEscape(file)} ] || ! grep -qF ${shellEscape(`"id":"${id}"`)} ${shellEscape(file)}; then echo 'Remote execution record changed' >&2; exit 73; fi`,
-    `rm -f ${shellEscape(file)} && sync -f ${shellEscape(timing.dir)} || exit 73`,
+    `rm -f ${shellEscape(file)} && sync -- ${shellEscape(timing.dir)} || exit 73`,
+    ...(kernelInstallScope ? [`rm -f ${completed} || exit 73`] : []),
     `exit "$result"`,
   ].join('\n');
   return [
@@ -220,7 +253,7 @@ export function guardScript(timing: LeaseTiming, token: string, command: string,
   ].join('\n');
 }
 
-export function acquireScript(timing: LeaseTiming, record: LeaseRecord): string {
+export function acquireScript(timing: LeaseTiming, record: LeaseRecord, recovery?: KernelRecovery): string {
   return [
     ...prelude(timing.dir),
     `now=$(date +%s)`,
@@ -233,7 +266,7 @@ export function acquireScript(timing: LeaseTiming, record: LeaseRecord): string 
     `  if [ "$idle" -lt ${timing.leaseSec} ]; then printf 'HELD %s\\t' "$idle"; cat "$L"; echo; exit 0; fi`,
     `  printf 'LAPSED %s\\t' "$idle"; cat "$L"; echo`,
     `fi`,
-    ...executionIdle(timing),
+    ...executionIdle(timing, recovery),
     `printf '%s' ${shellEscape(JSON.stringify(record))} > "$L.tmp" && mv "$L.tmp" "$L" && echo 'ACQUIRED'`,
   ].join('\n');
 }
@@ -387,8 +420,33 @@ export class NodeLease {
     };
   }
 
-  async acquire(): Promise<AcquireAnswer> {
-    return parseAcquire(this.node, await this.run(acquireScript(this.timing, this.record)));
+  async acquire(verifyKernelInstall?: LeaseCandidate['verifyKernelInstall']): Promise<AcquireAnswer> {
+    const answer = await this.run(acquireScript(this.timing, this.record, verifyKernelInstall ? true : undefined));
+    const parsed = lines(answer);
+    const completed = parsed.find(line => line.startsWith('KERNEL-COMPLETED\t'));
+    if (!verifyKernelInstall || !completed) return parseAcquire(this.node, answer);
+    refusalIn(this.node, parsed);
+    const lapsed = parsed.find(line => line.startsWith('LAPSED '));
+    const previous = lapsed && tagged(lapsed, 'LAPSED').record;
+    const record = completed.slice('KERNEL-COMPLETED\t'.length);
+    let proof: Partial<{ schema: number; kind: string; token: string; id: string; timeoutMs: number; command: string; scope: string }> | null;
+    try { proof = JSON.parse(record); }
+    catch { throw new LeaseUnavailableError(this.node, 'the completed kernel command identity is unreadable'); }
+    try {
+      const digest = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+      if (!previous || proof?.schema !== 2 || proof.kind !== 'kernel-install' || proof.token !== previous.token ||
+          typeof proof.id !== 'string' || !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(proof.id) ||
+          typeof proof.timeoutMs !== 'number' || !Number.isSafeInteger(proof.timeoutMs) || proof.timeoutMs < 1 || proof.timeoutMs > 86_400_000 ||
+          !digest(proof.command) || !digest(proof.scope))
+        throw Error('missing command identity or matching previous lease');
+      await verifyKernelInstall(proof.scope);
+      // Recheck both locks, the lease age, the exact intent and the completion
+      // witness after the read-only filesystem and selection inspection.
+      return parseAcquire(this.node, await this.run(acquireScript(this.timing, this.record, { record, token: previous.token })));
+    } catch (error) {
+      if (error instanceof LeaseUnavailableError) throw error;
+      throw new LeaseUnavailableError(this.node, 'the completed kernel installation could not be reconciled: ' + (error as Error).message);
+    }
   }
 
   /**
@@ -444,7 +502,9 @@ export class NodeLease {
     );
   }
 
-  guard(command: string, timeoutMs?: number): string { return guardScript(this.timing, this.record.token, command, timeoutMs); }
+  guard(command: string, timeoutMs?: number, kernelInstallScope?: string): string {
+    return guardScript(this.timing, this.record.token, command, timeoutMs, kernelInstallScope);
+  }
 
   async release(): Promise<ReleaseAnswer> {
     if (this.timer) clearInterval(this.timer);
@@ -464,6 +524,8 @@ export interface LeaseCandidate {
    */
   machine?: string;
   run: LeaseRunner;
+  /** Only a passive Fleet plan may verify the effect of a witnessed kernel installation. */
+  verifyKernelInstall?(scope: string): Promise<void>;
 }
 
 export interface HeldLeases {
@@ -472,7 +534,7 @@ export interface HeldLeases {
   /** Confirm with the node before a step that changes it; throws if not ours. */
   confirm(node: string, step: string): Promise<void>;
   /** Host-side exclusion and token validation for the entire remote command. */
-  guard(node: string, command: string, timeoutMs?: number): string;
+  guard(node: string, command: string, timeoutMs?: number, kernelInstallScope?: string): string;
   /** Nodes that could not be reached to lease them, with the reason. */
   readonly unreachable: ReadonlyMap<string, string>;
 }
@@ -544,7 +606,7 @@ async function acquireAndDeploy<T>(
       const lease = new NodeLease(candidate.node, candidate.run, stack, timing);
       let answer: AcquireAnswer;
       try {
-        answer = await lease.acquire();
+        answer = await lease.acquire(candidate.verifyKernelInstall);
       } catch (err) {
         if (err instanceof LeaseUnavailableError) throw err;
         unreachable.set(candidate.node, (err as Error).message);
@@ -582,10 +644,10 @@ async function acquireAndDeploy<T>(
         if (!lease) throw new Error(`Refusing ${step} on ${node}: this deployment does not hold its lease`);
         await lease.confirm(step);
       },
-      guard: (node, command, timeoutMs) => {
+      guard: (node, command, timeoutMs, kernelInstallScope) => {
         const lease = held.get(node);
         if (!lease) throw new Error(`Refusing remote command on ${node}: this deployment does not hold its lease`);
-        return lease.guard(command, timeoutMs);
+        return lease.guard(command, timeoutMs, kernelInstallScope);
       },
       unreachable,
     });

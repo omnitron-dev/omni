@@ -33,7 +33,7 @@ async function fixture(name, commit) {
   await fs.writeFile(path.join(pkg, 'package.json'), '{"type":"module"}');
   const build = { commit, dirty: false, builtAt: '2026-01-01T00:00:00.000Z' };
   await fs.writeFile(path.join(compiled, 'BUILD.json'), JSON.stringify(build));
-  await fs.writeFile(path.join(compiled, 'daemon/daemon-entry.js'), 'console.log(' +
+  await fs.writeFile(path.join(compiled, 'daemon/daemon-entry.js'), 'if(process.env.FIXTURE_OBSERVE)throw Error("Observation executed candidate code");console.log(' +
     JSON.stringify(JSON.stringify({ protocol: 1, build })) + ')');
   // Real dependency closures contain executable helpers with group/other bits.
   // Their exact bits participate in the sealed digest even inside a private inbox.
@@ -87,7 +87,7 @@ try {
   const cleanEnv = { ...process.env, OMNITRON_HOME: home };
   delete cleanEnv.NODE_PATH;
   delete cleanEnv.NODE_OPTIONS;
-  const call = async (phase, capability = 1) => {
+  const call = async (phase, capability = 1, revision) => {
     const file = phase === 'install' ? await fs.open(remoteFile, 'r') : null;
     try {
       // The received tree and registry share a filesystem. This fixture has
@@ -99,8 +99,9 @@ try {
             throw Error('Fleet tried to copy the entire extracted tree again');
           return originalCopy(from, ...args);
         };`;
-      const result = spawnSync(selected.execPath, ['--input-type=module', '-e', 'process.umask(0o077);\n' + singleCopy + '\n' + receiver, phase, registry, selected.runtimeHash, JSON.stringify(entry)], {
-        encoding: 'utf8', stdio: [file?.fd ?? 'ignore', 'pipe', 'pipe'], env: { ...cleanEnv, FIXTURE_HANDOFF: String(capability) },
+      const result = spawnSync(selected.execPath, ['--input-type=module', '-e', 'process.umask(0o077);\n' + singleCopy + '\n' + receiver, phase, registry, selected.runtimeHash, JSON.stringify(entry), ...(revision === undefined ? [] : [String(revision)])], {
+        encoding: 'utf8', stdio: [file?.fd ?? 'ignore', 'pipe', 'pipe'],
+        env: { ...cleanEnv, FIXTURE_HANDOFF: String(capability), ...(phase === 'observe' && { FIXTURE_OBSERVE: '1' }) },
       });
       if (result.status !== 0) throw Error(result.stderr || String(result.error));
       return JSON.parse(result.stdout);
@@ -111,6 +112,9 @@ try {
     await exerciseKernelSSH({ sdk, home, previous: selected, entry, installation, before });
   } else {
     await assert.rejects(call('prepare', 0), /kernelHandoff@1/);
+    assert.deepEqual(await call('observe'), { installed: false, artifact: entry.artifact, revision: before.revision });
+    const inbox = path.join(registry, '.incoming-' + entry.artifact);
+    await assert.rejects(fs.stat(inbox), { code: 'ENOENT' });
     assert.equal((await call('prepare')).installed, false);
     await fs.copyFile(archive, remoteFile);
     await fs.chmod(remoteFile, 0o600);
@@ -121,7 +125,18 @@ try {
     assert.equal((await call('prepare')).installed, false);
     await fs.copyFile(archive, remoteFile);
     await fs.chmod(remoteFile, 0o600);
-    assert.deepEqual(await call('install'), { installed: true, artifact: entry.artifact });
+    await assert.rejects(call('install', 1, before.revision + 1), /selection changed/);
+    assert.deepEqual(await call('install', 1, before.revision), { installed: true, artifact: entry.artifact });
+    await fs.mkdir(inbox, { mode: 0o700 });
+    await fs.writeFile(path.join(inbox, 'unpublished'), 'preserve');
+    assert.deepEqual(await call('observe'), { installed: true, artifact: entry.artifact, revision: before.revision });
+    assert.equal(await fs.readFile(path.join(inbox, 'unpublished'), 'utf8'), 'preserve');
+    const helper = path.join(installation.releasePath(entry.artifact), 'packages/0/dist/helper.sh');
+    const sealed = await fs.readFile(helper);
+    try {
+      await fs.appendFile(helper, '# changed\n');
+      await assert.rejects(call('observe'), /changed after sealing/);
+    } finally { await fs.writeFile(helper, sealed); }
     assert.equal((await call('prepare')).installed, true);
     // The real registry survives an exited installer. A remote owner check
     // must report its PID before attempting to talk to the serving daemon.
@@ -131,6 +146,7 @@ try {
        const r=await RuntimeInstallation.open(${JSON.stringify(home)},{existing:true});
        await r.exclusive(()=>process.exit(0));`], { env: cleanEnv });
     assert.equal(leaseHolder.status, 0);
+    await assert.rejects(call('observe'), /unsettled lease/);
     const { commandFailure } = await sdk('execution/command-failure');
     const observer = 'const commandFailure=' + commandFailure.toString() + ';\n' +
       await fs.readFile(path.join(dist, '../data/operations/managed-kernel.mjs'), 'utf8');
@@ -147,6 +163,7 @@ try {
   assert.equal((await installation.artifact(entry.artifact)).build.commit, next.commit);
   assert.equal((await fs.stat(path.join(installation.releasePath(entry.artifact), 'packages/0/dist/helper.sh'))).mode & 0o111, 0o111);
   console.log('Verified native installation, unchanged selection, transfer corruption, repeat staging and guardian capability.');
+  if (!sshFixture) console.log('Read-only observation preserved the inbox and rejected a changed tree or unsettled registry without executing the candidate.');
 } finally {
   await installation?.close();
   await fs.rm(work, { recursive: true, force: true });

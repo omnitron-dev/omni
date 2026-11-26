@@ -805,6 +805,7 @@ export class NodeManagerService extends EventEmitter {
 
     const ssh = await this.nodeToSshTarget(node);
     const target: import('./remote-deployer.service.js').DeployTarget = {
+      registrationId: node.id,
       host: ssh.host,
       label: node.name,
       daemonPort: node.daemonPort ?? 9700,

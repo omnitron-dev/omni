@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { commandFailure } from '../../src/execution/command-failure.js';
 import { kernelStageFailure, stageCatalogRuntime } from '../../src/services/kernel-distribution.js';
+import * as kernelCatalog from '../../src/services/kernel-catalog.js';
+import * as kernelDistribution from '../../src/services/kernel-distribution.js';
+import { RemoteDeployer } from '../../src/services/remote-deployer.service.js';
 import { backendHandoffAdmissionForApply } from '../../src/daemon/backend-handoff-types.js';
 import { assertKernelHandoffFence } from '../../src/daemon/backend-upgrade.js';
 import { activateManagedTarget, planManagedRollout, reconcileManagedTarget,
@@ -159,6 +162,62 @@ it('rejects an SSH alias of the coordinating owner before staging or uploading a
   expect(sender.uploadToNode).not.toHaveBeenCalled();
 });
 
+
+it('verifies a completed install only against its original recipient, owner, catalog and selection', async () => {
+  const target = { host: 'receiver', registrationId: 'registered-target', expectedHostFingerprint: 'pin' };
+  const managed = { platform: 'linux', arch: 'x64', nodeVersion: 'v22.0.0', ownerId: 'owner', ownerPid: 9,
+    ownerArtifact: previous, backendArtifact: previous, backendPid: 10 };
+  const bundle = { root: '/instance/runtime/releases/' + previous + '/packages/0', version: '1', commit, managed,
+    applicationRuntime: { execution: { epoch: 7 } } };
+  const entry = { commit, ...managed, artifact: candidate, archive: 'f'.repeat(64), bytes: 8192 };
+  const catalog = vi.spyOn(kernelCatalog, 'resolveKernelBuild').mockResolvedValue({ entry, archive: '/catalog/runtime.tgz' });
+  const receipt = (installed: boolean, revision: number) => ({ code: 0, stderr: '', stdout: JSON.stringify({ installed, revision, artifact: candidate }) });
+  const readFromNode = vi.fn<RemoteDeployer['readFromNode']>()
+    .mockResolvedValueOnce(receipt(false, 5)).mockResolvedValueOnce({ code: 0, stderr: '', stdout: 'absent' })
+    .mockResolvedValueOnce(receipt(true, 5)).mockResolvedValueOnce({ code: 0, stderr: '', stdout: '' });
+  const sender = { inspectInstalledBundle: vi.fn().mockResolvedValue(bundle), readFromNode, uploadToNode: vi.fn() };
+  try {
+    expect(await stageCatalogRuntime(sender, target, commit)).toBe(candidate);
+    const scope = readFromNode.mock.calls[2]![3]!;
+    expect(scope).toMatch(/^[a-f0-9]{64}$/);
+    expect(readFromNode.mock.calls.filter(call => call[3] !== undefined)).toHaveLength(1);
+    expect(sender.uploadToNode).toHaveBeenCalledTimes(1);
+    readFromNode.mockReset().mockResolvedValue(receipt(true, 5));
+    expect(await stageCatalogRuntime(sender, target, commit, undefined, scope)).toBe(candidate);
+    await expect(stageCatalogRuntime(sender, { ...target, registrationId: 'another-id' }, commit, undefined, scope)).rejects.toThrow('differs');
+    await expect(stageCatalogRuntime(sender, { ...target, expectedHostFingerprint: 'another-key' }, commit, undefined, scope)).rejects.toThrow('differs');
+    sender.inspectInstalledBundle.mockResolvedValueOnce({ ...bundle, managed: { ...managed, ownerId: 'replacement' } });
+    await expect(stageCatalogRuntime(sender, target, commit, undefined, scope)).rejects.toThrow('differs');
+    sender.inspectInstalledBundle.mockResolvedValueOnce({ ...bundle, applicationRuntime: { execution: { epoch: 8 } } });
+    await expect(stageCatalogRuntime(sender, target, commit, undefined, scope)).rejects.toThrow('differs');
+    catalog.mockResolvedValueOnce({ entry: { ...entry, archive: '6'.repeat(64) }, archive: '/catalog/runtime.tgz' });
+    await expect(stageCatalogRuntime(sender, target, commit, undefined, scope)).rejects.toThrow('differs');
+    for (const observation of [receipt(false, 5), receipt(true, 6)]) {
+      readFromNode.mockResolvedValueOnce(observation);
+      await expect(stageCatalogRuntime(sender, target, commit, undefined, scope)).rejects.toThrow('differs');
+    }
+    expect(readFromNode).toHaveBeenCalledTimes(8);
+    expect(readFromNode.mock.calls.every(call => call[3] === undefined)).toBe(true);
+    expect(sender.uploadToNode).toHaveBeenCalledTimes(1);
+  } finally { catalog.mockRestore(); }
+});
+
+it('revalidates administrator authority after recovery inspection before clearing the node fence', async () => {
+  const target = { host: 'receiver', expectedHostFingerprint: 'pin' };
+  const driver = new RemoteDeployer({} as never, {} as never);
+  const scope = 'a'.repeat(64);
+  const observed = vi.spyOn(kernelDistribution, 'stageCatalogRuntime').mockResolvedValue(candidate);
+  const authority = vi.fn(async () => { throw Error('Session revoked'); });
+  vi.spyOn(driver, 'underLease').mockImplementation(async (_target, _purpose, work, verify) => {
+    await verify!(scope);
+    return work();
+  });
+  try {
+    await expect(driver.inspectManagedRollout(target, commit, { stage: true, beforeStage: authority })).rejects.toThrow('Session revoked');
+    expect(observed).toHaveBeenCalledExactlyOnceWith(driver, target, commit, undefined, scope);
+    expect(authority).toHaveBeenCalledTimes(1);
+  } finally { observed.mockRestore(); }
+});
 
 it('retains the last reported staging step and actual exit status after an interrupted install', () => {
   const stderr = ['omnitron.kernel.stage extract', 'omnitron.kernel.stage durable-publication',

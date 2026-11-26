@@ -211,6 +211,29 @@ describe('durable managed fleet kernel controller', () => {
     expect(service.start(plan.id).state).toBe('succeeded');
   });
 
+  it.each([false, true])('keeps an interrupted stage request bound to its original recipient (legacy %s)', async legacy => {
+    const { service, observer, nodes, driver, proof, store } = fixture();
+    const gate = Promise.withResolvers<ManagedRolloutObservation>();
+    driver.inspectManagedRollout.mockImplementationOnce(() => gate.promise);
+    const request = await service.plan(commit, ['a'], undefined, true);
+    await vi.waitFor(() => expect(driver.inspectManagedRollout).toHaveBeenCalledTimes(1));
+    const key = recordKey(request.id);
+    const admitted = store.kvGetSync<{ stageEndpoints?: (string | null)[]; writer: { token: string; pid: number; started: number; birth: null } }>(key)!;
+    expect(admitted.stageEndpoints?.[0]).toContain('pin-a');
+    expect(JSON.stringify(admitted)).not.toContain('must-not-persist');
+    if (legacy) delete admitted.stageEndpoints;
+    admitted.writer = { token: 'cccccccc-cccc-4ccc-accc-cccccccccccc', pid: process.pid, started: performance.timeOrigin - 1000, birth: null };
+    store.kvSetSync(key, admitted);
+    nodes.nodeToDeployTarget.mockResolvedValue({ host: 'replacement', expectedHostFingerprint: 'pin-new' });
+    await observer.plan(commit, ['a'], request.id, true);
+    await vi.waitFor(() => expect(observer.get(request.id)?.state).toBe('blocked'));
+    expect(observer.get(request.id)?.targets[0]?.reason).toMatch(legacy ? /no recorded recipient/ : /endpoint changed/);
+    expect(driver.inspectManagedRollout).toHaveBeenCalledTimes(1);
+    gate.resolve(proof('a'));
+    await vi.waitFor(() => expect(service.activeCount()).toBe(0));
+    expect(driver.activateManagedRollout).not.toHaveBeenCalled();
+  });
+
   it('refuses an endpoint rebinding before dispatch and stops immediately after a confirmed rollback', async () => {
     const { service, switchRuntime, observer, driver, nodes } = fixture();
     const plan = await ready(service, commit);

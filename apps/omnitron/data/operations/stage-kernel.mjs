@@ -6,11 +6,11 @@ import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const [phase, registry, current, receipt] = process.argv.slice(1);
+const [phase, registry, current, receipt, expectedRevision] = process.argv.slice(1);
 const build = JSON.parse(receipt);
 const progress = name => process.stderr.write('omnitron.kernel.stage ' + name + '\n');
 const sha256 = /^[a-f0-9]{64}$/;
-if (!['prepare', 'install'].includes(phase) || !sha256.test(current) || !sha256.test(build.artifact) ||
+if (!['prepare', 'install', 'observe'].includes(phase) || !sha256.test(current) || !sha256.test(build.artifact) ||
     !sha256.test(build.archive) || !/^[a-f0-9]{40}$/.test(build.commit) || !Number.isSafeInteger(build.bytes) ||
     build.bytes <= 0 || build.bytes > 2 * 1024 ** 3 || build.platform !== process.platform ||
     build.arch !== process.arch || build.nodeVersion !== process.version) throw Error('Unexpected distribution target or artifact identity');
@@ -21,7 +21,7 @@ const home = path.dirname(registry);
 const pkg = path.join(root, 'packages/0');
 const sdk = relative => import(pathToFileURL(path.join(pkg, 'dist', relative + '.js')).href);
 const { RuntimeInstallation } = await sdk('daemon/runtime-installation');
-const { readRuntimeManifest } = await sdk('shared/runtime-artifact');
+const { inspectRuntimeArtifact, readRuntimeManifest } = await sdk('shared/runtime-artifact');
 const { checkBackendCandidate } = await sdk('daemon/backend-candidate');
 const { readBuildStamp } = await sdk('shared/build-stamp');
 const { readManagedRuntime } = await sdk('daemon/managed-runtime');
@@ -35,15 +35,30 @@ try {
     throw Error('The native guardian must be ready and support kernelHandoff@1 before distributing an update');
   }
 } finally { await channel.close(); }
-const installation = await RuntimeInstallation.open(home, { existing: true });
+const installation = phase === 'observe' ? await RuntimeInstallation.openReadOnly(home) : await RuntimeInstallation.open(home, { existing: true });
 if (!installation) throw Error('Missing runtime installation');
 const inbox = path.join(registry, '.incoming-' + build.artifact);
 const confirmSelection = () => {
-  if (installation.selection()?.current !== current || installation.activation()) throw Error('Runtime selection changed during staging');
+  const selected = phase === 'observe' ? installation.settledSelection() : installation.selection();
+  if (selected?.current !== current || installation.activation() ||
+      (expectedRevision !== undefined && String(selected.revision) !== expectedRevision)) throw Error('Runtime selection changed during staging');
+  return selected.revision;
 };
 const present = async () => {
-  try { await fs.lstat(installation.releasePath(build.artifact)); }
+  const release = installation.releasePath(build.artifact);
+  try {
+    if (!(await fs.lstat(release)).isDirectory()) throw Error('Installed runtime must be a physical directory');
+  }
   catch (error) { if (error.code === 'ENOENT') return false; throw error; }
+  if (phase === 'observe') {
+    if (await fs.realpath(release) !== release) throw Error('Installed runtime path changed');
+    const proof = await inspectRuntimeArtifact(release, build.artifact);
+    const stamp = readBuildStamp(path.join(release, 'packages/0/dist'));
+    if (stamp?.commit !== build.commit || stamp.dirty !== false || proof.manifest.nodeVersion !== build.nodeVersion)
+      throw Error('Installed runtime differs from catalog receipt');
+    await proof.assertUnchanged();
+    return true;
+  }
   const found = await installation.artifact(build.artifact);
   if (found.build.commit !== build.commit) throw Error('Installed source differs from catalog receipt');
   // A previous receiver may have stopped between rename and the parent flush.
@@ -64,13 +79,13 @@ const resetInbox = async () => {
   }
 };
 try {
-  confirmSelection();
+  const revision = confirmSelection();
   let installed = await present();
-  if (installed || phase === 'prepare') await resetInbox();
+  if (phase !== 'observe' && (installed || phase === 'prepare')) await resetInbox();
   if (!installed && phase === 'prepare') {
     await capacity(build.bytes);
     await fs.mkdir(inbox, { mode: 0o700 });
-  } else if (!installed) {
+  } else if (!installed && phase === 'install') {
     const dir = await fs.lstat(inbox), file = fstatSync(0);
     if (!dir.isDirectory() || dir.uid !== process.getuid() || dir.mode & 0o077 || await fs.realpath(inbox) !== inbox ||
         !file.isFile() || file.nlink !== 1 || ![0, process.getuid()].includes(file.uid) || file.mode & 0o077 ||
@@ -150,5 +165,6 @@ try {
       installed = true;
     } finally { await resetInbox(); }
   }
-  console.log(JSON.stringify({ installed, artifact: build.artifact }));
+  if (confirmSelection() !== revision) throw Error('Runtime selection changed during staging');
+  console.log(JSON.stringify({ installed, artifact: build.artifact, ...(phase !== 'install' && { revision }) }));
 } finally { await installation.close(); }

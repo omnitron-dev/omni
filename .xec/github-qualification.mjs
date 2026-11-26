@@ -99,13 +99,24 @@ export function githubQualification({ root, policy, run, progress, poll = delay 
     if (!context.observeOnly && saved.runId !== record.id) { saved = { ...saved, runId: record.id }; await save(saved); }
     return wait(record, context, workflow, 'workflow_dispatch');
   }
-  async function downloadNative(context, evidence, directory) {
-    const name = 'native-' + context.commit + '-' + context.node + '-' + evidence.attempt;
+  async function downloadArtifact(context, evidence, directory, name, limit) {
     const reply = await api('actions/runs/' + evidence.id + '/artifacts?per_page=100');
     const matches = reply.artifacts.filter(artifact => artifact.name === name);
-    if (matches.length !== 1 || matches[0].expired || matches[0].size_in_bytes > 2 * 1024 ** 3 ||
-        matches[0].workflow_run?.head_sha !== context.commit) throw Error('Qualified native artifact is missing, expired or ambiguous');
+    if (matches.length !== 1 || matches[0].expired || matches[0].size_in_bytes > limit ||
+        matches[0].workflow_run?.head_sha !== context.commit) throw Error('Qualified artifact is missing, expired or ambiguous');
     await run(root, 'gh', ['run', 'download', String(evidence.id), '--repo', repo, '--name', name, '--dir', directory], { timeoutMs: 10 * 60_000 });
   }
-  return { ci, native, downloadNative };
+  async function downloadNative(context, evidence, directory) {
+    return downloadArtifact(context, evidence, directory,
+      'native-' + context.commit + '-' + context.node + '-' + evidence.attempt, 2 * 1024 ** 3);
+  }
+  async function downloadPreparation(context, runId, directory) {
+    if (!/^[1-9][0-9]*$/.test(runId) || !Number.isSafeInteger(Number(runId))) throw Error('Supply a numeric GitHub preparation run ID');
+    const record = check(await api('actions/runs/' + runId), context.commit, 'prepare-npm.yml', 'workflow_dispatch');
+    if (String(record.id) !== runId || record.status !== 'completed' || record.conclusion !== 'success' ||
+        !Number.isSafeInteger(record.run_attempt) || record.run_attempt < 1) throw Error('The selected npm preparation run has not succeeded');
+    await downloadArtifact(context, record, directory,
+      'npm-' + context.version + '-' + context.commit + '-' + record.run_attempt, 512 * 1024 ** 2);
+  }
+  return { ci, native, downloadNative, downloadPreparation };
 }

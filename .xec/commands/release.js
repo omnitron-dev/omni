@@ -17,6 +17,7 @@ import { prepareVersionQualification } from '../version-qualification.js';
 import { releaseBuildContext, finalizePreparationBuild, assertReleaseProducerApi, verifyPublicationPreparation } from '../release/build.js';
 import { releasePreparation } from '../release/recipe.js';
 import { projectReleaseNotes } from '../release/notes.js';
+import { receivePreparation } from '../release/receive.js';
 
 const defaultRoot = fileURLToPath(new URL('../../', import.meta.url));
 const repository = policy.repository;
@@ -60,7 +61,8 @@ async function runRelease(version, operation, values, root = defaultRoot) {
   }
   // Refuse unsupported installed build dependencies before changing versions or
   // starting costly qualification. Sealed resume/publication does not rebuild.
-  if (operation === 'prepare') { await assertBuildDependencies(root); assertReleaseProducerApi(); }
+  const versioning = operation === 'prepare' || operation === 'prepareSource';
+  if (versioning) { await assertBuildDependencies(root); assertReleaseProducerApi(); }
   const plan = await planRelease(root, version);
   console.log(`${plan.tag} · ${plan.npmTag} · ${plan.packages.length} packages · ${plan.commit}`);
   if (plan.blockers.length) throw new Error(plan.blockers.join('\n'));
@@ -85,7 +87,7 @@ async function runRelease(version, operation, values, root = defaultRoot) {
       console.log(JSON.stringify(await qualify(), null, 2));
       return;
     }
-    if (operation === 'prepare') {
+    if (versioning) {
       if (await releaseCommand(root, 'git', ['branch', '--show-current']) !== policy.branch) {
         throw new Error('Prepare from a clean ' + policy.branch + ' branch');
       }
@@ -96,6 +98,10 @@ async function runRelease(version, operation, values, root = defaultRoot) {
       if (!sealed) await assertReleaseVersionAvailable(root, plan.packages, version, { registry: values.registry });
       await commitReleaseVersion(root, version);
       const commit = await releaseCommand(root, 'git', ['rev-parse', 'HEAD']);
+      if (operation === 'prepareSource') {
+        console.log(`Source ${commit} is ready for preparation of ${version}.`);
+        return;
+      }
       const buildContext = await releaseBuildContext(root, commit);
       const prepared = await prepareReleaseArtifacts(root, version, await releasePreparation(root, commit, buildContext));
       await finalizePreparationBuild(root, version, buildContext);
@@ -109,6 +115,12 @@ async function runRelease(version, operation, values, root = defaultRoot) {
       return;
     }
 
+    if (operation === 'receive') {
+      const { prepared } = await receivePreparation(root, plan, values.receive);
+      await ensureReleaseTag(root, version);
+      console.log(`Accepted ${prepared.artifacts.length} archives from GitHub run ${values.receive}. Publish with xec release ${version} --finish.`);
+      return;
+    }
     const { prepared, publication } = await verifyPublicationPreparation(root, version);
     if (!await assertReleaseHead(root, version)) throw new Error('Missing local release tag; finish --prepare first');
     if (operation === 'status') { console.log(JSON.stringify({ prepared, publication }, null, 2)); return; }
@@ -154,6 +166,8 @@ export function command(program, options = {}) {
     ['--list', 'List public workspaces in dependency order', 'list'],
     ['--dry-run', 'Print the release plan without preparation or publication (default)', 'plan'],
     ['--prepare', 'Commit versions, build and verify archives, then create a local tag', 'prepare'],
+    ['--prepare-source', 'Commit package versions for preparation on an independent builder', 'prepareSource'],
+    ['--receive <run-id>', 'Verify accepted archives from the GitHub npm preparation run and tag locally', 'receive'],
     ['--qualify', 'Qualify runtime activation: independent builds, CI and native transition/rollback', 'qualify'],
     ['--status', 'Recheck accepted archives and publication receipts without changing them', 'status'],
     ['--finish', 'Verify accepted archives and npm access, push the tag and publish', 'finish'],

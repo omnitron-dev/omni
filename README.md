@@ -64,6 +64,8 @@ pnpm exec xec release <version> --prepare
 pnpm exec xec release <version> --finish
 ```
 
+To prepare on GitHub Linux, run `pnpm exec xec release <version> --prepare-source` and push the version commit to `main`. Dispatch the read-only **Prepare npm archives** workflow with that version and full SHA. On the publisher, run `pnpm exec xec release <version> --receive <run-id>`, then `--finish` from the same checkout. The workflow runs the ordinary producer and consumer checks. The publisher verifies the successful workflow, exact source and archive integrity before creating its tag. Npm authentication stays on the publishing host.
+
 Preparation builds and packs once against the exact source commit. Xec retains those archives before checking three independent npm consumers: the minimal runtime, all public packages together and Lumen on its own. Rejected acceptance can retry the same producer without rebuilding or repacking. Changed source, build environment, driver or archive bytes cause refusal. The final release record appears only after acceptance and cleanup succeed.
 
 `xec release-build`, `xec check-packages` and `xec reproduce` implement these checks. The runtime and Lumen each use an ordinary `npm install`. The complete SDK generates a fresh lockfile and installs it with `npm ci`. Each consumer verifies the installed archives and audits its dependencies. Lumen also runs SSR, MCP and browser checks against its installation.

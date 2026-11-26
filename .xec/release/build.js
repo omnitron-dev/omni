@@ -277,7 +277,17 @@ async function publicationReceipts(root, prepared, identity) {
 export async function verifyPublicationPreparation(root, version, run = releaseCommand) {
   const prepared = await releaseOps.loadPreparedRelease(root, version, run);
   const receipt = path.join(preparationBuildDirectory(root, prepared.commit), 'PREPARATION.json');
-  const proof = await json(receipt), identity = proof.identity;
+  // A publishing host receives only the archives and the portable producer
+  // receipt. Runtime qualification still requires the original build tree.
+  const portable = path.join(root, '.release-artifacts', version, prepared.commit, 'PREPARATION.json');
+  const local = await fs.readFile(receipt).catch(error => { if (error.code !== 'ENOENT') throw error; });
+  const bytes = await fs.readFile(portable).catch(error => {
+    if (error.code === 'ENOENT' && local) return local;
+    throw error;
+  });
+  if (local) assert.ok(local.equals(bytes), 'Portable preparation differs from the local acceptance');
+  const proof = JSON.parse(bytes);
+  const identity = proof.identity;
   assert.equal(proof.kind, 'clean-package-preparation');
   assert.equal(proof.consumerVerified, true, 'Preparation consumer acceptance is incomplete');
   assert.equal(identity?.schema, 2, 'Accepted producer identity is missing');

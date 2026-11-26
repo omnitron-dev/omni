@@ -59,7 +59,7 @@ test('release uses native generated help, conflict checks and strict arguments',
   assert.match(output.join(''), /Npm acceptance does not qualify a runtime transition/);
   assert.doesNotMatch(output.join(''), /\[args\.\.\.\]/);
   for (const args of [
-    ['--preapre'], [version, 'extra'], [version, '--prepare', '--finish'],
+    ['--preapre'], [version, 'extra'], [version, '--prepare', '--finish'], [version, '--receive', '13', '--finish'],
     [version, '--registry'], [version, '--skip-publish'], [version, '--list-packages'],
   ]) await assert.rejects(releaseProgram().parseAsync(['release', ...args], { from: 'user' }),
     error => error.code?.startsWith('commander.'));
@@ -181,11 +181,18 @@ test('release plans, seals, pushes one tag and resumes a partial registry public
   const bin = path.join(temp, 'bin');
   await fs.mkdir(bin);
   const githubState = path.join(temp, 'github-release');
-  await fs.writeFile(path.join(bin, 'gh'), `#!/usr/bin/env node
+  await fs.writeFile(path.join(bin, 'gh'), `#!${process.execPath}
 const fs = require('node:fs');
 const [cmd, op, tag] = process.argv.slice(2);
 const state = process.env.FIXTURE_GITHUB_STATE;
-if (cmd === 'api') { if (fs.existsSync(state)) console.log(fs.readFileSync(state, 'utf8')); }
+if (cmd === 'api' && op.endsWith('/actions/runs/7101')) console.log(fs.readFileSync(state + '.run', 'utf8'));
+else if (cmd === 'api' && op.endsWith('/actions/runs/7101/artifacts?per_page=100')) console.log(fs.readFileSync(state + '.artifacts', 'utf8'));
+else if (cmd === 'run' && op === 'download' && tag === '7101') {
+  const expected = JSON.parse(fs.readFileSync(state + '.artifacts')).artifacts[0].name;
+  if (process.argv[process.argv.indexOf('--name') + 1] !== expected) process.exit(1);
+  fs.cpSync(state + '.batch', process.argv[process.argv.indexOf('--dir') + 1], { recursive: true });
+}
+else if (cmd === 'api') { if (fs.existsSync(state)) console.log(fs.readFileSync(state, 'utf8')); }
 else if (cmd === 'release' && op === 'create' && process.argv.includes('--verify-tag')) {
   fs.writeFileSync(state, tag, { flag: 'wx' });
   fs.copyFileSync(process.argv[process.argv.indexOf('--notes-file') + 1], state + '.body');
@@ -318,6 +325,9 @@ for (const name of ['base', 'client']) writeFileSync('packages/' + name + '/inde
   assert.equal(await git('rev-parse', 'HEAD'), before);
   assert.equal(await git('status', '--porcelain'), '');
   assert.equal(await fs.stat(path.join(workspace, '.release-artifacts')).catch(() => null), null);
+  await release('--prepare-source', '--registry', registry);
+  assert.equal(await fs.stat(buildRecord).catch(() => null), null);
+  await assert.rejects(git('rev-parse', 'refs/tags/v' + version));
   await assert.rejects(release('--prepare', '--registry', registry), error => error.code === 1 &&
     `${error.stdout}\n${error.stderr}`.includes('dependency-preflight') &&
     `${error.stdout}\n${error.stderr}`.includes(`peerDependencies.${first}: "^0.1.0" must be workspace:*`));
@@ -365,8 +375,28 @@ for (const name of ['base', 'client']) writeFileSync('packages/' + name + '/inde
   const revised = await supersedeDraft(next, version, workspace, async (cwd, executable, args) => (await exec(executable, args, cwd)).stdout.trim());
   assert.equal(revised.commit, commit);
   await assert.rejects(git('rev-parse', 'refs/tags/v' + version));
-  // Restore the preserved object only inside this fixture to continue the publication acceptance below.
-  await git('update-ref', 'refs/tags/v' + version, await git('rev-parse', revised.archived));
+  // Move the builder's output away. The publishing host has only reviewed source
+  // and a GitHub artifact, with no local runtime, acceptance tree or tag.
+  await fs.rename(producerDirectory, githubState + '.batch');
+  const proof = path.join(workspace, '.release-artifacts/qualification', commit, 'preparation/PREPARATION.json');
+  const portable = path.join(githubState + '.batch', 'PREPARATION.json');
+  await fs.rename(proof, portable);
+  const workflow = { id: 7101, head_sha: commit, head_branch: 'main', path: '.github/workflows/prepare-npm.yml',
+    event: 'workflow_dispatch', status: 'completed', conclusion: 'success', run_attempt: 2 };
+  const artifact = { name: 'npm-' + version + '-' + commit + '-2', size_in_bytes: 4096, workflow_run: { head_sha: commit } };
+  await fs.writeFile(githubState + '.artifacts', JSON.stringify({ artifacts: [artifact] }));
+  await fs.writeFile(githubState + '.run', JSON.stringify({ ...workflow, head_sha: before }));
+  await assert.rejects(release('--receive', '7101'), /CI identity differs/);
+  await fs.writeFile(githubState + '.run', JSON.stringify(workflow));
+  const accepted = await fs.readFile(portable);
+  await fs.writeFile(portable, JSON.stringify({ ...JSON.parse(accepted), consumerVerified: false }));
+  await assert.rejects(release('--receive', '7101'), /consumer acceptance is incomplete/);
+  await assert.rejects(fs.stat(producerDirectory), { code: 'ENOENT' });
+  await assert.rejects(git('rev-parse', 'refs/tags/v' + version));
+  await fs.writeFile(portable, accepted);
+  await release('--receive', '7101');
+  await release('--receive', '7101');
+  assert.equal(await git('rev-parse', 'refs/tags/v' + version + '^{commit}'), commit);
   const manifest = JSON.parse(await fs.readFile(path.join(workspace, '.release-artifacts', version, commit, 'release.json')));
   assert.deepEqual(manifest.artifacts.map(p => p.name), [first, second]);
   for (const artifact of manifest.artifacts) {

@@ -7,37 +7,19 @@
  */
 
 import { Module } from '@omnitron-dev/titan/decorators';
-import type { DynamicModule, ProviderDefinition, InjectionToken, Provider } from '@omnitron-dev/titan/nexus';
+import type { DynamicModule, ProviderDefinition, InjectionToken } from '@omnitron-dev/titan/nexus';
 import { RateLimitService } from './ratelimit.service.js';
 import {
   RATE_LIMIT_SERVICE_TOKEN,
   RATE_LIMIT_OPTIONS_TOKEN,
   RATE_LIMIT_STORAGE_TOKEN,
-  DEFAULT_RATE_LIMIT_PREFIX,
+  DEFAULT_RATE_LIMIT_OPTIONS,
 } from './ratelimit.tokens.js';
 import type { IRateLimitModuleOptions, IRateLimitModuleAsyncOptions } from './ratelimit.types.js';
 import { MemoryRateLimitStorage, RedisRateLimitStorage } from './ratelimit.storage.js';
-import { getRedisClientToken } from '@omnitron-dev/titan-redis';
+import { getRedisClientToken, type IRedisClient } from '@omnitron-dev/titan-redis';
 import { LOGGER_TOKEN } from '@omnitron-dev/titan/module/logger';
 import type { ILogger } from '@omnitron-dev/titan/types';
-
-/**
- * Default rate limit module options
- */
-const DEFAULT_OPTIONS: IRateLimitModuleOptions = {
-  enabled: true,
-  strategy: 'sliding-window',
-  keyPrefix: DEFAULT_RATE_LIMIT_PREFIX,
-  defaultLimit: 100,
-  defaultWindowMs: 60000,
-  burstLimit: 0,
-  tokenRefillRate: 100,
-  queueEnabled: false,
-  maxQueueSize: 1000,
-  queueTimeoutMs: 5000,
-  storageType: 'memory',
-  isGlobal: false,
-};
 
 /**
  * Titan Rate Limit Module
@@ -48,7 +30,7 @@ const DEFAULT_OPTIONS: IRateLimitModuleOptions = {
  * - Multiple algorithms: token bucket, sliding window, fixed window
  * - Pluggable storage: in-memory or Redis
  * - Decorator support for method-level rate limiting
- * - Auto-detection of Redis availability
+ * - Explicit Redis storage for a shared quota
  * - Comprehensive statistics tracking
  *
  * @example
@@ -118,182 +100,46 @@ export class TitanRateLimitModule {
    * Configure rate limit module with static options
    */
   static forRoot(options: IRateLimitModuleOptions = {}): DynamicModule {
-    const mergedOptions = { ...DEFAULT_OPTIONS, ...options };
-
-    const providers: Array<[InjectionToken<unknown>, ProviderDefinition<unknown>] | Provider<unknown>> = [
-      [
-        RATE_LIMIT_OPTIONS_TOKEN,
-        {
-          useValue: mergedOptions,
-        },
-      ],
-      [
-        RATE_LIMIT_STORAGE_TOKEN,
-        {
-          useFactory: (...args: unknown[]): MemoryRateLimitStorage | RedisRateLimitStorage => {
-            // Auto-detect storage type
-            const storageType = mergedOptions.storageType;
-            const logger = args[args.length - 1] as ILogger | undefined;
-
-            // If Redis is requested, try to get Redis client
-            if (storageType === 'redis') {
-              try {
-                const redisClient = args[0];
-                if (redisClient) {
-                  return new RedisRateLimitStorage(redisClient as any, {
-                    // Empty, deliberately. `RateLimitService.buildKey` already
-                    // puts `keyPrefix` at the front of every key it hands to a
-                    // storage, and the storage prepends its own — with no
-                    // separator, because its default `'ratelimit:'` carries a
-                    // trailing colon that a configured prefix does not.
-                    //
-                    // Passing the prefix here applied it twice. Observed on a
-                    // running deployment, with `keyPrefix: 'main:ratelimit'`:
-                    //
-                    //   main:ratelimitmain:ratelimit:default:Auth@1.0.0.signin:anon
-                    //
-                    // The limits still worked — the doubling is consistent —
-                    // but nothing could find them: a `SCAN main:ratelimit:*`,
-                    // which is how an operator inspects or clears a limit,
-                    // matches none of them. The memory storage does not
-                    // prefix at all, so the same limit was keyed differently
-                    // depending on which storage was in use.
-                    //
-                    // The service owns the key. A storage stores what it is
-                    // given. The option stays for callers who construct the
-                    // storage directly and have no service in front of it.
-                    keyPrefix: '',
-                    logger,
-                  });
-                }
-              } catch {
-                // Fall back to memory storage if Redis not available
-                logger?.warn('[RateLimitModule] Redis not available, falling back to memory storage');
-              }
-            }
-
-            // Use memory storage
-            return new MemoryRateLimitStorage({
-              cleanupIntervalMs: 60000,
-              maxKeys: 10000,
-            });
-          },
-          inject: mergedOptions.storageType === 'redis' ? [getRedisClientToken(), LOGGER_TOKEN] : [LOGGER_TOKEN],
-        },
-      ],
-      [
-        RATE_LIMIT_SERVICE_TOKEN,
-        {
-          useClass: RateLimitService,
-        },
-      ],
-    ];
-
-    const exports: InjectionToken<unknown>[] = [
-      RATE_LIMIT_SERVICE_TOKEN,
-      RATE_LIMIT_OPTIONS_TOKEN,
-      RATE_LIMIT_STORAGE_TOKEN,
-    ];
-
-    const result: DynamicModule = {
-      module: TitanRateLimitModule,
-      providers,
-      exports,
-    };
-
-    if (mergedOptions.isGlobal) {
-      result.global = true;
-    }
-
-    return result;
+    return this.definition({ useValue: { ...DEFAULT_RATE_LIMIT_OPTIONS, ...options } }, options.isGlobal, undefined,
+      options.storageType === 'redis');
   }
 
-  /**
-   * Configure rate limit module with async options factory
-   */
+  /** Configure the module after its injected settings become available. */
   static forRootAsync(options: IRateLimitModuleAsyncOptions): DynamicModule {
-    const providers: Array<[InjectionToken<unknown>, ProviderDefinition<unknown>] | Provider<unknown>> = [
-      [
-        RATE_LIMIT_OPTIONS_TOKEN,
-        {
-          useFactory: async (...args: unknown[]): Promise<IRateLimitModuleOptions> => {
-            if (options.useFactory) {
-              const result = await options.useFactory(...args);
-              return { ...DEFAULT_OPTIONS, ...result };
-            }
-            return DEFAULT_OPTIONS;
-          },
-          inject: (options.inject ?? []) as InjectionToken<unknown>[],
-        },
-      ],
-      [
-        RATE_LIMIT_STORAGE_TOKEN,
-        {
-          useFactory: async (...args: unknown[]): Promise<MemoryRateLimitStorage | RedisRateLimitStorage> => {
-            // Get options (first arg is the options from factory above)
-            const opts = args[0] as IRateLimitModuleOptions;
-            const logger = args[2] as ILogger | undefined;
-            const storageType = opts?.storageType ?? 'memory';
-
-            // If Redis is requested, try to get Redis client
-            if (storageType === 'redis') {
-              try {
-                // Redis client is the second argument (after options)
-                const redisClient = args[1];
-                if (redisClient) {
-                  return new RedisRateLimitStorage(redisClient as any, {
-                    // Empty for the same reason as the `forRoot` branch above:
-                    // `RateLimitService.buildKey` has already put the prefix
-                    // at the front. This is the branch downstream actually takes —
-                    // `forRootAsync` — which is why the live keys still read
-                    // `main:ratelimitmain:ratelimit:…` after the other one was
-                    // fixed, and why the probe was worth running.
-                    keyPrefix: '',
-                    logger,
-                  });
-                }
-              } catch {
-                // Fall back to memory storage if Redis not available
-                logger?.warn('[RateLimitModule] Redis not available, falling back to memory storage');
-                // storageType would be 'memory' — falls through to memory storage below
-              }
-            }
-
-            // Use memory storage
-            return new MemoryRateLimitStorage({
-              cleanupIntervalMs: 60000,
-              maxKeys: 10000,
-            });
-          },
-          inject: [RATE_LIMIT_OPTIONS_TOKEN, getRedisClientToken(), LOGGER_TOKEN],
-        },
-      ],
-      [
-        RATE_LIMIT_SERVICE_TOKEN,
-        {
-          useClass: RateLimitService,
-        },
-      ],
-    ];
-
-    const exports: InjectionToken<unknown>[] = [
-      RATE_LIMIT_SERVICE_TOKEN,
-      RATE_LIMIT_OPTIONS_TOKEN,
-      RATE_LIMIT_STORAGE_TOKEN,
-    ];
-
-    const result: DynamicModule = {
-      module: TitanRateLimitModule,
-      imports: (options.imports as DynamicModule['imports']) ?? [],
-      providers,
-      exports,
+    const settings: ProviderDefinition<IRateLimitModuleOptions> = {
+      useFactory: async (...args: unknown[]) => ({ ...DEFAULT_RATE_LIMIT_OPTIONS, ...await options.useFactory?.(...args) }),
+      inject: (options.inject ?? []) as InjectionToken<unknown>[],
     };
+    return this.definition(settings, options.isGlobal, options.imports ?? [], true);
+  }
 
-    if (options.isGlobal) {
-      result.global = true;
-    }
-
-    return result;
+  private static definition(
+    options: ProviderDefinition<IRateLimitModuleOptions>, global: boolean | undefined,
+    imports: DynamicModule['imports'], mayUseRedis: boolean
+  ): DynamicModule {
+    return {
+      module: TitanRateLimitModule,
+      ...(global && { global: true }),
+      ...(imports && { imports }),
+      providers: [
+        [RATE_LIMIT_OPTIONS_TOKEN, options],
+        [RATE_LIMIT_STORAGE_TOKEN, {
+          useFactory: (settings: IRateLimitModuleOptions, redis?: IRedisClient, logger?: ILogger) => {
+            if (settings.storageType === 'redis') {
+              if (!redis) throw new Error('Redis rate limiting requires a registered Titan Redis client');
+              // The service supplies the full storage key for both backends.
+              return new RedisRateLimitStorage(redis, { keyPrefix: '', logger });
+            }
+            return new MemoryRateLimitStorage({ cleanupIntervalMs: 60_000, maxKeys: 10_000 });
+          },
+          inject: mayUseRedis
+            ? [RATE_LIMIT_OPTIONS_TOKEN, { token: getRedisClientToken(), optional: true }, { token: LOGGER_TOKEN, optional: true }]
+            : [RATE_LIMIT_OPTIONS_TOKEN],
+        }],
+        [RATE_LIMIT_SERVICE_TOKEN, { useClass: RateLimitService }],
+      ],
+      exports: [RATE_LIMIT_SERVICE_TOKEN, RATE_LIMIT_OPTIONS_TOKEN, RATE_LIMIT_STORAGE_TOKEN],
+    };
   }
 }
 

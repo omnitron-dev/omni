@@ -497,6 +497,10 @@ export class MemoryRateLimitStorage implements IRateLimitStorage {
    * });
    * ```
    */
+  onDestroy(): void {
+    this.destroy();
+  }
+
   destroy(): void {
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
@@ -555,20 +559,27 @@ export class RedisRateLimitStorage implements IRateLimitStorage {
     this.keyPrefix = options.keyPrefix ?? 'ratelimit:';
     this.logger = options.logger ?? createNullLogger();
 
-    // Monitor Redis connection status
-    this.redis.on('error', (error: Error) => {
-      if (this.redisAvailable) {
-        this.logger.error({ error: error.message }, '[RedisRateLimitStorage] Redis connection error');
-        this.redisAvailable = false;
-      }
-    });
+    this.redis.on('error', this.onError);
+    this.redis.on('ready', this.onReady);
+  }
 
-    this.redis.on('ready', () => {
-      if (!this.redisAvailable) {
-        this.logger.info('[RedisRateLimitStorage] Redis connection restored');
-        this.redisAvailable = true;
-      }
-    });
+  private readonly onError = (error: Error): void => {
+    if (this.redisAvailable) this.logger.error({ error: error.message }, '[RedisRateLimitStorage] Redis connection error');
+    this.redisAvailable = false;
+  };
+
+  private readonly onReady = (): void => {
+    if (!this.redisAvailable) this.logger.info('[RedisRateLimitStorage] Redis connection restored');
+    this.redisAvailable = true;
+  };
+
+  destroy(): void {
+    this.redis.off('error', this.onError);
+    this.redis.off('ready', this.onReady);
+  }
+
+  onDestroy(): void {
+    this.destroy();
   }
 
   /**

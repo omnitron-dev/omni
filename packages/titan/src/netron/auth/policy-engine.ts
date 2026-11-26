@@ -4,6 +4,9 @@
  * @module @omnitron-dev/titan/netron/auth
  */
 
+import { createHash } from 'node:crypto';
+import { types } from 'node:util';
+import { serialize } from 'node:v8';
 import { TimedMap } from '@omnitron-dev/common';
 import { Injectable, Optional } from '../../decorators/index.js';
 import type { ILogger } from '../../modules/logger/logger.types.js';
@@ -18,6 +21,32 @@ import type {
 import { Errors } from '../../errors/index.js';
 import { CircuitBreaker } from '../../utils/resilience.js';
 import type { AuditLogger } from './audit-logger.js';
+
+/** Only cache data whose complete policy-visible contents survive serialization. */
+function isCacheableContext(context: ExecutionContext): boolean {
+  const values: unknown[] = [context];
+  const visited = new Set<object>();
+  for (let index = 0; index < values.length; index++) {
+    const value = values[index];
+    if (typeof value === 'function' || typeof value === 'symbol') return false;
+    if (value === null || typeof value !== 'object' || visited.has(value)) continue;
+    if (types.isProxy(value)) return false;
+    visited.add(value);
+    const prototype = Object.getPrototypeOf(value);
+    const keys = Reflect.ownKeys(value);
+    if (prototype === Date.prototype && keys.length === 0) continue;
+    const array = Array.isArray(value);
+    if (prototype !== (array ? Array.prototype : Object.prototype)) return false;
+    for (const key of keys) {
+      if (array && key === 'length') continue;
+      if (typeof key !== 'string' || (array && !/^(0|[1-9]\d*)$/.test(key))) return false;
+      const property = Object.getOwnPropertyDescriptor(value, key);
+      if (!property?.enumerable || !('value' in property)) return false;
+      values.push(property.value);
+    }
+  }
+  return true;
+}
 
 /**
  * Policy cache with statistics tracking
@@ -35,14 +64,18 @@ class PolicyCache {
     const value = this.cache.get(key);
     if (value) {
       this.hits++;
-      return value;
+      return structuredClone(value);
     }
     this.misses++;
     return undefined;
   }
 
   set(key: string, value: EnhancedPolicyDecision, ttl?: number): void {
-    this.cache.set(key, value, undefined, ttl);
+    try {
+      this.cache.set(key, structuredClone(value), undefined, ttl);
+    } catch (error) {
+      if (!(error instanceof Error && error.name === 'DataCloneError')) throw error;
+    }
   }
 
   delete(key: string): boolean {
@@ -207,9 +240,14 @@ export class PolicyEngine {
       trace.push({ step: 'start', timestamp: performance.now() - startTime });
     }
 
-    // Check cache
-    if (!options?.skipCache) {
-      const cacheKey = this.getCacheKey(policyName, context);
+    const policy = this.policies.get(policyName);
+    if (!policy) {
+      throw Errors.notFound('Policy', policyName);
+    }
+
+    if (options?.signal?.aborted) return { allowed: false, reason: 'Policy evaluation aborted', policyName };
+    const cacheKey = policy.cacheable === false || options?.skipCache ? undefined : this.getCacheKey(policyName, context);
+    if (cacheKey !== undefined) {
       const cached = this.policyCache.get(cacheKey);
       if (cached) {
         this.logger.debug({ policyName, cached: true }, 'Policy cache hit');
@@ -222,11 +260,6 @@ export class PolicyEngine {
       if (this.debugMode) {
         trace.push({ step: 'cache_miss', timestamp: performance.now() - startTime });
       }
-    }
-
-    const policy = this.policies.get(policyName);
-    if (!policy) {
-      throw Errors.notFound('Policy', policyName);
     }
 
     // Check circuit breaker
@@ -256,10 +289,12 @@ export class PolicyEngine {
       // Evaluate with timeout
       const timeout = options?.timeout ?? this.config?.defaultTimeout ?? 5000;
       const decision = await this.evaluateWithTimeout(
-        Promise.resolve(policy.evaluate(context)),
+        signal => policy.evaluate(context, { signal }),
         timeout,
         options?.signal
       );
+
+      if (this.policies.get(policyName) !== policy) throw Errors.notFound('Policy', policyName);
 
       // Validate decision structure
       if (!decision || typeof decision.allowed !== 'boolean') {
@@ -284,9 +319,8 @@ export class PolicyEngine {
       };
 
       // Cache successful evaluations
-      if (decision.allowed && !options?.skipCache) {
+      if (decision.allowed && cacheKey !== undefined && this.getCacheKey(policyName, context) === cacheKey) {
         const cacheTTL = options?.cacheTTL ?? this.config?.defaultCacheTTL ?? 60000;
-        const cacheKey = this.getCacheKey(policyName, context);
         this.policyCache.set(cacheKey, enhancedDecision, cacheTTL);
         if (this.debugMode) {
           trace.push({ step: 'cached', timestamp: performance.now() - startTime });
@@ -613,44 +647,34 @@ export class PolicyEngine {
     this.logger.debug('PolicyEngine destroyed');
   }
 
-  private getCacheKey(policyName: string, context: ExecutionContext): string {
-    // Create deterministic cache key using JSON to prevent delimiter collision attacks
-    // e.g., userId: "a:b" with service "c" would conflict with userId: "a" with service "b:c"
-    return JSON.stringify({
-      p: policyName,
-      u: context.auth?.userId,
-      s: context.service.name,
-      m: context.method?.name,
-      r: context.resource?.id,
-    });
+  private getCacheKey(policyName: string, context: ExecutionContext): string | undefined {
+    try {
+      if (!isCacheableContext(context)) return undefined;
+      const digest = createHash('sha256').update(serialize(context)).digest('hex');
+      return JSON.stringify({ p: policyName, u: context.auth?.userId, s: context.service.name,
+        m: context.method?.name, r: context.resource?.id, digest });
+    } catch {
+      // A context containing a stream, callback or other non-serializable input needs a live decision.
+      return undefined;
+    }
   }
 
-  private async evaluateWithTimeout<T>(promise: Promise<T>, timeout: number, signal?: AbortSignal): Promise<T> {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let abortHandler: (() => void) | undefined;
-
-    const timeoutPromise = new Promise<T>((_, reject) => {
-      timer = setTimeout(() => reject(Errors.timeout('Policy evaluation timeout', timeout)), timeout);
-      if (signal) {
-        abortHandler = () => {
-          clearTimeout(timer);
-          reject(Errors.internal('Policy evaluation aborted'));
-        };
-        signal.addEventListener('abort', abortHandler);
-      }
-    });
-
+  private async evaluateWithTimeout<T>(
+    evaluate: (signal: AbortSignal) => T | Promise<T>, timeout: number, external?: AbortSignal
+  ): Promise<T> {
+    const deadline = new AbortController();
+    const signal = external ? AbortSignal.any([external, deadline.signal]) : deadline.signal;
+    signal.throwIfAborted();
+    const timer = setTimeout(() => deadline.abort(Errors.timeout('Policy evaluation timeout', timeout)), timeout);
+    let rejectCancellation!: (error: unknown) => void;
+    const cancelled = new Promise<never>((_, reject) => { rejectCancellation = reject; });
+    const abort = () => rejectCancellation(signal.reason);
+    signal.addEventListener('abort', abort, { once: true });
     try {
-      return await Promise.race([promise, timeoutPromise]);
+      return await Promise.race([cancelled, evaluate(signal)]);
     } finally {
-      // CRITICAL: Always cleanup timer to prevent resource leak
-      if (timer !== undefined) {
-        clearTimeout(timer);
-      }
-      // Cleanup abort listener to prevent memory leak
-      if (signal && abortHandler) {
-        signal.removeEventListener('abort', abortHandler);
-      }
+      clearTimeout(timer);
+      signal.removeEventListener('abort', abort);
     }
   }
 }

@@ -491,14 +491,10 @@ describe('RateLimiter', () => {
       await limiter.consume('user-1');
       await limiter.consume('user-1');
 
-      // Next consume should throw with "queued" message
-      try {
-        await limiter.consume('user-1');
-        fail('Should have thrown');
-      } catch (error) {
-        expect(error).toBeInstanceOf(RateLimitError);
-        expect((error as Error).message).toContain('queued');
-      }
+      const granted = limiter.consume('user-1');
+      expect(limiter.getStats('user-1').currentQueueSize).toBe(1);
+      await expect(granted).resolves.toBeUndefined();
+      expect(limiter.getStats('user-1')).toMatchObject({ totalAllowed: 3, totalQueued: 1, currentQueueSize: 0 });
     });
 
     it('should process queued requests as capacity becomes available', async () => {
@@ -516,8 +512,7 @@ describe('RateLimiter', () => {
       await new Promise((resolve) => setTimeout(resolve, 700));
 
       const result = await queuedPromise;
-      // Should either be processed or have specific error message
-      expect(typeof result).toBe('string');
+      expect(result).toBe('processed');
     });
 
     it('should reject when queue is full', async () => {

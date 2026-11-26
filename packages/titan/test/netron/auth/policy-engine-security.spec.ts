@@ -301,96 +301,39 @@ describe('PolicyEngine Security Tests', () => {
   // 3. Caching Security
   // ============================================================================
   describe('Caching Security', () => {
-    it('should document cache key collision vulnerability with different roles (SECURITY NOTE)', async () => {
-      /**
-       * SECURITY VULNERABILITY DOCUMENTATION
-       *
-       * The current cache key implementation does NOT include user roles/permissions.
-       * Cache keys are generated from: policyName, userId, service, method, resource.id
-       *
-       * This means two users with the same userId but different roles will share
-       * cached authorization decisions, which could lead to privilege escalation.
-       *
-       * MITIGATION OPTIONS:
-       * 1. Include roles/permissions hash in cache key
-       * 2. Use skipCache for role-sensitive policies
-       * 3. Use very short cache TTL for RBAC policies
-       * 4. Include roles hash in resource.id field as a workaround
-       */
-      let evaluationCount = 0;
-
-      const policy: PolicyDefinition = {
-        name: 'collision-test',
-        evaluate: (context: ExecutionContext) => {
-          evaluationCount++;
-          // Allow only admin users
-          return { allowed: context.auth?.roles.includes('admin') ?? false };
+    it('re-evaluates a policy after a role or another decision input changes', async () => {
+      let evaluations = 0;
+      policyEngine.registerPolicy({
+        name: 'workspace-access',
+        evaluate: context => {
+          evaluations++;
+          return { allowed: context.auth?.roles.includes('editor') === true &&
+            context.environment?.['region'] === 'test' };
         },
+      });
+      const context: ExecutionContext = {
+        auth: { userId: 'user1', roles: ['editor'], permissions: [] },
+        service: { name: 'workspace', version: '1' }, environment: { region: 'test' },
       };
-
-      policyEngine.registerPolicy(policy);
-
-      // Two contexts with same userId but different roles
-      const adminContext: ExecutionContext = {
-        auth: { userId: 'user1', roles: ['admin'], permissions: [] },
-        service: { name: 'testService', version: '1.0.0' },
-        method: { name: 'testMethod', args: [] },
-      };
-
-      const userContext: ExecutionContext = {
-        auth: { userId: 'user1', roles: ['user'], permissions: [] },
-        service: { name: 'testService', version: '1.0.0' },
-        method: { name: 'testMethod', args: [] },
-      };
-
-      // First evaluation with admin (should cache as allowed)
-      const adminDecision = await policyEngine.evaluate('collision-test', adminContext);
-      expect(adminDecision.allowed).toBe(true);
-
-      // Second evaluation with user - VULNERABILITY: uses admin's cached result!
-      const userDecision = await policyEngine.evaluate('collision-test', userContext);
-
-      // This documents the vulnerability: user gets admin's cached decision
-      // In a secure implementation, this should be false
-      expect(userDecision.allowed).toBe(true); // BUG: Should be false!
-      expect(evaluationCount).toBe(1); // Only evaluated once due to cache
-
-      // WORKAROUND: Use skipCache for RBAC policies
-      const safeUserDecision = await policyEngine.evaluate('collision-test', userContext, { skipCache: true });
-      expect(safeUserDecision.allowed).toBe(false); // Correct behavior with skipCache
+      expect((await policyEngine.evaluate('workspace-access', context)).allowed).toBe(true);
+      expect((await policyEngine.evaluate('workspace-access', context)).allowed).toBe(true);
+      expect(evaluations).toBe(1);
+      const changedRole = { ...context, auth: { ...context.auth!, roles: ['reader'] } };
+      expect((await policyEngine.evaluate('workspace-access', changedRole)).allowed).toBe(false);
+      const changedRegion = { ...context, environment: { region: 'field' } };
+      expect((await policyEngine.evaluate('workspace-access', changedRegion)).allowed).toBe(false);
+      expect(evaluations).toBe(3);
     });
 
-    it('should prevent cache poisoning via manipulated context fields', async () => {
-      const policy: PolicyDefinition = {
-        name: 'cache-poison-test',
-        evaluate: (context: ExecutionContext) => ({ allowed: context.auth?.roles.includes('admin') ?? false }),
-      };
-
-      policyEngine.registerPolicy(policy);
-
-      // First: legitimate admin request
-      const adminContext: ExecutionContext = {
-        auth: { userId: 'admin1', roles: ['admin'], permissions: [] },
-        service: { name: 'testService', version: '1.0.0' },
-        method: { name: 'testMethod', args: [] },
-      };
-
-      await policyEngine.evaluate('cache-poison-test', adminContext);
-
-      // Attacker tries to use same userId but with different roles
-      const attackerContext: ExecutionContext = {
-        auth: { userId: 'admin1', roles: ['attacker'], permissions: [] },
-        service: { name: 'testService', version: '1.0.0' },
-        method: { name: 'testMethod', args: [] },
-      };
-
-      // Should get cached result for admin1 (security vulnerability)
-      // This test documents that the cache key does NOT include roles
-      const attackerDecision = await policyEngine.evaluate('cache-poison-test', attackerContext);
-
-      // Note: This will be TRUE because cache uses userId, not roles
-      // This is a known limitation - roles should be included in cache key for RBAC policies
-      expect(attackerDecision.allowed).toBe(true); // Documenting the vulnerability
+    it('keeps caller-owned results separate from the cached decision', async () => {
+      const context: ExecutionContext = { service: { name: 'workspace', version: '1' } };
+      policyEngine.registerPolicy({ name: 'receipt', evaluate: () => ({ allowed: true, metadata: { value: 1 } }) });
+      const first = await policyEngine.evaluate('receipt', context);
+      first.metadata!['value'] = 2;
+      const next = await policyEngine.evaluate('receipt', context);
+      expect(next.metadata!['value']).toBe(1);
+      next.metadata!['value'] = 3;
+      expect((await policyEngine.evaluate('receipt', context)).metadata!['value']).toBe(1);
     });
 
     it('should NOT cache denied decisions by default', async () => {
@@ -926,51 +869,13 @@ describe('PolicyEngine Security Tests', () => {
       expect(decision.allowed).toBe(true);
     });
 
-    it('should document behavior with context getters that throw (SECURITY NOTE)', async () => {
-      /**
-       * SECURITY NOTE: Throwing Getters in Context
-       *
-       * The cache key generation accesses context.auth?.userId which will trigger
-       * any throwing getters BEFORE the policy is even evaluated. This happens
-       * in getCacheKey() before the try/catch in evaluate().
-       *
-       * This could be exploited to:
-       * 1. Cause denial of service by crashing the policy engine
-       * 2. Bypass policy evaluation entirely
-       * 3. Extract timing information
-       *
-       * MITIGATION: Wrap getCacheKey() in try/catch or use defensive property access
-       */
-      const policy: PolicyDefinition = {
-        name: 'getter-test',
-        evaluate: (context: ExecutionContext) => {
-          // Attempt to access a throwing getter
-          try {
-            const _ = context.auth?.userId;
-            return { allowed: true };
-          } catch {
-            return { allowed: false, reason: 'Getter threw' };
-          }
-        },
-      };
-
-      policyEngine.registerPolicy(policy);
-
-      // Create a context with a throwing getter
-      const throwingContext: ExecutionContext = {
-        service: { name: 'testService', version: '1.0.0' },
-      };
-
-      Object.defineProperty(throwingContext, 'auth', {
-        get() {
-          throw new Error('Getter explosion');
-        },
-        enumerable: true,
-      });
-
-      // The cache key generation will throw before policy evaluation
-      // This documents that throwing getters bypass the policy's try/catch
-      await expect(policyEngine.evaluate('getter-test', throwingContext)).rejects.toThrow('Getter explosion');
+    it('returns a denied decision when a context property cannot be read', async () => {
+      policyEngine.registerPolicy({ name: 'read-context', evaluate: context => ({ allowed: !!context.auth?.userId }) });
+      const context: ExecutionContext = { service: { name: 'workspace', version: '1' } };
+      Object.defineProperty(context, 'auth', { enumerable: true, get() { throw new Error('Unavailable context'); } });
+      const decision = await policyEngine.evaluate('read-context', context);
+      expect(decision.allowed).toBe(false);
+      expect(policyEngine.getCacheStats().size).toBe(0);
     });
 
     it('should handle context with getters that throw when skipCache is used', async () => {

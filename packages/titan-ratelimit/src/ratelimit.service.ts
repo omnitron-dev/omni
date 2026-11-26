@@ -7,6 +7,7 @@
  */
 
 import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
+import { RateLimitWaitQueue } from '@omnitron-dev/titan/netron/auth';
 import { TitanError, ErrorCode } from '@omnitron-dev/titan/errors';
 import type {
   IRateLimitService,
@@ -17,29 +18,10 @@ import type {
   IRateLimitModuleOptions,
   IRateLimitTier,
 } from './ratelimit.types.js';
-import { RATE_LIMIT_OPTIONS_TOKEN, RATE_LIMIT_STORAGE_TOKEN, DEFAULT_RATE_LIMIT_PREFIX } from './ratelimit.tokens.js';
+import { RATE_LIMIT_OPTIONS_TOKEN, RATE_LIMIT_STORAGE_TOKEN, DEFAULT_RATE_LIMIT_OPTIONS } from './ratelimit.tokens.js';
 import { type IRateLimitAlgorithm, createAlgorithm } from './ratelimit.algorithms.js';
 import { setAmbientRateLimitService, getAmbientRateLimitService } from './ratelimit.decorators.js';
 
-/**
- * Default options for rate limit service
- */
-const DEFAULT_OPTIONS: Required<Omit<IRateLimitModuleOptions, 'storageType' | 'isGlobal' | 'tiers' | 'defaultTier'>> = {
-  enabled: true,
-  strategy: 'sliding-window',
-  keyPrefix: DEFAULT_RATE_LIMIT_PREFIX,
-  defaultLimit: 100,
-  defaultWindowMs: 60000,
-  burstLimit: 0,
-  tokenRefillRate: 100,
-  queueEnabled: false,
-  maxQueueSize: 1000,
-  queueTimeoutMs: 5000,
-};
-
-/**
- * Rate limit exceeded error
- */
 /**
  * Thrown when a caller has spent its allowance.
  *
@@ -112,6 +94,8 @@ export class RateLimitService implements IRateLimitService {
   private readonly options: IRateLimitModuleOptions &
     Required<Omit<IRateLimitModuleOptions, 'storageType' | 'isGlobal' | 'tiers' | 'defaultTier'>>;
   private readonly algorithm: IRateLimitAlgorithm;
+  private readonly queue?: RateLimitWaitQueue<IRateLimitResult>;
+  private stopped = false;
   private readonly stats: IRateLimitStats;
   private readonly tierStats: Map<string, { checks: number; allowed: number; denied: number }>;
 
@@ -119,7 +103,11 @@ export class RateLimitService implements IRateLimitService {
     @Inject(RATE_LIMIT_STORAGE_TOKEN) private readonly storage: IRateLimitStorage,
     @Inject(RATE_LIMIT_OPTIONS_TOKEN) options: IRateLimitModuleOptions
   ) {
-    this.options = { ...DEFAULT_OPTIONS, ...options };
+    this.options = { ...DEFAULT_RATE_LIMIT_OPTIONS, ...options };
+    if (this.options.queueEnabled) {
+      this.queue = new RateLimitWaitQueue(this.options.maxQueueSize, this.options.queueTimeoutMs,
+        denial => (denial.retryAt ?? denial.resetAt) - Date.now());
+    }
 
     // Initialize algorithm based on strategy
     this.algorithm = createAlgorithm(this.options.strategy, {
@@ -149,6 +137,12 @@ export class RateLimitService implements IRateLimitService {
    * answering decorator calls in a re-initialised container (tests, mainly).
    */
   async onDestroy(): Promise<void> {
+    this.stopWaiting();
+  }
+
+  private stopWaiting(): void {
+    this.stopped = true;
+    this.queue?.destroy();
     if (getAmbientRateLimitService() === this) {
       setAmbientRateLimitService(undefined);
     }
@@ -226,6 +220,8 @@ export class RateLimitService implements IRateLimitService {
    * Check if a request is within the rate limit
    */
   async check(options: IRateLimitCheckOptions): Promise<IRateLimitResult> {
+    options.signal?.throwIfAborted();
+    if (this.stopped) throw new Error('Rate limiter destroyed');
     if (!this.options.enabled) {
       // Rate limiting disabled, always allow
       return {
@@ -236,30 +232,26 @@ export class RateLimitService implements IRateLimitService {
       };
     }
 
-    // Resolve tier configuration
-    const tier = this.resolveTier(options.tier);
-
-    // Determine effective limits (priority: options > tier > defaults)
-    const limit = options.limit ?? tier?.limit ?? this.options.defaultLimit;
-    const windowMs = options.windowMs ?? tier?.windowMs ?? this.options.defaultWindowMs;
-    const burstLimit = tier?.burst ?? this.options.burstLimit;
-    const effectiveLimit = limit + burstLimit;
-
-    // Build storage key
-    const storageKey = this.buildKey(options.key, options.tier);
-
-    // Perform rate limit check
-    const consume = options.consume ?? true;
-    const result = await this.algorithm.check(this.storage, storageKey, effectiveLimit, windowMs, consume);
-
-    // Add tier info to result
-    if (options.tier) {
-      result.tier = options.tier;
+    const request = { ...options };
+    const storageKey = this.buildKey(request.key, request.tier);
+    const consume = request.consume ?? true;
+    const attempt = () => {
+      const tier = this.resolveTier(request.tier);
+      const limit = (request.limit ?? tier?.limit ?? this.options.defaultLimit) + (tier?.burst ?? this.options.burstLimit);
+      const windowMs = request.windowMs ?? tier?.windowMs ?? this.options.defaultWindowMs;
+      return this.algorithm.check(this.storage, storageKey, limit, windowMs, consume);
+    };
+    let result = await attempt();
+    if (!result.allowed && consume && this.queue) {
+      const priority = this.resolveTier(request.tier)?.priority ?? 0;
+      const waiting = this.queue.wait(storageKey, priority, result, attempt, request.signal);
+      if (waiting) result = await waiting;
     }
-
-    // Update statistics
-    this.updateStats(result.allowed, options.tier);
-
+    if (!result.allowed && result.retryAt !== undefined) {
+      result.retryAfter = Math.max(0, Math.ceil((result.retryAt - Date.now()) / 1000));
+    }
+    if (request.tier) result.tier = request.tier;
+    this.updateStats(result.allowed, request.tier);
     return result;
   }
 
@@ -268,9 +260,9 @@ export class RateLimitService implements IRateLimitService {
    */
   async consume(key: string, options?: Partial<IRateLimitCheckOptions>): Promise<IRateLimitResult> {
     return this.check({
+      ...options,
       key,
       consume: true,
-      ...options,
     });
   }
 
@@ -290,9 +282,9 @@ export class RateLimitService implements IRateLimitService {
    */
   async getStatus(key: string, options?: Partial<IRateLimitCheckOptions>): Promise<IRateLimitResult> {
     return this.check({
+      ...options,
       key,
       consume: false,
-      ...options,
     });
   }
 
@@ -309,6 +301,7 @@ export class RateLimitService implements IRateLimitService {
     const tierConfig = this.resolveTier(tier);
     const windowMs = tierConfig?.windowMs ?? this.options.defaultWindowMs;
     await this.algorithm.reset(this.storage, storageKey, windowMs);
+    this.queue?.wake(storageKey);
   }
 
   /**
@@ -331,6 +324,7 @@ export class RateLimitService implements IRateLimitService {
    * Cleanup resources and stop the service
    */
   destroy(): void {
+    this.stopWaiting();
     if (this.storage.destroy) {
       this.storage.destroy();
     }

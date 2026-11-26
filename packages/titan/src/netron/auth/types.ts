@@ -147,7 +147,7 @@ export interface EnhancedPolicyDecision extends PolicyDecision {
  * Policy function type
  * Takes execution context and returns decision
  */
-export type Policy = (context: ExecutionContext) => Promise<PolicyDecision> | PolicyDecision;
+export type Policy = (context: ExecutionContext, options?: Pick<PolicyEvaluationOptions, 'signal'>) => Promise<PolicyDecision> | PolicyDecision;
 
 /**
  * Policy definition with metadata
@@ -158,6 +158,9 @@ export interface PolicyDefinition {
 
   /** Human-readable description */
   description?: string;
+
+  /** Policies that consume capacity or consult live state must run on every request. */
+  cacheable?: boolean;
 
   /** Policy implementation */
   evaluate: Policy;

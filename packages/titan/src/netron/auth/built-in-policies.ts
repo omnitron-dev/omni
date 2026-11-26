@@ -4,7 +4,6 @@
  */
 
 import ipaddr from 'ipaddr.js';
-import { RateLimitError } from '../../errors/index.js';
 import type { PolicyDefinition } from './types.js';
 import { RateLimiter, type RateLimitConfig } from './rate-limiter.js';
 import { safeCompare, hasPermission as matchPermission } from './utils.js';
@@ -293,6 +292,7 @@ export const BuiltInPolicies = {
       ? `Requires access between ${start} and ${end} (${timezone})`
       : `Requires access between ${start} and ${end}`,
     tags: ['abac', 'time'],
+    cacheable: false,
     evaluate: (context) => {
       const now = context.environment?.timestamp || new Date();
       const currentTime = getUTCMinutes(now, timezone);
@@ -444,12 +444,12 @@ export const BuiltInPolicies = {
       name: `ratelimit:${maxRequests}/${windowMs}`,
       description: `Max ${maxRequests} requests per ${windowMs}ms`,
       tags: ['ratelimit'],
-      evaluate: async (context) => {
+      cacheable: false,
+      evaluate: async (context, options) => {
         const userId = context.auth?.userId || context.environment?.ip || 'anonymous';
 
         try {
-          // Check and consume in one operation
-          const checkResult = await limiter.check(userId);
+          const checkResult = await limiter.acquire(userId, undefined, options?.signal);
 
           if (!checkResult.allowed) {
             return {
@@ -461,11 +461,7 @@ export const BuiltInPolicies = {
             };
           }
 
-          // Consume the request
-          await limiter.consume(userId);
-
-          // Calculate remaining AFTER consume (so it's accurate)
-          const remaining = checkResult.remaining - 1;
+          const remaining = checkResult.remaining;
 
           return {
             allowed: true,
@@ -664,6 +660,7 @@ export const BuiltInPolicies = {
     name: `businesshours:${config.timezone}:${config.start}-${config.end}`,
     description: `Requires business hours: ${config.start}-${config.end} (${config.timezone}) on ${config.weekdays.join(',')}`,
     tags: ['abac', 'time', 'business'],
+    cacheable: false,
     evaluate: (context) => {
       const now = context.environment?.timestamp || new Date();
 
@@ -728,64 +725,25 @@ export const BuiltInPolicies = {
       name: `ratelimit:advanced:${config.strategy ?? 'sliding'}`,
       description: `Rate limiting with ${config.strategy ?? 'sliding'} strategy`,
       tags: ['ratelimit', 'advanced'],
-      evaluate: async (context) => {
+      cacheable: false,
+      evaluate: async (context, options) => {
         try {
           // Determine key (user ID or IP)
           const key = context.auth?.userId || context.environment?.ip || 'anonymous';
 
-          // Determine tier
-          let tier: string | undefined;
-          if (config.getTier) {
-            tier = config.getTier(context);
-          }
-
-          // Check rate limit
-          const result = await limiter.check(key, tier);
-
-          if (!result.allowed) {
-            return {
-              allowed: false,
-              reason: `Rate limit exceeded for tier ${result.tier}. Retry after ${result.retryAfter}ms`,
-              metadata: {
-                retryAfter: result.retryAfter,
-                resetAt: result.resetAt,
-                tier: result.tier,
-              },
-            };
-          }
-
-          // Consume the request
-          await limiter.consume(key, tier);
-
+          const result = await limiter.acquire(key, config.getTier?.(context), options?.signal);
           return {
-            allowed: true,
-            reason: `Within rate limit (${result.remaining} remaining)`,
+            allowed: result.allowed,
+            reason: result.allowed
+              ? `Within rate limit (${result.remaining} remaining)`
+              : `Rate limit exceeded for tier ${result.tier}. Retry after ${result.retryAfter}ms`,
             metadata: {
-              remaining: result.remaining,
-              resetAt: result.resetAt,
-              tier: result.tier,
+              remaining: result.remaining, resetAt: result.resetAt, tier: result.tier,
+              ...(result.queued && { queued: true }),
+              ...(result.retryAfter !== undefined && { retryAfter: result.retryAfter }),
             },
           };
         } catch (error) {
-          // Handle queue scenario — keyed on the structured flag the limiter
-          // sets, not on the words it happens to use. The limiter throws the
-          // same `RateLimitError` for a queued request and for a plain denial,
-          // so this used to be `message.includes('queued')`: a producer and a
-          // consumer coupled by an English sentence, where rewording one
-          // silently changes what the other decides.
-          if (
-            error instanceof RateLimitError &&
-            (error.details as { queued?: unknown } | undefined)?.queued === true
-          ) {
-            return {
-              allowed: false,
-              reason: 'Request queued due to rate limit',
-              metadata: {
-                queued: true,
-              },
-            };
-          }
-
           return {
             allowed: false,
             reason: error instanceof Error ? error.message : 'Rate limit error',

@@ -1,112 +1,63 @@
-/**
- * The queued case must be told apart from a plain denial by a flag, not by
- * wording.
- *
- * `RateLimiter` throws the SAME `RateLimitError` for both — "Request queued due
- * to rate limit" and "Rate limit exceeded" — and `requireRateLimit` classified
- * them with `error.message.includes('queued')`. Producer and consumer coupled
- * by an English sentence: reword the first string and every queued request is
- * reported as a denial, with nothing anywhere failing.
- *
- * Both branches answer `allowed: false`, so the access decision was never at
- * risk. What was at risk is the reason reported and the `queued: true` metadata
- * a caller uses to decide whether to retry rather than give up.
- *
- * Tested as two halves, because the coupling has two ends and mutating one at a
- * time is the only way to learn which end a failure came from.
- */
-import { describe, it, expect, vi, afterEach } from 'vitest';
-
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BuiltInPolicies } from '../../../src/netron/auth/built-in-policies.js';
+import { PolicyEngine } from '../../../src/netron/auth/policy-engine.js';
 import { RateLimiter } from '../../../src/netron/auth/rate-limiter.js';
-import { RateLimitError } from '../../../src/errors/index.js';
+import type { ExecutionContext } from '../../../src/netron/auth/types.js';
+import type { ILogger } from '../../../src/modules/logger/logger.types.js';
 
-const logger: any = {
-  info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn(), trace: vi.fn(), fatal: vi.fn(),
+const logger = { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn(), child() { return this; } } as unknown as ILogger;
+const context: ExecutionContext = {
+  auth: { userId: 'subscriber', roles: [], permissions: [] }, service: { name: 'workspace', version: '1' },
 };
-logger.child = vi.fn(() => logger);
+afterEach(() => vi.useRealTimers());
 
-const context: any = { auth: { userId: 'u1' }, environment: { ip: '127.0.0.1' } };
-
-afterEach(() => {
-  vi.restoreAllMocks();
-});
-
-describe('rate limiting — the queued signal', () => {
-  it('the limiter marks a queued rejection in the error details', async () => {
-    // Producer half. Limit of one per window with queueing on, so the second
-    // consume takes the queued branch.
-    //
-    // `enqueue` is stubbed to resolve at once: it otherwise waits for the queue
-    // to drain against a hard-coded timeout that no config can shorten, which
-    // would make this a thirty-second test of the queue machinery rather than a
-    // test of what the throw carries.
-    vi.spyOn(RateLimiter.prototype as any, 'enqueue').mockResolvedValue(true);
-
-    const limiter = new RateLimiter(logger, {
-      defaultTier: { name: 'test', limit: 1 },
-      window: 60_000,
-      queue: true,
-      maxQueueSize: 10,
-    } as any);
-
-    await limiter.consume('u1');
-
-    let thrown: unknown;
+describe('queued capacity through the Netron policy engine', () => {
+  it('grants one slot per window, prefers the higher waiting tier and bounds the queue', async () => {
+    vi.useFakeTimers();
+    const engine = new PolicyEngine(logger);
+    const policy = BuiltInPolicies.requireRateLimit(logger, {
+      window: 100, queue: true, maxQueueSize: 2, queueTimeoutMs: 1000,
+      defaultTier: { name: 'free', limit: 1 }, tiers: { member: { name: 'member', limit: 1, priority: 10 } },
+      getTier: ctx => ctx.auth?.roles[0],
+    });
+    engine.registerPolicy(policy);
     try {
-      await limiter.consume('u1');
-    } catch (err) {
-      thrown = err;
-    }
-
-    expect(thrown).toBeInstanceOf(RateLimitError);
-    expect((thrown as RateLimitError).details?.queued).toBe(true);
+      expect((await engine.evaluate(policy.name, context)).allowed).toBe(true);
+      const first = engine.evaluate(policy.name, context);
+      const priority = engine.evaluate(policy.name, { ...context, auth: { ...context.auth!, roles: ['member'] } });
+      expect((await engine.evaluate(policy.name, context)).allowed).toBe(false);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(await priority).toMatchObject({ allowed: true, metadata: { remaining: 0, queued: true } });
+      await vi.advanceTimersByTimeAsync(100);
+      expect(await first).toMatchObject({ allowed: true, metadata: { remaining: 0, queued: true } });
+      expect(engine.getCacheStats().size).toBe(0);
+    } finally { engine.destroy(); }
   });
 
-  it('the limiter does NOT mark a plain denial', async () => {
-    const limiter = new RateLimiter(logger, {
-      defaultTier: { name: 'test', limit: 1 },
-      window: 60_000,
-      queue: false,
-    } as any);
-
-    await limiter.consume('u1');
-
-    let thrown: unknown;
+  it('withdraws a queued acquisition when policy evaluation times out', async () => {
+    vi.useFakeTimers();
+    const engine = new PolicyEngine(logger);
+    const policy = BuiltInPolicies.requireRateLimit(logger, { window: 100, queue: true, defaultTier: { name: 'free', limit: 1 } });
+    engine.registerPolicy(policy);
     try {
-      await limiter.consume('u1');
-    } catch (err) {
-      thrown = err;
-    }
-
-    expect(thrown).toBeInstanceOf(RateLimitError);
-    expect((thrown as RateLimitError).details?.queued).toBeUndefined();
+      await engine.evaluate(policy.name, context);
+      const timed = engine.evaluate(policy.name, context, { timeout: 10 });
+      await vi.advanceTimersByTimeAsync(10);
+      expect((await timed).allowed).toBe(false);
+      await vi.advanceTimersByTimeAsync(90);
+      expect(await engine.evaluate(policy.name, context)).toMatchObject({ allowed: true, metadata: { remaining: 0 } });
+    } finally { engine.destroy(); }
   });
 
-  it('the policy reads the flag, not the message', async () => {
-    // Consumer half. Wording deliberately unlike "queued": only the flag says
-    // what this is.
-    vi.spyOn(RateLimiter.prototype, 'consume').mockRejectedValue(
-      new RateLimitError('slow down', { queued: true }, { retryAfter: 100 })
-    );
-
-    const policy = BuiltInPolicies.requireRateLimit(logger, { defaultTier: { name: 't', limit: 100 } } as any);
-    const result = await policy.evaluate(context, {} as any);
-
-    expect(result.allowed).toBe(false);
-    expect(result.metadata?.['queued']).toBe(true);
-  });
-
-  it('the policy does not treat a plain denial as queued, whatever it says', async () => {
-    // Wording deliberately CONTAINING the old keyword, without the flag.
-    vi.spyOn(RateLimiter.prototype, 'consume').mockRejectedValue(
-      new RateLimitError('Rate limit exceeded; requests are not queued here', undefined, { retryAfter: 100 })
-    );
-
-    const policy = BuiltInPolicies.requireRateLimit(logger, { defaultTier: { name: 't', limit: 100 } } as any);
-    const result = await policy.evaluate(context, {} as any);
-
-    expect(result.allowed).toBe(false);
-    expect(result.metadata?.['queued']).toBeUndefined();
+  it('returns an observed denial at the queue deadline with its retry time and admission history', async () => {
+    vi.useFakeTimers();
+    const limiter = new RateLimiter(logger, { window: 1000, queue: true, queueTimeoutMs: 25, defaultTier: { name: 'base', limit: 1 } });
+    try {
+      await limiter.consume('key');
+      const timed = expect(limiter.consume('key')).rejects.toMatchObject({ details: { queued: true, retryAfter: 975 } });
+      await vi.advanceTimersByTimeAsync(25);
+      await timed;
+      expect(limiter.getStats('key')).toMatchObject({ totalChecks: 2, totalAllowed: 1, totalDenied: 1, currentQueueSize: 0 });
+    } finally { limiter.destroy(); }
   });
 });

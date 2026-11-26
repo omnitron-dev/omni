@@ -264,4 +264,55 @@ describe('RateLimitService orchestration (RL-1)', () => {
     expect(stats.totalDenied).toBe(1);
     expect(stats.byTier?.get('vip')).toEqual({ checks: 2, allowed: 1, denied: 1 });
   });
+
+  it('queues consuming callers against the shared budget and keeps status reads immediate', async () => {
+    const options = { defaultLimit: 1, defaultWindowMs: 100, queueEnabled: true, maxQueueSize: 1, queueTimeoutMs: 150 };
+    const first = makeService(options);
+    service = first.service;
+    const peer = new RateLimitService(first.storage, { ...options, strategy: 'fixed-window' });
+    try {
+      expect((await service.consume('work')).allowed).toBe(true);
+      const local = service.consume('work');
+      const remote = peer.consume('work');
+      await vi.advanceTimersByTimeAsync(0);
+      expect((await service.consume('work')).allowed).toBe(false);
+      expect((await peer.getStatus('work', { consume: true })).allowed).toBe(false);
+      await vi.advanceTimersByTimeAsync(150);
+      const results = await Promise.all([local, remote]);
+      expect(results.map(result => result.allowed).sort()).toEqual([false, true]);
+      expect((await service.getStatus('work')).remaining).toBe(0);
+    } finally { await peer.onDestroy(); }
+  });
+
+  it('wakes on reset, cancels waiting calls and never retries an uncertain acquisition', async () => {
+    const instance = makeService({ defaultLimit: 1, defaultWindowMs: 100, queueEnabled: true, queueTimeoutMs: 400 });
+    service = instance.service;
+    await service.consume('work');
+    const controller = new AbortController();
+    const cancelled = expect(service.consume('work', { signal: controller.signal })).rejects.toThrow('withdrawn');
+    const waiting = service.consume('work');
+    await vi.advanceTimersByTimeAsync(0);
+    controller.abort(new Error('withdrawn'));
+    await cancelled;
+    await service.reset('work');
+    await vi.advanceTimersByTimeAsync(1);
+    expect((await waiting).allowed).toBe(true);
+    const next = service.consume('work');
+    await vi.advanceTimersByTimeAsync(0);
+    const take = vi.spyOn(instance.storage, 'checkAndConsume').mockRejectedValueOnce(new Error('storage reply unavailable'));
+    const uncertain = expect(next).rejects.toThrow('storage reply unavailable');
+    await vi.advanceTimersByTimeAsync(400);
+    await uncertain;
+    expect(take).toHaveBeenCalledTimes(1);
+  });
+
+  it('withdraws outstanding admissions when the provider is disposed', async () => {
+    ({ service } = makeService({ defaultLimit: 1, queueEnabled: true }));
+    await service.enforce('work');
+    const pending = expect(service.enforce('work')).rejects.toThrow('destroyed');
+    await vi.advanceTimersByTimeAsync(0);
+    await service.onDestroy();
+    await pending;
+    await expect(service.getStatus('work')).rejects.toThrow('destroyed');
+  });
 });

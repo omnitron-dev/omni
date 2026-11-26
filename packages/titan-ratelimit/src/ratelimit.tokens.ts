@@ -29,3 +29,10 @@ export const RATE_LIMIT_STORAGE_TOKEN: Token<IRateLimitStorage> = createToken<IR
  * @public
  */
 export const DEFAULT_RATE_LIMIT_PREFIX = 'ratelimit';
+
+export const DEFAULT_RATE_LIMIT_OPTIONS = Object.freeze({
+  enabled: true, strategy: 'sliding-window', keyPrefix: DEFAULT_RATE_LIMIT_PREFIX,
+  defaultLimit: 100, defaultWindowMs: 60_000, burstLimit: 0, tokenRefillRate: 100,
+  queueEnabled: false, maxQueueSize: 1000, queueTimeoutMs: 5000,
+  storageType: 'memory', isGlobal: false,
+} satisfies Required<Omit<IRateLimitModuleOptions, 'tiers' | 'defaultTier'>>);

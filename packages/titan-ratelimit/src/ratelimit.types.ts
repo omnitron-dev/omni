@@ -210,6 +210,9 @@ export interface IRateLimitResult {
    */
   retryAfter?: number;
 
+  /** Earliest estimated admission time in epoch milliseconds. */
+  retryAt?: number;
+
   /**
    * Name of the tier that was applied (if using multi-tier limits).
    */
@@ -285,6 +288,9 @@ export interface IRateLimitCheckOptions {
    * @defaultValue true
    */
   consume?: boolean;
+
+  /** Cancel a queued request before another attempt is sent to storage. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -456,31 +462,13 @@ export interface IRateLimitModuleOptions {
    */
   tiers?: Record<string, IRateLimitTier> | (() => Record<string, IRateLimitTier> | undefined);
 
-  /**
-   * Enable request queueing for graceful degradation.
-   *
-   * @defaultValue false
-   *
-   * NOT IMPLEMENTED — this field and the two below appear only in the defaults
-   * objects and are read by nothing afterwards. There is no queue: a request
-   * over the limit is rejected, whatever these say. The default is `false`, so
-   * current behaviour matches the documented default and only a caller who
-   * turns it ON is misled — which is the caller who most needs to know.
-   */
+  /** Wait for the configured storage backend to admit a consuming request. Status reads return immediately. */
   queueEnabled?: boolean;
 
-  /**
-   * Maximum number of requests to hold in the queue.
-   *
-   * NOT IMPLEMENTED — see `queueEnabled`.
-   */
+  /** Maximum pending requests per service instance. Excess requests receive the observed denial. Default 1000. */
   maxQueueSize?: number;
 
-  /**
-   * Maximum time (ms) a request can wait in the queue.
-   *
-   * NOT IMPLEMENTED — see `queueEnabled`.
-   */
+  /** Maximum wait to dispatch another acquisition. An operation sent to storage uses its own timeout. Default 5000 ms. */
   queueTimeoutMs?: number;
 
   /**

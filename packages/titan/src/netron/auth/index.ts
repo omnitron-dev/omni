@@ -10,6 +10,7 @@ export * from './policy-engine.js';
 export * from './built-in-policies.js';
 export * from './session-manager.js';
 export * from './rate-limiter.js';
+export * from './rate-limit-queue.js';
 export * from './audit-logger.js';
 export * from './utils.js';
 export * from './rls-bridge.js';

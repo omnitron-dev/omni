@@ -11,6 +11,7 @@
  * for interchangeable use with different storage backends.
  */
 
+import { randomUUID } from 'node:crypto';
 import type { IRateLimitStorage, IRateLimitResult, RateLimitStrategy } from './ratelimit.types.js';
 
 /**
@@ -115,7 +116,7 @@ export class SlidingWindowAlgorithm implements IRateLimitAlgorithm {
       // removeFromSortedSetByScore + countSortedSet + addToSortedSet sequence let
       // N concurrent callers all observe `count < limit` then all add,
       // overshooting to limit+N-1. checkAndConsumeSlidingWindow does it atomically.
-      const uniqueMember = `${now}-${Math.random().toString(36).substring(2, 9)}`;
+      const uniqueMember = randomUUID();
       const res = await storage.checkAndConsumeSlidingWindow(key, limit, windowStart, now, uniqueMember, ttlMs);
       allowed = res.allowed;
       count = res.count;
@@ -161,6 +162,7 @@ export class SlidingWindowAlgorithm implements IRateLimitAlgorithm {
       allowed,
       remaining,
       resetAt,
+      retryAt: allowed ? undefined : freesAt,
       retryAfter: allowed ? undefined : Math.max(1, Math.ceil((freesAt - now) / 1000)),
       limit,
     };
@@ -265,6 +267,7 @@ export class FixedWindowAlgorithm implements IRateLimitAlgorithm {
       allowed,
       remaining,
       resetAt: windowEnd,
+      retryAt: allowed ? undefined : windowEnd,
       retryAfter: allowed ? undefined : Math.ceil((windowEnd - now) / 1000),
       limit,
     };
@@ -425,6 +428,7 @@ export class TokenBucketAlgorithm implements IRateLimitAlgorithm {
       allowed,
       remaining,
       resetAt,
+      retryAt: allowed ? undefined : now + Math.ceil(timeToOneToken),
       retryAfter: allowed ? undefined : Math.max(1, Math.ceil(timeToOneToken / 1000)),
       limit,
     };

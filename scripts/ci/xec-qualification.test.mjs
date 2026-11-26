@@ -77,6 +77,29 @@ test('read-only inspection cannot dispatch a new native job', async () => {
     undefined, async () => assert.fail('must not persist')), /has not been dispatched/);
 });
 
+test('fetch can wait for the same qualification without writing or dispatching', async () => {
+  const context = { name: 'native', node: '22.23.4', commit, previous, observeOnly: true, waitForRun: true };
+  const displayTitle = 'Handoff ' + previous + ' → ' + commit + ' · Node 22.23.4 · 416482af-f984-4924-9469-b7b2da16b80e';
+  let finished = false;
+  let completedId = 7;
+  const driver = githubQualification({ root: '/unused', policy, progress() {}, poll: async () => { finished = true; },
+    run: async (_root, _cmd, args) => {
+      assert.equal(args.length, 2, 'fetch should only GET the reviewed run and its jobs');
+      if (args[1].endsWith('/attempts/1/jobs?per_page=100'))
+        return JSON.stringify({ jobs: [{ name: 'systemd', conclusion: 'success' }] });
+      assert.ok(args[1].endsWith('/actions/runs/7'));
+      return JSON.stringify(completed({ id: finished ? completedId : 7,
+        path: '.github/workflows/native.yml', event: 'workflow_dispatch', display_title: displayTitle,
+        status: finished ? 'completed' : 'in_progress', conclusion: finished ? 'success' : null }));
+    } });
+  await assert.rejects(driver.native({ ...context, waitForRun: false }, { runId: 7 }), /still running/);
+  assert.equal((await driver.native(context, { runId: 7 })).id, 7);
+  finished = false;
+  completedId = 8;
+  await assert.rejects(driver.native(context, { runId: 7 }), /CI run identity changed/);
+  await assert.rejects(driver.native(context), /has not been dispatched/);
+});
+
 test('qualification uses one Xec pipeline, resumes a completed build and keeps both native receipts', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'xec-release-qualification-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));

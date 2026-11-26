@@ -38,7 +38,8 @@ async function runUpdate(operation, target, values, options) {
     if (![target, values.previous, reader].every(value => /^[a-f0-9]{40}$/.test(value)) || target === values.previous ||
         !/^[1-9]\d*$/.test(values.run) || !Number.isSafeInteger(runId) || !policy.qualification.nodes.includes(values.nodeVersion))
       throw new UserError('Use distinct source and previous revisions, full commit hashes, a supported native Node version and a GitHub run ID');
-    const context = { commit: target, previous: values.previous, node: values.nodeVersion, name: 'Native handoff', observeOnly: true, signal: getExecutionSignal() };
+    const context = { commit: target, previous: values.previous, node: values.nodeVersion, name: 'Native handoff',
+      observeOnly: true, waitForRun: values.wait === true, signal: getExecutionSignal() };
     const provider = githubQualification({ root, policy, run, progress });
     await provider.ci({ ...context, name: 'Source CI' });
     const evidence = await provider.native(context, { runId });
@@ -178,6 +179,7 @@ operation inspect status; use reconciliation/recovery instead of replaying apply
   const collect = (value, previous = []) => [...previous, value];
   update.command('fetch <commit>').description('Retain a verified native runtime from a completed CI handoff for update plan')
     .allowExcessArguments(false)
+    .option('--wait', 'Wait for source CI and the specified native run to finish')
     .requiredOption('--previous <commit>', 'Revision the Linux handoff updated and restored')
     .requiredOption('--node-version <version>', 'Native Node version used by the receiver')
     .requiredOption('--run <id>', 'Completed native qualification workflow run')

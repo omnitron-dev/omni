@@ -14,10 +14,14 @@ export function githubQualification({ root, policy, run, progress, poll = delay 
   };
   async function wait(record, context, workflow, event) {
     let last;
+    const id = record.id;
+    const title = record.display_title;
     const deadline = Date.now() + policy.qualification.timeoutMs;
     for (;;) {
       context.signal?.throwIfAborted();
-      record = check(await api('actions/runs/' + record.id), context.commit, workflow, event);
+      record = check(await api('actions/runs/' + id), context.commit, workflow, event);
+      if (record.id !== id || (event === 'workflow_dispatch' && record.display_title !== title))
+        throw Error('CI run identity changed while waiting');
       const state = record.status + ':' + record.conclusion + ':' + record.run_attempt;
       if (state !== last) progress(context.name + ' · ' + state + ' · ' + record.html_url);
       last = state;
@@ -29,7 +33,7 @@ export function githubQualification({ root, policy, run, progress, poll = delay 
           throw Error(context.name + ' is missing a required successful job: ' + record.html_url);
         return { id: record.id, attempt: record.run_attempt, url: record.html_url, commit: record.head_sha };
       }
-      if (context.observeOnly) throw Error(context.name + ' is still running: ' + record.html_url);
+      if (context.observeOnly && !context.waitForRun) throw Error(context.name + ' is still running: ' + record.html_url);
       if (Date.now() >= deadline) throw Error(context.name + ' timed out; resume to observe the same run: ' + record.id);
       await poll(policy.qualification.pollMs, undefined, { signal: context.signal });
     }

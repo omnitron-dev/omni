@@ -14,6 +14,7 @@ contains the operation table, exact commands and review steps.
 To reuse a completed Linux qualification for a specific receiver, run
 `pnpm exec xec update fetch COMMIT --previous PREVIOUS --node-version VERSION --run RUN_ID`.
 The command checks source CI, the exact handoff and return, and the native archive.
+Add `--wait` to follow the existing runs and fetch the archive as soon as both succeed.
 It uses the sealed local build of COMMIT in `OMNITRON_DEV_CACHE` to extract the archive.
 With `--reader-commit SHA` it can reuse an existing local build for extraction.
 The reader's file digests, source revision, clean build stamp and native runtime must match.
@@ -22,6 +23,8 @@ Pass the returned `runtime` directory to
 `pnpm exec xec update plan COMMIT --node NODE --runtime DIRECTORY`.
 This stages the backend and reports the receiver's admission. An owner or guardian
 change has its own runtime update plan.
+Use `omnitron --json remote status NODE` before and after activation to compare the
+backend build, execution owner and guardian PID. The response includes the route used.
 
 `fleet upgrade --dry-run <node>` lists transport eligibility using the controller's
 registered inventory, including when the controller runs from an installed runtime.

@@ -20,7 +20,7 @@
 
 import 'reflect-metadata';
 import { describe, it, expect, beforeAll, afterEach, afterAll, vi } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -78,6 +78,7 @@ export default Worker;
 
 describeOrSkip('a genuinely spawned worker', () => {
   let pm: ProcessManager;
+  const socketRoots: string[] = [];
   const logger = new LoggerService({ level: 'error', pretty: false }).child({ module: 'real-spawn' });
 
   beforeAll(() => {
@@ -87,6 +88,8 @@ describeOrSkip('a genuinely spawned worker', () => {
 
   afterEach(async () => {
     await pm?.shutdown({ force: true, timeout: 10_000 }).catch(() => {});
+    vi.unstubAllEnvs();
+    for (const root of socketRoots.splice(0)) rmSync(root, { recursive: true, force: true });
   });
 
   afterAll(() => rmSync(TMP, { recursive: true, force: true }));
@@ -124,6 +127,31 @@ class Worker {
     const workerPid = await proc.pid();
     expect(typeof workerPid).toBe('number');
     expect(workerPid).not.toBe(process.pid);
+  }, 60_000);
+
+  it.skipIf(process.geteuid === undefined)('serves a worker through its account directory beside the previous installation', async () => {
+    const root = mkdtempSync('/tmp/titan-account-');
+    socketRoots.push(root);
+    vi.stubEnv('TMPDIR', root);
+    const legacy = join(root, 'titan-pm');
+    mkdirSync(legacy, { mode: 0o700 });
+    writeFileSync(join(legacy, 'retained'), 'previous installation');
+    const original = statSync(legacy);
+    const file = writeWorker('account-worker', `
+class Worker {
+  static __public = ['identity'];
+  async identity() { return { uid: process.geteuid(), pid: process.pid }; }
+}`);
+    const worker = await manager().spawn(file);
+    const identity = await worker.identity();
+    expect(identity.uid).toBe(process.geteuid!());
+    expect(identity.pid).not.toBe(process.pid);
+    const directory = join(root, `titan-pm-${identity.uid}`);
+    expect(statSync(directory).uid).toBe(identity.uid);
+    expect(statSync(directory).mode & 0o7777).toBe(0o700);
+    expect(readdirSync(directory, { withFileTypes: true }).some(entry => entry.isSocket())).toBe(true);
+    expect(statSync(legacy).ino).toBe(original.ino);
+    expect(readdirSync(legacy)).toEqual(['retained']);
   }, 60_000);
 
   it('keeps state inside the worker, not the caller', async () => {

@@ -34,6 +34,7 @@ import { generateUuidV7 } from '@omnitron-dev/titan/utils';
 import { shutdownLadder, childDrainMs, DEFAULT_SHUTDOWN_BUDGET_MS } from './shutdown-windows.js';
 import { confirmDeath } from './confirm-death.js';
 import { threadPoolSizeFor } from './thread-pool.js';
+import { prepareWorkerDirectory, workerDirectory } from './worker-directory.js';
 // MockProcessSpawner is now in @omnitron-dev/testing/titan - use dynamic import to avoid circular dependency
 let MockProcessSpawnerClass: any = null;
 
@@ -890,8 +891,7 @@ export class ProcessSpawner implements IProcessSpawner {
     this.workerRuntimePath = path.join(currentDir, 'worker-runtime.js');
     this.forkWorkerPath = path.join(currentDir, 'fork-worker.js');
 
-    // Setup temp directory for Unix sockets
-    this.tempDir = config.advanced?.tempDir || path.join(os.tmpdir(), 'titan-pm');
+    this.tempDir = workerDirectory(config.advanced?.tempDir);
   }
 
   /**
@@ -1197,12 +1197,8 @@ export class ProcessSpawner implements IProcessSpawner {
     }
     this.ownSockets.clear();
 
-    // Cleanup temp directory if empty
-    try {
-      await fs.rmdir(this.tempDir);
-    } catch {
-      // Directory not empty or doesn't exist
-    }
+    // Another spawner under this account may be between directory setup and bind.
+    // The directory belongs to the account and survives individual spawners.
   }
 
   /**
@@ -1247,8 +1243,8 @@ export class ProcessSpawner implements IProcessSpawner {
       // previous process and cannot be. Requiring both age and refusal closes
       // the race without weakening the check.
       try {
-        const stat = await fs.stat(socketPath);
-        if (stat.mtimeMs > cutoff) continue;
+        const stat = await fs.lstat(socketPath);
+        if (!stat.isSocket() || stat.mtimeMs > cutoff) continue;
       } catch {
         continue;
       }
@@ -1284,23 +1280,7 @@ export class ProcessSpawner implements IProcessSpawner {
 
       case 'unix':
       default: {
-        // 0700 on the directory, not just on the sockets inside it.
-        //
-        // A per-worker socket is that worker's full management surface —
-        // health, the dependency graph, `callExposedService`, `shutdown()` —
-        // with no authentication of any kind, because the socket itself is
-        // meant to be the boundary. The default `tempDir` is under
-        // `os.tmpdir()`, which is world-traversable, so the directory mode is
-        // the only thing standing between a local account and every worker on
-        // the box. It also closes the window between `listen()` and the chmod
-        // the transport applies, which nothing in userland can make atomic.
-        await fs.mkdir(this.tempDir, { recursive: true, mode: 0o700 });
-        // `mkdir` only applies its mode when it CREATES the directory, and a
-        // directory left behind by an older build has the old permissions.
-        await fs.chmod(this.tempDir, 0o700).catch(() => {
-          // A directory owned by someone else is not ours to fix; the socket's
-          // own 0600 still applies.
-        });
+        await prepareWorkerDirectory(this.tempDir);
         const socketPath = path.join(this.tempDir, `${processId}.sock`);
         this.ownSockets.add(socketPath);
         // Once per spawner, and not awaited: a spawn must not wait on other
@@ -1323,7 +1303,7 @@ export class ProcessSpawner implements IProcessSpawner {
     // This should only be used for backward compatibility
     // In production, use file-based processes
 
-    await fs.mkdir(this.tempDir, { recursive: true });
+    await prepareWorkerDirectory(this.tempDir);
     const modulePath = path.join(this.tempDir, `legacy-process-${processId}.js`);
 
     // Create a simple wrapper that exports the class

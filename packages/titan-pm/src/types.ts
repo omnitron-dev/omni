@@ -1300,6 +1300,7 @@ export interface IProcessManagerConfig {
 
   /** Advanced options */
   advanced?: {
+    /** Dedicated directory for worker sockets and generated modules. On POSIX it must belong to the effective user. */
     tempDir?: string;
     gracefulShutdownTimeout?: number;
   };

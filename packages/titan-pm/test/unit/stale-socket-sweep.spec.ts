@@ -13,11 +13,12 @@
  * deleted the other's live socket files, and a Unix socket whose file is gone
  * accepts no new connections.
  */
-import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, existsSync, utimesSync } from 'node:fs';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { chmodSync, mkdtempSync, rmSync, existsSync, statSync, symlinkSync, utimesSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import net from 'node:net';
 
 import { ProcessSpawner } from '../../src/process-spawner.js';
@@ -134,6 +135,35 @@ describe('stale socket sweep', () => {
 
     expect(existsSync(mine), 'its own socket was left behind').toBe(false);
     expect(existsSync(theirs), "another spawner's socket was deleted").toBe(true);
+  });
+
+  it('keeps the empty account directory available to a concurrent spawner', async () => {
+    const dir = tempDir();
+    const inode = statSync(dir).ino;
+    await spawnerOn(dir).cleanup();
+    expect(statSync(dir).ino).toBe(inode);
+  });
+
+  it.skipIf(process.geteuid === undefined)('rejects a directory belonging to another account before starting a child', async () => {
+    const dir = tempDir();
+    chmodSync(dir, 0o750);
+    const owner = statSync(dir).uid;
+    const effectiveUser = vi.spyOn(process, 'geteuid').mockReturnValue(owner + 1);
+    try {
+      await expect(spawnerOn(dir).spawn(fileURLToPath(import.meta.url))).rejects.toThrow(`belongs to UID ${owner}`);
+      expect(statSync(dir).mode & 0o7777).toBe(0o750);
+    } finally {
+      effectiveUser.mockRestore();
+    }
+  });
+
+  it.skipIf(process.geteuid === undefined)('leaves the target of a linked directory unchanged', async () => {
+    const target = tempDir();
+    chmodSync(target, 0o750);
+    const link = join(tempDir(), 'sockets');
+    symlinkSync(target, link, 'dir');
+    await expect(spawnerOn(link).spawn(fileURLToPath(import.meta.url))).rejects.toThrow('physical directory');
+    expect(statSync(target).mode & 0o7777).toBe(0o750);
   });
 });
 

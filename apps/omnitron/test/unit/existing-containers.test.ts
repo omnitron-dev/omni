@@ -27,7 +27,9 @@ function fixture() {
       Networks: { [desired.network!]: { NetworkID: 'c'.repeat(64), IPAddress: '172.20.0.2' } } },
     Mounts: [{ Type: 'volume', Name: 'sample-dev-postgres-data', Source: '/volumes/sample-dev-postgres-data', Destination: '/var/lib/postgresql/data', RW: true }],
   };
-  const probes = { inspect: vi.fn(async () => [native]), image: vi.fn(async () => image), inventory: vi.fn(async () => [{ name: desired.name, id: native.Id }]) };
+  const probes = { inspect: vi.fn(async () => [native]), image: vi.fn(async () => image),
+    inventory: vi.fn<import('../../src/infrastructure/existing-containers.js').ExistingContainerProbes['inventory']>(
+      async () => ({ containers: [{ name: desired.name, id: native.Id }] })) };
   return { desired, native, image, probes };
 }
 
@@ -206,15 +208,32 @@ describe('preservation from actual Docker resources', () => {
   it('refuses removed declarations and additional native resources before recovery', async () => {
     const f = fixture();
     expect((await reviewExistingContainers([], f.probes, { project: 'sample', stack: 'dev' })).digest).toBeNull();
-    f.probes.inventory.mockResolvedValue([{ name: f.desired.name, id: f.native.Id }, { name: 'sample-dev-old-db', id: 'f'.repeat(64) }]);
+    f.probes.inventory.mockResolvedValue({ containers: [{ name: f.desired.name, id: f.native.Id }, { name: 'sample-dev-old-db', id: 'f'.repeat(64) }] });
     const report = await reviewExistingContainers([f.desired], f.probes);
     expect(report.digest).toBeNull();
     expect(report.checks[0]?.code).toBe('infrastructure.preservation-footprint');
     expect(f.probes.inspect).not.toHaveBeenCalled();
   });
 
+  it('binds the retained host listener to the review and reports changes without admitting other old containers', async () => {
+    const f = fixture(), containers = [{ name: f.desired.name, id: f.native.Id }];
+    const retained = { name: 'sample-dev-origin', id: 'c'.repeat(64), generation: '1-0123456789abcdef', fingerprint: '1'.repeat(64) };
+    const initial = await reviewExistingContainers([f.desired], f.probes);
+    f.probes.inventory.mockResolvedValue({ containers, retained });
+    const observed = await reviewExistingContainers([f.desired], f.probes);
+    expect(observed.digest).toMatch(/^[a-f0-9]{64}$/);
+    expect(observed.digest).not.toBe(initial.digest);
+    expect(observed.containers).toEqual(initial.containers);
+    expect(observed.retainedIngress).toEqual(retained);
+    expect(preservationIssues(observed, initial)).toContainEqual(expect.objectContaining({ code: 'infrastructure.retained-ingress-drift' }));
+    f.probes.inventory.mockResolvedValue({ containers: [...containers, { name: 'sample-dev-extra', id: 'e'.repeat(64) }], retained });
+    const unexpected = await reviewExistingContainers([f.desired], f.probes);
+    expect(unexpected.digest).toBeNull();
+    expect(unexpected.checks).toContainEqual(expect.objectContaining({ state: 'blocked', message: expect.stringContaining('sample-dev-extra') }));
+  });
+
   it('refuses replacement between ownership inventory and native inspection', async () => {
-    const f = fixture(); f.probes.inventory.mockResolvedValue([{ name: f.desired.name, id: 'e'.repeat(64) }]);
+    const f = fixture(); f.probes.inventory.mockResolvedValue({ containers: [{ name: f.desired.name, id: 'e'.repeat(64) }] });
     const { state, review } = await inspectExistingInfrastructure([f.desired], f.probes);
     expect(review.digest).toBeNull();
     expect(state.services[f.desired.name]?.status).toBe('unknown');

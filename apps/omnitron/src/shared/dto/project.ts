@@ -176,6 +176,7 @@ export interface ExistingInfrastructureReview {
   digest: string | null;
   checks: import('./stack-diagnosis.js').StackDiagnosisCheck[];
   containers: Array<{ name: string; id: string; fingerprint: string }>;
+  retainedIngress?: { name: string; id: string; generation: string; fingerprint: string };
 }
 
 export interface PlacementProvisionIntent {

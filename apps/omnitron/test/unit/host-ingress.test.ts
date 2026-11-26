@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { HostIngressService } from '../../src/infrastructure/host-ingress.service.js';
 import { checkIngressConflicts, normalizeIngressApplication, normalizeIngressSettings, renderHostIngress } from '../../src/infrastructure/host-ingress-config.js';
 import { DockerHostIngressRuntime } from '../../src/infrastructure/host-ingress-runtime.js';
+import { inspectStackContainerOwnership } from '../../src/infrastructure/container-runtime.js';
+import { existingContainerProbes, reviewExistingContainers } from '../../src/infrastructure/existing-containers.js';
 import type { HostIngressApply, HostIngressRuntime, HostIngressSettings, HostIngressTakeover, HostIngressTakeoverSnapshot } from '../../src/infrastructure/host-ingress-types.js';
 import type { withKernelFileLock } from '@xec-sh/ops/utils/file-lock';
 
@@ -233,6 +235,31 @@ describe('explicit initial origin takeover and recovery', () => {
     await expect(service.apply({ ...app(), takeover: takeover(), expectedGeneration: second.generation })).rejects.toThrow('initial');
     expect((await service.status()).applications).toHaveLength(2); expect(runtime.legacyRunning).toBe(false);
   });
+  it('proves the retained listener for its original stack across later ingress generations', async () => {
+    const descriptor = takeover(), scope = app().owner;
+    expect(await service.retainedOrigin(scope)).toBeNull();
+    const first = await service.apply({ ...app(), takeover: descriptor });
+    const retained = await service.retainedOrigin(scope);
+    expect(retained).toEqual({ name: descriptor.containerName, id: descriptor.containerId, generation: first.generation,
+      fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    const second = await service.apply({ ...app('b', 4710), expectedGeneration: first.generation });
+    expect(await service.retainedOrigin(scope)).toEqual(retained);
+    expect(await service.retainedOrigin(app('b').owner)).toBeNull();
+    runtime.legacyRunning = true;
+    await expect(service.retainedOrigin(scope)).rejects.toThrow('not retired');
+    runtime.legacyRunning = false;
+    runtime.active = first.generation;
+    await expect(service.retainedOrigin(scope)).rejects.toThrow('generation');
+    runtime.active = second.generation;
+    await service.remove({ owner: scope, expectedGeneration: second.generation });
+    await expect(service.retainedOrigin(scope)).rejects.toThrow('owner');
+  });
+  it('returns the listener to the stack after a confirmed takeover rollback', async () => {
+    const first = await service.apply({ ...app(), takeover: takeover() });
+    await service.rollbackTakeover({ expectedGeneration: first.generation });
+    expect(await service.retainedOrigin(app().owner)).toBeNull();
+    expect(runtime.legacyRunning).toBe(true);
+  });
   it('rejects wrong owner, short IDs and unrelated probe domains before stopping anything', async () => {
     for (const descriptor of [{ ...takeover(), containerId: 'abc' }, { ...takeover(), expectedLabels: { ...takeover().expectedLabels, 'omnitron.project': 'someone-else' } }, { ...takeover(), probe: { ...takeover().probe, domain: 'b.example.test' } }]) await expect(service.apply({ ...app(), takeover: descriptor })).rejects.toThrow();
     expect(runtime.events).not.toContain('stop-legacy');
@@ -396,6 +423,13 @@ it.skipIf(!process.env['OMNITRON_INGRESS_DOCKER_TEST_IMAGE'])('native origin han
     expect(inspectLegacy().State.Running).toBe(true); expect(inspectLegacy().HostConfig.RestartPolicy.Name).toBe('unless-stopped'); expect((await docker.inspect(nativeSettings)).exists).toBe(false); await probe();
     const again = await native.apply({ ...input, preparedOwnerRevision: prepared.ownerRevision });
     const second = await native.apply({ ...app('b', 28491), expectedGeneration: again.generation });
+    expect(await native.retainedOrigin(app().owner)).toMatchObject({ id: legacyId, name: legacyName, generation: again.generation });
+    const probes = { ...existingContainerProbes, inventory: (scope: { project: string; stack: string }) => inspectStackContainerOwnership(scope, [], native) };
+    const review = await reviewExistingContainers([], probes, app().owner);
+    expect(review.containers).toEqual([]);
+    expect(review.retainedIngress?.id).toBe(legacyId);
+    expect(review.digest).toMatch(/^[a-f0-9]{64}$/);
+    await expect(inspectStackContainerOwnership(app().owner, [legacyName], native)).rejects.toThrow('conflicts');
     await expect(native.rollbackTakeover({ expectedGeneration: again.generation })).rejects.toThrow('advanced');
     expect((await native.status()).observedGeneration).toBe(second.generation); expect(inspectLegacy().State.Running).toBe(false);
   } finally {

@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { isDeepStrictEqual } from 'node:util';
 import { mountSourceMatches } from './owned-container.js';
-import { containerObservation, containerResources, containerSpecHash, inspectStackContainers } from './container-runtime.js';
+import { containerObservation, containerResources, containerSpecHash, inspectStackContainerOwnership } from './container-runtime.js';
 import { DEFAULT_PORT_BIND_HOST, type ContainerState, type InfrastructureState, type ResolvedContainer } from './types.js';
 import { stackDefinitionFingerprint } from '../project/node-stack-stop.js';
 import type { ExistingInfrastructureReview } from '../shared/dto/project.js';
@@ -13,7 +13,7 @@ type Native = Record<string, any>;
 export interface ExistingContainerProbes {
   inspect(names: string[]): Promise<Native[]>;
   image(id: string): Promise<Native>;
-  inventory(scope: { project: string; stack: string }): Promise<Array<{ name: string; id: string }>>;
+  inventory: typeof inspectStackContainerOwnership;
 }
 const execute = promisify(execFile);
 async function inspect(args: string[]): Promise<Native[]> {
@@ -25,7 +25,7 @@ async function inspect(args: string[]): Promise<Native[]> {
   } catch { throw new Error('Native Docker inspection is unavailable'); }
 }
 export const existingContainerProbes: ExistingContainerProbes = {
-  inventory: inspectStackContainers,
+  inventory: inspectStackContainerOwnership,
   inspect: names => inspect(['container', 'inspect', ...names]),
   image: async id => {
     const images = await inspect(['image', 'inspect', id]);
@@ -213,6 +213,9 @@ export function preservationIssues(approved: ExistingInfrastructureReview, obser
   NonNullable<InfrastructureState['preservationIssues']> {
   if (approved.digest && approved.digest === observed.digest) return [];
   const issues = observed.checks.filter(check => check.state !== 'pass');
+  if (!isDeepStrictEqual(approved.retainedIngress, observed.retainedIngress))
+    issues.push({ code: 'infrastructure.retained-ingress-drift', resource: 'Host ingress', state: 'blocked',
+      message: 'The host ingress takeover evidence changed since the preservation review.' });
   const previous = new Map(approved.containers.map(container => [container.name, container]));
   for (const container of observed.containers) {
     const prior = previous.get(container.name);
@@ -246,10 +249,19 @@ export async function inspectExistingInfrastructure(desired: readonly ResolvedCo
     const project = scope?.project ?? desired[0]?.labels['omnitron.project'], stack = scope?.stack ?? desired[0]?.labels['omnitron.stack'];
     if (desired.length && (!project || !stack || desired.some(container => container.labels['omnitron.project'] !== project || container.labels['omnitron.stack'] !== stack)))
       throw Error('Ambiguous infrastructure ownership');
-    const inventory = project && stack ? await probes.inventory({ project, stack }) : [];
+    const ownership = project && stack ? await probes.inventory({ project, stack }) : { containers: [] };
+    const inventory = ownership.containers;
     if (project && stack) review.scope = { project, stack };
+    if (ownership.retained) {
+      review.retainedIngress = ownership.retained;
+      review.checks.push({ code: 'infrastructure.retained-ingress', resource: ownership.retained.name, state: 'pass',
+        message: 'Host ingress verified this stopped listener against its committed takeover.' });
+    }
     if (!isDeepStrictEqual(inventory.map(item => item.name).sort(), desired.map(item => item.name).sort())) {
-      review.checks.push({ code: 'infrastructure.preservation-footprint', resource: 'Infrastructure', state: 'blocked', message: 'Native ownership footprint differs from the desired services; reconcile separately.' });
+      const expected = new Set(desired.map(item => item.name)), actual = new Set(inventory.map(item => item.name));
+      const missing = [...expected].filter(name => !actual.has(name)).sort(), extra = [...actual].filter(name => !expected.has(name)).sort();
+      review.checks.push({ code: 'infrastructure.preservation-footprint', resource: 'Infrastructure', state: 'blocked',
+        message: ['Native container inventory differs.', missing.length && 'Missing: ' + missing.join(', '), extra.length && 'Unexpected: ' + extra.join(', ')].filter(Boolean).join(' ') });
       return { review, state };
     }
     const observed = desired.length ? await probes.inspect(desired.map(c => c.name)) : [];
@@ -277,6 +289,7 @@ export async function inspectExistingInfrastructure(desired: readonly ResolvedCo
     }
     if (review.checks.every(check => check.state === 'pass')) review.digest = stackDefinitionFingerprint([
       'omnitron/infrastructure.preserve/v1', review.scope ?? null, [...desired].sort((a, b) => a.name.localeCompare(b.name)), review.containers,
+      ...(review.retainedIngress ? [review.retainedIngress] : []),
     ]);
   } catch {
     review.checks.push({ code: 'infrastructure.preservation-unknown', resource: 'Infrastructure', state: 'unknown', message: 'Complete native infrastructure identity and specification could not be verified.' });

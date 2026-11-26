@@ -13,6 +13,7 @@ import { LONG_REQUEST_TIMEOUT } from '../shared/dto/services.js';
 import { CONFIG_ROOT_PREFIX } from './shipped-config.js';
 import { nativeHealthCheck } from './health-recovery.js';
 import { mountSourceMatches } from './owned-container.js';
+import { HostIngressService } from './host-ingress.service.js';
 import type { CredentialVolumeState } from './service-credentials.js';
 import { DEFAULT_PORT_BIND_HOST } from './types.js';
 import type { ContainerState, ContainerStatus, ContainerSpecHashMigration, ReconcileAction, ResolvedContainer } from './types.js';
@@ -395,9 +396,18 @@ export async function listManagedContainers(options: { orThrow?: boolean; checkN
 }
 
 /** Native IDs are the authority for destructive operations. Never follow a reused name. */
+export async function inspectStackContainerOwnership(scope: { project: string; stack: string }, names: readonly string[] = [],
+  ingress = new HostIngressService()) {
+  const inventory = (await managedContainerInventory(new Set(names), scope)).sort((a, b) => a.id.localeCompare(b.id));
+  const retained = await ingress.retainedOrigin(scope);
+  if (!retained) return { containers: inventory };
+  if (!inventory.some(item => item.id === retained.id && item.name === retained.name) || names.includes(retained.name))
+    throw new Error('Retained host ingress listener conflicts with the native stack inventory');
+  return { containers: inventory.filter(item => item.id !== retained.id), retained };
+}
+
 export async function inspectStackContainers(scope: { project: string; stack: string }, names: readonly string[] = []) {
-  const owned = await managedContainerInventory(new Set(names), scope);
-  return owned.sort((a, b) => a.id.localeCompare(b.id));
+  return (await inspectStackContainerOwnership(scope, names)).containers;
 }
 
 /**

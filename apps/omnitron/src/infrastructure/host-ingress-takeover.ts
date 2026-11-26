@@ -34,7 +34,7 @@ export function normalizeIngressTakeoverSnapshot(value: unknown): HostIngressTak
 interface Container {
   Id: string; Name: string; Config: { Image: string; Labels: Record<string, string> };
   HostConfig: { NetworkMode: string; RestartPolicy: { Name: string; MaximumRetryCount: number } };
-  State: { Running: boolean };
+  State: { Running: boolean; Status: string };
 }
 function policy(value: Container['HostConfig']['RestartPolicy']): HostIngressTakeoverSnapshot['restartPolicy'] {
   if (!value || !['no', 'always', 'unless-stopped', 'on-failure'].includes(value.Name) || !Number.isSafeInteger(value.MaximumRetryCount) || value.MaximumRetryCount < 0) throw new Error('Unsupported legacy restart policy');
@@ -90,7 +90,8 @@ export class DockerIngressTakeover {
   }
   async verifyRetired(snapshot: HostIngressTakeoverSnapshot): Promise<void> {
     const container = await this.bound(snapshot);
-    if (container.State.Running || container.HostConfig.RestartPolicy.Name !== 'no') throw new Error('Legacy origin has not been safely retired');
+    if (container.State.Running !== false || container.State.Status !== 'exited' || container.HostConfig.RestartPolicy.Name !== 'no')
+      throw new Error('Legacy origin has not been safely retired');
   }
   async restore(settings: HostIngressSettings, snapshot: HostIngressTakeoverSnapshot): Promise<void> {
     const container = await this.bound(snapshot);

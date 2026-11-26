@@ -103,6 +103,39 @@ export class HostIngressService {
     const manifest = settings && generation ? await this.manifest(settings, generation) : null;
     return { configured: !!settings, settings, generation, applications: manifest?.applications ?? [], ownerRevisions: (manifest?.applications ?? []).map((app) => ({ owner: app.owner, revision: ingressOwnerRevision(app) })), takeover: await this.takeoverRecord(), observedGeneration: settings ? await this.runtime.observed(settings) : null, recoveryPending: await exists(this.file('pending.json')) };
   }
+
+  /** A listener retained for host ingress recovery still has its original stack labels. */
+  async retainedOrigin(scope: { project: string; stack: string }) {
+    const belongs = (snapshot: HostIngressTakeoverSnapshot | undefined) =>
+      snapshot?.descriptor.expectedLabels['omnitron.project'] === scope.project &&
+      snapshot.descriptor.expectedLabels['omnitron.stack'] === scope.stack;
+    const known = await this.takeoverRecord();
+    if (!(known?.outcome === 'committed' && belongs(known.snapshot)) && !await exists(this.file('pending.json'))) return null;
+    return this.locked(async () => {
+      const record = await this.takeoverRecord();
+      if (await exists(this.file('pending.json'))) {
+        const pending = this.journal(JSON.parse(await fs.readFile(this.file('pending.json'), 'utf8')), await this.requiredSettings());
+        if (belongs(pending.takeover) || (record?.outcome === 'committed' && belongs(record.snapshot)))
+          throw new Error('Host ingress publication is pending; retry stack inventory after it settles');
+      }
+      if (record?.outcome !== 'committed' || !belongs(record.snapshot)) return null;
+      const { descriptor } = record.snapshot;
+      const settings = await this.requiredSettings();
+      const current = await this.currentGeneration();
+      if (!current || !(await this.runtime.inspect(settings)).running || await this.runtime.observed(settings) !== current)
+        throw new Error('Serving host ingress generation is unconfirmed');
+      const first = await this.manifest(settings, record.generation);
+      const original = first.applications[0];
+      const ownsDomain = (app: StoredIngressApplication) => app.routes.some(route => route.domains.includes(descriptor.probe.domain));
+      if (first.sequence !== 1 || first.applications.length !== 1 || !original || original.owner.project !== scope.project ||
+        original.owner.stack !== scope.stack || !ownsDomain(original)) throw new Error('Initial host ingress owner differs from the retained listener');
+      const serving = current === first.generation ? first : await this.manifest(settings, current);
+      if (!serving.applications.some(app => ingressOwnerKey(app.owner) === ingressOwnerKey(original.owner) && ownsDomain(app)))
+        throw new Error('The serving host ingress no longer confirms the retained listener owner');
+      await this.runtime.verifyRetiredTakeover(record.snapshot);
+      return { name: descriptor.containerName, id: descriptor.containerId, generation: record.generation, fingerprint: digest(JSON.stringify(record)) };
+    });
+  }
   private async pointer(generation: string | null): Promise<void> {
     if (generation === null) { await fs.rm(this.file('current'), { force: true }); await syncDirectory(this.root); return; }
     if (!generationPattern.test(generation)) throw new Error('Invalid ingress pointer target');

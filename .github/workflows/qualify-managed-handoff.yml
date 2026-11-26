@@ -86,6 +86,13 @@ jobs:
           JS
             )
           done
+      - name: Qualify preservation of a retained HTTPS listener with two tenants
+        working-directory: ${{ runner.temp }}/source-${{ inputs.candidate }}
+        env:
+          OMNITRON_INGRESS_DOCKER_TEST_IMAGE: openresty/openresty:alpine@sha256:d105c61207ac7568e3412aa1a0e5b4c8bb5bc818ffac21996068b282c25005b6
+        run: |
+          docker pull "$OMNITRON_INGRESS_DOCKER_TEST_IMAGE"
+          pnpm --dir apps/omnitron exec vitest run test/unit/host-ingress.test.ts -t 'native origin handoff'
       - name: Verify fresh and previous-version migration journals through the sealed CLIs
         env:
           TEST_DATABASE_URL: postgresql://postgres:isolated-ci@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/postgres

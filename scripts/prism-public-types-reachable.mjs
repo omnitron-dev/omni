@@ -30,6 +30,7 @@
  *
  * Usage: node scripts/prism-public-types-reachable.mjs
  */
+import { completeScan } from './lib/scan-receipt.js';
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -155,7 +156,7 @@ for (const b of barrels(join(PKG, 'src'))) {
   for (const typeOnly of ['NavigationMenuType', 'LayoutProviderProps']) {
     if (!reachable.has(typeOnly)) fail.push(`${typeOnly}: an \`export type { … }\` block was not parsed`);
   }
-  if (fail.length) { console.error('SELF-CHECK FAILED: ' + fail.join('; ')); process.exit(1); }
+  if (fail.length) { console.error('SELF-CHECK FAILED: ' + fail.join('; ')); process.exit(2); }
 }
 
 console.log(`${subpaths.length} published subpaths`);
@@ -163,3 +164,4 @@ console.log(`${reachable.size} symbols reachable from them`);
 console.log(`${orphans.size} exported by an inner barrel and reachable from none\n`);
 for (const [n, where] of [...orphans].sort()) console.log(`  ${n.padEnd(34)} ${where[0]}`);
 if (orphans.size === 0) console.log('  (none)');
+completeScan(import.meta.url, 'complete', { subpaths: subpaths.length, reachable: reachable.size, candidates: orphans.size });

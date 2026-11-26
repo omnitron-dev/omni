@@ -328,17 +328,9 @@ jobs:
           retention-days: 14
 
   # -------------------------------------------------------------------
-  # Standing checks — the scanners in `scripts/`.
-  #
-  # Safe to gate on, measured rather than assumed: `run-checks.mjs` exits
-  # non-zero for a failing GATE only. A worklist is a standing backlog,
-  # counted and printed, never red — so this job does not go permanently
-  # amber and teach everyone to ignore it. A manifest naming a file that
-  # no longer exists exits 2 rather than skipping silently, because
-  # otherwise a rename removes a check without a word.
-  #
-  # No scanner imports a workspace package, so this installs without
-  # building them.
+  # Xec runs each reviewed analyzer. Gate findings fail the job. Completed
+  # worklists publish their findings. Missing analyzers and receipts fail
+  # independently and retain the diagnostics from this run.
   # -------------------------------------------------------------------
   scans:
     name: Standing checks
@@ -354,8 +346,22 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
       - name: Install dependencies
+        id: scan_dependencies
         run: pnpm install --frozen-lockfile
       - name: Audit locked dependencies (including build tools and Console)
         run: pnpm exec xec check-audit
-      - name: Standing checks (gates must pass; worklists are printed)
-        run: pnpm check:scans
+      - name: Verify source scan reporting
+        if: ${{ !cancelled() && steps.scan_dependencies.outcome == 'success' }}
+        run: node --test scripts/ci/source-scans.test.js
+      - name: Run source gates and worklists
+        id: source_scans
+        if: ${{ !cancelled() && steps.scan_dependencies.outcome == 'success' }}
+        run: pnpm check:scans --report "${{ runner.temp }}/source-scans.json"
+      - name: Preserve source scan diagnostics
+        if: ${{ !cancelled() && steps.source_scans.outcome != 'skipped' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: source-scans
+          path: ${{ runner.temp }}/source-scans.json
+          if-no-files-found: error
+          retention-days: 14

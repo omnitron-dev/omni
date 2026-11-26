@@ -51,6 +51,7 @@
  * measures this one, reporting a clean result for a tree it never read.
  */
 
+import { completeScan } from './lib/scan-receipt.js';
 import { execSync, execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -154,8 +155,11 @@ function collectionError(error, output = '') {
 /** `vitest list --filesOnly` is the runner's own answer to "what would you run". */
 function vitestCollects(pkg, config) {
   try {
-    const out = execFileSync('npx', ['vitest', 'list', '--filesOnly', '--config', config], {
-      cwd: join(ROOT, pkg),
+    const cwd = join(ROOT, pkg);
+    const manifest = createRequire(join(cwd, 'package.json')).resolve('vitest/package.json');
+    const cli = join(dirname(manifest), JSON.parse(readFileSync(manifest, 'utf8')).bin.vitest);
+    const out = execFileSync(process.execPath, [cli, 'list', '--filesOnly', '--config', config], {
+      cwd,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
       timeout: 300_000,
@@ -370,4 +374,6 @@ if (JSON_OUT) {
   }
 }
 
-process.exit(orphans.length > 0 || collectionFailures.length > 0 ? 1 : 0);
+if (collectionFailures.length) process.exitCode = 2;
+else completeScan(import.meta.url, orphans.length ? 'findings' : 'complete',
+  { tracked: tracked.length, uncollected: orphans.length, excluded: excluded.length });

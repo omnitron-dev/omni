@@ -31,74 +31,55 @@
  * is the cheap question. It cannot tell an unbuilt fix from a comment edit;
  * read the diff before acting.
  */
-import { readdirSync, statSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { execSync } from 'node:child_process';
+import { readdirSync, statSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { completeScan } from './lib/scan-receipt.js';
 
-const ROOT = execSync('git rev-parse --show-toplevel', { encoding: 'utf8' }).trim();
+const root = fileURLToPath(new URL('../', import.meta.url));
+const skip = new Set(['node_modules', '.git', 'coverage']);
 
-/** Newest mtime under a directory, and the file it belongs to. */
-export function newest(dir, skip = new Set(['node_modules', '.git', 'coverage'])) {
-  let best = { mtime: 0, file: null };
-  const walk = (d) => {
-    let entries;
-    try {
-      entries = readdirSync(d, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const e of entries) {
-      if (skip.has(e.name)) continue;
-      const p = join(d, e.name);
-      if (e.isDirectory()) walk(p);
+/** A missing source or output is reported as missing coverage. Failures reading an existing directory propagate. */
+function newest(directory) {
+  if (!statSync(directory, { throwIfNoEntry: false })) return null;
+  let best = null;
+  function walk(dir) {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (skip.has(entry.name)) continue;
+      const file = join(dir, entry.name);
+      if (entry.isDirectory()) walk(file);
       else {
-        const m = statSync(p).mtimeMs;
-        if (m > best.mtime) best = { mtime: m, file: p };
+        const stat = statSync(file);
+        if (stat.isFile() && (!best || stat.mtimeMs > best.mtime)) best = { mtime: stat.mtimeMs, file };
       }
     }
-  };
-  walk(dir);
+  }
+  walk(directory);
   return best;
 }
 
-const packages = readdirSync(join(ROOT, 'packages'), { withFileTypes: true })
-  .filter((e) => e.isDirectory())
-  .map((e) => e.name);
-
-const rows = [];
+const packages = readdirSync(join(root, 'packages'), { withFileTypes: true })
+  .filter(entry => entry.isDirectory() && statSync(join(root, 'packages', entry.name, 'package.json'), { throwIfNoEntry: false })?.isFile())
+  .map(entry => entry.name).sort();
+const older = [], withoutSource = [], withoutBuild = [];
+let compared = 0;
 for (const name of packages) {
-  const src = join(ROOT, 'packages', name, 'src');
-  const dist = join(ROOT, 'packages', name, 'dist');
-  if (!existsSync(src) || !existsSync(dist)) continue;
-  const s = newest(src);
-  const d = newest(dist);
-  if (s.mtime > d.mtime) {
-    rows.push({
-      name,
-      days: Math.round(((s.mtime - d.mtime) / 86_400_000) * 10) / 10,
-      src: s.file?.replace(ROOT + '/', ''),
-      built: new Date(d.mtime).toISOString().slice(0, 10),
-    });
+  const directory = join(root, 'packages', name);
+  const src = newest(join(directory, 'src'));
+  if (!src) { withoutSource.push(name); continue; }
+  const dist = newest(join(directory, 'dist'));
+  if (!dist) { withoutBuild.push(name); continue; }
+  compared++;
+  if (src.mtime > dist.mtime) {
+    older.push({ name, delay: src.mtime - dist.mtime, src: relative(root, src.file), built: new Date(dist.mtime).toISOString() });
   }
 }
-
-rows.sort((a, b) => b.days - a.days);
-for (const r of rows) {
-  console.log(`  ${r.name.padEnd(22)} dist built ${r.built}, source is ${r.days}d newer`);
-  console.log(`      newest source: ${r.src}`);
+if (!packages.length || withoutSource.length === packages.length) throw Error('No package source files available for the build comparison');
+for (const row of older.sort((a, b) => b.delay - a.delay)) {
+  console.log('  ' + row.name + '  newest output ' + row.built + ', newest source ' + row.src + ' (' + row.delay + 'ms newer)');
 }
-console.log(`\n${rows.length} of ${packages.length} package(s) run from a build older than their source`);
-
-const selfCheck = (() => {
-  // The walker must find the newest file, not the first one, and must not
-  // descend into node_modules — which is where a package's own dependencies
-  // live and would dominate every timestamp.
-  const probe = newest(join(ROOT, 'scripts'));
-  return probe.file !== null && probe.mtime > 0 && !probe.file.includes('node_modules');
-})();
-console.log(
-  selfCheck
-    ? 'self-check OK: the walker finds a newest file and skips node_modules'
-    : '!! SELF-CHECK FAILED — the walker is not measuring what this scan claims',
-);
-if (!selfCheck) process.exit(1);
+console.log(older.length + ' older builds among ' + compared + ' compared packages.');
+if (withoutSource.length) console.log('No source files: ' + withoutSource.join(', '));
+if (withoutBuild.length) console.log('No build output to compare: ' + withoutBuild.join(', '));
+completeScan(import.meta.url, older.length ? 'findings' : compared ? 'complete' : 'not-applicable',
+  { packages: packages.length, compared, older: older.length, withoutSource: withoutSource.length, withoutBuild: withoutBuild.length });

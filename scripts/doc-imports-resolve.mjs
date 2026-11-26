@@ -42,6 +42,7 @@
  *
  * Usage: node scripts/doc-imports-resolve.mjs
  */
+import { completeScan } from './lib/scan-receipt.js';
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -50,9 +51,7 @@ import { stripComments } from './lib/strip-comments.mjs';
 const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..');
 
 function mdFiles(dir, acc = []) {
-  let entries;
-  try { entries = readdirSync(dir); } catch { return acc; }
-  for (const name of entries) {
+  for (const name of readdirSync(dir)) {
     const full = join(dir, name);
     if (statSync(full).isDirectory()) mdFiles(full, acc);
     else if (/\.mdx?$/.test(name)) acc.push(full);
@@ -79,8 +78,7 @@ function exportsOf(file, depth = 0) {
   if (cache.has(file)) return cache.get(file);
   const names = new Set();
   cache.set(file, names);
-  let src;
-  try { src = readFileSync(file, 'utf8'); } catch { return names; }
+  const src = readFileSync(file, 'utf8');
 
   for (const m of src.matchAll(
     /export\s+(?:declare\s+)?(?:async\s+)?(?:abstract\s+)?(?:const|let|var|function|class|interface|type|enum)\s+([A-Za-z_$][\w$]*)/g,
@@ -132,54 +130,59 @@ function exportsOf(file, depth = 0) {
  * self-check exists to prevent.
  */
 const DOCS = join(ROOT, 'internal/website/docs');
-if (!existsSync(DOCS)) {
+if (!statSync(DOCS, { throwIfNoEntry: false })) {
   console.log(`no documentation at ${DOCS} — it lives under the gitignored \`internal/\`, so there is nothing here to check`);
-  process.exit(0);
+  completeScan(import.meta.url, 'not-applicable', { checked: 0 });
+} else {
+  scanDocuments();
 }
 
-const missing = new Map();
-let checked = 0;
-for (const file of mdFiles(DOCS)) {
-  const lines = readFileSync(file, 'utf8').split('\n');
-  lines.forEach((line, i) => {
-    const m = /import\s+(?:type\s+)?\{([^}]+)\}\s+from\s+'(@omnitron-dev\/[^']+)'/.exec(line);
-    if (!m) return;
-    const target = resolveSpecifier(m[2]);
-    if (!target) return;
-    const exported = exportsOf(target);
-    if (exported.size === 0) return;
-    for (const raw of m[1].split(',')) {
-      const name = raw.trim().replace(/^type\s+/, '').split(/\s+as\s+/)[0].trim();
-      if (!name || !/^[A-Za-z_$]/.test(name)) continue;
-      checked++;
-      if (exported.has(name)) continue;
-      const key = `${m[2]} :: ${name}`;
-      if (!missing.has(key)) missing.set(key, []);
-      missing.get(key).push(`${file.slice(ROOT.length + 1)}:${i + 1}`);
-    }
-  });
-}
-
-// --- self-check -----------------------------------------------------------
-{
-  const fail = [];
-  const titan = resolveSpecifier('@omnitron-dev/titan');
-  if (!titan) fail.push('the titan package did not resolve');
-  else {
-    const e = exportsOf(titan);
-    if (!e.has('Application')) fail.push('a plain re-export was not seen');
-    if (!e.has('OnInit')) fail.push("an `export type { … }` name was not seen");
-    if (e.has('Public')) fail.push('Public was found on the titan root — it lives under /netron');
+function scanDocuments() {
+  const missing = new Map();
+  let checked = 0;
+  for (const file of mdFiles(DOCS)) {
+    const lines = readFileSync(file, 'utf8').split('\n');
+    lines.forEach((line, i) => {
+      const m = /import\s+(?:type\s+)?\{([^}]+)\}\s+from\s+'(@omnitron-dev\/[^']+)'/.exec(line);
+      if (!m) return;
+      const target = resolveSpecifier(m[2]);
+      if (!target) return;
+      const exported = exportsOf(target);
+      if (exported.size === 0) return;
+      for (const raw of m[1].split(',')) {
+        const name = raw.trim().replace(/^type\s+/, '').split(/\s+as\s+/)[0].trim();
+        if (!name || !/^[A-Za-z_$]/.test(name)) continue;
+        checked++;
+        if (exported.has(name)) continue;
+        const key = `${m[2]} :: ${name}`;
+        if (!missing.has(key)) missing.set(key, []);
+        missing.get(key).push(`${file.slice(ROOT.length + 1)}:${i + 1}`);
+      }
+    });
   }
-  const dec = resolveSpecifier('@omnitron-dev/titan/decorators');
-  if (!dec || !exportsOf(dec).has('Public')) fail.push('a subpath barrel did not resolve');
-  const lay = resolveSpecifier('@omnitron-dev/prism/layouts');
-  if (!lay || !exportsOf(lay).has('UserMenu')) fail.push('the prism layouts barrel lost UserMenu again');
-  if (checked < 400) fail.push(`only ${checked} symbols checked — the docs or the parser moved`);
-  if (fail.length) { console.error('SELF-CHECK FAILED: ' + fail.join('; ')); process.exit(1); }
-}
 
-console.log(`${checked} imported symbols checked`);
-console.log(`${missing.size} not found in the package's exports\n`);
-for (const [k, where] of [...missing].sort()) console.log(`  ${k}\n      ${where.slice(0, 3).join(', ')}`);
-if (missing.size === 0) console.log('  (none)');
+  // --- self-check -----------------------------------------------------------
+  {
+    const fail = [];
+    const titan = resolveSpecifier('@omnitron-dev/titan');
+    if (!titan) fail.push('the titan package did not resolve');
+    else {
+      const e = exportsOf(titan);
+      if (!e.has('Application')) fail.push('a plain re-export was not seen');
+      if (!e.has('OnInit')) fail.push("an `export type { … }` name was not seen");
+      if (e.has('Public')) fail.push('Public was found on the titan root — it lives under /netron');
+    }
+    const dec = resolveSpecifier('@omnitron-dev/titan/decorators');
+    if (!dec || !exportsOf(dec).has('Public')) fail.push('a subpath barrel did not resolve');
+    const lay = resolveSpecifier('@omnitron-dev/prism/layouts');
+    if (!lay || !exportsOf(lay).has('UserMenu')) fail.push('the prism layouts barrel lost UserMenu again');
+    if (checked < 400) fail.push(`only ${checked} symbols checked — the docs or the parser moved`);
+    if (fail.length) { console.error('SELF-CHECK FAILED: ' + fail.join('; ')); process.exit(2); }
+  }
+
+  console.log(`${checked} imported symbols checked`);
+  console.log(`${missing.size} not found in the package's exports\n`);
+  for (const [k, where] of [...missing].sort()) console.log(`  ${k}\n      ${where.slice(0, 3).join(', ')}`);
+  if (missing.size === 0) console.log('  (none)');
+  completeScan(import.meta.url, 'complete', { checked, candidates: missing.size });
+}

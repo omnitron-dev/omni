@@ -12,7 +12,12 @@ async function collectionFixture(t, files, scripts = {}) {
   t.after(() => rm(directory, { recursive: true, force: true }));
   const pkg = join(directory, 'packages/ui');
   await mkdir(pkg, { recursive: true });
-  await symlink(fileURLToPath(new URL('../../node_modules', import.meta.url)), join(directory, 'node_modules'), 'dir');
+  // Runner packages resolve their own installed dependencies. Keep caches and package-manager metadata private.
+  for (const name of ['@playwright/test', 'vitest']) {
+    const link = join(directory, 'node_modules', name);
+    await mkdir(dirname(link), { recursive: true });
+    await symlink(dirname(createRequire(import.meta.url).resolve(name + '/package.json')), link, 'dir');
+  }
   const manifest = next => writeFile(join(pkg, 'package.json'), JSON.stringify({ name: 'collection-fixture', type: 'module', scripts: next }));
   await manifest(scripts);
   for (const [name, source] of Object.entries(files)) {
@@ -30,7 +35,7 @@ async function collectionFixture(t, files, scripts = {}) {
       const result = spawnSync(process.execPath, [fileURLToPath(new URL('../tests-nothing-runs.mjs', import.meta.url)), '--root', directory, '--json'], {
         encoding: 'utf8', timeout: 30_000, maxBuffer: 4 * 1024 * 1024,
       });
-      assert.ok([0, 1].includes(result.status), result.stderr || result.error?.message);
+      assert.ok([0, 1, 2].includes(result.status), result.stderr || result.error?.message);
       return { status: result.status, ...JSON.parse(result.stdout) };
     },
   };
@@ -54,7 +59,7 @@ test('collection follows a direct Playwright script filter and refuses shell pro
   for (const command of ['playwright test tests && echo unsupported', 'CI=1 playwright test tests', 'playwright test tests/*.spec.js']) {
     await fixture.manifest({ 'test:browser': command });
     const refused = fixture.scan();
-    assert.equal(refused.status, 1);
+    assert.equal(refused.status, 2);
     assert.match(refused.collectionFailures[0].error, /shell syntax is unsupported/);
   }
 });
@@ -84,14 +89,14 @@ test('Playwright resolves computed config paths and collection errors remain fai
   assert.equal(fixture.scan().status, 0);
   await fixture.manifest({ 'test:missing': 'playwright test never-collected.spec.js' });
   const missing = fixture.scan();
-  assert.equal(missing.status, 1);
+  assert.equal(missing.status, 2);
   assert.equal(missing.collectionFailures.length, 1, 'a passing config must not hide a refused script collection');
   assert.match(missing.collectionFailures[0].error, /No tests found/);
   assert.deepEqual(missing.orphans, []);
   await fixture.manifest({});
   await writeFile(join(fixture.pkg, 'tests/browser/good.spec.js'), "throw new Error('Declaration refused intentionally');\n");
   const refused = fixture.scan();
-  assert.equal(refused.status, 1);
+  assert.equal(refused.status, 2);
   assert.equal(refused.collectionFailures.length, 1);
   assert.match(refused.collectionFailures[0].error, /Declaration refused intentionally/);
   assert.deepEqual(refused.orphans, []);
@@ -102,7 +107,7 @@ test('collection reports structured stdout failures and stderr within a bounded 
     'tests/browser/broken.spec.js': "console.error('declaration stderr context'); throw Error('declaration reason: ' + 'x'.repeat(20000));\n",
   }, { 'test:browser': 'playwright test tests/browser' });
   const result = fixture.scan();
-  assert.equal(result.status, 1);
+  assert.equal(result.status, 2);
   const diagnostic = result.collectionFailures[0].error;
   assert.match(diagnostic, /status=1/);
   assert.match(diagnostic, /declaration reason:/);
@@ -134,7 +139,7 @@ test('a failing Vitest config is not hidden by another successful runner', async
     'tests/browser/a.spec.js': collectedTest,
   }, { 'test:browser': 'playwright test tests/browser' });
   const result = fixture.scan();
-  assert.equal(result.status, 1);
+  assert.equal(result.status, 2);
   assert.equal(result.collectionFailures.length, 1);
   assert.deepEqual(result.collectionFailures[0].configs, ['vitest.config.js']);
   assert.match(result.collectionFailures[0].error, /vitest declaration refused/);

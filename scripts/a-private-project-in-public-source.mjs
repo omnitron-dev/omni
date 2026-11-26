@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /** Keep public source independent of private integration-project identities. */
+import { completeScan } from './lib/scan-receipt.js';
 import { execFileSync } from 'node:child_process';
 import { readFileSync, lstatSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -58,4 +59,4 @@ for (let i = 0; i + 1 < tags.length; i += 2) {
   }
 }
 console.log(`${checked} public text files; ${commits} commit messages; ${failures} private project references`);
-process.exitCode = failures ? 1 : 0;
+completeScan(import.meta.url, failures ? 'findings' : 'complete', { files: checked, commits, privateReferences: failures });

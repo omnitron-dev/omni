@@ -27,6 +27,7 @@
  *
  * Usage: node scripts/module-root-drift.mjs
  */
+import { completeScan } from './lib/scan-receipt.js';
 import { readFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { stripComments } from './lib/strip-comments.mjs';
@@ -133,3 +134,4 @@ for (const f of files) {
   }
 }
 console.log(`\n${findings} module(s) whose two roots do not wire the same things`);
+completeScan(import.meta.url, 'complete', { files: files.length, candidates: findings });

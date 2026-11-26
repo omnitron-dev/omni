@@ -42,6 +42,7 @@
  *
  * Usage: node scripts/stub-that-reports-success.mjs
  */
+import { completeScan } from './lib/scan-receipt.js';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -128,7 +129,7 @@ for (const file of ROOTS.flatMap((r) => files(r))) {
     fail.push('a method that does real work was reported');
   }
   if (probe(["    this.logger.debug({}, 'Sweep completed');"])) fail.push('a debug line was treated as a claim');
-  if (fail.length) { console.error('SELF-CHECK FAILED: ' + fail.join('; ')); process.exit(1); }
+  if (fail.length) { console.error('SELF-CHECK FAILED: ' + fail.join('; ')); process.exit(2); }
 }
 
 console.log(`${examined} method bodies examined`);
@@ -137,3 +138,4 @@ for (const h of hits) {
   console.log(`  ${h.stub ? 'STUB ' : '     '}${h.file}:${h.line}  ${h.name}`);
 }
 if (hits.length === 0) console.log('  (none)');
+completeScan(import.meta.url, 'complete', { examined, candidates: hits.length });

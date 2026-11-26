@@ -41,6 +41,7 @@
  *
  * Usage: node scripts/duplicate-implementations.mjs
  */
+import { completeScan } from './lib/scan-receipt.js';
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -105,3 +106,4 @@ console.log(`${scanned} function bodies of 200+ chars; ${dups.length} duplicated
 for (const g of dups.sort((a,b)=>b[0].len-a[0].len)) {
   console.log(`  ${g[0].len} chars — ${g.map(x=>`${x.name} @ ${x.file}`).join('\n                  ')}`);
 }
+completeScan(import.meta.url, 'complete', { bodies: scanned, candidates: dups.length });

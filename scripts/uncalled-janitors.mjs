@@ -38,6 +38,7 @@
  *
  * Usage: node scripts/uncalled-janitors.mjs
  */
+import { completeScan } from './lib/scan-receipt.js';
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -151,3 +152,4 @@ console.log(`scanned ${files.length} files, found ${found} janitor methods, ${ro
 rows.forEach((r) => console.log(r));
 if (rows.length === 0) console.log('  (none)');
 console.log('\nself-check OK: sees a known janitor, and does not call a called one uncalled');
+completeScan(import.meta.url, 'complete', { files: files.length, methods: found, candidates: rows.length });

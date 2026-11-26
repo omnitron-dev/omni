@@ -36,6 +36,7 @@
  * Exit 0 when all hold; 1 with what was found; 2 when it could not ask.
  */
 
+import { completeScan } from './lib/scan-receipt.js';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -95,7 +96,8 @@ async function run(vitest, project, tmp, signal) {
   child.stdout.on('data', (b) => (output += b));
   child.stderr.on('data', (b) => (output += b));
   const exited = new Promise((r) => child.on('close', (code, sig) => r(code ?? sig)));
-  const deadline = setTimeout(() => child.kill('SIGKILL'), RUN_MS);
+  let timedOut = false;
+  const deadline = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, RUN_MS);
   let signalled = false;
   if (signal) {
     const t0 = Date.now();
@@ -107,7 +109,7 @@ async function run(vitest, project, tmp, signal) {
   }
   const exit = await exited;
   clearTimeout(deadline);
-  return { exit, output, pid: child.pid, signalled };
+  return { exit, output, pid: child.pid, signalled, timedOut };
 }
 
 /** The test file: `mode` passed, failed, or blocked until its vitest is gone. */
@@ -170,7 +172,7 @@ async function main() {
       return { tmp, project };
     };
     const couldNot = (what, r) => {
-      console.error(`could not ask: ${of}, ${what}: exited ${r.exit}`);
+      console.error(`could not ask: ${of}, ${what}: ${r.timedOut ? `timed out after ${RUN_MS}ms, ` : ''}exited ${r.exit}`);
       console.error(r.output.split('\n').slice(-15).join('\n'));
       return 2;
     };
@@ -185,7 +187,7 @@ async function main() {
       if (r.exit !== 0 || !/1 passed/.test(r.output) || during === null) return couldNot('a passing run', r);
       if (during.length === 0) {
         console.error(`${of} made no copies during the run — this check measures nothing on it; rewrite it for the runner in use`);
-        return 1;
+        return 2;
       }
       const after = contents(tmp);
       if (after.length > 0) found.push(`a passing run left ${after.join(', ')}`);
@@ -256,4 +258,6 @@ async function main() {
  * deadlocks against a V8 worker that waits for a collection (a scan that hung
  * on its way out, 2026-09-23).
  */
-process.exitCode = await main();
+const code = await main();
+if (code === 2) process.exitCode = 2;
+else completeScan(import.meta.url, code === 1 ? 'findings' : 'complete');

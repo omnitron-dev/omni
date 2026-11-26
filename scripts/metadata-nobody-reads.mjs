@@ -71,6 +71,7 @@
  *
  * Usage: node scripts/metadata-nobody-reads.mjs
  */
+import { completeScan } from './lib/scan-receipt.js';
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -249,3 +250,4 @@ console.log('\n=== WRITTEN BESIDE A LIVE KEY ===');
 for (const [key] of beside) console.log(`  ${key}`);
 if (beside.length === 0) console.log('  (none)');
 console.log('\nself-check OK: sees both literal and identifier keys, in both directions');
+completeScan(import.meta.url, 'complete', { written: written.size, read: read.size, writtenAlone: alone.length, besideLiveKey: beside.length });

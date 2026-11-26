@@ -28,6 +28,18 @@ pnpm build
 pnpm check:scans
 ```
 
+`pnpm check:scans` runs the reviewed source gates and both worklists. The
+destructive-site report separates detected file/function keys that match a
+recorded review, new keys awaiting review and historical keys absent from
+the checkout. Build-age comparisons show how many packages have both source
+and build output.
+
+Use `pnpm check:scans --report <new-file>` to retain every analyzer's counts,
+stdout and stderr. Linux CI uploads the same JSON as `source-scans`. Exit 0
+allows completed worklist findings. Exit 1 indicates blocking gate findings.
+Exit 2 indicates an incomplete check or report, including a missing analyzer
+or a process that exited without its completion receipt.
+
 pnpm owns the workspace installation and lockfile. Turbo owns the dependency graph and build cache; Xec orchestrates repository and release workflows. Build through these commands so secondary package outputs are included.
 
 ```sh

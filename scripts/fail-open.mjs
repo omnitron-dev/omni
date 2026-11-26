@@ -50,6 +50,7 @@
  * Usage: node scripts/fail-open.mjs
  */
 
+import { completeScan } from './lib/scan-receipt.js';
 import { readFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { stripComments } from './lib/strip-comments.mjs';
@@ -115,7 +116,7 @@ let tries = 0, withDecision = 0, benign = 0, handled = 0;
   if (!handled(' allowed = false; ')) fail.push('a refusing default was not read as handling');
   if (!handled(" msg = '[decryption failed]'; ")) fail.push('an explicit message was not read as handling');
   if (handled(' perms = []; ')) fail.push('an empty collection default was read as handling');
-  if (fail.length) { console.error('SELF-CHECK FAILED: ' + fail.join('; ')); process.exit(1); }
+  if (fail.length) { console.error('SELF-CHECK FAILED: ' + fail.join('; ')); process.exit(2); }
 }
 
 const findings = [];
@@ -195,3 +196,4 @@ for (const [app, list] of [...byApp].sort((a, b) => b[1].length - a[1].length)) 
   console.log(`=== ${app} (${list.length}) ===`);
   for (const f of list) console.log(`  ${f.file}:${f.line}  [${f.calls}]  catch → ${f.swallow}`);
 }
+completeScan(import.meta.url, 'complete', { examined: tries, candidates: findings.length });

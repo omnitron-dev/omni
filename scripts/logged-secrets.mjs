@@ -34,6 +34,7 @@
  *
  * Usage: node scripts/logged-secrets.mjs
  */
+import { completeScan } from './lib/scan-receipt.js';
 import { readFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 
@@ -180,3 +181,4 @@ console.log('=== NAMED ===');
 for (const h of named) console.log(`${h.file}:${h.line}\n    ${h.text}`);
 console.log('\n=== WHOLESALE ===');
 for (const h of whole) console.log(`${h.file}:${h.line}\n    ${h.text}`);
+completeScan(import.meta.url, 'complete', { files: files.length, logCalls: calls, namedCandidates: named.length, wholePayloadCandidates: whole.length });

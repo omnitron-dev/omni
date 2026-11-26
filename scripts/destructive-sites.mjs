@@ -44,7 +44,10 @@
  * Usage: node scripts/destructive-sites.mjs
  */
 import { readFileSync } from 'node:fs';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { completeScan } from './lib/scan-receipt.js';
 import { stripComments } from './lib/strip-comments.mjs';
 
 /** Calls that end something. */
@@ -318,25 +321,28 @@ export async function uninstall(): Promise<void> {
   if (bad.length) { console.error('SELF-CHECK FAILED: ' + bad.join('; ')); process.exit(2); }
 }
 
-const files = execSync("git ls-files 'apps/omnitron/src/**/*.ts'", { encoding: 'utf8', timeout: 60_000 })
-  .trim().split('\n').filter(Boolean)
+const root = fileURLToPath(new URL('../', import.meta.url));
+const files = execFileSync('git', ['ls-files', '-z', '--', ':(glob)apps/omnitron/src/**/*.ts'], { cwd: root, encoding: 'utf8', timeout: 60_000 })
+  .split('\0').filter(Boolean)
   .filter((f) => !/\.(test|spec)\.ts$/.test(f));
+if (!files.length) throw Error('No tracked Omnitron TypeScript sources to examine');
 
 const seen = new Set();
 for (const f of files) {
   const rel = f.replace('apps/omnitron/src/', '');
-  for (const site of sitesIn(rel, readFileSync(f, 'utf8'))) seen.add(site);
+  for (const site of sitesIn(rel, readFileSync(join(root, f), 'utf8'))) seen.add(site);
 }
 
 // One site is listed under a suffixed key because two different things are
 // destroyed in the same function and they are bounded by different rules.
 const ALIASED = { 'commands/daemon-cmd.ts::daemonKill (socket)': 'commands/daemon-cmd.ts::daemonKill' };
-const reviewed = new Set(Object.keys(EXPECTED).map((k) => ALIASED[k] ?? k));
+const recorded = new Set(Object.keys(EXPECTED).map((k) => ALIASED[k] ?? k));
 
-const unreviewed = [...seen].filter((s) => !reviewed.has(s)).sort();
-const stale = [...reviewed].filter((s) => !seen.has(s)).sort();
+const unreviewed = [...seen].filter((s) => !recorded.has(s)).sort();
+const stale = [...recorded].filter((s) => !seen.has(s)).sort();
+const matched = seen.size - unreviewed.length;
 
-console.log(`${seen.size} destructive site(s) in apps/omnitron/src; ${reviewed.size} reviewed\n`);
+console.log(`${seen.size} detected file/function keys in ${files.length} source files. ${matched} match recorded reviews, ${unreviewed.length} await review. ${stale.length} of ${recorded.size} recorded keys are absent.\n`);
 
 if (unreviewed.length) {
   console.log('=== NOT REVIEWED — answer the three questions above, then add a line to EXPECTED ===');
@@ -354,4 +360,5 @@ console.log(
   'comment, an interface member and a function declaring its own name; attributes a 2-space-indented\n' +
   'call to the function around it',
 );
-if (unreviewed.length || stale.length) process.exit(1);
+completeScan(import.meta.url, unreviewed.length || stale.length ? 'findings' : 'complete',
+  { files: files.length, detected: seen.size, matched, unreviewed: unreviewed.length, recorded: recorded.size, stale: stale.length });

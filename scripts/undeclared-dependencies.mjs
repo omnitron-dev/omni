@@ -54,6 +54,7 @@
  * Internal workspace dependencies must use workspace:* so a release bump cannot
  * leave an incompatible peer range behind. Exit code 1 for either defect.
  */
+import { completeScan } from './lib/scan-receipt.js';
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { inlinedDevDependencies, packageOf, specifiersOf, ts, workspaceReferenceFindings } from './lib/package-imports.mjs';
@@ -364,4 +365,4 @@ console.log(
     `${runtimeFindings} runtime, ${typeFindings} type-only, ${workspaceFindings} invalid workspace references` +
     (WANT_UNUSED ? `, ${unusedFindings} declared-unused needing a look` : ''),
 );
-process.exit(runtimeFindings > 0 || workspaceFindings > 0 ? 1 : 0);
+completeScan(import.meta.url, runtimeFindings || workspaceFindings ? 'findings' : 'complete', { packages: scanned, files: filesScanned, runtimeFindings, typeFindings, workspaceFindings });

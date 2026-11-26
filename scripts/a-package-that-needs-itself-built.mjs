@@ -19,6 +19,7 @@
  * statement, in `src`, tests excluded (a test may import the published
  * surface on purpose); comments are not imports.
  */
+import { completeScan } from './lib/scan-receipt.js';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -73,7 +74,7 @@ for (const name of readdirSync(PACKAGES)) {
 if (found.length) {
   console.error(`a package that needs itself built — ${found.length} self-import(s); use a relative path:`);
   for (const f of found) console.error(`  ${f}`);
-  process.exitCode = 1;
 } else {
   console.log('a package that needs itself built — no package imports itself by name');
 }
+completeScan(import.meta.url, found.length ? 'findings' : 'complete', { selfImports: found.length });

@@ -18,6 +18,7 @@ import { createRemoteDaemonClient } from '../daemon/daemon-client.js';
 import { formatStatus, formatUptime } from '../shared/format.js';
 import { MeshAsker, askMachine, knownMachines } from './fleet-asking.js';
 import { formatCheckedAt, formatDaemon } from './node.js';
+import { emitError, emitJson, isJsonMode } from './output.js';
 
 export async function remoteAddCommand(
   alias: string,
@@ -185,10 +186,10 @@ export async function remoteStatusCommand(alias: string): Promise<void> {
   const machine = findMachine(alias, machines);
 
   if (!machine) {
-    log.error(`No machine '${alias}' in servers.json or the node registry.`);
+    process.exitCode = 1;
+    if (emitError(`No machine '${alias}' in servers.json or the node registry.`)) return;
     if (nodesUnavailable) log.warn(`  ${nodesUnavailable}`);
     if (machines.length > 0) log.info(`Known: ${machines.map((m) => `${m.name} (${m.host}:${m.port})`).join(', ')}`);
-    process.exitCode = 1;
     return;
   }
 
@@ -197,14 +198,31 @@ export async function remoteStatusCommand(alias: string): Promise<void> {
     const answer = await askMachine<import('../shared/dto/services.js').DaemonStatusDto>(machine, 'status', mesh);
     const where = `${machine.name} (${machine.host}:${machine.port})`;
     if (!answer.value) {
-      log.error(`${where} — no answer: ${answer.error ?? 'unknown reason'}`);
+      emitError(`${where} — no answer: ${answer.error ?? 'unknown reason'}`);
       process.exitCode = 1;
       return;
     }
 
     const status = answer.value;
+    if (isJsonMode()) {
+      emitJson({
+        target: machine.name,
+        nodeId: machine.nodeId ?? null,
+        via: answer.via,
+        pid: status.pid,
+        version: status.version,
+        uptime: status.uptime,
+        build: status.build,
+        execution: status.execution,
+        apps: status.apps.map(app => ({ name: app.name, status: app.status, pid: app.pid, generation: app.generation })),
+      });
+      return;
+    }
     log.success(`${where} — online${answer.via === 'mesh' ? ', through the master\'s mesh' : ''}`);
     log.info(`  PID: ${status.pid}  |  Version: ${status.version}  |  Uptime: ${formatUptime(status.uptime)}`);
+    if (status.build) log.info(`  Build: ${status.build.commit}${status.build.dirty ? ' (dirty)' : ''}`);
+    if (status.execution?.owner) log.info(`  Owner PID: ${status.execution.owner.pid}`);
+    if (status.execution?.supervision) log.info(`  Guardian PID: ${status.execution.supervision.guardianPid}`);
     if (status.apps.length > 0) {
       log.info(`  Apps: ${status.apps.map((a) => `${a.name}(${a.status})`).join(', ')}`);
     }

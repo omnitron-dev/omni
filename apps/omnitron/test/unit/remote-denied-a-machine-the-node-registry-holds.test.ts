@@ -17,6 +17,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { resetEnvCache, setEnvOverride } from '../../src/shared/env-config.js';
 
 const said: Array<{ level: string; text: string }> = [];
 const tables: unknown[][] = [];
@@ -110,6 +111,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  resetEnvCache();
   process.exitCode = undefined;
 });
 
@@ -126,6 +128,27 @@ describe('remote list', () => {
 });
 
 describe('remote status', () => {
+  it('returns the registered node and its observed role identities in machine output', async () => {
+    const { answer } = await nodesService.getNodeDaemonStatus({ nodeId: SAMPLE_TEST });
+    const execution = { owner: { id: 'fixture-owner', pid: 108 }, supervision: { guardianPid: 109 } };
+    const reported = { ...answer, execution };
+    nodesService.getNodeDaemonStatus.mockResolvedValueOnce({
+      nodeId: SAMPLE_TEST, reachable: true, error: null, answer: reported,
+    });
+    setEnvOverride({ OMNITRON_OUTPUT: 'json' });
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    try {
+      await remoteStatusCommand('sample-test');
+      expect(output).toHaveBeenCalledTimes(1);
+      const receipt = JSON.parse(String(output.mock.calls[0]![0]));
+      expect(receipt).toMatchObject({
+        ok: true, data: { target: 'sample-test', nodeId: SAMPLE_TEST, via: 'mesh', pid: answer.pid, execution },
+      });
+      expect(receipt.data.apps).toEqual(SIX_APPS);
+      expect(writes).toEqual([]);
+    } finally { output.mockRestore(); }
+  });
+
   it('answers for a node-registry machine, through the mesh', async () => {
     await remoteStatusCommand('sample-test');
 

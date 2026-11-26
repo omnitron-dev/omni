@@ -981,7 +981,7 @@ remote
 remote
   .command('status <alias>')
   .description('Check remote server status')
-  .action(async (alias) => {
+  .structuredAction(async (alias) => {
     const { remoteStatusCommand } = await import('../commands/remote.js');
     await remoteStatusCommand(alias);
   });

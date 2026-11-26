@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Fleet verifies the enrolled receiver, its current execution and migration history before a release changes placement. The CLI and Console show which migrations a previous release can read. Operators can inspect a stopped PostgreSQL and MinIO copy against its original Pipeline receipt before using it for recovery.
+- `stack prepare-rehearsal` creates independent PostgreSQL and MinIO copies on the verified receiver for testing a candidate release. The controller binds the copy to the reviewed release and records its identity so the operator can reconcile an interrupted request.
+- Omnitron's management MCP server negotiates the protocol with standard clients and supports concurrent calls and cancellation through the existing Netron permissions.
+- A persistent release builder can reuse a verified vendored SDK reproduction across application commits when the source, archive bytes, toolchain and platform match.
+
+### Fixed
+
+- An interrupted passive Fleet installation can recover its original receipt. A repeated application start can reuse the infrastructure it already provisioned and confirms the processes with their execution owner.
+- Linux installations verify systemd unit ownership separately from the service process. Release extraction preserves executable permissions and honors declared modes on public configuration files. Titan PM isolates worker sockets by service account.
+- SQLite backups publish only after the completed snapshot passes its integrity check. Object backups record when they contain only current bodies. Restoring a versioned bucket requires the physical data needed to retain historical versions and links.
+- The default MinIO preset builds from a pinned Alpine image and signed packages. Explicit image selections remain available for existing installations.
+- Titan Notifications reports the outcome of each delivery channel. Scheduled delivery coordinates concurrent replicas through Redis. Scheduler jobs honor their UTC offset and immediate activation.
+- Netron rechecks stateful policies and changes to a caller's roles. Queued requests in Netron and Titan RateLimit reserve one slot when storage admits them and honor cancellation while waiting. HTTP outcome-based quotas refund each batch against the windows that admitted it.
+
 ## [0.4.17] - 2026-11-25
 
 ### Added

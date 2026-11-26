@@ -8,6 +8,11 @@ import type { BootstrapDeclaration } from '../project/bootstrap-metadata.js';
 const marker = 'omnitron-source:/';
 export const maxBytes = 16 * 1024 * 1024;
 export const sourceFileDigest = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex');
+export function matchesGitBlob(bytes: Buffer, object: string): boolean {
+  if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(object)) return false;
+  return createHash(object.length === 64 ? 'sha256' : 'sha1')
+    .update('blob ' + bytes.length + '\0').update(bytes).digest('hex') === object;
+}
 export interface CapturedSource {
   protocol: 1; project: string; stack: string; release: string; commit: string; manifestSha256: string;
   stackOrigin: 'stacks-file' | 'ecosystem'; config: IEcosystemConfig; declarations: Array<{ app: string; bootstrap: string; sha256: string; definition: BootstrapDeclaration }>;

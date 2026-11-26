@@ -147,8 +147,10 @@ export async function treeEqualsCommit(
   const run = async (args: string[]) =>
     (await exec('git', ['--literal-pathspecs', ...args], { cwd: repository, maxBuffer: 16 * 1024 * 1024 })).stdout.split('\0').filter(Boolean);
   const scope = selected ? ['--', ...selected] : ['--'];
-  const changed = await run(['diff', '--no-ext-diff', '--no-textconv', '--name-only', '-z', commit, ...scope]);
-  const untracked = await run(['ls-files', '--others', '--exclude-standard', '-z', ...scope]);
+  const [changed, untracked] = await Promise.all([
+    run(['diff', '--no-ext-diff', '--no-textconv', '--name-only', '-z', commit, ...scope]),
+    run(['ls-files', '--others', '--exclude-standard', '-z', ...scope]),
+  ]);
   const files = [...changed, ...untracked.map((f) => `${f} (untracked)`)];
   return files.length === 0 ? { equal: true } : { equal: false, files };
 }

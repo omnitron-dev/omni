@@ -32,6 +32,7 @@ import type { ReleaseManifest, ReleasePackageSource } from './manifest.js';
 import { artifactReleaseContexts } from './origin.js';
 import { migrationEntryPath } from '../services/migration-target.js';
 import type { PackedMigrationProgram } from './migration-programs.js';
+import { matchesGitBlob } from './source-data.js';
 
 const exec = promisify(execFile);
 
@@ -45,9 +46,7 @@ function checkedBlob(root: string, file: string, mode: string, object: string): 
   if (!/^100(?:644|755)$/.test(mode) || fs.realpathSync(full) !== full || !fs.lstatSync(full).isFile())
     throw Error('Release source must be a physical tracked file: ' + file);
   const bytes = fs.readFileSync(full);
-  const oid = createHash(object.length === 64 ? 'sha256' : 'sha1')
-    .update('blob ' + bytes.length + '\0').update(bytes).digest('hex');
-  if (oid !== object) throw Error('Release source differs from its Git commit: ' + file);
+  if (!matchesGitBlob(bytes, object)) throw Error('Release source differs from its Git commit: ' + file);
   return bytes;
 }
 

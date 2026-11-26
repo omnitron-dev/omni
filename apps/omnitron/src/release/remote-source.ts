@@ -7,6 +7,7 @@ import { defineEcosystem } from '../config/define-ecosystem.js';
 import { readProjectStacks } from '../config/project-stacks.js';
 import { resolveAppPath } from '../config/app-path.js';
 import { readCapturedSource, sourceFileDigest, type CapturedSource } from './source-capture.js';
+import { matchesGitBlob } from './source-data.js';
 import { withDeclaredConfig, type DeclaredConfig } from '../project/declared-config.js';
 import { isSshHostFingerprint } from '../services/node-host-key.js';
 import type { RemoteReleaseSourceInput } from '../shared/dto/project.js';
@@ -100,12 +101,15 @@ export async function verifyRemoteSourceTree(source: string, registered: string,
   const fromSource = path.relative(source, original);
   const outside = (relative: string) => relative === '..' || relative.startsWith('..' + path.sep);
   if (!outside(fromOriginal) || !outside(fromSource)) throw Error('A separate source checkout is required');
-  if (!/^[a-f0-9]{40}$/.test(commit) || await git(source, ['rev-parse', 'HEAD']) !== commit ||
-      (await git(source, ['rev-parse', '--show-prefix'])).replace(/\/$/, '') !== directory ||
-      (await git(original, ['rev-parse', '--show-prefix'])).replace(/\/$/, '') !== directory)
+  if (!/^[a-f0-9]{40}$/.test(commit)) throw Error('Release source checkout or project directory differs from its manifest');
+  const location = ['rev-parse', '--show-prefix', 'HEAD'];
+  const [sourceLocation, originalLocation, objects] = await Promise.all([
+    git(source, location), git(original, location), git(original, ['rev-parse', '--path-format=absolute', '--git-path', 'objects']),
+  ]);
+  const prefix = (directory ? directory + '/' : '') + '\n';
+  const originalHead = originalLocation.slice(-40);
+  if (sourceLocation !== prefix + commit || !/^[a-f0-9]{40}$/.test(originalHead) || originalLocation !== prefix + originalHead)
     throw Error('Release source checkout or project directory differs from its manifest');
-  const originalHead = await git(original, ['rev-parse', 'HEAD']);
-  const objects = await git(original, ['rev-parse', '--path-format=absolute', '--git-path', 'objects']);
   // Do not add refs, git alternates, worktrees or objects to the registered development checkout.
   try { await git(source, ['merge-base', originalHead, commit], objects); }
   catch { throw Error('Release source shares no verified history with the registered project'); }
@@ -179,11 +183,12 @@ export async function remoteSourceDeclarations(root: string, commit: string, ent
     if (!inside(physical) || !declared || declared.malformed || !record ||
         record.bootstrap !== bootstrap || !record.definition || typeof record.definition !== 'object' || Array.isArray(record.definition) ||
         Object.keys(record.definition).some(key => key !== 'requires' && key !== 'omnitronConfig') ||
-        !sha256.test(record.sha256) || sourceFileDigest(await fs.readFile(bootstrap)) !== record.sha256)
+        !sha256.test(record.sha256))
       throw Error('Incomplete or changed release source declaration for ' + name);
     const relative = path.relative(repository, physical).split(path.sep).join('/');
-    const committedBlob = await git(repository, ['rev-parse', '--verify', commit + ':' + relative]);
-    if (await git(repository, ['hash-object', '--no-filters', '--', physical]) !== committedBlob)
+    const [bytes, committedBlob] = await Promise.all([fs.readFile(physical), git(repository, ['rev-parse', '--verify', commit + ':' + relative])]);
+    if (sourceFileDigest(bytes) !== record.sha256) throw Error('Incomplete or changed release source declaration for ' + name);
+    if (!matchesGitBlob(bytes, committedBlob))
       throw Error('Bootstrap bytes differ from the committed source for ' + name);
     definitions.set(name, withDeclaredConfig({ name, version: '', processes: [], ...record.definition }, declared));
   }

@@ -7,12 +7,29 @@
  */
 
 import type { RetryStrategyConfig } from '@omnitron-dev/titan/utils';
+import type { NotificationPayload, NotificationRecipient, SendOptions, SendResult } from '../notifications.types.js';
+
+export interface ScheduledNotification {
+  recipient: NotificationRecipient;
+  payload: NotificationPayload & { id: string };
+  scheduledAt: number;
+  options: Omit<SendOptions, 'scheduledAt'>;
+}
+
+export interface ScheduledDeliveryTransport {
+  schedule(scope: string, job: ScheduledNotification): Promise<SendResult>;
+  consume(scope: string, deliver: (job: ScheduledNotification) => Promise<SendResult>): Promise<NotificationSubscription>;
+  cancel(scope: string, notificationId: string): Promise<boolean>;
+  status(scope: string, notificationId: string): Promise<SendResult | null>;
+}
 
 /**
  * Core messaging transport interface for low-level message delivery.
  * This is separate from the high-level NotificationTransport in notifications.types.ts
  */
 export interface MessagingTransport {
+  /** Durable scheduling, cancellation, and delivery receipts for registered channels. */
+  readonly scheduledDelivery?: ScheduledDeliveryTransport;
   /** Unique identifier for this transport instance */
   readonly id: string;
 
@@ -416,16 +433,4 @@ export interface TransportMiddleware {
 
   /** Called when an error occurs during processing */
   onError?(notification: IncomingNotification, error: Error): void | Promise<void>;
-}
-
-/**
- * Utility function to generate a UUID
- * @returns A new UUID string
- */
-export function generateUuid(): string {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
 }

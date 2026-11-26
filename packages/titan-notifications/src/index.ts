@@ -64,7 +64,7 @@ export { NotificationsHealthIndicator } from './notifications.health.js';
 // ============================================================================
 
 export { RotifTransport } from './transport/rotif.transport.js';
-export { generateUuid } from './transport/transport.interface.js';
+export { randomUUID as generateUuid } from 'node:crypto';
 
 // ============================================================================
 // Channel System
@@ -174,6 +174,8 @@ export type { IRateLimiter, IPreferenceStore, IChannelRouter } from './notificat
 // Transport interface types
 export type {
   MessagingTransport,
+  ScheduledDeliveryTransport,
+  ScheduledNotification,
   TransportPublishOptions,
   TransportPublishResult,
   TransportSubscribeOptions,

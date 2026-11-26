@@ -218,6 +218,7 @@ export abstract class AbstractSMSChannel implements NotificationChannel {
     } catch (error) {
       return {
         success: false,
+        unconfirmed: true,
         error: error instanceof Error ? error.message : String(error),
       };
     }

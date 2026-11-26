@@ -29,6 +29,14 @@ local dedupTTL = tonumber(ARGV[10])
 local messageUUID = ARGV[11]
 local exactlyOnce = ARGV[12]
 local pattern = ARGV[13]
+-- An optional receipt binds a scheduled job ID to its immutable request.
+-- The delayed member and the receipt are committed in the same invocation.
+local receiptKey = KEYS[3]
+if receiptKey then
+  local existing = redis.call('HGET', receiptKey, 'fingerprint')
+  if existing and existing ~= ARGV[14] then return redis.error_reply('Notification ID already used for another request') end
+  if existing then return redis.call('HGET', receiptKey, 'result') end
+end
 
 -- Input validation
 if not channel or channel == "" then
@@ -58,6 +66,11 @@ if deliveryType == "delayed" then
 
   redis.call("ZADD", delayedSetKey, delayTimestamp, messageUUID)
   redis.call("SET", "rotif:delayed:" .. messageUUID, delayedMessage)
+  if receiptKey then
+    redis.call('HSET', receiptKey, 'fingerprint', ARGV[14], 'body', ARGV[15], 'result', ARGV[16],
+      'phase', 'scheduled', 'due', ARGV[6], 'member', messageUUID)
+    return ARGV[16]
+  end
   
   if dedupKey ~= "" and dedupTTL > 0 then
     redis.call("SET", dedupKey, "1", "EX", dedupTTL)

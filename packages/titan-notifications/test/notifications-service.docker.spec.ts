@@ -13,7 +13,7 @@
  * - Health & lifecycle
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type {
   IRateLimiter,
   IPreferenceStore,
@@ -30,13 +30,11 @@ import type {
 import {
   createNotificationsTestFixture,
   createMockTransport,
-  shouldSkipDockerTests,
-  type NotificationsTestFixture,
 } from './notifications-test-setup.js';
 import { NotificationsService } from '../src/notifications.service.js';
 
-const SKIP_DOCKER = shouldSkipDockerTests();
-const describeOrSkip = SKIP_DOCKER ? describe.skip : describe;
+import { Redis } from 'ioredis';
+import { getTestRedisUrl, isInMockMode } from './rotif/helpers/test-utils.js';
 
 // ============================================================================
 // Docker Integration Tests (Real Redis)
@@ -58,20 +56,21 @@ async function waitUntil(predicate: () => boolean, timeoutMs = 15_000): Promise<
   }
 }
 
-describeOrSkip('NotificationsService - Docker Integration', () => {
-  let fixture: NotificationsTestFixture;
-
-  beforeAll(async () => {
-    fixture = await createNotificationsTestFixture();
-  }, 60000);
-
-  afterAll(async () => {
-    await fixture.cleanup();
-  }, 30000);
+describe.skipIf(isInMockMode())('NotificationsService with Redis', () => {
+  let fixture: Awaited<ReturnType<typeof createNotificationsTestFixture>>;
 
   beforeEach(async () => {
-    // Clear Redis between tests
-    await fixture.redis.flushall();
+    const redis = new Redis(getTestRedisUrl(0));
+    try {
+      await redis.flushdb();
+    } finally {
+      redis.disconnect();
+    }
+    fixture = await createNotificationsTestFixture();
+  });
+
+  afterEach(async () => {
+    await fixture?.service.onDestroy();
   });
 
   describe('Send Operations', () => {
@@ -99,7 +98,8 @@ describeOrSkip('NotificationsService - Docker Integration', () => {
       // Wait for the message to actually arrive.
       await waitUntil(() => receivedMessages.length >= 1);
 
-      expect(result.status).toBe('sent');
+      expect(result.status).toBe('queued');
+      expect(result.channels).toEqual([]);
       expect(result.notificationId).toBeDefined();
       expect(result.timestamp).toBeGreaterThan(0);
       expect(receivedMessages.length).toBe(1);
@@ -136,7 +136,8 @@ describeOrSkip('NotificationsService - Docker Integration', () => {
         metadata: { source: 'test' },
       });
 
-      expect(result.status).toBe('sent');
+      expect(result.status).toBe('queued');
+      expect(result.channels).toEqual([]);
       expect(result.notificationId).toBeDefined();
       expect(result.channels).toBeDefined();
       expect(result.timestamp).toBeGreaterThan(0);
@@ -170,7 +171,7 @@ describeOrSkip('NotificationsService - Docker Integration', () => {
     });
 
     it('should send notification with scheduled delivery (Date)', async () => {
-      // Reuse existing reminder subscription
+      await fixture.transport.subscribe('notifications.reminder.*', async () => {});
       const recipient: NotificationRecipient = {
         id: 'user-4',
         email: 'user4@example.com',
@@ -193,7 +194,7 @@ describeOrSkip('NotificationsService - Docker Integration', () => {
     });
 
     it('should generate notification ID if not provided', async () => {
-      // Reuse info subscription
+      await fixture.transport.subscribe('notifications.info.*', async () => {});
       const recipient: NotificationRecipient = {
         id: 'user-5',
         email: 'user5@example.com',
@@ -235,13 +236,14 @@ describeOrSkip('NotificationsService - Docker Integration', () => {
 
       expect(result.broadcastId).toBeDefined();
       expect(result.totalRecipients).toBe(3);
-      expect(result.successCount).toBe(3);
+      expect(result.successCount).toBe(0);
+      expect(result.pendingCount).toBe(3);
       expect(result.failureCount).toBe(0);
       expect(result.timestamp).toBeGreaterThan(0);
     });
 
     it('should broadcast with batching', async () => {
-      // Reuse info subscription
+      await fixture.transport.subscribe('notifications.info.*', async () => {});
       const recipients: NotificationRecipient[] = Array.from({ length: 10 }, (_, i) => ({
         id: `user-${i}`,
         email: `user${i}@example.com`,
@@ -258,12 +260,13 @@ describeOrSkip('NotificationsService - Docker Integration', () => {
       });
 
       expect(result.totalRecipients).toBe(10);
-      expect(result.successCount).toBe(10);
+      expect(result.successCount).toBe(0);
+      expect(result.pendingCount).toBe(10);
       expect(result.failureCount).toBe(0);
     });
 
     it('should broadcast with throttling', async () => {
-      // Reuse info subscription
+      await fixture.transport.subscribe('notifications.info.*', async () => {});
       const recipients: NotificationRecipient[] = Array.from({ length: 6 }, (_, i) => ({
         id: `user-${i}`,
         email: `user${i}@example.com`,
@@ -285,7 +288,8 @@ describeOrSkip('NotificationsService - Docker Integration', () => {
       const duration = Date.now() - startTime;
 
       expect(result.totalRecipients).toBe(6);
-      expect(result.successCount).toBe(6);
+      expect(result.successCount).toBe(0);
+      expect(result.pendingCount).toBe(6);
       // 3 batches means 2 throttle delays (100ms each) = ~200ms minimum
       expect(duration).toBeGreaterThanOrEqual(200);
     });
@@ -309,7 +313,7 @@ describeOrSkip('NotificationsService - Docker Integration', () => {
 
   describe('Schedule Operations', () => {
     it('should schedule notification with Date', async () => {
-      // Reuse reminder subscription
+      await fixture.transport.subscribe('notifications.reminder.*', async () => {});
       const recipient: NotificationRecipient = {
         id: 'user-1',
         email: 'user1@example.com',
@@ -332,7 +336,7 @@ describeOrSkip('NotificationsService - Docker Integration', () => {
     });
 
     it('should schedule notification with timestamp', async () => {
-      // Reuse reminder subscription
+      await fixture.transport.subscribe('notifications.reminder.*', async () => {});
       const recipient: NotificationRecipient = {
         id: 'user-2',
         email: 'user2@example.com',
@@ -691,7 +695,8 @@ describe('NotificationsService - Unit Tests', () => {
       // SMS should be filtered (disabled)
       // Push should be filtered (type 'info' not in allowed types)
       // Only email should remain
-      expect(result.status).toBe('sent');
+      expect(result.status).toBe('queued');
+      expect(result.channels).toEqual([]);
     });
 
     it('should fail if no channels remain after filtering', async () => {
@@ -792,7 +797,8 @@ describe('NotificationsService - Unit Tests', () => {
       const result = await serviceWithRouter.send(recipient, payload);
 
       expect(mockChannelRouter.route).toHaveBeenCalled();
-      expect(result.status).toBe('sent');
+      expect(result.status).toBe('queued');
+      expect(result.channels).toEqual([]);
     });
 
     it('should fail if router returns no channels', async () => {
@@ -867,7 +873,8 @@ describe('NotificationsService - Unit Tests', () => {
 
       const result = await service.send(recipient, payload);
 
-      expect(result.status).toBe('sent');
+      expect(result.status).toBe('queued');
+      expect(result.channels).toEqual([]);
     });
 
     it('should handle payload with custom ID', async () => {

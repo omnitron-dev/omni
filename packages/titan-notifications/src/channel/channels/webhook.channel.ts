@@ -29,7 +29,7 @@ export interface WebhookChannelOptions {
   timeout?: number;
 
   /**
-   * Number of retry attempts on failure
+   * Retry only a receiver's explicit refusal to process a request (425 or 429).
    * @default 3
    */
   retries?: number;
@@ -79,12 +79,7 @@ export interface WebhookChannelOptions {
    * Whether to validate SSL certificates
    * @default true
    *
-   * NOT IMPLEMENTED — the constructor defaults it to true and nothing reads
-   * it. Requests go through `fetch`, which validates certificates and offers
-   * no per-call way to stop; disabling would mean supplying an undici
-   * dispatcher. The safe direction is the one that happens, but a caller who
-   * sets `false` to reach an internal endpoint with a self-signed certificate
-   * gets a TLS failure and an option that looks like it should have helped.
+   * Certificate validation is required. Configure the runtime trust store for private issuers.
    */
   validateSSL?: boolean;
 
@@ -119,15 +114,21 @@ export class WebhookChannel implements NotificationChannel {
       timestampHeader: 'X-Webhook-Timestamp',
       validateSSL: true,
       userAgent: 'Notifications-Webhook/1.0',
-      ...options,
     };
+    if (options) this.configure(options);
   }
 
   /**
    * Configure the channel options
    */
   configure(options: WebhookChannelOptions): void {
-    Object.assign(this.options, options);
+    if (options.validateSSL === false) throw new Error('Webhook delivery requires TLS certificate validation');
+    for (const [name, minimum] of [['retries', 0], ['retryDelay', 0], ['timeout', 1]] as const) {
+      const value = options[name];
+      if (value !== undefined && (!Number.isSafeInteger(value) || value < minimum || value > 2_147_483_647))
+        throw new RangeError('Invalid webhook ' + name);
+    }
+    Object.assign(this.options, Object.fromEntries(Object.entries(options).filter(([, value]) => value !== undefined)));
   }
 
   /**
@@ -247,44 +248,28 @@ export class WebhookChannel implements NotificationChannel {
     const webhookContent = content as WebhookContent;
     const messageId = (webhookContent.payload['id'] as string) || generateUuidV7();
 
-    let lastError: Error | null = null;
-
-    for (let attempt = 0; attempt <= this.options.retries; attempt++) {
+    for (let attempt = 0; ; attempt++) {
+      const metadata = { attempts: attempt + 1 };
+      let response: Response;
       try {
-        const result = await this.sendRequest(recipient.webhookUrl, webhookContent);
-        return {
-          success: true,
-          messageId,
-          metadata: {
-            statusCode: result.status,
-            attempt: attempt + 1,
-            url: recipient.webhookUrl,
-          },
-        };
+        response = await this.sendRequest(recipient.webhookUrl, webhookContent);
       } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-
-        // Don't retry on client errors (4xx)
-        if (error instanceof Response && error.status >= 400 && error.status < 500) {
-          break;
-        }
-
-        // Wait before retrying (except on last attempt)
-        if (attempt < this.options.retries) {
-          await this.delay(this.options.retryDelay * (attempt + 1));
-        }
+        return { success: false, messageId, unconfirmed: true, metadata,
+          error: error instanceof Error ? error.message : String(error) };
       }
+      // Release unused response bodies before a retry or a return to the caller.
+      await response.body?.cancel().catch(() => {});
+      if (response.ok) {
+        return { success: true, messageId, metadata: { ...metadata, attempt: attempt + 1, statusCode: response.status } };
+      }
+      const refused = response.status === 425 || response.status === 429;
+      if (!refused || attempt >= this.options.retries) {
+        return { success: false, messageId, metadata: { ...metadata, statusCode: response.status },
+          unconfirmed: response.status >= 500 || response.status === 408,
+          error: 'HTTP ' + response.status + ': ' + response.statusText };
+      }
+      await this.delay(this.options.retryDelay * (attempt + 1));
     }
-
-    return {
-      success: false,
-      messageId,
-      error: lastError?.message || 'Unknown error',
-      metadata: {
-        attempts: this.options.retries + 1,
-        url: recipient.webhookUrl,
-      },
-    };
   }
 
   // Private helper methods
@@ -297,23 +282,14 @@ export class WebhookChannel implements NotificationChannel {
     const timeout = setTimeout(() => controller.abort(), this.options.timeout);
 
     try {
-      const response = await fetch(url, {
+      return await fetch(url, {
         method: 'POST',
         headers,
         body,
         signal: controller.signal,
       });
-
+    } finally {
       clearTimeout(timeout);
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      return response;
-    } catch (error) {
-      clearTimeout(timeout);
-      throw error;
     }
   }
 

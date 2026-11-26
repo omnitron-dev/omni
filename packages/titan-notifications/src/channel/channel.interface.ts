@@ -128,6 +128,8 @@ export interface WebhookContent extends ChannelContent {
  */
 export interface ChannelSendResult {
   success: boolean;
+  /** The provider may have accepted the request before the response was lost. */
+  unconfirmed?: boolean;
   messageId?: string;
   error?: string;
   metadata?: Record<string, unknown>;

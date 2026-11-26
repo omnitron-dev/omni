@@ -3,7 +3,8 @@
 -- ARGV[2]: max number of messages to process
 
 local delayedSetKey = KEYS[1]
-local now = tonumber(ARGV[1])
+local time = redis.call("TIME")
+local now = math.min(tonumber(ARGV[1]), time[1] * 1000 + math.floor(time[2] / 1000))
 local batchSize = tonumber(ARGV[2])
 
 local messageIds = redis.call("ZRANGEBYSCORE", delayedSetKey, "-inf", now, "LIMIT", 0, batchSize)

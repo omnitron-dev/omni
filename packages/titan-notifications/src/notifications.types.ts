@@ -13,8 +13,10 @@ export interface NotificationsModuleOptions {
   rateLimiter?: IRateLimiter;
   preferenceStore?: IPreferenceStore;
   channelRouter?: IChannelRouter;
-  /** NOT IMPLEMENTED — nothing reads this; no default routing is applied. */
+  /** Channels used when a send has no explicit routing. */
   defaultChannels?: string[];
+  /** Stable identifier shared by replicas that deliver scheduled notifications on the same transport. */
+  deliveryScope?: string;
   isGlobal?: boolean;
 
   /** Pre-configured notification channels */
@@ -142,26 +144,24 @@ export interface SendOptions {
   scheduledAt?: Date | number;
   retries?: number;
   timeout?: number;
-  /**
-   * NOT IMPLEMENTED — nothing reads this. A send whose channel fails is not
-   * retried on the channels listed here, which is worth knowing before relying
-   * on it for delivery guarantees.
-   */
+  /** Tried in order after all primary channels have confirmed non-delivery. */
   fallbackChannels?: string[];
   metadata?: Record<string, unknown>;
 }
 
 export interface SendResult {
   notificationId: string;
-  status: 'sent' | 'scheduled' | 'failed' | 'queued';
+  status: 'sent' | 'scheduled' | 'failed' | 'queued' | 'partial' | 'unconfirmed' | 'cancelled';
   channels: ChannelResult[];
   timestamp: number;
   error?: string;
+  /** Rate accounting failed after admission or delivery. The provider receipt remains valid. */
+  accountingErrors?: Array<{ channel: string; error: string }>;
 }
 
 export interface ChannelResult {
   channel: string;
-  status: 'success' | 'failed' | 'skipped';
+  status: 'success' | 'failed' | 'skipped' | 'unconfirmed';
   deliveredAt?: number;
   messageId?: string;
   error?: string;
@@ -187,6 +187,10 @@ export interface BroadcastResult {
   totalRecipients: number;
   successCount: number;
   failureCount: number;
+  /** Recipients for which delivery was only partially confirmed. */
+  partialCount?: number;
+  /** Recipients with an accepted or unresolved delivery. */
+  pendingCount?: number;
   skippedCount: number;
   timestamp: number;
   errors?: Array<{ recipientId: string; error: string }>;

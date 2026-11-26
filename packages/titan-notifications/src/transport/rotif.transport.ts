@@ -1,4 +1,6 @@
 import { NotificationManager } from '../rotif/rotif.js';
+import { RotifScheduledDelivery } from './rotif-scheduled-delivery.js';
+import { randomUUID } from 'node:crypto';
 import { describeError } from '@omnitron-dev/titan/diagnostics';
 import type { RotifMessage, Subscription, PublishOptions } from '../rotif/types.js';
 import type { Middleware } from '../rotif/middleware.js';
@@ -17,7 +19,6 @@ import type {
   DLQQueryOptions,
   TransportMiddleware,
 } from './transport.interface.js';
-import { generateUuid } from './transport.interface.js';
 import { createNullLogger, type ILogger } from '@omnitron-dev/titan/types';
 
 /**
@@ -25,6 +26,7 @@ import { createNullLogger, type ILogger } from '@omnitron-dev/titan/types';
  * Wraps core Rotif's NotificationManager to provide the standard messaging transport interface.
  */
 export class RotifTransport implements MessagingTransport {
+  readonly scheduledDelivery: RotifScheduledDelivery;
   readonly id: string;
   readonly type = 'rotif';
   private middlewares: TransportMiddleware[] = [];
@@ -39,7 +41,8 @@ export class RotifTransport implements MessagingTransport {
     logger?: ILogger
   ) {
     this.logger = logger ?? createNullLogger();
-    this.id = generateUuid();
+    this.id = randomUUID();
+    this.scheduledDelivery = new RotifScheduledDelivery(manager, this);
   }
 
   /**

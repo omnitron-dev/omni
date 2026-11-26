@@ -16,7 +16,7 @@ export { RotifTransport, createRotifTransport } from './rotif.transport.js';
 // Utilities
 // ============================================================================
 
-export { generateUuid } from './transport.interface.js';
+export { randomUUID as generateUuid } from 'node:crypto';
 
 // ============================================================================
 // Types & Interfaces
@@ -24,6 +24,8 @@ export { generateUuid } from './transport.interface.js';
 
 export type {
   MessagingTransport,
+  ScheduledDeliveryTransport,
+  ScheduledNotification,
   TransportPublishOptions,
   TransportPublishResult,
   TransportSubscribeOptions,

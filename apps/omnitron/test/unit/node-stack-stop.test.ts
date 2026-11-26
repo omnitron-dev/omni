@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { NodeStackStop } from '../../src/project/node-stack-stop.js';
+import { confirmStoppedPlacement, placementProvisionIntent, type RemotePlacement } from '../../src/project/remote-placement.js';
+import type { ExistingInfrastructureReview, StackStopProgress } from '../../src/shared/dto/project.js';
 
 const scope = { project: 'sample', stack: 'prod', applications: true };
 const runtime = { project: 'sample', stack: 'deployed' };
@@ -34,6 +36,66 @@ function fixture() {
 }
 
 describe('node-confirmed stack stop', () => {
+  it('recovers an acknowledged provision on the same placement after a lost reply and receiver restart', async () => {
+    const { service, store, ports, replaceContainers } = fixture();
+    const logical = { project: scope.project, stack: scope.stack };
+    const definition = 'e'.repeat(64);
+    ports.definition.mockResolvedValue({ runtime, fingerprint: definition });
+    const plan = await service.prepare(scope);
+    const stopped = await service.execute(plan);
+    const node = { nodeId: 'recipient', host: 'receiver.invalid', port: 9700, pin: 'b'.repeat(64) };
+    const stop: StackStopProgress = { id: 'controller-stop', phase: 'stopped', intentCommitted: true, startedAt: stopped.observedAt,
+      completedAt: stopped.observedAt, nodes: [{ node: 'receiver.invalid:9700', outcome: 'stopped', nodeId: node.nodeId,
+        operationId: plan.operationId, observedAt: stopped.observedAt, execution: stopped.applications!, definition }] };
+    const placement: RemotePlacement = { registration: definition, origin: node, from: node, originCommit: null, activated: false,
+      sourceStop: stop, selected: { ...node, release: 'one', prepared: definition, manifestSha256: definition },
+      receipt: { ...logical, generation: 1, fromNodeId: node.nodeId, toNodeId: node.nodeId, release: 'one',
+        digest: 'd'.repeat(64), stopId: stop.id } };
+    const intent = placementProvisionIntent(placement)!;
+    expect(placementProvisionIntent({ ...placement, from: { ...node, pin: 'c'.repeat(64) } })).toBeUndefined();
+    const record = await service.preparePlacementProvision(logical, intent);
+    const members = [{ name: 'sample-prod-store', id: '1'.repeat(64) }, { name: 'sample-prod-cache', id: '2'.repeat(64) }];
+    replaceContainers(members);
+    const review: ExistingInfrastructureReview = { protocol: 1, mode: 'preserve', scope: logical, digest: definition, checks: [],
+      containers: members.map(container => ({ ...container, fingerprint: definition })) };
+    await expect(record({ ...review, containers: review.containers.slice(1) })).rejects.toThrow(/inventory changed/);
+    await record(review);
+    const recipient = new NodeStackStop(store, ports);
+    replaceContainers([...members].reverse());
+    const current = await recipient.inspect(scope);
+    expect(() => confirmStoppedPlacement(logical, node, stop, current, intent)).not.toThrow();
+    expect(() => confirmStoppedPlacement(logical, node, stop, current)).toThrow(/empty container inventory/);
+    expect(() => confirmStoppedPlacement(logical, node, stop, current, { ...intent, placementDigest: definition })).toThrow(/empty container inventory/);
+    expect(() => confirmStoppedPlacement(logical, node, stop, current, { ...intent, stopOperationId: 'other' })).toThrow(/empty container inventory/);
+    await (await recipient.preparePlacementProvision(logical, intent))(review);
+    replaceContainers([{ ...members[0]!, id: '3'.repeat(64) }, members[1]!]);
+    expect(() => confirmStoppedPlacement(logical, node, stop, { ...current, containers: [] }, intent)).toThrow(/empty container inventory/);
+    const changed = await recipient.inspect(scope);
+    expect(() => confirmStoppedPlacement(logical, node, stop, changed, intent)).toThrow(/empty container inventory/);
+    await expect(recipient.preparePlacementProvision(logical, intent)).rejects.toThrow(/physical containers/);
+    replaceContainers(members);
+    ports.execution.inspectStackExecution.mockResolvedValue({ ...runtime, phase: 'stopped', revision: 7, apps: [] });
+    const superseded = await recipient.inspect(scope);
+    expect(() => confirmStoppedPlacement(logical, node, stop, superseded, intent)).toThrow(/stopped execution generation/);
+    await expect(recipient.preparePlacementProvision(logical, intent)).rejects.toThrow(/stopped execution/);
+  });
+  it('invalidates a pending provision when the receiver prepares a different stop', async () => {
+    const { service, replaceContainers } = fixture();
+    const logical = { project: scope.project, stack: scope.stack };
+    const first = await service.prepare(scope);
+    await service.execute(first);
+    const intent = { placementDigest: 'a'.repeat(64), stopOperationId: first.operationId };
+    const record = await service.preparePlacementProvision(logical, intent);
+    const member = { id: '1'.repeat(64), name: 'sample-prod-store', fingerprint: 'f'.repeat(64) };
+    replaceContainers([member]);
+    const next = await service.prepare(scope);
+    expect(next.operationId).not.toBe(first.operationId);
+    await expect(record({ protocol: 1, mode: 'preserve', digest: member.fingerprint, containers: [member], checks: [], scope: logical }))
+      .rejects.toThrow(/completed stop/);
+    await service.execute(next);
+    await expect(service.preparePlacementProvision(logical, intent)).rejects.toThrow(/original completed full stop/);
+    expect(await service.inspect(scope)).not.toHaveProperty('provisioned');
+  });
   it('ends a keep only after a verified full stop of the same allocation, including on a reopened journal', async () => {
     const { service, ports, store } = fixture();
     const heldAt = '1970-01-01T00:00:00.000Z';

@@ -268,6 +268,32 @@ describe('recipient preservation uses the existing infrastructure lifecycle', ()
     expect(manager.listInstances()).toHaveLength(0);
   });
 
+  it('acknowledges same-node provisioning only after the receiver has saved its verified inventory', async () => {
+    const placement = { placementDigest: digest, stopOperationId: 'b43625d6-a9e9-47cd-9515-5d8c6f24f48f' };
+    const full = { ...observation(), containers: [{ name: 'sample-dev-redis', id: '1'.repeat(64), fingerprint: digest }] };
+    native.review.mockResolvedValue(full);
+    const entered = Promise.withResolvers<void>(), saved = Promise.withResolvers<void>();
+    const remember = vi.fn(async () => { entered.resolve(); await saved.promise; });
+    const prepare = vi.fn(async () => remember);
+    const name = full.containers[0]!.name;
+    const provision = vi.fn(async () => ({ services: { [name]: { name, status: 'running', health: 'healthy' } } }));
+    const rpc = new InfrastructureRpcService(() => null, () => ({ provision, resumeStack: vi.fn(), getDesiredServices: () => [{ name }] }) as never,
+      undefined, logger, undefined, undefined, undefined, prepare);
+    const input = { ...scope, placement, infrastructure: 'reconcile' as const, config: { redis: { image: 'redis:7' } } };
+    let answered = false;
+    const result = rpc.provisionStack(input).then(value => { answered = true; return value; });
+    await Promise.race([entered.promise, result.then(() => { throw Error('RPC returned before recording container identities'); })]);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect(answered).toBe(false);
+    expect(prepare).toHaveBeenCalledWith(scope, placement);
+    expect(remember).toHaveBeenCalledExactlyOnceWith(full);
+    saved.resolve();
+    await expect(result).resolves.toMatchObject({ ready: true });
+    prepare.mockRejectedValueOnce(Error('Stop changed'));
+    await expect(rpc.provisionStack(input)).rejects.toThrow('Stop changed');
+    expect(provision).toHaveBeenCalledOnce();
+  });
+
   it('revalidates once more at native adoption and keeps a failed recovery fenced', async () => {
     const manager = new StackInfrastructureManager(logger);
     const rpc = new InfrastructureRpcService(() => null,

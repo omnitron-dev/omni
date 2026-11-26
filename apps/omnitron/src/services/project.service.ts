@@ -50,10 +50,10 @@ import { currentActor, describeFailure } from './audit.service.js';
 import { publicLaunchFailure } from '../project/launch-failure.js';
 import { nodeApplicationNames, resolveNodePlacements, stackNodeKey } from '../project/stack-placement.js';
 import { StackTargets, type StackTarget } from '../project/stack-targets.js';
-import { confirmStoppedPlacement, remotePlacementReview, type PlacementEndpoint, type RemotePlacement } from '../project/remote-placement.js';
+import { confirmStoppedPlacement, placementProvisionIntent, remotePlacementReview, type PlacementEndpoint, type RemotePlacement } from '../project/remote-placement.js';
 import { cleanRegisteredCommit, committedStackDeclaration, confirmRegisteredReleaseNode, previousStackDeclaration, registeredStackAtCommit, remoteReleaseSourceKey, remoteReleaseSourcePrefix, type ReleaseRecipient } from '../release/remote-source.js';
 import { accountsForPartialStart, confirmsRelease, verifyDeploymentMigrations, type RemoteDeploymentOperation } from '../project/remote-release-deployment.js';
-import type { RemoteReleaseDeployment } from '../shared/dto/project.js';
+import type { PlacementProvisionIntent, RemoteReleaseDeployment } from '../shared/dto/project.js';
 import { defineEcosystem } from '../config/define-ecosystem.js';
 import { readCapturedSourceSync } from '../release/source-data.js';
 
@@ -180,7 +180,8 @@ interface PreparedRemoteSourceRecord {
 }
 type AdmittedRelease = LoadedRelease & {
   readonly remoteDefinitions?: Map<string, IAppDefinition>;
-  readonly placement?: { root: string; nodeId: string; target: ReleaseRecipient; recheck: () => Promise<void> };
+  readonly placement?: { root: string; nodeId: string; target: ReleaseRecipient; recheck: () => Promise<void>;
+    provisioning?: PlacementProvisionIntent | undefined };
 };
 
 class LocalReleaseStopRequired extends Error {}
@@ -685,6 +686,10 @@ export class ProjectService extends EventEmitter {
 
   inspectNodeStackStop(scope: NodeStackStopRequest): Promise<NodeStackStopInventory> {
     return this.nodeStackStop.inspect(scope);
+  }
+
+  preparePlacementProvision(...args: Parameters<NodeStackStop['preparePlacementProvision']>): ReturnType<NodeStackStop['preparePlacementProvision']> {
+    return this.nodeStackStop.preparePlacementProvision(...args);
   }
 
   @RecoveryMutation()
@@ -2203,7 +2208,7 @@ export class ProjectService extends EventEmitter {
             throw Error('The restored registration and immutable release must identify the original clean commit');
         };
         if (!bound) await recheck();
-        release = { ...release, placement: { root, nodeId: endpoint.nodeId, target, recheck } };
+        release = { ...release, placement: { root, nodeId: endpoint.nodeId, target, recheck, provisioning: placementProvisionIntent(route) } };
       }
       if (prior?.release?.id === requested && prior.release.manifestSha256 !== release.manifestSha256)
         throw new Error('The selected release manifest changed on disk; restore its original bytes');
@@ -3145,7 +3150,7 @@ export class ProjectService extends EventEmitter {
     const from = placement.from, old = this.placementRecipient(from.nodeId, from);
     const rpc = this.getSlaveConnector().pinnedService(from.host, from.port, from.nodeId, old.managementIdentity, 'OmnitronProject');
     const observation = await rpc('inspectNodeStackStop', { ...scope, applications: true }) as NodeStackStopInventory;
-    confirmStoppedPlacement(scope, from, placement.sourceStop, observation);
+    confirmStoppedPlacement(scope, from, placement.sourceStop, observation, placementProvisionIntent(placement));
     if (!isDeepStrictEqual(this.placement(scope.project, scope.stack), placement)) throw Error('Selected placement changed before launch');
   }
 
@@ -5544,7 +5549,8 @@ export class ProjectService extends EventEmitter {
               release?.placement?.root ?? project?.path,
               release?.staticsDir ?? undefined,
               preservation || reconcile ? { ...(preservation ? { mode: 'preserve' as const, review: preservation.targets.find(preservedTarget => preservedTarget.node === nodeKey)?.infrastructure?.digest ?? undefined } : { mode: 'reconcile' as const }),
-                ...(release?.placement && { managementIdentity: release.placement.target.managementIdentity, leasedTarget: target }) } : undefined,
+                ...(release?.placement && { managementIdentity: release.placement.target.managementIdentity, leasedTarget: target,
+                  ...(!preservation && release.placement.provisioning && { placement: release.placement.provisioning }) }) } : undefined,
             );
             if (!infrastructure.ready) {
               if (release || preservation) {
@@ -6215,7 +6221,8 @@ export class ProjectService extends EventEmitter {
     projectRoot?: string | undefined,
     /** A release's static bundle, shipped as it was built — see `shipStackStatics`. */
     releasedStatics?: string | undefined,
-    authority?: { mode: 'review' | 'preserve' | 'reconcile'; review?: string | undefined; managementIdentity?: string; leasedTarget?: DeployTarget },
+    authority?: { mode: 'review' | 'preserve' | 'reconcile'; review?: string | undefined; managementIdentity?: string; leasedTarget?: DeployTarget;
+      placement?: PlacementProvisionIntent },
   ): Promise<{ ready: boolean; detail: string; preservation?: import('../shared/dto/project.js').ExistingInfrastructureReview }> {
     const host = node.host;
     const port = node.port ?? 9700;
@@ -6264,6 +6271,7 @@ export class ProjectService extends EventEmitter {
       // was established to the process that exited. `provisionStack` is a
       // reconciler, so applying it twice is applying it once.
       const request = { config: configForNode, services: servicesForNode, ...(owner ?? {}), configFiles, staticRoots, staticLinkRoots,
+        ...(authority?.placement && { placement: authority.placement }),
         ...(preserving ? { infrastructure: 'preserve', staticDigests, ...(authority?.review && { review: authority.review }) }
           : authority?.mode === 'reconcile' ? { infrastructure: 'reconcile' } : {}) };
       const provision = async () => (pinned ? await pinned(authority?.mode === 'review' ? 'reviewStack' : 'provisionStack', request) :

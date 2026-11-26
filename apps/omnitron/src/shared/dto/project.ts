@@ -178,8 +178,14 @@ export interface ExistingInfrastructureReview {
   containers: Array<{ name: string; id: string; fingerprint: string }>;
 }
 
+export interface PlacementProvisionIntent {
+  placementDigest: string;
+  stopOperationId: string;
+}
+
 /** The existing node infrastructure transport, with an explicit effect authority. */
 export interface StackInfrastructureInput {
+  placement?: PlacementProvisionIntent | undefined;
   config: import('../../infrastructure/types.js').InfrastructureConfig;
   services?: Record<string, import('../../infrastructure/types.js').IServiceRequirement> | undefined;
   project?: string | undefined;

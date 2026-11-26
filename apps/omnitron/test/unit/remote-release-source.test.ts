@@ -19,6 +19,7 @@ import { captureRemoteSource, readCapturedSource, sourceFileDigest } from '../..
 import { loadRelease } from '../../src/release/load.js';
 import { confirmRegisteredReleaseNode, confirmReleaseRecipient, verifyRemoteSourceTree } from '../../src/release/remote-source.js';
 import { resolveProjectStacks } from '../../src/config/project-stacks.js';
+import type { PlacementProvisionIntent } from '../../src/shared/dto/project.js';
 
 const sha = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex');
 const root = await vi.hoisted(async () => {
@@ -343,10 +344,11 @@ describe('prepared source of one registered remote release', () => {
     const mesh = { pinnedService: vi.fn(() => apply), addSlave: vi.fn(), invokeOnSlave: vi.fn() };
     const provision = Reflect.get(f.service, 'provisionNodeInfrastructure').bind(f.service);
     const owner = { project: 'sample', stack: 'test' };
-    const authority = { mode: 'reconcile', managementIdentity: 'fixture-management' };
+    const placement = { placementDigest: 'b'.repeat(64), stopOperationId: 'confirmed-node-stop' };
+    const authority = { mode: 'reconcile', managementIdentity: 'fixture-management', placement };
     await expect(provision(mesh, candidateNode, {}, {}, owner, source, undefined, authority)).resolves.toMatchObject({ ready: true });
     expect(mesh.pinnedService).toHaveBeenCalledWith(candidateNode.host, candidateNode.port, nodeId, authority.managementIdentity, 'OmnitronInfra');
-    expect(apply).toHaveBeenCalledWith('provisionStack', expect.objectContaining({ ...owner, infrastructure: 'reconcile' }));
+    expect(apply).toHaveBeenCalledWith('provisionStack', expect.objectContaining({ ...owner, infrastructure: 'reconcile', placement }));
     expect(mesh.addSlave).not.toHaveBeenCalled();
     expect(mesh.invokeOnSlave).not.toHaveBeenCalled();
   });
@@ -503,7 +505,7 @@ describe('prepared source of one registered remote release', () => {
       invokeOnSlave = vi.fn();
     const base = { apps: [{ name: 'main', bootstrap: 'apps/main/src/bootstrap.mjs' }] };
     const nativeResolve = Reflect.get(ProjectService.prototype, 'resolveStacks').bind(service);
-    const launches: Array<{ root?: string; host: string; commit: string; config: unknown }> = [];
+    const launches: Array<{ root?: string; host: string; commit: string; config: unknown; provisioning?: PlacementProvisionIntent | undefined }> = [];
     const enable = vi.fn(),
       audit = vi.fn();
     Object.assign(service, {
@@ -527,7 +529,7 @@ describe('prepared source of one registered remote release', () => {
         _s: string,
         cfg: { nodes: Array<{ host: string }> },
         ecosystem: unknown,
-        release: { placement: { root: string; recheck(): Promise<void> }; manifestSha256: string;
+        release: { placement: { root: string; recheck(): Promise<void>; provisioning?: PlacementProvisionIntent }; manifestSha256: string;
           manifest: { id: string; project: { commit: string }; artifacts: { sha256: string }[] } },
       ) => {
         await release.placement.recheck();
@@ -539,6 +541,7 @@ describe('prepared source of one registered remote release', () => {
         }
         launches.push({
           root: release.placement.root,
+          provisioning: release.placement.provisioning,
           host: cfg.nodes[0]!.host,
           commit: release.manifest.project.commit,
           config: ecosystem,
@@ -638,6 +641,7 @@ describe('prepared source of one registered remote release', () => {
       await service.startStack('sample', 'test', { source: 'operator', infrastructure: 'reconcile' });
       expect(launches).toHaveLength(1);
       expect(launches[0]).toMatchObject({ root: source, host: candidateNode.host, commit: releaseCommit });
+      expect(launches[0]!.provisioning).toBeUndefined();
       expect(fs.readFileSync(marker, 'utf8')).toBe(before);
       if (registrationMode === 'deployment') {
         const second = 'sample-next', secondSource = path.join(root, 'second-release');
@@ -690,6 +694,8 @@ describe('prepared source of one registered remote release', () => {
         expect(launches).toHaveLength(2);
         // The controller also missed the launch reply. Recover the original generation without another start.
         expect(journal.inspect(scope).placement!.activated).toBe(false);
+        const placement = journal.inspect(scope).placement!;
+        expect(launches[1]!.provisioning).toEqual({ placementDigest: placement.receipt.digest, stopOperationId: placement.sourceStop.nodes[0]!.operationId });
         await expect(rpc.checkRelease(request)).resolves.toMatchObject({ ok: true, deploymentPhase: 'starting', deployment: { digest: confirmation.review } });
         await expect(service.startStack(scope.project, scope.stack, { release: second })).rejects.toThrow(/unconfirmed release deployment/i);
         await expect(rpc.deployReviewedRelease(confirmation)).resolves.toMatchObject({ selectedRelease: { id: second } });

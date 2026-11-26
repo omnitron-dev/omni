@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
+import type { ExistingInfrastructureReview, PlacementProvisionIntent } from '../shared/dto/project.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import type { OrchestratorControl } from '../orchestrator/execution-contract.js';
 import type { StackExecutionPlan, StackExecutionReceipt, StackExecutionScope } from '../shared/dto/stack-execution.js';
@@ -26,11 +28,13 @@ export interface NodeStackStopPlan extends NodeStackStopRequest {
   definition: string;
   containers: Array<{ id: string; name: string }>;
 }
-export type NodeStackStopInventory = Omit<NodeStackStopPlan, 'expiresAt' | 'operationId'>;
+type ProvisionedPlacement = PlacementProvisionIntent & { inventory: string };
+export type NodeStackStopInventory = Omit<NodeStackStopPlan, 'expiresAt' | 'operationId'> & { provisioned?: ProvisionedPlacement };
 interface StopRecord {
   plan: NodeStackStopPlan;
   phase: 'prepared' | 'applying' | 'failed' | 'stopped';
   receipt?: NodeStackStopReceipt;
+  provisioned?: ProvisionedPlacement;
   error?: string;
   suspended?: boolean;
 }
@@ -94,6 +98,54 @@ export class NodeStackStop {
     return { plan: record.plan, receipt: record.receipt };
   }
 
+  async preparePlacementProvision(scope: StackExecutionScope, intent: PlacementProvisionIntent): Promise<(review: ExistingInfrastructureReview) => Promise<void>> {
+    const key = stackExecutionKey(scope);
+    const record = this.records()[key];
+    const apps = record?.receipt?.applications;
+    if (!intent || typeof intent.placementDigest !== 'string' || !/^[a-f0-9]{64}$/.test(intent.placementDigest) || typeof intent.stopOperationId !== 'string' ||
+        record?.phase !== 'stopped' || record.suspended || !record.plan.applications || record.plan.keepInfrastructure ||
+        !record.plan.execution || !apps || stackExecutionKey(record.plan.execution) !== stackExecutionKey(apps) ||
+        record.plan.operationId !== intent.stopOperationId || record.receipt?.outcome !== 'stopped' || record.receipt.operationId !== intent.stopOperationId ||
+        apps.operationId !== intent.stopOperationId || record.receipt.keepInfrastructure || stackExecutionKey(record.receipt) !== key ||
+        !isDeepStrictEqual(record.plan.audience, this.recipient?.audience) ||
+        record.receipt.authority?.nodeId !== record.plan.audience?.nodeId || record.receipt.authority?.clusterId !== record.plan.audience?.clusterId ||
+        (record.provisioned && record.provisioned.placementDigest !== intent.placementDigest))
+      throw Error('Placement provisioning requires the original completed full stop');
+    this.assertMutable(scope);
+    const observed = await this.inspect({ ...scope, applications: true, ...(this.recipient && { audience: this.recipient.audience }) });
+    if (observed.execution?.phase !== 'stopped' || observed.execution.revision !== apps.revision ||
+        stackExecutionKey(observed.execution) !== stackExecutionKey(apps) || observed.definition !== record.plan.definition ||
+        !isDeepStrictEqual(record.provisioned, observed.provisioned) ||
+        (record.provisioned && provisionedInventory(observed.containers) !== record.provisioned.inventory) ||
+        this.records()[key]?.plan.operationId !== intent.stopOperationId)
+      throw Error('The provisioned placement no longer matches its stopped execution and physical containers');
+    this.assertMutable(scope);
+    return review => this.recordProvisioned(scope, intent, review);
+  }
+
+  /** The receiver records the physical identities before acknowledging its own provisioning RPC. */
+  private async recordProvisioned(scope: StackExecutionScope, intent: PlacementProvisionIntent, review: ExistingInfrastructureReview): Promise<void> {
+    if (review.protocol !== 1 || review.mode !== 'preserve' || !review.digest || !/^[a-f0-9]{64}$/.test(review.digest) ||
+        !isDeepStrictEqual(review.scope, scope)) throw Error('Invalid placement provisioning evidence');
+    const native = await this.inspect({ ...scope, applications: true, ...(this.recipient && { audience: this.recipient.audience }) });
+    const inventory = provisionedInventory(review.containers);
+    if (!inventory || inventory !== provisionedInventory(native.containers))
+      throw Error('The physical container inventory changed during placement provisioning');
+    const witness = { placementDigest: intent.placementDigest, stopOperationId: intent.stopOperationId, inventory };
+    this.write(scope, record => {
+      const receipt = record?.receipt, apps = receipt?.applications;
+      if (record?.phase !== 'stopped' || record.suspended || this.active.has(stackExecutionKey(scope)) ||
+          !record.plan.applications || record.plan.keepInfrastructure || receipt?.keepInfrastructure || receipt?.outcome !== 'stopped' ||
+          record.plan.operationId !== intent.stopOperationId || receipt.operationId !== intent.stopOperationId || apps?.operationId !== intent.stopOperationId ||
+          !isDeepStrictEqual(record.plan.audience, native.audience) ||
+          native.definition !== record.plan.definition || native.execution?.phase !== 'stopped' ||
+          native.execution.revision !== apps.revision || stackExecutionKey(native.execution) !== stackExecutionKey(apps) ||
+          (record.provisioned && !isDeepStrictEqual(record.provisioned, witness)))
+        throw Error('The completed stop no longer owns this placement provisioning operation');
+      return { ...record, provisioned: witness };
+    });
+  }
+
   /** A full stop retires only the earlier hold on this receiver's own application allocation. */
   retiredInfrastructureAfter(origin: StackExecutionScope, runtime: StackExecutionScope, heldAt: string): boolean {
     const key = stackExecutionKey(origin);
@@ -133,8 +185,10 @@ export class NodeStackStop {
     const execution = definition.runtime ? await this.ports.execution.inspectStackExecution(definition.runtime) : null;
     const containers = await this.ports.containers(scope);
     if (this.active.has(key)) throw new Error(`Stack '${key}' changed while preparing its stop`);
+    const record = this.records()[key];
     return { protocol: 1, project: scope.project, stack: scope.stack,
       applications: scope.applications,
+      ...(record?.phase === 'stopped' && record.provisioned && { provisioned: record.provisioned }),
       ...(scope.keepInfrastructure && { keepInfrastructure: true }),
       definition: definition.fingerprint, execution, containers,
       ...(this.recipient && { audience: { ...this.recipient.audience } }) };
@@ -142,7 +196,8 @@ export class NodeStackStop {
   private async preparePlan(scope: NodeStackStopRequest): Promise<NodeStackStopPlan> {
     const inventory = await this.inspect(scope, false);
     if (this.active.has(stackExecutionKey(scope))) throw new Error('Stack changed while preparing its stop');
-    const plan = { ...inventory, operationId: randomUUID(), expiresAt: Date.now() + 10 * 60_000 };
+    const { provisioned: _previousProvision, ...observation } = inventory;
+    const plan = { ...observation, operationId: randomUUID(), expiresAt: Date.now() + 10 * 60_000 };
     return this.write(scope, prior => {
       // Repeated preflights cannot invalidate a still-usable signed challenge.
       if (plan.audience && prior?.phase === 'prepared' && prior.plan.expiresAt > Date.now() &&
@@ -258,4 +313,15 @@ export class NodeStackStop {
 
 export function stackDefinitionFingerprint(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex');
+}
+
+/** Identifies an entire scoped inventory, independent of Docker's enumeration order. */
+export function provisionedInventory(containers: readonly { id: string; name: string }[]): string | null {
+  const ids = new Set<string>(), names = new Set<string>();
+  if (!Array.isArray(containers) || !containers.length) return null;
+  for (const { id, name } of containers) {
+    if (typeof id !== 'string' || !/^[a-f0-9]{64}$/.test(id) || typeof name !== 'string' || !name || ids.has(id) || names.has(name)) return null;
+    ids.add(id); names.add(name);
+  }
+  return stackDefinitionFingerprint([...containers].sort((a, b) => a.id.localeCompare(b.id)).map(({ id, name }) => [id, name]));
 }

@@ -138,6 +138,7 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     private readonly hostIngress: HostIngressService = new HostIngressService(),
     private readonly getStackObservations: () => ContainerState[] = () => [],
     private readonly hostedStacks?: StackInfrastructureManager,
+    private readonly preparePlacementProvision?: import('../project/node-stack-stop.js').NodeStackStop['preparePlacementProvision'],
   ) {}
 
   @Public({ auth: { roles: ['admin', 'service_role'] } })
@@ -206,6 +207,7 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
   @Public({ auth: { roles: CONTROL_PLANE_ROLES } })
   async provisionStack(data: {
     infrastructure?: 'reconcile' | 'preserve';
+    placement?: StackInfrastructureInput['placement'];
     review?: string;
     staticDigests?: Record<string, string>;
     config: InfrastructureConfig;
@@ -310,6 +312,10 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     if (!data?.config || typeof data.config !== 'object') {
       throw Errors.badRequest('provisionStack requires an `infrastructure` config.');
     }
+    const allocation = infrastructureScope(data);
+    if (data.placement && (!allocation || data.infrastructure !== 'reconcile' || !this.preparePlacementProvision))
+      throw Errors.badRequest('Placement provisioning requires a scoped receiver and a full stop');
+    const recordPlacement = data.placement && await this.preparePlacementProvision!(allocation!, data.placement);
 
     // Reused when this node already has one: reconciliation is idempotent,
     // and building a second service would give the node two janitors and
@@ -447,6 +453,11 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     // bring this node to what the stack declares.
     const hosted = await this.reconcileHostServices(declared, data.overrides ?? {});
     const verdict = provisioningVerdict(outcome, hosted);
+    if (recordPlacement && verdict.ready && definition.containers.length) {
+      const review = await reviewExistingContainers([...definition.containers], undefined, allocation);
+      if (review.digest) await recordPlacement(review);
+      else this.logger?.warn?.({ project: data.project, stack: data.stack }, 'Container identities could not be sealed for an interrupted placement retry');
+    }
 
     return {
       ready: verdict.ready,

@@ -1,6 +1,6 @@
-import type { PlacementReceipt, PreparedRemoteReleaseSource, StackStopProgress } from '../shared/dto/project.js';
+import type { PlacementProvisionIntent, PlacementReceipt, PreparedRemoteReleaseSource, StackStopProgress } from '../shared/dto/project.js';
 import type { StackExecutionScope } from '../shared/dto/stack-execution.js';
-import { stackDefinitionFingerprint, type NodeStackStopInventory } from './node-stack-stop.js';
+import { provisionedInventory, stackDefinitionFingerprint, type NodeStackStopInventory } from './node-stack-stop.js';
 import { stackNodeKey } from './stack-placement.js';
 
 export interface PlacementEndpoint { nodeId: string; host: string; port: number; pin: string }
@@ -51,7 +51,16 @@ export function remotePlacementReview(scope: StackExecutionScope, generation: nu
     stopId: confirmed.id, release: prepared?.release ?? null, digest: stackDefinitionFingerprint(['omnitron/remote-placement/v1', contents, ...(registrationChange ? [registrationChange] : [])]) };
 }
 
-export function confirmStoppedPlacement(scope: StackExecutionScope, from: PlacementEndpoint, stop: StackStopProgress | null, observed: NodeStackStopInventory) {
+export function placementProvisionIntent(placement: RemotePlacement): PlacementProvisionIntent | undefined {
+  const { from, selected, sourceStop, receipt } = placement;
+  const stopOperationId = sourceStop.nodes[0]?.operationId;
+  if (placement.activated || !selected || !stopOperationId || from.nodeId !== selected.nodeId ||
+      from.host !== selected.host || from.port !== selected.port || from.pin !== selected.pin) return undefined;
+  return { placementDigest: receipt.digest, stopOperationId };
+}
+
+export function confirmStoppedPlacement(scope: StackExecutionScope, from: PlacementEndpoint, stop: StackStopProgress | null,
+  observed: NodeStackStopInventory, resume?: PlacementProvisionIntent) {
   const acknowledgement = stop?.nodes[0];
   if (!stop || stop.phase !== 'stopped' || !stop.intentCommitted || stop.keepInfrastructure || stop.supersededAt ||
       !stop.completedAt || stop.nodes.length !== 1 || acknowledgement?.outcome !== 'stopped' || !acknowledgement.operationId ||
@@ -59,11 +68,17 @@ export function confirmStoppedPlacement(scope: StackExecutionScope, from: Placem
       acknowledgement.node !== stackNodeKey(from.host, from.port) || (acknowledgement.nodeId && acknowledgement.nodeId !== from.nodeId))
     throw Error('A completed full stop with the source execution revision and released infrastructure is required');
   const execution = observed.execution;
+  const provisioned = observed.provisioned;
+  const resumed = resume && provisioned && resume.stopOperationId === acknowledgement.operationId &&
+    provisioned.placementDigest === resume.placementDigest && provisioned.stopOperationId === resume.stopOperationId &&
+    digest.test(provisioned.inventory) && provisioned.inventory === provisionedInventory(observed.containers);
   if (!execution || execution.phase !== 'stopped' || !Number.isSafeInteger(execution.revision) || execution.revision < 0 ||
       observed.protocol !== 1 || observed.project !== scope.project || observed.stack !== scope.stack || !observed.applications ||
-      observed.keepInfrastructure || observed.containers.length || observed.definition !== acknowledgement.definition ||
+      observed.keepInfrastructure || observed.definition !== acknowledgement.definition ||
       execution.project !== acknowledgement.execution.project || execution.stack !== acknowledgement.execution.stack ||
       execution.revision !== acknowledgement.execution.revision)
-    throw Error('The pinned source no longer confirms the stopped execution generation and empty container inventory');
+    throw Error('The pinned source no longer confirms the stopped execution generation or its allocation');
+  if ((observed.containers.length || (resume && provisioned)) && !resumed)
+    throw Error('The pinned source does not confirm an empty container inventory or a matching receipt for this placement. Review a full stop before selecting the release again.');
   return { acknowledgement, execution, confirmed: stop };
 }

@@ -1378,6 +1378,7 @@ export class OmnitronDaemon {
       undefined,
       () => projectService.getInfraManager().listInstances().flatMap(({ infra }) => Object.values(infra.getState().services)),
       isSlave ? projectService.getInfraManager() : undefined,
+      isSlave ? (scope, intent) => projectService.preparePlacementProvision(scope, intent) : undefined,
     );
     // Project + Stack management RPC service
     const stateStore = await container.resolveAsync<import('./daemon-state-store.service.js').DaemonStateStore>(DAEMON_STATE_STORE_TOKEN);

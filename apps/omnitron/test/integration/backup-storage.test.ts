@@ -6,10 +6,14 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { backupStorageObjects, restoreStorageObjects } from '../../src/services/backup-storage.js';
+import { ensureImage } from '../../src/infrastructure/container-runtime.js';
+import { minioPreset } from '../../src/infrastructure/presets/minio.js';
 import { testExecution } from '../fixtures/execution.js';
 
-// Explicit opt-in to a cached image. No host ports, network, application volumes or registry downloads.
-const image = process.env['OMNITRON_TEST_MINIO_IMAGE'];
+// CI exercises fresh preset provisioning. An explicitly supplied image must already be cached.
+const cachedImage = process.env['OMNITRON_TEST_MINIO_IMAGE'];
+const usePreset = !cachedImage && process.env['OMNITRON_TEST_MINIO_PRESET'] === '1';
+const image = cachedImage ?? (usePreset ? minioPreset.defaultImage : undefined);
 const exec = promisify(execFile);
 describe.skipIf(!image)('storage backup through a real MinIO with tmpfs', () => {
   const name = `omnitron-backup-test-${randomUUID()}`;
@@ -23,7 +27,9 @@ describe.skipIf(!image)('storage backup through a real MinIO with tmpfs', () => 
   async function docker(args: string[], timeout = 15_000) {
     try { return (await exec('docker', args, { env, timeout, maxBuffer: 1024 * 1024 })).stdout; }
     catch (error) {
-      throw new Error(String((error as Error).message).split(accessKey).join('[redacted]').split(secretKey).join('[redacted]'));
+      const failure = error as Error & { stdout?: string };
+      throw new Error((failure.message + '\n' + (failure.stdout ?? '').slice(-2048))
+        .split(accessKey).join('[redacted]').split(secretKey).join('[redacted]'));
     }
   }
   const shell = (script: string) => docker(['exec', '-e', 'MINIO_ROOT_USER', '-e', 'MINIO_ROOT_PASSWORD', container, 'sh', '-c', script]);
@@ -42,13 +48,15 @@ describe.skipIf(!image)('storage backup through a real MinIO with tmpfs', () => 
   }
   beforeAll(async () => {
     directory = await fs.mkdtemp(path.join(os.tmpdir(), 'omnitron-backup-test-'));
+    if (usePreset) await ensureImage(minioPreset.defaultImage);
     imageId = (await docker(['image', 'inspect', '--format', '{{.Id}}', image!])).trim();
     expect(imageId).toMatch(/^sha256:[a-f0-9]{64}$/);
     try {
       container = (await docker(['create', '--init', '--pull=never', '--name', name,
-        '--label', `omnitron.backup-test=${name}`, '--network', 'none', '--cpus', '0.5', '--memory', '512m', '--pids-limit', '128',
+        '--label', `omnitron.backup-test=${name}`, '--network', 'none', '--cpus', '1', '--memory', '1g', '--pids-limit', '128',
         '--read-only', '--tmpfs', '/data:rw,size=134217728', '--tmpfs', '/tmp:rw,size=67108864,mode=1777',
-        '-e', 'MINIO_ROOT_USER', '-e', 'MINIO_ROOT_PASSWORD', '-e', 'MINIO_BROWSER=off', imageId, 'server', '/data'], provisionTimeout)).trim();
+        '-e', 'MINIO_ROOT_USER', '-e', 'MINIO_ROOT_PASSWORD', '-e', 'MINIO_BROWSER=off', '-e', 'GOMEMLIMIT=96MiB',
+        imageId, 'server', '/data'], provisionTimeout)).trim();
     } catch (error) {
       const observed = await ownedContainer();
       if (!observed) throw error;
@@ -68,10 +76,10 @@ describe.skipIf(!image)('storage backup through a real MinIO with tmpfs', () => 
       } catch { await new Promise(resolve => setTimeout(resolve, 250)); }
     }
     expect(ready).toBe(true);
-    await shell('export MC_CONFIG_DIR=/tmp/proof-client; mc mb proof/proof-bucket >/dev/null; ' +
-      'printf "native backup\\n" | mc pipe proof/proof-bucket/sub/object.txt >/dev/null; ' +
-      'printf "" | mc pipe proof/proof-bucket/empty >/dev/null');
-  }, 2 * provisionTimeout + 90_000);
+    await shell('set -eu; export MC_CONFIG_DIR=/tmp/proof-client; mc mb proof/proof-bucket; ' +
+      'printf "native backup\\n" | mc pipe proof/proof-bucket/sub/object.txt; ' +
+      'printf "" | mc pipe proof/proof-bucket/empty');
+  }, 2 * provisionTimeout + 90_000 + (usePreset ? 600_000 : 0));
   afterAll(async () => {
     try {
       const id = imageId && await ownedContainer();

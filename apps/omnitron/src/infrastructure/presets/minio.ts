@@ -9,26 +9,13 @@
 import { describeError } from '@omnitron-dev/titan/diagnostics';
 import type { IServicePreset, IPostProvisionContext } from './types.js';
 
+export const MINIO_RECIPE_SHA256 = 'e5288abc863b8a8322bbe274a95faddee5105e437c47f81b8c62c5136c03a574';
+export const MINIO_IMAGE = `omnitron-local/minio:recipe-${MINIO_RECIPE_SHA256}`;
+
 export const minioPreset: IServicePreset = {
   name: 'minio',
   type: 'storage',
-  /**
-   * quay.io, and pinned.
-   *
-   * `minio/minio` on Docker Hub answers `pull access denied ... repository
-   * does not exist or may require 'docker login'` — for `:latest` and for an
-   * exact RELEASE tag alike. The image is still in the local cache of every
-   * machine that pulled it before the change, which is why nothing noticed:
-   * the development host runs it happily and a NEW node cannot get it at
-   * all. Measured provisioning the test server, where MinIO was the one
-   * service of three that did not come up.
-   *
-   * Pinned rather than `:latest`, because an unpinned tag is how this
-   * arrived: a config that names no version cannot be reasoned about after
-   * the registry changes under it, and "it worked yesterday" stops being
-   * evidence of anything.
-   */
-  defaultImage: 'quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z',
+  defaultImage: MINIO_IMAGE,
   defaultPorts: { api: 9000, console: 9001 },
   defaultSecrets: { accessKey: 'minioadmin', secretKey: 'minioadmin' },
 

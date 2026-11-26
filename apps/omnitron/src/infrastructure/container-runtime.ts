@@ -9,6 +9,8 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { MINIO_IMAGE, MINIO_RECIPE_SHA256 } from './presets/minio.js';
 import { LONG_REQUEST_TIMEOUT } from '../shared/dto/services.js';
 import { CONFIG_ROOT_PREFIX } from './shipped-config.js';
 import { nativeHealthCheck } from './health-recovery.js';
@@ -775,7 +777,7 @@ async function provisionContainer(config: ResolvedContainer, options: { fullId?:
   // credentials in environment, application flags and nested health checks;
   // raw execFile errors would print those arguments before any logger sees them.
   const args: string[] = ['container', 'create', '--name', config.name];
-  if (options.pull === 'never') args.push('--pull=never');
+  if (options.pull === 'never' || config.image === MINIO_IMAGE) args.push('--pull=never');
 
   // Network — explicit network avoids the default bridge, which
   // accumulates phantom endpoints after dockerd restarts on macOS and
@@ -1088,13 +1090,13 @@ export async function startContainer(nameOrId: string): Promise<void> {
   await adapter.startContainer(nameOrId);
 }
 
-async function executeDocker(args: string[], { maxBuffer = 1024 * 1024, timeout = 60_000, redactOutput = true }:
-  { maxBuffer?: number; timeout?: number; redactOutput?: boolean } = {}) {
+async function executeDocker(args: string[], { maxBuffer = 1024 * 1024, timeout = 60_000, redactOutput = true, stdin }:
+  { maxBuffer?: number; timeout?: number; redactOutput?: boolean; stdin?: Buffer } = {}) {
   const { ExecutionEngine } = await import('@xec-sh/core');
   const engine = new ExecutionEngine({ defaultShell: false, enableEvents: false });
   try {
     return await engine.execute({ command: 'docker', args, shell: false, adapter: 'local',
-      timeout, maxBuffer, redactOutput, throwOnNonZeroExit: true });
+      timeout, maxBuffer, redactOutput, ...(stdin && { stdin }), throwOnNonZeroExit: true });
   } finally { await engine.dispose(); }
 }
 
@@ -1127,10 +1129,34 @@ export async function removeContainer(nameOrId: string, options: { graceful?: bo
   await adapter.removeContainer(nameOrId, !options.graceful, options);
 }
 
-/**
- * Pull an image if not present locally.
- */
+let preparingMinio: Promise<void> | undefined;
+
+async function prepareMinioImage(): Promise<void> {
+  const label = 'org.omnitron.minio-recipe';
+  const adapter = await getAdapter();
+  const tags: string[] = await adapter.listImages(MINIO_IMAGE);
+  if (!tags.includes(MINIO_IMAGE)) {
+    const recipe = await readFile(new URL('../../data/images/minio/Dockerfile', import.meta.url));
+    if (createHash('sha256').update(recipe).digest('hex') !== MINIO_RECIPE_SHA256)
+      throw new Error('The installed MinIO Dockerfile does not match its pinned recipe');
+    // Docker receives only the verified Dockerfile, with an empty build context.
+    await executeDocker(['build', '--label', `${label}=${MINIO_RECIPE_SHA256}`, '--tag', MINIO_IMAGE, '-'],
+      { stdin: recipe, timeout: 600_000 });
+  }
+  const format = `{{.Id}} {{index .Config.Labels "${label}"}}`;
+  const inspection = await executeDocker(['image', 'inspect', '--format', format, '--', MINIO_IMAGE]);
+  const [id, recipe] = inspection.stdout.trim().split(' ');
+  if (!/^sha256:[a-f0-9]{64}$/.test(id ?? '') || recipe !== MINIO_RECIPE_SHA256)
+    throw new Error(`Cached image ${MINIO_IMAGE} does not identify its pinned MinIO recipe`);
+}
+
+/** Prepare the bundled MinIO recipe or obtain an explicitly referenced image. */
 export async function ensureImage(image: string): Promise<void> {
+  if (image === MINIO_IMAGE) {
+    preparingMinio ??= prepareMinioImage().finally(() => { preparingMinio = undefined; });
+    await preparingMinio;
+    return;
+  }
   // A local content ID is not a registry reference. Never turn it into a
   // pull of a repository named "sha256", or accept a missing local object.
   const local = image.startsWith('sha256:');

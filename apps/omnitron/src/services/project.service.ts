@@ -1273,28 +1273,18 @@ export class ProjectService extends EventEmitter {
         const { isDockerAvailable, ensureImage } = await import('../infrastructure/container-runtime.js');
         const dockerReady = await isDockerAvailable();
         if (dockerReady) {
-          // Pull images in background (don't block stack creation).
-          //
-          // Asked of the presets, not spelled again here. These three were
-          // written out a second time, and the copies had already drifted:
-          // this one named `minio/minio:latest`, which Docker Hub answers
-          // `pull access denied` for, while the preset named the image the
-          // resolver actually uses. A prefetch that pulls something else is
-          // worse than none — it reports success and warms nothing.
-          const presets = createDefaultRegistry();
+          const services = expandServiceDeclarations(stackConfig.infrastructure, createDefaultRegistry());
           const images = new Set<string>();
           for (const name of ['postgres', 'redis', 'minio'] as const) {
-            if (!stackConfig.infrastructure[name]) continue;
-            const declared = (stackConfig.infrastructure[name] as { image?: string }).image;
-            const image = declared ?? presets.get(name)?.defaultImage;
+            const image = services[name]?.docker?.image;
             if (image) images.add(image);
           }
           for (const img of images) {
             ensureImage(img).catch((err: Error) =>
-              this.logger.warn({ image: img, error: err.message }, 'Failed to pull image')
+              this.logger.warn({ image: img, error: err.message }, 'Failed to prepare image')
             );
           }
-          this.logger.info({ project, stack: input.name, images: [...images] }, 'Docker available — pulling images');
+          this.logger.info({ project, stack: input.name, images: [...images] }, 'Docker available — preparing images');
         } else {
           this.logger.warn({ project, stack: input.name }, 'Docker not available — containers will be created when Docker is running');
         }

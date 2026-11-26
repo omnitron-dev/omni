@@ -1,45 +1,69 @@
-/**
- * The MinIO image was gone from the registry, and only a warm cache hid it.
- *
- * The preset named `minio/minio` — no tag, no registry. Docker Hub answers
- * that with `pull access denied for minio/minio, repository does not exist
- * or may require 'docker login'`, for `:latest` and for an exact RELEASE tag
- * alike. Every machine that pulled it before the change still runs it from
- * its local cache, which is why nothing noticed: the development host was
- * fine and a NEW node could not get it at all.
- *
- * Measured provisioning the test server: of postgres, redis and minio, two
- * came up and MinIO failed at `docker run`.
- *
- * The image was also named a second time, in the prefetch that runs when a
- * stack is created — and the copies had drifted, because only one of them
- * is what the resolver uses.
- */
-
-import { describe, it, expect } from 'vitest';
-
+import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { beforeEach, expect, it, vi } from 'vitest';
+import { ensureImage } from '../../src/infrastructure/container-runtime.js';
+import { expandServiceDeclarations } from '../../src/infrastructure/config-normalizer.js';
 import { createDefaultRegistry } from '../../src/infrastructure/presets/index.js';
 
-describe('the image a preset names', () => {
-  it('is pinned, and from a registry that serves it', () => {
-    const minio = createDefaultRegistry().get('minio');
+const docker = vi.hoisted(() => ({ list: vi.fn(), pull: vi.fn(), execute: vi.fn() }));
+vi.mock('@xec-sh/core', () => ({
+  DockerAdapter: class { listImages = docker.list; pullImage = docker.pull; },
+  ExecutionEngine: class { execute = docker.execute; async dispose() {} },
+}));
 
-    // quay.io, because Docker Hub no longer carries it.
-    expect(minio?.defaultImage).toMatch(/^quay\.io\/minio\/minio:/);
-    // Pinned, because an unpinned tag is how this arrived: a config that
-    // names no version cannot be reasoned about after the registry changes
-    // under it, and "it worked yesterday" stops being evidence.
-    expect(minio?.defaultImage).toMatch(/:RELEASE\.\d{4}-\d{2}-\d{2}/);
+const registry = createDefaultRegistry();
+const image = registry.get('minio')!.defaultImage;
+const label = 'org.omnitron.minio-recipe';
+const recipe = await readFile(new URL('../../data/images/minio/Dockerfile', import.meta.url));
+const digest = createHash('sha256').update(recipe).digest('hex');
+const cached = { stdout: `sha256:${'0'.repeat(64)} ${digest}\n` };
+beforeEach(() => vi.resetAllMocks());
+
+it('builds the shipped recipe once on concurrent cache misses, then verifies the cache independently', async () => {
+  expect(image).toBe(`omnitron-local/minio:recipe-${digest}`);
+  docker.list.mockResolvedValueOnce([]).mockResolvedValueOnce([image]);
+  docker.execute.mockResolvedValueOnce({ stdout: '' }).mockResolvedValue(cached);
+  await Promise.all([ensureImage(image), ensureImage(image)]);
+  expect(docker.list).toHaveBeenCalledExactlyOnceWith(image);
+  expect(docker.execute.mock.calls[0]![0]).toMatchObject({
+    command: 'docker', shell: false, args: ['build', '--label', `${label}=${digest}`, '--tag', image, '-'], stdin: recipe,
   });
+  await ensureImage(image);
+  expect(docker.execute).toHaveBeenCalledTimes(3);
+  for (const [command] of docker.execute.mock.calls.slice(1))
+    expect(command.args).toEqual(['image', 'inspect', '--format', `{{.Id}} {{index .Config.Labels "${label}"}}`, '--', image]);
+  expect(docker.pull).not.toHaveBeenCalled();
+});
 
-  it('is pinned for the other two as well', () => {
-    const registry = createDefaultRegistry();
+it('rejects a conflicting cached image and propagates a failed clean build, allowing a retry', async () => {
+  docker.list.mockResolvedValueOnce([image]).mockResolvedValue([]);
+  docker.execute.mockResolvedValueOnce({ stdout: `sha256:${'0'.repeat(64)} <no value>` })
+    .mockRejectedValueOnce(Error('package unavailable')).mockResolvedValueOnce({ stdout: '' }).mockResolvedValueOnce(cached);
+  await expect(ensureImage(image)).rejects.toThrow('does not identify its pinned MinIO recipe');
+  await expect(ensureImage(image)).rejects.toThrow('package unavailable');
+  await expect(ensureImage(image)).resolves.toBeUndefined();
+  expect(docker.pull).not.toHaveBeenCalled();
+});
 
-    for (const name of ['postgres', 'redis']) {
-      const image = registry.get(name)?.defaultImage ?? '';
-      expect(image).toMatch(/:/);
-      // `:latest` is the tag that cannot be reasoned about.
-      expect(image).not.toMatch(/:latest$/);
-    }
-  });
+it('preserves explicit legacy, preset and Docker overrides on the regular registry path', async () => {
+  const original = 'fixture.example/storage:original';
+  const selected = 'fixture.example/storage:selected';
+  const legacy = expandServiceDeclarations({ minio: { image: original } }, registry);
+  const preset = expandServiceDeclarations({ services: { minio: { preset: 'minio', image: original } } }, registry);
+  const override = expandServiceDeclarations({
+    minio: { image: original }, services: { minio: { preset: 'minio', image: original, docker: { image: selected } } },
+  }, registry);
+  expect([legacy['minio'], preset['minio'], override['minio']].map(s => s?.docker?.image)).toEqual([original, original, selected]);
+  docker.list.mockResolvedValue([]);
+  await ensureImage(override['minio']!.docker!.image!);
+  expect(docker.pull).toHaveBeenCalledExactlyOnceWith(selected);
+  expect(docker.execute).not.toHaveBeenCalled();
+});
+
+it('keeps the Postgres and Redis defaults pinned', () => {
+  for (const name of ['postgres', 'redis']) {
+    const reference = registry.get(name)!.defaultImage;
+    expect(reference).toMatch(/:/);
+    expect(reference).not.toMatch(/:latest$/);
+  }
 });

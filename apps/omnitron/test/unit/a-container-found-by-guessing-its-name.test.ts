@@ -42,6 +42,7 @@ const inspectStackContainers = vi.fn(() => { throw new Error('Unexpected Docker 
 vi.mock('../../src/infrastructure/container-runtime.js', () => ({
   listManagedContainers: () => listManagedContainers(),
   inspectStackContainers,
+  inspectStackContainerOwnership: inspectStackContainers,
   getContainerLogs: vi.fn(),
   isDockerAvailable: vi.fn(async () => true),
   stopContainer: vi.fn(),

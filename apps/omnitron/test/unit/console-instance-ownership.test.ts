@@ -13,6 +13,7 @@ const runtime = vi.hoisted(() => ({ state: null as ContainerState | null,
 vi.mock('../../src/infrastructure/container-runtime.js', () => ({
   readDockerInventory: vi.fn(() => { throw new Error('Unexpected Docker inventory read in ownership test'); }),
   inspectStackContainers: runtime.inspect,
+  inspectStackContainerOwnership: runtime.inspect,
   getContainerState: async () => runtime.state, removeContainer: runtime.remove,
   stopContainer: runtime.stop, createContainer: runtime.create,
   containerSpecHash: () => 'fixture', ensureImage: vi.fn(), waitForHealthy: vi.fn(),

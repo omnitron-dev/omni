@@ -601,7 +601,8 @@ stack
 stack
   .command('select-placement <project> <stack>')
   .description('Review and durably select a stopped remote stack’s release and recipient')
-  .requiredOption('--from-node <id>', 'Registered stable identity of the stopped source')
+  .requiredOption('--from-node <id>', 'Registered stable identity of the source')
+  .option('--preflight', 'Verify registration, enrolled recipient and source evidence before stopping')
   .option('--previous-declaration-commit <sha>', 'Review a changed stack declaration against its prior Git commit on the same recipient')
   .option('--release <id>', 'Previously admitted immutable destination release')
   .option('--prepared <digest>', 'Previously admitted source for this release and recipient')

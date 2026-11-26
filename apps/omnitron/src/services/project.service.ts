@@ -49,7 +49,7 @@ import { publicLaunchFailure } from '../project/launch-failure.js';
 import { nodeApplicationNames, resolveNodePlacements, stackNodeKey } from '../project/stack-placement.js';
 import { StackTargets, type StackTarget } from '../project/stack-targets.js';
 import { confirmStoppedPlacement, remotePlacementReview, type PlacementEndpoint, type RemotePlacement } from '../project/remote-placement.js';
-import { cleanRegisteredCommit, registeredStackAtCommit, remoteReleaseSourceKey, type ReleaseRecipient } from '../release/remote-source.js';
+import { cleanRegisteredCommit, committedStackDeclaration, confirmRegisteredReleaseNode, registeredStackAtCommit, remoteReleaseSourceKey, type ReleaseRecipient } from '../release/remote-source.js';
 import { defineEcosystem } from '../config/define-ecosystem.js';
 import { readCapturedSourceSync } from '../release/source-data.js';
 
@@ -118,6 +118,7 @@ import type {
   IStackAppStatus,
   IStackInfraStatus,
   IProjectRequirements,
+  PlacementPreflight,
   PlacementReceipt,
   PlacementRequest,
   ISyncStatus,
@@ -2919,26 +2920,27 @@ export class ProjectService extends EventEmitter {
     if (this.clusterStop) throw Error('Cluster replacement requires a recipient-fenced deployment adapter');
   }
 
-  private async inspectRemotePlacement(request: PlacementRequest) {
+  private async inspectPlacementIntent(request: PlacementRequest) {
     const { project, stack, fromNodeId, destination } = request, scope = { project, stack };
     stackExecutionKey(scope);
     if (!destination || typeof destination !== 'object' ||
         !('registered' in destination ? destination.registered === true && Object.keys(destination).length === 1 :
           typeof destination.release === 'string' && /^[a-f0-9]{64}$/.test(destination.prepared) && Object.keys(destination).length === 2))
       throw Error('Choose a complete prepared release or restore its recorded original registration');
-    this.placementIdle(scope);
+    if (this.clusterStop) throw Error('Cluster replacement requires a recipient-fenced deployment adapter');
     const journal = new StackTargets(this.daemonStateStore), current = journal.inspect(scope);
     const baseline = this.registeredRemoteScope(project, stack);
     const previous = current.placement, expected = previous?.selected ?? previous?.origin;
     let registrationChange: PlacementReceipt['registrationChange'];
+    let nodesChanged = false;
     if (previous && previous.registration !== baseline.fingerprint) {
       if (!request.previousDeclarationCommit || previous.selected?.nodeId !== fromNodeId || !('release' in destination))
         throw Error('The original registered stack has changed; review its previous declaration commit for a same-recipient release');
       const reg = baseline.registration;
       const prior = await registeredStackAtCommit(reg.path, request.previousDeclarationCommit, stack);
-      if (stackDefinitionFingerprint([reg.name, reg.path, reg.registeredAt, prior]) !== previous.registration ||
-          !isDeepStrictEqual(prior.nodes, baseline.stack.nodes))
-        throw Error('Prior declaration, project registration or registered node configuration does not match the existing placement');
+      if (stackDefinitionFingerprint([reg.name, reg.path, reg.registeredAt, prior]) !== previous.registration)
+        throw Error('Prior declaration or project registration does not match the existing placement');
+      nodesChanged = !isDeepStrictEqual(prior.nodes, baseline.stack.nodes);
       registrationChange = { previous: previous.registration, current: baseline.fingerprint, previousDeclarationCommit: request.previousDeclarationCommit };
     } else if (request.previousDeclarationCommit !== undefined) {
       throw Error('The placement has no changed registration to review');
@@ -2954,39 +2956,84 @@ export class ProjectService extends EventEmitter {
     const endpoint = candidate?.target ?? this.placementRecipient(previous!.origin.nodeId, previous!.origin);
     const to: PlacementEndpoint = candidate ? { nodeId: candidate.receipt.nodeId, host: endpoint.host, port: endpoint.port, pin: endpoint.pin } : previous!.origin;
     if (registrationChange && !isDeepStrictEqual(from, to)) throw Error('A changed registration requires the same pinned recipient');
+    if (nodesChanged && registrationChange && candidate) {
+      confirmRegisteredReleaseNode(baseline.stack, candidate.opened.stackConfig, fromNodeId, old);
+      registrationChange.currentDeclarationCommit = await committedStackDeclaration(baseline.registration.path, stack, baseline.stack);
+    }
     if (to.nodeId !== fromNodeId && to.host === from.host && to.port === from.port)
       throw Error('Two recipient identities cannot hand off the same endpoint');
+    const cleanCommit = previous && candidate ? null : await cleanRegisteredCommit(baseline.registration.path);
+    const originCommit = previous ? previous.originCommit : cleanCommit;
+    if (!candidate && (!originCommit || cleanCommit !== originCommit))
+      throw Error('The original checkout is unavailable or has changed; prepare its exact immutable release instead');
+    const recheckIntent = () => {
+      if (this.registeredRemoteScope(project, stack).fingerprint !== baseline.fingerprint ||
+          !isDeepStrictEqual(this.placementRecipient(fromNodeId), old) || !isDeepStrictEqual(this.placementRecipient(to.nodeId), endpoint))
+        throw Error('Source registration or selected recipient changed during placement review');
+    };
+    const inspectSource = async () => {
+      const rpc = this.getSlaveConnector().pinnedService(from.host, from.port, fromNodeId, old.managementIdentity, 'OmnitronProject');
+      const input = { ...scope, applications: true };
+      const observation = await rpc('inspectNodeStackStop', input) as NodeStackStopInventory;
+      this.validateStopInventory(input, observation);
+      return observation;
+    };
+    return { current, from, to, candidate, registration: baseline.fingerprint, registrationChange, originCommit,
+      sshFingerprint: endpoint.fingerprint, recheckIntent, inspectSource };
+  }
+
+  async preflightRemotePlacement(request: PlacementRequest): Promise<PlacementPreflight> {
+    const { project, stack } = request, scope = { project, stack };
+    const intent = await this.inspectPlacementIntent(request);
+    const { from, to, current, registration, registrationChange } = intent;
+    if (current.nodes.some(node => node.host !== from.host || node.port !== from.port || node.nodeId && node.nodeId !== from.nodeId))
+      throw Error('A single-recipient placement requires resolving all other deployment targets first');
+    const observed = await intent.inspectSource(), execution = observed.execution;
+    if (!execution || !Number.isSafeInteger(execution.revision) || execution.revision < 0 || !/^[a-f0-9]{64}$/.test(observed.definition))
+      throw Error('The source must report its allocation definition and execution revision before stopping');
+    stackExecutionKey(execution);
+    intent.recheckIntent();
+    if (new StackTargets(this.daemonStateStore).inspect(scope).revision !== current.revision)
+      throw Error('The deployment target journal changed during placement preflight');
+    return { ...scope, fromNodeId: from.nodeId, toNodeId: to.nodeId, release: intent.candidate?.receipt.release ?? null,
+      registration, ...(registrationChange && { registrationChange }), sshFingerprint: intent.sshFingerprint,
+      source: { definition: observed.definition, project: execution.project, stack: execution.stack, revision: execution.revision } };
+  }
+
+  private async inspectRemotePlacement(request: PlacementRequest) {
+    const { project, stack, fromNodeId } = request, scope = { project, stack };
+    this.placementIdle(scope);
+    const { current, from, to, candidate, registration, registrationChange, originCommit, recheckIntent, inspectSource } = await this.inspectPlacementIntent(request);
+    const previous = current.placement;
     const stopKey = 'stack:' + stackExecutionKey(scope) + ':last-stop';
     const stop = this.daemonStateStore.kvGetSync<StackStopProgress>(stopKey, { strict: true });
     if (candidate && previous?.selected?.prepared === candidate.receipt.digest) {
       const prior = previous.sourceStop.nodes[0]?.execution;
       const latest = stop?.nodes[0]?.execution;
-      if (previous.from.nodeId !== fromNodeId || stop?.id === previous.sourceStop.id || !prior || !latest ||
-          prior.project !== latest.project || prior.stack !== latest.stack || latest.revision <= prior.revision)
+      // Execution revisions belong to an allocation on one node. The controller's
+      // target journal orders the first stop on a receiver after a cross-node move.
+      const newer = prior && latest && (previous.from.nodeId === fromNodeId
+        ? latest.project === prior.project && latest.stack === prior.stack && latest.revision > prior.revision
+        : stop?.nodes[0]?.nodeId === fromNodeId);
+      if (!newer || stop?.id === previous.sourceStop.id || current.revision <= previous.receipt.generation)
         throw Error('This release source is already selected; a newer full stop of the same allocation is required to renew it');
     }
     if (!stop || stop.phase !== 'stopped' || stop.supersededAt || stop.keepInfrastructure || current.nodes.length)
       throw Error('Complete a full stop on every source recipient before changing placement');
-    const currentSource = this.getSlaveConnector().pinnedService(from.host, from.port, fromNodeId, old.managementIdentity, 'OmnitronProject');
-    const observation = await currentSource('inspectNodeStackStop', { ...scope, applications: true }) as NodeStackStopInventory;
-    const cleanCommit = previous && candidate ? null : await cleanRegisteredCommit(baseline.registration.path);
-    const originCommit = previous ? previous.originCommit : cleanCommit;
-    if (!candidate && (!originCommit || cleanCommit !== originCommit))
-      throw Error('The original checkout is unavailable or has changed; prepare its exact immutable release instead');
-    const receipt = remotePlacementReview(scope, current.revision, baseline.fingerprint, originCommit, from, to, candidate?.receipt ?? null, stop, observation, registrationChange);
+    const observation = await inspectSource();
+    const receipt = remotePlacementReview(scope, current.revision, registration, originCommit, from, to, candidate?.receipt ?? null, stop, observation, registrationChange);
     const acknowledgement = stop.nodes[0]!;
     const sourceStop: StackStopProgress = { id: stop.id, phase: 'stopped', startedAt: stop.startedAt, completedAt: stop.completedAt!,
       intentCommitted: true, nodes: [{ node: acknowledgement.node, outcome: 'stopped', operationId: acknowledgement.operationId!,
         observedAt: acknowledgement.observedAt!, definition: acknowledgement.definition!, execution: acknowledgement.execution! }] };
-    const value: RemotePlacement = { registration: baseline.fingerprint, origin: previous?.origin ?? from, originCommit, activated: false, from, sourceStop, selected: candidate ? {
+    const value: RemotePlacement = { registration, origin: previous?.origin ?? from, originCommit, activated: false, from, sourceStop, selected: candidate ? {
       ...to, release: candidate.receipt.release, manifestSha256: candidate.receipt.manifestSha256, prepared: candidate.receipt.digest,
     } : null, receipt };
     const recheck = () => {
       this.placementIdle(scope);
-      if (this.registeredRemoteScope(project, stack).fingerprint !== baseline.fingerprint ||
-          !isDeepStrictEqual(this.daemonStateStore.kvGetSync(stopKey, { strict: true }), stop) ||
-          !isDeepStrictEqual(this.placementRecipient(fromNodeId), old) || !isDeepStrictEqual(this.placementRecipient(to.nodeId), endpoint))
-        throw Error('Stop receipt, source registration or selected recipient changed during placement review');
+      recheckIntent();
+      if (!isDeepStrictEqual(this.daemonStateStore.kvGetSync(stopKey, { strict: true }), stop))
+        throw Error('Source stop receipt changed during placement review');
     };
     recheck();
     return { value, revision: current.revision, recheck };

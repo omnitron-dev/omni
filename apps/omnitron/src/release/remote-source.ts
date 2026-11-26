@@ -2,7 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { isDeepStrictEqual, promisify } from 'node:util';
-import type { IAppDefinition, IEcosystemAppEntry, IStackConfig } from '../config/types.js';
+import type { IAppDefinition, IEcosystemAppEntry, IStackConfig, IStackNode } from '../config/types.js';
 import { defineEcosystem } from '../config/define-ecosystem.js';
 import { readProjectStacks } from '../config/project-stacks.js';
 import { resolveAppPath } from '../config/app-path.js';
@@ -55,6 +55,15 @@ export async function cleanRegisteredCommit(directory: string): Promise<string |
   return /^[a-f0-9]{40}$/.test(commit) && (await treeEqualsCommit(directory, commit)).equal && await head() === commit ? commit : null;
 }
 
+/** Prove the registered declaration itself against Git; unrelated workspace changes do not affect the proof. */
+export async function committedStackDeclaration(directory: string, stack: string, declaration: IStackConfig): Promise<string> {
+  const head = () => git(directory, ['rev-parse', '--verify', 'HEAD']);
+  const commit = await head();
+  if (!isDeepStrictEqual(await registeredStackAtCommit(directory, commit, stack), declaration) || await head() !== commit)
+    throw Error('The current registered stack does not match its committed Git declaration');
+  return commit;
+}
+
 /** Recheck a private source before importing any of its declarations. A shared immutable
  * commit establishes project lineage even when the producer used a private local mirror. */
 export async function verifyRemoteSourceTree(source: string, registered: string, commit: string, directory = ''): Promise<void> {
@@ -75,12 +84,21 @@ export async function verifyRemoteSourceTree(source: string, registered: string,
   if (!(await treeEqualsCommit(source, commit)).equal) throw Error('The release source checkout differs from its immutable commit');
 }
 
-export function confirmReleaseRecipient(stack: IStackConfig | undefined, nodeId: string, recipient: ReleaseRecipient): void {
+export function confirmReleaseRecipient(stack: IStackConfig | undefined, nodeId: string, recipient: ReleaseRecipient): IStackNode {
   const node = stack?.nodes?.[0];
   if (stack?.type !== 'remote' || stack.nodes?.length !== 1 || !node?.nodeId || node.nodeId !== nodeId || node.ssh?.privateKey !== undefined ||
       node.host !== recipient.host || (node.port ?? 9700) !== recipient.port ||
       !isSshHostFingerprint(recipient.fingerprint) || !sha256.test(recipient.pin) || !recipient.managementIdentity)
     throw Error('Remote release source requires one declared recipient matching its stable registration and approved SSH host key');
+  return node;
+}
+
+export function confirmRegisteredReleaseNode(registered: IStackConfig, prepared: IStackConfig, nodeId: string, recipient: ReleaseRecipient): void {
+  const current = confirmReleaseRecipient(registered, nodeId, recipient);
+  const admitted = confirmReleaseRecipient(prepared, nodeId, recipient);
+  const effectiveNode = (node: IStackNode) => ({ ...node, port: node.port ?? 9700, label: undefined });
+  if (!isDeepStrictEqual(effectiveNode(current), effectiveNode(admitted)))
+    throw Error('The registered node configuration does not match the admitted release node');
 }
 
 export async function openRemoteReleaseSource(registration: RemoteSourceRegistration, stack: string, id: string,

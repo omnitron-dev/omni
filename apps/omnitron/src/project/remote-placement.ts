@@ -26,7 +26,10 @@ function endpoint(value: PlacementEndpoint): boolean {
 export function validateRemotePlacement(value: RemotePlacement, scope: StackExecutionScope): void {
   const change = value?.receipt?.registrationChange;
   if (change && (!digest.test(change.previous) || change.current !== value.registration || change.previous === change.current ||
-      !/^[a-f0-9]{40}$/.test(change.previousDeclarationCommit) || !value.selected || value.from?.nodeId !== value.selected.nodeId))
+      !/^[a-f0-9]{40}$/.test(change.previousDeclarationCommit) ||
+      (change.currentDeclarationCommit !== undefined && !/^[a-f0-9]{40}$/.test(change.currentDeclarationCommit)) ||
+      !value.selected || value.from?.nodeId !== value.selected.nodeId || value.from.host !== value.selected.host ||
+      value.from.port !== value.selected.port || value.from.pin !== value.selected.pin))
     throw Error('Corrupt remote placement registration change');
   if (!value || !value.receipt || !digest.test(value.registration) || !endpoint(value.origin) || !endpoint(value.from) ||
       (value.originCommit !== null && (typeof value.originCommit !== 'string' || !/^[0-9a-f]{40}$/.test(value.originCommit))) || typeof value.activated !== 'boolean' ||

@@ -2,7 +2,6 @@ import 'reflect-metadata';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { create } from 'tar';
@@ -17,11 +16,17 @@ import { METADATA_KEYS } from '@omnitron-dev/titan/decorators';
 import { validateAccessRequirements } from '@omnitron-dev/titan/netron/auth';
 import { captureRemoteSource, readCapturedSource, sourceFileDigest } from '../../src/release/source-capture.js';
 import { loadRelease } from '../../src/release/load.js';
-import { confirmReleaseRecipient, verifyRemoteSourceTree } from '../../src/release/remote-source.js';
+import { confirmRegisteredReleaseNode, confirmReleaseRecipient, verifyRemoteSourceTree } from '../../src/release/remote-source.js';
 import { resolveProjectStacks } from '../../src/config/project-stacks.js';
 
 const sha = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex');
-const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'remote-release-source-')));
+const root = await vi.hoisted(async () => {
+  const fs = await import('node:fs'), os = await import('node:os'), path = await import('node:path');
+  return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'remote-release-source-')));
+});
+vi.mock('../../src/config/defaults.js', async original => ({
+  ...await original<typeof import('../../src/config/defaults.js')>(), OMNITRON_HOME: root,
+}));
 const original = path.join(root, 'serving'), source = path.join(root, 'qualified'), store = path.join(root, 'releases');
 const marker = path.join(root, 'bootstrap-reads');
 const sentinel = 'fixture-value-never-in-a-capture';
@@ -98,7 +103,7 @@ function fixture() {
 }
 
 describe('prepared source of one registered remote release', () => {
-  it.each([false, true])('returns the placement using a new passive receiver full stop (partial provision %s)', async partial => {
+  it.each(['return', 'partial', 'realigned', 'renew'])('checks both enrolled nodes through placement and full stop (%s)', async mode => {
     const f = fixture(), dir = fs.mkdtempSync(path.join(root, 'passive-placement-'));
     const log = { info() {}, warn() {}, error() {}, debug() {}, trace() {}, child() { return this; } };
     const stores: DaemonStateStore[] = [];
@@ -116,10 +121,13 @@ describe('prepared source of one registered remote release', () => {
       const controller = await make('controller'), donor = await make('donor'), receiver = await make('receiver');
       const scope = { project: 'sample', stack: 'test' };
       const expectedOld = { ...f.recipient(), host: oldNode.host, pin: 'b'.repeat(64), managementIdentity: 'original-management' };
-      controller.setReleaseRecipientResolver(n => n === oldNode.nodeId ? expectedOld : f.recipient());
+      const enrolled = (n: string) => n === oldNode.nodeId ? expectedOld : f.recipient();
+      controller.setReleaseRecipientResolver(enrolled);
       controller.setNodeCredentialResolver(f.credentials as never);
       vi.spyOn(Reflect.get(controller, 'deployer'), 'inspectInstalledBundle').mockImplementation(f.owner);
-      await controller.addProject(scope.project, original);
+      const registered = path.join(dir, 'registered');
+      git(root, 'clone', '-q', '--no-local', original, registered);
+      await controller.addProject(scope.project, registered);
       const originalConfig = { apps: [{ name: 'main', bootstrap: 'apps/main/src/bootstrap.mjs' }] };
       Object.assign(controller, { getLoadedConfig: () => originalConfig, loadProjectConfig: async () => originalConfig,
         releaseRunningOn: async () => null, assertStartAuthority: async () => {} });
@@ -153,19 +161,79 @@ describe('prepared source of one registered remote release', () => {
       };
       const admitted = await controller.prepareRemoteReleaseSource(scope.project, scope.stack, id, f.input);
       const forward = { ...scope, fromNodeId: oldNode.nodeId, destination: { release: id, prepared: admitted.digest } };
+      const rpc = new ProjectRpcService(controller);
+      expect(await rpc.preflightRemotePlacement(forward)).toMatchObject({ fromNodeId: oldNode.nodeId, toNodeId: nodeId, release: id });
       await reviewedStop();
       const first = await controller.reviewRemotePlacement(forward); await controller.selectRemotePlacement({ ...forward, review: first.digest });
       const back = { ...scope, fromNodeId: nodeId, destination: { registered: true as const } };
       await expect(controller.reviewRemotePlacement(back)).rejects.toThrow(/full stop/);
-      if (partial) footprint.push({ id: 'f'.repeat(64), name: 'fixture-partially-provisioned' });
+      if (mode === 'realigned') {
+        const journal = new StackTargets(stores[0]!);
+        const stateBefore = journal.inspect(scope);
+        const file = path.join(registered, 'omnitron.stacks.json');
+        const declarations = stacks(candidateNode);
+        fs.writeFileSync(file, JSON.stringify(declarations));
+        const prepared = await controller.prepareRemoteReleaseSource(scope.project, scope.stack, id, f.input);
+        const request = { ...scope, fromNodeId: nodeId, previousDeclarationCommit: originalCommit,
+          destination: { release: id, prepared: prepared.digest } };
+        await expect(rpc.preflightRemotePlacement(request)).rejects.toThrow(/committed Git declaration/);
+        git(registered, 'commit', '-qam', 'align the registered recipient');
+        const head = git(registered, 'rev-parse', 'HEAD');
+        await expect(rpc.preflightRemotePlacement({ ...request, previousDeclarationCommit: head })).rejects.toThrow(/does not match/);
+        await expect(rpc.preflightRemotePlacement({ ...request, fromNodeId: oldNode.nodeId })).rejects.toThrow(/same-recipient/);
+        const preflight = await rpc.preflightRemotePlacement(request);
+        expect(preflight).toMatchObject({ fromNodeId: nodeId, toNodeId: nodeId, release: id, sshFingerprint: stableFingerprint,
+          registrationChange: { previous: stateBefore.placement!.registration, previousDeclarationCommit: originalCommit, currentDeclarationCommit: head },
+          source: { project: scope.project, stack: 'deployed' } });
+        expect(preflight.registrationChange!.current).toBe(preflight.registration);
+        expect(preflight).not.toHaveProperty('digest');
+        expect(journal.inspect(scope)).toEqual(stateBefore);
+        await expect(rpc.reviewRemotePlacement(request)).rejects.toThrow(/full stop/);
+        await expect(rpc.selectRemotePlacement({ ...request, review: preflight.registration })).rejects.toThrow(/full stop/);
+        await reviewedStop();
+        const review = await rpc.reviewRemotePlacement(request);
+        expect(review.registrationChange).toEqual(preflight.registrationChange);
+        const stoppedState = journal.inspect(scope);
+        controller.setReleaseRecipientResolver(n => ({ ...enrolled(n), pin: 'e'.repeat(64) }));
+        await expect(rpc.selectRemotePlacement({ ...request, review: review.digest })).rejects.toThrow(/registration or approved SSH/);
+        expect(journal.inspect(scope)).toEqual(stoppedState);
+        controller.setReleaseRecipientResolver(enrolled);
+        expect(await rpc.selectRemotePlacement({ ...request, review: review.digest })).toEqual(review);
+        expect(await rpc.selectRemotePlacement({ ...request, review: review.digest })).toEqual(review);
+        expect(journal.inspect(scope).placement?.origin.nodeId).toBe(oldNode.nodeId);
+        expect(controller.getStack(scope.project, scope.stack).config.nodes?.[0]?.nodeId).toBe(nodeId);
+        return;
+      }
+      if (mode === 'partial') footprint.push({ id: 'f'.repeat(64), name: 'fixture-partially-provisioned' });
       const stopped = await reviewedStop();
       expect(stopped.stopOperation?.nodes[0]?.execution).toMatchObject({ project: scope.project, stack: 'deployed', revision: 1 });
-      expect(footprint).toEqual([]); expect(removal).toHaveBeenCalledTimes(partial ? 1 : 0);
+      expect(footprint).toEqual([]); expect(removal).toHaveBeenCalledTimes(mode === 'partial' ? 1 : 0);
+      if (mode === 'renew') {
+        const renewal = { ...forward, fromNodeId: nodeId };
+        const review = await rpc.reviewRemotePlacement(renewal);
+        expect(review.generation).toBeGreaterThan(first.generation);
+        expect(review.stopId).toBe(stopped.stopOperation!.id);
+        expect(await rpc.selectRemotePlacement({ ...renewal, review: review.digest })).toEqual(review);
+        await expect(rpc.reviewRemotePlacement(renewal)).rejects.toThrow(/newer full stop/);
+        return;
+      }
       const restored = await controller.reviewRemotePlacement(back); await controller.selectRemotePlacement({ ...back, review: restored.digest });
       expect(controller.getStack(scope.project, scope.stack).config.nodes?.[0]?.nodeId).toBe(oldNode.nodeId);
     } finally {
       inventory.mockRestore(); removal.mockRestore(); await Promise.all(stores.map(store => store.dispose()));
     }
+  });
+
+  it('binds an aligned node to the enrolled endpoint and the effective node declaration in the admitted release', () => {
+    const recipient = fixture().recipient();
+    const release = { type: 'remote' as const, nodes: [candidateNode] };
+    const node = { host: candidateNode.host, nodeId, role: candidateNode.role };
+    expect(() => confirmRegisteredReleaseNode({ ...release, nodes: [{ ...node, label: 'Current node' }] }, release, nodeId, recipient)).not.toThrow();
+    for (const changed of [{ ...node, nodeId: 'other' }, { host: node.host, role: node.role }, { ...node, host: oldNode.host }, { ...node, port: 9800 },
+      { ...node, role: 'worker' as const }, { ...node, apps: ['other'] }, { ...node, ssh: { user: 'different' } }, { ...node, ssh: { privateKey: 'unused' } }]) {
+      expect(() => confirmRegisteredReleaseNode({ ...release, nodes: [changed] }, release, nodeId, recipient)).toThrow();
+    }
+    expect(() => confirmRegisteredReleaseNode({ ...release, nodes: [node, oldNode] }, release, nodeId, recipient)).toThrow();
   });
 
   it('reads the producer release mode, captures only the detached bootstrap and observes exclusively its pinned owner', async () => {
@@ -521,6 +589,9 @@ describe('prepared source of one registered remote release', () => {
       const restore = { project: 'sample', stack: 'test', fromNodeId: nodeId, destination: { registered: true as const } };
       await expect(service.reviewRemotePlacement(restore)).rejects.toThrow(/full stop/);
       inv.execution.phase = 'running';
+      const stillServing = await service.preflightRemotePlacement({ ...req, fromNodeId: nodeId });
+      expect(stillServing.source.revision).toBe(inv.execution.revision);
+      expect(stillServing).not.toHaveProperty('digest');
       const stopReview = await service.reviewStackStop('sample', 'test');
       expect(stopReview.digest).toBeTruthy();
       await service.stopStack('sample', 'test', stopReview.digest!);
@@ -589,7 +660,8 @@ describe('prepared source of one registered remote release', () => {
   });
 
   it('requires administrator authority for controller paths and permits an operator to recheck only an approved digest', () => {
-    for (const name of ['prepareRemoteReleaseSource', 'checkRemoteReleaseSource', 'reviewPreparedHostBindings']) {
+    for (const name of ['prepareRemoteReleaseSource', 'checkRemoteReleaseSource', 'reviewPreparedHostBindings',
+      'preflightRemotePlacement', 'reviewRemotePlacement', 'selectRemotePlacement']) {
       const rule = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, ProjectRpcService.prototype, name);
       for (const role of ['viewer', 'operator', 'admin'])
         expect(validateAccessRequirements({ roles: [role], permissions: [] }, rule).allowed).toBe(role === 'admin' || (name === 'checkRemoteReleaseSource' && role === 'operator'));

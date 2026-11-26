@@ -424,6 +424,7 @@ export interface IProjectRpcService {
   installReviewedHostConfigs(data: import('./host-bindings.js').HostConfigInstallRequest): Promise<import('./host-bindings.js').HostConfigReceipt>;
   startStack(data: { project: string; stack: string } & import('./project.js').StackStartOptions): Promise<IStackInfo>;
   /** Would this stack take this release? The deployment's own decision, asked in advance. */
+  preflightRemotePlacement(data: import('./project.js').PlacementRequest): Promise<import('./project.js').PlacementPreflight>;
   reviewRemotePlacement(data: import('./project.js').PlacementRequest): Promise<import('./project.js').PlacementReceipt>;
   selectRemotePlacement(data: import('./project.js').PlacementRequest & { review: string }): Promise<import('./project.js').PlacementReceipt>;
   prepareRemoteReleaseSource(data: { project: string; stack: string; release: string; input: import('./project.js').RemoteReleaseSourceInput }): Promise<import('./project.js').PreparedRemoteReleaseSource>;

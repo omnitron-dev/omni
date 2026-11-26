@@ -287,7 +287,18 @@ export interface PlacementRequest extends RuntimeStackScope {
 }
 export interface PlacementReceipt extends RuntimeStackScope {
   digest: string; generation: number; fromNodeId: string; toNodeId: string; stopId: string; release: string | null;
-  registrationChange?: { previous: string; current: string; previousDeclarationCommit: string };
+  registrationChange?: { previous: string; current: string; previousDeclarationCommit: string; currentDeclarationCommit?: string };
+}
+
+/** Read-only evidence available before stopping a remote allocation. Only a post-stop review can authorize selection. */
+export interface PlacementPreflight extends RuntimeStackScope {
+  fromNodeId: string;
+  toNodeId: string;
+  release: string | null;
+  registration: string;
+  registrationChange?: NonNullable<PlacementReceipt['registrationChange']>;
+  sshFingerprint: string;
+  source: { definition: string; project: string; stack: string; revision: number };
 }
 
 /** Controller-local, administrator-selected input for a single remote replacement. */

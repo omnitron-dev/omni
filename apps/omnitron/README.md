@@ -288,6 +288,12 @@ To rehearse the receiver boundary, use a disposable Linux host with its own cont
 
 Before the maintenance window, retain the source capture, canonical release store and exact checkout on durable controller storage. Enroll both nodes with stable IDs and approved SSH host keys. Prepare the release above. At the receiver, verify each restored named volume against its data-adoption receipt and its declared mount target. A first `reconcile` creates missing containers on the declared volumes. A missing volume can be created empty by the container engine. Verify protected host configuration with its native installer, including the expected file owner, mode and content digest. The host reconciler also checks the binary, unit, activation state and data directory.
 
+On `main` after 0.4.17, run the placement preflight while the source still serves traffic. It checks the prepared release, enrollment and current allocation through the pinned source connection. The JSON identifies both nodes, the SSH fingerprint, the registered declaration and the source execution revision. The post-stop review below issues the digest that authorizes selection.
+
+```sh
+omnitron stack select-placement acme prod --from-node "$old_id" --release "$release" --prepared "$prepared_digest" --preflight --json
+```
+
 After ordinary reviewed `stack stop` completes on the source, an administrator can review and select the replacement. Use a full stop that records the logical allocation, definition and execution revision on the recipient. A stop with `--keep-infrastructure` retains ownership and cannot be used for this handoff. Supply the registered ID even if the original single-node declaration predates stable IDs.
 
 ```sh
@@ -303,9 +309,20 @@ Selection rechecks the stopped owner on its enrolled connection and commits the 
 
 For a return to the original registration, first complete a reviewed full stop on the replacement. Run `select-placement acme prod --from-node "$new_id" --restore-registration --json`, then repeat with its `--review` digest. A return checks the original stable endpoint, SSH enrollment and clean Git commit. To deploy there, specify a release at that exact commit. Data promotion, recovery and signer custody each require their own positive evidence before enabling writers.
 
-When a project's registered stack declaration changes between releases on the same node, prepare the release against the current declaration. Pass `--previous-declaration-commit <full-sha>` to both the placement review and its confirmation. Choose a Git commit whose tracked `omnitron.stacks.json` contains the previously registered stack. Omnitron checks its fingerprint against the existing project registration, verifies the registered node configuration and obtains a fresh full-stop observation from the selected recipient. The receipt records both declaration fingerprints and the historical commit.
+#### Update the declaration after a move
 
-If a same-node deployment stops after creating infrastructure, a reviewed full stop can advance the recipient's execution revision. Review and confirm the same prepared release again to bind its next launch to that new stop. The controller verifies an empty container inventory and the stopped execution on the original authenticated recipient.
+When the registered stack changes between releases, run `stack prepare-release` against the updated registration and keep its new digest. Use the **currently selected recipient** as `--from-node`. Supply the full Git commit whose tracked `omnitron.stacks.json` reproduces the previous registration fingerprint.
+
+```sh
+omnitron stack select-placement acme prod --from-node "$selected_id" \
+  --release "$release" --prepared "$prepared_digest" --previous-declaration-commit "$previous_commit" --preflight --json
+```
+
+Version 0.4.17 supports declaration changes that preserve the registered `nodes` array. On `main` after 0.4.17, Git can also name the already selected recipient after a move. Commit that declaration first. Its single node must match the enrolled ID, host and port, and the admission for the release must match its SSH and management identities. The registered and released node settings must agree, including roles, application assignments and SSH options. A display label can differ. The receipt records both Git commits and both registration fingerprints for this change.
+
+After a successful preflight, complete a reviewed full stop on the selected recipient. Repeat the preflight command **without** `--preflight` to obtain the placement digest. Repeat once more with `--review "$placement_digest"` to confirm. If the response is lost, retry that exact confirmation to retrieve its receipt.
+
+To reuse the same prepared release after an interrupted launch, complete a new full stop and review the release again. The controller checks the stop on the selected recipient, its empty container inventory and its execution revision. After a move, the donor and receiver each have their own revision counter. The controller's placement journal orders the first full stop on the receiver.
 
 Runtime-only recovery uses `--infrastructure preserve`. Review the intended release and current resources before stopping applications:
 

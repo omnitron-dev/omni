@@ -65,16 +65,24 @@ export async function stackInstallHostConfigsCommand(request: import('../shared/
 }
 
 export async function stackSelectPlacementCommand(project: string, stack: string, options: {
-  fromNode: string; release?: string; prepared?: string; restoreRegistration?: boolean; review?: string; previousDeclarationCommit?: string;
+  fromNode: string; release?: string; prepared?: string; restoreRegistration?: boolean; preflight?: boolean; review?: string; previousDeclarationCommit?: string;
 }) {
   const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
   try {
+    if (options.preflight && options.review !== undefined)
+      throw Error('Choose either preflight or confirmation of a post-stop review');
     if (options.restoreRegistration ? options.release || options.prepared : !options.release || !options.prepared)
       throw Error('Choose --release with --prepared or --restore-registration');
     const destination = options.restoreRegistration ? { registered: true as const } : { release: options.release!, prepared: options.prepared! };
     const request = { project, stack, fromNodeId: options.fromNode, destination,
       ...(options.previousDeclarationCommit !== undefined && { previousDeclarationCommit: options.previousDeclarationCommit }) };
     const svc = await client.service<IProjectRpcService>('OmnitronProject');
+    if (options.preflight) {
+      const proof = await svc.preflightRemotePlacement(request);
+      if (!emitJson(proof)) note([proof.fromNodeId + ' → ' + proof.toNodeId, 'Registration ' + proof.registration,
+        'Source execution revision ' + proof.source.revision, 'Selection requires a reviewed full stop.'].join('\n'), 'Remote placement preflight');
+      return;
+    }
     const result = options.review === undefined ? await svc.reviewRemotePlacement(request) : await svc.selectRemotePlacement({ ...request, review: options.review });
     if (!emitJson(result)) {
       note([result.fromNodeId + ' → ' + result.toNodeId, 'Stop ' + result.stopId, 'Generation ' + result.generation, result.digest].join('\n'),

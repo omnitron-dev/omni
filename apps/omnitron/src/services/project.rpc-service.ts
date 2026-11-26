@@ -412,13 +412,13 @@ export class ProjectRpcService {
     return { ...report, project: data.project, stack: data.stack };
   }
 
-  /**
-   * Would this stack take this release? The deploy's own verdict, in advance.
-   *
-   * Operator rather than viewer: it reads the release's every artifact off
-   * the disk to check them, and it is the question an operator asks before
-   * pressing Deploy.
-   */
+  /** Inspect placement evidence while the current recipient still serves the stack. */
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async preflightRemotePlacement(data: import('../shared/dto/project.js').PlacementRequest) {
+    const scope = await this.projectService.resolveProjectStack(data, { readOnly: true });
+    return this.projectService.preflightRemotePlacement({ ...data, ...scope });
+  }
+
   @Public({ auth: { roles: ADMIN_ROLES } })
   async reviewRemotePlacement(data: import('../shared/dto/project.js').PlacementRequest) {
     const scope = await this.projectService.resolveProjectStack(data, { readOnly: true });
@@ -456,6 +456,7 @@ export class ProjectRpcService {
     return this.projectService.reviewPreparedHostBindings(scope.project, scope.stack, data.release, data.digest, data.nodeId);
   }
 
+  /** Operators can verify a release against the same artifact checks used by deployment. */
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async checkRelease(data: { project: string; stack: string; release: string; prepare?: boolean }): Promise<import('../shared/dto/project.js').ReleaseAdmission> {
     data = await this.projectService.resolveProjectStack(data);

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { create, extract, list } from 'tar';
-import { dumpToFile, restoreFromFile } from './backup-pipeline.js';
+import { dumpToFile, publishBackupSnapshot, restoreFromFile } from './backup-pipeline.js';
 
 export interface StorageBackupTarget {
   /** An inspected immutable container ID, never a name that can be reassigned. */
@@ -64,6 +64,22 @@ function inventory(data: string): Array<{ key: string; size: number; etag: strin
 async function listInventory(execution: Pick<ExecutionService, 'execute'>, target: StorageBackupTarget, remote: string) {
   return inventory(await inContainer(execution, target, remote, 'set -eu; export MC_CONFIG_DIR="$OMNI_BACKUP_STAGE/config"; ' +
     'mc ls --recursive --json "omniBackup/$MC_BUCKET"'));
+}
+
+async function bucketVersioning(execution: Pick<ExecutionService, 'execute'>, target: StorageBackupTarget, remote: string) {
+  const raw = await inContainer(execution, target, remote, 'set -eu; export MC_CONFIG_DIR="$OMNI_BACKUP_STAGE/config"; ' +
+    'mc version info --json "omniBackup/$MC_BUCKET"');
+  const record = JSON.parse(raw) as { status?: unknown; url?: unknown; versioning?: { status?: unknown } } | null;
+  const versioning = record?.versioning?.status;
+  if (record?.status !== 'success' || record.url !== 'omniBackup/' + target.bucket ||
+      (versioning !== '' && versioning !== 'Enabled' && versioning !== 'Suspended'))
+    throw new Error('Cannot establish the versioning state of the selected storage bucket');
+  return versioning;
+}
+
+function requireUnversioned(versioning: string) {
+  if (versioning) throw new Error('Restoring S3 history requires the stopped MinIO volume and its matching database snapshot. ' +
+    'A current-object export cannot reproduce version IDs, delete markers, metadata and ETags.');
 }
 
 /** Settle every started transfer before releasing its shared credential directory. */
@@ -141,11 +157,14 @@ async function withStorageStage<T>(execution: Pick<ExecutionService, 'execute'>,
 }
 
 /** Current object contents only; this is not a versioned-volume or cross-service transaction snapshot. */
-export async function backupStorageObjects(target: StorageBackupTarget, destination: string, execution: Pick<ExecutionService, 'execute'>): Promise<void> {
-  const partial = destination + '.partial';
+export async function backupStorageObjects(target: StorageBackupTarget, destination: string, execution: Pick<ExecutionService, 'execute'>,
+  purpose: 'backup' | 'content-export' = 'backup'): Promise<void> {
+  const partial = destination + '.' + randomUUID() + '.partial';
   try {
     await withStorageStage(execution, target, path.dirname(destination), 'stage', async (local, remote) => {
       await inContainer(execution, target, remote, initialize + 'mc stat "omniBackup/$MC_BUCKET" >/dev/null');
+      const versioning = await bucketVersioning(execution, target, remote);
+      if (purpose === 'backup') requireUnversioned(versioning);
       const before = await listInventory(execution, target, remote);
       await fs.mkdir(path.join(local, '_bk_storage'));
       // Stream through the common backup pipeline. Docker cp cannot read tmpfs mounts.
@@ -156,14 +175,17 @@ export async function backupStorageObjects(target: StorageBackupTarget, destinat
         await dumpToFile(execution, 'docker', args, objectFile, false, options);
       });
       await verifyMirroredKeys(path.join(local, '_bk_storage'), before);
-      if (JSON.stringify(before) !== JSON.stringify(await listInventory(execution, target, remote)))
+      if (JSON.stringify(before) !== JSON.stringify(await listInventory(execution, target, remote)) ||
+          versioning !== await bucketVersioning(execution, target, remote))
         throw new Error('Storage changed during the snapshot; quiesce writers and retry');
       await create({ file: partial, cwd: local, gzip: true, strict: true, portable: true }, ['_bk_storage']);
       await fs.chmod(partial, 0o600);
       await validateStorageArchive(partial);
     });
-    await fs.rename(partial, destination);
-  } catch (error) { await fs.rm(partial, { force: true }); throw error; }
+    await publishBackupSnapshot(partial, destination);
+  } finally {
+    await fs.rm(partial, { force: true });
+  }
 }
 
 export async function restoreStorageObjects(target: StorageBackupTarget, file: string, execution: Pick<ExecutionService, 'execute'>): Promise<void> {
@@ -175,6 +197,7 @@ export async function restoreStorageObjects(target: StorageBackupTarget, file: s
     await extract({ file: snapshot, cwd: local, strict: true, preserveOwner: false });
     if (!(await fs.lstat(path.join(local, '_bk_storage'))).isDirectory()) throw new Error('Storage backup has no object directory');
     await inContainer(execution, target, remote, initialize + 'mc stat "omniBackup/$MC_BUCKET" >/dev/null');
+    requireUnversioned(await bucketVersioning(execution, target, remote));
     const files: string[] = [];
     const visit = async (folder: string) => {
       for (const name of await fs.readdir(path.join(local, '_bk_storage', folder))) {

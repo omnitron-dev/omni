@@ -1,5 +1,6 @@
 import type { Command } from '@xec-sh/core';
 import fs from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
 import { create } from 'tar';
@@ -7,27 +8,53 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ExecutionOutcomeUnknownError } from '@xec-sh/core';
 import { testExecution } from '../fixtures/execution.js';
 
-const fixture = { root: '', fail: '', inventory: '', calls: [] as Array<{ args: string[]; env: NodeJS.ProcessEnv }> };
-// Only the container filesystem boundary is substituted. Every control command
-// and byte stream uses the real shared Xec executor and its lifecycle.
+const fixture = { root: '', fail: '', inventory: '', versioning: '', calls: [] as Array<{ args: string[]; env: NodeJS.ProcessEnv }> };
+// This MinIO double runs inside the real Xec child process. Only the Docker
+// and object-store boundaries are substituted, including streamed stdin/stdout.
+const mcFixture = `mc() {
+  if [ "$FAKE_MC_FAIL" = credentials ] && [ "$1" = alias ]; then printf '%s %s\\n' "$MC_AK" "$MC_SK" >&2; return 7; fi
+  if [ "$1" = "$FAKE_MC_FAIL" ]; then echo 'fixture source failed' >&2; return 7; fi
+  case "$1" in
+    alias) mkdir -p "$MC_CONFIG_DIR" && printf '%s' "$MC_SK" > "$MC_CONFIG_DIR/secret" ;;
+    stat) test -d "$FAKE_OBJECTS" ;;
+    version) printf '{"status":"success","url":"%s","versioning":{"status":"%s"}}\\n' "$4" "$FAKE_VERSIONING" ;;
+    ls) printf '%s\\n' "$FAKE_INVENTORY" ;;
+    cat) cat "$FAKE_OBJECTS/\${2#omniBackup/storage/}" ;;
+    pipe) cat > "$FAKE_OBJECTS/\${2#omniBackup/storage/}" ;;
+    *) return 19 ;;
+  esac
+}
+`;
+
+async function storedObjects(directory: string) {
+  const inventory = await Promise.all((await fs.readdir(directory)).map(async key => {
+    const bytes = await fs.readFile(path.join(directory, key));
+    return JSON.stringify({ status: 'success', type: 'file', key, size: bytes.length,
+      etag: createHash('md5').update(bytes).digest('hex') });
+  }));
+  return inventory.join('\n');
+}
+
 const execution = { async execute(command: Command) {
   if (command.command !== 'docker' || !command.args) throw new Error('Unexpected storage command');
   const args = command.args, env = command.env ?? {};
   fixture.calls.push({ args, env });
   const remotePath = (name: string) => path.join(fixture.root, 'container', name);
+  const objects = path.join(fixture.root, 'objects');
+  const fixtureEnv = { ...env, FAKE_OBJECTS: objects, FAKE_MC_FAIL: fixture.fail, FAKE_VERSIONING: fixture.versioning };
   if (args.includes('mc')) return testExecution.execute({ ...command,
-    command: path.join(fixture.root, 'bin/mc'), args: args.slice(args.indexOf('mc') + 1),
-    env: { ...env, FAKE_OBJECTS: path.join(fixture.root, 'objects'), FAKE_MC_FAIL: fixture.fail },
+    command: '/bin/sh', args: ['-c', mcFixture + 'mc "$@"', 'fixture-mc', ...args.slice(args.indexOf('mc') + 1)], env: fixtureEnv,
   });
-  if (args[0] === 'exec' && args.includes('sh')) return testExecution.execute({ ...command,
-    command: '/bin/sh', args: ['-c', args[args.length - 1]!],
-    env: { ...env, PATH: path.join(fixture.root, 'bin') + ':' + process.env['PATH'],
-      OMNI_BACKUP_STAGE: remotePath(env['OMNI_BACKUP_STAGE']!), FAKE_OBJECTS: path.join(fixture.root, 'objects'),
-      FAKE_MC_FAIL: fixture.fail, FAKE_INVENTORY: fixture.inventory, FAKE_NODE: process.execPath },
-  });
+  if (args[0] === 'exec' && args.includes('sh')) {
+    const script = args[args.length - 1]!;
+    return testExecution.execute({ ...command,
+      command: '/bin/sh', args: ['-c', mcFixture + script],
+      env: { ...fixtureEnv, OMNI_BACKUP_STAGE: remotePath(env['OMNI_BACKUP_STAGE']!),
+        FAKE_INVENTORY: script.includes('mc ls ') ? fixture.inventory || await storedObjects(objects) : '' },
+    });
+  }
   if (args[0] === 'exec' && args[2] === 'rm') return testExecution.execute({ ...command,
-    command: process.execPath,
-    args: ['-e', 'require("node:fs").rmSync(process.argv[1], { recursive: true, force: true })', remotePath(args[4]!)],
+    command: '/bin/rm', args: ['-rf', remotePath(args[4]!)],
   });
   throw new Error('Unexpected Docker operation');
 } };
@@ -36,22 +63,9 @@ const { backupStorageObjects, restoreStorageObjects, validateStorageArchive } = 
 const target = { container: 'a'.repeat(64), accessKey: "access ' key", secretKey: "secret ' $(echo BAD) `echo BAD`", bucket: 'storage' };
 beforeEach(async () => {
   fixture.root = await fs.mkdtemp(path.join(os.tmpdir(), 'bk-objects-'));
-  fixture.fail = ''; fixture.inventory = ''; fixture.calls.length = 0;
-  for (const name of ['bin', 'objects', 'container/tmp', 'backups']) await fs.mkdir(path.join(fixture.root, name), { recursive: true });
+  fixture.fail = ''; fixture.inventory = ''; fixture.versioning = ''; fixture.calls.length = 0;
+  for (const name of ['objects', 'container/tmp', 'backups']) await fs.mkdir(path.join(fixture.root, name), { recursive: true });
   await fs.writeFile(path.join(fixture.root, 'objects', 'hello $ and space'), 'actual object\nsecond line');
-  await fs.writeFile(path.join(fixture.root, 'bin/mc'), `#!/bin/sh
-set -eu
-if [ "$FAKE_MC_FAIL" = "credentials" ] && [ "$1" = "alias" ]; then printf '%s %s\\n' "$MC_AK" "$MC_SK" >&2; exit 7; fi
-if [ "$1" = "$FAKE_MC_FAIL" ]; then printf '%s\\n' 'fixture source failed' >&2; exit 7; fi
-case "$1" in
-  alias) mkdir -p "$MC_CONFIG_DIR"; printf '%s' "$MC_SK" > "$MC_CONFIG_DIR/secret" ;;
-  stat) test -d "$FAKE_OBJECTS" ;;
-  ls) "$FAKE_NODE" -e 'if(process.env.FAKE_INVENTORY){console.log(process.env.FAKE_INVENTORY);process.exit(0)};const fs=require("node:fs"),path=require("node:path"),crypto=require("node:crypto");for(const key of fs.readdirSync(process.env.FAKE_OBJECTS)){const bytes=fs.readFileSync(path.join(process.env.FAKE_OBJECTS,key));console.log(JSON.stringify({status:"success",type:"file",key,size:bytes.length,etag:crypto.createHash("md5").update(bytes).digest("hex")}))}' ;;
-  cat) key="\${2#omniBackup/storage/}"; cat "$FAKE_OBJECTS/$key" ;;
-  pipe) key="\${2#omniBackup/storage/}"; cat > "$FAKE_OBJECTS/$key" ;;
-  *) exit 19 ;;
-esac
-`, { mode: 0o700 });
 });
 afterEach(async () => { await fs.rm(fixture.root, { recursive: true, force: true }); });
 const destination = () => path.join(fixture.root, 'backups', "objects ' $.tar.gz");
@@ -84,6 +98,27 @@ describe('storage backup transfer', () => {
     expect(error).toBeInstanceOf(Error);
     expect(String(error)).toContain('[redacted]');
     for (const secret of [target.accessKey, target.secretKey]) expect(String(error)).not.toContain(secret);
+    expect(await leftovers()).toEqual({ host: [], container: [] });
+  });
+  it.each(['Enabled', 'Suspended'])('preserves a %s bucket and distinguishes its explicit content export', async versioning => {
+    fixture.versioning = versioning;
+    await expect(backupStorageObjects(target, destination(), execution)).rejects.toThrow('stopped MinIO volume');
+    expect(fixture.calls.some(call => call.args.includes('cat'))).toBe(false);
+    await expect(fs.stat(destination())).rejects.toThrow();
+    await backupStorageObjects(target, destination(), execution, 'content-export');
+    await expect(restoreStorageObjects(target, destination(), execution)).rejects.toThrow('stopped MinIO volume');
+    expect(fixture.calls.some(call => call.args.includes('pipe'))).toBe(false);
+    expect(await leftovers()).toEqual({ host: [], container: [] });
+  });
+  it('refuses unknown versioning before object reads or writes', async () => {
+    fixture.versioning = 'undetermined';
+    await expect(backupStorageObjects(target, destination(), execution)).rejects.toThrow('versioning state');
+    expect(fixture.calls.some(call => call.args.includes('cat'))).toBe(false);
+  });
+  it('preserves the first verified archive when a second writer targets its name', async () => {
+    const results = await Promise.allSettled([backupStorageObjects(target, destination(), execution), backupStorageObjects(target, destination(), execution)]);
+    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+    await validateStorageArchive(destination());
     expect(await leftovers()).toEqual({ host: [], container: [] });
   });
   it('preserves the shared executor unknown outcome as an error', async () => {

@@ -625,7 +625,7 @@ The daemon loads `backups.scheduledDatabaseExclusions` from its `config.json` at
 
 An omitted or empty list includes all eligible databases. The policy applies to scheduled `all`, `full` and individual database passes, including older schedules saved under a bare database name. A bare name shared by multiple stacks still requires an explicit target. `omnitron backup schedules --json` reports the loaded policy, affected databases and the last pass's exclusions. The schedule keeps its configured interval even when every database is excluded.
 
-Run `omnitron backup create catalog/dev/cache` for a manual dump or `omnitron backup restore <id>` to restore an archive to its recorded origin. Scheduled retention preserves existing archives of excluded databases, including legacy archives whose recorded origin could match an exclusion. Other databases retain their normal rotation. Scheduled full passes still capture the control plane, daemon state and declared non-database resources. Runtime handoff and recovery retain their own admission checks.
+Run `omnitron backup create catalog/dev/cache` for a manual dump or `omnitron backup restore <id>` to restore an archive to its recorded origin. Scheduled retention preserves existing archives of excluded databases, including legacy archives whose recorded origin could match an exclusion. Other databases retain their normal rotation. Scheduled full passes also report outcomes for the control plane, daemon state and declared non-database resources. Runtime handoff and recovery retain their own admission checks.
 
 For a single database, `omnitron backup create <project>/<stack>/<database>` prints the operation UUID before submitting the dump. If the RPC reply is lost, the CLI reads that same backup operation. It follows an in-progress receipt for up to the configured database transfer timeout. A successful receipt reports the archive UUID and size. If the outcome is still unconfirmed or you interrupt the CLI, inspect it with `omnitron --json backup operations <uuid>` before requesting another dump.
 
@@ -640,6 +640,12 @@ An older stop receipt can lack this identity. While the original infrastructure 
 An archive stream or preparation error reports `BACKUP_ARCHIVE_IO_FAILED`. A publication error reports `BACKUP_PUBLICATION_UNCONFIRMED`, including when the final file already exists. `BACKUP_INDEX_UNCONFIRMED` means the archive was published and its index entry needs inspection. The daemon's transfer diagnostic includes the operation UUID, phase and measured archive bytes when available. Only a successful receipt certifies the archive ID and size. On earlier releases, `failed / BACKUP_FAILED` covers several causes, so consult the matching scheduled pass or daemon error.
 
 `omnitron --json backup list` returns the archive records in `data.backups`, with full restore IDs, and the schedule outcomes and stack coverage in `data.status`. When the archive index is available but coverage cannot be read, the command exits with code 1 and includes the archive records under `backups` in the `BACKUP_STATUS_UNAVAILABLE` error.
+
+### Object storage recovery
+
+`omnitron backup artifact storage-objects --project catalog --stack dev --bucket uploads` exports the current body of each object. The archive record and full-pass result expose `coverage: "current-object-bodies"`, including for previously created archives. Use this format to transfer file contents. It omits HTTP metadata, historical versions, delete markers and the identity of objects referred to by application records.
+
+A full pass reports a failed storage entry for a bucket with enabled or suspended versioning. Restoration checks the destination before issuing a write. To preserve historical object URLs and downloads tied to an ETag, capture the stopped MinIO volume and the corresponding application database at a common write boundary. Exercise the application's existing download links and a subsequent upload on the restored copy.
 
 ## Logs and operations
 

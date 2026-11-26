@@ -67,6 +67,12 @@ jobs:
         env:
           OMNITRON_TEST_POSTGRES_IMAGE: postgres:17-alpine
         run: pnpm --filter @omnitron-dev/omnitron exec vitest run test/integration/backup-postgres.test.ts
+      - name: Verify current object exports and protect historical MinIO versions
+        env:
+          OMNITRON_TEST_MINIO_IMAGE: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+        run: |
+          docker pull "$OMNITRON_TEST_MINIO_IMAGE"
+          pnpm --filter @omnitron-dev/omnitron exec vitest run test/integration/backup-storage.test.ts
       - name: Enforce one service identity and authorization decision across Netron transports
         working-directory: packages/titan
         run: >-

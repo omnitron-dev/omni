@@ -265,6 +265,35 @@ async function runFileTransfer(execution: Pick<ExecutionService, 'execute'>, com
   if (failure !== undefined) throw failure;
 }
 
+async function syncBackupDirectory(outputPath: string, checkDeadline?: () => void): Promise<void> {
+  const directory = await fs.promises.open(path.dirname(outputPath), 'r');
+  try {
+    checkDeadline?.();
+    await directory.sync();
+  } finally {
+    await directory.close();
+  }
+}
+
+/** Publish a closed, verified snapshot. Its creator owns cleanup of the staging path. */
+export async function publishBackupSnapshot(staging: string, outputPath: string): Promise<void> {
+  const file = await fs.promises.open(staging, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  try {
+    const stat = await file.stat();
+    if (!stat.isFile() || stat.nlink !== 1 || !stat.size) throw new Error('Invalid staged backup file');
+    await file.chmod(0o600);
+    await file.sync();
+    await fs.promises.link(staging, outputPath);
+  } finally {
+    await file.close();
+  }
+  try {
+    await syncBackupDirectory(outputPath);
+  } catch (error) {
+    throw new Error('Backup publication was not confirmed at ' + outputPath, { cause: error });
+  }
+}
+
 /** Stream a command into a private file, then durably publish it without replacing any destination. */
 export async function dumpToFile(
   execution: Pick<ExecutionService, 'execute'>,
@@ -324,8 +353,7 @@ export async function dumpToFile(
         owned = undefined;
         created = false;
         checkDeadline();
-        const directory = await fs.promises.open(path.dirname(outputPath), 'r');
-        try { checkDeadline(); await directory.sync(); } finally { await directory.close(); }
+        await syncBackupDirectory(outputPath, checkDeadline);
         checkDeadline();
       },
       async cleanup(settled) {

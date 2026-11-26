@@ -18,9 +18,10 @@ describe.skipIf(!image)('storage backup through a real MinIO with tmpfs', () => 
   const env = { ...process.env, MINIO_ROOT_USER: accessKey, MINIO_ROOT_PASSWORD: secretKey };
   let directory: string;
   let container: string;
-  let started = false;
-  async function docker(args: string[]) {
-    try { return (await exec('docker', args, { env, timeout: 15_000, maxBuffer: 1024 * 1024 })).stdout; }
+  let imageId: string;
+  const provisionTimeout = 180_000;
+  async function docker(args: string[], timeout = 15_000) {
+    try { return (await exec('docker', args, { env, timeout, maxBuffer: 1024 * 1024 })).stdout; }
     catch (error) {
       throw new Error(String((error as Error).message).split(accessKey).join('[redacted]').split(secretKey).join('[redacted]'));
     }
@@ -28,13 +29,37 @@ describe.skipIf(!image)('storage backup through a real MinIO with tmpfs', () => 
   const shell = (script: string) => docker(['exec', '-e', 'MINIO_ROOT_USER', '-e', 'MINIO_ROOT_PASSWORD', container, 'sh', '-c', script]);
   const target = () => ({ container, accessKey, secretKey, bucket: 'proof-bucket' });
   const file = (name: string) => path.join(directory, name + '.tar.gz');
+  async function ownedContainer() {
+    const id = (await docker(['ps', '-aq', '--no-trunc', '--filter', `label=omnitron.backup-test=${name}`])).trim();
+    if (!id) return;
+    expect(id).toMatch(/^[0-9a-f]{64}$/);
+    const fields = '{{.Id}} {{.Name}} {{.Image}} {{.HostConfig.NetworkMode}} {{.HostConfig.ReadonlyRootfs}}';
+    expect((await docker(['inspect', '--type', 'container', '--format', fields, id])).trim())
+      .toBe(`${id} /${name} ${imageId} none true`);
+    const mounts: Array<{ Type: string }> = JSON.parse(await docker(['inspect', '--format', '{{json .Mounts}}', id]));
+    expect(mounts.every(mount => mount.Type === 'tmpfs')).toBe(true);
+    return id;
+  }
   beforeAll(async () => {
     directory = await fs.mkdtemp(path.join(os.tmpdir(), 'omnitron-backup-test-'));
-    container = (await docker(['run', '--detach', '--init', '--pull=never', '--name', name,
-      '--label', `omnitron.backup-test=${name}`, '--network', 'none', '--cpus', '0.5', '--memory', '512m', '--pids-limit', '128',
-      '--read-only', '--tmpfs', '/data:rw,size=134217728', '--tmpfs', '/tmp:rw,size=67108864,mode=1777',
-      '-e', 'MINIO_ROOT_USER', '-e', 'MINIO_ROOT_PASSWORD', '-e', 'MINIO_BROWSER=off', image!, 'server', '/data'])).trim();
-    started = true;
+    imageId = (await docker(['image', 'inspect', '--format', '{{.Id}}', image!])).trim();
+    expect(imageId).toMatch(/^sha256:[a-f0-9]{64}$/);
+    try {
+      container = (await docker(['create', '--init', '--pull=never', '--name', name,
+        '--label', `omnitron.backup-test=${name}`, '--network', 'none', '--cpus', '0.5', '--memory', '512m', '--pids-limit', '128',
+        '--read-only', '--tmpfs', '/data:rw,size=134217728', '--tmpfs', '/tmp:rw,size=67108864,mode=1777',
+        '-e', 'MINIO_ROOT_USER', '-e', 'MINIO_ROOT_PASSWORD', '-e', 'MINIO_BROWSER=off', imageId, 'server', '/data'], provisionTimeout)).trim();
+    } catch (error) {
+      const observed = await ownedContainer();
+      if (!observed) throw error;
+      container = observed;
+    }
+    expect(await ownedContainer()).toBe(container);
+    try {
+      await docker(['start', container], provisionTimeout);
+    } catch (error) {
+      if ((await docker(['inspect', '--format', '{{.State.Running}}', container])).trim() !== 'true') throw error;
+    }
     let ready = false;
     for (let attempt = 0; attempt < 20; attempt++) {
       try {
@@ -46,14 +71,17 @@ describe.skipIf(!image)('storage backup through a real MinIO with tmpfs', () => 
     await shell('export MC_CONFIG_DIR=/tmp/proof-client; mc mb proof/proof-bucket >/dev/null; ' +
       'printf "native backup\\n" | mc pipe proof/proof-bucket/sub/object.txt >/dev/null; ' +
       'printf "" | mc pipe proof/proof-bucket/empty >/dev/null');
-  }, 90_000);
+  }, 2 * provisionTimeout + 90_000);
   afterAll(async () => {
-    if (started) {
-      expect((await docker(['inspect', container, '--format', '{{ index .Config.Labels "omnitron.backup-test" }}'])).trim()).toBe(name);
-      await docker(['rm', '--force', container]);
-      expect((await docker(['ps', '-aq', '--filter', `label=omnitron.backup-test=${name}`])).trim()).toBe('');
+    try {
+      const id = imageId && await ownedContainer();
+      if (id) {
+        await docker(['rm', '--force', id]);
+        expect(await ownedContainer()).toBeUndefined();
+      }
+    } finally {
+      if (directory) await fs.rm(directory, { recursive: true, force: true });
     }
-    if (directory) await fs.rm(directory, { recursive: true, force: true });
   });
   it('restores exact nested and empty object bytes', async () => {
     await backupStorageObjects(target(), file('objects'), testExecution);
@@ -71,5 +99,29 @@ describe.skipIf(!image)('storage backup through a real MinIO with tmpfs', () => 
     await expect(backupStorageObjects({ ...target(), bucket: 'missing-bucket' }, file('missing'), testExecution)).rejects.toThrow();
     await expect(backupStorageObjects({ ...target(), secretKey: 'incorrect-proof-secret' }, file('auth'), testExecution)).rejects.toThrow();
     for (const name of ['missing', 'auth']) await expect(fs.stat(file(name))).rejects.toThrow();
+  }, 60_000);
+
+  it('keeps both historical versions and their metadata when a body export is offered for recovery', async () => {
+    const history = { ...target(), bucket: 'history-proof' };
+    const client = 'set -eu; export MC_CONFIG_DIR=/tmp/proof-client; ';
+    await shell(client + 'mc mb proof/history-proof >/dev/null; mc version enable proof/history-proof >/dev/null; ' +
+      'printf first | mc pipe --attr "Content-Type=text/plain;x-amz-meta-fixture=version-one" proof/history-proof/item >/dev/null; ' +
+      'printf second | mc pipe proof/history-proof/item >/dev/null');
+    const versions = () => shell(client + 'mc ls --versions --json proof/history-proof');
+    const prior = await versions();
+    const ids = prior.trim().split('\n').map(line => JSON.parse(line).versionId as string);
+    expect(ids).toHaveLength(2);
+    expect(new Set(ids).size).toBe(2);
+    for (const id of ids) expect(id).toMatch(/^[0-9a-f-]{36}$/);
+    const inspect = () => Promise.all(ids.map(id =>
+      shell(client + 'mc stat --json --version-id ' + id + ' proof/history-proof/item; ' +
+        'mc cat --version-id ' + id + ' proof/history-proof/item')));
+    const metadataAndBytes = await inspect();
+    expect(metadataAndBytes.some(value => value.includes('version-one') && value.endsWith('first'))).toBe(true);
+    await expect(backupStorageObjects(history, file('history'), testExecution)).rejects.toThrow('stopped MinIO volume');
+    await backupStorageObjects(history, file('current-bodies'), testExecution, 'content-export');
+    await expect(restoreStorageObjects(history, file('current-bodies'), testExecution)).rejects.toThrow('stopped MinIO volume');
+    expect(await versions()).toBe(prior);
+    expect(await inspect()).toEqual(metadataAndBytes);
   }, 60_000);
 });

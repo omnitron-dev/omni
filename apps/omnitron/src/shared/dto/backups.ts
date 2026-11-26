@@ -15,6 +15,8 @@ export interface BackupInfo {
   compressed: boolean;
   /** Explicit object bucket; absent on legacy storage backups (the `storage` bucket). */
   bucket?: string;
+  /** The archive contains current object bodies. Physical versions and HTTP metadata require a volume snapshot. */
+  coverage?: 'current-object-bodies';
 }
 
 export type BackupArtifactRequest = { project: string; stack: string } & (
@@ -34,6 +36,7 @@ export interface BackupPassEntry {
   ok: boolean;
   id?: string;
   size?: number;
+  coverage?: BackupInfo['coverage'];
   error?: string;
   /**
    * A running stack this pass could not reach at all — its databases are not

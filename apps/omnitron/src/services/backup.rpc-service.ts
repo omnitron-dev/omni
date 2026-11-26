@@ -9,7 +9,7 @@ import { VIEWER_ROLES, ADMIN_ROLES } from '../shared/roles.js';
 import type { BackupService, BackupInfo, BackupStatus } from './backup.service.js';
 
 import type { IOmnitronBackupsService } from '../shared/dto/services.js';
-import type { BackupArtifactRequest, BackupRecord } from '../shared/dto/backups.js';
+import type { BackupArtifactRequest, BackupPassEntry, BackupRecord } from '../shared/dto/backups.js';
 import type { OperationReceipt } from '../shared/dto/execution-operations.js';
 import { daemonPrincipal } from './daemon-principal.js';
 import type { AuthService } from './auth.service.js';
@@ -39,7 +39,7 @@ export class BackupRpcService implements IOmnitronBackupsService {
 
   /** Full backup: all stack DBs + minio storage + tor keys + daemon-state. */
   @Public({ auth: { roles: ADMIN_ROLES } })
-  async createFullBackup(): Promise<Array<{ target: string; ok: boolean; id?: string; size?: number; error?: string }>> {
+  async createFullBackup(): Promise<BackupPassEntry[]> {
     return this.backups.createFullBackup();
   }
 

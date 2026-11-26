@@ -164,7 +164,7 @@ import type { FleetNode, FleetSummary, NodeRegistration, NodeRole } from './flee
 import type { Pipeline, PipelineDef, PipelineRun, PipelineRunSummary, PipelineWorkspace, PreparePipelineRun, StartPipelineRun } from './pipelines.js';
 import type { Trace, TraceSpan, TraceFilter, ServiceMapEntry } from './traces.js';
 import type { SystemSnapshot } from './system-info.js';
-import type { BackupInfo } from './backups.js';
+import type { BackupInfo, BackupPassEntry } from './backups.js';
 import type { K8sPod, K8sDeployment, K8sService } from './kubernetes.js';
 import type { HealthReport, PlatformHealthReport } from './health.js';
 import type { OmnitronDiscoveredTarget, DiscoveryScanResult } from './discovery.js';
@@ -660,7 +660,7 @@ export interface IOmnitronBackupsService {
   createBackup(data: { database: string; compress?: boolean; operationId?: string }): Promise<BackupInfo>;
   createArtifactBackup(data: import('./backups.js').BackupArtifactRequest): Promise<import('./backups.js').BackupRecord>;
   createAllBackups(): Promise<Array<{ database: string; ok: boolean; id?: string; size?: number; error?: string }>>;
-  createFullBackup(): Promise<Array<{ target: string; ok: boolean; id?: string; size?: number; error?: string }>>;
+  createFullBackup(): Promise<BackupPassEntry[]>;
   listBackups(data?: { database?: string }): Promise<BackupInfo[]>;
   restoreBackup(data: { backupId: string; operationId?: string }): Promise<{ success: boolean }>;
   deleteBackup(data: { backupId: string }): Promise<{ success: boolean }>;

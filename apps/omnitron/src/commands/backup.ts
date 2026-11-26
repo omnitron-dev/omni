@@ -165,7 +165,10 @@ export async function backupArtifactCommand(kind: string, options: { project: st
   else throw new Error('Use storage-objects with --bucket, or tor-keys without --bucket');
   const backup: BackupRecord = await withBackups(service => service.createArtifactBackup(request));
   if (isJsonMode()) emitJson(backup);
-  else log.success(`${backup.project}/${backup.stack}/${kind}${backup.bucket ? '/' + backup.bucket : ''}: ${backup.id} (${formatBackupSize(backup.size)})`);
+  else {
+    log.success(`${backup.project}/${backup.stack}/${kind}${backup.bucket ? '/' + backup.bucket : ''}: ${backup.id} (${formatBackupSize(backup.size)})`);
+    if (backup.coverage === 'current-object-bodies') log.info('Contains current object bodies. Version history and HTTP metadata require a physical snapshot.');
+  }
 }
 
 function printOperation(receipt: OperationReceipt): void {
@@ -263,7 +266,7 @@ export async function backupListCommand(): Promise<void> {
         String(b.id).slice(0, idLength),
         // Whose database this is: two stacks can both have a `main`.
         stackLabel(b),
-        b.bucket ? `${b.database}/${b.bucket}` : b.database,
+        (b.bucket ? `${b.database}/${b.bucket}` : b.database) + (b.coverage === 'current-object-bodies' ? ' (current bodies)' : ''),
         formatBackupSize(b.size),
         // UTC, as the filenames are — see `formatUtc`.
         formatUtc(b.createdAt),
@@ -334,7 +337,10 @@ function printPassResults(results: any[], nameOf: (r: any) => string, unit: stri
   const skipped = results.filter((r) => r.skipped);
   const attempted = results.filter((r) => !r.skipped);
   for (const r of attempted) {
-    if (r.ok) log.success(`  ✓ ${nameOf(r)} — ${formatBackupSize(r.size ?? 0)} [${String(r.id ?? '').slice(0, 8)}]`);
+    if (r.ok) {
+      const coverage = r.coverage === 'current-object-bodies' ? ' (current object bodies)' : '';
+      log.success(`  ✓ ${nameOf(r)}${coverage} — ${formatBackupSize(r.size ?? 0)} [${String(r.id ?? '').slice(0, 8)}]`);
+    }
     else log.error(`  ✗ ${nameOf(r)}: ${r.error}`);
   }
   for (const r of skipped) log.warn(`  – ${nameOf(r)}: ${r.error}`);

@@ -88,6 +88,7 @@ describe('artifact backups belong to one allocation', () => {
     });
     const result = await backups.createFullBackup();
     expect(result.filter(item => item.ok)).toHaveLength(2);
+    expect(result.filter(item => item.ok).map(item => item.coverage)).toEqual(['current-object-bodies', 'current-object-bodies']);
     expect(result).toContainEqual(expect.objectContaining({ project: 'two', stack: 'dev', target: 'storage-objects/uploads', ok: false }));
     expect(store.kvGetSync('backup:last-pass')).toMatchObject({ full: { outcome: 'partial', failures: expect.arrayContaining([
       expect.objectContaining({ target: 'two/dev/storage-objects/uploads' }),

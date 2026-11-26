@@ -1611,7 +1611,7 @@ for (const action of ['cancel', 'reconcile'] as const) {
 }
 
 backup.command('artifact <kind>')
-  .description('Back up storage-objects or tor-keys of an explicit provisioned stack')
+  .description('Export current storage object bodies or back up tor-keys of an explicit provisioned stack')
   .requiredOption('--project <name>', 'Project registration')
   .requiredOption('--stack <name>', 'Stack owning this infrastructure')
   .option('--bucket <name>', 'Required for storage-objects')

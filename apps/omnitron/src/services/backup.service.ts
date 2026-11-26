@@ -31,7 +31,7 @@ import type { BackupTransferFailure, PipelineOptions } from './backup-pipeline.j
 import { getEnv } from '../shared/env-config.js';
 import { resolveOmnitronPgConfig } from '../database/connection.js';
 import { ensurePrivateDir, sealFile, sealDirContents } from '../shared/private-files.js';
-import { dumpToFile, restoreFromFile, formatBackupSize, formatUtc, resolveBackupId, resolveBackupTimeout } from './backup-pipeline.js';
+import { dumpToFile, publishBackupSnapshot, restoreFromFile, formatBackupSize, formatUtc, resolveBackupId, resolveBackupTimeout } from './backup-pipeline.js';
 import type { IDaemonConfig } from '../config/types.js';
 import {
   parseSchedule,
@@ -172,6 +172,7 @@ function describeBackup(row: IndexedBackup): BackupRecord {
     compressed: meta.compressed ?? filename.endsWith('.gz'),
     ...(meta.project && meta.stack ? { project: meta.project, stack: meta.stack } : {}),
     ...(meta.scope ? { scope: meta.scope } : {}), ...(meta.bucket ? { bucket: meta.bucket } : {}),
+    ...(meta.type === 'storage-objects' || row.app === 'storage-objects' ? { coverage: 'current-object-bodies' as const } : {}),
   };
 }
 
@@ -211,8 +212,8 @@ const TOR_REGENERABLE_STATE = [
 /** SQLite leaves these beside a database it opens (`-journal` in rollback mode). */
 const SQLITE_SIDECARS = ['-shm', '-wal', '-journal'] as const;
 
-/** Scratch directories `createStorageBackup` and `restoreStorageBackup` remove in a `finally`. */
-const STORAGE_STAGING_DIR = /^\.storage-(stage|restore)-[0-9a-f]{8}$/;
+/** Private SQLite and object snapshot directories owned by a single backup attempt. */
+const BACKUP_STAGING_DIR = /^\.(?:storage-(?:stage|restore)|sqlite-stage)-[0-9a-f]{8}$/;
 
 /** The database file a SQLite sidecar belongs to, or null for any other file. */
 function sidecarOwner(name: string): string | null {
@@ -254,10 +255,10 @@ export interface LeftoverSweep {
  *                                      restarted mid-dump at 13:15:43Z and
  *                                      21:15:47Z on 09-21, and no catch of ours
  *                                      runs in a process that is gone
- *      3 truncated archives            the ones named on `execToFile`
+ *      3 truncated archives            partial dumps saved under their final names
  *
- * A `.partial` is by construction not a backup (`dumpToFile`, `execToFile`
- * write under it and rename only a finished file), and a zero-byte file
+ * Backup transfers publish the final name only after verifying the private
+ * staging file. A stale `.partial` is unfinished, and a zero-byte file
  * restores nothing, so both go. Nothing is in flight when this runs: it is
  * called from the constructor, once, before any schedule is armed.
  *
@@ -302,9 +303,9 @@ export function sweepBackupLeftovers(dir: string, preservePending = false): Left
 
   // Files first: removing a `.partial` is what orphans the sidecars beside it.
   for (const e of entries) {
-    if (preservePending && (e.name.endsWith('.partial') || STORAGE_STAGING_DIR.test(e.name))) continue;
+    if (preservePending && (e.name.endsWith('.partial') || BACKUP_STAGING_DIR.test(e.name))) continue;
     if (e.isDirectory()) {
-      if (STORAGE_STAGING_DIR.test(e.name)) remove(e.name, 'the scratch directory of an interrupted storage pass');
+      if (BACKUP_STAGING_DIR.test(e.name)) remove(e.name, 'the scratch directory of an interrupted backup pass');
       continue;
     }
     if (!e.isFile() || sidecarOwner(e.name) !== null) continue;
@@ -930,7 +931,7 @@ export class BackupService {
       throw new Error('An artifact backup requires an explicit project and stack');
     if (request.kind === 'storage-objects') {
       validateStorageBucket(request.bucket);
-      return this.createStorageBackup(request, request.bucket);
+      return this.createStorageBackup(request, request.bucket, 'content-export');
     }
     if (request.kind === 'tor-keys') return this.createTorKeysBackup(request);
     throw new Error('Unsupported backup artifact kind');
@@ -950,114 +951,18 @@ export class BackupService {
       id, app, path: filepath, size_bytes: stats.size, created_at: createdAt,
       metadata: { filename, compressed: filename.endsWith('.gz'), type, ...from, ...(bucket ? { bucket } : {}) },
     });
-    return { id, database: app, filename, size: stats.size, createdAt, compressed: filename.endsWith('.gz'), ...from, ...(bucket ? { bucket } : {}) };
+    return { id, database: app, filename, size: stats.size, createdAt, compressed: filename.endsWith('.gz'), ...from, ...(bucket ? { bucket } : {}),
+      ...(type === 'storage-objects' ? { coverage: 'current-object-bodies' as const } : {}) };
   }
 
-  /** Run a shell command, rejecting on a non-zero exit. Returns its stdout. */
-  private async execShell(cmd: string, timeoutMs = 600_000): Promise<string> {
-    const { execFile } = await import('node:child_process');
-    return new Promise<string>((resolve, reject) => {
-      execFile('/bin/sh', ['-c', cmd], { timeout: timeoutMs, maxBuffer: 200 * 1024 * 1024 }, (err, stdout) => {
-        if (err) reject(err); else resolve(String(stdout ?? ''));
-      });
-    });
-  }
-
-  /**
-   * Run a command that produces a backup file, and publish the name only if
-   * the file is READABLE.
-   *
-   * The check was `size === 0`, and "not empty" is not "not corrupt".
-   * Measured in `~/.omnitron/backups` 2026-09-14, four files that passed it:
-   *
-   *     main_2026-09-14T07-51…sql.gz          98 304 B  gzip header, body cut off
-   *     quotes_2026-09-10T06-27…sql.gz      1.5 MB  same
-   *     storage-objects_2026-07-02T10-22…gz       122 B  «OCI runtime exec failed:
-   *                                                       "tar": not found in $PATH»
-   *
-   * The last one is the shape in miniature: a shell error message, sitting
-   * under a `.tar.gz` name, 122 bytes long and therefore "not empty". The
-   * property that matters is whether the archive opens; the property measured
-   * was how many bytes exist.
-   *
-   * The write also lands on the final name from its first byte, so a command
-   * interrupted half-way — a full disk, a killed container — leaves a
-   * truncated archive under the name a restore would pick up. Today's
-   * ENOSPC-mid-write is exactly that case.
-   *
-   * So: write to `<name>.partial`, verify, then rename. Rename within a
-   * directory is atomic, which makes the visible state binary — either the
-   * name is absent, or it names an archive that opened.
-   */
-  private async execToFile(cmd: string, outputPath: string, timeoutMs = 600_000): Promise<void> {
-    const staging = `${outputPath}.partial`;
-    fs.rmSync(staging, { force: true });
-
-    try {
-      await this.execShell(cmd.split(outputPath).join(staging), timeoutMs);
-      if (!fs.existsSync(staging) || fs.statSync(staging).size === 0) {
-        throw new Error('backup produced an empty file');
-      }
-      await this.assertReadable(staging, outputPath);
-      fs.renameSync(staging, outputPath);
-    } catch (err) {
-      // The empty-file check was already here and works — it kept these out
-      // of the index. What it did not do was clean up: 22 zero-byte
-      // `tor-keys` files had accumulated in the backup directory, on disk but
-      // in no listing, which is the worst place for a file to be.
-      fs.rmSync(staging, { force: true });
-      fs.rmSync(outputPath, { force: true });
-      throw err;
+  /** sqlite3 receives paths as argv. Only the private staged copy opens for writing. */
+  private async runSnapshotSqlite(cwd: string, args: string[], timeout: number): Promise<string> {
+    const result = await this.execution.execute({ command: 'sqlite3', args: ['-batch', '-bail', ...args],
+      cwd, adapter: 'local', shell: false, timeout, maxBuffer: 8192, nothrow: true });
+    if (result.exitCode !== 0 || result.signal || result.aborted) {
+      throw new Error('SQLite snapshot failed: ' + (result.stderr.trim() || result.signal || result.exitCode));
     }
-  }
-
-  /**
-   * Open the archive and fail if it does not open.
-   *
-   * Keyed on the FINAL name's extension, not the staging one — `.partial` is
-   * an implementation detail and would otherwise match nothing and verify
-   * nothing, which is the failure mode this whole method exists to remove.
-   *
-   * An extension nobody has taught this to check passes: the alternative is
-   * refusing a backup that was taken correctly, and a verification gap is
-   * better than losing a good archive. The three formats produced here are
-   * all covered.
-   */
-  private async assertReadable(staging: string, finalPath: string): Promise<void> {
-    if (finalPath.endsWith('.gz')) {
-      await this.execShell(`gzip -t "${staging}"`, 300_000);
-      return;
-    }
-    if (finalPath.endsWith('.db')) {
-      // `.backup` produces a consistent snapshot, but a disk that filled
-      // during the copy produces a short file that sqlite still opens.
-      //
-      // The copy is switched out of WAL mode first. `.backup` carries the
-      // live store's WAL flag into the copy's header, and Apple's `sqlite3`
-      // keeps `-shm` and `-wal` after it closes a WAL database — so this very
-      // check left `<name>.db.partial-shm` (32 768 B) and `-wal` (0 B) on
-      // every `full` pass, named after a staging file the rename then took
-      // away: three such pairs on the master, from 09-17, 09-18 and 09-19.
-      // In rollback mode a backup is one file, whoever opens it later. The
-      // store puts it back into WAL itself when a restored copy is opened.
-      try {
-        const out = await this.execShell(
-          `sqlite3 "${staging}" "PRAGMA journal_mode=DELETE;" "PRAGMA integrity_check;"`,
-          300_000,
-        );
-        const verdict = out.trim().split('\n').pop()?.trim();
-        if (verdict !== 'ok') {
-          throw new Error(`backup failed its integrity check: ${out.trim().slice(0, 200)}`);
-        }
-      } finally {
-        // Leaving WAL mode checkpoints and removes the WAL, but Apple's build
-        // keeps the `-shm`, which means nothing to a rollback-mode database.
-        // A WAL that is still there is removed only if it holds no frames.
-        fs.rmSync(`${staging}-shm`, { force: true });
-        const wal = `${staging}-wal`;
-        if (fs.existsSync(wal) && fs.statSync(wal).size === 0) fs.rmSync(wal, { force: true });
-      }
-    }
+    return result.stdout.trim();
   }
 
   private storageTarget(target: { infra: InfraLike; container: string }, bucket: string) {
@@ -1086,17 +991,17 @@ export class BackupService {
   }
 
   /** Explicit bucket and stack; an omitted scope is accepted only for one unambiguous legacy target. */
-  async createStorageBackup(scope?: { project: string; stack: string }, bucket = 'storage'): Promise<BackupRecord> {
-    return this.trackOperation(() => this.captureStorageBackup(scope, bucket));
+  async createStorageBackup(scope?: { project: string; stack: string }, bucket = 'storage', purpose: 'backup' | 'content-export' = 'backup'): Promise<BackupRecord> {
+    return this.trackOperation(() => this.captureStorageBackup(scope, bucket, purpose));
   }
 
-  private async captureStorageBackup(scope: { project: string; stack: string } | undefined, bucket: string): Promise<BackupRecord> {
+  private async captureStorageBackup(scope: { project: string; stack: string } | undefined, bucket: string, purpose: 'backup' | 'content-export'): Promise<BackupRecord> {
     validateStorageBucket(bucket);
     const target = await this.resolveResource('minio', scope);
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filepath = path.join(this.backupDir, `storage-objects_${timestamp}_${randomUUID().slice(0, 8)}.tar.gz`);
     this.logger.info({ project: target.project, stack: target.stack, bucket, container: target.container }, 'Backing up storage bucket');
-    await backupStorageObjects(this.storageTarget(target, bucket), filepath, this.execution);
+    await backupStorageObjects(this.storageTarget(target, bucket), filepath, this.execution, purpose);
     return this.indexBackupFile('storage-objects', filepath, 'storage-objects', { project: target.project, stack: target.stack }, bucket);
   }
 
@@ -1138,14 +1043,23 @@ export class BackupService {
   }
 
   private async captureSecrets(): Promise<BackupRecord> {
-    const src = path.join(OMNITRON_HOME, 'data/daemon-state.db');
-    if (!fs.existsSync(src)) throw new Error('daemon-state.db not found');
+    const src = this.store.dbPath;
     const ts = new Date().toISOString().replace(/[:.]/g, '-');
     const filepath = path.join(this.backupDir, `daemon-state_${ts}_${randomUUID().slice(0, 8)}.db`);
     // `.backup` is SQLite's online-consistent snapshot — safe while the daemon
     // holds the DB open in WAL mode.
     this.logger.info({}, 'Backing up daemon-state.db (secrets + backup index)');
-    await this.execToFile(`sqlite3 "${src}" ".backup '${filepath}'"`, filepath);
+    const stage = path.join(this.backupDir, '.sqlite-stage-' + randomUUID().slice(0, 8));
+    await fs.promises.mkdir(stage, { mode: 0o700 });
+    try {
+      const snapshot = path.join(stage, 'snapshot.db');
+      await this.runSnapshotSqlite(stage, ['-readonly', src, '.backup snapshot.db'], 600_000);
+      const verdict = await this.runSnapshotSqlite(stage, [snapshot, 'PRAGMA journal_mode=DELETE;', 'PRAGMA integrity_check;'], 300_000);
+      if (verdict.replace(/\r\n/g, '\n') !== 'delete\nok') throw new Error('SQLite backup failed its integrity check');
+      await publishBackupSnapshot(snapshot, filepath);
+    } finally {
+      await fs.promises.rm(stage, { recursive: true, force: true });
+    }
     return this.indexBackupFile('daemon-state', filepath, 'daemon-state', 'control-plane');
   }
 
@@ -1156,13 +1070,13 @@ export class BackupService {
    */
   async createFullBackup(
     trigger: BackupPassRecord['trigger'] = 'manual',
-  ): Promise<Array<{ target: string; ok: boolean; id?: string; size?: number; error?: string }>> {
+  ): Promise<BackupPassEntry[]> {
     return this.trackOperation(() => this.createFullBackupOnce(trigger), true);
   }
 
   private async createFullBackupOnce(
     trigger: BackupPassRecord['trigger'] = 'manual',
-  ): Promise<Array<{ target: string; ok: boolean; id?: string; size?: number; error?: string }>> {
+  ): Promise<BackupPassEntry[]> {
     const startedAt = new Date();
     const results: Array<BackupPassEntry & { project?: string; stack?: string }> = [];
     for (const r of await this.backUpStackDatabases(trigger)) {
@@ -1192,7 +1106,8 @@ export class BackupService {
     for (const [target, fn, scope] of extras) {
       try {
         const info = await fn();
-        results.push({ target, ok: true, id: info.id, size: info.size, ...(info.project && info.stack ? { project: info.project, stack: info.stack } : {}) });
+        results.push({ target, ok: true, id: info.id, size: info.size, ...(info.coverage && { coverage: info.coverage }),
+          ...(info.project && info.stack ? { project: info.project, stack: info.stack } : {}) });
       } catch (err) {
         const origin = scope ? { project: scope.project, stack: scope.stack } : {};
         results.push({ target, ok: false, error: (err as Error).message, ...origin });

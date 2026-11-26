@@ -241,6 +241,24 @@ const hasSqlite3 = (() => {
  * On macOS — where the daemon runs and the pairs were measured — it does not.
  */
 describe.runIf(hasSqlite3)('a daemon-state backup is one file', () => {
+  it('uses the registered database path literally and snapshots concurrent requests independently', async () => {
+    const custom = new DaemonStateStore(fakeLogger().logger, path.join(dir, "owner's state", 'registered.db'));
+    try {
+      custom.kvSetSync('probe', { origin: 'registered store' });
+      const service = new BackupService(fakeLogger().module, custom, testExecution);
+      const results = await Promise.all([service.createSecretsBackup(), service.createSecretsBackup()]);
+      expect(new Set(results.map(result => result.filename)).size).toBe(2);
+      for (const result of results) {
+        const file = path.join(backups, result.filename);
+        expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+        expect(execFileSync('sqlite3', [file, "SELECT value FROM state_kv WHERE key = 'probe'"], { encoding: 'utf8' }).trim())
+          .toBe('{"origin":"registered store"}');
+      }
+      expect(fs.readdirSync(backups).filter(name => name.startsWith('.sqlite-stage-'))).toEqual([]);
+    } finally {
+      await custom.dispose();
+    }
+  });
   it('leaves no sidecar under any name, and opening it later leaves none either', async () => {
     // The live store is WAL-mode, as the daemon's is; its path is the one
     // `createSecretsBackup` copies.

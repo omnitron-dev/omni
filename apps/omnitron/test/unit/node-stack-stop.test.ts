@@ -25,7 +25,7 @@ function fixture() {
   const ports: any = {
     execution, definition: vi.fn(async () => ({ runtime, fingerprint: 'definition-1' })),
     containers: vi.fn(async () => structuredClone(containers)),
-    disableResume: vi.fn(), retireInfrastructure: vi.fn().mockResolvedValue(undefined),
+    disableResume: vi.fn(), forgetInfrastructureHold: vi.fn(), retireInfrastructure: vi.fn().mockResolvedValue(undefined),
     removeContainer: vi.fn(async (reference: string) => { containers = containers.filter(container => container.id !== reference); }),
   };
   return { service: new NodeStackStop(store, ports), ports, store,
@@ -34,6 +34,24 @@ function fixture() {
 }
 
 describe('node-confirmed stack stop', () => {
+  it('ends a keep only after a verified full stop of the same allocation, including on a reopened journal', async () => {
+    const { service, ports, store } = fixture();
+    const heldAt = '1970-01-01T00:00:00.000Z';
+    await service.execute(await service.prepare({ ...scope, keepInfrastructure: true }));
+    expect(ports.forgetInfrastructureHold).not.toHaveBeenCalled();
+    expect(service.retiredInfrastructureAfter(scope, runtime, heldAt)).toBe(false);
+    const plan = await service.prepare(scope);
+    expect(service.retiredInfrastructureAfter(scope, runtime, heldAt)).toBe(false);
+    const stopped = await service.execute(plan);
+    expect(ports.forgetInfrastructureHold).toHaveBeenCalledExactlyOnceWith(runtime);
+    const replacement = new NodeStackStop(store, ports);
+    expect(replacement.retiredInfrastructureAfter(scope, runtime, heldAt)).toBe(true);
+    expect(replacement.retiredInfrastructureAfter(scope, runtime, stopped.observedAt)).toBe(false);
+    expect(replacement.retiredInfrastructureAfter(scope, { ...runtime, stack: 'other' }, heldAt)).toBe(false);
+    expect(replacement.retiredInfrastructureAfter({ ...scope, stack: 'other' }, runtime, heldAt)).toBe(false);
+    await replacement.execute(plan);
+    expect(ports.forgetInfrastructureHold).toHaveBeenCalledTimes(1);
+  });
   it('stops applications and disables resume while retaining infrastructure and a durable receipt', async () => {
     const { service, ports, store } = fixture();
     const plan = await service.prepare({ ...scope, keepInfrastructure: true });

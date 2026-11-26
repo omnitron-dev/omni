@@ -10,6 +10,8 @@ import { observeStackStart } from '../shared/release-reading.js';
 import { log, table, note, prism } from '@xec-sh/kit';
 import { createDaemonClient, LONG_REQUEST_TIMEOUT, isRequestTimeout } from '../daemon/daemon-client.js';
 import { isLostRpcAcknowledgement, type IProjectRpcService } from '../shared/dto/services.js';
+import { stackStartRefusals } from '../shared/dto/project.js';
+import { Errors } from '@omnitron-dev/titan/errors';
 import { emitJson, emitError, emitStep, emitSuccess, emitInfo, isJsonMode } from './output.js';
 import { shellEscape } from '../shared/shell-escape.js';
 import { syncFinding, syncWords, syncSeverity } from '../shared/sync-reading.js';
@@ -374,7 +376,9 @@ function reportLifecycleError(
     emitError(`Acknowledgement unavailable for ${action}: ${(err as Error).message}. ${inspect}`,
       { ...details, outcome: 'unknown', reason: 'connection-lost' });
   } else {
-    emitError(`Failed: ${(err as Error).message}`, details);
+    const reason = (err as { details?: { reason?: unknown } } | null)?.details?.reason;
+    emitError(`Failed: ${(err as Error).message}`, typeof reason === 'string' && Object.hasOwn(stackStartRefusals, reason)
+      ? { ...details, outcome: 'refused', reason } : details);
   }
   process.exitCode = 1;
 }
@@ -463,6 +467,7 @@ export async function stackStartCommand(
       const action = refresh && declarationRefreshCommand(projectName, stackName, refresh.release);
       if (!emitJson({ ...review, ...(action && { action }) })) {
         for (const target of review.targets) {
+          if (target.applicationOnly) emitInfo(`${target.node}: application launch only. Infrastructure is managed separately.`);
           if (target.reason) emitInfo(`${target.node}: ${target.reason}`);
           for (const check of target.infrastructure?.checks ?? []) emitInfo(`${target.node}: ${check.resource}: ${check.state}: ${check.message}`);
         }
@@ -471,9 +476,11 @@ export async function stackStartCommand(
       }
       return;
     }
-    if (opts?.infrastructure === 'preserve' && (!review?.digest || (opts.review !== undefined && opts.review !== review.digest)))
-      throw Error(['Current infrastructure or launch differs from the review; no start was requested. Inspect again, or reconcile separately.',
-        ...reviewTargetFailures(review?.targets)].join('\n'));
+    if (opts?.infrastructure === 'preserve' && (!review?.digest || (opts.review !== undefined && opts.review !== review.digest))) {
+      const reason = review?.targets.some(target => target.refreshDeclarations) ? 'declarations-refresh-required' : 'infrastructure-review-changed';
+      throw Errors.conflict(['Current infrastructure or launch differs from the review; no start was requested. Inspect again, or reconcile separately.',
+        ...reviewTargetFailures(review?.targets)].join('\n'), { reason });
+    }
     emitStep(`Starting stack ${projectName}/${stackName}...`);
 
     const scope = { project: projectName, stack: stackName, ...(opts?.release && { release: opts.release }) };

@@ -4,6 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProjectService } from '../../src/services/project.service.js';
+import { DaemonStateStore } from '../../src/daemon/daemon-state-store.service.js';
+import { NodeStackStop } from '../../src/project/node-stack-stop.js';
 import { InfrastructureRpcService } from '../../src/services/infrastructure.rpc-service.js';
 import { InfrastructureService } from '../../src/infrastructure/infrastructure.service.js';
 import { resolveInfrastructureDefinition } from '../../src/infrastructure/infrastructure-definition.js';
@@ -59,6 +61,53 @@ function fixture() {
 }
 
 describe('stack preservation admission', () => {
+  it('reads the recorded full stop of an application-only receiver across a daemon restart', async () => {
+    const f = fixture();
+    const origin = { project: 'sample', stack: 'prod' };
+    f.config.stacks.dev = { type: 'local', managedOrigin: origin, infrastructureOwnership: 'controller' };
+    const file = path.join(path.dirname(f.script), 'state.db');
+    const previous = new DaemonStateStore(logger, file);
+    const operationId = 'retire';
+    const observedAt = new Date().toISOString();
+    f.service.daemonStateStore = previous;
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(Date.parse(observedAt) - 1000);
+      f.service.setInfrastructurePolicy(scope.project, scope.stack, null);
+    } finally { vi.useRealTimers(); }
+    const plan = { protocol: 1, ...origin, applications: true, operationId, containers: [{ id: 'before', name: 'store' }],
+      execution: { ...scope, revision: 6, phase: 'running', apps: [{ name: 'sample/dev/api', generation: 'previous' }] } };
+    const receipt = { protocol: 1, ...origin, operationId, outcome: 'stopped', observedAt, removedContainers: ['before'],
+      applications: { ...scope, operationId, revision: 7, stopped: ['sample/dev/api'], observedAt } };
+    const journal = 'lifecycle:node-stack-stops:v1';
+    previous.kvSetSync(journal, { 'sample/prod': { plan, receipt, phase: 'stopped' } });
+    await previous.dispose();
+    const current = new DaemonStateStore(logger, file);
+    try {
+      f.service.daemonStateStore = current;
+      f.service.nodeStackStop = new NodeStackStop(current, {} as never);
+      f.service.startStackOnce = vi.fn(async () => ({}));
+      await f.service.startStack('sample', 'dev', { source: 'operator' });
+      expect(f.service.startStackOnce.mock.calls[0][7]).toMatchObject({ mode: 'reconcile', explicitReconcile: false });
+      const reviewed = await f.service.reviewStackStart('sample', 'dev');
+      expect(reviewed.digest).toMatch(/^[a-f0-9]{64}$/);
+      expect(reviewed.targets).toEqual([{ node: 'local', applicationOnly: true }]);
+      await f.service.startLocalStack('sample', 'dev', f.config.stacks.dev, f.config, undefined, vi.fn(), undefined, undefined, reviewed);
+      expect(f.service.orchestrator.startApp).toHaveBeenCalledOnce();
+      expect(f.service.infraManager.reviewPreservation).not.toHaveBeenCalled();
+      expect(f.service.infraManager.provisionStack).not.toHaveBeenCalled();
+      expect(f.service.runStackMigrations).not.toHaveBeenCalled();
+      for (const state of [{ plan, receipt, phase: 'failed' }, { plan, receipt, phase: 'stopped', suspended: true },
+        { plan, receipt: { ...receipt, observedAt: '1970-01-01T00:00:00Z' }, phase: 'stopped' },
+        { plan, receipt: { ...receipt, removedContainers: [] }, phase: 'stopped' }]) {
+        current.kvSetSync(journal, { 'sample/prod': state });
+        await expect(f.service.startStack('sample', 'dev', { source: 'operator' })).rejects.toMatchObject({
+          details: { reason: 'infrastructure-review-required' },
+        });
+      }
+      expect(f.service.startStackOnce).toHaveBeenCalledOnce();
+    } finally { await current.dispose(); }
+  });
   it('reviews the complete remote declaration without creating an owner or changing recovery', async () => {
     const manager = new StackInfrastructureManager(logger);
     const host = vi.fn((definition, registry) => new InfrastructureService(logger, definition, { presetRegistry: registry }));

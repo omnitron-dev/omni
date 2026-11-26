@@ -21,6 +21,8 @@ import { assertReleaseLoaderEnvironment, assertReleaseTarget, releaseOptionsForE
 import { withClosureLibraryPath } from '../release/closure-library-path.js';
 import { resolveAppPath } from '../config/app-path.js';
 import { infrastructureOwnership, ownsStackInfrastructure } from '../project/infrastructure-ownership.js';
+import { Errors } from '@omnitron-dev/titan/errors';
+import { stackStartRefusals } from '../shared/dto/project.js';
 import { InstalledStackResume, resumeDestinations, type InstalledResumeExecution, type InstalledResumeRequest, type InstalledResumeReceipt, type ResumeDestination } from '../project/installed-stack-resume.js';
 import type { InstalledStackResumeResult, StackStopProgress, StackStartOptions, StackStartReview } from '../shared/dto/project.js';
 import type { ClusterPermit, StackEffectPlan } from '../cluster/stop-authority.js';
@@ -500,6 +502,7 @@ export class ProjectService extends EventEmitter {
         if (keep) this.setInfrastructurePolicy(scope.project, scope.stack, null);
         this.registry.setStackEnabled(scope.project, scope.stack, false);
       },
+      forgetInfrastructureHold: scope => this.daemonStateStore.kvDeleteSync(this.infrastructurePolicyKey(scope.project, scope.stack)),
       holdInfrastructure: async scope => {
         await this.drainHostedProvisioning(scope);
         const hosted = this.hostedInfrastructure();
@@ -1463,6 +1466,19 @@ export class ProjectService extends EventEmitter {
     const config = loaded.config;
     const stack = this.resolveStacks(config, projectName)[stackName];
     if (!stack) throw new Error('Stack is not declared');
+    const placement = this.placement(projectName, stackName);
+    if (placement?.selected && placement.from.nodeId === placement.selected.nodeId) {
+      try {
+        await this.checkReceiverStart({ project: projectName, stack: stackName }, placement);
+        add('receiver.start-policy', 'Selected application allocation', 'pass', 'The enrolled receiver confirmed its start policy.');
+      } catch (error) {
+        const reported = (error as { details?: { reason?: keyof typeof stackStartRefusals } }).details?.reason;
+        const reason = reported && Object.hasOwn(stackStartRefusals, reported) ? reported : 'receiver-admission-unknown';
+        add('receiver.start-policy', 'Selected application allocation', reason === 'receiver-admission-unknown' ? 'unknown' : 'blocked',
+          stackStartRefusals[reason],
+          'Inspect the latest stop and registration in the stack workspace.');
+      }
+    }
     try {
       this.assertStartAuthority({ project: projectName, stack: stackName }, stack);
     } catch (err) {
@@ -1828,10 +1844,21 @@ export class ProjectService extends EventEmitter {
     return `lifecycle:infrastructure:${stackExecutionKey({ project, stack })}:${registration.registeredAt}`;
   }
 
-  private infrastructurePolicy(project: string, stack: string): { mode: 'preserve'; review: string | null } | null {
-    const value = this.daemonStateStore.kvGetSync<{ mode: 'preserve'; review: string | null }>(this.infrastructurePolicyKey(project, stack), { strict: true });
+  private infrastructurePolicy(project: string, stack: string, declaration?: IStackConfig): { mode: 'preserve'; review: string | null } | null {
+    const key = this.infrastructurePolicyKey(project, stack);
+    const value = this.daemonStateStore.kvGetSync<{ mode: 'preserve'; review: string | null }>(key, { strict: true });
     if (value && (value.mode !== 'preserve' || (value.review !== null && !/^[a-f0-9]{64}$/.test(value.review))))
       throw Error('Invalid retained infrastructure authority');
+    if (value && !declaration) {
+      const cached = this.getLoadedConfig(project);
+      if (cached) declaration = this.resolveStacks(cached, project)[stack];
+    }
+    // Older nodes committed the full-stop receipt without retiring the hold. Only
+    // that allocation's later receipt can supersede it. A status read writes nothing.
+    if (value && !this.clusterStop && declaration?.managedOrigin && declaration.infrastructureOwnership === 'controller' && !ownsStackInfrastructure(declaration)) {
+      const heldAt = this.daemonStateStore.kvUpdatedAtSync(key);
+      if (heldAt && this.nodeStackStop.retiredInfrastructureAfter(declaration.managedOrigin, { project, stack }, heldAt)) return null;
+    }
     return value;
   }
 
@@ -1904,11 +1931,14 @@ export class ProjectService extends EventEmitter {
       for (const entry of entries) assertApplicationInstances(entry);
       resolveStartupOrder(entries);
       const definitions = retained ? new Map(retained.declarations) : (release as AdmittedRelease | null)?.remoteDefinitions ?? this.preservationDefinitions(project, stackName, entries);
-      const effective = mergeInferredInfrastructure(buildInfraFromRequirements(requirementsFromDefinitions(definitions)),
+      // An independently registered external stack can still review its local bindings.
+      // A generated allocation's container review belongs to its source controller.
+      const applicationOnly = !ownsStackInfrastructure(stack) && stack.infrastructureOwnership === 'controller';
+      const effective = applicationOnly ? undefined : mergeInferredInfrastructure(buildInfraFromRequirements(requirementsFromDefinitions(definitions)),
         installation?.infrastructure ?? mergeInfrastructure(config, stack));
       const normalized = normalizeInfraConfig(effective ?? {}, createDefaultRegistry());
       const requirements = { ...normalized };
-      for (const definition of definitions.values()) Object.assign(requirements, definition.omnitronConfig?.infrastructure);
+      if (!applicationOnly) for (const definition of definitions.values()) Object.assign(requirements, definition.omnitronConfig?.infrastructure);
       if (Object.entries(requirements).some(([name, requirement]) => {
         const binding = bindService(requirement, stack.serviceOverrides?.[name]);
         return binding.provisioning === 'bareMetal' || binding.provisioning === 'none';
@@ -1917,7 +1947,9 @@ export class ProjectService extends EventEmitter {
         return report;
       }
       const environment = retained?.environment ?? await this.stackEnvFor(project, stackName, stack, entries.map(entry => entry.name));
-      if (stack.type === 'local') {
+      if (applicationOnly) {
+        report.targets.push({ node: 'local', applicationOnly: true });
+      } else if (stack.type === 'local') {
         const infrastructure = await this.infraManager.reviewPreservation(project, stackName, stack, effective ?? {}, definitions, this.registry.get(project)!.path);
         report.targets.push({ node: 'local', infrastructure });
       } else {
@@ -1934,11 +1966,11 @@ export class ProjectService extends EventEmitter {
         const script = entry.bootstrap ?? entry.script;
         return script ? [entry.name, createHash('sha256').update(fs.readFileSync(resolveAppPath(this.registry.get(project)!.path, entry, script))).digest('hex')] : [entry.name];
       }) : [];
-      if (report.targets.length && report.targets.every(target => target.infrastructure?.digest)) report.digest = stackDefinitionFingerprint([
+      if (report.targets.length && report.targets.every(target => target.applicationOnly || target.infrastructure?.digest)) report.digest = stackDefinitionFingerprint([
         'omnitron/stack-start/preserve/v1', { project, stack: stackName }, this.registry.get(project)!.registeredAt,
         stack, retained?.entries ?? entries, [...definitions], environment, release?.manifestSha256 ?? null, launch,
         ...(remote ? ['prepared remote replacement', remote.receipt.digest] : []),
-        report.targets.map(target => [target.node, target.infrastructure!.digest]),
+        report.targets.map(target => [target.node, target.applicationOnly ? 'application-only' : target.infrastructure!.digest]),
       ]);
     } catch (error) {
       // Source errors may contain credential values. Evidence contains only reviewed fingerprints and controlled diagnostics.
@@ -1983,7 +2015,8 @@ export class ProjectService extends EventEmitter {
     if (cold && policy && policy.review !== cold.review) throw Error('Local update cannot expand an existing preserved infrastructure review');
     const mode = cold ? 'preserve' : opts?.infrastructure ?? policy?.mode ?? 'reconcile';
     const review = cold?.review ?? opts?.review ?? (mode === 'preserve' ? policy?.review : undefined);
-    if (mode === 'preserve' && (!review || !/^[a-f0-9]{64}$/.test(review))) throw Error('Preserved infrastructure requires a successful stack start review; inspect --dry-run --infrastructure preserve');
+    if (mode === 'preserve' && (!review || !/^[a-f0-9]{64}$/.test(review)))
+      throw Errors.conflict(stackStartRefusals['infrastructure-review-required'], { reason: 'infrastructure-review-required' });
     if (opts?.review && mode !== 'preserve') throw Error('A preservation review cannot authorize reconciliation');
     const retained = cold ? (await this.retainedRestartConfiguration())?.stacks.find(value => value.project === projectName && value.stack === stackName) : undefined;
     if (cold && batch?.configuration && !retained) throw Error('Stack has no retained restart configuration');
@@ -2117,14 +2150,21 @@ export class ProjectService extends EventEmitter {
       return this.attachRemoteStack(projectName, stackName, stackConfig, source);
     }
     this.assertStartAuthority({ project: projectName, stack: stackName }, stackConfig);
+    if (route?.selected && route.from.nodeId === route.selected.nodeId)
+      await this.checkReceiverStart({ project: projectName, stack: stackName }, route);
 
     let preservation: StackStartReview | undefined;
+    if (infrastructure?.mode === 'reconcile' && !infrastructure.explicitReconcile && this.infrastructurePolicy(projectName, stackName, stackConfig))
+      throw Errors.conflict(stackStartRefusals['infrastructure-review-required'], { reason: 'infrastructure-review-required' });
     if (infrastructure?.mode === 'preserve') {
       if (infrastructure.cold && infrastructure.retained) claimColdStart(this.daemonStateStore, infrastructure.cold);
       preservation = await this.reviewStackStartIntent(projectName, stackName, { infrastructure: 'preserve', ...(releaseId && { release: releaseId }), ...(workingTree && { workingTree: true }) }, {
         ...(bound && { remoteSource: bound }), retained: infrastructure.retained, prepare: Boolean(infrastructure.cold && infrastructure.retained),
       });
-      if (!preservation.digest || preservation.digest !== infrastructure.review) throw Error('Stack launch or native infrastructure changed since review; no startup effects were admitted');
+      if (!preservation.digest || preservation.digest !== infrastructure.review) {
+        const reason = preservation.targets.some(target => target.refreshDeclarations) ? 'declarations-refresh-required' : 'infrastructure-review-changed';
+        throw Errors.conflict(stackStartRefusals[reason], { reason });
+      }
       if (infrastructure.cold) {
         // A review can take time. Losing the persisted direction before the first effect revokes authority.
         const intent = await this.readColdBatch();
@@ -2579,7 +2619,11 @@ export class ProjectService extends EventEmitter {
       ...(deployment && { deploymentReview: deployment }),
       ...(keepInfrastructure && { keepInfrastructure: true }),
     };
-    const persist = () => this.daemonStateStore.kvUpdateSync(`stack:${key}:last-stop`, () => progress);
+    const persist = () => this.daemonStateStore.kvUpdateSync(`stack:${key}:last-stop`, () => {
+      if (progress.phase === 'stopped' && !keepInfrastructure)
+        this.daemonStateStore.kvDeleteSync(this.infrastructurePolicyKey(projectName, stackName));
+      return progress;
+    });
     persist();
     try {
       // Complete every read-only admission check before sending any stop.
@@ -2889,6 +2933,34 @@ export class ProjectService extends EventEmitter {
     return target;
   }
 
+  /** Verify a returning receiver before publishing files, reconciling containers or running migrations. */
+  private async checkReceiverStart(scope: StackExecutionScope, placement: RemotePlacement,
+    runtime: StackExecutionScope | undefined = placement.sourceStop.nodes[0]?.execution): Promise<void> {
+    let reason: keyof typeof stackStartRefusals;
+    const request = runtime && { project: runtime.project, stack: runtime.stack };
+    try {
+      if (!request || !placement.selected) throw Error();
+      const allocation = await this.callStackTarget(scope, placement.selected, 'OmnitronProject', 'getStack', request) as IStackInfo;
+      if (allocation?.type !== 'local' || allocation.name !== request.stack ||
+          !isDeepStrictEqual(allocation.runtimeScope, request) || allocation.config?.infrastructureOwnership !== 'controller' ||
+          !isDeepStrictEqual(allocation.config.managedOrigin, scope) ||
+          !['reconcile', 'preserve'].includes(allocation.infrastructureMode ?? '')) throw Error();
+      if (allocation.infrastructureMode === 'reconcile') return;
+      reason = 'infrastructure-review-required';
+      if (/^[a-f0-9]{64}$/.test(allocation.infrastructureReview ?? '')) {
+        const review = await this.callStackTarget(scope, placement.selected, 'OmnitronProject', 'reviewStackStart',
+          { ...request, infrastructure: 'preserve' }) as StackStartReview;
+        if (review?.protocol !== 1 || review.project !== request.project || review.stack !== request.stack ||
+            review.infrastructure !== 'preserve' || !Array.isArray(review.targets)) throw Error();
+        if (review.digest === allocation.infrastructureReview && review.targets.length) return;
+        reason = review.targets.some(target => target.refreshDeclarations) ? 'declarations-refresh-required' : 'infrastructure-review-changed';
+      }
+    } catch {
+      reason = 'receiver-admission-unknown';
+    }
+    throw Errors.conflict(stackStartRefusals[reason], { reason });
+  }
+
   /** A release-bound stack uses its enrolled session for effects, health, stop and recovery reads. */
   private async callStackTarget(scope: StackExecutionScope, node: { host: string; port?: number; nodeId?: string },
     service: string, method: string, payload?: unknown, retryOnDisconnect = false): Promise<unknown> {
@@ -3126,6 +3198,7 @@ export class ProjectService extends EventEmitter {
       ...(previousDeclarationCommit && { previousDeclarationCommit }),
     });
     const forward = await this.placementPreflight(requestFor(next.receipt), next);
+    await this.checkReceiverStart(scope, placement, forward.source);
     const reverse = next === previous ? forward : await this.placementPreflight(requestFor(previous.receipt), previous);
     if (next !== previous) {
       const apps = [...new Set([...previous.admitted.files, ...next.admitted.files].map(file => file.app))];
@@ -7181,7 +7254,7 @@ export class ProjectService extends EventEmitter {
 
     const selectedRelease = placement?.selected ? { id: placement.selected.release, manifestSha256: placement.selected.manifestSha256 } :
       config.type === 'local' && !config.managedOrigin ? this.localSelection(projectName, stackName).read().release : null;
-    const policy = this.infrastructurePolicy(projectName, stackName);
+    const policy = this.infrastructurePolicy(projectName, stackName, config);
     return {
       name: stackName,
       infrastructureMode: policy?.mode ?? 'reconcile',

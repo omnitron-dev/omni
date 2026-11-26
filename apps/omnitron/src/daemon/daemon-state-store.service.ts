@@ -181,6 +181,13 @@ export class DaemonStateStore {
     }
   }
 
+  /** Time at which the current value, including a legacy lifecycle hold, was committed. */
+  kvUpdatedAtSync(key: string): string | null {
+    const db = this.rawSqlite ?? this.initSync();
+    const row = db.prepare('SELECT updated_at FROM state_kv WHERE key = ?').get(key) as { updated_at: string } | undefined;
+    return row?.updated_at ?? null;
+  }
+
   /** Atomic read/compare/write for control-plane intent; returns only after a FULL WAL commit. */
   kvUpdateSync<T>(key: string, update: (current: T | null) => T): T {
     const db = this.rawSqlite ?? this.initSync();

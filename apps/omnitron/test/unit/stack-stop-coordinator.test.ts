@@ -23,6 +23,7 @@ function fixture(remote = true) {
     getLoadedConfig: () => config, resolveStackApps: () => config.apps,
     registry: { setStackEnabled: vi.fn(), get: () => ({ registeredAt: '2026-11-12T00:00:00Z' }) },
     daemonStateStore: {
+      kvDeleteSync: (key: string) => data.delete(key),
       kvUpdateSync: vi.fn((key: string, update: (current: unknown) => unknown) => { const value = update(data.get(key) ?? null); data.set(key, structuredClone(value)); return value; }),
       kvGetSync: (key: string) => data.get(key) ?? null,
     },

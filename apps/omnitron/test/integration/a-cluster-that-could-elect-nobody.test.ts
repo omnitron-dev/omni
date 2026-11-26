@@ -64,7 +64,7 @@ describe('PostgreSQL-authoritative cluster leases', () => {
         }),
       },
       containers: async () => [{ id: 'a'.repeat(64), name: 'sample-db' }],
-      disableResume: vi.fn(), retireInfrastructure: vi.fn(), removeContainer: vi.fn(),
+      disableResume: vi.fn(), forgetInfrastructureHold: vi.fn(), retireInfrastructure: vi.fn(), removeContainer: vi.fn(),
     };
     const node = new NodeStackStop(state, ports);
     const recipient = new StopRecipient(audience, store, state);

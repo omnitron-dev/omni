@@ -194,6 +194,14 @@ export interface StackInfrastructureInput {
   review?: string | undefined;
 }
 
+/** Refusals that can safely cross the node registration boundary without exposing application output. */
+export const stackStartRefusals = {
+  'infrastructure-review-required': 'Preserved infrastructure requires a successful stack start review; inspect --dry-run --infrastructure preserve',
+  'infrastructure-review-changed': 'Stack launch or native infrastructure changed since review; no startup effects were admitted',
+  'declarations-refresh-required': 'The recipient requires a topology declaration refresh before it can review the start',
+  'receiver-admission-unknown': 'The selected node could not confirm the start policy of its registered application allocation',
+} as const;
+
 export interface StackStartOptions {
   allowDirty?: boolean;
   release?: string;
@@ -212,7 +220,7 @@ export interface StackStartReview {
   selection?: { release?: string; workingTree?: true; preparedSource?: string; nodeId?: string };
   checkedAt: string;
   digest: string | null;
-  targets: Array<{ node: string; infrastructure?: ExistingInfrastructureReview; reason?: string; refreshDeclarations?: { release?: string } }>;
+  targets: Array<{ node: string; infrastructure?: ExistingInfrastructureReview; applicationOnly?: true; reason?: string; refreshDeclarations?: { release?: string } }>;
   deferred: string[];
 }
 

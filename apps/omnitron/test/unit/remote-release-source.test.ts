@@ -460,6 +460,7 @@ describe('prepared source of one registered remote release', () => {
     };
     let launched: { id: string; manifestSha256: string; artifactSha256: string } | undefined;
     let loseLaunchReply = false;
+    let receiverMode: 'reconcile' | 'preserve' = 'reconcile';
     const read = vi.fn(async (method: string, body?: { operationId: string }) => {
       if (method === 'status') {
         const generation = inv.execution.apps[0]!.generation;
@@ -470,6 +471,9 @@ describe('prepared source of one registered remote release', () => {
         }] : [] };
       }
       if (method === 'getState') return { services: {} };
+      if (method === 'getStack') return { type: 'local', name: 'deployed', infrastructureMode: receiverMode,
+        runtimeScope: { project: 'sample', stack: 'deployed' },
+        config: { type: 'local', managedOrigin: { project: 'sample', stack: 'test' }, infrastructureOwnership: 'controller' } };
       if (method === 'inspectNodeStackStop') return structuredClone(inv);
       if (method === 'prepareNodeStackStop') return { ...structuredClone(inv),
         operationId: registrationMode === 'deployment' ? 'reviewed-stop-' + inv.execution.revision : 'replacement-stop' };
@@ -645,6 +649,12 @@ describe('prepared source of one registered remote release', () => {
         await expect(rpc.checkRelease(request)).resolves.toMatchObject({ ok: false, state: 'replacement-unavailable' });
         await service.prepareRemoteReleaseSource('sample', 'test', second, { ...f.input, sourceRoot: secondSource,
           manifestSha256: sha(raw), declarationsSha256: captured.declarationsSha256 });
+        receiverMode = 'preserve';
+        await expect(rpc.checkRelease(request)).resolves.toMatchObject({ ok: false, state: 'replacement-unavailable',
+          because: expect.stringMatching(/start review/i) });
+        expect(stopCount()).toBe(0);
+        expect(launches).toHaveLength(1);
+        receiverMode = 'reconcile';
         const checked = await rpc.checkRelease(request);
         expect(checked, checked.because).toMatchObject({ ok: true, deployment: { previousDeclarationCommit: priorCommit,
           nodeId, release: second, rollback: { release: id }, stop: { applications: ['sample/deployed/main'], containers: [] } } });

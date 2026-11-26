@@ -18,6 +18,14 @@ const request = { project: 'sample', stack: 'prod', fromNodeId: options.fromNode
 const exitCode = process.exitCode;
 afterEach(() => { vi.clearAllMocks(); process.exitCode = exitCode; });
 
+it('reports a scoped preservation refusal to the operator and to a registering controller', async () => {
+  rpc.startStack.mockRejectedValueOnce(Object.assign(Error('Review required'), { details: { reason: 'infrastructure-review-required', private: true } }));
+  await stackStartCommand('sample', 'prod');
+  expect(output.emitError).toHaveBeenCalledWith('Failed: Review required',
+    { project: 'sample', stack: 'prod', outcome: 'refused', reason: 'infrastructure-review-required' });
+  expect(process.exitCode).toBe(1);
+});
+
 it('passes preflight evidence through JSON and leaves review and selection untouched', async () => {
   const proof = { fromNodeId: 'receiver', toNodeId: 'receiver', source: { revision: 8 } };
   rpc.preflightRemotePlacement.mockResolvedValueOnce(proof);

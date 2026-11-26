@@ -1,4 +1,5 @@
 import { remoteNode } from './host-upgrade.js';
+import { stackStartRefusals } from '../shared/dto/project.js';
 
 /** Private on-node snapshots survive controller failure; application data is never copied or replaced. */
 export function prepareNodeConfigPublication(input: {
@@ -100,8 +101,10 @@ export function nodeStackActivationCommand(directory: string, operation: string,
       const reply = parse(child.stdout);
       const report = reply ?? parse(child.stderr);
       if (report?.ok === false) {
-        const scoped = report.project === project && report.stack === stack && report.outcome === 'unknown';
-        return unconfirmed(scoped && ['client-timeout','connection-lost'].includes(report.reason) ? report.reason : 'cli-error');
+        const scoped = report.project === project && report.stack === stack;
+        const reasons = report.outcome === 'refused' ? ${JSON.stringify(Object.keys(stackStartRefusals))} :
+          report.outcome === 'unknown' ? ['client-timeout','connection-lost'] : [];
+        return unconfirmed(scoped && reasons.includes(report.reason) ? report.reason : 'cli-error');
       }
       const data = reply?.data;
       if (reply?.ok !== true || data?.action !== 'started' || data.project !== project || data.stack !== stack) {
@@ -143,6 +146,7 @@ export function nodeStackActivationCommand(directory: string, operation: string,
 }
 
 const startDiagnostics = {
+  ...stackStartRefusals,
   'configuration-changed': 'The published node configuration changed',
   'not-requested': 'No start request was recorded on the node',
   'result-pending': 'The node recorded the start request and has no final result yet',
@@ -165,7 +169,8 @@ export function nodeStackActivationIssue(raw: string, operation: string, project
     if (receipt?.operation !== operation || receipt.project !== project || receipt.stack !== stack || !expected.length) return unknown;
     if (receipt.confirmed === true && Array.isArray(receipt.apps)) {
       const online = new Set(receipt.apps);
-      return expected.every(name => online.has(name) || online.has(`${project}/${stack}/${name}`)) ? undefined : startDiagnostics['application-set'];
+      return expected.length === online.size && online.size === receipt.apps.length && new Set(expected).size === expected.length &&
+        expected.every(name => online.has(name) || online.has(`${project}/${stack}/${name}`)) ? undefined : startDiagnostics['application-set'];
     }
     if (receipt.confirmed !== false || typeof receipt.reason !== 'string' || !Object.hasOwn(startDiagnostics, receipt.reason)) return unknown;
     const detail = startDiagnostics[receipt.reason as keyof typeof startDiagnostics];

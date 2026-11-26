@@ -311,6 +311,10 @@ For a return to the original registration, first complete a reviewed full stop o
 
 #### Replace a release on its selected node
 
+A full stop ends the previous infrastructure hold when Omnitron commits the stop receipt. A stop with `--keep-infrastructure` retains the hold. Application-only receivers can also read full-stop receipts written by older daemons. The receipt must belong to the same source stack and runtime allocation and postdate the hold. A preserved launch on such a receiver reviews the application entries. The controller owns the container review.
+
+Use `omnitron stack diagnose PROJECT STACK` to check the enrolled receiver's start policy. The same check runs before provisioning on a returning node and before stopping the current release in the deploy dialog. Use `omnitron stack progress PROJECT STACK` for the receiver's registration result and `omnitron stack status PROJECT STACK` for current application health. The registration result distinguishes a required preservation review, changed resources, missing declarations and a lost connection. It records each start request once.
+
 On `main` after 0.4.17, open **Configuration & actions → Deploy release** in the stack workspace. Choose an immutable release prepared for the selected recipient. While the current applications are still running, Console verifies their launch evidence, both release archives and migration histories, the enrolled node, and the exact scope of the stop. If the registered node declaration changed, Omnitron finds its previous fingerprint in the project's Git history. Commit the current declaration before reviewing the change.
 
 The dialog shows the recipient, how many applications and containers will stop, and which release it verified for return. An administrator can press **Stop and deploy** once. In the CLI, review the release and confirm its digest.

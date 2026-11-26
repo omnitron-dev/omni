@@ -1249,7 +1249,7 @@ export class RemoteDeployer {
     } catch (err) {
       if (activationSubmitted || (err as { code?: string } | null)?.code === 'EXECUTION_OUTCOME_UNKNOWN') {
         const detail = err instanceof NodeRegistrationUnconfirmed ? ` ${err.message}.` : '';
-        const message = `Node registration ${operation} is unconfirmed.${detail} Inspect the running applications and the registration in ${dir}/.registration-${operation} before retrying.`;
+        const message = `Node registration ${operation} is unconfirmed.${detail} Inspect omnitron stack progress ${project} ${sourceStack} and omnitron stack status ${project} ${sourceStack} before retrying.`;
         this.logger.warn({ host: target.host, project, operation }, message);
         throw new NodeRegistrationUnconfirmed(message, { cause: err });
       }

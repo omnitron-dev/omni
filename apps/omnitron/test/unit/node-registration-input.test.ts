@@ -143,6 +143,20 @@ it.each([
   expect(await readFile(a.calls, 'utf8')).toBe('1');
 });
 
+it.each([
+  ['fixture', 'refused', 'infrastructure-review-required', 'requires a successful'],
+  ['fixture', 'refused', 'declarations-refresh-required', 'topology declaration refresh'],
+  ['foreign', 'refused', 'infrastructure-review-required', 'CLI returned an error'],
+  ['fixture', 'unknown', 'infrastructure-review-required', 'CLI returned an error'],
+])('binds the receiver refusal to the command scope and outcome', async (project, outcome, reason, detail) => {
+  const a = await activation('confirmed', [], { ok: false, project, stack: 'deployed', outcome, reason, error: 'private-log-line' });
+  const result = a.run();
+  expect(a.issue(result)).toContain(detail);
+  expect(result).not.toContain('private-log-line');
+  expect(a.run(true)).toBe(result);
+  expect(await readFile(a.calls, 'utf8')).toBe('1');
+});
+
 it('keeps an older inconclusive receipt and rejects unrecognized receiver diagnostics', () => {
   const response = { operation: 'test', project: 'fixture', stack: 'deployed', confirmed: false, apps: [] };
   const read = (fields: object) => nodeStackActivationIssue(JSON.stringify({ ...response, ...fields }), 'test', 'fixture', 'deployed', ['api']);

@@ -30,6 +30,27 @@ function fixture() {
   return { service, config, bootstrap, metadata, plan };
 }
 describe('read-only readiness contract', () => {
+  it('reports the returning recipient’s own start authority through stack diagnosis', async () => {
+    const f = fixture(), origin = { project: 'sample', stack: 'dev' }, runtime = { project: 'sample', stack: 'deployed' };
+    const node = { nodeId: 'enrolled-node', host: 'node.invalid', port: 9700 };
+    const route = { selected: node, from: node, sourceStop: { nodes: [{ execution: { ...runtime, revision: 7 } }] } };
+    const result = { type: 'local', name: 'deployed', runtimeScope: runtime, infrastructureMode: 'preserve', infrastructureReview: null,
+      config: { type: 'local', managedOrigin: origin, infrastructureOwnership: 'controller' } };
+    const digest = 'a'.repeat(64), held = { ...result, infrastructureReview: digest };
+    const review = { ...runtime, protocol: 1, infrastructure: 'preserve', digest, targets: [{ node: 'local', applicationOnly: true }] };
+    const call = vi.fn().mockResolvedValueOnce(result).mockResolvedValueOnce({ ...result, runtimeScope: origin })
+      .mockResolvedValueOnce({ ...result, infrastructureMode: 'reconcile' })
+      .mockResolvedValueOnce(held).mockResolvedValueOnce({ ...review, digest: 'b'.repeat(64) })
+      .mockResolvedValueOnce(held).mockResolvedValueOnce({ ...review, project: 'another' })
+      .mockResolvedValueOnce(held).mockResolvedValueOnce(review);
+    Object.assign(f.service, { placement: () => route, callStackTarget: call });
+    for (const state of ['blocked', 'unknown', 'pass', 'blocked', 'unknown', 'pass']) {
+      const report = await f.service.diagnoseStack(origin.project, origin.stack);
+      expect(report.checks).toContainEqual(expect.objectContaining({ code: 'receiver.start-policy', state }));
+    }
+    expect(call).toHaveBeenCalledWith(origin, node, 'OmnitronProject', 'getStack', runtime);
+    expect(call).toHaveBeenCalledWith(origin, node, 'OmnitronProject', 'reviewStackStart', { ...runtime, infrastructure: 'preserve' });
+  });
   it('uses persisted declarations without importing bootstrap code or executing a lifecycle operation', async () => {
     const f = fixture(); const report = await f.service.diagnoseStack('sample', 'dev');
     expect(report.status).toBe('ready');

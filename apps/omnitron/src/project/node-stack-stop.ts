@@ -40,6 +40,8 @@ interface StackStopPorts {
   definition(scope: NodeStackStopRequest, cached?: boolean): Promise<{ runtime: StackExecutionScope | null; fingerprint: string }>;
   containers(scope: StackExecutionScope): Promise<Array<{ id: string; name: string }>>;
   disableResume(scope: StackExecutionScope, keepInfrastructure?: boolean): void;
+  /** Runs inside the same state-store transaction that commits a verified full stop. */
+  forgetInfrastructureHold(scope: StackExecutionScope): void;
   holdInfrastructure?(scope: StackExecutionScope): Promise<void>;
   retireInfrastructure(scope: StackExecutionScope): Promise<void>;
   removeContainer(id: string): Promise<void>;
@@ -90,6 +92,29 @@ export class NodeStackStop {
       throw new Error('Resume requires a completed, signed stop for this application allocation');
     }
     return { plan: record.plan, receipt: record.receipt };
+  }
+
+  /** A full stop retires only the earlier hold on this receiver's own application allocation. */
+  retiredInfrastructureAfter(origin: StackExecutionScope, runtime: StackExecutionScope, heldAt: string): boolean {
+    const key = stackExecutionKey(origin);
+    const record = this.records()[key];
+    if (this.active.has(key) || record?.phase !== 'stopped' || record.suspended) return false;
+    const { plan, receipt } = record;
+    const apps = receipt?.applications;
+    if (!plan.applications || !plan.execution || plan.keepInfrastructure || !apps || !receipt ||
+        receipt.protocol !== 1 || receipt.outcome !== 'stopped' || receipt.keepInfrastructure || receipt.keptContainers?.length ||
+        receipt.operationId !== plan.operationId || apps.operationId !== plan.operationId ||
+        plan.protocol !== 1 || stackExecutionKey(plan) !== key || stackExecutionKey(receipt) !== key ||
+        stackExecutionKey(plan.execution) !== stackExecutionKey(runtime) ||
+        stackExecutionKey(apps) !== stackExecutionKey(runtime) ||
+        !Number.isSafeInteger(apps.revision) || apps.revision < plan.execution.revision ||
+        receipt.authority?.nodeId !== plan.audience?.nodeId || receipt.authority?.clusterId !== plan.audience?.clusterId ||
+        !(Date.parse(receipt.observedAt) > Date.parse(heldAt)) || Date.parse(receipt.observedAt) > Date.now()) return false;
+    if (!Array.isArray(plan.containers) || !Array.isArray(receipt.removedContainers)) return false;
+    const planned = new Set(plan.containers.map(container => container.id));
+    const removed = new Set(receipt.removedContainers);
+    return planned.size === plan.containers.length && removed.size === receipt.removedContainers.length &&
+      planned.size === removed.size && receipt.removedContainers.every(id => planned.has(id));
   }
   async prepare(scope: NodeStackStopRequest): Promise<NodeStackStopPlan> {
     this.preparing++;
@@ -201,6 +226,7 @@ export class NodeStackStop {
       await this.verifyStopped(receipt);
       this.write(scope, currentRecord => {
         if (currentRecord?.plan.operationId !== plan.operationId) throw new Error('Stop authority changed');
+        if (!plan.keepInfrastructure && definition.runtime) this.ports.forgetInfrastructureHold(definition.runtime);
         return { plan, phase: 'stopped', receipt };
       });
       return receipt;

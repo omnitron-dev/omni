@@ -17,6 +17,31 @@ vi.mock('src/stores/project.store', () => {
 const { DeployReleaseDialog } = await import('../../webapp/src/components/deploy-release-dialog');
 afterEach(() => { cleanup(); vi.resetAllMocks(); });
 
+it.each([true, false])('uses the reviewed node and checks the administrator grant before a full stop (allowed=%s)', async allowed => {
+  const digest = 'a'.repeat(64);
+  rpc.can.mockImplementation((permission: string) => permission === 'OmnitronProject.deployReviewedRelease' && allowed);
+  rpc.list.mockResolvedValue({ releases: [] });
+  rpc.progress.mockResolvedValue([]);
+  rpc.check.mockResolvedValue({ ok: true, deployment: { digest, nodeId: 'receiver', rollback: { release: 'previous-release' },
+    stop: { applications: ['main'], containers: ['db'] } } });
+  rpc.start.mockResolvedValue({ state: 'confirmed' });
+  render(renderRelease());
+  fireEvent.change(screen.getByRole('combobox', { name: 'Release ID' }), { target: { value: 'second-release' } });
+  const apply = await screen.findByRole('button', { name: 'Stop and deploy' });
+  expect(screen.getByText('receiver')).toBeTruthy();
+  expect(screen.getByText(/Verified return release.*previous-release/)).toBeTruthy();
+  expect(apply.hasAttribute('disabled')).toBe(!allowed);
+  expect(rpc.start).not.toHaveBeenCalled();
+  fireEvent.click(apply);
+  if (allowed) {
+    await waitFor(() => expect(rpc.start).toHaveBeenCalledExactlyOnceWith('sample', 'test',
+      { release: 'second-release', deploymentReview: digest }));
+  } else {
+    expect(screen.getByText(/administrator must confirm/i)).toBeTruthy();
+    expect(rpc.start).not.toHaveBeenCalled();
+  }
+});
+
 it('accepts an external release ID, fetches on request and requires a separate deployment action', async () => {
   rpc.list.mockResolvedValue({ releases: [] });
   rpc.progress.mockResolvedValue([]);
@@ -38,6 +63,21 @@ it('accepts an external release ID, fetches on request and requires a separate d
   fireEvent.click(deploy);
   await waitFor(() => expect(rpc.start).toHaveBeenCalledWith('sample', 'test', { release: 'sample-123' }));
   expect(await screen.findByText('Node unreachable')).toBeTruthy();
+});
+
+it('reopens a pending deployment with the original confirmation', async () => {
+  const digest = 'd'.repeat(64);
+  rpc.can.mockReturnValue(true);
+  rpc.list.mockResolvedValue({ releases: [] });
+  rpc.progress.mockResolvedValue([]);
+  rpc.check.mockResolvedValue({ ok: true, deploymentPhase: 'starting', deployment: {
+    digest, nodeId: 'receiver', rollback: { release: 'previous' }, stop: { applications: ['main'], containers: [] },
+  } });
+  rpc.start.mockResolvedValue({ state: 'confirmed' });
+  render(renderRelease());
+  fireEvent.change(screen.getByRole('combobox', { name: 'Release ID' }), { target: { value: 'second' } });
+  fireEvent.click(await screen.findByRole('button', { name: 'Continue deployment' }));
+  await waitFor(() => expect(rpc.start).toHaveBeenCalledExactlyOnceWith('sample', 'test', { release: 'second', deploymentReview: digest }));
 });
 
 const requiresDeclarations = {

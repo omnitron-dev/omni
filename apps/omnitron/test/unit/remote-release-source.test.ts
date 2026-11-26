@@ -10,6 +10,7 @@ import { StateStore } from '../../src/daemon/state-store.js';
 import { OrchestratorService } from '../../src/orchestrator/orchestrator.service.js';
 import * as containers from '../../src/infrastructure/container-runtime.js';
 import { StackTargets } from '../../src/project/stack-targets.js';
+import { verifyDeploymentMigrations } from '../../src/project/remote-release-deployment.js';
 import { ProjectService } from '../../src/services/project.service.js';
 import { ProjectRpcService } from '../../src/services/project.rpc-service.js';
 import { METADATA_KEYS } from '@omnitron-dev/titan/decorators';
@@ -91,7 +92,8 @@ function fixture() {
     commit: 'd'.repeat(40), target: platform, execution: { mode: 'resident', protocol: 1, ownerId: 'resident', pid: 42, epoch: 2 } } }));
   const credentials = vi.fn(async (_host: string, _port: number, _id: string) => ({ host: candidateNode.host, port: 22, username: 'fixture', expectedHostFingerprint: stableFingerprint }));
   const service: ProjectService = Object.assign(Object.create(ProjectService.prototype), {
-    registry: { get: (name: string) => name === 'sample' ? registration : undefined },
+    registry: { get: (name: string) => name === 'sample' ? registration : undefined,
+      resolveStack: (scope: { project: string; stack: string }) => scope },
     getLoadedConfig: () => ({ apps: [] }), resolveStacks: () => resolveProjectStacks({}, original),
     logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() }, releaseRunningOn: async () => null,
     assertStartAuthority: vi.fn(), resolveNodeCredentials: credentials, deployer: { inspectInstalledBundle: owner },
@@ -103,6 +105,19 @@ function fixture() {
 }
 
 describe('prepared source of one registered remote release', () => {
+  it('reads older migration inventories from the exact source and rejects either incompatible direction', async () => {
+    const newer = path.join(root, 'migration-change');
+    git(root, 'clone', '-q', '--no-local', original, newer);
+    const dir = path.join(newer, 'apps/main/migrations');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, '002.sql'), 'SELECT 2;');
+    git(newer, 'add', 'apps/main/migrations/002.sql'); git(newer, 'commit', '-qm', 'add migration');
+    const { manifest } = await loadRelease(id, store);
+    const base = { root: original, manifest: { ...manifest, project: { ...manifest.project, commit: originalCommit } } };
+    const more = { root: newer, manifest: { ...manifest, project: { ...manifest.project, commit: git(newer, 'rev-parse', 'HEAD') } } };
+    await expect(verifyDeploymentMigrations(base, more, ['main'])).rejects.toThrow(/return release.*002.sql/);
+    await expect(verifyDeploymentMigrations(more, base, ['main'])).rejects.toThrow(/candidate changes.*002.sql/);
+  });
   it.each(['return', 'partial', 'realigned', 'renew'])('checks both enrolled nodes through placement and full stop (%s)', async mode => {
     const f = fixture(), dir = fs.mkdtempSync(path.join(root, 'passive-placement-'));
     const log = { info() {}, warn() {}, error() {}, debug() {}, trace() {}, child() { return this; } };
@@ -403,7 +418,7 @@ describe('prepared source of one registered remote release', () => {
     expect(fs.existsSync(path.join(scope, '.remote-sources'))).toBe(false);
   });
 
-  it.each(['original', 'changed'])('routes a fully stopped placement with a %s registered declaration', async (registrationMode) => {
+  it.each(['original', 'changed', 'deployment'])('routes a selected placement with a %s registered declaration', async (registrationMode) => {
     const f = fixture();
     const service = f.service;
     const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
@@ -443,11 +458,21 @@ describe('prepared source of one registered remote release', () => {
         apps: [{ name: 'sample/deployed/main', generation: 'generation-A' }],
       },
     };
+    let launched: { id: string; manifestSha256: string; artifactSha256: string } | undefined;
+    let loseLaunchReply = false;
     const read = vi.fn(async (method: string, body?: { operationId: string }) => {
-      if (method === 'status') return { apps: [] };
+      if (method === 'status') {
+        const generation = inv.execution.apps[0]!.generation;
+        return { apps: launched && inv.execution.phase === 'running' ? [{
+          name: 'sample/deployed/main', pid: 102, status: 'online', generation, instances: 1, cpu: 0, memory: 0, restarts: 0, uptime: 5000,
+          release: { state: 'confirmed', basis: 'verified-launch', releaseId: launched.id, manifestSha256: launched.manifestSha256,
+            artifactSha256: launched.artifactSha256, launchId: generation, observedAt: new Date().toISOString() },
+        }] : [] };
+      }
       if (method === 'getState') return { services: {} };
       if (method === 'inspectNodeStackStop') return structuredClone(inv);
-      if (method === 'prepareNodeStackStop') return { ...structuredClone(inv), operationId: 'replacement-stop' };
+      if (method === 'prepareNodeStackStop') return { ...structuredClone(inv),
+        operationId: registrationMode === 'deployment' ? 'reviewed-stop-' + inv.execution.revision : 'replacement-stop' };
       if (method === 'executeNodeStackStop') {
         inv.execution.revision++;
         inv.execution.phase = 'stopped';
@@ -498,15 +523,26 @@ describe('prepared source of one registered remote release', () => {
         _s: string,
         cfg: { nodes: Array<{ host: string }> },
         ecosystem: unknown,
-        release: { placement: { root: string; recheck(): Promise<void> }; manifest: { project: { commit: string } } },
+        release: { placement: { root: string; recheck(): Promise<void> }; manifestSha256: string;
+          manifest: { id: string; project: { commit: string }; artifacts: { sha256: string }[] } },
       ) => {
         await release.placement.recheck();
+        if (registrationMode === 'deployment') {
+          inv.execution.phase = 'running';
+          inv.execution.revision++;
+          inv.execution.apps[0]!.generation = 'launch-' + inv.execution.revision;
+          launched = { id: release.manifest.id, manifestSha256: release.manifestSha256, artifactSha256: release.manifest.artifacts[0]!.sha256 };
+        }
         launches.push({
           root: release.placement.root,
           host: cfg.nodes[0]!.host,
           commit: release.manifest.project.commit,
           config: ecosystem,
         });
+        if (loseLaunchReply) {
+          loseLaunchReply = false;
+          throw Error('Recipient launched, transport lost the reply');
+        }
         return { nodes: 1, reached: 1, skipped: [] };
       },
     });
@@ -586,6 +622,74 @@ describe('prepared source of one registered remote release', () => {
       expect(launches).toHaveLength(1);
       expect(launches[0]).toMatchObject({ root: source, host: candidateNode.host, commit: releaseCommit });
       expect(fs.readFileSync(marker, 'utf8')).toBe(before);
+      if (registrationMode === 'deployment') {
+        const second = 'sample-next', secondSource = path.join(root, 'second-release');
+        git(root, 'clone', '-q', '--no-local', source, secondSource);
+        fs.writeFileSync(path.join(secondSource, 'revision.txt'), 'second revision');
+        git(secondSource, 'add', 'revision.txt');
+        git(secondSource, 'commit', '-qm', 'new release');
+        const originalRelease = path.join(f.input.storeRoot, id), newRelease = path.join(f.input.storeRoot, second);
+        fs.cpSync(originalRelease, newRelease, { recursive: true });
+        const file = path.join(newRelease, 'manifest.json'), manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+        manifest.id = second;
+        manifest.project.commit = git(secondSource, 'rev-parse', 'HEAD');
+        const raw = JSON.stringify(manifest);
+        fs.writeFileSync(file, raw);
+        const captured = await captureRemoteSource('sample', 'test', second, secondSource, f.input.storeRoot);
+        const priorCommit = git(registeredSource, 'rev-parse', 'HEAD');
+        fs.writeFileSync(path.join(registeredSource, 'omnitron.stacks.json'), JSON.stringify(stacks(candidateNode)));
+        git(registeredSource, 'commit', '-qam', 'register selected recipient');
+        const rpc = new ProjectRpcService(service);
+        const scope = { project: 'sample', stack: 'test' }, request = { ...scope, release: second };
+        const stopCount = () => read.mock.calls.filter(([method]) => method === 'executeNodeStackStop').length;
+        await expect(rpc.checkRelease(request)).resolves.toMatchObject({ ok: false, state: 'replacement-unavailable' });
+        await service.prepareRemoteReleaseSource('sample', 'test', second, { ...f.input, sourceRoot: secondSource,
+          manifestSha256: sha(raw), declarationsSha256: captured.declarationsSha256 });
+        const checked = await rpc.checkRelease(request);
+        expect(checked, checked.because).toMatchObject({ ok: true, deployment: { previousDeclarationCommit: priorCommit,
+          nodeId, release: second, rollback: { release: id }, stop: { applications: ['sample/deployed/main'], containers: [] } } });
+        expect(stopCount()).toBe(0);
+        const confirmation = { ...request, review: checked.deployment!.digest };
+        const previousFile = path.join(originalRelease, 'manifest.json');
+        const bytes = fs.readFileSync(previousFile);
+        try {
+          fs.appendFileSync(previousFile, '\n');
+          await expect(rpc.deployReviewedRelease(confirmation)).rejects.toThrow(/manifest/i);
+          expect(stopCount()).toBe(0);
+        } finally { fs.writeFileSync(previousFile, bytes); }
+        inv.execution.revision++;
+        await expect(rpc.deployReviewedRelease(confirmation)).rejects.toThrow(/review changed/i);
+        inv.execution.revision--;
+        loseLaunchReply = true;
+        const concurrent = await Promise.allSettled([rpc.deployReviewedRelease(confirmation), rpc.deployReviewedRelease(confirmation)]);
+        expect(concurrent.map(result => result.status)).toEqual(['rejected', 'rejected']);
+        expect(stopCount()).toBe(1);
+        expect(launches).toHaveLength(2);
+        // The controller also missed the launch reply. Recover the original generation without another start.
+        expect(journal.inspect(scope).placement!.activated).toBe(false);
+        await expect(rpc.checkRelease(request)).resolves.toMatchObject({ ok: true, deploymentPhase: 'starting', deployment: { digest: confirmation.review } });
+        await expect(service.startStack(scope.project, scope.stack, { release: second })).rejects.toThrow(/unconfirmed release deployment/i);
+        await expect(rpc.deployReviewedRelease(confirmation)).resolves.toMatchObject({ selectedRelease: { id: second } });
+        expect(journal.inspect(scope).placement!.activated).toBe(true);
+        await expect(rpc.deployReviewedRelease(confirmation)).resolves.toMatchObject({ status: 'running' });
+        expect(stopCount()).toBe(1);
+        expect(launches).toHaveLength(2);
+        const back = await rpc.checkRelease({ ...scope, release: id });
+        expect(back, back.because).toMatchObject({ ok: true, deployment: { nodeId, release: id, rollback: { release: second } } });
+        launched!.id = 'unexpected-release';
+        await expect(rpc.checkRelease({ ...scope, release: id })).resolves.toMatchObject({ ok: false, state: 'replacement-unavailable' });
+        launched = undefined; // Pinned owner answers, but this application is now absent.
+        await expect(rpc.deployReviewedRelease({ ...scope, release: id, review: back.deployment!.digest })).rejects.toThrow(/review changed/i);
+        const recover = await rpc.checkRelease({ ...scope, release: id });
+        expect(recover, recover.because).toMatchObject({ ok: true, deployment: { recoveryOf: confirmation.review, release: id } });
+        await expect(rpc.deployReviewedRelease({ ...scope, release: id, review: recover.deployment!.digest }))
+          .resolves.toMatchObject({ status: 'running', selectedRelease: { id } });
+        expect(launches.map(item => item.commit)).toEqual([releaseCommit, manifest.project.commit, releaseCommit]);
+        expect(stopCount()).toBe(2);
+        await expect(rpc.deployReviewedRelease(confirmation)).rejects.toThrow(/superseded/i);
+        expect(stopCount()).toBe(2);
+        return;
+      }
       const restore = { project: 'sample', stack: 'test', fromNodeId: nodeId, destination: { registered: true as const } };
       await expect(service.reviewRemotePlacement(restore)).rejects.toThrow(/full stop/);
       inv.execution.phase = 'running';
@@ -661,7 +765,7 @@ describe('prepared source of one registered remote release', () => {
 
   it('requires administrator authority for controller paths and permits an operator to recheck only an approved digest', () => {
     for (const name of ['prepareRemoteReleaseSource', 'checkRemoteReleaseSource', 'reviewPreparedHostBindings',
-      'preflightRemotePlacement', 'reviewRemotePlacement', 'selectRemotePlacement']) {
+      'preflightRemotePlacement', 'reviewRemotePlacement', 'selectRemotePlacement', 'deployReviewedRelease']) {
       const rule = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, ProjectRpcService.prototype, name);
       for (const role of ['viewer', 'operator', 'admin'])
         expect(validateAccessRequirements({ roles: [role], permissions: [] }, rule).allowed).toBe(role === 'admin' || (name === 'checkRemoteReleaseSource' && role === 'operator'));

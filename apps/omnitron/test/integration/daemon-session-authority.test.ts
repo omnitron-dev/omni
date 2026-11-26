@@ -33,6 +33,7 @@ describe('live session authority across HTTP cache and persistent WebSocket', ()
     digest: null, targets: [], ...(keepInfrastructure && { keepInfrastructure: true }),
   }));
   const stopStack = vi.fn(() => ({ status: 'stopped', config: {}, apps: [], nodes: [] }));
+  const deployReviewedRelease = vi.fn(() => ({ status: 'running', config: { type: 'remote' }, apps: [], nodes: [] }));
   const reviewStackMigrations = vi.fn(() => ({ digest: null })), migrateStack = vi.fn(() => ({ state: 'succeeded' })), getStackMigration = vi.fn(() => null);
   let role: string | null = 'admin', unavailable = false;
   const store = { validateSessionAuthority: async (userId: string, sessionId: string) => {
@@ -60,6 +61,7 @@ describe('live session authority across HTTP cache and persistent WebSocket', ()
     await netron.peer.exposeService(new ClusterRpcService({ isLeader: false, getClusterState: () => ({ state: 'follower' }) } as never));
     await netron.peer.exposeService(new ProjectRpcService({
       resolveProjectStack: (scope: unknown) => scope, reviewStackStop, stopStack, reviewStackMigrations, migrateStack, getStackMigration, assertSdkMutable: migrateStack,
+      checkRelease: () => ({ ok: true }), deployReviewedRelease,
       inspectNodeStackStop: () => 'observed', prepareNodeStackStop: () => 'prepared', executeNodeStackStop: () => 'executed',
       resumeInstalledStack: () => ({ outcome: 'running' }), prepareNodeInstalledResume: () => 'prepared',
       executeNodeInstalledResume: () => 'executed', getNodeInstalledResumeReceipt: () => 'observed',
@@ -135,6 +137,21 @@ describe('live session authority across HTTP cache and persistent WebSocket', ()
         expect((await request(credential, method, { service: 'OmnitronProject', input: [{}] })).status).toBe(principal === 'service_role' ? 200 : 403);
       }
     }
+  });
+  it('publishes replacement admission to operators and limits confirmation to a live administrator', async () => {
+    const input = { project: 'sample', stack: 'prod', release: 'second-release', review: 'e'.repeat(64) };
+    const envelope = { service: 'OmnitronProject', input: [input] };
+    for (const principal of ['viewer', 'operator', 'admin', 'service_role']) {
+      role = principal;
+      const credential = await mint({ role: principal, ...(principal !== 'service_role' && { sid: 'active' }) });
+      expect((await request(credential, 'checkRelease', envelope)).status).toBe(['operator', 'admin'].includes(principal) ? 200 : 403);
+      expect((await request(credential, 'deployReviewedRelease', envelope)).status).toBe(principal === 'admin' ? 200 : 403);
+      if (principal === 'operator') {
+        const direct = await request(credential, 'startStack', { ...envelope, input: [{ ...input, deploymentReview: input.review }] });
+        expect(direct.status).toBe(400);
+      }
+    }
+    expect(deployReviewedRelease).toHaveBeenCalledExactlyOnceWith(input.project, input.stack, input.release, input.review);
   });
   it('requires live administrator authority for migration review, execution and receipts', async () => {
     const input = { project: 'sample', stack: 'dev', review: 'a'.repeat(64), operationId: randomUUID() };

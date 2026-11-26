@@ -229,7 +229,7 @@ export const project = daemonClient.daemon.OmnitronProject;
 export const studio = daemonClient.daemon.OmnitronStudio;
 
 /** Use the CLI lifecycle budget without extending short reads or replaying a lost mutation. */
-export function invokeStackLifecycle<M extends 'startStack' | 'stopStack' | 'resumeInstalledStack' | 'checkRelease'>(
+export function invokeStackLifecycle<M extends 'startStack' | 'deployReviewedRelease' | 'stopStack' | 'resumeInstalledStack' | 'checkRelease'>(
   method: M, input: Parameters<IProjectRpcService[M]>[0],
 ): Promise<Awaited<ReturnType<IProjectRpcService[M]>>> {
   return daemonClient.invoke('daemon', 'OmnitronProject', method, [input], { timeout: LONG_REQUEST_TIMEOUT });

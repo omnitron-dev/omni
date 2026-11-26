@@ -405,26 +405,48 @@ export async function stackReleaseAdmissionCommand(project: string, stack: strin
     const report = await service.checkRelease({ project, stack, release, prepare });
     const accepted = report.ok || (prepare && report.state === 'requires-stop');
     if (!accepted) process.exitCode = 1;
-    const action = report.declarations === 'refresh-required' ? declarationRefreshCommand(project, stack, release) : undefined;
+    const action = report.deployment ? releaseDeploymentCommand(project, stack, release, report.deployment.digest)
+      : report.declarations === 'refresh-required' ? declarationRefreshCommand(project, stack, release) : undefined;
     if (!emitJson({ project, stack, release, ...(prepare && { prepared: accepted }), ...report, ...(action && { action }) })) {
       if (accepted) emitSuccess(report.because);
       else emitError(report.because, { project, stack, release });
-      if (action) emitInfo(`${report.declarationReason ?? 'Candidate declarations require refresh'}. Administrator: ${action}`);
+      if (report.deployment) emitInfo(`Node ${report.deployment.nodeId}. Return release: ${report.deployment.rollback.release}. Administrator: ${action}`);
+      else if (action) emitInfo(`${report.declarationReason ?? 'Candidate declarations require refresh'}. Administrator: ${action}`);
     }
   } catch (error) {
     reportLifecycleError(error, prepare ? 'preparing the release' : 'checking release admission', { project, stack, release });
   } finally { await client.disconnect(); }
 }
 
+function releaseDeploymentCommand(project: string, stack: string, release: string, digest: string): string {
+  return 'omnitron stack start ' + [project, stack].map(shellEscape).join(' ') + ' --release ' + shellEscape(release) + ' --deployment-review ' + shellEscape(digest);
+}
+
 export async function stackStartCommand(
   projectName: string,
   stackName: string,
-  opts?: import('../shared/dto/project.js').StackStartOptions & { dryRun?: boolean; prepared?: string },
+  opts?: import('../shared/dto/project.js').StackStartOptions & { dryRun?: boolean; prepared?: string; deploymentReview?: string },
 ): Promise<void> {
   // Starting a stack boots every app in it; a minute is not enough.
   const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
   try {
     const svc = await client.service<IProjectRpcService>('OmnitronProject');
+    if (opts?.deploymentReview !== undefined && (!opts.release || !/^[a-f0-9]{64}$/.test(opts.deploymentReview) || opts.dryRun ||
+        opts.review || opts.prepared || opts.workingTree || opts.allowDirty || opts.reinstall || opts.infrastructure))
+      throw Error('Use --deployment-review only with the exact --release from check-release');
+    if (opts?.dryRun && opts.release && !opts.infrastructure && !opts.prepared && !opts.workingTree && !opts.allowDirty && !opts.reinstall && !opts.review) {
+      const admitted = await svc.checkRelease({ project: projectName, stack: stackName, release: opts.release });
+      if (admitted.deployment || admitted.state === 'replacement-unavailable') {
+        if (!admitted.ok) process.exitCode = 1;
+        if (!emitJson(admitted)) {
+          if (admitted.deployment) {
+            emitInfo(`Node ${admitted.deployment.nodeId}. Return release: ${admitted.deployment.rollback.release}.`);
+            emitInfo(releaseDeploymentCommand(projectName, stackName, opts.release, admitted.deployment.digest));
+          } else emitError(admitted.because);
+        }
+        return;
+      }
+    }
     if (opts?.infrastructure !== undefined && !['preserve', 'reconcile'].includes(opts.infrastructure)) throw Error('Use --infrastructure preserve or reconcile');
     if (opts?.dryRun && opts.review) throw Error('Use --review when executing a previously inspected start');
     if (opts?.dryRun && opts.infrastructure === 'reconcile') throw Error('Start --dry-run reviews preservation; reconcile requires a separately approved infrastructure change');
@@ -455,7 +477,9 @@ export async function stackStartCommand(
     emitStep(`Starting stack ${projectName}/${stackName}...`);
 
     const scope = { project: projectName, stack: stackName, ...(opts?.release && { release: opts.release }) };
-    const start = () => svc.startStack({
+    const start = () => opts?.deploymentReview
+      ? svc.deployReviewedRelease({ project: projectName, stack: stackName, release: opts.release!, review: opts.deploymentReview })
+      : svc.startStack({
       project: projectName,
       stack: stackName,
       ...(opts?.allowDirty === true ? { allowDirty: true } : {}),

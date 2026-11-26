@@ -249,6 +249,8 @@ export interface InstalledStackResumeResult {
 }
 
 export interface StackStopProgress {
+  /** Identifies the reviewed release replacement that requested this stop. */
+  deploymentReview?: string;
   /** Binds this local stop to its registration, PostgreSQL databases and retained native container identities. */
   retainedDatabaseSha256?: string;
   backupWindow?: { id: string; target: string; expiresAt: string };
@@ -323,6 +325,9 @@ export interface PreparedRemoteReleaseSource {
 }
 
 export interface ReleaseAdmission {
+  /** A whole-stack replacement on its selected recipient. Confirmation requires administrator access. */
+  deployment?: RemoteReleaseDeployment;
+  deploymentPhase?: RemoteDeploymentPhase;
   /** Installed candidate declarations needed for a preservation review. This is independent of the stop fence. */
   declarations?: 'refresh-required';
   declarationReason?: string;
@@ -332,7 +337,20 @@ export interface ReleaseAdmission {
   preparedArtifactVolumes?: PreparedArtifactVolume[];
   ok: boolean;
   because: string;
-  state?: 'missing' | 'unprepared' | 'requires-stop';
+  state?: 'missing' | 'unprepared' | 'requires-stop' | 'replacement-unavailable';
+}
+
+export type RemoteDeploymentPhase = 'stopping' | 'stopped' | 'selecting' | 'selected' | 'starting';
+
+export interface RemoteReleaseDeployment extends RuntimeStackScope {
+  digest: string;
+  nodeId: string;
+  release: string;
+  prepared: string;
+  rollback: { release: string; prepared: string };
+  stop: { digest: string; applications: string[]; containers: string[] };
+  previousDeclarationCommit?: string;
+  recoveryOf?: string;
 }
 
 export interface SelectedRelease {

@@ -309,7 +309,20 @@ Selection rechecks the stopped owner on its enrolled connection and commits the 
 
 For a return to the original registration, first complete a reviewed full stop on the replacement. Run `select-placement acme prod --from-node "$new_id" --restore-registration --json`, then repeat with its `--review` digest. A return checks the original stable endpoint, SSH enrollment and clean Git commit. To deploy there, specify a release at that exact commit. Data promotion, recovery and signer custody each require their own positive evidence before enabling writers.
 
-#### Update the declaration after a move
+#### Replace a release on its selected node
+
+On `main` after 0.4.17, open **Configuration & actions → Deploy release** in the stack workspace. Choose an immutable release prepared for the selected recipient. While the current applications are still running, Console verifies their launch evidence, both release archives and migration histories, the enrolled node, and the exact scope of the stop. If the registered node declaration changed, Omnitron finds its previous fingerprint in the project's Git history. Commit the current declaration before reviewing the change.
+
+The dialog shows the recipient, how many applications and containers will stop, and which release it verified for return. An administrator can press **Stop and deploy** once. In the CLI, review the release and confirm its digest.
+
+```sh
+omnitron stack start acme prod --release "$next_release" --dry-run --json
+omnitron stack start acme prod --release "$next_release" --deployment-review "$digest" --json
+```
+
+Use the `deployment.digest` from the first command. The controller records the stop, selection and start. After a disconnect, reopen the dialog and choose **Continue deployment**, or repeat the CLI confirmation with the same release and digest. The controller checks the running generations before confirming an unacknowledged start. To return, review the previous release and confirm its new digest. A partial start permits a return to the recorded previous release when the recipient accounts for every remaining process. An incompatible migration history requires a separate transition with a compatible recovery release.
+
+#### Review a placement change explicitly
 
 When the registered stack changes between releases, run `stack prepare-release` against the updated registration and keep its new digest. Use the **currently selected recipient** as `--from-node`. Supply the full Git commit whose tracked `omnitron.stacks.json` reproduces the previous registration fingerprint.
 

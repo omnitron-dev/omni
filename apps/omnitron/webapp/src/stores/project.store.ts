@@ -53,7 +53,7 @@ interface ProjectState {
    * `release: { mode: 'required' }` refuses that outright and names the two
    * commands instead — see `admitRelease`.
    */
-  startStack: (project: string, stack: string, opts?: { release?: string; allowDirty?: boolean; workingTree?: boolean }) => Promise<StackActionResult>;
+  startStack: (project: string, stack: string, opts?: { release?: string; allowDirty?: boolean; workingTree?: boolean; deploymentReview?: string }) => Promise<StackActionResult>;
   resumeInstalledStack: (project: string, stack: string) => Promise<void>;
   stopStack: (project: string, stack: string, review: string, keepInfrastructure?: boolean) => Promise<void>;
   createStack: (project: string, data: { name: string; type: 'local' | 'remote' | 'cluster'; apps: string[] | 'all'; nodeIds?: string[] }) => Promise<IStackInfo>;
@@ -278,7 +278,11 @@ export const useProjectStore = create<ProjectState>((set, get) => {
   removeProject: name => changeProject(() => projectRpc.removeProject({ name })),
 
   startStack: (project, stack, opts) => runStackOperation(project, stack, 'starting', async () => {
-    const reply = await invokeStackLifecycle('startStack', { project, stack,
+    if (opts?.deploymentReview !== undefined && (!opts.release || opts.allowDirty || opts.workingTree))
+      throw Error('A deployment review requires its exact release');
+    const reply = opts?.deploymentReview !== undefined
+      ? await invokeStackLifecycle('deployReviewedRelease', { project, stack, release: opts.release!, review: opts.deploymentReview })
+      : await invokeStackLifecycle('startStack', { project, stack,
       ...(opts?.release && { release: opts.release }), ...(opts?.workingTree && { workingTree: true }),
       ...(opts?.allowDirty && { allowDirty: true }),
     });

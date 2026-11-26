@@ -19,10 +19,15 @@ const validName = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
 export interface RemoteSourceRegistration { name: string; path: string; registeredAt: string }
 export interface ReleaseRecipient { host: string; port: number; fingerprint: string; pin: string; managementIdentity: string }
 
-export function remoteReleaseSourceKey(project: string, stack: string, digest: string): string {
-  if (![project, stack].every(name => typeof name === 'string' && validName.test(name)) || !sha256.test(digest))
+export function remoteReleaseSourcePrefix(project: string, stack: string): string {
+  if (![project, stack].every(name => typeof name === 'string' && validName.test(name)))
     throw Error('Invalid prepared remote release identity');
-  return 'release:remote-source:' + project + '/' + stack + ':' + digest;
+  return 'release:remote-source:' + project + '/' + stack + ':';
+}
+
+export function remoteReleaseSourceKey(project: string, stack: string, digest: string): string {
+  if (!sha256.test(digest)) throw Error('Invalid prepared remote release identity');
+  return remoteReleaseSourcePrefix(project, stack) + digest;
 }
 
 async function physicalDirectory(directory: string): Promise<string> {
@@ -62,6 +67,29 @@ export async function committedStackDeclaration(directory: string, stack: string
   if (!isDeepStrictEqual(await registeredStackAtCommit(directory, commit, stack), declaration) || await head() !== commit)
     throw Error('The current registered stack does not match its committed Git declaration');
   return commit;
+}
+
+/** Locate the exact registration in the project's committed declaration history after a move. */
+export async function previousStackDeclaration(directory: string, stack: string, preferred: readonly (string | null | undefined)[],
+  matches: (declaration: IStackConfig) => boolean): Promise<string> {
+  const examined = new Set<string>();
+  const find = async (commits: readonly (string | null | undefined)[]) => {
+    for (const commit of commits) {
+      if (!commit || examined.has(commit)) continue;
+      examined.add(commit);
+      let declaration: IStackConfig;
+      try { declaration = await registeredStackAtCommit(directory, commit, stack); }
+      catch { continue; } // The project file or this stack can predate its registration.
+      if (matches(declaration)) return commit;
+    }
+    return undefined;
+  };
+  const known = await find(preferred);
+  if (known) return known;
+  const history = await git(directory, ['log', '--full-history', '--format=%H', 'HEAD', '--', './omnitron.stacks.json']);
+  const found = await find(history.split('\n'));
+  if (!found) throw Error('The selected stack registration could not be verified in the committed declaration history');
+  return found;
 }
 
 /** Recheck a private source before importing any of its declarations. A shared immutable

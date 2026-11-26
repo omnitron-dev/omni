@@ -1,12 +1,15 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { stackSelectPlacementCommand } from '../../src/commands/stack.js';
+import { stackSelectPlacementCommand, stackStartCommand } from '../../src/commands/stack.js';
 
 const rpc = vi.hoisted(() => ({
   preflightRemotePlacement: vi.fn(), reviewRemotePlacement: vi.fn(), selectRemotePlacement: vi.fn(),
+  checkRelease: vi.fn(), startStack: vi.fn(), deployReviewedRelease: vi.fn(), reviewStackStart: vi.fn(),
 }));
 const client = vi.hoisted(() => ({ service: vi.fn(async () => rpc), disconnect: vi.fn() }));
-const output = vi.hoisted(() => ({ emitJson: vi.fn(() => true), emitError: vi.fn() }));
-vi.mock('../../src/daemon/daemon-client.js', () => ({ createDaemonClient: () => client, LONG_REQUEST_TIMEOUT: 600000 }));
+const output = vi.hoisted(() => ({ emitJson: vi.fn(() => true), emitError: vi.fn(), emitStep: vi.fn(), isJsonMode: () => true }));
+vi.mock('../../src/daemon/daemon-client.js', async original => ({
+  ...await original<typeof import('../../src/daemon/daemon-client.js')>(), createDaemonClient: () => client,
+}));
 vi.mock('../../src/commands/output.js', () => output);
 
 const options = { fromNode: 'receiver', release: 'release-2', prepared: 'a'.repeat(64), previousDeclarationCommit: 'b'.repeat(40) };
@@ -40,4 +43,30 @@ it('reports an unsupported preflight without invoking a post-stop operation', as
   expect(output.emitJson).not.toHaveBeenCalled();
   expect(rpc.reviewRemotePlacement).not.toHaveBeenCalled();
   expect(rpc.selectRemotePlacement).not.toHaveBeenCalled();
+});
+
+it('uses one reviewed deployment from the ordinary start command and dry run', async () => {
+  const digest = 'e'.repeat(64), input = { project: 'sample', stack: 'prod', release: 'release-2' };
+  const admission = { ok: true, deployment: { digest, nodeId: 'receiver', rollback: { release: 'release-1' } } };
+  rpc.checkRelease.mockResolvedValue(admission);
+  await stackStartCommand(input.project, input.stack, { release: input.release, dryRun: true });
+  expect(rpc.checkRelease).toHaveBeenCalledWith(input);
+  expect(output.emitJson).toHaveBeenCalledWith(admission);
+  expect(rpc.deployReviewedRelease).not.toHaveBeenCalled();
+  rpc.deployReviewedRelease.mockResolvedValue({ status: 'running', apps: [{ name: 'main', status: 'online' }] });
+  await stackStartCommand(input.project, input.stack, { release: input.release, deploymentReview: digest });
+  expect(rpc.deployReviewedRelease).toHaveBeenCalledExactlyOnceWith({ ...input, review: digest });
+  expect(rpc.startStack).not.toHaveBeenCalled();
+  expect(rpc.reviewStackStart).not.toHaveBeenCalled();
+  expect(output.emitError).not.toHaveBeenCalled();
+});
+
+it('keeps a refused replacement visible without issuing a preservation or start request', async () => {
+  rpc.checkRelease.mockResolvedValue({ ok: false, state: 'replacement-unavailable', because: 'Missing return release' });
+  await stackStartCommand('sample', 'prod', { release: 'release-2', dryRun: true });
+  expect(process.exitCode).toBe(1);
+  await stackStartCommand('sample', 'prod', { release: 'release-2', deploymentReview: 'f'.repeat(64), workingTree: true });
+  expect(rpc.reviewStackStart).not.toHaveBeenCalled();
+  expect(rpc.startStack).not.toHaveBeenCalled();
+  expect(rpc.deployReviewedRelease).not.toHaveBeenCalled();
 });

@@ -642,6 +642,7 @@ stack
   .option('--infrastructure <mode>', 'preserve: verify existing resources and forbid provisioning/setup/migrations; reconcile: explicitly authorize normal infrastructure deployment')
   .option('--dry-run', 'Review launch admission and existing native infrastructure without startup effects')
   .option('--prepared <digest>', 'Inspect the candidate source and recipient with --release and --dry-run')
+  .option('--deployment-review <digest>', 'Replace a release on the selected recipient using the complete deployment review')
   .option('--review <digest>', 'Start in preserve mode only if launch and infrastructure still match this review')
   // For an operator who doubts a node's record of what an app runs: every
   // artifact is shipped and every app restarted, whatever the record says.
@@ -653,6 +654,7 @@ stack
       ...(typeof options.release === 'string' ? { release: options.release } : {}),
       ...(options.workingTree === true ? { workingTree: true } : {}),
       ...(typeof options.prepared === 'string' ? { prepared: options.prepared } : {}),
+      ...(typeof options.deploymentReview === 'string' ? { deploymentReview: options.deploymentReview } : {}),
       ...(typeof options.infrastructure === 'string' ? { infrastructure: options.infrastructure as 'preserve' | 'reconcile' } : {}),
       ...(options.dryRun === true ? { dryRun: true } : {}),
       ...(typeof options.review === 'string' ? { review: options.review } : {}),

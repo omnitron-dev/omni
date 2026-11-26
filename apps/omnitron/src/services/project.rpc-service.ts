@@ -378,6 +378,7 @@ export class ProjectRpcService {
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async startStack(data: { project: string; stack: string } & import('../shared/dto/project.js').StackStartOptions): Promise<IStackInfo> {
+    if (Object.hasOwn(data, 'deploymentReview')) throw Errors.badRequest('Use the administrator-reviewed release deployment');
     if (Object.hasOwn(data, 'prepared') || Object.hasOwn(data, 'preparedSource'))
       throw Errors.badRequest('A prepared remote source is for inspection; it cannot activate a replacement');
     const logicalName = data.stack;
@@ -461,6 +462,13 @@ export class ProjectRpcService {
   async checkRelease(data: { project: string; stack: string; release: string; prepare?: boolean }): Promise<import('../shared/dto/project.js').ReleaseAdmission> {
     data = await this.projectService.resolveProjectStack(data);
     return this.projectService.checkRelease(data.project, data.stack, data.release, data.prepare === true);
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async deployReviewedRelease(data: { project: string; stack: string; release: string; review: string }): Promise<IStackInfo> {
+    const scope = await this.projectService.resolveProjectStack(data);
+    const info = await this.projectService.deployReviewedRelease(scope.project, scope.stack, data.release, data.review);
+    return { ...publicStack(info), name: data.stack, runtimeScope: { project: scope.project, stack: scope.stack } };
   }
 
   @Public({ auth: { roles: VIEWER_ROLES } })

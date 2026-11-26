@@ -120,6 +120,8 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
   const releaseId = given?.id ?? picked.trim();
   const key = JSON.stringify([project,target,releaseId]);
   const verdict = answer?.key === key ? answer : null;
+  const deployment = verdict?.deployment;
+  const canDeploy = !deployment || can('OmnitronProject.deployReviewedRelease');
 
   useEffect(() => {
     if (open) {
@@ -176,13 +178,13 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
   };
 
   const handleDeploy = async () => {
-    if (!releaseId || !target || !verdict?.ok || verdict.declarations === 'refresh-required') return;
+    if (!releaseId || !target || !verdict?.ok || verdict.declarations === 'refresh-required' || !canDeploy) return;
     setDeploying(true);
     setFailure(null);
     const attempt = selection.current;
     try {
       const outcome = await observeStackStart({ project, stack: target, release: releaseId },
-        () => startStack(project, target, { release: releaseId }),
+        () => startStack(project, target, { release: releaseId, ...(deployment && { deploymentReview: deployment.digest }) }),
         () => projectRpc.getDeployProgress({ project, stack: target }),
         (records, _changed, observable) => {
           if (selection.current === attempt) setActivity({ records, available: observable });
@@ -305,12 +307,20 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
           )}
 
           {verdict && !preparing && (
-            <Alert severity={needsDeclarations ? 'warning' : verdict.ok ? 'success' : verdict.state ? 'info' : 'error'}
+            <Alert severity={needsDeclarations || deployment ? 'warning' : verdict.ok ? 'success' : verdict.state && verdict.state !== 'replacement-unavailable' ? 'info' : 'error'}
               action={needsDeclarations && canRefreshDeclarations
                 ? <Button color="inherit" size="small" onClick={() => setMetadataTarget(key)}>Update declarations…</Button> : undefined}>
-              <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
-                {verdict.because}
-              </Typography>
+              {deployment ? <Stack spacing={0.5} sx={{ overflowWrap: 'anywhere' }}>
+                <Typography variant="body2">{verdict.deploymentPhase ? 'Continue deployment on' : 'Replace the release on'} <strong>{deployment.nodeId}</strong></Typography>
+                <Box component="details" sx={{ typography: 'body2', '& summary': { cursor: 'pointer' } }}>
+                  <summary>{verdict.deploymentPhase ? 'Reviewed stop' : 'Full stop'} · {deployment.stop.applications.length} {deployment.stop.applications.length === 1 ? 'application' : 'applications'} · {deployment.stop.containers.length} {deployment.stop.containers.length === 1 ? 'container' : 'containers'}</summary>
+                  <Typography variant="body2">Applications to stop · {deployment.stop.applications.join(', ') || 'None'}</Typography>
+                  <Typography variant="body2">Containers to remove · {deployment.stop.containers.join(', ') || 'None'}</Typography>
+                </Box>
+                <Typography variant="body2">Verified return release · {deployment.rollback.release}</Typography>
+                {deployment.recoveryOf && <Typography variant="body2">Recover the previous release after an incomplete start.</Typography>}
+                {!canDeploy && <Typography variant="body2">An administrator must confirm this replacement.</Typography>}
+              </Stack> : <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{verdict.because}</Typography>}
               {needsDeclarations && verdict.declarationReason && verdict.declarationReason !== verdict.because &&
                 <Typography variant="body2">{verdict.declarationReason}</Typography>}
               {needsDeclarations && !canRefreshDeclarations &&
@@ -346,11 +356,11 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
           variant="contained"
           size="small"
           startIcon={deploying ? <CircularProgress size={14} color="inherit" /> : <DeployIcon />}
-          disabled={!releaseId || !target || deploying || preparing || checking || (!needsInspection && !needsPreparation && (needsDeclarations || verdict?.ok !== true))}
+          disabled={!releaseId || !target || deploying || preparing || checking || (!needsInspection && !canDeploy) || (!needsInspection && !needsPreparation && (needsDeclarations || verdict?.ok !== true))}
            {...(needsInspection && { component: RouterLink, to: stackHref(project, target) })}
           onClick={needsInspection ? onClose : needsPreparation ? () => void checkAfterAction(true) : handleDeploy}
         >
-          {deploying ? 'Deploying…' : preparing ? 'Preparing…' : needsInspection ? 'Inspect stack' : verdict?.state === 'missing' ? 'Fetch and verify' : needsPreparation ? 'Prepare release' : 'Deploy'}
+          {deploying ? 'Deploying…' : preparing ? 'Preparing…' : needsInspection ? 'Inspect stack' : verdict?.state === 'missing' ? 'Fetch and verify' : needsPreparation ? 'Prepare release' : verdict?.deploymentPhase ? 'Continue deployment' : deployment ? 'Stop and deploy' : 'Deploy'}
         </Button>
       </DialogActions>
       {open && canRefreshDeclarations && metadataTarget === key && <TopologyMetadataDialog

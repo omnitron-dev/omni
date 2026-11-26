@@ -1,5 +1,49 @@
 import { test, expect, stubInventory } from './fixtures.mjs';
 
+test('deploys a prepared release to the selected receiver from the stack workspace', async ({ page, url }) => {
+  const digest = 'f'.repeat(64), actions = [];
+  const app = { name: 'main', handleKey: 'sample/deployed/main', status: 'online', pid: 213, uptime: 9000, instances: 1, restarts: 0 };
+  const stack = { name: 'prod', type: 'remote', status: 'running', apps: [app], nodes: [], config: { type: 'remote' },
+    selectedRelease: { id: 'release-one', manifestSha256: 'a'.repeat(64) } };
+  await stubInventory(page, {
+    'OmnitronProject.listProjects': [{ name: 'sample', displayName: 'Sample', path: '/sample', totalStacks: 1, runningStacks: 1 }],
+    'OmnitronProject.listStacks': [stack], 'OmnitronProject.getDeployProgress': [], 'OmnitronRelease.list': { releases: [] },
+    'OmnitronProject.checkRelease': input => input.release === 'release-two' ? { ok: true, ...(actions.length && { deploymentPhase: 'starting' }), deployment: {
+      nodeId: 'receiver-a', release: input.release, digest, rollback: { release: 'release-one' },
+      stop: { applications: ['main'], containers: ['database'] },
+    } } : { ok: false, state: 'replacement-unavailable', because: 'Source has not been prepared' },
+    'OmnitronProject.startStack': input => { actions.push(['start', input]); return stack; },
+    'OmnitronProject.deployReviewedRelease': input => {
+      actions.push(['deploy', input]);
+      return actions.length === 1 ? new Error('Connection lost before confirmation') : stack;
+    },
+  }, 'online', { role: 'admin' });
+  await page.goto(url + '/projects/sample/stacks/prod');
+  await page.getByRole('tab', { name: 'Configuration & actions', exact: true }).click();
+  await page.getByRole('button', { name: 'Deploy release…' }).click();
+  const dialog = page.getByRole('dialog'), field = dialog.getByRole('combobox', { name: 'Release ID' });
+  await field.fill('release-two');
+  await expect(dialog.getByText('receiver-a', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('Verified return release · release-one')).toBeVisible();
+  await dialog.getByText('Full stop · 1 application · 1 container').click();
+  await expect(dialog.getByText('Applications to stop · main')).toBeVisible();
+  await expect(dialog.getByText('Containers to remove · database')).toBeVisible();
+  await field.fill('other');
+  await expect(dialog.getByText('Source has not been prepared')).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Deploy', exact: true })).toBeDisabled();
+  expect(actions).toEqual([]);
+  await field.fill('release-two');
+  await dialog.getByRole('button', { name: 'Stop and deploy' }).click();
+  await expect(dialog.getByText(/No start acknowledgement|Connection lost before confirmation/i)).toBeVisible();
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await page.getByRole('button', { name: 'Deploy release…' }).click();
+  await field.fill('release-two');
+  await dialog.getByRole('button', { name: 'Continue deployment' }).click();
+  await expect(dialog).toHaveCount(0);
+  const expected = ['deploy', { project: 'sample', stack: 'prod', release: 'release-two', review: digest }];
+  expect(actions).toEqual([expected, expected]);
+});
+
 for (const width of [1440, 360]) {
   test(`stack health, retained history and read permissions at ${width}px`, async ({ page, url }, testInfo) => {
     const at = '2026-11-17T08:00:00Z';

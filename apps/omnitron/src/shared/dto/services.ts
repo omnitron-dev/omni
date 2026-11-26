@@ -432,6 +432,7 @@ export interface IProjectRpcService {
   reviewPreparedStackStart(data: { project: string; stack: string; release: string; digest: string }): Promise<import('./project.js').StackStartReview>;
   reviewPreparedHostBindings(data: { project: string; stack: string; release: string; digest: string; nodeId: string }): Promise<import('./host-bindings.js').HostBindingReview>;
   checkRelease(data: { project: string; stack: string; release: string; prepare?: boolean }): Promise<import('./project.js').ReleaseAdmission>;
+  deployReviewedRelease(data: { project: string; stack: string; release: string; review: string }): Promise<IStackInfo>;
   reviewStackStop(data: { project: string; stack: string; keepInfrastructure?: boolean }): Promise<import('./project.js').StackStopReview>;
   stopStack(data: { project: string; stack: string; review?: string; keepInfrastructure?: boolean }): Promise<IStackInfo>;
   stopStackForRuntime(data: { project: string; stack: string; review: string; backupWindowId: string }): Promise<IStackInfo>;

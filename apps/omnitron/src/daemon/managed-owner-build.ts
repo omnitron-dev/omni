@@ -19,10 +19,24 @@ async function native(file: string, args: string[]) {
 function requireProof(condition: unknown, reason: string): asserts condition {
   if (!condition) throw Error('Resident owner build could not be verified: ' + reason);
 }
-async function trustedFile(file: string) {
+/** The supervisor installs a system definition as root. The service process runs as its own account. */
+export async function readManagedOwnerServiceFile(file: string, scope: ManagedRuntime['scope']) {
   const stat = await fs.lstat(file);
-  requireProof(stat.isFile() && (stat.mode & 0o022) === 0 && stat.uid === process.getuid!() && await fs.realpath(file) === file,
-    'unsafe or noncanonical service file');
+  requireProof(stat.isFile() && await fs.realpath(file) === file, 'noncanonical service file');
+  requireProof((stat.mode & 0o022) === 0, 'group-writable or world-writable service file');
+  if (scope === 'system') {
+    requireProof(stat.uid === 0, 'system service file must be owned by root');
+    let directory = path.dirname(file);
+    for (;;) {
+      const parent = await fs.lstat(directory);
+      requireProof(parent.isDirectory() && parent.uid === 0 && (parent.mode & 0o022) === 0,
+        'system service directory is writable outside its administrator');
+      if (directory === path.dirname(directory)) break;
+      directory = path.dirname(directory);
+    }
+  } else {
+    requireProof(stat.uid === process.getuid!(), 'user service file belongs to another account');
+  }
   return stat;
 }
 
@@ -35,7 +49,7 @@ async function darwin(config: ManagedRuntime, pid: number, argv: string[], boot:
   const loaded = job.match(/^[\t ]*arguments = \{\n([\s\S]*?)\n[\t ]*\}/m)?.[1]?.split('\n').map(s => s.trim());
   requireProof(state.state === 'active' && state.mainPid === pid && file && path.isAbsolute(file) &&
     job.match(/^\s*program = (.+)$/m)?.[1] === argv[0] && JSON.stringify(loaded) === JSON.stringify(argv), 'launchd binding differs');
-  const stat = await trustedFile(file);
+  const stat = await readManagedOwnerServiceFile(file, config.scope);
   requireProof(stat.size <= 128 * 1024, 'unexpected plist size');
   const plist = JSON.parse(await native('/usr/bin/plutil', ['-convert', 'json', '-o', '-', '--', file]));
   requireProof(plist.Label === config.owner.label && (!plist.Program || plist.Program === argv[0]) &&
@@ -66,7 +80,7 @@ async function linux(config: ManagedRuntime, pid: number, argv: string[], boot: 
   requireProof(values['Id'] === unit && values['MainPID'] === String(pid) && values['LoadState'] === 'loaded' &&
     values['ActiveState'] === 'active' && values['NeedDaemonReload'] === 'no' && values['DropInPaths'] === '' && group &&
     path.basename(group) === unit && file && path.isAbsolute(file) && path.basename(file) === unit, 'systemd binding differs');
-  const stat = await trustedFile(file);
+  const stat = await readManagedOwnerServiceFile(file, config.scope);
   requireProof(stat.size <= 128 * 1024 && values['ExecStart']?.includes('path=' + argv[0] + ' ; argv[]=' + argv.join(' ') + ' ;'), 'systemd owner command differs');
   const proc = '/proc/' + pid;
   const [actual, binary, inode, owner, cmd, groups, fields, cpu, times] = await Promise.all([

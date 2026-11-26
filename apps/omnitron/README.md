@@ -182,6 +182,8 @@ omnitron release build "$PROJECT" --project-commit "$PROJECT_COMMIT" --omni-comm
 
 The producer checks each committed Git blob against the lockfile’s SHA-512, builds the selected framework commit in a clean checkout, and packs its workspaces again. Each reproduced archive must match the original bytes before the producer installs the project. The release records the verified source commit, tree and package integrities.
 
+For repeated releases, use a running builder through Console or `omnitron release build … --detach`. It remembers up to 64 successful SDK reproductions. A subsequent application commit can reuse one when the upstream commit and tree, archive integrities, build environment, Node executable and ABI, pnpm, Git and target platform match. Every build still checks the selected upstream ref, rereads the committed archives and verifies the installed package files. Restarting the builder starts a fresh set of proofs.
+
 ## Starting with existing infrastructure
 
 For a newly built or previously published release on an independently owned local

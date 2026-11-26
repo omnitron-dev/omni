@@ -40,6 +40,7 @@ import type { GateOutcome, ReleaseManifest, ReleaseSource } from './manifest.js'
 
 const exec = promisify(execFile);
 const MINUTE = 60_000;
+const acceptedFrameworkReproductions = new Set<string>();
 
 export interface ReleaseBuildOptions {
   /** The project commit to build; default: the project checkout's HEAD. */
@@ -649,7 +650,8 @@ async function buildRelease(
     registry = await reproduceVendoredFramework(layout.packages, {
       projectDir: workspacePath, projectCommit: projectSha, frameworkCommit: omniSource.commit,
       frameworkSource: selectedSource!, sourceBase: workspacePath,
-      scratch: path.join(srcRoot, 'framework-proof'), env: upstreamEnv,
+      scratch: path.join(srcRoot, 'framework-proof'), env: upstreamEnv, accepted: acceptedFrameworkReproductions,
+      onReuse: () => say('rechecked committed SDK archives against a reproduction by this builder', 19),
       ...(signal ? { signal } : {}),
       run: async (command, args, cwd, toolEnv) => {
         stillWanted();

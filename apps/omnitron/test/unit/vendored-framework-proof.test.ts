@@ -70,30 +70,40 @@ it('refuses a forged archive and matching consumer lock even when its clean buil
   const project = path.join(root, 'project'), archive = path.join(project, file);
   await fs.mkdir(path.dirname(archive), { recursive: true });
   await command(project, 'git', 'init', '-q', '-b', 'main');
+  const accepted = new Set<string>();
+  let builds = 0, reused = 0;
   const run = async (tool: string, args: string[], cwd: string, env: NodeJS.ProcessEnv) => {
     if (tool === 'pnpm' && args[0] === 'run') {
+      builds++;
       expect(args).toEqual(['run', 'build']);
       expect(env).toMatchObject({ TURBO_FORCE: 'true', TURBO_CONCURRENCY: '3' });
     }
     if (tool !== 'pnpm' || args[0] !== 'install') await command(cwd, tool, ...args);
   };
-  const check = async (stage: string) => {
+  const check = async (stage: string, variables: NodeJS.ProcessEnv = {}) => {
     await command(pkg, 'pnpm', 'pack', '--out', archive);
     await normalizePackedWorkspace(archive);
     const integrity = 'sha512-' + createHash('sha512').update(await fs.readFile(archive)).digest('base64');
     const pin = { name, version, file, integrity };
+    await fs.writeFile(path.join(project, 'application.txt'), stage);
     const projectCommit = await commit(project);
     const frameworkSource = await vendoredFrameworkSource([pin], { projectDir: project, projectCommit, frameworkCommit: sha });
     expect(frameworkSource).toEqual({ repository: upstream });
     return reproduceVendoredFramework([pin], { projectDir: project, projectCommit, frameworkCommit: sha,
       frameworkSource: { ...frameworkSource, ref: 'refs/heads/main' }, sourceBase: project,
-      scratch: path.join(root, stage), run, env: {} });
+      scratch: path.join(root, stage), run, env: { ...process.env, ...variables }, accepted, onReuse: () => { reused++; } });
   };
   const result = await check('clean');
   expect(result.source).toMatchObject({ repo: upstream, ref: 'refs/heads/main', commit: sha, onRemote: false,
     reproduced: { tree, packages: [{ file, name, version }] } });
   expect(result.source.registry).toBeUndefined();
+  const repeat = await check('next-project-commit');
+  expect(repeat.source).toEqual(result.source);
+  expect({ builds, reused }).toEqual({ builds: 1, reused: 1 });
+  await check('different-build-environment', { NODE_ENV: 'different-build-environment' });
+  expect({ builds, reused }).toEqual({ builds: 2, reused: 1 });
   // The package remains otherwise identical and the clean BUILD.json is preserved.
   await fs.writeFile(path.join(pkg, 'dist/index.js'), 'export default 2;\n');
   await expect(check('forged')).rejects.toThrow(/archive differs from the committed SHA-512/);
+  expect({ builds, reused }).toEqual({ builds: 3, reused: 1 });
 }, 60_000);

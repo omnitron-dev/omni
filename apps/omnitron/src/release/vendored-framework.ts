@@ -7,11 +7,12 @@ import { Readable } from 'node:stream';
 import { promisify } from 'node:util';
 import { directoryOf, readWorkspace } from '../services/bundle-builder.js';
 import type { VendoredPackage } from './layout.js';
-import { normalizePackedWorkspace } from './portable-archive.js';
+import { normalizePackedWorkspace, sha256File } from './portable-archive.js';
 import { inspectFrameworkArchive, verifiedFramework } from './registry-framework.js';
 import { checkoutFrameworkSource, defaultFrameworkSource, type FrameworkStep } from './framework-source.js';
 import { parseFrameworkSource, type FrameworkSource } from '../shared/framework-source.js';
 import type { ReleaseSource } from './manifest.js';
+import { targetRuntime } from './target-runtime.js';
 
 const exec = promisify(execFile);
 const SHA = /^[0-9a-f]{40}$/;
@@ -60,7 +61,45 @@ interface Reproduction {
   readonly scratch: string;
   readonly env: NodeJS.ProcessEnv;
   readonly run: FrameworkStep;
+  /** Private to the build process. A project can supply archive bytes, never an accepted proof. */
+  readonly accepted?: Set<string>;
+  readonly onReuse?: () => void;
   readonly signal?: AbortSignal;
+}
+
+async function reproductionKey(source: string, identity: ReleaseSource, tree: string, packages: readonly VendoredPackage[],
+  env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<string | undefined> {
+  const tools: string[][] = [];
+  const searchPath = (env['PATH'] ?? '').split(path.delimiter);
+  for (const name of ['pnpm', 'git']) {
+    const command = await firstExecutable(searchPath, name);
+    if (!command) return undefined;
+    try {
+      const version = await exec(command, ['--version'], { cwd: source, env, signal, timeout: 15_000 });
+      tools.push([name, command, await sha256File(command), version.stdout.trim()]);
+    } catch {
+      signal?.throwIfAborted();
+      return undefined;
+    }
+  }
+  const variables = Object.keys(env).filter(key => key !== 'TMPDIR').sort().map(key => [key, env[key]]);
+  const inventory = packages.map(p => [p.name, p.version, p.integrity]).sort((a, b) => a[0]!.localeCompare(b[0]!));
+  return createHash('sha256').update(JSON.stringify([identity.repo, identity.ref, identity.commit, tree,
+    await targetRuntime(), tools, variables, inventory])).digest('hex');
+}
+
+async function firstExecutable(directories: string[], name: string): Promise<string | undefined> {
+  for (const directory of directories) {
+    if (!path.isAbsolute(directory)) return undefined;
+    const candidate = path.join(directory, name);
+    try {
+      await fs.access(candidate, fs.constants.X_OK);
+      if ((await fs.stat(candidate)).isFile()) return await fs.realpath(candidate);
+    } catch (error) {
+      if (!['ENOENT', 'ENOTDIR', 'EACCES'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error;
+    }
+  }
+  return undefined;
 }
 
 /** Rebuild before the application install or any of its gates can execute. */
@@ -76,13 +115,29 @@ export async function reproduceVendoredFramework(packages: readonly VendoredPack
   delete env['TURBO_TEAM'];
   const identity = await checkoutFrameworkSource(source, { source: options.frameworkSource, commit, sourceBase: options.sourceBase,
     env, run, ...(signal && { signal }) });
-  const epoch = (await git(source, ['show', '-s', '--format=%ct', 'HEAD'], signal)).stdout.trim();
+  const [head, tree, epoch] = (await git(source, ['show', '-s', '--format=%H %T %ct', 'HEAD'], signal)).stdout.trim().split(' ');
+  if (head !== commit || !tree || !SHA.test(tree) || !epoch) throw Error('The upstream checkout differs from the requested commit');
   const buildEnv = { ...env, SOURCE_DATE_EPOCH: epoch, TURBO_FORCE: 'true', TURBO_CONCURRENCY: '3' };
+  const proof = options.accepted && await reproductionKey(source, identity, tree, packages, buildEnv, signal);
+  if (proof && options.accepted?.has(proof)) {
+    const verified = new Map<string, Awaited<ReturnType<typeof inspectFrameworkArchive>>>();
+    for (const pkg of packages) {
+      const bytes = await verifyCommittedArchive(projectDir, projectCommit, pkg, signal);
+      verified.set(pkg.name, await inspectFrameworkArchive(pkg, Readable.from(bytes), signal, commit));
+    }
+    options.onReuse?.();
+    return verifiedFramework({ ...identity, reproduced: { tree, packages } }, verified);
+  }
   await run('pnpm', ['install', '--frozen-lockfile'], source, buildEnv);
   // The selected source owns its complete build contract, including auxiliary
   // declaration passes. Reimplementing only its Turbo "build" task changes SDK bytes.
   await run('pnpm', ['run', 'build'], source, buildEnv);
-  return verifyReproducedFramework(packages, source, identity, scratch, run, buildEnv, signal);
+  const result = await verifyReproducedFramework(packages, source, identity, scratch, run, buildEnv, signal);
+  if (proof && options.accepted && proof === await reproductionKey(source, identity, tree, packages, buildEnv, signal)) {
+    if (options.accepted.size >= 64) options.accepted.delete(options.accepted.values().next().value!);
+    options.accepted.add(proof);
+  }
+  return result;
 }
 
 /** Only the byte-identical result of packing a clean build is used to verify installed and staged files. */

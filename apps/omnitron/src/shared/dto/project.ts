@@ -340,6 +340,8 @@ export interface PreparedRemoteReleaseSource {
 }
 
 export interface ReleaseAdmission {
+  /** File history and producer provenance measured from both immutable release sources. */
+  migrationHistory?: ReleaseMigrationHistory;
   /** A whole-stack replacement on its selected recipient. Confirmation requires administrator access. */
   deployment?: RemoteReleaseDeployment;
   deploymentPhase?: RemoteDeploymentPhase;
@@ -353,6 +355,13 @@ export interface ReleaseAdmission {
   ok: boolean;
   because: string;
   state?: 'missing' | 'unprepared' | 'requires-stop' | 'replacement-unavailable';
+}
+
+export interface ReleaseMigrationHistory {
+  kind: 'existing-history-changed' | 'added-migrations' | 'provenance-unavailable';
+  total: number;
+  /** First 20 affected entries. The total counts all distinct differences in the refused direction. */
+  entries: string[];
 }
 
 export type RemoteDeploymentPhase = 'stopping' | 'stopped' | 'selecting' | 'selected' | 'starting';

@@ -1,12 +1,12 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { stackSelectPlacementCommand, stackStartCommand } from '../../src/commands/stack.js';
+import { stackReleaseAdmissionCommand, stackSelectPlacementCommand, stackStartCommand } from '../../src/commands/stack.js';
 
 const rpc = vi.hoisted(() => ({
   preflightRemotePlacement: vi.fn(), reviewRemotePlacement: vi.fn(), selectRemotePlacement: vi.fn(),
   checkRelease: vi.fn(), startStack: vi.fn(), deployReviewedRelease: vi.fn(), reviewStackStart: vi.fn(),
 }));
 const client = vi.hoisted(() => ({ service: vi.fn(async () => rpc), disconnect: vi.fn() }));
-const output = vi.hoisted(() => ({ emitJson: vi.fn(() => true), emitError: vi.fn(), emitStep: vi.fn(), isJsonMode: () => true }));
+const output = vi.hoisted(() => ({ emitJson: vi.fn(() => true), emitError: vi.fn(), emitInfo: vi.fn(), emitStep: vi.fn(), isJsonMode: () => true }));
 vi.mock('../../src/daemon/daemon-client.js', async original => ({
   ...await original<typeof import('../../src/daemon/daemon-client.js')>(), createDaemonClient: () => client,
 }));
@@ -75,6 +75,20 @@ it('keeps a refused replacement visible without issuing a preservation or start 
   expect(process.exitCode).toBe(1);
   await stackStartCommand('sample', 'prod', { release: 'release-2', deploymentReview: 'f'.repeat(64), workingTree: true });
   expect(rpc.reviewStackStart).not.toHaveBeenCalled();
+  expect(rpc.startStack).not.toHaveBeenCalled();
+  expect(rpc.deployReviewedRelease).not.toHaveBeenCalled();
+});
+
+it('explains an additive-history refusal in check-release and preserves its evidence in a JSON dry run', async () => {
+  const refusal = { ok: false, state: 'replacement-unavailable', because: 'The return release predates 002.sql',
+    migrationHistory: { kind: 'added-migrations', total: 1, entries: ['002.sql'] } };
+  rpc.checkRelease.mockResolvedValue(refusal);
+  output.emitJson.mockReturnValueOnce(false);
+  await stackReleaseAdmissionCommand('sample', 'prod', 'next', false);
+  expect(output.emitInfo).toHaveBeenCalledWith(expect.stringMatching(/physical return point/));
+  expect(process.exitCode).toBe(1);
+  await stackStartCommand('sample', 'prod', { release: 'next', dryRun: true });
+  expect(output.emitJson).toHaveBeenLastCalledWith(refusal);
   expect(rpc.startStack).not.toHaveBeenCalled();
   expect(rpc.deployReviewedRelease).not.toHaveBeenCalled();
 });

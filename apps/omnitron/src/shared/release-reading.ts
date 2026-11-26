@@ -2,8 +2,16 @@
 
 import type { GateOutcome, ReleaseManifest } from '../release/manifest.js';
 import type { DeployProgressRecord, ReleaseDeploymentDto } from './dto/services.js';
-import type { IProjectInfo, IStackInfo } from './dto/project.js';
+import type { IProjectInfo, IStackInfo, ReleaseMigrationHistory } from './dto/project.js';
 import type { RuntimeReleaseEvidence } from '../config/types.js';
+
+export function migrationHistoryAdvice(history: ReleaseMigrationHistory): string {
+  switch (history.kind) {
+    case 'added-migrations': return 'The return release predates these migrations. First-write admission requires the data owner to fence every writer, verify a physical return point, test the candidate on an isolated copy and record the writer decision before opening access.';
+    case 'existing-history-changed': return 'Preserve each applied migration in the candidate and add a new migration for the next change.';
+    case 'provenance-unavailable': return 'Prepare the immutable source of each producer package and the previous release before changing placement.';
+  }
+}
 
 /** Retried and concurrent builds can carry a private-directory suffix. */
 export function readReleaseId(id: string) {

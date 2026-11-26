@@ -1,6 +1,6 @@
 import { stackHealthReading, healthLabel } from '../shared/stack-reading.js';
 import { reviewTargetFailures } from '../shared/command-result.js';
-import { observeStackStart } from '../shared/release-reading.js';
+import { migrationHistoryAdvice, observeStackStart } from '../shared/release-reading.js';
 /**
  * Stack CLI Commands — manage stacks on the running daemon
  *
@@ -414,6 +414,7 @@ export async function stackReleaseAdmissionCommand(project: string, stack: strin
     if (!emitJson({ project, stack, release, ...(prepare && { prepared: accepted }), ...report, ...(action && { action }) })) {
       if (accepted) emitSuccess(report.because);
       else emitError(report.because, { project, stack, release });
+      if (report.migrationHistory) emitInfo(migrationHistoryAdvice(report.migrationHistory));
       if (report.deployment) emitInfo(`Node ${report.deployment.nodeId}. Return release: ${report.deployment.rollback.release}. Administrator: ${action}`);
       else if (action) emitInfo(`${report.declarationReason ?? 'Candidate declarations require refresh'}. Administrator: ${action}`);
     }
@@ -446,7 +447,10 @@ export async function stackStartCommand(
           if (admitted.deployment) {
             emitInfo(`Node ${admitted.deployment.nodeId}. Return release: ${admitted.deployment.rollback.release}.`);
             emitInfo(releaseDeploymentCommand(projectName, stackName, opts.release, admitted.deployment.digest));
-          } else emitError(admitted.because);
+          } else {
+            emitError(admitted.because);
+            if (admitted.migrationHistory) emitInfo(migrationHistoryAdvice(admitted.migrationHistory));
+          }
         }
         return;
       }

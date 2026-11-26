@@ -51,7 +51,8 @@ function checkedBlob(root: string, file: string, mode: string, object: string): 
 }
 
 export async function releaseMigrationSources(workspace: string, commit: string, packageDirectories: readonly string[],
-  programs: readonly (PackedMigrationProgram & { directory: string })[] = []): Promise<{
+  programs: readonly (PackedMigrationProgram & { directory: string })[] = [],
+  scope: 'release' | 'whole-workspace' = 'release'): Promise<{
   migrations: Record<string, string>; packages: Map<string, ReleasePackageSource>;
 }> {
   if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(commit)) throw Error('Expected the full release source commit');
@@ -103,7 +104,7 @@ export async function releaseMigrationSources(workspace: string, commit: string,
     const scoped = owned.get(owner);
     const workspaceFile = prefix ? file.slice(prefix.length + 1) : file;
     const stackFile = /^apps\/[^/]+\/(?:.+\/)?migrations\//.test(workspaceFile);
-    if (!scoped && !stackFile) continue;
+    if (!scoped && !stackFile && scope === 'release') continue;
     const digest = createHash('sha256').update(checkedBlob(root, file, blob.mode, blob.oid)).digest('hex');
     if (scoped) scoped[path.posix.relative(owner, file)] = digest;
     migrations[workspaceFile] = digest;
@@ -144,8 +145,8 @@ export function changedReleasedMigrations(
 
 /** A consumer's workspace migration map cannot describe another producer's
  * schema history. Compare the physical package that supplied each retained app. */
-export function changedImportedMigrations(deployed: ReleaseManifest, candidate: ReleaseManifest, apps: readonly string[]): string[] {
-  const changes: string[] = [];
+export function importedMigrationDifferences(deployed: ReleaseManifest, candidate: ReleaseManifest, apps: readonly string[]) {
+  const changes: Array<{ kind: 'file' | 'provenance'; detail: string }> = [];
   const oldSources = new Map(artifactReleaseContexts(deployed).map(source => [source.app, source]));
   const newSources = new Map(artifactReleaseContexts(candidate).map(source => [source.app, source]));
   for (const app of apps) {
@@ -155,14 +156,19 @@ export function changedImportedMigrations(deployed: ReleaseManifest, candidate: 
     const before = oldSources.get(app)!, after = newSources.get(app)!;
     const oldPackage = before.artifact.packageSource, newPackage = after.artifact.packageSource;
     if (!oldPackage || !newPackage) {
-      changes.push(app + ': migration provenance is unavailable for one of the producer packages');
+      changes.push({ kind: 'provenance', detail: app + ': migration provenance is unavailable for one of the producer packages' });
       continue;
     }
     if (Object.keys(oldPackage.migrations).length && (before.manifest.project.repo !== after.manifest.project.repo || oldPackage.directory !== newPackage.directory)) {
-      changes.push(app + ': the package that owns existing migrations changed');
+      changes.push({ kind: 'provenance', detail: app + ': the package that owns existing migrations changed' });
       continue;
     }
-    changes.push(...changedReleasedMigrations(oldPackage.migrations, newPackage.migrations).map(file => app + '/' + file));
+    for (const file of changedReleasedMigrations(oldPackage.migrations, newPackage.migrations))
+      changes.push({ kind: 'file', detail: app + '/' + file });
   }
   return changes;
+}
+
+export function changedImportedMigrations(deployed: ReleaseManifest, candidate: ReleaseManifest, apps: readonly string[]): string[] {
+  return importedMigrationDifferences(deployed, candidate, apps).map(change => change.detail);
 }

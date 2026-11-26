@@ -33,7 +33,7 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 
 import type { DeployProgressRecord, IStackInfo, ReleaseAdmission, ReleaseSummary } from '@omnitron-dev/omnitron/dto/services';
-import { observeStackStart } from '@omnitron-dev/omnitron/release-reading';
+import { migrationHistoryAdvice, observeStackStart } from '@omnitron-dev/omnitron/release-reading';
 import { useAccess } from 'src/auth/access';
 import { invokeStackLifecycle, project as projectRpc } from 'src/netron/client';
 import { releaseApi } from 'src/netron/release-wire';
@@ -321,6 +321,7 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
                 {deployment.recoveryOf && <Typography variant="body2">Recover the previous release after an incomplete start.</Typography>}
                 {!canDeploy && <Typography variant="body2">An administrator must confirm this replacement.</Typography>}
               </Stack> : <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{verdict.because}</Typography>}
+              {verdict.migrationHistory && <Typography variant="body2">{migrationHistoryAdvice(verdict.migrationHistory)}</Typography>}
               {needsDeclarations && verdict.declarationReason && verdict.declarationReason !== verdict.because &&
                 <Typography variant="body2">{verdict.declarationReason}</Typography>}
               {needsDeclarations && !canRefreshDeclarations &&

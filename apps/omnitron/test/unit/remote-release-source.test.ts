@@ -10,7 +10,7 @@ import { StateStore } from '../../src/daemon/state-store.js';
 import { OrchestratorService } from '../../src/orchestrator/orchestrator.service.js';
 import * as containers from '../../src/infrastructure/container-runtime.js';
 import { StackTargets } from '../../src/project/stack-targets.js';
-import { verifyDeploymentMigrations } from '../../src/project/remote-release-deployment.js';
+import { verifyDeploymentMigrations, verifyRegisteredDeploymentMigrations } from '../../src/project/remote-release-deployment.js';
 import { ProjectService } from '../../src/services/project.service.js';
 import { ProjectRpcService } from '../../src/services/project.rpc-service.js';
 import { METADATA_KEYS } from '@omnitron-dev/titan/decorators';
@@ -118,6 +118,25 @@ describe('prepared source of one registered remote release', () => {
     const more = { root: newer, manifest: { ...manifest, project: { ...manifest.project, commit: git(newer, 'rev-parse', 'HEAD') } } };
     await expect(verifyDeploymentMigrations(base, more, ['main'])).rejects.toThrow(/return release.*002.sql/);
     await expect(verifyDeploymentMigrations(more, base, ['main'])).rejects.toThrow(/candidate changes.*002.sql/);
+    await expect(verifyDeploymentMigrations(base, more, ['main'])).rejects.toMatchObject({
+      history: { kind: 'added-migrations', total: 1, entries: ['apps/main/migrations/002.sql'] },
+    });
+    await expect(verifyDeploymentMigrations(more, base, ['main'])).rejects.toMatchObject({ history: { kind: 'existing-history-changed' } });
+    await expect(verifyDeploymentMigrations(base, { ...more, manifest: { ...more.manifest, migrations: {} } }, ['main']))
+      .rejects.toMatchObject({ history: { kind: 'provenance-unavailable', entries: ['apps/main/migrations/002.sql'] } });
+    const registered = { root: original, commit: originalCommit };
+    await expect(verifyRegisteredDeploymentMigrations(registered, more, ['main'], false))
+      .rejects.toMatchObject({ history: { kind: 'added-migrations' } });
+    await expect(verifyRegisteredDeploymentMigrations(registered, more, ['main'], true))
+      .rejects.toMatchObject({ history: { kind: 'existing-history-changed' } });
+    // A registered working tree has no release inventory naming the old application's packages.
+    const outside = 'packages/storage/migrations/001.sql';
+    fs.mkdirSync(path.dirname(path.join(newer, outside)), { recursive: true });
+    fs.writeFileSync(path.join(newer, outside), 'SELECT 1;');
+    git(newer, 'add', outside); git(newer, 'commit', '-qm', 'add storage package migration');
+    await expect(verifyRegisteredDeploymentMigrations(registered,
+      { ...more, manifest: { ...more.manifest, project: { ...more.manifest.project, commit: git(newer, 'rev-parse', 'HEAD') } } }, ['main'], false))
+      .rejects.toMatchObject({ history: { total: 2, entries: ['apps/main/migrations/002.sql', outside] } });
   });
   it.each(['return', 'partial', 'realigned', 'renew'])('checks both enrolled nodes through placement and full stop (%s)', async mode => {
     const f = fixture(), dir = fs.mkdtempSync(path.join(root, 'passive-placement-'));
@@ -420,7 +439,7 @@ describe('prepared source of one registered remote release', () => {
     expect(fs.existsSync(path.join(scope, '.remote-sources'))).toBe(false);
   });
 
-  it.each(['original', 'changed', 'deployment'])('routes a selected placement with a %s registered declaration', async (registrationMode) => {
+  it.each(['original', 'changed', 'deployment', 'migration'])('routes a selected placement with a %s registered declaration', async (registrationMode) => {
     const f = fixture();
     const service = f.service;
     const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
@@ -533,7 +552,7 @@ describe('prepared source of one registered remote release', () => {
           manifest: { id: string; project: { commit: string }; artifacts: { sha256: string }[] } },
       ) => {
         await release.placement.recheck();
-        if (registrationMode === 'deployment') {
+        if (registrationMode === 'deployment' || registrationMode === 'migration') {
           inv.execution.phase = 'running';
           inv.execution.revision++;
           inv.execution.apps[0]!.generation = 'launch-' + inv.execution.revision;
@@ -597,6 +616,40 @@ describe('prepared source of one registered remote release', () => {
       await expect(service.selectRemotePlacement({ ...req, review: review.digest })).resolves.toEqual(route);
       expect(new StackTargets(store).inspect(req).placement?.receipt).toEqual(route);
       expect(journal.inspect({ project: 'sample', stack: 'dev' })).toEqual({ version: 1, revision: 0, nodes: [] });
+      if (registrationMode === 'migration') {
+        const scope = { project: 'sample', stack: 'test' }, rpc = new ProjectRpcService(service);
+        await service.startStack(scope.project, scope.stack, { source: 'operator', infrastructure: 'reconcile' });
+        const extended = 'sample-with-migration', added = 'apps/main/migrations/003.sql';
+        const extendedSource = path.join(root, 'extended-source');
+        git(root, 'clone', '-q', '--no-local', source, extendedSource);
+        fs.mkdirSync(path.dirname(path.join(extendedSource, added)), { recursive: true });
+        fs.writeFileSync(path.join(extendedSource, added), 'SELECT 3;\n');
+        git(extendedSource, 'add', added); git(extendedSource, 'commit', '-qm', 'add migration history');
+        const extendedRelease = path.join(f.input.storeRoot, extended);
+        fs.cpSync(path.join(f.input.storeRoot, id), extendedRelease, { recursive: true });
+        const file = path.join(extendedRelease, 'manifest.json'), manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+        manifest.id = extended;
+        manifest.project.commit = git(extendedSource, 'rev-parse', 'HEAD');
+        const raw = JSON.stringify(manifest);
+        fs.writeFileSync(file, raw);
+        const captured = await captureRemoteSource(scope.project, scope.stack, extended, extendedSource, f.input.storeRoot);
+        const observed = await service.prepareRemoteReleaseSource(scope.project, scope.stack, extended, { ...f.input,
+          sourceRoot: extendedSource, manifestSha256: sha(raw), declarationsSha256: captured.declarationsSha256 });
+        const change = { ...scope, fromNodeId: nodeId, destination: { release: extended, prepared: observed.digest } };
+        const stopCount = () => read.mock.calls.filter(([method]) => method === 'executeNodeStackStop').length;
+        await expect(rpc.checkRelease({ ...scope, release: extended })).resolves.toMatchObject({ ok: false, state: 'replacement-unavailable',
+          migrationHistory: { kind: 'added-migrations', total: 1, entries: [added] } });
+        await expect(rpc.preflightRemotePlacement(change)).rejects.toThrow(/return release/);
+        expect(stopCount()).toBe(0);
+        const reviewedStop = await service.reviewStackStop(scope.project, scope.stack);
+        await service.stopStack(scope.project, scope.stack, reviewedStop.digest!);
+        await expect(rpc.reviewRemotePlacement(change)).rejects.toThrow(/return release/);
+        await expect(rpc.selectRemotePlacement({ ...change, review: 'a'.repeat(64) })).rejects.toThrow(/return release/);
+        expect(journal.inspect(scope).placement?.selected?.release).toBe(id);
+        expect(stopCount()).toBe(1);
+        expect(launches).toHaveLength(1);
+        return;
+      }
       inv.execution.phase = 'running';
       await expect(service.startStack('sample', 'test', { source: 'operator' })).rejects.toThrow(/stopped execution/);
       expect(launches).toHaveLength(0);

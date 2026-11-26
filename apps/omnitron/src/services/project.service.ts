@@ -52,7 +52,7 @@ import { nodeApplicationNames, resolveNodePlacements, stackNodeKey } from '../pr
 import { StackTargets, type StackTarget } from '../project/stack-targets.js';
 import { confirmStoppedPlacement, placementProvisionIntent, remotePlacementReview, type PlacementEndpoint, type RemotePlacement } from '../project/remote-placement.js';
 import { cleanRegisteredCommit, committedStackDeclaration, confirmRegisteredReleaseNode, previousStackDeclaration, registeredStackAtCommit, remoteReleaseSourceKey, remoteReleaseSourcePrefix, type ReleaseRecipient } from '../release/remote-source.js';
-import { accountsForPartialStart, confirmsRelease, verifyDeploymentMigrations, type RemoteDeploymentOperation } from '../project/remote-release-deployment.js';
+import { accountsForPartialStart, confirmsRelease, DeploymentMigrationRefusal, verifyDeploymentMigrations, verifyRegisteredDeploymentMigrations, type RemoteDeploymentOperation } from '../project/remote-release-deployment.js';
 import type { PlacementProvisionIntent, RemoteReleaseDeployment } from '../shared/dto/project.js';
 import { defineEcosystem } from '../config/define-ecosystem.js';
 import { readCapturedSourceSync } from '../release/source-data.js';
@@ -2906,6 +2906,35 @@ export class ProjectService extends EventEmitter {
     return result;
   }
 
+  /** Re-admit the retained bytes against the current registration before promising an executable return. */
+  private async selectedReturnSource(scope: StackExecutionScope, placement: RemotePlacement) {
+    const selected = placement.selected;
+    const saved = selected && this.daemonStateStore.kvGetSync<PreparedRemoteSourceRecord>(
+      remoteReleaseSourceKey(scope.project, scope.stack, selected.prepared), { strict: true });
+    if (!selected || !saved || saved.release !== selected.release || saved.registration !== placement.registration ||
+        saved.recipient !== selected.pin || saved.input.nodeId !== selected.nodeId || saved.input.manifestSha256 !== selected.manifestSha256)
+      throw Error('The selected return release is missing or its proof has changed');
+    return this.inspectRemoteReleaseSource(scope.project, scope.stack, selected.release, saved.input);
+  }
+
+  private async verifyPlacementHistory(scope: StackExecutionScope, intent: Awaited<ReturnType<ProjectService['inspectPlacementIntent']>>,
+    inspectedPrior?: Awaited<ReturnType<ProjectService['inspectRemoteReleaseSource']>>) {
+    const prior = intent.current.placement, candidate = intent.candidate;
+    if (prior?.selected && candidate && prior.selected.manifestSha256 === candidate.admitted.manifestSha256) return;
+    const before = prior?.selected ? inspectedPrior ?? await this.selectedReturnSource(scope, prior) : undefined;
+    if (!before || !candidate) {
+      const release = before ?? candidate;
+      if (!release) throw Error('A prepared release is required to establish migration history');
+      await verifyRegisteredDeploymentMigrations({ root: this.registeredRemoteScope(scope.project, scope.stack).registration.path,
+        commit: intent.originCommit }, { root: release.opened.sourceRoot, manifest: release.admitted.manifest },
+        release.admitted.files.map(file => file.app), Boolean(before));
+      return;
+    }
+    const apps = [...new Set([...before.admitted.files, ...candidate.admitted.files].map(file => file.app))];
+    await verifyDeploymentMigrations({ manifest: before.admitted.manifest, root: before.opened.sourceRoot },
+      { manifest: candidate.admitted.manifest, root: candidate.opened.sourceRoot }, apps);
+  }
+
   async checkRemoteReleaseSource(project: string, stack: string, release: string, digest: string): Promise<PreparedRemoteReleaseSource> {
     return (await this.preparedRemoteRelease(project, stack, release, digest)).receipt;
   }
@@ -3064,9 +3093,9 @@ export class ProjectService extends EventEmitter {
     }
     if (to.nodeId !== fromNodeId && to.host === from.host && to.port === from.port)
       throw Error('Two recipient identities cannot hand off the same endpoint');
-    const cleanCommit = previous && candidate ? null : await cleanRegisteredCommit(baseline.registration.path);
+    const cleanCommit = previous?.selected && candidate ? null : await cleanRegisteredCommit(baseline.registration.path);
     const originCommit = previous ? previous.originCommit : cleanCommit;
-    if (!candidate && (!originCommit || cleanCommit !== originCommit))
+    if ((!candidate || (previous && !previous.selected)) && (!originCommit || cleanCommit !== originCommit))
       throw Error('The original checkout is unavailable or has changed; prepare its exact immutable release instead');
     const recheckIntent = () => {
       if (this.registeredRemoteScope(project, stack).fingerprint !== baseline.fingerprint ||
@@ -3088,10 +3117,12 @@ export class ProjectService extends EventEmitter {
     return this.placementPreflight(request);
   }
 
-  private async placementPreflight(request: PlacementRequest, inspected?: Awaited<ReturnType<ProjectService['inspectRemoteReleaseSource']>>): Promise<PlacementPreflight> {
+  private async placementPreflight(request: PlacementRequest, inspected?: Awaited<ReturnType<ProjectService['inspectRemoteReleaseSource']>>,
+    inspectedPrior?: Awaited<ReturnType<ProjectService['inspectRemoteReleaseSource']>>): Promise<PlacementPreflight> {
     const { project, stack } = request, scope = { project, stack };
     const intent = await this.inspectPlacementIntent(request, inspected);
     const { from, to, current, registration, registrationChange } = intent;
+    await this.verifyPlacementHistory(scope, intent, inspectedPrior);
     if (current.nodes.some(node => node.host !== from.host || node.port !== from.port || node.nodeId && node.nodeId !== from.nodeId))
       throw Error('A single-recipient placement requires resolving all other deployment targets first');
     const observed = await intent.inspectSource(), execution = observed.execution;
@@ -3109,7 +3140,8 @@ export class ProjectService extends EventEmitter {
   private async inspectRemotePlacement(request: PlacementRequest) {
     const { project, stack, fromNodeId } = request, scope = { project, stack };
     this.placementIdle(scope);
-    const { current, from, to, candidate, registration, registrationChange, originCommit, recheckIntent, inspectSource } = await this.inspectPlacementIntent(request);
+    const intent = await this.inspectPlacementIntent(request);
+    const { current, from, to, candidate, registration, registrationChange, originCommit, recheckIntent, inspectSource } = intent;
     const previous = current.placement;
     const stopKey = 'stack:' + stackExecutionKey(scope) + ':last-stop';
     const stop = this.daemonStateStore.kvGetSync<StackStopProgress>(stopKey, { strict: true });
@@ -3126,6 +3158,7 @@ export class ProjectService extends EventEmitter {
     }
     if (!stop || stop.phase !== 'stopped' || stop.supersededAt || stop.keepInfrastructure || current.nodes.length)
       throw Error('Complete a full stop on every source recipient before changing placement');
+    await this.verifyPlacementHistory(scope, intent);
     const observation = await inspectSource();
     const receipt = remotePlacementReview(scope, current.revision, registration, originCommit, from, to, candidate?.receipt ?? null, stop, observation, registrationChange);
     const acknowledgement = stop.nodes[0]!;
@@ -3185,31 +3218,21 @@ export class ProjectService extends EventEmitter {
       throw Error('Wait for the current lifecycle operation before reviewing a release');
     const before = journal.inspect(scope), placement = before.placement, selected = placement?.selected;
     if (!placement || !selected) throw Error('A selected immutable remote release is required');
-    const saved = this.daemonStateStore.kvGetSync<PreparedRemoteSourceRecord>(remoteReleaseSourceKey(project, stack, selected.prepared), { strict: true });
-    if (!saved || saved.release !== selected.release || saved.registration !== placement.registration || saved.recipient !== selected.pin ||
-        saved.input.nodeId !== selected.nodeId || saved.input.manifestSha256 !== selected.manifestSha256)
-      throw Error('The selected return release is missing or its proof has changed');
     const baseline = this.registeredRemoteScope(project, stack), reg = baseline.registration;
     this.placementRecipient(selected.nodeId, selected);
     const replacement = release === selected.release ? null : await this.replacementSource(scope, release, selected.nodeId, baseline.fingerprint);
     const previousDeclarationCommit = placement.registration === baseline.fingerprint ? undefined :
       await previousStackDeclaration(reg.path, stack, [placement.receipt.registrationChange?.currentDeclarationCommit, placement.originCommit],
         prior => stackDefinitionFingerprint([reg.name, reg.path, reg.registeredAt, prior]) === placement.registration);
-    // Re-admit the old bytes against today's registration: yesterday's preparation can no longer authorize their return.
-    const previous = await this.inspectRemoteReleaseSource(project, stack, selected.release, saved.input);
+    const previous = await this.selectedReturnSource(scope, placement);
     const next = replacement ?? previous;
     const requestFor = (target: PreparedRemoteReleaseSource): PlacementRequest => ({
       ...scope, fromNodeId: selected.nodeId, destination: { release: target.release, prepared: target.digest },
       ...(previousDeclarationCommit && { previousDeclarationCommit }),
     });
-    const forward = await this.placementPreflight(requestFor(next.receipt), next);
+    const forward = await this.placementPreflight(requestFor(next.receipt), next, previous);
     await this.checkReceiverStart(scope, placement, forward.source);
     const reverse = next === previous ? forward : await this.placementPreflight(requestFor(previous.receipt), previous);
-    if (next !== previous) {
-      const apps = [...new Set([...previous.admitted.files, ...next.admitted.files].map(file => file.app))];
-      await verifyDeploymentMigrations({ manifest: previous.admitted.manifest, root: previous.opened.sourceRoot },
-        { manifest: next.admitted.manifest, root: next.opened.sourceRoot }, apps);
-    }
     const stop = await this.reviewStackStop(project, stack);
     const target = stop.targets[0], runtime = target?.runtime;
     if (forward.toNodeId !== selected.nodeId || reverse.toNodeId !== selected.nodeId || !isDeepStrictEqual(forward.source, reverse.source) ||
@@ -3547,7 +3570,8 @@ export class ProjectService extends EventEmitter {
           (retiring.length ? ` After a confirmed whole-stack stop, reconciliation will retire these application registrations: ${retiring.join(', ')}. Logs, artifacts and infrastructure are preserved.` : ''),
       };
     } catch (err) {
-      if (replacing) return { ok: false, state: 'replacement-unavailable', because: (err as Error).message };
+      if (replacing) return { ok: false, state: 'replacement-unavailable', because: (err as Error).message,
+        ...(err instanceof DeploymentMigrationRefusal && { migrationHistory: err.history }) };
       const { LocalReleaseNotPreparedError } = await import('../release/local-installation.js');
       const { MissingReleaseError } = await import('../release/load.js');
       if (!prepare && this.receiveRelease && err instanceof MissingReleaseError) {
@@ -4239,6 +4263,7 @@ export class ProjectService extends EventEmitter {
         const { changedReleasedMigrations } = await import('../release/migrations.js');
         const changed = changedReleasedMigrations(ran, release.manifest.migrations);
         if (changed.length > 0) {
+          if (source) throw new DeploymentMigrationRefusal('existing-history-changed', changed, 'The candidate changes existing migration history');
           throw new Error(
             `Refusing release ${release.id} for ${projectName}/${stackName}: ${changed.length} migration(s) that ran here ` +
               `with ${running} changed or went away (${changed.slice(0, 5).join(', ')}${changed.length > 5 ? ', …' : ''}). ` +

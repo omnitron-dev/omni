@@ -17,6 +17,18 @@ vi.mock('src/stores/project.store', () => {
 const { DeployReleaseDialog } = await import('../../webapp/src/components/deploy-release-dialog');
 afterEach(() => { cleanup(); vi.resetAllMocks(); });
 
+it('explains an additive history refusal before allowing a deployment', async () => {
+  rpc.can.mockReturnValue(true);
+  rpc.list.mockResolvedValue({ releases: [] });
+  rpc.check.mockResolvedValue({ ok: false, state: 'replacement-unavailable', because: 'Return release predates 003.sql',
+    migrationHistory: { kind: 'added-migrations', total: 1, entries: ['003.sql'] } });
+  render(renderRelease());
+  fireEvent.change(screen.getByRole('combobox', { name: 'Release ID' }), { target: { value: 'changed-release' } });
+  expect(await screen.findByText(/test the candidate on an isolated copy/i)).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Stop and deploy' })).toBeNull();
+  expect(rpc.start).not.toHaveBeenCalled();
+});
+
 it.each([true, false])('uses the reviewed node and checks the administrator grant before a full stop (allowed=%s)', async allowed => {
   const digest = 'a'.repeat(64);
   rpc.can.mockImplementation((permission: string) => permission === 'OmnitronProject.deployReviewedRelease' && allowed);

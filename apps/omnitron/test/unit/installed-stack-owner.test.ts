@@ -7,6 +7,7 @@ import os from 'node:os';
 import type { ChildProcess } from 'node:child_process';
 import { defineEcosystem } from '../../src/config/define-ecosystem.js';
 import { OrchestratorService } from '../../src/orchestrator/orchestrator.service.js';
+import { requireInstalledBinding } from '../../src/orchestrator/installed-execution.js';
 import { waitForReady } from '../../src/orchestrator/classic-launcher.js';
 import { ProcessManager, ProcessStatus, type ISpawnOptions, type IWorkerHandle } from '@omnitron-dev/titan-pm';
 import { AppHandle } from '../../src/orchestrator/app-handle.js';
@@ -94,6 +95,15 @@ async function fixture(bootstrapWorker = false) {
 }
 
 describe('installed stack process owner', () => {
+  it('binds the verified consuming release when an installed application came from a separate producer', () => {
+    const hash = 'a'.repeat(64), release = { state: 'confirmed' as const, basis: 'verified-launch' as const,
+      releaseId: 'producer', manifestSha256: hash, artifactSha256: hash, treeSha256: hash, launchId: 'generation', observedAt: new Date().toISOString(),
+      consumer: { releaseId: 'selected', manifestSha256: 'b'.repeat(64), app: 'api' } };
+    const atLaunch = requireInstalledBinding(release, hash);
+    expect(requireInstalledBinding(release, hash, atLaunch).consumer).toEqual(release.consumer);
+    expect(() => requireInstalledBinding({ ...release, consumer: { ...release.consumer, releaseId: 'other' } }, hash, atLaunch))
+      .toThrow(/since its verified launch/);
+  });
   it('refuses a separately fenced application before opening an installed stack', async () => {
     const { owner, state, handles } = await fixture();
     const plan = await owner.inspectInstalledStack(scope);
@@ -126,6 +136,9 @@ describe('installed stack process owner', () => {
     await owner.setWatchMode(true);
     const plan = await owner.inspectInstalledStack(scope);
     const first = plan.apps[0]!, second = plan.apps[1]!;
+    expect(first.selectedRelease).toBeUndefined();
+    expect((await owner.inspectInstalledStack(scope, 'selected-release')).apps.map(app => app.selectedRelease))
+      .toEqual(plan.apps.map(app => ({ id: app.installed.releaseId, manifestSha256: app.installed.manifestSha256 })));
     expect(first.installed.releaseId).toBe('r1');
     const operation = { operationId: randomUUID(), plan };
     await owner.openInstalledStack(operation);

@@ -1432,7 +1432,7 @@ export class OrchestratorService extends EventEmitter {
   }
 
   /** A stopped intent is insufficient if its handles or their launch inputs disappeared. */
-  async inspectInstalledStack(scope: StackExecutionScope): Promise<InstalledStackExecutionPlan> {
+  async inspectInstalledStack(scope: StackExecutionScope, observation?: 'selected-release'): Promise<InstalledStackExecutionPlan> {
     const plan = this.stackExecutionPlan(scope);
     if (plan.phase !== 'stopped' || !plan.apps.length) throw new Error('Installed stack start requires a completed stop with retained applications');
     for (const item of plan.apps) this.assertApplicationFence(item.name);
@@ -1444,7 +1444,8 @@ export class OrchestratorService extends EventEmitter {
       const paths = [executable, ...(handle.topologyProcesses ?? []).map(child => path.resolve(path.dirname(executable), child.module))];
       const release = await verifyLaunchRelease(entry, item.generation, paths);
       requireInstalledBinding(release, binding.entrySha256, binding);
-      apps.push({ ...item, installed: { ...binding } });
+      const selected = observation === 'selected-release' && release.state === 'confirmed' ? release.consumer ?? release : null;
+      apps.push({ ...item, installed: { ...binding }, ...(selected && { selectedRelease: { id: selected.releaseId, manifestSha256: selected.manifestSha256 } }) });
     }
     for (const item of plan.apps) this.retainedApp(item.name, item.generation);
     if (topologyRevision(this.stackExecutionPlan(scope)) !== topologyRevision(plan)) {

@@ -357,6 +357,8 @@ Version 0.4.17 supports declaration changes that preserve the registered `nodes`
 
 After a successful preflight, complete a reviewed full stop on the selected recipient. Repeat the preflight command **without** `--preflight` to obtain the placement digest. Repeat once more with `--review "$placement_digest"` to confirm. If the response is lost, retry that exact confirmation to retrieve its receipt.
 
+New placement receipts retain the migration baseline. For an older selection awaiting its first start, Omnitron recovers the previous release from the matching reviewed deployment. For a manual selection it asks the original node to reopen the full stop and verify the installed manifest and archive of every retained application generation. Prepare that exact release on the controller for its original node with `stack prepare-release`. This also applies when the pending destination is the registered working tree. Use `stack check-release` or a placement preflight while the source remains stopped. If the original node lost its retained closures, or the previous immutable release cannot be recovered, the controller refuses to launch across the unverified change. An already activated placement continues to use its selected release.
+
 To reuse the same prepared release after an interrupted launch, complete a new full stop and review the release again. The controller checks the stop on the selected recipient, its empty container inventory and its execution revision. After a move, the donor and receiver each have their own revision counter. The controller's placement journal orders the first full stop on the receiver.
 
 Runtime-only recovery uses `--infrastructure preserve`. Review the intended release and current resources before stopping applications:

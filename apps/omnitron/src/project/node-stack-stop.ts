@@ -29,7 +29,14 @@ export interface NodeStackStopPlan extends NodeStackStopRequest {
   containers: Array<{ id: string; name: string }>;
 }
 type ProvisionedPlacement = PlacementProvisionIntent & { inventory: string };
-export type NodeStackStopInventory = Omit<NodeStackStopPlan, 'expiresAt' | 'operationId'> & { provisioned?: ProvisionedPlacement };
+export interface StoppedReleaseEvidence {
+  operationId: string; observedAt: string; release: string; manifestSha256: string;
+  apps: Array<{ name: string; generation: string; artifactSha256: string }>;
+}
+export type NodeStackStopInventory = Omit<NodeStackStopPlan, 'expiresAt' | 'operationId'> & {
+  provisioned?: ProvisionedPlacement;
+  stoppedRelease?: StoppedReleaseEvidence;
+};
 interface StopRecord {
   plan: NodeStackStopPlan;
   phase: 'prepared' | 'applying' | 'failed' | 'stopped';
@@ -96,6 +103,37 @@ export class NodeStackStop {
       throw new Error('Resume requires a completed, signed stop for this application allocation');
     }
     return { plan: record.plan, receipt: record.receipt };
+  }
+
+  /** Read the old launch closures while the original full stop still owns this exact generation. */
+  async inspectStoppedRelease(scope: NodeStackStopRequest, operationId: string,
+    inspectInstalled: OrchestratorControl['inspectInstalledStack']): Promise<NodeStackStopInventory> {
+    const snapshot = async () => {
+      const current = await this.inspect(scope), record = this.records()[stackExecutionKey(scope)];
+      const plan = record?.plan, receipt = record?.receipt, stopped = receipt?.applications, execution = current.execution;
+      if (!operationId || record?.phase !== 'stopped' || record.suspended || plan?.operationId !== operationId ||
+          !plan.execution || receipt?.protocol !== 1 || receipt.outcome !== 'stopped' || !stopped || receipt.operationId !== operationId || stopped.operationId !== operationId ||
+          !plan.applications || !scope.applications || plan.keepInfrastructure || receipt.keepInfrastructure || scope.keepInfrastructure ||
+          plan.definition !== current.definition || execution?.phase !== 'stopped' || execution.revision !== stopped.revision ||
+          stackExecutionKey(plan.execution) !== stackExecutionKey(execution) || stackExecutionKey(stopped) !== stackExecutionKey(execution) ||
+          !isDeepStrictEqual(plan.execution.apps, execution.apps) || !isDeepStrictEqual(plan.audience, current.audience) ||
+          !isDeepStrictEqual([...stopped.stopped].sort(), execution.apps.map(app => app.name).sort()))
+        throw Error('The original full stop and its retained application generations are required');
+      return { current, execution, observedAt: receipt.observedAt };
+    };
+    const before = await snapshot(), installed = await inspectInstalled(before.execution, 'selected-release');
+    const names = installed.apps.map(({ name, generation }) => ({ name, generation }));
+    const first = installed.apps[0]?.selectedRelease;
+    if (!first || typeof first.id !== 'string' || !/^[a-f0-9]{64}$/.test(first.manifestSha256) ||
+        !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(first.id) ||
+        installed.phase !== 'stopped' || installed.revision !== before.execution.revision || stackExecutionKey(installed) !== stackExecutionKey(before.execution) ||
+        !isDeepStrictEqual(names, before.execution.apps) || new Set(names.map(app => app.name)).size !== names.length ||
+        installed.apps.some(app => !isDeepStrictEqual(app.selectedRelease, first) || !/^[a-f0-9]{64}$/.test(app.installed?.artifactSha256)) ||
+        !isDeepStrictEqual(before, await snapshot()))
+      throw Error('The original owner could not verify a single installed release for every stopped generation');
+    return { ...before.current, stoppedRelease: { operationId, observedAt: before.observedAt, release: first.id,
+      manifestSha256: first.manifestSha256, apps: installed.apps.map(app => ({ name: app.name, generation: app.generation,
+        artifactSha256: app.installed.artifactSha256 })) } };
   }
 
   async preparePlacementProvision(scope: StackExecutionScope, intent: PlacementProvisionIntent): Promise<(review: ExistingInfrastructureReview) => Promise<void>> {

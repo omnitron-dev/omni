@@ -36,6 +36,27 @@ function fixture() {
 }
 
 describe('node-confirmed stack stop', () => {
+  it('reads the retained installed closures only at the original full stop and generation', async () => {
+    const { service, store, ports } = fixture();
+    const plan = await service.prepare(scope);
+    const complete = await service.execute(plan);
+    const read = vi.fn(async () => ({ ...runtime, revision: 1, phase: 'stopped' as const, apps: [{ name: 'sample/deployed/api',
+      generation: 'generation-1', selectedRelease: { id: 'previous', manifestSha256: id },
+      installed: { releaseId: 'producer', manifestSha256: 'b'.repeat(64), artifactSha256: id, entrySha256: id, treeSha256: id } }] }));
+    const reopened = new NodeStackStop(store, ports);
+    await expect(reopened.inspectStoppedRelease(scope, plan.operationId, read)).resolves.toMatchObject({
+      stoppedRelease: { operationId: plan.operationId, observedAt: complete.observedAt, release: 'previous', manifestSha256: id,
+        apps: [{ name: 'sample/deployed/api', generation: 'generation-1', artifactSha256: id }] } });
+    const savedWrites = store.kvUpdateSync.mock.calls.length;
+    await expect(reopened.inspectStoppedRelease(scope, 'another-stop', read)).rejects.toThrow(/original full stop/);
+    const producerOnly = await read();
+    await expect(reopened.inspectStoppedRelease(scope, plan.operationId, async () => ({ ...producerOnly,
+      apps: producerOnly.apps.map(({ selectedRelease, ...app }) => app) }))).rejects.toThrow(/verify a single installed release/);
+    read.mockResolvedValueOnce({ ...runtime, revision: 2, phase: 'stopped', apps: [] });
+    await expect(reopened.inspectStoppedRelease(scope, plan.operationId, read)).rejects.toThrow(/verify a single installed release/);
+    expect(store.kvUpdateSync).toHaveBeenCalledTimes(savedWrites);
+    expect(ports.execution.stopStackExecution).toHaveBeenCalledTimes(1);
+  });
   it('recovers an acknowledged provision on the same placement after a lost reply and receiver restart', async () => {
     const { service, store, ports, replaceContainers } = fixture();
     const logical = { project: scope.project, stack: scope.stack };

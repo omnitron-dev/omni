@@ -14,6 +14,7 @@ export interface InstalledAppBinding {
   entrySha256: string;
   releaseId: string;
   manifestSha256: string;
+  consumer?: { releaseId: string; manifestSha256: string; app: string };
   artifactSha256: string;
   treeSha256: string;
 }
@@ -23,7 +24,9 @@ export interface StackExecutionPlan extends StackExecutionScope {
   apps: Array<{ name: string; generation: string; installed?: InstalledAppBinding }>;
 }
 export interface InstalledStackExecutionPlan extends StackExecutionPlan {
-  apps: Array<{ name: string; generation: string; installed: InstalledAppBinding }>;
+  apps: Array<{ name: string; generation: string; installed: InstalledAppBinding;
+    /** Optional fresh observation of the consuming release, including a locally produced app. */
+    selectedRelease?: { id: string; manifestSha256: string } }>;
 }
 export interface StackExecutionStop {
   operationId: string;

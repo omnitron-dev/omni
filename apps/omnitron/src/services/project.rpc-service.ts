@@ -460,7 +460,7 @@ export class ProjectRpcService {
   /** Operators can verify a release against the same artifact checks used by deployment. */
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async checkRelease(data: { project: string; stack: string; release: string; prepare?: boolean }): Promise<import('../shared/dto/project.js').ReleaseAdmission> {
-    data = await this.projectService.resolveProjectStack(data);
+    data = await this.projectService.resolveProjectStack(data, { readOnly: data.prepare !== true });
     return this.projectService.checkRelease(data.project, data.stack, data.release, data.prepare === true);
   }
 
@@ -552,7 +552,7 @@ export class ProjectRpcService {
   }
 
   @Public({ auth: { roles: ['service_role'] } })
-  async inspectNodeStackStop(data: import('../project/node-stack-stop.js').NodeStackStopRequest) {
+  async inspectNodeStackStop(data: import('../project/node-stack-stop.js').NodeStackStopRequest & { stoppedReleaseFor?: string }) {
     return this.projectService.inspectNodeStackStop(data);
   }
 

@@ -16,7 +16,8 @@ export function installedExecutable(entry: IEcosystemAppEntry, ownerCwd: string)
 function installedBinding(release: RuntimeReleaseEvidence, entrySha256: string): InstalledAppBinding {
   if (release.state !== 'confirmed') throw new Error(`Installed release cannot be started: ${release.reason}`);
   if (!release.treeSha256) throw new Error('Installed release has no verified content digest from its launch');
-  return { entrySha256, treeSha256: release.treeSha256, releaseId: release.releaseId, manifestSha256: release.manifestSha256, artifactSha256: release.artifactSha256 };
+  return { entrySha256, treeSha256: release.treeSha256, releaseId: release.releaseId, manifestSha256: release.manifestSha256,
+    artifactSha256: release.artifactSha256, ...(release.consumer && { consumer: { ...release.consumer } }) };
 }
 
 export function requireInstalledBinding(actual: RuntimeReleaseEvidence, entrySha256: string, expected?: InstalledAppBinding): InstalledAppBinding {

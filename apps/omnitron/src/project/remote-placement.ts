@@ -25,6 +25,12 @@ function endpoint(value: PlacementEndpoint): boolean {
 }
 export function validateRemotePlacement(value: RemotePlacement, scope: StackExecutionScope): void {
   const change = value?.receipt?.registrationChange;
+  const baseline = value?.receipt?.migrationBaseline;
+  if (baseline !== undefined && (!baseline || typeof baseline !== 'object' || ('registeredCommit' in baseline
+    ? Object.keys(baseline).length !== 1 || !/^[a-f0-9]{40}$/.test(baseline.registeredCommit) || baseline.registeredCommit !== value.originCommit
+    : Object.keys(baseline).length !== 2 || typeof baseline.release !== 'string' || !name.test(baseline.release) ||
+      typeof baseline.manifestSha256 !== 'string' || !digest.test(baseline.manifestSha256))))
+    throw Error('Corrupt remote placement migration baseline');
   if (change && (!digest.test(change.previous) || change.current !== value.registration || change.previous === change.current ||
       !/^[a-f0-9]{40}$/.test(change.previousDeclarationCommit) ||
       (change.currentDeclarationCommit !== undefined && !/^[a-f0-9]{40}$/.test(change.currentDeclarationCommit)) ||
@@ -43,12 +49,14 @@ export function validateRemotePlacement(value: RemotePlacement, scope: StackExec
 }
 export function remotePlacementReview(scope: StackExecutionScope, generation: number, registration: string, originCommit: string | null, from: PlacementEndpoint,
   to: PlacementEndpoint, prepared: PreparedRemoteReleaseSource | null, stop: StackStopProgress | null, observed: NodeStackStopInventory,
+  migrationBaseline: NonNullable<PlacementReceipt['migrationBaseline']>,
   registrationChange?: PlacementReceipt['registrationChange']): PlacementReceipt {
   const { acknowledgement, execution, confirmed } = confirmStoppedPlacement(scope, from, stop, observed);
   const contents = [scope.project, scope.stack, generation, registration, originCommit, from, to, prepared, confirmed.id, confirmed.completedAt,
     acknowledgement.operationId, observed.definition, execution.project, execution.stack, execution.revision, execution.apps.map(app => [app.name, app.generation])];
-  return { project: scope.project, stack: scope.stack, generation: generation + 1, fromNodeId: from.nodeId, toNodeId: to.nodeId, ...(registrationChange && { registrationChange }),
-    stopId: confirmed.id, release: prepared?.release ?? null, digest: stackDefinitionFingerprint(['omnitron/remote-placement/v1', contents, ...(registrationChange ? [registrationChange] : [])]) };
+  return { project: scope.project, stack: scope.stack, generation: generation + 1, fromNodeId: from.nodeId, toNodeId: to.nodeId, migrationBaseline,
+    ...(registrationChange && { registrationChange }), stopId: confirmed.id, release: prepared?.release ?? null,
+    digest: stackDefinitionFingerprint(['omnitron/remote-placement/v2', contents, migrationBaseline, ...(registrationChange ? [registrationChange] : [])]) };
 }
 
 export function placementProvisionIntent(placement: RemotePlacement): PlacementProvisionIntent | undefined {

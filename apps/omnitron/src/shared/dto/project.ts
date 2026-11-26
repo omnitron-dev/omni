@@ -305,6 +305,8 @@ export interface PlacementRequest extends RuntimeStackScope {
 export interface PlacementReceipt extends RuntimeStackScope {
   digest: string; generation: number; fromNodeId: string; toNodeId: string; stopId: string; release: string | null;
   registrationChange?: { previous: string; current: string; previousDeclarationCommit: string; currentDeclarationCommit?: string };
+  /** Previous source used for the two-way migration comparison. Older selections omit it. */
+  migrationBaseline?: { release: string; manifestSha256: string } | { registeredCommit: string };
 }
 
 /** Read-only evidence available before stopping a remote allocation. Only a post-stop review can authorize selection. */

@@ -10,6 +10,7 @@ import { StateStore } from '../../src/daemon/state-store.js';
 import { OrchestratorService } from '../../src/orchestrator/orchestrator.service.js';
 import * as containers from '../../src/infrastructure/container-runtime.js';
 import { StackTargets } from '../../src/project/stack-targets.js';
+import { BootstrapMetadataStore, readBootstrapMetadata } from '../../src/project/bootstrap-metadata.js';
 import { verifyDeploymentMigrations, verifyRegisteredDeploymentMigrations } from '../../src/project/remote-release-deployment.js';
 import { ProjectService } from '../../src/services/project.service.js';
 import { ProjectRpcService } from '../../src/services/project.rpc-service.js';
@@ -19,7 +20,8 @@ import { captureRemoteSource, readCapturedSource, sourceFileDigest } from '../..
 import { loadRelease } from '../../src/release/load.js';
 import { confirmRegisteredReleaseNode, confirmReleaseRecipient, verifyRemoteSourceTree } from '../../src/release/remote-source.js';
 import { resolveProjectStacks } from '../../src/config/project-stacks.js';
-import type { PlacementProvisionIntent } from '../../src/shared/dto/project.js';
+import type { PlacementProvisionIntent, PreparedRemoteReleaseSource } from '../../src/shared/dto/project.js';
+import type { StoppedReleaseEvidence } from '../../src/project/node-stack-stop.js';
 
 const sha = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex');
 const root = await vi.hoisted(async () => {
@@ -439,7 +441,7 @@ describe('prepared source of one registered remote release', () => {
     expect(fs.existsSync(path.join(scope, '.remote-sources'))).toBe(false);
   });
 
-  it.each(['original', 'changed', 'deployment', 'migration'])('routes a selected placement with a %s registered declaration', async (registrationMode) => {
+  it.each(['original', 'changed', 'deployment', 'migration', 'legacy'])('routes a selected placement with a %s registered declaration', async (registrationMode) => {
     const f = fixture();
     const service = f.service;
     const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
@@ -460,6 +462,14 @@ describe('prepared source of one registered remote release', () => {
     const registeredSource = path.join(root, 'legacy-serving-' + registrationMode);
     git(root, 'clone', '-q', '--no-local', original, registeredSource);
     fs.writeFileSync(path.join(registeredSource, 'omnitron.stacks.json'), JSON.stringify(stacks(incumbent as typeof oldNode)));
+    if (registrationMode === 'legacy') {
+      const bootstrap = path.join(registeredSource, 'apps/main/src/bootstrap.mjs');
+      fs.writeFileSync(bootstrap, "export default {name:'main',version:'1',processes:[{name:'api'}]};");
+      git(registeredSource, 'add', 'apps/main/src/bootstrap.mjs');
+      const metadata = new BootstrapMetadataStore(store);
+      metadata.save((await readBootstrapMetadata(bootstrap)).metadata);
+      Object.assign(service, { bootstrapMetadata: metadata, bootstrapTopology: new Map() });
+    }
     git(registeredSource, 'add', 'omnitron.stacks.json');
     git(registeredSource, 'commit', '-qm', 'legacy recipient');
     f.registration.path = registeredSource;
@@ -481,8 +491,9 @@ describe('prepared source of one registered remote release', () => {
     };
     let launched: { id: string; manifestSha256: string; artifactSha256: string } | undefined;
     let loseLaunchReply = false;
+    let retained: StoppedReleaseEvidence | undefined;
     let receiverMode: 'reconcile' | 'preserve' = 'reconcile';
-    const read = vi.fn(async (method: string, body?: { operationId: string }) => {
+    const read = vi.fn(async (method: string, body?: { operationId: string; stoppedReleaseFor?: string }) => {
       if (method === 'status') {
         const generation = inv.execution.apps[0]!.generation;
         return { apps: launched && inv.execution.phase === 'running' ? [{
@@ -495,7 +506,7 @@ describe('prepared source of one registered remote release', () => {
       if (method === 'getStack') return { type: 'local', name: 'deployed', infrastructureMode: receiverMode,
         runtimeScope: { project: 'sample', stack: 'deployed' },
         config: { type: 'local', managedOrigin: { project: 'sample', stack: 'test' }, infrastructureOwnership: 'controller' } };
-      if (method === 'inspectNodeStackStop') return structuredClone(inv);
+      if (method === 'inspectNodeStackStop') return { ...structuredClone(inv), ...(body?.stoppedReleaseFor && retained && { stoppedRelease: retained }) };
       if (method === 'prepareNodeStackStop') return { ...structuredClone(inv),
         operationId: registrationMode === 'deployment' ? 'reviewed-stop-' + inv.execution.revision : 'replacement-stop' };
       if (method === 'executeNodeStackStop') {
@@ -535,7 +546,7 @@ describe('prepared source of one registered remote release', () => {
       configRegistry: new Map([['sample', { config: base }]]),
       getLoadedConfig: () => base,
       loadProjectConfig: async () => base,
-      orchestrator: { list: () => [] },
+      orchestrator: { list: () => [], getHandle: () => undefined },
       infraManager: { getInstance: () => undefined },
       updateEnabledStacks: enable,
       assertStackMutable: vi.fn(),
@@ -552,7 +563,7 @@ describe('prepared source of one registered remote release', () => {
           manifest: { id: string; project: { commit: string }; artifacts: { sha256: string }[] } },
       ) => {
         await release.placement.recheck();
-        if (registrationMode === 'deployment' || registrationMode === 'migration') {
+        if (['deployment', 'migration', 'legacy'].includes(registrationMode)) {
           inv.execution.phase = 'running';
           inv.execution.revision++;
           inv.execution.apps[0]!.generation = 'launch-' + inv.execution.revision;
@@ -616,6 +627,86 @@ describe('prepared source of one registered remote release', () => {
       await expect(service.selectRemotePlacement({ ...req, review: review.digest })).resolves.toEqual(route);
       expect(new StackTargets(store).inspect(req).placement?.receipt).toEqual(route);
       expect(journal.inspect({ project: 'sample', stack: 'dev' })).toEqual({ version: 1, revision: 0, nodes: [] });
+      if (registrationMode === 'legacy') {
+        const scope = { project: 'sample', stack: 'test' }, rpc = new ProjectRpcService(service);
+        const selected = { ...scope, release: id }, repeat = { ...req, fromNodeId: nodeId };
+        // Recreate the exact old digest and stored shape from the actual full stop and selection.
+        const legacy = (prepared: PreparedRemoteReleaseSource | null) => {
+          const state = journal.inspect(scope), placement = state.placement!, stop = placement.sourceStop, [ack] = stop.nodes;
+          const { migrationBaseline, ...receipt } = placement.receipt;
+          expect(migrationBaseline).toBeDefined();
+          const { nodeId, host, port, pin } = placement.selected ?? placement.origin;
+          const contents = [scope.project, scope.stack, receipt.generation - 1, placement.registration, placement.originCommit,
+            placement.from, { nodeId, host, port, pin }, prepared, stop.id, stop.completedAt, ack!.operationId, ack!.definition,
+            ack!.execution!.project, ack!.execution!.stack, ack!.execution!.revision, inv.execution.apps.map(a => [a.name, a.generation])];
+          receipt.digest = sha(JSON.stringify(['omnitron/remote-placement/v1', contents]));
+          store.kvSetSync('lifecycle:stack-targets:sample/test', { ...state, placement: { ...placement, receipt } });
+          return ack!;
+        };
+        const sourceStop = legacy(ready);
+        const adopt = (ack: typeof sourceStop, release: string, manifestSha256: string, artifactSha256: string) => ({
+          operationId: ack.operationId!, observedAt: ack.observedAt!, release, manifestSha256,
+          apps: inv.execution.apps.map(app => ({ ...app, artifactSha256 })),
+        });
+        await expect(rpc.checkRelease(selected)).resolves.toMatchObject({ ok: false, state: 'replacement-unavailable', because: expect.stringMatching(/older pending/) });
+        await expect(rpc.preflightRemotePlacement(repeat)).rejects.toThrow(/older pending/);
+        await expect(service.startStack(scope.project, scope.stack, { release: id })).rejects.toThrow(/older pending/);
+        expect(launches).toHaveLength(0);
+        f.credentials.mockImplementation(async (host: string) => ({ host, port: 22, username: 'fixture',
+          expectedHostFingerprint: host === oldNode.host ? serving.fingerprint : stableFingerprint }));
+        const artifact = (await loadRelease(id, f.input.storeRoot)).files[0]!.sha256;
+        for (const added of [true, false]) {
+          const name = added ? 'legacy-incompatible' : 'legacy-compatible', dir = path.join(root, name);
+          git(root, 'clone', '-q', '--no-local', original, dir);
+          if (added) {
+            fs.mkdirSync(path.join(dir, 'apps/main/migrations'), { recursive: true });
+            fs.writeFileSync(path.join(dir, 'apps/main/migrations/002.sql'), 'SELECT 2;');
+            git(dir, 'add', '.'); git(dir, 'commit', '-qm', 'historical migration');
+          }
+          const folder = path.join(f.input.storeRoot, name);
+          fs.cpSync(path.join(f.input.storeRoot, id), folder, { recursive: true });
+          const file = path.join(folder, 'manifest.json'), payload = JSON.parse(fs.readFileSync(file, 'utf8'));
+          payload.id = name; payload.project.commit = git(dir, 'rev-parse', 'HEAD');
+          const raw = JSON.stringify(payload);
+          fs.writeFileSync(file, raw);
+          const captured = await captureRemoteSource(scope.project, scope.stack, name, dir, f.input.storeRoot);
+          await service.prepareRemoteReleaseSource(scope.project, scope.stack, name, { ...f.input, nodeId: oldNode.nodeId,
+            sourceRoot: dir, manifestSha256: sha(raw), declarationsSha256: captured.declarationsSha256 });
+          retained = adopt(sourceStop, name, sha(raw), artifact);
+          if (added) {
+            await expect(rpc.checkRelease(selected)).resolves.toMatchObject({ ok: false, migrationHistory: { kind: 'existing-history-changed' } });
+            await expect(rpc.preflightRemotePlacement(repeat)).rejects.toThrow(/candidate changes existing migration history/);
+          }
+        }
+        await expect(rpc.checkRelease(selected)).resolves.toMatchObject({ ok: true });
+        await expect(rpc.preflightRemotePlacement(repeat)).resolves.toMatchObject({ release: id });
+        expect(launches).toHaveLength(0);
+        expect(read.mock.calls.filter(([method]) => method === 'executeNodeStackStop')).toHaveLength(0);
+        await service.startStack(scope.project, scope.stack, { source: 'operator', infrastructure: 'reconcile' });
+        expect(launches).toHaveLength(1);
+        const review = await service.reviewStackStop(scope.project, scope.stack);
+        await service.stopStack(scope.project, scope.stack, review.digest!);
+        const restore = { ...scope, fromNodeId: nodeId, destination: { registered: true as const } };
+        const back = await rpc.reviewRemotePlacement(restore);
+        await rpc.selectRemotePlacement({ ...restore, review: back.digest });
+        const returnStop = legacy(null);
+        await expect(rpc.preflightRemotePlacement(req)).rejects.toThrow(/older pending/);
+        retained = adopt(returnStop, id, manifestSha, artifact);
+        await expect(rpc.preflightRemotePlacement(req)).resolves.toMatchObject({ release: id });
+        expect(launches).toHaveLength(1);
+        expect(read.mock.calls.filter(([method]) => method === 'executeNodeStackStop')).toHaveLength(1);
+        Object.assign(service, { releaseStore: async () => f.input.storeRoot });
+        const registeredRelease = 'legacy-original-release', dir = path.join(f.input.storeRoot, registeredRelease);
+        fs.cpSync(path.join(f.input.storeRoot, id), dir, { recursive: true });
+        const file = path.join(dir, 'manifest.json'), manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+        manifest.id = registeredRelease; manifest.project.commit = git(registeredSource, 'rev-parse', 'HEAD');
+        fs.writeFileSync(file, JSON.stringify(manifest));
+        const check = await rpc.checkRelease({ ...scope, release: registeredRelease });
+        expect(check, check.because).toMatchObject({ ok: true });
+        await service.startStack(scope.project, scope.stack, { source: 'operator', release: registeredRelease, infrastructure: 'reconcile' });
+        expect(launches[1]).toMatchObject({ root: registeredSource, commit: manifest.project.commit, host: oldNode.host });
+        return;
+      }
       if (registrationMode === 'migration') {
         const scope = { project: 'sample', stack: 'test' }, rpc = new ProjectRpcService(service);
         await service.startStack(scope.project, scope.stack, { source: 'operator', infrastructure: 'reconcile' });

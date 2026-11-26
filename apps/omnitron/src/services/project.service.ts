@@ -53,6 +53,10 @@ import { StackTargets, type StackTarget } from '../project/stack-targets.js';
 import { confirmStoppedPlacement, placementProvisionIntent, remotePlacementReview, type PlacementEndpoint, type RemotePlacement } from '../project/remote-placement.js';
 import { cleanRegisteredCommit, committedStackDeclaration, confirmRegisteredReleaseNode, previousStackDeclaration, registeredStackAtCommit, remoteReleaseSourceKey, remoteReleaseSourcePrefix, type ReleaseRecipient } from '../release/remote-source.js';
 import { accountsForPartialStart, confirmsRelease, DeploymentMigrationRefusal, verifyDeploymentMigrations, verifyRegisteredDeploymentMigrations, type RemoteDeploymentOperation } from '../project/remote-release-deployment.js';
+import { confirmFirstWriteCopy, inspectFirstWriteOwner, missingFirstWriteAuthorities } from '../project/first-write-inspection.js';
+import type { FirstWriteInspection, InspectFirstWrite } from '../shared/dto/first-write.js';
+import type { InspectPhysicalRestore, PhysicalRestoreEvidence } from '../shared/dto/physical-restore.js';
+import { validateRunId } from './pipeline-admission.js';
 import type { PlacementProvisionIntent, RemoteReleaseDeployment } from '../shared/dto/project.js';
 import { defineEcosystem } from '../config/define-ecosystem.js';
 import { readCapturedSourceSync } from '../release/source-data.js';
@@ -3285,7 +3289,7 @@ export class ProjectService extends EventEmitter {
     return this.inspectRemoteReleaseSource(scope.project, scope.stack, release, first.input);
   }
 
-  private async reviewReleaseDeployment(project: string, stack: string, release: string) {
+  private async releaseDeploymentSources(project: string, stack: string, release: string) {
     const scope = { project, stack }, journal = new StackTargets(this.daemonStateStore);
     const scopeKey = stackExecutionKey(scope);
     this.migrations.assertIdle(scope);
@@ -3306,6 +3310,12 @@ export class ProjectService extends EventEmitter {
       ...scope, fromNodeId: selected.nodeId, destination: { release: target.release, prepared: target.digest },
       ...(previousDeclarationCommit && { previousDeclarationCommit }),
     });
+    return { scope, scopeKey, journal, before, placement, selected, baseline, previous, next, requestFor, previousDeclarationCommit };
+  }
+
+  private async reviewReleaseDeployment(project: string, stack: string, release: string) {
+    const { scope, scopeKey, journal, before, placement, selected, baseline, previous, next, requestFor, previousDeclarationCommit } =
+      await this.releaseDeploymentSources(project, stack, release);
     const forward = await this.placementPreflight(requestFor(next.receipt), next, previous);
     await this.checkReceiverStart(scope, placement, forward.source);
     const reverse = next === previous ? forward : await this.placementPreflight(requestFor(previous.receipt), previous);
@@ -3345,6 +3355,74 @@ export class ProjectService extends EventEmitter {
       'omnitron/remote-release-deployment/v1', before.revision, placement.receipt.digest, forward, reverse, values,
     ]) };
     return { review, priorSelection: placement.receipt.digest, next, previous };
+  }
+
+  private physicalRestore?: (request: InspectPhysicalRestore) => Promise<PhysicalRestoreEvidence>;
+  setPhysicalRestoreInspector(inspect: (request: InspectPhysicalRestore) => Promise<PhysicalRestoreEvidence>): void {
+    this.physicalRestore = inspect;
+  }
+
+  /** Inspect a possible first write. A closed physical observation cannot issue a start or route decision. */
+  async inspectFirstWrite(request: InspectFirstWrite): Promise<FirstWriteInspection> {
+    if (Object.keys(request).some(key => !['project','stack','release','verifyRunId'].includes(key)))
+      throw Error('Only the project, stack, candidate release and optional native verify run ID are accepted');
+    const { project, stack, release, verifyRunId } = request;
+    stackExecutionKey(request);
+    (await import('../release/load.js')).assertReleaseId(release);
+    if (verifyRunId !== undefined) validateRunId(verifyRunId);
+    const { scope, scopeKey, journal, before, placement, selected, previous, next, requestFor } =
+      await this.releaseDeploymentSources(project, stack, release);
+    if (!placement.activated || previous.receipt.release === next.receipt.release)
+      throw Error('First-write inspection requires an activated incumbent and a separate prepared candidate');
+    const intent = await this.inspectPlacementIntent(requestFor(next.receipt), next);
+    if (!isDeepStrictEqual(intent.from, intent.to) || before.nodes.some(node => node.host !== selected.host ||
+        node.port !== selected.port || (node.nodeId && node.nodeId !== selected.nodeId)))
+      throw Error('First-write inspection requires one enrolled source and the same candidate recipient');
+    let migrationHistory: FirstWriteInspection['migrationHistory'] | undefined;
+    try { await this.verifyPlacementHistory(scope, intent, previous); }
+    catch (error) {
+      if (!(error instanceof DeploymentMigrationRefusal) || error.history.kind !== 'added-migrations') throw error;
+      migrationHistory = error.history;
+    }
+    if (!migrationHistory) throw Error('Use the standard deployment review for a release with compatible migration history');
+    const declared = previous.opened.stackConfig;
+    const names = nodeApplicationNames(declared, declared.nodes![0]!,
+      this.resolveStackApps(declared, previous.opened.config).map(app => app.name));
+    const expected = new Map(names.map(name => {
+      const files = previous.admitted.files.filter(file => file.app === name);
+      if (files.length !== 1) throw Error('The selected release lacks a unique artifact for application ' + name);
+      return [name, files[0]!.sha256];
+    }));
+    const recipient = this.placementRecipient(selected.nodeId, selected);
+    const rpc = this.getSlaveConnector().pinnedService(selected.host, selected.port, selected.nodeId, recipient.managementIdentity, 'OmnitronProject');
+    const observe = () => inspectFirstWriteOwner(request, selected, expected, async stoppedReleaseFor => {
+      const input = { ...scope, applications: true, ...(stoppedReleaseFor && { stoppedReleaseFor }) };
+      const observed = await rpc('inspectNodeStackStop', input) as NodeStackStopInventory;
+      this.validateStopInventory(input, observed);
+      return observed;
+    }, () => this.withRemoteAppStatuses(project, this.getStack(project, stack)),
+    () => this.daemonStateStore.kvGetSync<StackStopProgress>('stack:' + scopeKey + ':last-stop', { strict: true }));
+    const owner = await observe();
+    let physical: FirstWriteInspection['physical'] = { state: 'unverified', reason: owner.stop
+      ? 'Supply the completed native service-data-adopt verify run ID to re-read the stopped source and reserved receiver.'
+      : 'The source is serving. Its exact full stop and isolated restored volumes are required for a current physical verification.' };
+    if (owner.stop && verifyRunId) {
+      if (!this.physicalRestore) throw Error('The authenticated physical restore inspector is unavailable on this controller');
+      const proof = await this.physicalRestore({ ...scope, verifyRunId });
+      const endpoints = () => confirmFirstWriteCopy(request, owner, proof, id => this.placementRecipient(id));
+      const enrollment = endpoints();
+      const fresh = await this.releaseDeploymentSources(project, stack, release);
+      if (!isDeepStrictEqual(fresh.previous.receipt, previous.receipt) || !isDeepStrictEqual(fresh.next.receipt, next.receipt))
+        throw Error('A reviewed release changed during physical inspection');
+      if (!isDeepStrictEqual(owner, await observe())) throw Error('The source execution changed during physical inspection');
+      if (!isDeepStrictEqual(enrollment, endpoints())) throw Error('A physical endpoint was re-enrolled during first-write inspection');
+      physical = { state: 'verified-closed-copy', evidence: proof };
+    }
+    intent.recheckIntent();
+    if (!isDeepStrictEqual(before, journal.inspect(scope))) throw Error('Release placement changed during first-write inspection');
+    return { ...scope, protocol: 1, ok: false, writeAdmission: 'withheld', selectionDigest: placement.receipt.digest, selectedPrepared: selected.prepared,
+      incumbent: previous.receipt,
+      candidate: next.receipt, migrationHistory, owner, physical, missing: missingFirstWriteAuthorities };
   }
 
   private async confirmRemoteRelease(scope: StackExecutionScope, release: string, manifest: string): Promise<IStackInfo> {

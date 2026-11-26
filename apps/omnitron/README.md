@@ -344,6 +344,17 @@ Both the deploy dialog and explicit placement changes require a migration histor
 
 Keep the serving release running when an added migration blocks a reviewed deployment. A first release that changes which application can write requires a data owner that can identify and fence every writer, demonstrate a consistent physical return point and rehearse the candidate against an isolated copy. The data owner must durably commit the decision before it opens writes. After that decision or an ambiguous acknowledgement, returning requires a release that can handle the new data or verified reverse synchronization. A full stack stop names the supervised applications and containers. Private restoration proves specific data and volume identities. Write admission requires the data owner's separate decision. [Physical restoration](../../.xec/service-data-adopt/README.md) · [PostgreSQL write admission and recovery](../../.xec/postgres-switchover/README.md#write-admission-and-recovery)
 
+An administrator can choose **Inspect first-write admission** in the release dialog or use the same check from the CLI.
+
+```sh
+omnitron stack check-release acme prod "$next_release" --first-write --json
+omnitron stack check-release acme prod "$next_release" --first-write --verify-run "$verify_run_id" --json
+```
+
+For a selected single-node remote release, this read identifies both prepared manifests and compares the serving app set, generations and artifact hashes with the enrolled process owner. The optional run ID identifies a completed native `service-data-adopt` verification. When the source already has a full stop, the controller reopens the retained launches and checks the donor, receiver, volume generations and content against that exact stop. It rechecks the selection, releases and owner around the physical read. Inspecting a serving source leaves it running.
+
+The JSON envelope acknowledges a completed inspection. The deployment decision is inside `data`, with `ok: false`, `writeAdmission: "withheld"` and the outstanding data-owner decisions. The CLI returns exit status 1. An authenticated closed copy yields `physical.state: "verified-closed-copy"` and the Pipeline audit records the verify run ID. Retrying the same run ID rechecks the files and PostgreSQL control identities. A failed or interrupted inspection reports `unverified`.
+
 #### Review a placement change explicitly
 
 When the registered stack changes between releases, run `stack prepare-release` against the updated registration and keep its new digest. Use the **currently selected recipient** as `--from-node`. Supply the full Git commit whose tracked `omnitron.stacks.json` reproduces the previous registration fingerprint.

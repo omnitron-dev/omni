@@ -9,7 +9,7 @@ import { migrationHistoryAdvice, observeStackStart } from '../shared/release-rea
 
 import { log, table, note, prism } from '@xec-sh/kit';
 import { createDaemonClient, LONG_REQUEST_TIMEOUT, isRequestTimeout } from '../daemon/daemon-client.js';
-import { isLostRpcAcknowledgement, type IProjectRpcService } from '../shared/dto/services.js';
+import { FIRST_WRITE_PHYSICAL_TIMEOUT_MS, isLostRpcAcknowledgement, type IProjectRpcService } from '../shared/dto/services.js';
 import { stackStartRefusals } from '../shared/dto/project.js';
 import { Errors } from '@omnitron-dev/titan/errors';
 import { emitJson, emitError, emitStep, emitSuccess, emitInfo, isJsonMode } from './output.js';
@@ -389,10 +389,26 @@ function declarationRefreshCommand(project: string, stack: string, release?: str
 }
 
 export async function stackReleaseAdmissionCommand(project: string, stack: string, release: string, prepare: boolean,
-  options: { source?: string; releaseRoot?: string; manifest?: string; declarations?: string; nodeId?: string; prepared?: string } = {}): Promise<void> {
-  const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
+  options: { source?: string; releaseRoot?: string; manifest?: string; declarations?: string; nodeId?: string; prepared?: string;
+    firstWrite?: boolean; verifyRun?: string } = {}): Promise<void> {
+  const client = createDaemonClient(undefined, options.verifyRun ? FIRST_WRITE_PHYSICAL_TIMEOUT_MS : LONG_REQUEST_TIMEOUT);
   try {
+    if ((options.firstWrite || options.verifyRun !== undefined) && (!options.firstWrite || prepare || options.prepared !== undefined))
+      throw Error('Use check-release --first-write with an optional --verify-run ID');
     const service = await client.service<IProjectRpcService>('OmnitronProject');
+    if (options.firstWrite) {
+      const report = await service.inspectFirstWrite({ project, stack, release, ...(options.verifyRun !== undefined && { verifyRunId: options.verifyRun }) });
+      process.exitCode = 1; // The read may succeed while first-write admission is still withheld.
+      if (!emitJson(report)) {
+        emitInfo(`Owner ${report.owner.nodeId}, ${report.owner.phase}, execution revision ${report.owner.revision}`);
+        for (const app of report.owner.apps) emitInfo(app.name + ' generation ' + app.generation + ' artifact ' + app.artifactSha256);
+        emitInfo(report.physical.state === 'verified-closed-copy'
+          ? 'Verified closed copy ' + report.physical.evidence.proofDigest + ' at stop ' + report.physical.evidence.sourceStop : report.physical.reason);
+        for (const item of report.missing) emitInfo(item.reason);
+        emitError('Production write admission is withheld', { project, stack, release });
+      }
+      return;
+    }
     if (options.prepared !== undefined || [options.source, options.releaseRoot, options.manifest, options.declarations, options.nodeId].some(value => value !== undefined)) {
       const selection = [options.source, options.releaseRoot, options.manifest, options.declarations, options.nodeId];
       if (options.prepared !== undefined && selection.some(value => value !== undefined))
@@ -419,7 +435,11 @@ export async function stackReleaseAdmissionCommand(project: string, stack: strin
       else if (action) emitInfo(`${report.declarationReason ?? 'Candidate declarations require refresh'}. Administrator: ${action}`);
     }
   } catch (error) {
-    reportLifecycleError(error, prepare ? 'preparing the release' : 'checking release admission', { project, stack, release });
+    if (options.firstWrite) {
+      emitError('First-write inspection unavailable. ' + (error as Error).message,
+        { project, stack, release, outcome: 'unverified', writeAdmission: 'withheld' });
+      process.exitCode = 1;
+    } else reportLifecycleError(error, prepare ? 'preparing the release' : 'checking release admission', { project, stack, release });
   } finally { await client.disconnect(); }
 }
 

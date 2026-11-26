@@ -1751,6 +1751,7 @@ export class OmnitronDaemon {
       await pipelineService.initialize();
       this.pipelineService = pipelineService;
       const pipelineRpcService = new PipelineRpc(pipelineService, authService, audit);
+      projectService.setPhysicalRestoreInspector(request => pipelineRpcService.inspectPhysicalRestore(request));
       await this.app.netron.peer.exposeService(pipelineRpcService);
       if (studio && audit) {
         const { FlowLedger } = await import('../flows/flow-ledger.js');

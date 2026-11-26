@@ -42,6 +42,7 @@ import { DeployIcon } from 'src/assets/icons';
 
 import { CommitPair, GateStrip, gateSentence } from './release-bits';
 import { DeployProgressList } from './deploy-progress';
+import { FirstWriteInspector } from './first-write-inspection';
 import { TopologyMetadataDialog } from './topology/topology-metadata-dialog';
 
 export interface DeployReleaseDialogProps {
@@ -328,6 +329,8 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
                 <Typography variant="body2">An administrator must update this release’s application declarations.</Typography>}
             </Alert>
           )}
+          {verdict?.migrationHistory?.kind === 'added-migrations' && open && can('OmnitronProject.inspectFirstWrite') &&
+            <FirstWriteInspector key={key} project={project} stack={target} release={releaseId} />}
 
           {stackError && <Alert severity="warning">Stack inventory unavailable · {stackError}</Alert>}
           {deploying && !activity.records.length && <Typography variant="body2" role="status" color="text.secondary">

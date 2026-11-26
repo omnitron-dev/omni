@@ -3,7 +3,7 @@ import { stackReleaseAdmissionCommand, stackSelectPlacementCommand, stackStartCo
 
 const rpc = vi.hoisted(() => ({
   preflightRemotePlacement: vi.fn(), reviewRemotePlacement: vi.fn(), selectRemotePlacement: vi.fn(),
-  checkRelease: vi.fn(), startStack: vi.fn(), deployReviewedRelease: vi.fn(), reviewStackStart: vi.fn(),
+  checkRelease: vi.fn(), inspectFirstWrite: vi.fn(), startStack: vi.fn(), deployReviewedRelease: vi.fn(), reviewStackStart: vi.fn(),
 }));
 const client = vi.hoisted(() => ({ service: vi.fn(async () => rpc), disconnect: vi.fn() }));
 const output = vi.hoisted(() => ({ emitJson: vi.fn(() => true), emitError: vi.fn(), emitInfo: vi.fn(), emitStep: vi.fn(), isJsonMode: () => true }));
@@ -89,6 +89,26 @@ it('explains an additive-history refusal in check-release and preserves its evid
   expect(process.exitCode).toBe(1);
   await stackStartCommand('sample', 'prod', { release: 'next', dryRun: true });
   expect(output.emitJson).toHaveBeenLastCalledWith(refusal);
+  expect(rpc.startStack).not.toHaveBeenCalled();
+  expect(rpc.deployReviewedRelease).not.toHaveBeenCalled();
+});
+
+it('returns a verified closed copy and a refused first write from the ordinary check-release command', async () => {
+  const verifyRun = '205656dc-7e3f-4bc5-93f0-b51092e562f6';
+  const result = { ok: false, writeAdmission: 'withheld', owner: {}, physical: { state: 'verified-closed-copy', evidence: { verifyRunId: verifyRun } } };
+  rpc.inspectFirstWrite.mockResolvedValueOnce(result);
+  await stackReleaseAdmissionCommand('sample', 'prod', 'next', false, { firstWrite: true, verifyRun });
+  expect(rpc.inspectFirstWrite).toHaveBeenCalledExactlyOnceWith({ project: 'sample', stack: 'prod', release: 'next', verifyRunId: verifyRun });
+  expect(output.emitJson).toHaveBeenCalledWith(result);
+  expect(process.exitCode).toBe(1);
+  await stackReleaseAdmissionCommand('sample', 'prod', 'next', false, { verifyRun });
+  expect(rpc.inspectFirstWrite).toHaveBeenCalledTimes(1);
+  rpc.inspectFirstWrite.mockRejectedValueOnce(Error('Receiver disconnected'));
+  await stackReleaseAdmissionCommand('sample', 'prod', 'next', false, { firstWrite: true, verifyRun });
+  expect(output.emitError).toHaveBeenLastCalledWith('First-write inspection unavailable. Receiver disconnected',
+    { project: 'sample', stack: 'prod', release: 'next', outcome: 'unverified', writeAdmission: 'withheld' });
+  expect(output.emitJson).toHaveBeenCalledTimes(1);
+  expect(rpc.checkRelease).not.toHaveBeenCalled();
   expect(rpc.startStack).not.toHaveBeenCalled();
   expect(rpc.deployReviewedRelease).not.toHaveBeenCalled();
 });

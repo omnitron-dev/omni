@@ -29,6 +29,50 @@ it('explains an additive history refusal before allowing a deployment', async ()
   expect(rpc.start).not.toHaveBeenCalled();
 });
 
+it('reads the explicit native verify run while keeping production deployment withheld', async () => {
+  rpc.can.mockImplementation(permission => permission === 'OmnitronProject.inspectFirstWrite');
+  rpc.list.mockResolvedValue({ releases: [] });
+  rpc.check.mockResolvedValueOnce({ ok: false, state: 'replacement-unavailable', because: 'Unproven first write',
+    migrationHistory: { kind: 'added-migrations', total: 1, entries: ['003.sql'] } });
+  rpc.check.mockResolvedValueOnce({ writeAdmission: 'withheld', owner: { nodeId: 'source', phase: 'stopped', revision: 8,
+    apps: [{ name: 'sample/prod/main', generation: 'launch-3', artifactSha256: 'a'.repeat(64) }] },
+    physical: { state: 'verified-closed-copy', evidence: { sourceStop: 'exact-stop', receiver: { nodeId: 'replica' }, proofDigest: 'b'.repeat(64) } },
+    missing: [{ authority: 'writer-fence', reason: 'Data owners have not fenced external writers.' }] });
+  render(renderRelease());
+  fireEvent.change(screen.getByRole('combobox', { name: 'Release ID' }), { target: { value: 'new' } });
+  const run = await screen.findByLabelText('Physical verify run ID (optional)');
+  expect(rpc.check).toHaveBeenCalledTimes(1);
+  fireEvent.change(run, { target: { value: 'verify-id' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Inspect first-write admission' }));
+  expect(await screen.findByText(/Closed copy verified on replica at stop exact-stop/)).toBeTruthy();
+  expect(screen.getByText(/Data owners have not fenced external writers/)).toBeTruthy();
+  expect(rpc.check).toHaveBeenLastCalledWith('inspectFirstWrite', { project: 'sample', stack: 'test', release: 'new', verifyRunId: 'verify-id' });
+  expect(screen.getByRole('button', { name: 'Deploy' }).hasAttribute('disabled')).toBe(true);
+  fireEvent.change(run, { target: { value: 'another-id' } });
+  expect(screen.queryByText(/Closed copy verified/)).toBeNull();
+  expect(rpc.start).not.toHaveBeenCalled();
+});
+
+it('discards an unfinished first-write inspection when the operator selects another release', async () => {
+  rpc.can.mockReturnValue(true);
+  rpc.list.mockResolvedValue({ releases: [] });
+  const refused = { ok: false, state: 'replacement-unavailable', because: 'Return unavailable',
+    migrationHistory: { kind: 'added-migrations', total: 1, entries: ['002.sql'] } };
+  let finish!: (value: unknown) => void;
+  rpc.check.mockImplementation(method => method === 'checkRelease' ? Promise.resolve(refused) : new Promise(resolve => { finish = resolve; }));
+  render(renderRelease());
+  const release = screen.getByRole('combobox', { name: 'Release ID' });
+  fireEvent.change(release, { target: { value: 'first' } });
+  fireEvent.click(await screen.findByRole('button', { name: 'Inspect first-write admission' }));
+  fireEvent.change(release, { target: { value: 'second' } });
+  await screen.findByRole('button', { name: 'Inspect first-write admission' });
+  finish({ writeAdmission: 'withheld', owner: { nodeId: 'former-owner', apps: [] }, physical: { state: 'unverified', reason: 'former result' }, missing: [] });
+  await waitFor(() => expect(rpc.check).toHaveBeenCalledWith('checkRelease', { project: 'sample', stack: 'test', release: 'second' }));
+  expect(screen.queryByText('former result')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Deploy' }).hasAttribute('disabled')).toBe(true);
+  expect(rpc.start).not.toHaveBeenCalled();
+});
+
 it.each([true, false])('uses the reviewed node and checks the administrator grant before a full stop (allowed=%s)', async allowed => {
   const digest = 'a'.repeat(64);
   rpc.can.mockImplementation((permission: string) => permission === 'OmnitronProject.deployReviewedRelease' && allowed);

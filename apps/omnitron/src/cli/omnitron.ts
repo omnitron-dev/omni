@@ -593,6 +593,8 @@ stack
   .command('check-release <project> <stack> <release>')
   .description('Read the deployment admission decision for a local or remote stack')
   .option('--prepared <digest>', 'Recheck an exact prepared replacement source')
+  .option('--first-write', 'Inspect supervised applications and first-write admission for an additive migration')
+  .option('--verify-run <uuid>', 'Re-read a native closed physical copy during first-write inspection')
   .structuredAction(async (projectName, stackName, release, options) => {
     const { stackReleaseAdmissionCommand } = await import('../commands/stack.js');
     await stackReleaseAdmissionCommand(projectName, stackName, release, false, options);
@@ -1538,9 +1540,9 @@ pipeline.command('resume <runId>').description('Continue the reviewed checkpoint
   });
 pipeline.command('physical-restore <verifyRunId> <project> <stack>')
   .description('Verify the native stopped PostgreSQL and MinIO copy on both registered nodes')
-  .structuredAction(async (runId: string, project: string, stack: string) => {
+  .structuredAction(async (runId: string, projectName: string, stackName: string) => {
     const { pipelinePhysicalRestoreCommand } = await import('../commands/pipeline.js');
-    await pipelinePhysicalRestoreCommand(runId, project, stack);
+    await pipelinePhysicalRestoreCommand(runId, projectName, stackName);
   });
 pipeline.command('reconcile <runId>').description('Read remote launch receipts and retain unknown deployment outcomes; never redeploy')
   .structuredAction(async (runId: string) => {

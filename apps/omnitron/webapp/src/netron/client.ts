@@ -16,7 +16,7 @@ import {
   type BackendSchema,
 } from '@omnitron-dev/prism/netron';
 
-import { LONG_REQUEST_TIMEOUT } from '@omnitron-dev/omnitron/dto/services';
+import { FIRST_WRITE_PHYSICAL_TIMEOUT_MS, LONG_REQUEST_TIMEOUT } from '@omnitron-dev/omnitron/dto/services';
 import type {
   IOmnitronAccessService,
   IOmnitronStudioService,
@@ -229,10 +229,12 @@ export const project = daemonClient.daemon.OmnitronProject;
 export const studio = daemonClient.daemon.OmnitronStudio;
 
 /** Use the CLI lifecycle budget without extending short reads or replaying a lost mutation. */
-export function invokeStackLifecycle<M extends 'startStack' | 'deployReviewedRelease' | 'stopStack' | 'resumeInstalledStack' | 'checkRelease'>(
+export function invokeStackLifecycle<M extends 'startStack' | 'deployReviewedRelease' | 'stopStack' | 'resumeInstalledStack' | 'checkRelease' | 'inspectFirstWrite'>(
   method: M, input: Parameters<IProjectRpcService[M]>[0],
 ): Promise<Awaited<ReturnType<IProjectRpcService[M]>>> {
-  return daemonClient.invoke('daemon', 'OmnitronProject', method, [input], { timeout: LONG_REQUEST_TIMEOUT });
+  return daemonClient.invoke('daemon', 'OmnitronProject', method, [input], {
+    timeout: method === 'inspectFirstWrite' && 'verifyRunId' in input ? FIRST_WRITE_PHYSICAL_TIMEOUT_MS : LONG_REQUEST_TIMEOUT,
+  });
 }
 
 /** System information (OS, CPU, memory, disks, network) */

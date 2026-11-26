@@ -22,6 +22,7 @@ import { confirmRegisteredReleaseNode, confirmReleaseRecipient, verifyRemoteSour
 import { resolveProjectStacks } from '../../src/config/project-stacks.js';
 import type { PlacementProvisionIntent, PreparedRemoteReleaseSource } from '../../src/shared/dto/project.js';
 import type { StoppedReleaseEvidence } from '../../src/project/node-stack-stop.js';
+import type { InspectPhysicalRestore, PhysicalRestoreEvidence } from '../../src/shared/dto/physical-restore.js';
 
 const sha = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex');
 const root = await vi.hoisted(async () => {
@@ -90,7 +91,8 @@ function fixture() {
   const records = new Map<string, unknown>();
   let pin = 'a'.repeat(64);
   const registration = { name: 'sample', path: original, registeredAt: '2026-01-01T00:00:00.000Z' };
-  const recipient = () => ({ host: candidateNode.host, port: candidateNode.port, fingerprint: stableFingerprint, pin, managementIdentity: 'fixture-management' });
+  const recipient = () => ({ host: candidateNode.host, port: candidateNode.port, fingerprint: stableFingerprint, pin, managementIdentity: 'fixture-management',
+    registeredAt: '2026-01-01T00:00:00Z', sshPort: 22 });
   const owner = vi.fn(async () => ({ applicationRuntime: { root: '/runtime/packages/0', executable: '/runtime/node',
     commit: 'd'.repeat(40), target: platform, execution: { mode: 'resident', protocol: 1, ownerId: 'resident', pid: 42, epoch: 2 } } }));
   const credentials = vi.fn(async (_host: string, _port: number, _id: string) => ({ host: candidateNode.host, port: 22, username: 'fixture', expectedHostFingerprint: stableFingerprint }));
@@ -454,6 +456,7 @@ describe('prepared source of one registered remote release', () => {
       fingerprint: 'SHA256:' + 'B'.repeat(43),
       pin: 'c'.repeat(64),
       managementIdentity: 'serving-pinned-management',
+      registeredAt: '2026-01-01T00:00:00Z', sshPort: 22,
     };
     service.setReleaseRecipientResolver((key) => (key === oldNode.nodeId ? serving : f.recipient()));
     const incumbent = { ...oldNode };
@@ -728,12 +731,60 @@ describe('prepared source of one registered remote release', () => {
           sourceRoot: extendedSource, manifestSha256: sha(raw), declarationsSha256: captured.declarationsSha256 });
         const change = { ...scope, fromNodeId: nodeId, destination: { release: extended, prepared: observed.digest } };
         const stopCount = () => read.mock.calls.filter(([method]) => method === 'executeNodeStackStop').length;
+        const verifyRunId = '25de7711-0c0e-4c40-bf90-2e96844fd674', firstWrite = { ...scope, release: extended, verifyRunId };
+        const physical = vi.fn<(_request: InspectPhysicalRestore) => Promise<PhysicalRestoreEvidence>>();
+        service.setPhysicalRestoreInspector(physical);
+        const initialJournal = journal.inspect(scope);
+        const live = await rpc.inspectFirstWrite(firstWrite);
+        expect(live).toMatchObject({ writeAdmission: 'withheld', incumbent: { release: id, digest: ready.digest },
+          candidate: { release: extended, digest: observed.digest }, owner: { nodeId, phase: 'running', apps: [{
+            name: inv.execution.apps[0]!.name, generation: inv.execution.apps[0]!.generation, artifactSha256: launched!.artifactSha256 }] },
+          physical: { state: 'unverified' } });
+        expect(live.missing.map(item => item.authority)).toEqual(['writer-fence','pre-write-return','candidate-rehearsal','write-decision','post-write-recovery']);
+        await expect(rpc.inspectFirstWrite({ ...firstWrite, writerFence: true } as typeof firstWrite)).rejects.toThrow(/Only the project/);
+        expect(journal.inspect(scope)).toEqual(initialJournal);
+        expect(physical).not.toHaveBeenCalled();
         await expect(rpc.checkRelease({ ...scope, release: extended })).resolves.toMatchObject({ ok: false, state: 'replacement-unavailable',
           migrationHistory: { kind: 'added-migrations', total: 1, entries: [added] } });
         await expect(rpc.preflightRemotePlacement(change)).rejects.toThrow(/return release/);
         expect(stopCount()).toBe(0);
         const reviewedStop = await service.reviewStackStop(scope.project, scope.stack);
         await service.stopStack(scope.project, scope.stack, reviewedStop.digest!);
+        await expect(rpc.inspectFirstWrite(firstWrite)).rejects.toThrow(/retained launch closures/);
+        const applied = store.kvGetSync<import('../../src/shared/dto/project.js').StackStopProgress>(stopKey)!, ack = applied.nodes[0]!;
+        retained = { operationId: ack.operationId!, observedAt: ack.observedAt!, release: id, manifestSha256: ready.manifestSha256,
+          apps: inv.execution.apps.map(app => ({ ...app, artifactSha256: launched!.artifactSha256 })) };
+        const stopped = await rpc.inspectFirstWrite({ ...scope, release: extended });
+        expect(stopped.owner).toMatchObject({ phase: 'stopped', stop: { id: applied.id, nodeOperationId: ack.operationId } });
+        expect(stopped.physical.state).toBe('unverified');
+        expect(physical).not.toHaveBeenCalled();
+        const pin = (n: string, target: typeof serving) => ({ nodeId: n, host: target.host, daemonPort: target.port,
+          fingerprint: target.fingerprint, sshPort: 22, registeredAt: '2026-01-01T00:00:00Z' });
+        const hash = 'a'.repeat(64), time = new Date().toISOString();
+        const proof: PhysicalRestoreEvidence = { ...scope, protocol: 1, kind: 'physical-service-data', verifyRunId,
+          seed: 'ff481165-ecdb-4c03-8603-720225f83c1c', sourceStop: applied.id, source: pin(nodeId, f.recipient()), receiver: pin(oldNode.nodeId, serving),
+          reviewDigest: hash, proofDigest: hash, definitionRevision: hash, runCompletedAt: time, observedFrom: time, verifiedAt: time,
+          volumes: ['postgres-data','nominatim-data','nominatim-flatnode','nominatim-merged','redis-data','minio-data'].map((tag, i) => ({
+            tag, volume: tag, files: 1, bytes: 12, sha256: hash, metadataSha256: hash, source: { device: '1', inode: String(i + 1) },
+            receiver: { device: '2', inode: String(i + 1) }, sourceGeneration: hash, receiverGeneration: hash })),
+          postgres: { postgres: { systemIdentifier: '123', controlSha256: hash }, nominatim: { systemIdentifier: '456', controlSha256: hash } },
+          minio: { formatSha256: hash } };
+        physical.mockResolvedValue(proof);
+        const closed = await rpc.inspectFirstWrite(firstWrite);
+        expect(closed).toMatchObject({ owner: stopped.owner, writeAdmission: 'withheld', physical: { state: 'verified-closed-copy', evidence: proof } });
+        expect(closed).not.toHaveProperty('deployment');
+        expect(physical).toHaveBeenCalledExactlyOnceWith({ ...scope, verifyRunId });
+        expect((await rpc.inspectFirstWrite(firstWrite)).physical).toEqual(closed.physical);
+        await expect(rpc.deployReviewedRelease({ ...scope, release: extended, review: proof.proofDigest })).rejects.toThrow(/return release/);
+        physical.mockResolvedValueOnce({ ...proof, sourceStop: 'different-stop' });
+        await expect(rpc.inspectFirstWrite(firstWrite)).rejects.toThrow(/this selected source/);
+        physical.mockResolvedValueOnce({ ...proof, receiver: { ...proof.receiver, fingerprint: proof.source.fingerprint } });
+        await expect(rpc.inspectFirstWrite(firstWrite)).rejects.toThrow(/fleet registration/);
+        physical.mockResolvedValueOnce({ ...proof, receiver: { ...proof.receiver, registeredAt: 'another-enrollment' } });
+        await expect(rpc.inspectFirstWrite(firstWrite)).rejects.toThrow(/fleet registration/);
+        physical.mockImplementationOnce(async () => { inv.execution.revision++; return proof; });
+        await expect(rpc.inspectFirstWrite(firstWrite)).rejects.toThrow(/stopped execution generation/);
+        inv.execution.revision--;
         await expect(rpc.reviewRemotePlacement(change)).rejects.toThrow(/return release/);
         await expect(rpc.selectRemotePlacement({ ...change, review: 'a'.repeat(64) })).rejects.toThrow(/return release/);
         expect(journal.inspect(scope).placement?.selected?.release).toBe(id);
@@ -938,7 +989,7 @@ describe('prepared source of one registered remote release', () => {
 
   it('requires administrator authority for controller paths and permits an operator to recheck only an approved digest', () => {
     for (const name of ['prepareRemoteReleaseSource', 'checkRemoteReleaseSource', 'reviewPreparedHostBindings',
-      'preflightRemotePlacement', 'reviewRemotePlacement', 'selectRemotePlacement', 'deployReviewedRelease']) {
+      'preflightRemotePlacement', 'reviewRemotePlacement', 'selectRemotePlacement', 'deployReviewedRelease', 'inspectFirstWrite']) {
       const rule = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, ProjectRpcService.prototype, name);
       for (const role of ['viewer', 'operator', 'admin'])
         expect(validateAccessRequirements({ roles: [role], permissions: [] }, rule).allowed).toBe(role === 'admin' || (name === 'checkRemoteReleaseSource' && role === 'operator'));

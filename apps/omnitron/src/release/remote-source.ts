@@ -18,7 +18,11 @@ const sha256 = /^[a-f0-9]{64}$/;
 const validName = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
 
 export interface RemoteSourceRegistration { name: string; path: string; registeredAt: string }
-export interface ReleaseRecipient { host: string; port: number; fingerprint: string; pin: string; managementIdentity: string }
+export interface ReleaseRecipient {
+  host: string; port: number; fingerprint: string; pin: string; managementIdentity: string;
+  /** Used when joining an independent physical-restore observation to this fleet enrollment. */
+  registeredAt?: string; sshPort?: number;
+}
 
 export function remoteReleaseSourcePrefix(project: string, stack: string): string {
   if (![project, stack].every(name => typeof name === 'string' && validName.test(name)))

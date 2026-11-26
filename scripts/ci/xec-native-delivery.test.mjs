@@ -22,6 +22,7 @@ test('native delivery binds the run and verifies bytes before calling the truste
   await fs.mkdir(path.join(extracted, 'packages/0/dist'), { recursive: true });
   await fs.writeFile(path.join(extracted, 'packages/0/dist/BUILD.json'), JSON.stringify({ commit, dirty: false }));
   await fs.writeFile(path.join(extracted, 'node'), 'retained native fixture bytes');
+  await fs.chmod(path.join(extracted, 'node'), 0o751);
   const runtime = await seal(extracted, 'v22.23.4', 'linux', 'x64');
   const proof = { schema: 1, commit, previous, runId: 7, attempt: 2, node: 'v22.23.4',
     runtime, platform: 'linux', arch: 'x64', archive: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.length };
@@ -37,7 +38,8 @@ test('native delivery binds the run and verifies bytes before calling the truste
   await fs.writeFile(path.join(module, 'BUILD.json'), JSON.stringify({ commit: readerCommit, dirty: false }));
   await fs.writeFile(path.join(module, 'release/frozen-installation.js'),
     "import fs from 'node:fs/promises'; export async function extractFrozenArchive(_archive, root) {" +
-    "await fs.cp(" + JSON.stringify(extracted) + ",root,{recursive:true}); }");
+    "await fs.cp(" + JSON.stringify(extracted) + ",root,{recursive:true});" +
+    "await fs.unlink(root+'/node'); await fs.writeFile(root+'/node','retained native fixture bytes',{mode:0o751}); }");
   await seal(local, process.version);
   let downloads = 0, corrupt = true;
   const options = { directory, localRuntime: local, readerCommit, evidence: { id: 7, attempt: 2 }, context: { commit, previous, node: '22.23.4' },
@@ -51,7 +53,12 @@ test('native delivery binds the run and verifies bytes before calling the truste
   await assert.rejects(retainNativeRuntime(options), /checksum differs/);
   await assert.rejects(fs.access(directory), { code: 'ENOENT' });
   corrupt = false;
-  assert.equal(await retainNativeRuntime(options), path.join(directory, 'runtime'));
+  const originalMask = process.umask(0o077);
+  try {
+    assert.equal(await retainNativeRuntime(options), path.join(directory, 'runtime'));
+    assert.equal(process.umask(), 0o077);
+    assert.equal((await fs.stat(path.join(directory, 'runtime/node'))).mode & 0o777, 0o711);
+  } finally { process.umask(originalMask); }
   assert.equal(downloads, 2);
   await retainNativeRuntime({ ...options, observeOnly: true });
   assert.equal(downloads, 2);

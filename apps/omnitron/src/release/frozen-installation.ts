@@ -38,6 +38,8 @@ export async function frozenMember(root: string, relative: string): Promise<stri
 export async function extractFrozenArchive(archive: string, directory: string): Promise<void> {
   let invalid: string | undefined, bytes = 0;
   const names = new Map<string, string>();
+  const maskedExecutables = new Map<string, number>();
+  const creationMask = process.umask();
   await list({ file: archive, strict: true, onReadEntry(entry) {
     if (invalid) return;
     const name = entry.path.replace(/\/$/, ''), key = name.normalize('NFC').toLowerCase();
@@ -47,6 +49,8 @@ export async function extractFrozenArchive(archive: string, directory: string): 
       invalid = 'Invalid release archive member: ' + name; return;
     }
     names.set(key, entry.type);
+    const execute = (entry.mode ?? 0) & 0o111;
+    if (entry.type === 'File' && (execute & creationMask)) maskedExecutables.set(name, execute);
     if (entry.type === 'SymbolicLink') {
       const link = entry.linkpath ?? '', resolved = path.posix.normalize(path.posix.join(path.posix.dirname(name), link));
       if (!link || /[\\:\0]/.test(link) || path.posix.isAbsolute(link) || resolved === '..' || resolved.startsWith('../'))
@@ -61,6 +65,15 @@ export async function extractFrozenArchive(archive: string, directory: string): 
     }
   }
   await extract({ file: archive, cwd: directory, strict: true, preserveOwner: false, noChmod: false });
+  // open(2) applies the caller's umask. Execute bits are part of the signed tree.
+  for (const [name, execute] of maskedExecutables) {
+    const file = await fs.open(path.join(directory, name), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    try {
+      const stat = await file.stat();
+      if (!stat.isFile() || stat.nlink !== 1) throw Error('Expected an extracted regular file: ' + name);
+      await file.chmod((stat.mode & 0o666) | execute);
+    } finally { await file.close(); }
+  }
 }
 
 export async function assertFrozenDirectory(dir: string) {

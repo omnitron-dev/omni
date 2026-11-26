@@ -3,6 +3,7 @@ import path from 'node:path';
 import { createReadStream } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
+import { releaseCommand } from '@xec-sh/ops/release';
 import { readRuntimeManifest, runtimeArtifactDigest, verifyRuntimeArtifact } from '../apps/omnitron/src/shared/runtime-artifact.ts';
 
 const json = async file => JSON.parse(await fs.readFile(file, 'utf8'));
@@ -14,7 +15,6 @@ async function sha256(file) {
 
 /** Decode with the already qualified local SDK; never execute code from the download. */
 export async function retainNativeRuntime({ directory, localRuntime, readerCommit, evidence, context, download, observeOnly }) {
-  const load = file => import(pathToFileURL(path.join(localRuntime, 'packages/0/dist', file)).href);
   async function verify(root) {
     const proof = await json(path.join(root, 'NATIVE.json'));
     if (proof.schema !== 1 || proof.commit !== context.commit || proof.previous !== context.previous ||
@@ -32,8 +32,10 @@ export async function retainNativeRuntime({ directory, localRuntime, readerCommi
     const stamp = await json(path.join(runtime, 'packages/0/dist/BUILD.json'));
     if (manifest.sha256 !== proof.runtime || manifest.nodeVersion !== proof.node ||
         manifest.platform !== proof.platform || manifest.arch !== proof.arch ||
-        stamp.commit !== proof.commit || stamp.dirty !== false || await runtimeArtifactDigest(runtime) !== proof.runtime)
-      throw Error('Native runtime differs from its sealed proof');
+        stamp.commit !== proof.commit || stamp.dirty !== false)
+      throw Error('Native runtime manifest or build stamp differs from its sealed proof');
+    const actual = await runtimeArtifactDigest(runtime);
+    if (actual !== proof.runtime) throw Error('Native runtime tree digest differs: expected ' + proof.runtime + ', got ' + actual);
     return runtime;
   }
   try {
@@ -58,8 +60,15 @@ export async function retainNativeRuntime({ directory, localRuntime, readerCommi
     const proof = await verify(temporary);
     const runtime = path.join(temporary, 'runtime');
     await fs.mkdir(runtime, { mode: 0o700 });
-    const { extractFrozenArchive } = await load('release/frozen-installation.js');
-    await extractFrozenArchive(path.join(temporary, 'runtime.tgz'), runtime);
+    // Older sealed readers let open(2) mask file execute bits. Scope the mask
+    // to this extraction, retaining the operator's read/write restrictions.
+    const readerUrl = pathToFileURL(path.join(localRuntime, 'packages/0/dist/release/frozen-installation.js')).href;
+    const worker = `process.umask(process.umask() & 0o666);
+const [reader, archive, root] = process.argv.slice(1);
+await (await import(reader)).extractFrozenArchive(archive, root);`;
+    await releaseCommand(temporary, process.execPath,
+      ['--input-type=module', '-e', worker, readerUrl, path.join(temporary, 'runtime.tgz'), runtime],
+      { envMode: 'replace', env: {}, signal: context.signal, timeoutMs: 600_000 });
     await verifyExtracted(temporary, proof);
     await fs.rename(temporary, directory);
     return path.join(directory, 'runtime');

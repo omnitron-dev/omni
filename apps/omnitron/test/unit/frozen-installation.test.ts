@@ -3,16 +3,39 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { createHash } from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { create } from 'tar';
 import { assertFrozenDirectory, extractFrozenArchive, verifyFrozenApplication } from '../../src/release/frozen-installation.js';
 import { releaseTreeDigest } from '../../src/release/runtime-provenance.js';
 import { targetRuntime } from '../../src/release/target-runtime.js';
+import { writePortableArchive } from '../../src/release/portable-archive.js';
+import { runtimeArtifactDigest } from '../../src/shared/runtime-artifact.js';
 
 const roots: string[] = [];
 const temp = async () => { const dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'frozen-install-'))); roots.push(dir); return dir; };
 afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
 
 describe('one bounded extractor for local and remote frozen installations', () => {
+  it('preserves the sealed executable bits under a private process umask', async () => {
+    const source = await temp(), destination = await temp(), archives = await temp();
+    const files = { runner: 0o755, helper: 0o740, data: 0o644, selective: 0o645 };
+    for (const [name, mode] of Object.entries(files)) {
+      const file = path.join(source, name);
+      await fs.writeFile(file, name);
+      await fs.chmod(file, mode);
+    }
+    const archive = path.join(archives, 'payload.tar.gz');
+    await writePortableArchive(source, archive, { preserveExecutableBits: true });
+    const module = new URL('../../src/release/frozen-installation.ts', import.meta.url).href;
+    const script = 'process.umask(0o077); const [reader, archive, output] = process.argv.slice(1); ' +
+      'await (await import(reader)).extractFrozenArchive(archive, output); if (process.umask() !== 0o077) process.exitCode = 1;';
+    await promisify(execFile)(process.execPath, ['--import', 'tsx/esm', '--input-type=module', '-e', script, module, archive, destination]);
+    expect(await runtimeArtifactDigest(destination)).toBe(await runtimeArtifactDigest(source));
+    expect((await fs.stat(destination)).mode & 0o777).toBe(0o700);
+    for (const [name, mode] of Object.entries(files))
+      expect((await fs.stat(path.join(destination, name))).mode & 0o777).toBe(0o600 | (mode & 0o111));
+  });
   it.each(['.omnitron-release.json', '.artifact-sha256', 'candidate.tar.gz'])('refuses injected %s before any extraction', async name => {
     const source = await temp(), destination = await temp();
     await fs.writeFile(path.join(source, name), 'injected'); await fs.writeFile(path.join(source, 'normal.js'), 'export default 1;');

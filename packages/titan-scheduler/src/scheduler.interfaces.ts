@@ -111,8 +111,7 @@ export interface ICronOptions extends IBaseJobOptions {
   timezone?: string;
 
   /**
-   * NOT IMPLEMENTED — nothing reads this, and node-cron has no equivalent
-   * parameter. Use `timezone`, which is applied.
+   * Fixed offset in minutes east of UTC. A job accepts either this value or a named timezone.
    */
   utcOffset?: number;
 
@@ -128,9 +127,7 @@ export interface ICronOptions extends IBaseJobOptions {
   endTime?: Date | string;
 
   /**
-   * NOT IMPLEMENTED for cron jobs — only the interval branch honours it
-   * (scheduleIntervalJob). A cron job declaring it waits for the first
-   * matching tick like any other.
+   * Run when the job is first armed, subject to its active window and distributed lock.
    */
   immediate?: boolean;
 }

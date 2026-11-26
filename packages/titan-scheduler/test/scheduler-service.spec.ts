@@ -231,6 +231,36 @@ describe('Scheduler Service', () => {
   });
 
   describe('Cron Job Management', () => {
+    it.each([[330, 6, 30], [-210, 15, 30], [0, 12, 0]])(
+      'matches the armed timer and its reported next execution at UTC offset %i minutes',
+      async (utcOffset, hours, minutes) => {
+        const job = scheduler.addCronJob('offset', '0 12 * * *', vi.fn(), { utcOffset });
+        await scheduler.onStart();
+        const task = registry.getJobInstance('offset') as { getNextRun(): Date };
+        const next = task.getNextRun();
+        expect([next.getUTCHours(), next.getUTCMinutes()]).toEqual([hours, minutes]);
+        expect(job.nextExecution?.getTime()).toBe(next.getTime());
+      },
+    );
+
+    it('rejects conflicting cron time settings before the job is registered', () => {
+      for (const options of [{ utcOffset: 30, timezone: 'UTC' }, { utcOffset: 24 * 60 }, { utcOffset: 0.5 }]) {
+        expect(() => scheduler.addCronJob('invalid-zone', CronExpression.EVERY_MINUTE, vi.fn(), options)).toThrow();
+        expect(registry.hasJob('invalid-zone')).toBe(false);
+      }
+    });
+
+    it('fires once on activation and honours a future start window', async () => {
+      const open = vi.fn(), future = vi.fn();
+      scheduler.addCronJob('on-activation', '0 0 1 1 *', open, { immediate: true });
+      scheduler.addCronJob('on-window', '0 0 1 1 *', future, { immediate: true, startTime: new Date(Date.now() + 60_000) });
+      await scheduler.onStart();
+      await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(1));
+      scheduler.startJob('on-activation');
+      expect(open).toHaveBeenCalledTimes(1);
+      expect(future).not.toHaveBeenCalled();
+    });
+
     it('should add cron job dynamically', () => {
       const handler = vi.fn();
       const job = scheduler.addCronJob('test-cron', CronExpression.EVERY_MINUTE, handler);

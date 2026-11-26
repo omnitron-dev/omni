@@ -37,7 +37,7 @@ import {
   type ISchedulerLockProvider,
 } from './scheduler.interfaces.js';
 
-import type { SchedulerRegistry } from './scheduler.registry.js';
+import { cronTimezone, type SchedulerRegistry } from './scheduler.registry.js';
 import type { SchedulerExecutor } from './scheduler.executor.js';
 import type { SchedulerDiscovery } from './scheduler.discovery.js';
 import type { SchedulerMetricsService } from './scheduler.metrics.js';
@@ -265,7 +265,7 @@ export class SchedulerService implements ILifecycle {
         }
       },
       {
-        timezone: options.timezone || this.config?.timezone,
+        timezone: this.timezoneOf(job),
       }
     );
 
@@ -275,6 +275,7 @@ export class SchedulerService implements ILifecycle {
 
     // Calculate next execution
     this.updateNextExecution(job);
+    if (options.immediate && !existingTask && !options.disabled) void this.executeJob(job);
   }
 
   /**
@@ -469,7 +470,7 @@ export class SchedulerService implements ILifecycle {
 
   /** The timezone node-cron runs a cron job in; the expression must be read in the same one. */
   private timezoneOf(job: IScheduledJob): string | undefined {
-    return (job.options as ICronOptions).timezone || this.config?.timezone;
+    return cronTimezone(job.options as ICronOptions) ?? this.config?.timezone;
   }
 
   /**

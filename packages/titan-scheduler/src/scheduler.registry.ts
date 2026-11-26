@@ -20,6 +20,18 @@ import {
   type IJobFilterOptions,
 } from './scheduler.interfaces.js';
 
+/** node-cron and cron-parser accept the same ISO offset identifier on supported Node releases. */
+export function cronTimezone(options: ICronOptions): string | undefined {
+  const { utcOffset, timezone } = options;
+  if (utcOffset === undefined) return timezone;
+  if (timezone !== undefined) throw Errors.badRequest('Set either a timezone or a fixed UTC offset on a cron job');
+  if (!Number.isInteger(utcOffset) || Math.abs(utcOffset) >= 24 * 60)
+    throw Errors.badRequest('utcOffset must be a whole number of minutes between -1439 and 1439');
+  const minutes = Math.abs(utcOffset);
+  return (utcOffset < 0 ? '-' : '+') + String(Math.floor(minutes / 60)).padStart(2, '0') +
+    ':' + String(minutes % 60).padStart(2, '0');
+}
+
 /**
  * Registry for managing scheduled jobs
  */
@@ -63,6 +75,7 @@ export class SchedulerRegistry {
     if (this.hasJob(name)) {
       throw Errors.conflict(`${ERROR_MESSAGES.JOB_ALREADY_EXISTS}: ${name}`);
     }
+    if (type === SchedulerJobType.CRON) cronTimezone(options as ICronOptions);
 
     const job: IScheduledJob = {
       id: this.generateJobId(),

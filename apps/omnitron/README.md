@@ -193,6 +193,14 @@ The response can also report `state: "requires-stop"`; capture the declarations
 and review preservation before scheduling that stop. Console's Releases view
 offers the same operations according to the signed-in user's role.
 
+When moving a release store to another service account, copy the release manifests
+and archives with the store. Each installed receipt identifies its original
+physical directory. Run `stack prepare-release` under the new account to extract
+and verify the release there, then repeat `stack check-release`. For a static
+artifact mounted by a running container, review the new read-only mount and
+verify the served files before switching that container. The original directory
+remains available to the running container throughout preparation.
+
 With the OpenResty gateway, select `GATEWAY_UPSTREAM_TRANSPORT=unix` when the template connects to host applications through private Unix sockets. Mount the receiving node's socket volume read-only in that gateway. Omnitron opens the stack-to-host TCP firewall rule only for a declared OpenResty gateway using TCP. The socket units and their application endpoints belong to the node's provisioning configuration.
 
 ### Confirm remote application startup

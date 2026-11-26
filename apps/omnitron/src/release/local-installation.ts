@@ -15,7 +15,7 @@ import type { ReleaseLaunch } from './manifest.js';
 import { releaseArtifactOrigins, assertImportableArtifact } from './origin.js';
 import { sha256File } from './portable-archive.js';
 import { RELEASE_RECEIPT, releaseTreeDigest } from './runtime-provenance.js';
-import { readInstalledReleaseReceipt, writeInstalledReleaseReceipt, type ReleaseArtifactOrigin } from './installed-origin.js';
+import { InstalledReleaseLocationMismatch, readInstalledReleaseReceipt, writeInstalledReleaseReceipt, type ReleaseArtifactOrigin } from './installed-origin.js';
 import { assertReleaseTarget, releaseOptionsForEnv, targetRuntime, type TargetRuntime } from './target-runtime.js';
 
 export class LocalReleaseNotPreparedError extends Error {}
@@ -44,6 +44,24 @@ async function privateDirectory(parent: string, name: string): Promise<string> {
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
   await assertDirectory(dir);
   return dir;
+}
+
+/** Keep an existing verified bind path. A copied installation needs its own extraction and receipt. */
+async function installationRoot(group: string, archive: string, binding: string, origin: ReleaseArtifactOrigin): Promise<string> {
+  const name = archive + '-' + binding;
+  const root = path.join(group, name);
+  const localBinding = createHash('sha256').update(JSON.stringify([group, binding])).digest('hex');
+  const localRoot = path.join(group, archive + '-' + localBinding);
+  try { await fs.lstat(localRoot); return localRoot; }
+  catch (error) { if (!absent(error)) throw error; }
+  try { await readInstalledReleaseReceipt(root); }
+  catch (error) {
+    if (absent(error)) return root;
+    if (!(error instanceof InstalledReleaseLocationMismatch) || !isDeepStrictEqual(error.origin, origin) ||
+      !error.recordedRoot.endsWith(path.sep + path.join('.installed', path.basename(group), name))) throw error;
+    return localRoot;
+  }
+  return root;
 }
 
 async function verify(root: string, launch: ReleaseLaunch, entry: IEcosystemAppEntry, runtime: TargetRuntime, installed?: { origin: ReleaseArtifactOrigin; ownerPackage: string }): Promise<string> {
@@ -110,7 +128,7 @@ export async function inspectLocalReleaseInstallation(release: LoadedRelease, st
   }
   for (const { launch, artifact, entry, origin } of selected) {
     const binding = createHash('sha256').update(JSON.stringify({ origin, ownerPackage, nodeOptions: releaseOptionsForEnv(entry.env) })).digest('hex');
-    const root = path.join(group, artifact.sha256 + '-' + binding);
+    const root = await installationRoot(group, artifact.sha256, binding, origin);
     const exists = await fs.lstat(root).then(() => true, error => { if (!absent(error)) throw error; return false; });
     if (!exists) {
       if (!options.prepare) throw new LocalReleaseNotPreparedError('Local release has not been prepared: ' + stack + '/' + entry.name);
@@ -186,7 +204,7 @@ export async function inspectLocalReleasePayloads(release: LoadedRelease, entrie
   for (const { source, file, closureSha256 } of selected) {
     const { origin } = source;
     const binding = createHash('sha256').update(JSON.stringify({ origin, use: 'artifact-volume' })).digest('hex');
-    const root = path.join(group, file.sha256 + '-' + binding);
+    const root = await installationRoot(group, file.sha256, binding, origin);
     const verifyPayload = () => verifyFrozenPayload(root, closureSha256, source.manifest.builtWith.target!);
     const exists = await fs.lstat(root).then(() => true, error => { if (absent(error)) return false; throw error; });
     if (!exists) {

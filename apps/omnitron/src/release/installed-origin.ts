@@ -32,6 +32,13 @@ export interface InstalledReleaseReceipt {
   artifactPayloadUnchanged: boolean;
 }
 
+/** The private receipt describes an installation at another physical location. */
+export class InstalledReleaseLocationMismatch extends Error {
+  constructor(readonly recordedRoot: string, readonly origin: ReleaseArtifactOrigin) {
+    super('The installed release receipt belongs to a different physical root');
+  }
+}
+
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const hash = (v: unknown): v is string => typeof v === 'string' && /^[a-f0-9]{64}$/.test(v);
 const commit = (v: unknown): v is string => typeof v === 'string' && /^[a-f0-9]{40}$/.test(v);
@@ -112,7 +119,7 @@ export async function readInstalledReleaseReceipt(root: string): Promise<Install
   if (
     !record(r) ||
     (r.version !== 1 && r.version !== 2) ||
-    r.root !== root ||
+    typeof r.root !== 'string' || !path.isAbsolute(r.root) || path.normalize(r.root) !== r.root ||
     !validOrigin(r.origin) ||
     !hash(r.treeSha256) ||
     !commit(r.installedFrameworkCommit) ||
@@ -143,6 +150,7 @@ export async function readInstalledReleaseReceipt(root: string): Promise<Install
     )
       throw Error('The installed runtime target is invalid');
   }
+  if (r.root !== root) throw new InstalledReleaseLocationMismatch(r.root, r.origin);
   return r;
 }
 

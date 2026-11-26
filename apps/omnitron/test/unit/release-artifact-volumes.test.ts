@@ -176,6 +176,41 @@ it.each(['parent-link', 'child-link', 'nested-dependencies'])('never exposes sou
   await expect(bindArtifactVolumes(infra(), roots)).rejects.toThrow(/physical|link|dependencies/);
 });
 
+it('prepares a relocated inherited payload from its archive and keeps both historical bind paths intact', async () => {
+  const f = await fixture('relocated');
+  const original = (await inspectLocalReleasePayloads(f.release, [f.entry], true)).get('web')!;
+  const oldReceipt = await fs.readFile(path.join(original, '.omnitron-release.json'));
+  const destination = path.join(f.tmp, 'new-releases');
+  await fs.cp(f.store, destination, { recursive: true });
+  const copied = path.join(destination, path.relative(f.store, original));
+  const html = 'dist/public/index.html';
+  await fs.writeFile(path.join(copied, html), 'different copied bytes');
+  const release = await loadRelease(f.consumer.id, destination);
+  await expect(inspectLocalReleasePayloads(release, [f.entry])).rejects.toBeInstanceOf(LocalReleaseNotPreparedError);
+  const prepared = (await inspectLocalReleasePayloads(release, [f.entry], true)).get('web')!;
+  expect(prepared).not.toBe(copied);
+  expect(await fs.readFile(path.join(prepared, html), 'utf8')).toBe('<h1>relocated</h1>');
+  expect((await inspectLocalReleasePayloads(release, [f.entry])).get('web')).toBe(prepared);
+  expect(JSON.parse(await fs.readFile(path.join(prepared, '.omnitron-release.json'), 'utf8')).root).toBe(prepared);
+  expect(await fs.readFile(path.join(original, '.omnitron-release.json'))).toEqual(oldReceipt);
+  expect(await fs.readFile(path.join(copied, '.omnitron-release.json'))).toEqual(oldReceipt);
+  expect(await fs.readFile(path.join(copied, html), 'utf8')).toBe('different copied bytes');
+  expect((await inspectLocalReleasePayloads(f.release, [f.entry])).get('web')).toBe(original);
+});
+
+it('rejects a copied receipt for another producer even during preparation', async () => {
+  const f = await fixture('mismatch');
+  const original = (await inspectLocalReleasePayloads(f.release, [f.entry], true)).get('web')!;
+  const destination = path.join(f.tmp, 'new-releases');
+  await fs.cp(f.store, destination, { recursive: true });
+  const file = path.join(destination, path.relative(f.store, original), '.omnitron-release.json');
+  const receipt = JSON.parse(await fs.readFile(file, 'utf8'));
+  receipt.origin.app = 'other-site';
+  await fs.writeFile(file, JSON.stringify(receipt));
+  const release = await loadRelease(f.consumer.id, destination);
+  await expect(inspectLocalReleasePayloads(release, [f.entry], true)).rejects.toThrow('different physical root');
+});
+
 it('reselects the old verified mount without deleting the newer installation', async () => {
   const a = await fixture('old'), b = await fixture('new');
   const old = await inspectLocalReleasePayloads(a.release, [a.entry], true), newer = await inspectLocalReleasePayloads(b.release, [b.entry], true);

@@ -9,7 +9,7 @@ import { runInNewContext } from 'node:vm';
 import { register } from 'tsx/esm/api';
 const loader = register({ namespace: 'runtime-update-test' });
 const { runRuntimeUpdate, readRuntimeUpdateReceipt, readPreparedRuntimeUpdate } = await loader.import('../../src/daemon/runtime-update.ts', import.meta.url);
-const { assertLocalIdle, assertLocalReview, assertReviewedBoot, assertSameSavedSelection, assertLocalServiceTargets, assertRetainedRuntimeInfrastructure, assertRollbackStackScope, withServingRollbackAdmission } = await loader.import('../../src/daemon/runtime-update-host.ts', import.meta.url);
+const { assertRetiringOwnerExited, assertLocalIdle, assertLocalReview, assertReviewedBoot, assertSameSavedSelection, assertLocalServiceTargets, assertRetainedRuntimeInfrastructure, assertRollbackStackScope, withServingRollbackAdmission } = await loader.import('../../src/daemon/runtime-update-host.ts', import.meta.url);
 const { readRetiringRuntimeProcesses } = await loader.import('../../src/daemon/runtime-update-processes.ts', import.meta.url);
 const { assertReviewableBackendActivity, retainReviewedBackups } = await loader.import('../../src/shared/backup-admission.ts', import.meta.url);
 const { RuntimeObservationPending, RuntimeObservationTimeout, RuntimeObservationUnconfirmed } = await loader.import('../../src/daemon/runtime-observation.ts', import.meta.url);
@@ -211,6 +211,29 @@ async function validateFixtureRestore(plan) {
   assert.equal(plan.before.console, null);
   assert.equal(plan.before.consoleCommit, null);
 }
+
+test('shutdown retries the original live process and preserves unknown process evidence', () => {
+  const boot = '7744830c-bbb2-489d-8375-5b5311d2f792';
+  const previous = { ownerPid: 31, ownerLifetime: boot + ':100' };
+  assert.throws(() => assertRetiringOwnerExited(previous, { state: 'alive', identity: boot + '/100' }),
+    error => error instanceof RuntimeObservationPending && error.details.pid === 31);
+  assert.throws(() => assertRetiringOwnerExited(previous, { state: 'unknown' }), RuntimeObservationUnconfirmed);
+  assert.throws(() => assertRetiringOwnerExited(previous, { state: 'alive', identity: 'unverified' }), RuntimeObservationUnconfirmed);
+  assertRetiringOwnerExited(previous, { state: 'alive', identity: boot + ':101' });
+  assertRetiringOwnerExited(previous, { state: 'dead' });
+});
+
+test('restore polling distinguishes a pending certificate from unavailable ownership evidence', () => {
+  const blockers = { ...Object.fromEntries(BACKEND_ACTIVITY_COUNTERS.map(name => [name, 0])), backupOperations: 0 };
+  const execution = { mode: 'resident', phase: 'active', connection: { status: 'connected' },
+    supervision: { type: 'independent' }, owner: { id: 'restored' }, epoch: 1, blockers };
+  const status = recovery => ({ pid: 31, execution: { ...execution, recovery } });
+  assert.throws(() => assertLocalIdle(status({ status: 'pending', reason: 'opening journal' })),
+    error => error instanceof RuntimeObservationPending && error.details.pid === 31);
+  assert.throws(() => assertLocalIdle(status({ status: 'unavailable', reason: 'wrong owner' })),
+    error => error instanceof RuntimeObservationUnconfirmed && error.message === 'wrong owner');
+  assertLocalIdle(status({ status: 'ready' }));
+});
 
 test('an in-flight operation must be clear before a review can stop the private instance', { skip: !native }, async t => {
   const directory = await privateInstance(t);

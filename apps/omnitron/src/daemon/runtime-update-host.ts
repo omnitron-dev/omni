@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
-import { setTimeout as delay } from 'node:timers/promises';
+import { compareProcessLifetimes, readProcessLifetime } from '@omnitron-dev/common/process-identity';
 import { inspectRuntimeArtifact, verifyRuntimeArtifact } from '../shared/runtime-artifact.js';
 import { readBuildStamp } from '../shared/build-stamp.js';
 import { reviewedRuntimeConsole } from '../shared/dto/runtime-update.js';
@@ -120,14 +120,15 @@ async function inspectedRuntime(reference: VerifiedRuntimeReference) {
   return inspection.manifest;
 }
 
-async function until<T>(label: string, body: () => Promise<T>, budget: number): Promise<T> {
-  const deadline = performance.now() + budget;
-  for (;;) {
-    try { return await body(); } catch (cause) {
-      if (performance.now() >= deadline) throw Error(label + ': ' + (cause instanceof Error ? cause.message : String(cause)), { cause });
-    }
-    await delay(2000);
-  }
+/** Only the reviewed retiring process can explain a pending shutdown. */
+export function assertRetiringOwnerExited(previous: Pick<RuntimeUpdateIdentity, 'ownerPid' | 'ownerLifetime'>,
+  observed: ReturnType<typeof readProcessLifetime>) {
+  if (observed.state === 'dead') return;
+  const relation = observed.state === 'alive' ? compareProcessLifetimes(previous.ownerLifetime, observed.identity) : 'unknown';
+  if (relation === 'same')
+    throw new RuntimeObservationPending('shutdown', 'Waiting for the reviewed execution owner to exit', previous.ownerPid);
+  if (relation === 'unknown')
+    throw new RuntimeObservationUnconfirmed('Cannot establish the lifetime of the retiring execution owner');
 }
 
 /** A review may observe an owned backup; it never certifies shutdown admission. */
@@ -143,8 +144,10 @@ export function assertLocalIdle(status: RuntimeUpdateStatusObservation) {
   assertLocalReview(status);
   const execution = status.execution!;
   const backups = execution.blockers.backupOperations!;
-  if (backups > 0) throw Error('Local update deferred while work is active: backupOperations=' + backups);
-  if (execution.recovery?.status !== 'ready') throw Error(execution.recovery?.reason || 'Waiting for the current recovery certificate');
+  if (backups > 0) throw new RuntimeObservationPending('backup', 'Local update deferred while work is active: backupOperations=' + backups);
+  if (execution.recovery?.status === 'pending')
+    throw new RuntimeObservationPending('controller', execution.recovery.reason || 'Waiting for the current recovery certificate', status.pid);
+  if (execution.recovery?.status !== 'ready') throw new RuntimeObservationUnconfirmed(execution.recovery?.reason || 'The current recovery certificate is unavailable');
 }
 
 /** A ready ownership checkpoint permits inspection/recovery, not acceptance of
@@ -308,11 +311,11 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
     if (plan.configuration && plan.before.backend !== plan.target.artifact) await checkJournals(plan.target.artifact);
   };
   const [{ readManagedRuntime, verifyManagedIsolation }, { assertCleanManagedShutdown }, { assertResidentServicesStopped },
-    { getContainerState, listManagedContainers }, { assertConsoleOwnership, consoleContainerName, assertConsoleBuild, inspectInstalledConsole }, { readProcessLifetime }, { readSavedDaemonConfig },
+    { getContainerState, listManagedContainers }, { assertConsoleOwnership, consoleContainerName, assertConsoleBuild, inspectInstalledConsole }, { readSavedDaemonConfig },
     { createDaemonClient }, { assertBackendMigrationsCompatible }] = await Promise.all([
     import('./managed-runtime.js'), import('./owner-reconciliation.js'), import('../commands/service-resident.js'),
     import('../infrastructure/container-runtime.js'), import('../webapp/console-container.js'),
-    import('@omnitron-dev/common/process-identity'), import('../config/saved.js'),
+    import('../config/saved.js'),
     import('./daemon-client.js'), import('./backend-candidate.js'),
   ]);
   // Human-only lifecycle commands must not inherit the enclosing JSON RPC envelope.
@@ -490,6 +493,7 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
     const config = await readManagedRuntime(home);
     if (!config || config.scope !== previous.scope) throw Error('Native service instance changed');
     assertLocalServiceTargets(config);
+    assertRetiringOwnerExited(previous, readProcessLifetime(previous.ownerPid));
     assertResidentServicesStopped(config.scope);
     await assertCleanManagedShutdown(config, { pid: previous.ownerPid, lifetime: previous.ownerLifetime }, previous.retiredPids,
       previous.backendPid === null ? previous.native : undefined);
@@ -575,9 +579,11 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
       : observeRuntimeUntil(verify, 15 * 60_000, 'Local batch acceptance remains unconfirmed', 2000, progress);
   };
 
+  const restoredStatus = (observation: RuntimeObservation) =>
+    observeStartingController(() => observeCall<RuntimeUpdateStatusObservation>(['status'], observation));
   const completeRestore = async (plan: RuntimeUpdatePlan, restoration: RuntimeUpdateRestoration) => {
-    await restoreRuntimeRoles(plan, () => until('Waiting for the restored controller',
-      async () => identity(await call<RuntimeUpdateStatusObservation>(['status'])), 10 * 60_000),
+    await restoreRuntimeRoles(plan, () => observeRuntimeUntil(async observation =>
+      identity(await restoredStatus(observation), { observation }), 10 * 60_000, 'Waiting for the restored controller', 2000, progress),
     () => accept(plan, 'previous', false, true), call, restoration);
     await allocation(plan, 'target')?.discard(true);
   };
@@ -718,7 +724,7 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
       return runtimeControl((service, status) =>
         withServingRollbackAdmission(service, status.runtimeRollbackAdmissionProtocol, runtimeUpdatePlanDigest(plan), stop), live.backendPid);
     },
-    assertStopped: previous => until('Clean shutdown could not be confirmed', () => stopped(previous), 90_000),
+    assertStopped: previous => observeRuntimeUntil(() => stopped(previous), 90_000, 'Clean shutdown could not be confirmed', 2000, progress),
     async canRestore(previous) { try { await stopped(previous); return true; } catch { return false; } },
     async validateRestore(plan) {
       const starter = plan.configuration ? plan.target.artifact : plan.before.backend;
@@ -770,7 +776,8 @@ export async function runtimeUpdateActions({ runtime: reference, instance: home,
       const guardian = 'guardian' in destination ? destination.guardian : backend;
       if (guardian !== backend && !plan.configuration) {
         // Service install binds the guardian to the selected backend. Restore an independently pinned guardian through its own handoff.
-        await until('Waiting for the restored controller', async () => assertLocalIdle(await call<RuntimeUpdateStatusObservation>(['status'])), 10 * 60_000);
+        await observeRuntimeUntil(async observation => assertLocalIdle(await restoredStatus(observation)),
+          10 * 60_000, 'Waiting for the restored controller', 2000, progress);
         const transition = await call<{ file: string }>(['backend', 'guardian', 'prepare', installed(guardian)]);
         await call(['backend', 'guardian', 'apply', transition.file, '--check']);
         await call(['backend', 'guardian', 'apply', transition.file]);

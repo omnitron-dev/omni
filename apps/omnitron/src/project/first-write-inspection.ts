@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import type { ReleaseRecipient } from '../release/remote-source.js';
-import type { FirstWriteInspection, InspectFirstWrite } from '../shared/dto/first-write.js';
+import type { FirstWriteInspection, InspectFirstWrite, RehearsalCopyPlan, RehearsalCopyReceipt } from '../shared/dto/first-write.js';
+import { canonicalHash } from '../services/physical-restore-graph.js';
 import type { PhysicalRestoreEvidence } from '../shared/dto/physical-restore.js';
 import type { IStackInfo, StackStopProgress } from '../shared/dto/project.js';
 import { stackExecutionKey } from '../shared/dto/stack-execution.js';
@@ -72,4 +73,37 @@ export function confirmFirstWriteCopy(request: InspectFirstWrite, owner: FirstWr
       throw Error('The physical restore endpoint differs from the current approved fleet registration');
     return node.pin;
   });
+}
+
+export const rehearsalRoles = ['postgres-data', 'minio-data'] as const;
+export function rehearsalCopyPlan(inspection: FirstWriteInspection, operationId: string): RehearsalCopyPlan {
+  if (inspection.physical.state !== 'verified-closed-copy' || !inspection.owner.stop)
+    throw Error('The current enrolled source must already be fully stopped and its closed physical restore verified');
+  const physical = inspection.physical.evidence;
+  if (physical.volumes.some(row => row.tag.startsWith('postgres-') && row.tag !== 'postgres-data'))
+    throw Error('Rehearsal of external PostgreSQL WAL or tablespaces needs its own private mount topology');
+  const volumes = rehearsalRoles.map(tag => {
+    const rows = physical.volumes.filter(row => row.tag === tag);
+    if (rows.length !== 1) throw Error('Missing independently verified rehearsal volume ' + tag);
+    return rows[0]!;
+  });
+  const logicalBytes = volumes.reduce((sum, row) => sum + row.bytes, 0);
+  if (!Number.isSafeInteger(logicalBytes) || logicalBytes < 0) throw Error('Unsupported rehearsal size');
+  const facts = { protocol: 1 as const, operationId, project: inspection.project, stack: inspection.stack,
+    release: inspection.candidate.release, manifestSha256: inspection.candidate.manifestSha256,
+    prepared: inspection.candidate.digest, selectionDigest: inspection.selectionDigest, sourceRevision: inspection.owner.revision,
+    ownerDigest: canonicalHash(inspection.owner),
+    verifyRunId: physical.verifyRunId, proofDigest: physical.proofDigest, seed: physical.seed, sourceStop: physical.sourceStop,
+    receiver: physical.receiver, logicalBytes, volumes };
+  return { ...facts, digest: canonicalHash(facts) };
+}
+
+export function checkRehearsalCopy(plan: RehearsalCopyPlan, receipt: RehearsalCopyReceipt): void {
+  if (receipt?.operationId !== plan.operationId || receipt.review !== plan.digest || Object.keys(receipt).length !== 3 || !Array.isArray(receipt.copies) ||
+      receipt.copies.length !== rehearsalRoles.length || receipt.copies.some((row, i) => !row || row.tag !== rehearsalRoles[i] ||
+        Object.keys(row).length !== 4 || typeof row.device !== 'string' || typeof row.inode !== 'string' || typeof row.generation !== 'string' ||
+        !/^[1-9][0-9]{0,24}$/.test(row.device) || !/^[1-9][0-9]{0,24}$/.test(row.inode) || !/^[a-f0-9]{64}$/.test(row.generation) ||
+        plan.volumes.some(v => v.receiver.device === row.device && v.receiver.inode === row.inode)) ||
+      new Set(receipt.copies.map(row => row.device + '/' + row.inode)).size !== rehearsalRoles.length)
+    throw Error('The enrolled receiver did not return two distinct private roots for the exact rehearsal');
 }

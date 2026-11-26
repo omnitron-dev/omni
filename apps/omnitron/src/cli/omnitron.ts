@@ -590,6 +590,17 @@ stack
   });
 
 stack
+  .command('prepare-rehearsal <project> <stack> <release>')
+  .description('Review and prepare private PostgreSQL and MinIO data for an exact release')
+  .requiredOption('--verify-run <uuid>', 'Completed native physical adoption verification')
+  .option('--operation <uuid>', 'Reuse the operation ID from the review or an interrupted copy')
+  .option('--review <digest>', 'Create the private pair bound to this exact review')
+  .structuredAction(async (projectName, stackName, release, options) => {
+    const { stackPrepareRehearsalCommand } = await import('../commands/stack.js');
+    await stackPrepareRehearsalCommand(projectName, stackName, release, options);
+  });
+
+stack
   .command('check-release <project> <stack> <release>')
   .description('Read the deployment admission decision for a local or remote stack')
   .option('--prepared <digest>', 'Recheck an exact prepared replacement source')

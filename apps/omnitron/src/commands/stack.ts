@@ -443,6 +443,33 @@ export async function stackReleaseAdmissionCommand(project: string, stack: strin
   } finally { await client.disconnect(); }
 }
 
+export async function stackPrepareRehearsalCommand(project: string, stack: string, release: string,
+  options: { verifyRun: string; operation?: string; review?: string }) {
+  const client = createDaemonClient(undefined, FIRST_WRITE_PHYSICAL_TIMEOUT_MS * 3);
+  const operationId = options.operation ?? randomUUID();
+  const scope = { project, stack, release, verifyRunId: options.verifyRun, operationId };
+  try {
+    if (options.review !== undefined && !options.operation) throw Error('Confirmation requires the operation ID from the review');
+    const service = await client.service<IProjectRpcService>('OmnitronProject');
+    const result = await service.prepareRehearsal({ ...scope, ...(options.review !== undefined && { review: options.review }) });
+    if (!emitJson(result)) {
+      emitInfo('Receiver ' + result.plan.receiver.nodeId + ', ' + result.plan.logicalBytes + ' logical bytes, stop ' + result.plan.sourceStop);
+      emitInfo('Candidate manifest ' + result.plan.manifestSha256 + ', operation ' + operationId);
+      if (result.state === 'prepared') {
+        emitSuccess('Private data pair prepared. Production writes remain withheld.');
+        for (const copy of result.receipt.copies) emitInfo(copy.tag + ' ' + copy.device + '/' + copy.inode + ' ' + copy.generation);
+      } else {
+        emitInfo('To create this pair, run omnitron stack prepare-rehearsal ' + [project, stack, release].map(shellEscape).join(' ') +
+          ' --verify-run ' + shellEscape(options.verifyRun) + ' --operation ' + shellEscape(operationId) + ' --review ' + shellEscape(result.plan.digest));
+      }
+    }
+  } catch (error) {
+    emitError('Private data preparation was not confirmed. ' + (error as Error).message,
+      { ...scope, outcome: options.review === undefined ? 'unreviewed' : 'unconfirmed', writeAdmission: 'withheld' });
+    process.exitCode = 1;
+  } finally { await client.disconnect(); }
+}
+
 function releaseDeploymentCommand(project: string, stack: string, release: string, digest: string): string {
   return 'omnitron stack start ' + [project, stack].map(shellEscape).join(' ') + ' --release ' + shellEscape(release) + ' --deployment-review ' + shellEscape(digest);
 }

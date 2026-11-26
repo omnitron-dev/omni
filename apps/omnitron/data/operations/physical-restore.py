@@ -112,7 +112,7 @@ def audit(mod, seed, paths, expected_tree, metadata=None):
     return {"controls": result, "generation": before, "trees": expected_tree}
 
 
-def inspect(side, proof):
+def inspect(side, proof, visit_receiver=None):
     require(sys.platform == "linux" and os.geteuid() == 0 and side in ("source", "receiver")
             and re.fullmatch(r"[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}", proof["seed"]),
             "Registered Linux administration and a native seed are required")
@@ -155,9 +155,18 @@ def inspect(side, proof):
             return native["reserve"](mod, seed, binding, state, docker, data, False)
         paths = check()
         result = audit(mod, seed, paths, verified["sha256"], (native, binding, verified["metadata"]))
-        require(paths == check() and binding == native["record"](state / "binding.json")
-                and verified == native["record"](state / "verified.json") and sealed == read("sealed.json"),
-                "Receiver registration or adoption changed")
+        def recheck():
+            require(paths == check() and binding == native["record"](state / "binding.json")
+                    and verified == native["record"](state / "verified.json") and sealed == read("sealed.json"),
+                    "Receiver registration or adoption changed")
+        recheck()
+        if visit_receiver:
+            def verify_current():
+                recheck()
+                require(result == audit(mod, seed, paths, verified["sha256"], (native, binding, verified["metadata"])),
+                        "The physical receiver changed while preparing the private copy")
+                recheck()
+            return visit_receiver(mod, native, seed, binding, verified, paths, result, verify_current, state)
         return result
 
 

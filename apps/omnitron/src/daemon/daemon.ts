@@ -1751,7 +1751,13 @@ export class OmnitronDaemon {
       await pipelineService.initialize();
       this.pipelineService = pipelineService;
       const pipelineRpcService = new PipelineRpc(pipelineService, authService, audit);
-      projectService.setPhysicalRestoreInspector(request => pipelineRpcService.inspectPhysicalRestore(request));
+      projectService.setPhysicalRestoreInspector(request => pipelineRpcService.inspectPhysicalRestore(request), async (plan, previous) => {
+        const { daemonPrincipal } = await import('../services/daemon-principal.js');
+        await daemonPrincipal(authService, 'admin');
+        await audit.record({ action: 'release.private-copy.prepare', resourceType: 'rehearsal', resourceId: plan.operationId,
+          details: { project: plan.project, stack: plan.stack, review: plan.digest, verifyRunId: plan.verifyRunId } }, true);
+        return pipelineService.prepareRehearsalCopy(plan, previous);
+      });
       await this.app.netron.peer.exposeService(pipelineRpcService);
       if (studio && audit) {
         const { FlowLedger } = await import('../flows/flow-ledger.js');

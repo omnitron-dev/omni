@@ -12,6 +12,7 @@ import { PipelineRpcService } from '../../src/services/pipeline.rpc-service.js';
 import { PipelineService } from '../../src/services/pipeline.service.js';
 import type { PipelineDef } from '../../src/shared/dto/pipelines.js';
 import type { ExecutionService, SSHTarget } from '../../src/execution/execution.service.js';
+import type { RehearsalCopyPlan } from '../../src/shared/dto/first-write.js';
 
 const actor = (role = 'admin') => ({ userId: 'owner', roles: [role], permissions: [], metadata: { sessionId: 'private' } });
 const tags = ['postgres-data','nominatim-data','nominatim-flatnode','nominatim-merged','redis-data','minio-data'];
@@ -57,7 +58,7 @@ describe('private native physical restore receipts', () => {
     const exec = vi.fn(async () => ({ exitCode:0, stdout:'checked', stderr:'',duration:1 }));
     const ssh = vi.fn(async (target: SSHTarget, command: string, opts: {stdin:string}) => {
       expect(command).toMatch(/^\/usr\/bin\/python3 -I - (source|receiver) [A-Za-z0-9+/=]+$/);
-      expect(opts.stdin).toContain('def inspect(side, proof)');
+      expect(opts.stdin).toContain('def inspect(side, proof, visit_receiver=None)');
       const payload = JSON.parse(Buffer.from(command.split(' ').at(-1)!, 'base64').toString()) as {seed:string, cold:string};
       expect(payload.seed).toBe(f.seed.id);
       expect(payload.cold).toBe(canonicalHash(f.cold));
@@ -90,6 +91,38 @@ describe('private native physical restore receipts', () => {
       expect(proof.volumes.map(v=>v.tag)).toEqual(tags);
       expect(ssh).toHaveBeenCalledTimes(2);
       expect(exec).toHaveBeenCalledTimes(4);
+      const facts = { protocol: 1 as const, ...request, sourceRevision: 3, ownerDigest: sha256('owner'), operationId: randomUUID(), release: 'next',
+        prepared: sha256('approved-next'), manifestSha256: sha256('manifest'), selectionDigest: sha256('serving-release'),
+        receiver: proof.receiver, sourceStop: proof.sourceStop, seed: proof.seed, proofDigest: proof.proofDigest, logicalBytes: 40,
+        volumes: proof.volumes.filter(v => ['postgres-data','minio-data'].includes(v.tag)) };
+      const plan: RehearsalCopyPlan = { ...facts, digest: canonicalHash(facts) };
+      const receipt = { operationId: plan.operationId, review: plan.digest, copies: plan.volumes.map((v,i) =>
+        ({tag:v.tag,device:'33',inode:String(123+i),generation:sha256(v.tag)})) };
+      const remoteCopy = (response: typeof receipt, previous: typeof receipt | null = null) => ssh.mockImplementationOnce(async (target, cmd, options) => {
+        expect(target).toMatchObject({host:f.receiver.host,expectedHostFingerprint:f.receiver.pin});
+        expect(cmd).toContain('/usr/bin/python3 -I -c ');
+        const wire = JSON.parse(options.stdin);
+        expect(wire.plan).toEqual(plan);
+        expect(wire.previous).toEqual(previous);
+        expect(wire.probe.seed).toBe(f.seed.id);
+        expect(wire.worker).toContain('def prepare_working_pair(');
+        expect(wire.observer).toContain('with mod["ch"].lock(state / "operation.lock")');
+        return {exitCode:0,stdout:JSON.stringify(response),stderr:'',duration:1};
+      });
+      remoteCopy(receipt);
+      await expect(service.prepareRehearsalCopy(plan)).resolves.toEqual(receipt);
+      remoteCopy(receipt, receipt);
+      await expect(service.prepareRehearsalCopy(plan, receipt)).resolves.toEqual(receipt);
+      remoteCopy({...receipt,copies:receipt.copies.map((v,i)=>({...v,...plan.volumes[i]!.receiver}))});
+      await expect(service.prepareRehearsalCopy(plan)).rejects.toThrow('distinct private roots');
+      const attempts = ssh.mock.calls.length;
+      await expect(service.prepareRehearsalCopy({...plan, release:'other'})).rejects.toThrow('original verified graph');
+      const changedFacts = {...facts,volumes:facts.volumes.map(v=>({...v,metadataSha256:sha256('other')}))};
+      await expect(service.prepareRehearsalCopy({...changedFacts,digest:canonicalHash(changedFacts)})).rejects.toThrow('original verified graph');
+      receiverPin = 'SHA256:'+'X'.repeat(43);
+      await expect(service.prepareRehearsalCopy(plan)).rejects.toThrow('host key');
+      expect(ssh).toHaveBeenCalledTimes(attempts);
+      receiverPin = f.receiver.pin;
       await db.updateTable('pipelines').set({name:'new-current-graph',steps:JSON.stringify([{name:'different',run:'true'}])})
         .where('id','=',pipeline.id).execute();
       expect((await read()).proofDigest).toBe(proof.proofDigest);

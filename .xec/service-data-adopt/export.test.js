@@ -11,6 +11,9 @@ import { adoptionBinding, adoptionDefinition, imageProbeDefinition } from '../co
 import { retainedColdDefinition } from '../commands/service-data-cold.js';
 
 const hash = (s) => createHash('sha256').update(s).digest('hex');
+test('copies private service data with independent Linux inodes', {skip: process.platform !== 'linux'}, async () => {
+  await promisify(execFile)('python3', ['-B', 'rehearsal_copy_test.py', 'RehearsalFiles'], { cwd: import.meta.dirname });
+});
 const id = 'b1410007-f7e4-4cd4-82a2-4010331ffa1c',
   run = '4cea20df-2e35-412a-a497-ccbb0cc75024';
 const rows = [

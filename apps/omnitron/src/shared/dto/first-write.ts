@@ -1,4 +1,4 @@
-import type { PhysicalRestoreEvidence } from './physical-restore.js';
+import type { PhysicalRestoreEvidence, PhysicalRestoreVolume, PhysicalRestoreNode } from './physical-restore.js';
 import type { PreparedRemoteReleaseSource, ReleaseMigrationHistory } from './project.js';
 import type { StackExecutionScope } from './stack-execution.js';
 
@@ -30,3 +30,35 @@ export interface FirstWriteInspection extends StackExecutionScope {
 
 /** Native volume hashing can take up to a day. Only explicit physical reads receive this budget. */
 export const FIRST_WRITE_PHYSICAL_TIMEOUT_MS = 86_700_000;
+
+export interface PrepareRehearsalRequest extends InspectFirstWrite {
+  verifyRunId: string;
+  operationId: string;
+  review?: string;
+}
+export interface RehearsalCopyPlan extends StackExecutionScope {
+  protocol: 1;
+  operationId: string;
+  release: string;
+  manifestSha256: string;
+  prepared: string;
+  selectionDigest: string;
+  sourceRevision: number;
+  ownerDigest: string;
+  verifyRunId: string;
+  proofDigest: string;
+  seed: string;
+  sourceStop: string;
+  receiver: PhysicalRestoreNode;
+  logicalBytes: number;
+  volumes: PhysicalRestoreVolume[];
+  digest: string;
+}
+export interface RehearsalCopyReceipt {
+  operationId: string;
+  review: string;
+  /** Physical roots beneath the receiver's private rehearsal directory. */
+  copies: Array<{ tag: string; device: string; inode: string; generation: string }>;
+}
+export type PrepareRehearsalResult = { state: 'awaiting-confirmation'; plan: RehearsalCopyPlan }
+  | { state: 'prepared'; plan: RehearsalCopyPlan; receipt: RehearsalCopyReceipt };

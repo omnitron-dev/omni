@@ -361,6 +361,22 @@ For a selected single-node remote release, this read identifies both prepared ma
 
 The JSON envelope acknowledges a completed inspection. The deployment decision is inside `data`, with `ok: false`, `writeAdmission: "withheld"` and the outstanding data-owner decisions. The CLI returns exit status 1. An authenticated closed copy yields `physical.state: "verified-closed-copy"` and the Pipeline audit records the verify run ID. Retrying the same run ID rechecks the files and PostgreSQL control identities. A failed or interrupted inspection reports `unverified`.
 
+#### Prepare private data for a candidate rehearsal
+
+After a successful closed-copy inspection, an administrator can choose **Review private data copies** in the release dialog or run the commands below. The first command reports the receiver, candidate manifest, logical byte count, full stop, two physical volume identities, operation ID and confirmation digest. The second command reserves that operation and creates a third PostgreSQL and MinIO pair on the enrolled Linux receiver.
+
+```sh
+omnitron stack prepare-rehearsal acme prod "$next_release" --verify-run "$verify_run_id" --json
+omnitron stack prepare-rehearsal acme prod "$next_release" --verify-run "$verify_run_id" \
+  --operation "$operation_id" --review "$review_digest" --json
+```
+
+The receiver needs scratch capacity for both logical trees under the root-owned, mode-0700 directory `/var/lib/omnitron-release-rehearsals`. An administrator may mount a dedicated filesystem there. The supported pair uses self-contained primary PostgreSQL data and a single complete MinIO drive. The operation copies contents, ownership, ACLs, extended attributes, hard links and modification times under `<operation_id>/volumes`. The native adoption journal independently pins the scratch filesystem, operation directory and completed receipt. The receiver verifies both copied trees and reopens the closed recovery boundary before acknowledging the result. The controller records the selected owner generations, immutable candidate, physical proof and new private roots.
+
+Closing the review before confirmation creates no data. After an interruption, submit the same operation ID and digest to resume or confirm the existing pair. An inaccessible receiver leaves the outcome unconfirmed. A used or changed published pair requires a new operation. Root administrators control retention of completed and interrupted directories by their recorded operation ID.
+
+A `prepared` receipt authorizes no activation. Running the candidate still requires an isolated runner bound to its exact artifacts, private SQL and S3 credentials, restricted external effects, and application checks for migration history, references to historical object versions and a new private write. Production admission also requires the actual data owners to hold all writers and the route through a durable write decision and a post-write recovery plan.
+
 #### Review a placement change explicitly
 
 When the registered stack changes between releases, run `stack prepare-release` against the updated registration and keep its new digest. Use the **currently selected recipient** as `--from-node`. Supply the full Git commit whose tracked `omnitron.stacks.json` reproduces the previous registration fingerprint.

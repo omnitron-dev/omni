@@ -23,6 +23,7 @@ import { resolveProjectStacks } from '../../src/config/project-stacks.js';
 import type { PlacementProvisionIntent, PreparedRemoteReleaseSource } from '../../src/shared/dto/project.js';
 import type { StoppedReleaseEvidence } from '../../src/project/node-stack-stop.js';
 import type { InspectPhysicalRestore, PhysicalRestoreEvidence } from '../../src/shared/dto/physical-restore.js';
+import type { RehearsalCopyPlan, RehearsalCopyReceipt } from '../../src/shared/dto/first-write.js';
 
 const sha = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex');
 const root = await vi.hoisted(async () => {
@@ -733,7 +734,8 @@ describe('prepared source of one registered remote release', () => {
         const stopCount = () => read.mock.calls.filter(([method]) => method === 'executeNodeStackStop').length;
         const verifyRunId = '25de7711-0c0e-4c40-bf90-2e96844fd674', firstWrite = { ...scope, release: extended, verifyRunId };
         const physical = vi.fn<(_request: InspectPhysicalRestore) => Promise<PhysicalRestoreEvidence>>();
-        service.setPhysicalRestoreInspector(physical);
+        const materialize = vi.fn<(plan: RehearsalCopyPlan, previous?: RehearsalCopyReceipt) => Promise<RehearsalCopyReceipt>>();
+        service.setPhysicalRestoreInspector(physical, materialize);
         const initialJournal = journal.inspect(scope);
         const live = await rpc.inspectFirstWrite(firstWrite);
         expect(live).toMatchObject({ writeAdmission: 'withheld', incumbent: { release: id, digest: ready.digest },
@@ -775,6 +777,33 @@ describe('prepared source of one registered remote release', () => {
         expect(closed).not.toHaveProperty('deployment');
         expect(physical).toHaveBeenCalledExactlyOnceWith({ ...scope, verifyRunId });
         expect((await rpc.inspectFirstWrite(firstWrite)).physical).toEqual(closed.physical);
+        const operationId = '7b09c5dd-9c83-402c-86b5-7ee6010ed4ac', request = { ...firstWrite, operationId };
+        await expect(rpc.prepareRehearsal({ ...request, path: '/other' } as typeof request)).rejects.toThrow('exact release');
+        const preview = await rpc.prepareRehearsal(request);
+        expect(preview).toMatchObject({ state: 'awaiting-confirmation', plan: { operationId, prepared: observed.digest,
+          manifestSha256: observed.manifestSha256, proofDigest: proof.proofDigest, logicalBytes: 24, sourceStop: applied.id } });
+        expect(preview.plan.volumes.map(v => v.tag)).toEqual(['postgres-data', 'minio-data']);
+        const appliedCopy = { ...request, review: preview.plan.digest }, key = 'release:private-rehearsal:' + operationId;
+        await expect(rpc.prepareRehearsal({ ...request, review: hash })).rejects.toThrow('review changed');
+        expect(store.kvGetSync(key)).toBeNull();
+        expect(materialize).not.toHaveBeenCalled();
+        const receipt = { operationId, review: preview.plan.digest, copies: preview.plan.volumes.map((v, i) =>
+          ({ tag: v.tag, device: '22', inode: String(i + 1), generation: hash })) };
+        materialize.mockRejectedValueOnce(Error('response was lost')).mockResolvedValue(receipt);
+        await expect(rpc.prepareRehearsal(appliedCopy)).rejects.toThrow('response was lost');
+        expect(store.kvGetSync(key)).toEqual({ plan: preview.plan });
+        const completeCopy = { state: 'prepared', plan: preview.plan, receipt };
+        await expect(rpc.prepareRehearsal(appliedCopy)).resolves.toEqual(completeCopy);
+        await expect(rpc.prepareRehearsal(appliedCopy)).resolves.toEqual(completeCopy);
+        expect(store.kvGetSync(key)).toEqual({ plan: preview.plan, receipt });
+        expect(materialize).toHaveBeenCalledTimes(3);
+        expect(materialize).toHaveBeenLastCalledWith(preview.plan, receipt);
+        const changedProof = { ...proof, proofDigest: 'e'.repeat(64) };
+        physical.mockResolvedValue(changedProof);
+        const different = await rpc.prepareRehearsal(request);
+        await expect(rpc.prepareRehearsal({ ...request, review: different.plan.digest })).rejects.toThrow('owns this operation');
+        expect(materialize).toHaveBeenCalledTimes(3);
+        physical.mockResolvedValue(proof);
         await expect(rpc.deployReviewedRelease({ ...scope, release: extended, review: proof.proofDigest })).rejects.toThrow(/return release/);
         physical.mockResolvedValueOnce({ ...proof, sourceStop: 'different-stop' });
         await expect(rpc.inspectFirstWrite(firstWrite)).rejects.toThrow(/this selected source/);
@@ -989,7 +1018,7 @@ describe('prepared source of one registered remote release', () => {
 
   it('requires administrator authority for controller paths and permits an operator to recheck only an approved digest', () => {
     for (const name of ['prepareRemoteReleaseSource', 'checkRemoteReleaseSource', 'reviewPreparedHostBindings',
-      'preflightRemotePlacement', 'reviewRemotePlacement', 'selectRemotePlacement', 'deployReviewedRelease', 'inspectFirstWrite']) {
+      'preflightRemotePlacement', 'reviewRemotePlacement', 'selectRemotePlacement', 'deployReviewedRelease', 'inspectFirstWrite', 'prepareRehearsal']) {
       const rule = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, ProjectRpcService.prototype, name);
       for (const role of ['viewer', 'operator', 'admin'])
         expect(validateAccessRequirements({ roles: [role], permissions: [] }, rule).allowed).toBe(role === 'admin' || (name === 'checkRemoteReleaseSource' && role === 'operator'));

@@ -5,19 +5,19 @@ import type { InspectPhysicalRestore, PhysicalRestoreEvidence } from '../shared/
 import type { Pipeline, PipelineRun } from '../shared/dto/pipelines.js';
 import type { NodeManagerService } from './node-manager.service.js';
 import { canonicalHash, checkedPhysicalRestore, object, requireFact } from './physical-restore-graph.js';
+import { shellEscape } from '../shared/shell-escape.js';
+import type { RehearsalCopyPlan, RehearsalCopyReceipt } from '../shared/dto/first-write.js';
+import { checkRehearsalCopy, rehearsalRoles } from '../project/first-write-inspection.js';
 
 type Nodes = Pick<NodeManagerService, 'getNode' | 'nodeToSshTarget'>;
 type Execution = Pick<ExecutionService, 'exec' | 'ssh'>;
 const program = new URL('../../data/operations/physical-restore.py', import.meta.url);
 const digest = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 
-export async function inspectPhysicalRestore(request: InspectPhysicalRestore, definition: Pipeline, run: PipelineRun,
-  nodes: Nodes, execution: Execution, signal: AbortSignal): Promise<PhysicalRestoreEvidence> {
-  const checked = checkedPhysicalRestore(request, definition, run);
-  const script = await readFile(program, 'utf8');
+function physicalEndpoints(checked: ReturnType<typeof checkedPhysicalRestore>, startedAt: string, nodes: Nodes, execution: Execution, signal: AbortSignal) {
   const resolve = async (side: 'source' | 'receiver') => {
     const pin = checked[side], node = nodes.getNode(pin.nodeId);
-    requireFact(node && !node.isLocal && node.host === pin.host && Date.parse(node.createdAt) <= Date.parse(run.startedAt),
+    requireFact(node && !node.isLocal && node.host === pin.host && Date.parse(node.createdAt) <= Date.parse(startedAt),
       'Physical restore node registration changed since the reviewed run');
     const ssh = await nodes.nodeToSshTarget(node);
     requireFact(ssh.host === pin.host && ssh.expectedHostFingerprint === pin.fingerprint && ssh.port === node.sshPort &&
@@ -30,6 +30,14 @@ export async function inspectPhysicalRestore(request: InspectPhysicalRestore, de
       requireFact(result.exitCode === 0, 'Current registered SSH keys or the exact full source stop could not be confirmed');
     }
   };
+  return { resolve, fence };
+}
+
+export async function inspectPhysicalRestore(request: InspectPhysicalRestore, definition: Pipeline, run: PipelineRun,
+  nodes: Nodes, execution: Execution, signal: AbortSignal): Promise<PhysicalRestoreEvidence> {
+  const checked = checkedPhysicalRestore(request, definition, run);
+  const script = await readFile(program, 'utf8');
+  const { resolve, fence } = physicalEndpoints(checked, run.startedAt, nodes, execution, signal);
   const observedFrom = new Date().toISOString();
   await fence();
   const [source, receiver] = await Promise.all([resolve('source'), resolve('receiver')]);
@@ -65,4 +73,50 @@ export async function inspectPhysicalRestore(request: InspectPhysicalRestore, de
       nominatim: { systemIdentifier: checked.clusters.nominatim, controlSha256: target.controls.nominatim } },
     minio: { formatSha256: target.controls.minio } };
   return { ...facts, observedFrom, verifiedAt: new Date().toISOString(), proofDigest: canonicalHash(facts) };
+}
+
+// The installed backend chooses both programs. No executable, credential, pathname or shell arrives from the caller.
+const copyEntry = `import json,sys
+wire=json.load(sys.stdin)
+observer={"__name__":"physical_observer"}; worker={"__name__":"private_rehearsal"}
+exec(compile(wire["observer"],"physical-restore.py","exec"),observer)
+exec(compile(wire["worker"],"rehearsal-copy.py","exec"),worker)
+try:
+    def visit(*args): return worker["prepare_working_pair"](wire["plan"],*args,previous_receipt=wire["previous"])
+    print(json.dumps(observer["inspect"]("receiver",wire["probe"],visit)))
+except Exception as error:
+    if isinstance(error,worker["RehearsalRefusal"]): print(str(error),file=sys.stderr)
+    sys.exit(1)`;
+
+export async function preparePhysicalRehearsal(plan: RehearsalCopyPlan, previous: RehearsalCopyReceipt | undefined, definition: Pipeline, run: PipelineRun,
+  nodes: Nodes, execution: Execution, signal: AbortSignal): Promise<RehearsalCopyReceipt> {
+  const { project, stack, verifyRunId } = plan;
+  const checked = checkedPhysicalRestore({ project, stack, verifyRunId }, definition, run);
+  const { resolve, fence } = physicalEndpoints(checked, run.startedAt, nodes, execution, signal);
+  const { digest: review, ...facts } = plan;
+  const reviewedVolumes = rehearsalRoles.map(tag => checked.rows.find(row => row.tag === tag));
+  requireFact(review === canonicalHash(facts) && plan.seed === checked.seed && plan.sourceStop === checked.stop &&
+    isDeepStrictEqual(reviewedVolumes, plan.volumes.map(({ sourceGeneration, receiverGeneration, ...row }) =>
+      digest(sourceGeneration) && digest(receiverGeneration) ? row : null)) && plan.logicalBytes === plan.volumes.reduce((sum, row) => sum + row.bytes, 0),
+    'Private rehearsal differs from the original verified graph');
+  if (previous) checkRehearsalCopy(plan, previous);
+  const [observer, worker] = await Promise.all([readFile(program, 'utf8'), readFile(new URL('../../data/operations/rehearsal-copy.py', import.meta.url), 'utf8')]);
+  await fence();
+  const target = await resolve('receiver');
+  requireFact(isDeepStrictEqual(plan.receiver, target.identity), 'The physical rehearsal recipient changed');
+  const result = await execution.ssh(target.ssh, '/usr/bin/python3 -I -c ' + shellEscape(copyEntry), {
+    stdin: JSON.stringify({ observer, worker, probe: checked.probe, plan, previous: previous ?? null }), signal, timeout: 86_400_000,
+  });
+  if (result.exitCode !== 0) {
+    const diagnostic = /^[A-Za-z .]{1,120}$/.test(result.stderr.trim()) ? ' ' + result.stderr.trim() : '';
+    throw Error('Private rehearsal was not confirmed. Retry the same reviewed operation.' + diagnostic);
+  }
+  requireFact(Buffer.byteLength(result.stdout) <= 4096, 'Oversized rehearsal receipt');
+  const receipt = JSON.parse(result.stdout) as RehearsalCopyReceipt;
+  checkRehearsalCopy(plan, receipt);
+  requireFact(!previous || isDeepStrictEqual(previous, receipt), 'The previously confirmed private rehearsal roots or generations changed');
+  await fence();
+  const current = await resolve('receiver');
+  requireFact(isDeepStrictEqual(target.identity, current.identity) && target.ssh.username === current.ssh.username, 'The rehearsal enrollment changed');
+  return receipt;
 }

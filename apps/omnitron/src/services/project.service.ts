@@ -53,8 +53,8 @@ import { StackTargets, type StackTarget } from '../project/stack-targets.js';
 import { confirmStoppedPlacement, placementProvisionIntent, remotePlacementReview, type PlacementEndpoint, type RemotePlacement } from '../project/remote-placement.js';
 import { cleanRegisteredCommit, committedStackDeclaration, confirmRegisteredReleaseNode, previousStackDeclaration, registeredStackAtCommit, remoteReleaseSourceKey, remoteReleaseSourcePrefix, type ReleaseRecipient } from '../release/remote-source.js';
 import { accountsForPartialStart, confirmsRelease, DeploymentMigrationRefusal, verifyDeploymentMigrations, verifyRegisteredDeploymentMigrations, type RemoteDeploymentOperation } from '../project/remote-release-deployment.js';
-import { confirmFirstWriteCopy, inspectFirstWriteOwner, missingFirstWriteAuthorities } from '../project/first-write-inspection.js';
-import type { FirstWriteInspection, InspectFirstWrite } from '../shared/dto/first-write.js';
+import { checkRehearsalCopy, confirmFirstWriteCopy, inspectFirstWriteOwner, missingFirstWriteAuthorities, rehearsalCopyPlan } from '../project/first-write-inspection.js';
+import type { FirstWriteInspection, InspectFirstWrite, PrepareRehearsalRequest, PrepareRehearsalResult, RehearsalCopyPlan, RehearsalCopyReceipt } from '../shared/dto/first-write.js';
 import type { InspectPhysicalRestore, PhysicalRestoreEvidence } from '../shared/dto/physical-restore.js';
 import { validateRunId } from './pipeline-admission.js';
 import type { PlacementProvisionIntent, RemoteReleaseDeployment } from '../shared/dto/project.js';
@@ -3348,8 +3348,11 @@ export class ProjectService extends EventEmitter {
   }
 
   private physicalRestore?: (request: InspectPhysicalRestore) => Promise<PhysicalRestoreEvidence>;
-  setPhysicalRestoreInspector(inspect: (request: InspectPhysicalRestore) => Promise<PhysicalRestoreEvidence>): void {
+  private preparePhysicalCopy: ((plan: RehearsalCopyPlan, previous?: RehearsalCopyReceipt) => Promise<RehearsalCopyReceipt>) | undefined;
+  setPhysicalRestoreInspector(inspect: (request: InspectPhysicalRestore) => Promise<PhysicalRestoreEvidence>,
+    prepare?: (plan: RehearsalCopyPlan, previous?: RehearsalCopyReceipt) => Promise<RehearsalCopyReceipt>): void {
     this.physicalRestore = inspect;
+    this.preparePhysicalCopy = prepare;
   }
 
   /** Inspect a possible first write. A closed physical observation cannot issue a start or route decision. */
@@ -3413,6 +3416,40 @@ export class ProjectService extends EventEmitter {
     return { ...scope, protocol: 1, ok: false, writeAdmission: 'withheld', selectionDigest: placement.receipt.digest, selectedPrepared: selected.prepared,
       incumbent: previous.receipt,
       candidate: next.receipt, migrationHistory, owner, physical, missing: missingFirstWriteAuthorities };
+  }
+
+  async prepareRehearsal(request: PrepareRehearsalRequest): Promise<PrepareRehearsalResult> {
+    if (!request || Object.keys(request).some(key => !['project','stack','release','verifyRunId','operationId','review'].includes(key)))
+      throw Error('Choose an exact release, verify run and rehearsal operation');
+    const { project, stack, release, verifyRunId, operationId, review } = request;
+    validateRunId(operationId); validateRunId(verifyRunId);
+    if (review !== undefined && (typeof review !== 'string' || !/^[a-f0-9]{64}$/.test(review))) throw Error('An exact rehearsal review is required');
+    const inspect = async () => rehearsalCopyPlan(await this.inspectFirstWrite({ project, stack, release, verifyRunId }), operationId);
+    const plan = await inspect();
+    if (review === undefined) return { state: 'awaiting-confirmation', plan };
+    if (review !== plan.digest || !this.preparePhysicalCopy) throw Error('The rehearsal review changed or this controller cannot prepare a private copy');
+    return this.materializeRehearsal(plan, this.preparePhysicalCopy, inspect);
+  }
+
+  @RecoveryMutation()
+  private async materializeRehearsal(plan: RehearsalCopyPlan, prepare: NonNullable<ProjectService['preparePhysicalCopy']>,
+    inspect: () => Promise<RehearsalCopyPlan>): Promise<PrepareRehearsalResult> {
+    const key = 'release:private-rehearsal:' + plan.operationId;
+    type State = { plan: RehearsalCopyPlan; receipt?: RehearsalCopyReceipt };
+    const reservation = this.daemonStateStore.kvUpdateSync<State>(key, prior => {
+      if (prior && !isDeepStrictEqual(prior.plan, plan)) throw Error('Another rehearsal already owns this operation ID');
+      return prior ?? { plan };
+    });
+    // Always re-observe even a completed reservation. The receiver refuses to overwrite a published copy.
+    const receipt = await prepare(plan, reservation.receipt);
+    checkRehearsalCopy(plan, receipt);
+    if (!isDeepStrictEqual(await inspect(), plan)) throw Error('The release or physical recovery boundary changed while preparing the private data');
+    this.daemonStateStore.kvUpdateSync<State>(key, prior => {
+      if (!prior || !isDeepStrictEqual(prior.plan, plan) || (prior.receipt && !isDeepStrictEqual(prior.receipt, receipt)))
+        throw Error('The recorded rehearsal reservation or receipt has changed');
+      return { plan, receipt };
+    });
+    return { state: 'prepared', plan, receipt };
   }
 
   private async confirmRemoteRelease(scope: StackExecutionScope, release: string, manifest: string): Promise<IStackInfo> {

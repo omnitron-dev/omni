@@ -1,9 +1,9 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { stackReleaseAdmissionCommand, stackSelectPlacementCommand, stackStartCommand } from '../../src/commands/stack.js';
+import { stackPrepareRehearsalCommand, stackReleaseAdmissionCommand, stackSelectPlacementCommand, stackStartCommand } from '../../src/commands/stack.js';
 
 const rpc = vi.hoisted(() => ({
   preflightRemotePlacement: vi.fn(), reviewRemotePlacement: vi.fn(), selectRemotePlacement: vi.fn(),
-  checkRelease: vi.fn(), inspectFirstWrite: vi.fn(), startStack: vi.fn(), deployReviewedRelease: vi.fn(), reviewStackStart: vi.fn(),
+  checkRelease: vi.fn(), inspectFirstWrite: vi.fn(), prepareRehearsal: vi.fn(), startStack: vi.fn(), deployReviewedRelease: vi.fn(), reviewStackStart: vi.fn(),
 }));
 const client = vi.hoisted(() => ({ service: vi.fn(async () => rpc), disconnect: vi.fn() }));
 const output = vi.hoisted(() => ({ emitJson: vi.fn(() => true), emitError: vi.fn(), emitInfo: vi.fn(), emitStep: vi.fn(), isJsonMode: () => true }));
@@ -17,6 +17,23 @@ const request = { project: 'sample', stack: 'prod', fromNodeId: options.fromNode
   destination: { release: options.release, prepared: options.prepared } };
 const exitCode = process.exitCode;
 afterEach(() => { vi.clearAllMocks(); process.exitCode = exitCode; });
+
+it('previews private rehearsal data and keeps the operation identifier on an ambiguous acknowledgement', async () => {
+  const verifyRun = '90af71d8-df66-4b55-b8fa-d892f4411f0a', review = 'd'.repeat(64);
+  rpc.prepareRehearsal.mockResolvedValueOnce({ state: 'awaiting-confirmation' });
+  await stackPrepareRehearsalCommand('sample', 'prod', 'next', { verifyRun });
+  const preview = rpc.prepareRehearsal.mock.calls[0]![0];
+  expect(preview).toEqual({ project: 'sample', stack: 'prod', release: 'next', verifyRunId: verifyRun, operationId: expect.any(String) });
+  expect(output.emitJson).toHaveBeenCalledWith({ state:'awaiting-confirmation' });
+  await stackPrepareRehearsalCommand('sample', 'prod', 'next', { verifyRun, review });
+  expect(rpc.prepareRehearsal).toHaveBeenCalledTimes(1);
+  rpc.prepareRehearsal.mockRejectedValueOnce(Error('connection lost'));
+  await stackPrepareRehearsalCommand('sample', 'prod', 'next', { verifyRun, operation: preview.operationId, review });
+  expect(rpc.prepareRehearsal).toHaveBeenLastCalledWith({ ...preview, review });
+  expect(output.emitError).toHaveBeenLastCalledWith(expect.stringContaining('connection lost'),
+    { ...preview, outcome:'unconfirmed', writeAdmission:'withheld' });
+  expect(rpc.startStack).not.toHaveBeenCalled();
+});
 
 it('reports a scoped preservation refusal to the operator and to a registering controller', async () => {
   rpc.startStack.mockRejectedValueOnce(Object.assign(Error('Review required'), { details: { reason: 'infrastructure-review-required', private: true } }));

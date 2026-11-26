@@ -30,13 +30,13 @@ it('explains an additive history refusal before allowing a deployment', async ()
 });
 
 it('reads the explicit native verify run while keeping production deployment withheld', async () => {
-  rpc.can.mockImplementation(permission => permission === 'OmnitronProject.inspectFirstWrite');
+  rpc.can.mockImplementation(permission => ['OmnitronProject.inspectFirstWrite', 'OmnitronProject.prepareRehearsal'].includes(permission));
   rpc.list.mockResolvedValue({ releases: [] });
   rpc.check.mockResolvedValueOnce({ ok: false, state: 'replacement-unavailable', because: 'Unproven first write',
     migrationHistory: { kind: 'added-migrations', total: 1, entries: ['003.sql'] } });
   rpc.check.mockResolvedValueOnce({ writeAdmission: 'withheld', owner: { nodeId: 'source', phase: 'stopped', revision: 8,
     apps: [{ name: 'sample/prod/main', generation: 'launch-3', artifactSha256: 'a'.repeat(64) }] },
-    physical: { state: 'verified-closed-copy', evidence: { sourceStop: 'exact-stop', receiver: { nodeId: 'replica' }, proofDigest: 'b'.repeat(64) } },
+    physical: { state: 'verified-closed-copy', evidence: { verifyRunId: 'verify-id', sourceStop: 'exact-stop', receiver: { nodeId: 'replica' }, proofDigest: 'b'.repeat(64) } },
     missing: [{ authority: 'writer-fence', reason: 'Data owners have not fenced external writers.' }] });
   render(renderRelease());
   fireEvent.change(screen.getByRole('combobox', { name: 'Release ID' }), { target: { value: 'new' } });
@@ -47,6 +47,20 @@ it('reads the explicit native verify run while keeping production deployment wit
   expect(await screen.findByText(/Closed copy verified on replica at stop exact-stop/)).toBeTruthy();
   expect(screen.getByText(/Data owners have not fenced external writers/)).toBeTruthy();
   expect(rpc.check).toHaveBeenLastCalledWith('inspectFirstWrite', { project: 'sample', stack: 'test', release: 'new', verifyRunId: 'verify-id' });
+  const plan = { operationId:'operation-id', digest:'a'.repeat(64), logicalBytes:40, manifestSha256:'b'.repeat(64), receiver:{nodeId:'replica'} };
+  rpc.check.mockResolvedValueOnce({state:'awaiting-confirmation',plan});
+  fireEvent.click(screen.getByRole('button', {name:'Review private data copies'}));
+  const confirm = await screen.findByRole('button', {name:'Prepare reviewed private copies'});
+  expect(rpc.check).toHaveBeenLastCalledWith('prepareRehearsal', {project:'sample',stack:'test',release:'new',verifyRunId:'verify-id',operationId:expect.any(String)});
+  const confirmation = { project:'sample',stack:'test',release:'new',verifyRunId:'verify-id',operationId:plan.operationId,review:plan.digest };
+  rpc.check.mockRejectedValueOnce(Error('Receiver acknowledgement lost'));
+  fireEvent.click(confirm);
+  await screen.findByText('Receiver acknowledgement lost');
+  expect(rpc.check).toHaveBeenLastCalledWith('prepareRehearsal',confirmation);
+  rpc.check.mockResolvedValueOnce({state:'prepared',plan,receipt:{ copies:[{tag:'postgres-data',device:'2',inode:'4',generation:'b'.repeat(64)}] }});
+  fireEvent.click(confirm);
+  await screen.findByText(/Private data pair prepared/);
+  expect(rpc.check).toHaveBeenLastCalledWith('prepareRehearsal',confirmation);
   expect(screen.getByRole('button', { name: 'Deploy' }).hasAttribute('disabled')).toBe(true);
   fireEvent.change(run, { target: { value: 'another-id' } });
   expect(screen.queryByText(/Closed copy verified/)).toBeNull();

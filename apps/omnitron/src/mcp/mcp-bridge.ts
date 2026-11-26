@@ -1,143 +1,50 @@
 import type { Readable, Writable } from 'node:stream';
+import { fromJsonSchema, McpServer } from '@modelcontextprotocol/server';
+import { serveStdio, StdioServerTransport } from '@modelcontextprotocol/server/stdio';
+import { CLI_VERSION } from '../config/defaults.js';
 import type { IMcpToolDef } from './types.js';
 
-/**
- * MCP stdio bridge — implements the Model Context Protocol over stdin/stdout.
- * Minimal implementation that handles tool listing and invocation.
- *
- * Protocol: JSON-RPC 2.0 over newline-delimited JSON on stdin/stdout.
- */
 export class McpBridge {
-  private tools = new Map<string, IMcpToolDef>();
+  private readonly tools = new Map<string, IMcpToolDef>();
 
   constructor(private readonly input: Readable = process.stdin, private readonly output: Writable = process.stdout) {}
 
   registerTools(tools: IMcpToolDef[]): void {
-    for (const tool of tools) {
-      this.tools.set(tool.name, tool);
-    }
+    for (const tool of tools) this.tools.set(tool.name, tool);
   }
 
-  /**
-   * Start the MCP stdio server.
-   * Reads JSON-RPC messages from stdin, dispatches to tool handlers,
-   * writes responses to stdout.
-   */
   async start(): Promise<void> {
-    const { createInterface } = await import('node:readline');
-
-    const rl = createInterface({ input: this.input });
-
-    // Send server info on connect
-    this.send({
-      jsonrpc: '2.0',
-      method: 'notifications/initialized',
-      params: {},
-    });
-
-    for await (const line of rl) {
-      if (!line.trim()) continue;
-
-      try {
-        const message = JSON.parse(line);
-        await this.handleMessage(message);
-      } catch {
-        this.sendError(null, -32700, 'Parse error');
-      }
-    }
-  }
-
-  private async handleMessage(message: any): Promise<void> {
-    const { id, method, params } = message;
-
-    switch (method) {
-      case 'initialize':
-        this.send({
-          jsonrpc: '2.0',
-          id,
-          result: {
-            protocolVersion: '2024-11-05',
-            capabilities: { tools: {} },
-            serverInfo: {
-              name: 'omnitron',
-              version: '0.1.0',
-            },
-          },
+    const transport = new StdioServerTransport(this.input, this.output);
+    const handle = serveStdio(() => {
+      const server = new McpServer({ name: 'omnitron', version: CLI_VERSION });
+      for (const tool of this.tools.values()) {
+        const inputSchema = fromJsonSchema<Record<string, unknown>>(tool.inputSchema);
+        server.registerTool(tool.name, { description: tool.description, inputSchema }, async (args, { mcpReq }) => {
+          mcpReq.signal.throwIfAborted();
+          try {
+            const value = await tool.handler(args, mcpReq.signal);
+            mcpReq.signal.throwIfAborted();
+            return { content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value ?? null, null, 2) }] };
+          } catch (error) {
+            mcpReq.signal.throwIfAborted();
+            return { isError: true, content: [{ type: 'text', text: 'Error: ' + (error instanceof Error ? error.message : String(error)) }] };
+          }
         });
-        break;
-
-      case 'tools/list':
-        this.send({
-          jsonrpc: '2.0',
-          id,
-          result: {
-            tools: [...this.tools.values()].map(t => ({
-              name: t.name,
-              description: t.description,
-              inputSchema: t.inputSchema,
-            })),
-          },
-        });
-        break;
-
-      case 'tools/call': {
-        const toolName = params?.name;
-        const tool = this.tools.get(toolName);
-
-        if (!tool) {
-          this.sendError(id, -32601, `Unknown tool: ${toolName}`);
-          return;
-        }
-
-        try {
-          const result = await tool.handler(params?.arguments ?? {});
-          this.send({
-            jsonrpc: '2.0',
-            id,
-            result: {
-              content: [{
-                type: 'text',
-                text: typeof result === 'string' ? result : JSON.stringify(result, null, 2),
-              }],
-            },
-          });
-        } catch (err: any) {
-          this.send({
-            jsonrpc: '2.0',
-            id,
-            result: {
-              content: [{
-                type: 'text',
-                text: `Error: ${err.message ?? String(err)}`,
-              }],
-              isError: true,
-            },
-          });
-        }
-        break;
       }
+      return server;
+    }, { transport });
 
-      case 'notifications/initialized':
-      case 'notifications/cancelled':
-        // No response needed for notifications
-        break;
-
-      default:
-        if (id !== undefined) {
-          this.sendError(id, -32601, `Method not found: ${method}`);
-        }
+    // serveStdio owns the transport lifecycle. Keep CLI resources until that
+    // lifecycle ends, including a closed output or a rejected input frame.
+    try {
+      await new Promise<void>(resolve => {
+        const closeSession = transport.onclose;
+        transport.onclose = () => {
+          try { closeSession?.(); } finally { resolve(); }
+        };
+      });
+    } finally {
+      await handle.close();
     }
-  }
-
-  private send(message: any): void {
-    this.output.write(JSON.stringify(message) + '\n');
-  }
-
-  private sendError(id: unknown, code: number, message: string): void {
-    this.send({
-      jsonrpc: '2.0',
-      id,
-      error: { code, message },
-    });
   }
 }

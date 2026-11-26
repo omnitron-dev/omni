@@ -9,15 +9,5 @@ export interface IMcpToolDef<TParams = Record<string, unknown>> {
   /** JSON Schema for parameters */
   inputSchema: Record<string, unknown>;
   /** Handler function */
-  handler: (params: TParams) => Promise<unknown>;
-}
-
-/**
- * A group of related MCP tools.
- */
-export interface IMcpToolGroup {
-  /** Group prefix (e.g. 'kb', 'apps', 'infra') */
-  prefix: string;
-  /** Tool definitions */
-  tools: IMcpToolDef[];
+  handler: (params: TParams, signal?: AbortSignal) => Promise<unknown>;
 }

@@ -2,7 +2,8 @@ import 'reflect-metadata';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createInterface } from 'node:readline';
+import { Client } from '@modelcontextprotocol/client';
+import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import { PassThrough } from 'node:stream';
 import { sql } from 'kysely';
 import { waitFor } from '@omnitron-dev/testing/async';
@@ -36,36 +37,29 @@ export interface PipelineObservation {
 const ids = { alpha: '026de8a9-abc6-4002-aa00-000000000001', beta: '026de8a9-abc6-4002-aa00-000000000002' };
 
 /** Dedicated duplex pipes carry the same newline-delimited JSON as the CLI's stdio. */
-function managementClient(client: DaemonClient) {
+async function managementClient(daemon: DaemonClient) {
   const input = new PassThrough(), output = new PassThrough();
-  const replies = createInterface({ input: output });
-  const lines = replies[Symbol.asyncIterator]();
   const bridge = new McpBridge(input, output);
-  bridge.registerTools(createManagementTools(client));
+  bridge.registerTools(createManagementTools(daemon));
   const running = bridge.start();
-  let id = 0;
-  return {
-    async call(name: string, args: object): Promise<{ receipt: PipelineRun } | { refused: string }> {
-      input.write(JSON.stringify({ jsonrpc: '2.0', id: ++id, method: 'tools/call', params: { name, arguments: args } }) + '\n');
-      let line = await lines.next();
-      while (!line.done) {
-        const reply = JSON.parse(line.value);
-        if (reply.id === undefined && reply.method === 'notifications/initialized') {
-          line = await lines.next();
-          continue;
-        }
-        if (reply.id !== id || reply.jsonrpc !== '2.0' || reply.error) throw Error('Unexpected MCP reply ' + line.value);
-        const text = reply.result.content[0].text;
-        if (reply.result.isError) return { refused: text };
-        return { receipt: JSON.parse(text) };
-      }
-      throw Error('MCP stream ended before replying');
-    },
-    async close() {
+  const client = new Client({ name: 'pipeline-consumer', version: '1' });
+  async function close() {
+    try { await client.close(); } finally {
       input.end();
-      try { await running; }
-      finally { replies.close(); input.destroy(); output.destroy(); }
+      try { await running; } finally { input.destroy(); output.destroy(); }
+    }
+  }
+  try {
+    await client.connect(new StdioServerTransport(output, input));
+  } catch (error) { await close(); throw error; }
+  return {
+    async call(name: string, args: Record<string, unknown>): Promise<{ receipt: PipelineRun } | { refused: string }> {
+      const reply = await client.callTool({ name, arguments: args });
+      const first = reply.content[0];
+      if (first?.type !== 'text') throw Error('Expected an MCP text result');
+      return reply.isError ? { refused: first.text } : { receipt: JSON.parse(first.text) };
     },
+    close,
   };
 }
 
@@ -118,7 +112,7 @@ export async function openPipelineTrace(): Promise<TraceSubject<PipelineAction, 
     const client = new DaemonClient(socket);
     cleanup.push(() => client.disconnect());
     const service = await client.service<IOmnitronPipelinesService>('OmnitronPipelines');
-    const tools = managementClient(client);
+    const tools = await managementClient(client);
     cleanup.push(() => tools.close());
     const runName = (id: string | null) => lanes.find(lane => ids[lane] === id) ?? String(id);
     const definitionName = (id: string) => lanes.find(lane => definitions.get(lane)!.id === id) ?? id;

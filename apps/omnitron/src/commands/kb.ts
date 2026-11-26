@@ -131,12 +131,11 @@ export async function kbMcpCommand(): Promise<void> {
     bridge.registerTools(createUnavailableTools(DAEMON_TOOL_NAMES, DAEMON_DOWN));
   }
 
-  // Start stdio MCP server
-  await bridge.start();
-
-  // Cleanup
-  if (kbService?.close) await kbService.close();
-  if (daemonClient?.disconnect) await daemonClient.disconnect();
+  try {
+    await bridge.start();
+  } finally {
+    try { await kbService?.close?.(); } finally { await daemonClient?.disconnect?.(); }
+  }
 }
 
 /**

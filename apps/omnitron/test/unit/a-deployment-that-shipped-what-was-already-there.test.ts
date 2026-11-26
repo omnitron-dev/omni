@@ -188,21 +188,12 @@ describe('the deployment wires both halves', () => {
   // deployment stalled after installing three artifacts, the retry read
   // «installed, running» and left three applications on the code they had
   // started with an hour before.
-  it('records what an app runs only once it came up on it — never at unpack time', () => {
+  it('keeps the running-artifact record out of the standalone installer', () => {
     const body = (from: string, to: string) => deployer.slice(deployer.indexOf(from), deployer.indexOf(to, deployer.indexOf(from)));
 
-    // Between the install and «Installed» nothing is recorded.
-    const installed = body('npm install --omit=dev', 'startAfterInstall === false');
-    expect(installed).not.toMatch(/ARTIFACT_CHECKSUM_FILE/);
-    expect(installed).not.toMatch(/recordRunningArtifact\(/);
-
-    // One app deployed and started here: recorded after its health.
-    const single = body('startAfterInstall === false', "'Deployment successful'");
-    expect(single.indexOf('this.recordRunningArtifact(')).toBeGreaterThan(single.indexOf('this.verifyHealth('));
-
-    // A stack: recorded for an app that came up, before it is reported running.
-    const loop = body('for (const entry of landed) {', "'Restarted onto the artifact this deployment installed'");
-    expect(loop.indexOf('this.recordRunningArtifact(')).toBeGreaterThan(loop.indexOf('if (health.online) {'));
+    const installer = body('async deployToNode(', 'async deployToStack(');
+    expect(installer).toContain('startAfterInstall === false');
+    expect(installer).not.toContain('this.recordRunningArtifact(');
 
     // And the helper is the one writer of the file.
     const helper = body('private async recordRunningArtifact(', '\n  }');

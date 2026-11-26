@@ -23,6 +23,11 @@
  * with it after the original was wrong.
  */
 
+import { isDeepStrictEqual } from 'node:util';
+import type { ReleaseArtifactOrigin } from '../release/installed-origin.js';
+import type { ApplicationRuntime } from '../services/host-upgrade.js';
+import type { BackendRuntimeStatus } from '../shared/dto/backend.js';
+import { readStackRelease, type ReleaseApplicationObservation } from '../shared/release-reading.js';
 import { NODE_STACK } from './node-app-config.js';
 
 /** What a node says about itself and what it runs. */
@@ -31,7 +36,7 @@ export interface NodeStatus {
   readonly pid?: number | undefined;
   readonly uptime?: number | undefined;
   readonly role?: 'master' | 'slave' | undefined;
-  readonly apps: ReadonlyArray<{ name?: string | undefined; status?: string | undefined }>;
+  readonly apps: ReadonlyArray<Partial<ReleaseApplicationObservation>>;
 }
 
 /**
@@ -59,7 +64,7 @@ export interface NodeStatus {
  * found` is a node without omnitron, which is not the same state as a node
  * whose daemon is stopped.
  */
-export function readNodeStatus(raw: string): NodeStatus | null {
+export function readNodeStatus(raw: string, expectedOwner?: ApplicationRuntime): NodeStatus | null {
   let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(raw) as Record<string, unknown>;
@@ -71,6 +76,16 @@ export function readNodeStatus(raw: string): NodeStatus | null {
   const data = parsed['data'];
   const body = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>;
   const role = body['role'];
+  if (expectedOwner) {
+    const execution = body['execution'] as BackendRuntimeStatus | undefined;
+    const expected = expectedOwner.execution;
+    const apps = body['apps'];
+    if (parsed['ok'] !== true || !expected || execution?.mode !== 'resident' || execution.phase !== 'active' ||
+        execution.connection?.status !== 'connected' || execution.owner?.id !== expected.ownerId || execution.owner.pid !== expected.pid ||
+        execution.epoch !== expected.epoch || !Array.isArray(apps) || apps.length !== body['appsTotal'] ||
+        apps.some(app => !app || typeof app.name !== 'string' || !app.name || typeof app.status !== 'string') ||
+        new Set(apps.map(app => app.name)).size !== apps.length) return null;
+  }
 
   return {
     version: typeof body['version'] === 'string' ? body['version'] : undefined,
@@ -78,7 +93,7 @@ export function readNodeStatus(raw: string): NodeStatus | null {
     uptime: typeof body['uptime'] === 'number' ? body['uptime'] : undefined,
     role: role === 'master' || role === 'slave' ? role : undefined,
     apps: Array.isArray(body['apps'])
-      ? (body['apps'] as Array<{ name?: string; status?: string }>)
+      ? (body['apps'] as NodeStatus['apps'])
       : [],
   };
 }
@@ -92,6 +107,27 @@ export interface NodeHealth {
 /** What a node calls an app that was deployed to it. */
 export function nodeAppName(project: string, app: string): string {
   return `${project}/${NODE_STACK}/${app}`;
+}
+
+/** Resolve a confirmed stack-wide start against the running consumer, producer and generation. */
+export function registeredReleaseAction(
+  project: string, app: string, origin: ReleaseArtifactOrigin, configChanged: boolean,
+  before: Partial<ReleaseApplicationObservation> | undefined | null, after: Partial<ReleaseApplicationObservation> | undefined,
+): 'confirmed' | 'restart' | 'unconfirmed' {
+  const name = nodeAppName(project, app);
+  if (after?.name !== name || after.status !== 'online' || !after.generation) return 'unconfirmed';
+  const receipt = after.release;
+  if (receipt?.state !== 'confirmed' || readStackRelease({
+    type: 'local', status: 'running', nodes: [], apps: [{ ...after, name, status: 'online' }],
+  }).runningRelease !== 'confirmed') return 'unconfirmed';
+
+  const matchesRelease = receipt.releaseId === origin.releaseId && receipt.manifestSha256 === origin.manifestSha256 &&
+    receipt.artifactSha256 === origin.artifactSha256 && isDeepStrictEqual(receipt.consumer, origin.runtimeOrigin?.consumer);
+  // An absent entry in a complete prior inventory is different from an unavailable inventory (null).
+  const newGeneration = before === undefined || (before?.name === name &&
+    (before.generation ? before.generation !== after.generation : before.status === 'stopped'));
+  if (matchesRelease && (!configChanged || newGeneration)) return 'confirmed';
+  return before?.name === name && before.status === 'online' && before.generation === after.generation ? 'restart' : 'unconfirmed';
 }
 
 /** Qualified entries take precedence over legacy bare definitions on the same node. */
@@ -109,6 +145,10 @@ export function projectNodeApps(status: NodeStatus, project: string) {
     }
   }
   return apps;
+}
+
+export function onlineNodeApps(inventory: ReturnType<typeof projectNodeApps> | null): Set<string> {
+  return new Set(Array.from(inventory ?? []).filter(([, app]) => app.status === 'online').map(([name]) => name));
 }
 
 /** How many names to print before the rest become a count. */

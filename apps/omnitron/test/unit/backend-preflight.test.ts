@@ -10,8 +10,9 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { BackendPreflightError, checkBackendAdoption, checkBackendCandidate, previewBackendColdStart } from '../../src/daemon/backend-candidate.js';
 import { backendInfrastructureInput, backendInfrastructureDigest, backendInfrastructureIntentDigest } from '../../src/daemon/backend-infrastructure-preflight.js';
 import type { BackendRecoveryRecord } from '../../src/daemon/backend-recovery-journal.js';
-import { runtimeArtifactDigest } from '../../src/shared/runtime-artifact.js';
-import { resetEnvCache, setEnvOverride } from '../../src/shared/env-config.js';
+import { inspectRuntimeArtifact, runtimeArtifactDigest } from '../../src/shared/runtime-artifact.js';
+import { readBuildStamp } from '../../src/shared/build-stamp.js';
+import { inspectServingArtifact } from '../../src/services/managed-rollout.js';
 
 const execute = promisify(execFile);
 const roots: string[] = [];
@@ -20,7 +21,6 @@ const response = { protocol: 1, schemaExpansionProtocol: 1, build: stamp, execut
 
 afterEach(async () => {
   vi.unstubAllEnvs();
-  resetEnvCache();
   for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true });
 });
 
@@ -63,6 +63,16 @@ async function failure(dist: string): Promise<BackendPreflightError> {
   }
   throw new Error('Preflight unexpectedly admitted the fixture');
 }
+
+it('reads a live role from its sealed files without booting another backend and detects a changed entry', async () => {
+  const candidate = await fixture("throw Error('entry executed during inspection')");
+  const serving = await inspectServingArtifact(candidate.runtime, candidate.hash, inspectRuntimeArtifact, readBuildStamp);
+  expect(serving).toMatchObject({ entry: candidate.entry, execPath: candidate.node, runtimeHash: candidate.hash, build: stamp });
+  await serving.assertUnchanged();
+  await expect(checkBackendCandidate(candidate.dist)).rejects.toThrow(/preflight/i);
+  await fs.appendFile(candidate.entry, '\n// drift\n');
+  await expect(serving.assertUnchanged()).rejects.toThrow(/changed/);
+});
 
 it('loads the runtime and validates its response without creating application state', async () => {
   const candidate = await fixture(`process.stdout.write(${JSON.stringify(JSON.stringify(response) + '\n')});`);
@@ -223,8 +233,10 @@ it('reports and terminates a real stalled import at the unchanged 30-second dead
 
 it('retains the native preflight failure through the ordinary backend install JSON command', async () => {
   const candidate = await fixture('await import("./missing-command-dependency.js");');
-  resetEnvCache();
-  setEnvOverride({ OMNITRON_OUTPUT: 'json' });
+  // The CLI binds its default installation to the instance home at module initialization.
+  vi.resetModules();
+  vi.stubEnv('OMNITRON_OUTPUT', 'json');
+  expect((await import('../../src/config/defaults.js')).OMNITRON_HOME).toBe(candidate.home);
   const { backendInstallCommand } = await import('../../src/commands/backend.js');
   const previousExit = process.exitCode;
   const output: string[] = [];

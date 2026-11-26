@@ -311,6 +311,8 @@ For a return to the original registration, first complete a reviewed full stop o
 
 #### Replace a release on its selected node
 
+After a node acknowledges a stack start, the controller reads the owner's application inventory once for the group. Each confirmed launch identifies its generation, release manifest, artifact and consumer. If a prior generation is still running with a changed release or configuration, the controller restarts that application and checks its new generation. An unavailable or incomplete observation appears as `unconfirmed` in deployment progress. Use `omnitron stack status <project> <stack> --json` to inspect each replica before retrying.
+
 A full stop ends the previous infrastructure hold when Omnitron commits the stop receipt. A stop with `--keep-infrastructure` retains the hold. Application-only receivers can also read full-stop receipts written by older daemons. The receipt must belong to the same source stack and runtime allocation and postdate the hold. A preserved launch on such a receiver reviews the application entries. The controller owns the container review.
 
 Use `omnitron stack diagnose PROJECT STACK` to check the enrolled receiver's start policy. The same check runs before provisioning on a returning node and before stopping the current release in the deploy dialog. Use `omnitron stack progress PROJECT STACK` for the receiver's registration result and `omnitron stack status PROJECT STACK` for current application health. The registration result distinguishes a required preservation review, changed resources, missing declarations and a lost connection. It records each start request once.

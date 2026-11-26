@@ -1,5 +1,5 @@
 // Executed with the verified Node binary of the OS-managed guardian over the pinned SSH connection.
-/* global commandFailure, targetRuntime, assertReviewableBackendActivity -- supplied by managedHostCommand */
+/* global commandFailure, targetRuntime, inspectServingArtifact, assertReviewableBackendActivity -- supplied by managedHostCommand */
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -14,7 +14,6 @@ const dir = path.join(home, 'runtime'),
   pkg = path.join(bootstrap, 'packages/0');
 const sdk = (name) => import(pathToFileURL(path.join(pkg, 'dist', name + '.js')).href);
 const { readManagedRuntime, managedJobPid, verifyManagedIsolation } = await sdk('daemon/managed-runtime');
-const { checkBackendCandidate } = await sdk('daemon/backend-candidate');
 const { createDaemonClient } = await sdk('daemon/daemon-client');
 const { privateControlClient } = await sdk('daemon/private-control-client');
 const config = await readManagedRuntime(home);
@@ -51,11 +50,20 @@ function openLegacyReader() {
 }
 const hash = /^[0-9a-f]{64}$/;
 const checked = new Map();
+async function readArtifact(root, digest) {
+  if (wanted.operation !== 'inspect') {
+    const { checkBackendCandidate } = await sdk('daemon/backend-candidate');
+    return checkBackendCandidate(path.join(root, 'packages/0/dist'), undefined, digest);
+  }
+  const { inspectRuntimeArtifact } = await sdk('shared/runtime-artifact');
+  const { readBuildStamp } = await sdk('shared/build-stamp');
+  return inspectServingArtifact(root, digest, inspectRuntimeArtifact, readBuildStamp);
+}
 const checkout = async (id) => {
   if (!hash.test(id)) throw Error('Invalid installed runtime digest');
   const r = path.join(releases, id);
   if (fs.realpathSync(r) !== r) throw Error('Non-canonical installed runtime');
-  if (!checked.has(id)) checked.set(id, checkBackendCandidate(path.join(r, 'packages/0/dist'), undefined, id));
+  if (!checked.has(id)) checked.set(id, readArtifact(r, id));
   return checked.get(id);
 };
 const { RuntimeInstallation } = await sdk('daemon/runtime-installation');
@@ -145,6 +153,8 @@ try {
       execution: { mode: 'resident', protocol: snap.protocol, ownerId: snap.status.owner.id, pid: ownerPid, epoch: snap.status.controller.epoch } },
   };
   if (wanted.operation === 'inspect') {
+    await current.assertUnchanged();
+    if (owner !== current) await owner.assertUnchanged();
     const finalChannel = await privateControlClient(path.join(config.directory, 'owner.sock'), 'OmnitronExecution');
     try {
       const final = await finalChannel.service.snapshot();

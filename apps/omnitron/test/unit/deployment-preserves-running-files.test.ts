@@ -117,4 +117,49 @@ describe('failed preparation preserves the running release', () => {
     expect(result[0]).toMatchObject({ status: 'failed', error: 'Node registration failed: read refused' });
     expect(svc.signalRemoteDaemon).not.toHaveBeenCalled();
   });
+
+  it.each(['fresh', 'lost-observation', 'owner-changed', 'wrong-artifact', 'wrong-consumer', 'missing-receipt', 'old-generation'])(
+    'uses the confirmed stack start and observes the enrolled generation (%s)', async mode => {
+      const apps = ['api', 'worker'];
+      const manifest = 'b'.repeat(64), checksum = 'a'.repeat(64), commit = 'c'.repeat(40);
+      const grant = { mode: 'resident', protocol: 1, ownerId: 'fixture-owner', pid: 12, epoch: 3 };
+      const runtime = { root: '/runtime/packages/0', executable: '/runtime/node', commit, execution: grant };
+      const artifacts = apps.map(app => ({ app, version: '1', checksum, release: {
+        releaseId: 'one', app, artifactBytes: 100, artifactSha256: checksum, manifestSha256: manifest, frameworkCommit: commit } }));
+      const generation = (name: string, version: string) => ({ name: 'sample/deployed/' + name, pid: 35, status: 'online', generation: version + name,
+        release: { state: 'confirmed', basis: 'verified-launch', launchId: version + name, observedAt: new Date().toISOString(),
+          releaseId: 'one', artifactSha256: checksum, manifestSha256: manifest } });
+      const observed = (rows: ReturnType<typeof generation>[], epoch = 3) => ({ code: 0, words: '', raw: JSON.stringify({ ok: true, data: {
+        appsTotal: rows.length, apps: rows, execution: { mode: 'resident', phase: 'active', connection: { status: 'connected' }, epoch,
+          owner: { id: 'fixture-owner', pid: 12 } } } }) });
+      const now = apps.map(app => generation(app, 'after-'));
+      if (mode === 'wrong-artifact') now[0]!.release.artifactSha256 = 'd'.repeat(64);
+      if (mode === 'wrong-consumer') Object.assign(now[0]!.release, { consumer: { app: 'api', releaseId: 'other', manifestSha256: manifest } });
+      const before = mode === 'old-generation' || mode === 'missing-receipt' ? [generation('api', 'after-')] : [];
+      if (mode === 'missing-receipt') now[0]!.release.launchId = 'unrelated-launch';
+      const ask = vi.fn().mockResolvedValueOnce(observed(before)).mockResolvedValueOnce(mode === 'lost-observation'
+        ? { code: 1, raw: '', words: 'connection closed' } : observed(now, mode === 'owner-changed' ? 4 : 3))
+        .mockResolvedValue(observed([generation('api', 'restarted-'), now[1]!]));
+      let operation = '', starts = 0;
+      const svc: any = new RemoteDeployer({ info() {}, warn() {}, error() {} } as never, {} as never);
+      Object.assign(svc, { inspectInstalledBundle: vi.fn(async () => ({ applicationRuntime: runtime })),
+        deployToNode: async (_target: unknown, a: typeof artifacts[number]) => ({ node: 'node.invalid:9700', app: a.app, version: a.version,
+          status: 'success', checksum, unchanged: false }),
+        migrateNodeApps: async () => new Map(), askNodeStatus: ask, signalRemoteDaemon: vi.fn(async () => ({ ok: true, detail: '' })),
+        recordRunningArtifact: vi.fn(), sshExec: async (_target: unknown, command: string, _timeout?: number, stdin?: string) => {
+          if (stdin) { operation = JSON.parse(stdin).operation; return '{"changed":true}'; }
+          if (command.startsWith('omnitron project add ')) return 'Registered';
+          starts++;
+          return JSON.stringify({ operation, project: 'sample', stack: 'deployed', confirmed: true, apps });
+        } });
+      const result = await svc.deployToStack([{ host: 'node.invalid' }], artifacts, 'sample', { stack: 'prod', apps: apps.map(name => ({ name })) });
+      const bothUnknown = mode === 'owner-changed' || mode === 'lost-observation';
+      const apiUnknown = ['wrong-artifact', 'wrong-consumer', 'missing-receipt'].includes(mode);
+      expect(result.map((item: {status: string}) => item.status)).toEqual(bothUnknown ? ['unconfirmed', 'unconfirmed'] :
+        apiUnknown ? ['unconfirmed', 'success'] : ['success', 'success']);
+      expect(starts).toBe(1);
+      expect(svc.signalRemoteDaemon).toHaveBeenCalledTimes(mode === 'old-generation' ? 1 : 0);
+      expect(ask).toHaveBeenCalledTimes(mode === 'old-generation' ? 3 : 2);
+      expect(svc.recordRunningArtifact).toHaveBeenCalledTimes(bothUnknown ? 0 : apiUnknown ? 1 : 2);
+    });
 });

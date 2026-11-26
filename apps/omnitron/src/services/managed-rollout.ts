@@ -8,6 +8,23 @@ import { remoteNode } from './host-upgrade.js';
 import { targetRuntime } from '../release/target-runtime.js';
 import { assertBackendHandoffAdmission, type BackendHandoffAdmission } from '../daemon/backend-handoff-types.js';
 
+/** This function travels with the controller. The enrolled guardian supplies its sealed-tree reader. */
+export async function inspectServingArtifact(root: string, digest: string,
+  inspect: typeof import('../shared/runtime-artifact.js').inspectRuntimeArtifact,
+  stamp: typeof import('../shared/build-stamp.js').readBuildStamp) {
+  const fs = await import('node:fs/promises');
+  const path = await import('node:path');
+  const proof = await inspect(root, digest);
+  const directory = path.join(root, 'packages/0/dist'), entry = path.join(directory, 'daemon/daemon-entry.js');
+  const stat = await fs.lstat(entry);
+  const build = stamp(directory);
+  if (await fs.realpath(entry) !== entry || !stat.isFile() || (stat.mode & 0o022) || stat.uid !== process.getuid?.() ||
+      !build || build.dirty || !/^[a-f0-9]{40}$/.test(build.commit))
+    throw Error('Serving runtime entry or clean build identity is unavailable');
+  return { directory, entry, execPath: path.join(root, 'node'), runtimeRoot: root, runtimeHash: proof.manifest.sha256, build,
+    assertUnchanged: proof.assertUnchanged };
+}
+
 export interface ManagedRolloutObservation {
   identity?: ExecutionIdentityEvidence;
   previous: string;
@@ -104,6 +121,7 @@ export function managedHostCommand(request: ManagedHostRequest): string {
   const source = [
     'const commandFailure=' + commandFailure.toString() + ';',
     'const targetRuntime=' + targetRuntime.toString() + ';',
+    'const inspectServingArtifact=' + inspectServingArtifact.toString() + ';',
     'const assertReviewableBackendActivity=' + assertReviewableBackendActivity.toString() + ';',
     program,
   ].join('\n');

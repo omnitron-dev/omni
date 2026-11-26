@@ -28,7 +28,7 @@ import {
 } from './remote-provisioner.js';
 import { installSteps, installPreflightCommand, versionDir, activateSteps, pruneSteps } from './bundle-builder.js';
 import { reachabilityRule, reachabilityCommand } from '../infrastructure/gateway-reachability.js';
-import { projectNodeApps, readNodeHealth, readNodeStatus } from '../project/node-app-health.js';
+import { onlineNodeApps, projectNodeApps, readNodeHealth, readNodeStatus, registeredReleaseAction } from '../project/node-app-health.js';
 import {
   decideRedeploy,
   decideNodeStackStart,
@@ -276,6 +276,12 @@ const DAEMON_POLL_MS = 3_000;
  * message that stopped being true.
  */
 export type DeployStatus = DeployProgressRecord['status'];
+
+interface NodeRegistration {
+  changed: boolean;
+  /** Present only after the recipient confirmed a stack start. Null denotes an unavailable prior observation. */
+  startedFrom?: ReturnType<typeof projectNodeApps> | null;
+}
 
 export interface DeployResult {
   node: string;
@@ -858,7 +864,7 @@ export class RemoteDeployer {
           }
           continue;
         }
-        let registration: { changed: boolean };
+        let registration: NodeRegistration;
         try { registration = await this.registerNodeApps(target, project, options.apps, landed, options.appEnv, options.alertSink, options.stack, owners.get(target)); }
         catch (error) {
           for (const result of results.filter(r => r.node === nodeKey && r.status === 'success')) {
@@ -876,7 +882,10 @@ export class RemoteDeployer {
         // What the node is running right now, asked once for the whole node
         // rather than once per app: the decision below needs it for every
         // app, and `omnitron status --json` answers about all of them.
-        const runningNow = await this.appsOnline(target, project);
+        const expectedOwner = owners.get(target);
+        const registeredStart = registration.startedFrom !== undefined && !!expectedOwner;
+        const observed = registeredStart ? await this.deploymentInventory(target, project, expectedOwner) : null;
+        const runningNow = registeredStart ? onlineNodeApps(observed) : await this.appsOnline(target, project);
 
         // Now that the node knows what these apps are, start them. Their
         // result is upgraded in place, so a caller reading `results` sees
@@ -884,6 +893,23 @@ export class RemoteDeployer {
         for (const entry of landed) {
           const result = results.find((r) => r.app === entry.app && r.node === nodeKey);
           if (!result) continue;
+          const origin = artifacts.find(artifact => artifact.app === entry.app)?.release;
+          const existing = observed?.get(entry.app);
+          if (registeredStart && origin) {
+            const prior = registration.startedFrom ? registration.startedFrom.get(entry.app) : null;
+            const action = registeredReleaseAction(project, entry.app, origin, registration.changed, prior, existing);
+            if (action === 'confirmed') {
+              await this.recordRunningArtifact(target, artifactDirOnNode(project, entry.app, entry.directory ?? entry.version), entry.app, result.checksum);
+              this.emitProgress(result.node, entry.app, 'success', 100, 'Stack start confirmed this running release generation');
+              continue;
+            }
+            if (action === 'unconfirmed') {
+              result.status = 'unconfirmed';
+              result.error = 'The node acknowledged stack start. The running release generation could not be confirmed. Inspect stack status before retrying.';
+              this.emitProgress(result.node, entry.app, result.status, 90, result.error);
+              continue;
+            }
+          }
 
           // An app whose artifact did not move, whose configuration did not
           // move, and which is running, has nothing that a restart would
@@ -894,7 +920,7 @@ export class RemoteDeployer {
             // were written.
             artifactChanged: result.unchanged === true ? false : true,
             online: runningNow.has(entry.app),
-            configChanged: registration.changed,
+            configChanged: registration.changed || (registeredStart && !!origin),
           });
           if (decision.action === 'leave') {
             this.emitProgress(result.node, entry.app, 'success', 100, 'Running — nothing to change');
@@ -905,19 +931,26 @@ export class RemoteDeployer {
             continue;
           }
 
-          const expectedOwner = owners.get(target);
           if (expectedOwner) {
             try { assertSameApplicationRuntime(expectedOwner, (await this.inspectInstalledBundle(target)).applicationRuntime); }
             catch (error) {
-              result.status = 'failed'; result.error = (error as Error).message;
-              this.emitProgress(result.node, entry.app, 'failed', 90, result.error);
+              result.status = 'unconfirmed'; result.error = (error as Error).message;
+              this.emitProgress(result.node, entry.app, result.status, 90, result.error);
               continue;
             }
           }
           const started = await this.signalRemoteDaemon(target, entry.app);
-          const health = started.ok
-            ? await this.verifyHealth(target, entry.app, project)
-            : { online: false, detail: started.detail };
+          let health = { online: false, detail: started.detail };
+          if (started.ok && existing && origin && expectedOwner) {
+            const current = (await this.deploymentInventory(target, project, expectedOwner))?.get(entry.app);
+            health = { online: registeredReleaseAction(project, entry.app, origin, true, existing, current) === 'confirmed',
+              detail: 'Requested release generation is unconfirmed' };
+          } else if (started.ok) health = await this.verifyHealth(target, entry.app, project);
+          if (!health.online && started.ok && registeredStart && origin) {
+            result.status = 'unconfirmed'; result.error = health.detail;
+            this.emitProgress(result.node, entry.app, 'unconfirmed', 90, result.error);
+            continue;
+          }
           if (health.online) {
             await this.recordRunningArtifact(
               target,
@@ -1163,7 +1196,7 @@ export class RemoteDeployer {
     alertSink?: import('../config/types.js').IAlertSink | undefined,
     sourceStack?: string,
     expectedOwner?: ApplicationRuntime,
-  ): Promise<{ changed: boolean }> {
+  ): Promise<NodeRegistration> {
     if (landed.length === 0) {
       this.logger.warn({ host: target.host, project }, 'No artifact reached this node — nothing to register');
       return { changed: false };
@@ -1207,10 +1240,11 @@ export class RemoteDeployer {
       // decision taken below it — measured 2026-09-22, six «Left running»
       // lines about six applications this same deployment had restarted
       // twenty seconds earlier. See `decideNodeStackStart`.
+      const prior = expectedOwner ? await this.deploymentInventory(target, project, expectedOwner) : null;
       const start = decideNodeStackStart({
         configChanged: changed,
         apps: landed.map((l) => l.app),
-        online: await this.appsOnline(target, project),
+        online: expectedOwner ? onlineNodeApps(prior) : await this.appsOnline(target, project),
       });
       if (expectedOwner) assertSameApplicationRuntime(expectedOwner, (await this.inspectInstalledBundle(target)).applicationRuntime);
       // Older project-add clients printed a refusal and exited zero.
@@ -1245,7 +1279,7 @@ export class RemoteDeployer {
           ? 'The node now knows what to run'
           : 'The node is already running these apps with this configuration — its stack was not restarted',
       );
-      return { changed };
+      return { changed, ...(activationSubmitted && expectedOwner && { startedFrom: prior }) };
     } catch (err) {
       if (activationSubmitted || (err as { code?: string } | null)?.code === 'EXECUTION_OUTCOME_UNKNOWN') {
         const detail = err instanceof NodeRegistrationUnconfirmed ? ` ${err.message}.` : '';
@@ -2388,6 +2422,12 @@ export class RemoteDeployer {
     }
   }
 
+  private async deploymentInventory(target: DeployTarget, project: string, owner: ApplicationRuntime): Promise<ReturnType<typeof projectNodeApps> | null> {
+    const answer = await this.askNodeStatus(target);
+    const status = answer.code === 0 ? readNodeStatus(answer.raw, owner) : null;
+    return status ? projectNodeApps(status, project) : null;
+  }
+
   /**
    * The apps this node reports as online, by their bare names.
    *
@@ -2410,11 +2450,7 @@ export class RemoteDeployer {
         );
         return new Set();
       }
-      const online = new Set<string>();
-      for (const [name, app] of projectNodeApps(status, project)) {
-        if (app.status === 'online') online.add(name);
-      }
-      return online;
+      return onlineNodeApps(projectNodeApps(status, project));
     } catch (err) {
       this.logger.warn(
         { node: target.host, project, error: (err as Error).message },

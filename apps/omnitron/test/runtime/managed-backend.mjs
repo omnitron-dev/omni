@@ -586,6 +586,10 @@ if (process.argv[2] === '--backend-handoff' && path.dirname(target) === ${JSON.s
       assert.equal(next.ownerPid, ownerPid);
       await activateManagedTarget(invoke, next);
       assert.equal(await reconcileManagedTarget(invoke, next), 'candidate');
+      const { bundle: serving } = await invoke({ operation: 'inspect' });
+      assert.equal(serving.managed.backendArtifact, next.candidate);
+      assert.equal(serving.managed.ownerPid, ownerPid);
+      assert.equal(serving.commit, await readStamp(managementDist));
       const { createDaemonClient: connectCandidate } = await import(pathToFileURL(path.join(managementDist, 'daemon/daemon-client.js')).href);
       const candidate = connectCandidate(socket, 90_000);
       try {

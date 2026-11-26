@@ -233,17 +233,19 @@ export class RateLimitService implements IRateLimitService {
     }
 
     const request = { ...options };
-    const storageKey = this.buildKey(request.key, request.tier);
+    const global = request.scope === 'global';
+    const storageKey = global ? this.options.keyPrefix + '\0global:' + request.key : this.buildKey(request.key, request.tier);
     const consume = request.consume ?? true;
     const attempt = () => {
-      const tier = this.resolveTier(request.tier);
-      const limit = (request.limit ?? tier?.limit ?? this.options.defaultLimit) + (tier?.burst ?? this.options.burstLimit);
+      const tier = global ? undefined : this.resolveTier(request.tier);
+      const limit = (request.limit ?? tier?.limit ?? this.options.defaultLimit) + (global ? 0 : tier?.burst ?? this.options.burstLimit);
       const windowMs = request.windowMs ?? tier?.windowMs ?? this.options.defaultWindowMs;
+      if (limit === 0) return Promise.resolve<IRateLimitResult>({ allowed: false, remaining: 0, limit, resetAt: Date.now() + windowMs });
       return this.algorithm.check(this.storage, storageKey, limit, windowMs, consume);
     };
     let result = await attempt();
     if (!result.allowed && consume && this.queue) {
-      const priority = this.resolveTier(request.tier)?.priority ?? 0;
+      const priority = global ? 0 : this.resolveTier(request.tier)?.priority ?? 0;
       const waiting = this.queue.wait(storageKey, priority, result, attempt, request.signal);
       if (waiting) result = await waiting;
     }

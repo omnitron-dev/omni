@@ -3,10 +3,9 @@
  * @module @omnitron-dev/titan/netron/auth
  */
 
-import ipaddr from 'ipaddr.js';
 import type { PolicyDefinition } from './types.js';
 import { RateLimiter, type RateLimitConfig } from './rate-limiter.js';
-import { safeCompare, hasPermission as matchPermission } from './utils.js';
+import { isIPInRange, safeCompare, hasPermission as matchPermission } from './utils.js';
 
 /**
  * Helper function to get nested value from object by path
@@ -86,28 +85,6 @@ function matchPermissionPattern(pattern: string, permission: string): boolean {
   }
 
   return regex.test(permission);
-}
-
-/**
- * Helper function to check if an IP is in a CIDR range
- */
-function isIPInRange(ip: string, cidr: string): { match: boolean; error?: string } {
-  try {
-    const addr = ipaddr.parse(ip);
-    const range = ipaddr.parseCIDR(cidr);
-
-    // Check if address matches the range type (IPv4 or IPv6)
-    if (addr.kind() !== range[0].kind()) {
-      return { match: false };
-    }
-
-    return { match: addr.match(range) };
-  } catch (error) {
-    return {
-      match: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    };
-  }
 }
 
 /**

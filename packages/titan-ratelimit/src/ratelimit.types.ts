@@ -260,6 +260,8 @@ export interface IRateLimitTier {
  * @public
  */
 export interface IRateLimitCheckOptions {
+  /** Keep a shared, untiered budget separate from individual subjects with the same key. */
+  scope?: 'global';
   /**
    * Unique identifier for what is being rate limited
    * (e.g., user ID, IP address, API key).

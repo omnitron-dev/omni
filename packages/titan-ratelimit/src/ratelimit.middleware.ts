@@ -13,6 +13,7 @@ import type {
   MiddlewareConfig,
 } from '@omnitron-dev/titan/netron/transport/http/middleware';
 import type { IRateLimitService, IRateLimitResult } from './ratelimit.types.js';
+import { isIPInRange } from '@omnitron-dev/titan/netron/auth';
 import { MemoryRateLimitStorage } from './ratelimit.storage.js';
 import { SlidingWindowAlgorithm } from './ratelimit.algorithms.js';
 
@@ -39,7 +40,7 @@ export interface RateLimitMiddlewareOptions {
   windowMs?: number;
 
   /**
-   * Maximum global requests (across all clients)
+   * Maximum requests across clients per window. Injected Titan services share this budget through their store.
    * @default undefined (no global limit)
    */
   globalLimit?: number;
@@ -181,7 +182,10 @@ export function createRateLimitMiddleware(
 
   // Global rate limit state (if configured)
   let globalStorage: MemoryRateLimitStorage | undefined;
-  if (config.globalLimit) {
+  if (config.globalLimit !== undefined && (!Number.isSafeInteger(config.globalLimit) || config.globalLimit < 0)) {
+    throw new RangeError('globalLimit must be a non-negative safe integer');
+  }
+  if (config.globalLimit !== undefined && !config.rateLimitService) {
     globalStorage = new MemoryRateLimitStorage({
       cleanupIntervalMs: 60000,
       maxKeys: 100,
@@ -205,14 +209,10 @@ export function createRateLimitMiddleware(
     }
 
     // Check global limit first
-    if (config.globalLimit && globalStorage && internalAlgorithm) {
-      const globalResult = await internalAlgorithm.check(
-        globalStorage,
-        'global',
-        config.globalLimit,
-        config.windowMs,
-        true
-      );
+    if (config.globalLimit !== undefined) {
+      const globalResult = config.rateLimitService
+        ? await config.rateLimitService.check({ key: 'http-global', scope: 'global', limit: config.globalLimit, windowMs: config.windowMs })
+        : await internalAlgorithm!.check(globalStorage!, 'global', config.globalLimit, config.windowMs, true);
 
       if (!globalResult.allowed) {
         await handleRateLimited(ctx, globalResult, config);
@@ -295,50 +295,20 @@ function extractClientKey(ctx: HttpMiddlewareContext, trustProxy: boolean): stri
  * Check if a key matches whitelist patterns
  */
 function isWhitelisted(key: string, whitelist: string[]): boolean {
-  for (const pattern of whitelist) {
-    // Exact match
-    if (key === pattern) {
-      return true;
+  return whitelist.some(pattern => {
+    if (key === pattern) return true;
+    if (!pattern.includes('*')) return pattern.includes('/') && isIPInRange(key, pattern).match;
+    const parts = pattern.split('*');
+    const first = parts[0]!, last = parts[parts.length - 1]!;
+    if (!key.startsWith(first) || !key.endsWith(last)) return false;
+    let offset = first.length;
+    for (const literal of parts.slice(1, -1)) {
+      const start = key.indexOf(literal, offset);
+      if (start < 0) return false;
+      offset = start + literal.length;
     }
-
-    // CIDR-style match (simplified: only /24 and /16 for IPv4)
-    if (pattern.includes('/')) {
-      const parts = pattern.split('/');
-      const network = parts[0];
-      const bits = parts[1];
-
-      if (!network || !bits) continue;
-
-      const maskBits = parseInt(bits, 10);
-      if (isNaN(maskBits)) continue;
-
-      if (key.includes('.') && network.includes('.')) {
-        // IPv4
-        const keyParts = key.split('.');
-        const networkParts = network.split('.');
-        const octetsToCompare = Math.floor(maskBits / 8);
-
-        let matches = true;
-        for (let i = 0; i < octetsToCompare && i < 4; i++) {
-          if (keyParts[i] !== networkParts[i]) {
-            matches = false;
-            break;
-          }
-        }
-        if (matches) return true;
-      }
-    }
-
-    // Wildcard match
-    if (pattern.includes('*')) {
-      const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
-      if (regex.test(key)) {
-        return true;
-      }
-    }
-  }
-
-  return false;
+    return offset <= key.length - last.length;
+  });
 }
 
 /**

@@ -4,12 +4,24 @@
  */
 
 import { timingSafeEqual } from 'node:crypto';
+import ipaddr from 'ipaddr.js';
 import {
   permissionGrants, hasPermission as policyHasPermission, createPermissionChecker as compilePermissions,
 } from '@omnitron-dev/access/permissions';
 
 import type { InvocationAuthContext } from '../invocation-context.js';
 import type { AccessValidationResult } from './types.js';
+
+/** Match all prefix bits of an IPv4 or IPv6 network. Invalid operands match no network. */
+export function isIPInRange(ip: string, cidr: string): { match: boolean; error?: string } {
+  try {
+    const addr = ipaddr.parse(ip);
+    const range = ipaddr.parseCIDR(cidr);
+    return { match: addr.kind() === range[0].kind() && addr.match(range) };
+  } catch (error) {
+    return { match: false, error: error instanceof Error ? error.message : 'Invalid IP network' };
+  }
+}
 
 /**
  * Constant-time string comparison to prevent timing attacks.

@@ -131,46 +131,42 @@ describe('Critical Netron Fixes', () => {
     let limiter: RateLimiter;
 
     beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(0);
       limiter = new RateLimiter(mockLogger, {
         queue: true,
         maxQueueSize: 10,
         defaultTier: { name: 'test', limit: 1 },
-        window: 1000,
+        window: 60_000,
       });
     });
 
     afterEach(() => {
       limiter.destroy();
+      vi.useRealTimers();
     });
 
     it('should timeout queued requests after 30 seconds', async () => {
-      // Consume the limit
       await limiter.consume('test-key', 'test');
-
-      // Next request should queue
-      const queuePromise = limiter.consume('test-key', 'test');
-
-      // Fast-forward time by mocking setTimeout
-      vi.useFakeTimers();
-
-      // Advance by 30 seconds
-      vi.advanceTimersByTime(30000);
-
-      // Restore timers
-      vi.useRealTimers();
-
-      // Should reject with timeout error
-      await expect(queuePromise).rejects.toThrow();
-    }, 35000);
+      const timed = expect(limiter.consume('test-key', 'test')).rejects.toMatchObject({
+        details: { queued: true, retryAfter: 30_000 },
+      });
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(limiter.getStats().currentQueueSize).toBe(1);
+      await vi.advanceTimersByTimeAsync(1);
+      await timed;
+      expect(limiter.getStats().currentQueueSize).toBe(0);
+    });
 
     it('should clear timeout when request is processed', async () => {
-      // This test verifies that timeoutHandle is cleared
-      // We can't directly test the internal state, but we can verify
-      // that the destroy method doesn't throw and cleans up properly
-
-      expect(() => {
-        limiter.destroy();
-      }).not.toThrow();
+      await limiter.consume('test-key', 'test');
+      const queued = limiter.consume('test-key', 'test');
+      limiter.reset('test-key');
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(queued).resolves.toBeUndefined();
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(limiter.getStats('test-key').currentQueueSize).toBe(0);
+      expect(await limiter.check('test-key', 'test')).toMatchObject({ allowed: false, remaining: 0 });
     });
   });
 });

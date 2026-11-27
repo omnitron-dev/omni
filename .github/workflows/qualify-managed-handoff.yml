@@ -18,7 +18,7 @@ on:
         required: true
         default: '22.23.4'
       stage_fence_reboot:
-        description: Inspect a legacy passive-stage record across two boots of a disposable Linux VM
+        description: Prepare and recover a legacy passive-stage record across two boots of a disposable Linux VM
         type: boolean
         default: false
 
@@ -64,8 +64,8 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ inputs.node }}
-      - name: Check preservation of native migration journals
-        run: node --test apps/omnitron/test/runtime/fixture-node-journal.test.mjs
+      - name: Check migration journal and lost-response fixtures
+        run: node --test apps/omnitron/test/runtime/fixture-node-journal.test.mjs apps/omnitron/test/runtime/fixture-stage-recovery.test.js
       - name: Build both sealed runtimes from their own frozen workspaces
         run: |
           test "$(node -p 'process.versions.node')" = "$TARGET_NODE"
@@ -157,16 +157,24 @@ jobs:
       - name: Retain the qualified candidate for managed delivery
         working-directory: ${{ runner.temp }}/source-${{ inputs.candidate }}
         run: pnpm exec xec run .xec/native-artifact.mjs "$RUNNER_TEMP/omnitron-handoff-$CANDIDATE" "$RUNNER_TEMP/native-delivery"
-      - name: Observe the same legacy stage before and after a Linux VM reboot
+      - name: Recover a prepared legacy stage after a Linux VM reboot and a lost reply
         if: inputs.stage_fence_reboot
         working-directory: ${{ runner.temp }}/source-${{ inputs.candidate }}
-        timeout-minutes: 12
+        timeout-minutes: 15
         run: |
           test -c /dev/kvm
           if ! snap list lxd >/dev/null 2>&1; then sudo snap install lxd --channel=5.21/stable; fi
           sudo /snap/bin/lxd waitready --timeout=120
           sudo /snap/bin/lxd init --auto --storage-backend=dir
-          pnpm exec xec run apps/omnitron/test/runtime/legacy-stage-reboot.ts "$RUNNER_TEMP/native-delivery" "$RUNNER_TEMP/stage-observation.json"
+          # Run this reviewed workflow's scenario against the specified candidate bytes.
+          qa="$(mktemp -d "$RUNNER_TEMP/stage-qualification.XXXXXXXX")"
+          cp "$GITHUB_WORKSPACE/apps/omnitron/test/runtime/legacy-stage-reboot.ts" "$qa/"
+          ln -s "$PWD/node_modules" "$qa/node_modules"
+          pnpm exec xec run "$qa/legacy-stage-reboot.ts" "$RUNNER_TEMP/native-delivery" "$RUNNER_TEMP/stage-observation.json" \
+            "$GITHUB_WORKSPACE/apps/omnitron/test/runtime/fixture-stage-recovery.js"
+          jq -e --arg sha "$CANDIDATE" '.commit == $sha and .resumed.state == "interrupted" and
+            .resumed.decision.commandOutcome == "unknown" and .undelivered.code == "EPIPE" and
+            .resumed.decision.bootId == .after.bootId and .before.bootId != .after.bootId' "$RUNNER_TEMP/stage-observation.json"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: inputs.stage_fence_reboot
         with:

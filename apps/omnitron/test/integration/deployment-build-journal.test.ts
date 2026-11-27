@@ -50,6 +50,10 @@ it('reads the durable build by workspace before it runs and joins only its own i
     pin = 'SHA256:' + 'B'.repeat(43);
     await expect(service.startRun({ runId: changedIssuer.id, expectedDigest: changedIssuer.review!.digest }, 'admin')).rejects.toThrow('issuer changed');
     expect(execute).toHaveBeenCalledTimes(2);
+    expect((await service.listWorkspace({ project: source.project, stack: source.stack, activityOnly: true, limit: 1,
+      activityRunId: prepared.id })).runs.map(row => row.id)).toEqual([prepared.id]);
+    expect((await service.listWorkspace({ project: 'other', stack: source.stack, activityOnly: true, limit: 1,
+      activityRunId: prepared.id })).runs).toEqual([]);
     const arbitrary = await service.createPipeline({ ...def, name: 'other-command', steps: [{ name: 'build-release', kind: 'shell', run: 'echo done' }] });
     const unrelated = await service.prepareRun({ id: arbitrary.id, expectedRevision: arbitrary.revision, runId: randomUUID() }, 'admin');
     expect(unrelated.activity).toBeUndefined();

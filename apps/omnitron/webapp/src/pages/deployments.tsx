@@ -57,17 +57,18 @@ function DeploymentWorkspace() {
   const fileNode = selectedStack?.type === 'remote' && selectedStack.config?.nodes?.length === 1 ? selectedStack.config.nodes[0] : undefined;
   const scope = { project: activeProject!, stack: activeStack! };
   const scoped = Boolean(activeProject && activeStack);
+  const [params, setParams] = useSearchParams();
+  const activityId = params.get('activity');
+  const pinnedRun = /^run\/([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})$/.exec(activityId ?? '')?.[1];
   const [detailsOpen, setDetailsOpen] = useState(!scoped);
   const readBuilds = scoped && can('OmnitronRelease.builds');
   const readRuns = scoped && can('OmnitronPipelines.listWorkspace');
   const readPreparations = scoped && selectedStack?.type === 'remote' && can('OmnitronProject.listRemoteReleasePreparations');
   const builds = usePolledResource(() => releaseApi.builds(scope), { enabled: readBuilds, intervalMs: 10_000, resourceKey: JSON.stringify([scope, readBuilds]) });
-  const pipelineRuns = usePolledResource(() => pipelines.listWorkspace({ ...scope, activityOnly: true, limit: 100 }),
-    { enabled: readRuns, intervalMs: 10_000, resourceKey: JSON.stringify([scope, readRuns]) });
+  const pipelineRuns = usePolledResource(() => pipelines.listWorkspace({ ...scope, activityOnly: true, limit: 100, ...(pinnedRun && { activityRunId: pinnedRun }) }),
+    { enabled: readRuns, intervalMs: 10_000, resourceKey: JSON.stringify([scope, readRuns, pinnedRun]) });
   const preparations = usePolledResource(() => project.listRemoteReleasePreparations(scope),
     { enabled: readPreparations, intervalMs: 5_000, resourceKey: JSON.stringify([scope, fileNode?.nodeId, readPreparations]) });
-  const [params, setParams] = useSearchParams();
-  const activityId = params.get('activity');
   const destination = fileNode?.nodeId ?? operation?.nodeId ?? preparations.data?.[0]?.nodeId;
   const choices = deploymentActivityChoices((builds.data ?? []).filter(record => record.request.forStack && visibleStackName(record.request.project, record.request.forStack)),
     (pipelineRuns.data?.runs ?? []).filter(run => run.activity && visibleStackName(run.activity.project, run.activity.stack) &&

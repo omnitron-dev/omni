@@ -635,7 +635,7 @@ export interface IOmnitronPipelinesService {
   updatePipeline(data: { id: string; definition: PipelineDef; expectedRevision: string }): Promise<Pipeline>;
   getPipeline(data: { id: string; workspace?: PipelineWorkspace }): Promise<Pipeline | null>;
   listPipelines(): Promise<Pipeline[]>;
-  listWorkspace(data: PipelineWorkspace & { limit?: number; activityOnly?: boolean }): Promise<{ definitions: Pipeline[]; runs: PipelineRunSummary[] }>;
+  listWorkspace(data: import('./pipelines.js').PipelineWorkspaceHistory): Promise<{ definitions: Pipeline[]; runs: PipelineRunSummary[] }>;
   deletePipeline(data: { id: string }): Promise<{ success: boolean }>;
   prepareRun(data: PreparePipelineRun): Promise<PipelineRun>;
   startRun(data: StartPipelineRun): Promise<PipelineRun>;

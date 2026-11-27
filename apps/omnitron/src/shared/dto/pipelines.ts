@@ -20,6 +20,13 @@ export interface PipelineWorkspace {
   stack?: string;
 }
 
+export interface PipelineWorkspaceHistory extends PipelineWorkspace {
+  limit?: number;
+  activityOnly?: boolean;
+  /** Include this run in the bounded page only if its native admission belongs to the workspace. */
+  activityRunId?: string;
+}
+
 /** Scope recorded from a native, single-purpose Pipeline definition at admission. */
 export type DeploymentPipelineActivity = { project: string; stack: string; nodeId: string } & (
   | { kind: 'build'; projectCommit: string; omniCommit: string; releaseId?: string; manifestSha256?: string }

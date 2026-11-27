@@ -1,4 +1,4 @@
-import { admitPipeline, assertParameters, pipelineAdmissionCheck, readAdmission, readPrepareRun, readStartRun, type PipelineAdmission } from './pipeline-admission.js';
+import { admitPipeline, assertParameters, pipelineAdmissionCheck, readAdmission, readPrepareRun, readStartRun, validateRunId, type PipelineAdmission } from './pipeline-admission.js';
 import { completedStep, recoverableStep, recoveryReview } from './pipeline-recovery.js';
 import { inspectRecoveryQualification, recoveryQualificationDefinition, requireRecoveryQaEndpoint, isRecoveryQaStep, installedRecoveryCommand,
   type RecoveryQualificationExpected } from './recovery-qualification.js';
@@ -35,6 +35,7 @@ import type {
   PipelineRun,
   PipelineRunSummary,
   PipelineWorkspace,
+  PipelineWorkspaceHistory,
   DeploymentPipelineActivity,
   PipelineReleaseExecution,
   PreparePipelineRun,
@@ -271,10 +272,12 @@ export class PipelineService {
     if (!this.projects?.projectConfigurations) throw Error('Project inventory is unavailable');
     return pipelineWorkspaceQueries(this.db, workspace, this.projects.projectConfigurations(workspace.project), this.historicRehearsals);
   }
-  async listWorkspace(workspace: PipelineWorkspace & { limit?: number; activityOnly?: boolean }) {
+  async listWorkspace(workspace: PipelineWorkspaceHistory) {
     const filters = this.workspaceQueries(workspace);
-    if (workspace.activityOnly === true)
-      return { definitions: [], runs: await this.listRuns(undefined, workspace.limit, { name: filters.name, runs: filters.activity }) };
+    if (workspace.activityOnly === true) {
+      if (workspace.activityRunId !== undefined) validateRunId(workspace.activityRunId);
+      return { definitions: [], runs: await this.listRuns(undefined, workspace.limit, { name: filters.name, runs: filters.activity }, workspace.activityRunId) };
+    }
     const [definitions, runs] = await Promise.all([
       this.listPipelines(filters.definitions), this.listRuns(undefined, workspace.limit, filters),
     ]);
@@ -866,7 +869,8 @@ export class PipelineService {
     const row = await this.db.selectFrom('pipeline_runs').selectAll().where('id', '=', runId).executeTakeFirst();
     return row ? this.mapRun(row) : null;
   }
-  async listRuns(pipelineId?: string, limit = 50, workspace?: Pick<ReturnType<typeof pipelineWorkspaceQueries>, 'runs' | 'name'>): Promise<PipelineRunSummary[]> {
+  async listRuns(pipelineId?: string, limit = 50, workspace?: Pick<ReturnType<typeof pipelineWorkspaceQueries>, 'runs' | 'name'>,
+    activityRunId?: string): Promise<PipelineRunSummary[]> {
     if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new Error('Run limit must be between 1 and 200');
     for (const runId of this.pendingCompletions.keys()) await this.flushCompletion(runId);
     const name = workspace?.name ?? sql<null>`NULL`;
@@ -876,6 +880,7 @@ export class PipelineService {
       .select(name.as('pipelineName'))
       .select(sql<string | null>`admission ->> 'activity'`.as('activityJson'))
       .select(sql<string | null>`steps -> 0 ->> 'releaseBuild'`.as('buildReceipt'))
+      .$if(activityRunId !== undefined, q => q.orderBy(sql<boolean>`id = ${activityRunId}`, 'desc'))
       .orderBy('startedAt', 'desc')
       .orderBy('id', 'desc')
       .limit(limit);

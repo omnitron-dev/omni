@@ -69,6 +69,7 @@ test('follows a native issuer before a manifest exists and retains its exact run
     'OmnitronProject.listStacks': [{ name: 'dev', type: 'remote', config: { type: 'remote', nodes: [node] }, apps: [] }],
     'OmnitronPipelines.listWorkspace': input => {
       expect(input.activityOnly).toBe(true);
+      expect(input.activityRunId).toBe(buildId);
       return { definitions: [], runs: [build] }; // Older or broader responses must still be scoped by the Console.
     },
     'OmnitronPipelines.getRunStatus': ({ runId }) => {

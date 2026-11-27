@@ -7,7 +7,7 @@
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 import type { InspectPhysicalRestore } from '../shared/dto/physical-restore.js';
 import { validateRunId } from './pipeline-admission.js';
-import type { PipelineWorkspace, PreparePipelineRun, StartPipelineRun } from '../shared/dto/pipelines.js';
+import type { PipelineWorkspace, PipelineWorkspaceHistory, PreparePipelineRun, StartPipelineRun } from '../shared/dto/pipelines.js';
 import { ADMIN_ROLES } from '../shared/roles.js';
 import { daemonPrincipal } from './daemon-principal.js';
 import type { AuthService } from './auth.service.js';
@@ -57,7 +57,7 @@ export class PipelineRpcService implements IOmnitronPipelinesService {
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
-  async listWorkspace(data: PipelineWorkspace & { limit?: number; activityOnly?: boolean }) {
+  async listWorkspace(data: PipelineWorkspaceHistory) {
     await this.authorize();
     return this.pipelines.listWorkspace(data);
   }

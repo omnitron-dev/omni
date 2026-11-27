@@ -177,9 +177,9 @@ await $.withTempDir(async temp => {
     assert.deepEqual(resumed.selection, prepared.selection);
     assert.equal(resumed.preparedAt, prepared.preparedAt);
     const undelivered = JSON.parse((await guest('cat', transport + '/undelivered.json')).stdout);
-    const originalFile = path.join(temp, 'sender.json');
-    await lxc('file', 'pull', instance + transport + '/sender.json', originalFile);
-    const original = await fs.readFile(originalFile, 'utf8');
+    // Read the guest's private receipt as bytes without exporting its root-owned mode onto the runner.
+    const encoded = await guest('base64', '--wrap=0', transport + '/sender.json');
+    const original = Buffer.from(encoded.stdout, 'base64').toString('utf8');
     assert.deepEqual(undelivered, { code: 'EPIPE', sha256: hash(original) });
     assert.deepEqual(JSON.parse(original).data, resumed);
     const archive = JSON.parse((await guest(installed + '/node', probe, 'read-archive')).stdout);

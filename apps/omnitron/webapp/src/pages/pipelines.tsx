@@ -187,8 +187,10 @@ function PipelineInventory({ workspace, reads, workspaceSection, setWorkspaceSec
   const [search, setSearch] = useSearchParams();
   const [localRun, changeRun] = useState<string | null>(null);
   const selectedRun = workspace ? localRun : reads.detail ? search.get('run') : null;
-  const showGlobalRuns = selectedRun || search.get('view') === 'runs' || (!reads.definitions && reads.runs);
-  const section = workspace ? workspaceSection : showGlobalRuns ? 'runs' : 'definitions';
+  const requestedView = search.get('view');
+  const defaultView = !reads.definitions && reads.runs ? 'runs' : 'definitions';
+  const globalView = requestedView === 'definitions' || requestedView === 'runs' ? requestedView : defaultView;
+  const section = workspace ? workspaceSection : selectedRun ? 'runs' : globalView;
   const setSection = (next: string) => {
     if (workspace) setWorkspaceSection(next);
     else setSearch(current => {

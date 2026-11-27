@@ -6,7 +6,8 @@ import type { InspectPhysicalRestore, PhysicalRestoreEvidence } from '../shared/
 import { physicalRestoreRequest } from './physical-restore-graph.js';
 import { inspectPhysicalRestore, preparePhysicalRehearsal, runPhysicalMigrationTrial } from './physical-restore.js';
 import type { MigrationRehearsalPlan, MigrationRehearsalResult, RehearsalCopyPlan, RehearsalCopyReceipt } from '../shared/dto/first-write.js';
-import { pipelineWorkspaceQueries } from './pipeline-workspace.js';
+import { pipelineWorkspaceQueries, pinnedPipelineDefinition } from './pipeline-workspace.js';
+import { buildIssuerDigest, buildJournalReceipt, deploymentBuildArgs, deploymentBuildInput, readActivity } from './deployment-build-pipeline.js';
 import { RecoveryMutation } from '../daemon/recovery-state.js';
 /** Durable control-plane state over Xec's execution, graph and cancellation contracts. */
 import { randomUUID, createHash } from 'node:crypto';
@@ -34,6 +35,7 @@ import type {
   PipelineRun,
   PipelineRunSummary,
   PipelineWorkspace,
+  DeploymentPipelineActivity,
   PipelineReleaseExecution,
   PreparePipelineRun,
   StartPipelineRun,
@@ -144,6 +146,7 @@ export class PipelineService {
   private readonly rehearsalCopies = new Map<string, { digest: string; abort: AbortController; done: Promise<RehearsalCopyReceipt> }>();
   private readonly migrationTrials = new Map<string, { review: string; readOnly: boolean; abort: AbortController; done: Promise<MigrationRehearsalResult> }>();
   private readonly activeRuns = new Map<string, ActiveRun>();
+  private readonly historicRehearsals = new Map<string, DeploymentPipelineActivity>();
   private readonly pendingCompletions = new Map<string, PipelineCompletion>();
   private initialization: Promise<void> | undefined;
   private stopped = false;
@@ -166,6 +169,23 @@ export class PipelineService {
   }
   async initialize(): Promise<void> {
     this.initialization ??= this.db.transaction().execute(async trx => {
+      const prior = await trx.selectFrom('pipeline_runs').select(['id', 'admission'])
+        .where(sql<boolean>`admission ->> 'activity' IS NULL AND ${pinnedPipelineDefinition(this.db)} ->> 'name' LIKE 'recovery-qualification-%'`).execute();
+      for (const row of prior) {
+        try {
+          const admission = readAdmission(row.admission);
+          if (!admission?.definition) continue;
+          const pinned = JSON.parse(admission.definition) as Pipeline;
+          const step = pinned.steps.length === 1 && pinned.steps[0];
+          if (step && isRecoveryQaStep(step)) {
+            const evidence = await installedRecoveryCommand(step);
+            this.historicRehearsals.set(row.id, rehearsalActivity(evidence.spec));
+          }
+        } catch {
+          // A differently versioned verifier stays accessible through the original reviewed run ID.
+          this.logger.debug({ runId: row.id }, 'Historical recovery graph has no independently readable scope');
+        }
+      }
       const unfinished = await trx.selectFrom('pipeline_runs').selectAll().where('status', 'in', live).execute();
       for (const row of unfinished) {
         const run = this.mapRun(row);
@@ -249,10 +269,12 @@ export class PipelineService {
       (workspace.stack !== undefined && (typeof workspace.stack !== 'string' || !workspace.stack)))
       throw Error('Select a project and an optional stack for pipeline history');
     if (!this.projects?.projectConfigurations) throw Error('Project inventory is unavailable');
-    return pipelineWorkspaceQueries(this.db, workspace, this.projects.projectConfigurations(workspace.project));
+    return pipelineWorkspaceQueries(this.db, workspace, this.projects.projectConfigurations(workspace.project), this.historicRehearsals);
   }
-  async listWorkspace(workspace: PipelineWorkspace & { limit?: number }) {
+  async listWorkspace(workspace: PipelineWorkspace & { limit?: number; activityOnly?: boolean }) {
     const filters = this.workspaceQueries(workspace);
+    if (workspace.activityOnly === true)
+      return { definitions: [], runs: await this.listRuns(undefined, workspace.limit, { name: filters.name, runs: filters.activity }) };
     const [definitions, runs] = await Promise.all([
       this.listPipelines(filters.definitions), this.listRuns(undefined, workspace.limit, filters),
     ]);
@@ -288,6 +310,23 @@ export class PipelineService {
       throw new Error('Pipeline changed after review. Reload and review the current definition');
     await checkPipelineDefinition(storedDefinition(definition));
     const admission = admitPipeline(request.runId, definition, params, actor);
+    const singleStep = definition.steps.length === 1 && definition.steps[0];
+    if (singleStep && !Object.keys(params).length) {
+      if (isRecoveryQaStep(singleStep)) {
+        const inspected = await installedRecoveryCommand(singleStep).catch(() => undefined);
+        const spec = inspected?.spec;
+        if (spec) admission.activity = rehearsalActivity(spec);
+      } else {
+        const build = deploymentBuildInput(singleStep);
+        if (build) {
+          const issuer = this.nodes?.getNode(build.nodeId);
+          if (!issuer) throw Error('Build issuer is not registered on this controller');
+          admission.buildIssuer = buildIssuerDigest(issuer, await this.nodes!.nodeToSshTarget(issuer));
+          admission.review.digest = createHash('sha256').update(JSON.stringify([admission.review.digest, admission.buildIssuer])).digest('hex');
+          admission.activity = build;
+        }
+      }
+    }
     pipelineAdmissionCheck.getStore()?.();
     const inserted = await this.db.insertInto('pipeline_runs').values({
       id: request.runId, pipelineId: request.id, status: 'awaiting-review',
@@ -452,6 +491,8 @@ export class PipelineService {
           const node = this.nodes?.getNode(step.nodeId);
           if (!node || node.isLocal) throw new Error(`Unknown remote node: ${step.nodeId}`);
           const ssh = await this.nodes!.nodeToSshTarget(node);
+          if (admission.activity?.kind === 'build' && admission.buildIssuer !== buildIssuerDigest(node, ssh))
+            throw Error('Build issuer changed since the Pipeline admission');
           if (qualification) await requireRecoveryQaEndpoint(step, node, ssh, qualification.spec.nodeId, this.nodes!);
           target = { type: 'ssh', ...sshConfig(ssh) };
         }
@@ -459,6 +500,9 @@ export class PipelineService {
         if (qualification) {
           if (!target || Object.keys(params).length) throw Error('Recovery qualification requires the fixed remote QA admission');
           command = { command: qualification.command, args: qualification.args, shell: false, adapter: 'ssh', adapterOptions: target };
+        } else if (admission.activity?.kind === 'build') {
+          if (!target || !deploymentBuildInput(step)) throw Error('Release build requires the admitted native issuer command');
+          command = { command: 'omnitron', args: deploymentBuildArgs(admission.activity), shell: false, adapter: 'ssh', adapterOptions: target };
         } else if (step.kind === 'release') {
           if (!this.projects || !this.assertLifecycle) throw new Error('Release pipeline admission is unavailable on this daemon');
           const operation = await this.projects.resolvePipelineRelease(step.target, {
@@ -621,6 +665,10 @@ export class PipelineService {
         }
         step.output = journal.stdout.snapshot(true);
         step.stderr = journal.stderr.snapshot(true);
+        if (result.success && run.activity?.kind === 'build') {
+          const receipt = buildJournalReceipt(step.output, run.activity);
+          if (receipt) step.releaseBuild = receipt;
+        }
         step.outputTruncated = journal.stdout.truncated || journal.stderr.truncated || result.outputTruncated === true;
       }
       await save();
@@ -632,7 +680,12 @@ export class PipelineService {
       command.signal?.throwIfAborted();
       if (!command.onSpawn || !commands.has(command.onSpawn)) throw Error('Xec did not retain the admitted pipeline command binding');
       const binding = commands.get(command.onSpawn);
-      if (!binding) return this.execution.execute(command);
+      if (!binding) {
+        const result = await this.execution.execute(command);
+        if (run.activity?.kind === 'build' && result.exitCode === 0 && !buildJournalReceipt(result.stdout, run.activity))
+          throw Error('Issuer returned without a manifest receipt matching the reviewed build; inspect the issuer before retrying');
+        return result;
+      }
       if (binding.unconfirmed) throw new Error('Prior release execution is unconfirmed; inspect its evidence before retrying');
       const { operation } = binding;
       const step = run.steps.find(item => item.name === binding.name)!;
@@ -821,18 +874,24 @@ export class PipelineService {
       .selectFrom('pipeline_runs')
       .select(['id', 'pipelineId', 'status', 'startedAt', 'completedAt', 'triggeredBy'])
       .select(name.as('pipelineName'))
+      .select(sql<string | null>`admission ->> 'activity'`.as('activityJson'))
+      .select(sql<string | null>`steps -> 0 ->> 'releaseBuild'`.as('buildReceipt'))
       .orderBy('startedAt', 'desc')
       .orderBy('id', 'desc')
       .limit(limit);
     if (pipelineId) query = query.where('pipelineId', '=', pipelineId);
     if (workspace) query = query.where(workspace.runs);
-    return (await query.execute()).map(({ pipelineName, ...row }) => ({
-      ...row,
-      ...(pipelineName ? { pipelineName } : {}),
-      status: row.status as PipelineRun['status'],
-      startedAt: new Date(row.startedAt).toISOString(),
-      completedAt: row.completedAt ? new Date(row.completedAt).toISOString() : null,
-    }));
+    return (await query.execute()).map(({ pipelineName, activityJson, buildReceipt, ...row }) => {
+      const activity = readActivity(activityJson && JSON.parse(activityJson), buildReceipt && JSON.parse(buildReceipt)) ?? this.historicRehearsals.get(row.id);
+      return {
+        ...row,
+        ...(activity && { activity }),
+        ...(pipelineName ? { pipelineName } : {}),
+        status: row.status as PipelineRun['status'],
+        startedAt: new Date(row.startedAt).toISOString(),
+        completedAt: row.completedAt ? new Date(row.completedAt).toISOString() : null,
+      };
+    });
   }
   private mapPipeline(row: Selectable<PipelinesTable>): Pipeline {
     const definition = {
@@ -852,9 +911,11 @@ export class PipelineService {
       : row.steps) as unknown as PipelineRunStepResult[];
     if (row.status === 'interrupted')
       for (const step of steps) if (live.includes(step.status)) step.status = 'interrupted';
+    const activity = admission?.activity ?? this.historicRehearsals.get(row.id);
     return {
       id: row.id, pipelineId: row.pipelineId, triggeredBy: row.triggeredBy,
       ...(admission ? { review: admission.review } : {}),
+      ...(activity && { activity: { ...activity, ...steps[0]?.releaseBuild } }),
       ...(admission?.approvedBy ? { startedBy: admission.approvedBy } : {}),
       ...(admission?.definition && ['failed', 'interrupted'].includes(row.status) ? { recovery: recoveryReview({ id: row.id, status: row.status as PipelineRun['status'], steps }) } : {}),
       status: row.status as PipelineRun['status'],
@@ -864,4 +925,10 @@ export class PipelineService {
       completedAt: row.completedAt ? new Date(row.completedAt).toISOString() : null,
     };
   }
+}
+
+function rehearsalActivity(spec: RecoveryQualificationExpected): DeploymentPipelineActivity {
+  return { kind: 'rehearsal', project: spec.project, stack: spec.stack, nodeId: spec.nodeId,
+    releaseId: spec.candidate.id, manifestSha256: spec.candidate.manifestSha256,
+    recoveryReleaseId: spec.recovery.id, recoveryManifestSha256: spec.recovery.manifestSha256 };
 }

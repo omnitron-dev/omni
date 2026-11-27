@@ -1,7 +1,7 @@
 import { deploymentWorkspace } from 'src/utils/project-scope';
-import { pipelineRunHref, stackHref, releaseHref, workspaceHref } from 'src/routes/workspace';
+import { stackHref, releaseHref, workspaceHref } from 'src/routes/workspace';
 import { useState } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useSearchParams } from 'react-router-dom';
 import Link from '@mui/material/Link';
 import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
@@ -9,15 +9,19 @@ import Chip from '@mui/material/Chip';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import Collapse from '@mui/material/Collapse';
+import TextField from '@mui/material/TextField';
+import MenuItem from '@mui/material/MenuItem';
 
 import { RefreshIcon } from 'src/assets/icons';
 import { AdminDataTable, type ColumnDef } from '@omnitron-dev/prism/components/admin-filters';
 import { Alert } from '@omnitron-dev/prism/components/alert';
 import { Tabs } from '@omnitron-dev/prism/components/tabs';
 import { Breadcrumbs } from 'src/components/page-breadcrumbs';
-import { deploy, files, project } from 'src/netron/client';
+import { deploy, files, pipelines, project } from 'src/netron/client';
 import { releaseApi } from 'src/netron/release-wire';
 import { DeployProgressList } from 'src/components/deploy-progress';
+import { DeploymentActivity } from 'src/components/deployment-activity';
+import { deploymentActivityChoices } from 'src/utils/deployment-activity';
 import { fileTransferProgress } from 'src/components/files/transfer-progress';
 import { formatDate, formatDuration } from 'src/utils/formatters';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
@@ -51,7 +55,29 @@ function DeploymentWorkspace() {
   const selectedStack = inventory?.find(item => item.name === activeStack);
   const operation = selectedStack?.deploymentOperation;
   const fileNode = selectedStack?.type === 'remote' && selectedStack.config?.nodes?.length === 1 ? selectedStack.config.nodes[0] : undefined;
-  const readFiles = Boolean(readStack && fileNode && can('OmnitronFiles.stackNodeTransfers'));
+  const scope = { project: activeProject!, stack: activeStack! };
+  const scoped = Boolean(activeProject && activeStack);
+  const [detailsOpen, setDetailsOpen] = useState(!scoped);
+  const readBuilds = scoped && can('OmnitronRelease.builds');
+  const readRuns = scoped && can('OmnitronPipelines.listWorkspace');
+  const readPreparations = scoped && selectedStack?.type === 'remote' && can('OmnitronProject.listRemoteReleasePreparations');
+  const builds = usePolledResource(() => releaseApi.builds(scope), { enabled: readBuilds, intervalMs: 10_000, resourceKey: JSON.stringify([scope, readBuilds]) });
+  const pipelineRuns = usePolledResource(() => pipelines.listWorkspace({ ...scope, activityOnly: true, limit: 100 }),
+    { enabled: readRuns, intervalMs: 10_000, resourceKey: JSON.stringify([scope, readRuns]) });
+  const preparations = usePolledResource(() => project.listRemoteReleasePreparations(scope),
+    { enabled: readPreparations, intervalMs: 5_000, resourceKey: JSON.stringify([scope, fileNode?.nodeId, readPreparations]) });
+  const [params, setParams] = useSearchParams();
+  const activityId = params.get('activity');
+  const destination = fileNode?.nodeId ?? operation?.nodeId ?? preparations.data?.[0]?.nodeId;
+  const choices = deploymentActivityChoices((builds.data ?? []).filter(record => record.request.forStack && visibleStackName(record.request.project, record.request.forStack)),
+    (pipelineRuns.data?.runs ?? []).filter(run => run.activity && visibleStackName(run.activity.project, run.activity.stack) &&
+      (run.activity.kind === 'build' || !destination || run.activity.nodeId === destination)),
+    (preparations.data ?? []).filter(attempt => visibleStackName(attempt.project, attempt.stack) && (!destination || destination === attempt.nodeId)), operation, activityId);
+  const choice = activityId ? choices.find(item => item.key === activityId || item.aliases.has(activityId)) : choices[0];
+  const loadingActivity = !choice && ((readStack && !inventory && !stackError) ||
+    (readBuilds && builds.loading) || (readRuns && pipelineRuns.loading) || (readPreparations && preparations.loading));
+  const readFiles = Boolean(readStack && fileNode && (detailsOpen || choice?.preparation?.fileTransferId) && can('OmnitronFiles.stackNodeTransfers'));
+  const readProgress = canProgress && (detailsOpen || Boolean(choice?.operation));
   const nodeFiles = usePolledResource(() => files.stackNodeTransfers({ project: activeProject!, stack: activeStack! }), {
     enabled: readFiles, intervalMs: 5_000, resourceKey: JSON.stringify([activeProject, activeStack, fileNode?.nodeId, fileNode?.host, fileNode?.port, readFiles]),
   });
@@ -66,11 +92,11 @@ function DeploymentWorkspace() {
     const answer = await releaseApi.deployments();
     if (!answer.known) throw new Error(answer.why);
     return answer;
-  }, { intervalMs: 15_000, enabled: section === 'stacks' });
-  const legacy = usePolledResource(() => deploy.getHistory({ limit: HISTORY_LIMIT }), { intervalMs: 15_000, enabled: section === 'legacy' });
+  }, { intervalMs: 15_000, enabled: detailsOpen && section === 'stacks' });
+  const legacy = usePolledResource(() => deploy.getHistory({ limit: HISTORY_LIMIT }), { intervalMs: 15_000, enabled: detailsOpen && section === 'legacy' });
   const progress = usePolledResource(() => project.getDeployProgress(activeProject ? {
     project: activeProject, ...(activeStack && { stack: activeStack }),
-  } : undefined), { intervalMs: 3_000, enabled: canProgress, resourceKey: JSON.stringify([activeProject, activeStack, canProgress]) });
+  } : undefined), { intervalMs: 3_000, enabled: readProgress, resourceKey: JSON.stringify([activeProject, activeStack, canProgress]) });
 
   const starts = (history.data?.known ? history.data.deployments : [])
     .filter(row => visibleStackName(row.project, row.stack) !== null)
@@ -85,8 +111,9 @@ function DeploymentWorkspace() {
   const historyError = history.error;
   const refresh = async () => {
     setRefreshing(true);
-    try { await Promise.all([section === 'stacks' && history.refresh(), section === 'legacy' && legacy.refresh(),
-      canProgress && progress.refresh(), readStack && fetchStacks(activeProject!), readFiles && nodeFiles.refresh()]); }
+    try { await Promise.all([detailsOpen && section === 'stacks' && history.refresh(), detailsOpen && section === 'legacy' && legacy.refresh(),
+      readProgress && progress.refresh(), readStack && fetchStacks(activeProject!), readFiles && nodeFiles.refresh(),
+      readBuilds && builds.refresh(), readRuns && pipelineRuns.refresh(), readPreparations && preparations.refresh()]); }
     finally { setRefreshing(false); }
   };
   const changePageSize = (size: number) => { setPageSize(size); setPage(0); };
@@ -129,23 +156,31 @@ function DeploymentWorkspace() {
     </Stack>} />
     {activeProject && !activeStack && can('OmnitronProject.listStacks') &&
       <Typography variant="body2" color="text.secondary">Select a stack to view its reviewed deployment.</Typography>}
-    {readStack && <Stack component="section" aria-label="Reviewed deployment" spacing={0.75} sx={{ overflowWrap: 'anywhere' }}>
-      <Typography component="h2" variant="subtitle1">Reviewed deployment</Typography>
-      {stackError && <Alert severity="warning">Stack observations unavailable. {stackError}</Alert>}
-      {operation ? <>
-        <Typography variant="body2">Last recorded phase · <strong>{operation.phase}</strong></Typography>
-        <Typography variant="body2">Target release · {operation.release}</Typography>
-        <Typography variant="body2">Return release · {operation.rollbackRelease}</Typography>
-        <Typography variant="body2">Execution node · {operation.nodeId}</Typography>
-        {operation.error && <Alert severity="error">{operation.error}</Alert>}
-        {operation.recoveryRunId && <Typography variant="body2">Recovery qualification · {can('OmnitronPipelines.getRunStatus')
-          ? <Link component={RouterLink} to={pipelineRunHref(operation.recoveryRunId)}>{operation.recoveryRunId}</Link> : operation.recoveryRunId}</Typography>}
-        <Typography variant="caption" color="text.secondary">Deployment review · {operation.review}</Typography>
-        {operation.stopId && <Typography variant="caption" color="text.secondary">Stop receipt · {operation.stopId}</Typography>}
-        {operation.manifestSha256 && <Typography variant="caption" color="text.secondary">Selected manifest SHA-256 · {operation.manifestSha256}</Typography>}
-      </> : !stackError && <Typography variant="body2" color="text.secondary">{!inventory ? 'Reading stack inventory…'
-        : selectedStack ? 'No reviewed deployment receipt reported for this stack.' : 'Selected stack is absent from the latest inventory.'}</Typography>}
-    </Stack>}
+    {scoped && <>
+      {(choices.length > 1 || activityId) && <TextField select size="small" label="Release or build" value={choice?.key ?? ''} onChange={event => {
+        const next = new URLSearchParams(params);
+        next.set('activity', event.target.value);
+        setParams(next, { replace: true });
+      }}>
+        {choices.map(item => <MenuItem key={item.key} value={item.key}>{item.releaseId ?? item.build?.buildId ?? item.producer?.id ?? item.key}
+          {item.manifestSha256 && ' · ' + item.manifestSha256.slice(0, 12)}</MenuItem>)}
+      </TextField>}
+      {loadingActivity ? <Typography role="status" variant="body2">Reading deployment activity…</Typography>
+        : <DeploymentActivity key={choice?.key ?? 'unrecorded'} project={scope.project} stack={scope.stack}
+        nodeLabel={fileNode?.label ?? fileNode?.nodeId} releaseId={choice?.releaseId} producer={choice?.producer}
+        build={choice?.build} rehearsal={choice?.rehearsal} preparation={choice?.preparation} operation={choice?.operation}
+        progress={choice?.operation && transfers.filter(row => row.deploymentReview === choice.operation!.review &&
+          row.releaseId === choice.operation!.release && (!choice.manifestSha256 || row.manifestSha256 === choice.manifestSha256))}
+        transfer={choice?.preparation?.fileTransferId && nodeFiles.data?.nodeId === choice.preparation.nodeId
+          ? nodeFiles.data.transfers.find(job => job.id === choice.preparation!.fileTransferId) : undefined}
+        observationError={[stackError, readBuilds && builds.error, readRuns && pipelineRuns.error,
+          readPreparations && preparations.error, !readPreparations && selectedStack?.type === 'remote' && can('OmnitronProject.prepareRemoteReleaseSource') &&
+            'This controller does not provide readable preparation attempts for this account.',
+          activityId && !choice && 'Selected activity has no retained record in this workspace.']
+          .filter(Boolean).join(' · ') || undefined} />}
+    </>}
+    <details open={detailsOpen} onToggle={event => setDetailsOpen(event.currentTarget.open)}><summary>Transfers and deployment history</summary>
+    <Stack spacing={2} sx={{ mt: 2 }}>
     {readFiles && <Stack component="section" aria-label="Node file activity" spacing={0.75}>
       <Typography component="h2" variant="subtitle1">Node file activity</Typography>
       {nodeFiles.error || (fileNode?.nodeId && nodeFiles.data && fileNode.nodeId !== nodeFiles.data.nodeId)
@@ -192,5 +227,6 @@ function DeploymentWorkspace() {
         loadError={legacy.error} emptyMessage="No legacy app operation in this history window" rowKey={row => row.id}
         page={currentPage} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={changePageSize} dense />
     </>}
+    </Stack></details>
   </Stack>;
 }

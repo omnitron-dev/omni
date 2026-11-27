@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { setTimeout as delay } from 'node:timers/promises';
 import { PipelineService } from '../../src/services/pipeline.service.js';
+import { deploymentBuildDefinition } from '../../src/services/deployment-build-pipeline.js';
 import { databaseOfItsOwn, type OwnDatabase } from './a-database-of-its-own.js';
 import { requiresTestPostgres } from './requires-test-postgres.js';
 
@@ -88,6 +89,20 @@ describe.skipIf(!postgres.ok)('durable Xec automation lifecycle', () => {
     expect((await other.executePipeline(def.id, { witness }, 'reviewer', def.revision, runId)).status).toBe('success');
     expect(await readFile(witness, 'utf8')).toBe('once\n');
     await other.dispose();
+  });
+  it('filters issuer build admissions by their sealed project and stack in PostgreSQL', async () => {
+    const endpoint = { host: 'build.invalid', port: 22, username: 'builder', expectedHostFingerprint: 'SHA256:' + 'A'.repeat(43) };
+    service.configure({ getNode: () => ({ id: 'build-node', host: endpoint.host, sshPort: 22, sshUser: 'builder', createdAt: '2026-01-01' }) as never,
+      nodeToSshTarget: async () => endpoint }, undefined, { assertLifecycle() {}, projects: { projectConfigurations: () => [],
+      resolvePipelineRelease: async () => { throw Error('No recipient execution during inspection'); } } });
+    const scope = { project: 'trial', stack: 'edge' };
+    const build = deploymentBuildDefinition({ ...scope, projectCommit: 'a'.repeat(40), omniCommit: 'b'.repeat(40), nodeId: 'build-node' });
+    const saved = await service.createPipeline(build);
+    const prepared = await service.prepareRun({ id: saved.id, runId: randomUUID(), expectedRevision: saved.revision }, 'operator');
+    expect(await service.listWorkspace({ ...scope, activityOnly: true })).toMatchObject({ definitions: [], runs: [
+      { id: prepared.id, activity: { kind: 'build', project: 'trial', stack: 'edge', nodeId: 'build-node' } }] });
+    expect((await service.listWorkspace({ project: 'trial', stack: 'other', activityOnly: true })).runs).toEqual([]);
+    await service.cancelRun(prepared.id);
   });
   it('atomically reconciles and resumes a JSONB checkpoint without redispatching a deployment', async () => {
     const target = { project: 'remote', stack: 'test', releaseId: 'sealed', manifestSha256: 'a'.repeat(64), review: 'b'.repeat(64) };

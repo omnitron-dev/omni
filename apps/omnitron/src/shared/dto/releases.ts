@@ -47,6 +47,8 @@ export interface BuildRecord {
   readonly request: BuildRequest;
   /** Known once the two commits are resolved, a few seconds in. */
   releaseId: string | null;
+  /** Exact manifest bytes retained by the producer. Absent in older records. */
+  manifestSha256?: string;
   state: 'queued' | 'running' | 'done' | 'failed' | 'stopped' | 'interrupted';
   phase: string;
   percent: number;

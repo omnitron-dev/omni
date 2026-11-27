@@ -1,7 +1,8 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
-import type { Pipeline, PipelineRunReview, PreparePipelineRun, StartPipelineRun } from '../shared/dto/pipelines.js';
+import type { DeploymentPipelineActivity, Pipeline, PipelineRunReview, PreparePipelineRun, StartPipelineRun } from '../shared/dto/pipelines.js';
 import { storedDefinition, validatePipeline, validatePipelineParams } from './pipeline-definition.js';
+import { readActivity } from './deployment-build-pipeline.js';
 
 /** In-process callers can revoke an admission while the owner is checking the request. */
 export const pipelineAdmissionCheck = new AsyncLocalStorage<() => void>();
@@ -14,6 +15,8 @@ export interface PipelineAdmission {
   parameterCommitment: string;
   approvedBy?: string;
   definition?: string;
+  activity?: DeploymentPipelineActivity;
+  buildIssuer?: string;
   resumedFrom?: string;
 }
 
@@ -64,7 +67,10 @@ export function readAdmission(stored: unknown): PipelineAdmission | undefined {
     if (revision !== data['review']['definitionRevision'] || createHash('sha256').update(JSON.stringify(body)).digest('hex') !== revision)
       throw Error('Pinned definition digest differs');
   }
+  const activity = data['definition'] ? readActivity(data['activity']) : undefined;
   return { protocol: 1, ...(typeof data['approvedBy'] === 'string' ? { approvedBy: data['approvedBy'] } : {}),
+    ...(activity && { activity }),
+    ...(hex(data['buildIssuer']) && { buildIssuer: data['buildIssuer'] }),
     ...(typeof data['definition'] === 'string' ? { definition: data['definition'] } : {}),
     ...(typeof data['resumedFrom'] === 'string' ? { resumedFrom: data['resumedFrom'] } : {}),
     parameterKey: data['parameterKey'], parameterCommitment: data['parameterCommitment'],

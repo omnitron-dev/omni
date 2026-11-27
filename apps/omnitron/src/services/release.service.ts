@@ -249,6 +249,7 @@ export class ReleaseService {
         const r = this.records.get(buildId)!;
         const checks = readBuildChecks(outcome.manifest);
         r.releaseId = outcome.id;
+        r.manifestSha256 = outcome.manifestSha256;
         r.gates = safeGates(outcome.manifest.gates);
         if (checks.exitCode === 0 && request.publish && this.publish) {
           await reauthorize?.();

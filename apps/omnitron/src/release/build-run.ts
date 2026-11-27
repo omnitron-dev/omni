@@ -13,6 +13,7 @@
  */
 
 import { execFile, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -131,6 +132,7 @@ export interface BuildOutcome {
   readonly id: string;
   readonly root: string;
   readonly manifestPath: string;
+  readonly manifestSha256: string;
   readonly manifest: ReleaseManifest;
   readonly durationMs: number;
 }
@@ -737,9 +739,12 @@ async function buildRelease(
     say('gates skipped — recorded as not-run', 80, { gates });
   } else if (packageGates) {
     say('running the workspace release gates', 50);
-    gates = await runPackageGates(packageGates, (name, index) => step('pnpm', ['run', name], {
-      cwd: plan.projectDir, logFile: path.join(logs, 'gate-' + index + '-' + name.replaceAll(':','_') + '.log'), timeoutMs: 120 * MINUTE,
-    }), signal);
+    gates = await runPackageGates(packageGates, (name, index) => {
+      say(`Gate ${index + 1} of ${packageGates.length}: ${name}`, 50 + Math.floor(30 * index / packageGates.length));
+      return step('pnpm', ['run', name], {
+        cwd: plan.projectDir, logFile: path.join(logs, 'gate-' + index + '-' + name.replaceAll(':','_') + '.log'), timeoutMs: 120 * MINUTE,
+      });
+    }, signal);
     say(`gates: ${gates.filter(g => g.status === 'passed').length} of ${gates.length} passed`, 80, { gates });
   } else if (!fs.existsSync(path.join(plan.projectDir, 'scripts', 'gates.mjs'))) {
     gates = [{ name: 'gates', status: 'not-run', detail: `scripts/gates.mjs does not exist at ${projectSha.slice(0, 8)}` }];
@@ -795,7 +800,8 @@ async function buildRelease(
     if (!options.keepSource) fs.rmSync(path.join(releaseRoot, 'src'), { recursive: true, force: true });
     const passed = gates.filter(g => g.status === 'passed').length;
     say(`release ${manifest.id} — ${passed} of ${gates.length} gates passed, ${manifest.artifacts.length} artifact(s)`, 100, { gates });
-    return { id: manifest.id, root: releaseRoot, manifestPath, manifest, durationMs: Date.now() - started };
+    return { id: manifest.id, root: releaseRoot, manifestPath, manifest, manifestSha256: createHash('sha256').update(manifestJson).digest('hex'),
+      durationMs: Date.now() - started };
   };
 
   const qualificationRequired = options.forPublication || (options.forStack && config.stacks[options.forStack]?.release?.mode === 'required');

@@ -198,7 +198,9 @@ export async function releaseStatusCommand(project: string, options: { inspectIn
 // build
 // ---------------------------------------------------------------------------
 
-export async function releaseBuildCommand(projectName: string, options: ReleaseBuildOptions & { publish?: boolean } = {}, detach = false): Promise<void> {
+export async function releaseBuildCommand(projectName: string, options: ReleaseBuildOptions & { publish?: boolean; journal?: boolean } = {}, detach = false): Promise<void> {
+  if (options.journal && (!isJsonMode() || detach || options.publish || !options.forStack || options.skipGates))
+    throw Error('--journal requires a foreground --json build with a stack and full gates');
   if (detach || options.publish) {
     const client = createDaemonClient();
     try {
@@ -246,6 +248,8 @@ export async function releaseBuildCommand(projectName: string, options: ReleaseB
   process.on('SIGTERM', onSignal);
   try {
     const outcome = await runReleaseBuild(projectName, { ...options, signal: options.signal ?? stop.signal }, (p) => {
+      if (options.journal) process.stderr.write(JSON.stringify({ at: p.at, phase: p.phase, percent: p.percent,
+        ...(p.releaseId && { releaseId: p.releaseId }) }) + '\n');
       if (isJsonMode()) return;
       if (p.releaseId && !releaseRoot) {
         releaseRoot = `${releasesRoot()}/${p.releaseId}`;
@@ -259,6 +263,11 @@ export async function releaseBuildCommand(projectName: string, options: ReleaseB
     const bytes = m.artifacts.reduce((sum, a) => sum + a.bytes, 0);
     const checks = readBuildChecks(m);
     if (checks.exitCode) process.exitCode = checks.exitCode;
+    if (options.journal) {
+      emitJson({ protocol: 1, project: projectName, stack: options.forStack, releaseId: m.id,
+        projectCommit: m.project.commit, omniCommit: m.omni.commit, manifestSha256: outcome.manifestSha256, checks });
+      return;
+    }
     if (emitJson({ ...outcome, checks })) return;
     const summary = `Release ${outcome.id} — ${Math.round(outcome.durationMs / MINUTE)} min`;
     if (checks.exitCode === 0) log.success(summary);

@@ -312,7 +312,8 @@ export interface DeployResult {
 }
 
 export type DeployProgress = Omit<DeployProgressRecord, 'at'>;
-type TransferScope = { project: string; stack: string; operationId: string; releaseId?: string };
+type TransferScope = Required<Pick<DeployProgressRecord, 'project' | 'stack' | 'operationId'>> &
+  Pick<DeployProgressRecord, 'releaseId' | 'manifestSha256' | 'deploymentReview'>;
 const transferScope = new AsyncLocalStorage<TransferScope>();
 
 export function withDeploymentProgress<T>(scope: TransferScope, work: () => Promise<T>): Promise<T> {

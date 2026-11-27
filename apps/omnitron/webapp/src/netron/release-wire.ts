@@ -105,8 +105,8 @@ export const releaseApi = {
     };
   },
 
-  async builds(): Promise<BuildRecord[]> {
-    return ((await releases.builds()) ?? []).map(build);
+  async builds(scope?: { project: string; stack: string }): Promise<BuildRecord[]> {
+    return ((await (scope ? releases.builds(scope) : releases.builds())) ?? []).map(build);
   },
 
   async preflight(): Promise<ReleasePreflightView> {

@@ -57,7 +57,7 @@ export class PipelineRpcService implements IOmnitronPipelinesService {
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
-  async listWorkspace(data: PipelineWorkspace & { limit?: number }) {
+  async listWorkspace(data: PipelineWorkspace & { limit?: number; activityOnly?: boolean }) {
     await this.authorize();
     return this.pipelines.listWorkspace(data);
   }

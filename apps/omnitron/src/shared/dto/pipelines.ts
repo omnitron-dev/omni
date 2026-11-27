@@ -20,6 +20,12 @@ export interface PipelineWorkspace {
   stack?: string;
 }
 
+/** Scope recorded from a native, single-purpose Pipeline definition at admission. */
+export type DeploymentPipelineActivity = { project: string; stack: string; nodeId: string } & (
+  | { kind: 'build'; projectCommit: string; omniCommit: string; releaseId?: string; manifestSha256?: string }
+  | { kind: 'rehearsal'; releaseId: string; manifestSha256: string; recoveryReleaseId: string; recoveryManifestSha256: string }
+);
+
 /** A review binds a durable command to one definition and parameter set. */
 export interface PipelineRunReview {
   protocol: 1;
@@ -166,6 +172,8 @@ export interface PipelineRunStepResult {
   kind?: 'shell' | 'xec' | 'release' | 'deploy';
   executions?: PipelineReleaseExecution[];
   deployment?: PipelineDeploymentEvidence;
+  /** Successful build on the issuer, bound to the approved project and framework revisions. */
+  releaseBuild?: { releaseId: string; manifestSha256: string };
 }
 
 export interface PipelineRun {
@@ -178,6 +186,7 @@ export interface PipelineRun {
   triggeredBy: string;
   params: Record<string, unknown> | null;
   review?: PipelineRunReview;
+  activity?: DeploymentPipelineActivity;
   /** Human/server principal that atomically claimed the reviewed request. */
   startedBy?: string;
   recovery?: PipelineRecoveryReview;

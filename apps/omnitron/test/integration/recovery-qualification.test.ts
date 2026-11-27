@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { describe, it, expect, vi } from 'vitest';
+import { sql } from 'kysely';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import type { ExecutionService } from '../../src/execution/execution.service.js';
 import { stableJson } from '../../src/shared/canonical-json.js';
@@ -54,6 +55,18 @@ describe('native recovery qualification', () => {
     try {
       const def = await service.recoveryQualificationDefinition(spec, 'qa');
       const run = await complete(def);
+      expect((await service.getRunStatus(run))?.activity).toEqual({ kind: 'rehearsal', project: spec.project, stack: spec.stack,
+        nodeId: spec.nodeId, releaseId: spec.candidate.id, manifestSha256: spec.candidate.manifestSha256,
+        recoveryReleaseId: spec.recovery.id, recoveryManifestSha256: spec.recovery.manifestSha256 });
+      await db.updateTable('pipeline_runs').set({ admission: sql`json_remove(admission, '$.activity')` }).where('id', '=', run).execute();
+      const reader = new PipelineService(db, createNullLogger(), { execute } as unknown as ExecutionService);
+      reader.configure({} as never, undefined, { assertLifecycle() {}, projects: { projectConfigurations: () => [],
+        resolvePipelineRelease: async () => { throw Error('No execution while reading'); } } });
+      await reader.initialize();
+      expect((await reader.listWorkspace({ project: spec.project, stack: spec.stack, activityOnly: true })).runs)
+        .toMatchObject([{ id: run, activity: { kind: 'rehearsal', manifestSha256: spec.candidate.manifestSha256 } }]);
+      expect((await reader.listWorkspace({ project: spec.project, stack: 'other', activityOnly: true })).runs).toEqual([]);
+      await reader.dispose();
       const requested = await installedRecoveryCommand(def.steps[0]!);
       expect(requested.spec).toEqual(spec);
       expect(execute).toHaveBeenCalledWith(expect.objectContaining({ command: 'omnitron', args: requested.args, shell: false, adapter: 'ssh' }));

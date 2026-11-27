@@ -34,6 +34,7 @@ describe('deployment operations workspace', () => {
     } }];
     draw();
     expect(screen.getByRole('alert')).toHaveTextContent('The receiver could not confirm the stop');
+    await act(async () => { fireEvent.click(screen.getByRole('tab', { name: /Rehearsal|Recovery/ })); });
     expect(screen.getByText(/qualified-run/)).toBeVisible();
     expect(screen.queryByRole('link', { name: 'qualified-run' })).not.toBeInTheDocument();
     expect(mocks.progress).not.toHaveBeenCalled();
@@ -82,6 +83,7 @@ describe('deployment operations workspace', () => {
       { ...row, project: 'sample', stack: 'dev', operationId: 'scope-c', message: 'Other stack' },
     ]);
     draw();
+    await act(async () => { fireEvent.click(screen.getByText('Transfers and deployment history', { exact: true })); });
     expect(await screen.findByText('Selected transfer')).toBeVisible();
     expect(await screen.findByRole('link', { name: 'public-stack-record' })).toBeVisible();
     expect(mocks.progress).toHaveBeenCalledWith({ project: 'sample', stack: 'prod' });

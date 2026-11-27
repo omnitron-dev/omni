@@ -193,6 +193,8 @@ type AdmittedRelease = LoadedRelease & {
   readonly placement?: { root: string; nodeId: string; target: ReleaseRecipient; recheck: () => Promise<void>;
     provisioning?: PlacementProvisionIntent | undefined };
 };
+type StartInfrastructure = { mode: 'reconcile' | 'preserve'; review: string | undefined; explicitReconcile: boolean;
+  cold?: ColdStartPermit; retained?: RuntimeRestartStack; deploymentReview?: string };
 
 class LocalReleaseStopRequired extends Error {}
 class DeclarationRefreshRequired extends Error {}
@@ -2045,7 +2047,8 @@ export class ProjectService extends EventEmitter {
     if (opts?.review && mode !== 'preserve') throw Error('A preservation review cannot authorize reconciliation');
     const retained = cold ? (await this.retainedRestartConfiguration())?.stacks.find(value => value.project === projectName && value.stack === stackName) : undefined;
     if (cold && batch?.configuration && !retained) throw Error('Stack has no retained restart configuration');
-    const infrastructure = { mode, review: review ?? undefined, explicitReconcile: opts?.infrastructure === 'reconcile', ...(cold && { cold }), ...(retained && { retained }) } as const;
+    const infrastructure: StartInfrastructure = { mode, review: review ?? undefined, explicitReconcile: opts?.infrastructure === 'reconcile',
+      ...(deployment && { deploymentReview: deployment }), ...(cold && { cold }), ...(retained && { retained }) };
     const automatic = opts?.source === 'boot' || opts?.source === 'auto-resume';
     const selection = JSON.stringify([opts?.release, opts?.workingTree === true, opts?.reinstall === true, infrastructure, automatic]);
     this.assertDeploymentOwner({ project: projectName, stack: stackName }, deployment);
@@ -2109,7 +2112,7 @@ export class ProjectService extends EventEmitter {
     releaseId?: string,
     reinstall = false,
     workingTree = false,
-    infrastructure?: { mode: 'reconcile' | 'preserve'; review: string | undefined; explicitReconcile: boolean; cold?: ColdStartPermit; retained?: RuntimeRestartStack },
+    infrastructure?: StartInfrastructure,
   ): Promise<IStackInfo> {
     const known: StackStartKnown = { attach: false };
     try {
@@ -2145,7 +2148,7 @@ export class ProjectService extends EventEmitter {
     known: StackStartKnown,
     reinstall = false,
     workingTree = false,
-    infrastructure?: { mode: 'reconcile' | 'preserve'; review: string | undefined; explicitReconcile: boolean; cold?: ColdStartPermit; retained?: RuntimeRestartStack },
+    infrastructure?: StartInfrastructure,
   ): Promise<IStackInfo> {
     const route = this.placement(projectName, stackName);
     if (route?.selected && !this.remoteDeployments?.has(stackExecutionKey({ project: projectName, stack: stackName })) &&
@@ -2431,7 +2434,8 @@ export class ProjectService extends EventEmitter {
         }
       } else {
         this.rememberStackTargets(projectName, stackName, stackConfig, config);
-        reach = await this.startRemoteStack(projectName, stackName, stackConfig, config, release, reinstall, preservation, infrastructure?.explicitReconcile || !!route);
+        reach = await this.startRemoteStack(projectName, stackName, stackConfig, config, release, reinstall, preservation,
+          infrastructure?.explicitReconcile || !!route, infrastructure?.deploymentReview);
       }
 
       state.status = 'running';
@@ -5756,11 +5760,13 @@ export class ProjectService extends EventEmitter {
     reinstall = false,
     preservation?: StackStartReview,
     reconcile = false,
+    deploymentReview?: string,
   ): Promise<NodeReach> {
     const phases = reportPhases(this.logger, { project: projectName, stack: stackName });
     try {
       return await withDeploymentProgress(
-        { project: projectName, stack: stackName, operationId: randomUUID(), ...(release && { releaseId: release.id }) },
+        { project: projectName, stack: stackName, operationId: randomUUID(), ...(release && { releaseId: release.id, manifestSha256: release.manifestSha256 }),
+          ...(deploymentReview && { deploymentReview }) },
         () => this.deployRemoteStack(projectName, stackName, stackConfig, ecosystemConfig, phases, release, reinstall, preservation, reconcile),
       );
     } finally {

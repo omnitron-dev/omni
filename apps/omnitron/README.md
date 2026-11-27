@@ -126,6 +126,21 @@ architecture, Node binary, ABI and libc. The executable's SHA-256 is part of
 the release target. `omnitron release build <project> --for <stack>` also builds
 the static frontend with that stack's environment.
 
+To watch a build on this controller, submit `omnitron release build <project> --for <stack> --detach`.
+For an enrolled Linux issuer with the project registered there, submit its pinned revisions to the controller.
+
+```sh
+omnitron release build <project> --for <stack> --issuer <node-id> --project-commit <full-sha> --omni-commit <full-sha> --run-id <uuid-v4>
+```
+
+Retain the run ID to recover a lost reply. For a separate definition review, `omnitron release plan-build`
+can write the same graph for `pipeline check`, `pipeline save` and `pipeline run`.
+
+Open **Projects → the project → Deployments**, then choose the stack. The build's phases appear under **Build** while it runs.
+The issuer and controller must support the journal option. The Pipeline runs the foreground builder once on the reviewed issuer.
+The final receipt identifies the exact manifest. The preparation, recovery check and launch can then refer to the same release.
+A standalone foreground build becomes visible when its verified manifest and logs reach the controller.
+
 Preview local release retention with `omnitron release prune --project sample --keep 5`.
 The command counts the newest five builds within that project and retains releases
 referenced by deployment history or an active build. Pass `--protect <id>` to retain

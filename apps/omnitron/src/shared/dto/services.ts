@@ -370,6 +370,8 @@ export interface DeployProgressRecord {
   stack?: string;
   operationId?: string;
   releaseId?: string;
+  manifestSha256?: string;
+  deploymentReview?: string;
   /** `host:port` of the node. */
   node: string;
   app: string;
@@ -633,7 +635,7 @@ export interface IOmnitronPipelinesService {
   updatePipeline(data: { id: string; definition: PipelineDef; expectedRevision: string }): Promise<Pipeline>;
   getPipeline(data: { id: string; workspace?: PipelineWorkspace }): Promise<Pipeline | null>;
   listPipelines(): Promise<Pipeline[]>;
-  listWorkspace(data: PipelineWorkspace & { limit?: number }): Promise<{ definitions: Pipeline[]; runs: PipelineRunSummary[] }>;
+  listWorkspace(data: PipelineWorkspace & { limit?: number; activityOnly?: boolean }): Promise<{ definitions: Pipeline[]; runs: PipelineRunSummary[] }>;
   deletePipeline(data: { id: string }): Promise<{ success: boolean }>;
   prepareRun(data: PreparePipelineRun): Promise<PipelineRun>;
   startRun(data: StartPipelineRun): Promise<PipelineRun>;
@@ -995,7 +997,7 @@ export interface IOmnitronReleaseService {
   list(): Promise<{ releases: import('../../release/store.js').ReleaseSummary[]; root: string }>;
   get(data: { id: string }): Promise<import('../../release/store.js').ReleaseDetail>;
   getLog(data: { id: string; name: string; lines?: number }): Promise<{ name: string; bytes: number; tail: string }>;
-  builds(): Promise<import('./releases.js').BuildRecord[]>;
+  builds(scope?: { project: string; stack: string }): Promise<import('./releases.js').BuildRecord[]>;
   getBuild(data: { buildId: string }): Promise<import('./releases.js').BuildRecord | null>;
   build(data: Omit<import('./releases.js').BuildRequest, 'envKeys'> & {
     env?: Record<string, string>;

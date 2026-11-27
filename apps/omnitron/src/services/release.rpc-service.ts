@@ -96,8 +96,11 @@ export class ReleaseRpcService implements IOmnitronReleaseService {
   }
 
   @Public({ auth: { roles: VIEWER_ROLES } })
-  async builds(): Promise<BuildRecord[]> {
-    return this.releases.builds();
+  async builds(scope?: { project: string; stack: string }): Promise<BuildRecord[]> {
+    if (scope === undefined) return this.releases.builds();
+    if (!scope?.project || !scope.stack || !this.projects) throw Error('Select a registered project and stack for build history');
+    const target = await this.projects.resolveProjectStack(scope, { readOnly: true });
+    return this.releases.builds().filter(record => record.request.project === target.project && record.request.forStack === target.stack);
   }
 
   @Public({ auth: { roles: VIEWER_ROLES } })

@@ -25,17 +25,20 @@ test('follows a reviewed deployment to its exact recovery run and keeps the run 
     },
   });
   await page.goto(url + '/projects/example/deployments?stack=dev');
-  const journal = page.getByRole('region', { name: 'Reviewed deployment' });
-  await expect(journal).toContainText('Last recorded phase · starting');
+  const journal = page.getByRole('region', { name: 'Deployment activity' });
+  await expect(journal.getByRole('tab', { name: /Launch · Starting applications/ })).toHaveAttribute('aria-selected', 'true');
   await expect(journal).toContainText('reviewed-candidate');
+  await journal.getByText('Deployment receipt', { exact: true }).click();
   await expect(journal).toContainText('compatible-return');
   await expect(journal).toContainText('edge-node');
   const activity = page.getByRole('region', { name: 'Node file activity' });
+  await page.getByText('Transfers and deployment history', { exact: true }).click();
   await expect(activity).toContainText('edge-node across all projects and accounts');
   await expect(activity).toContainText('transfer-by-another-account');
   await expect(activity).toContainText('384 B / 960 B transferred · 3 / 8 files');
   await expect(activity.getByRole('button')).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Runtime', exact: true })).toHaveAttribute('href', '/projects/example/stacks/dev');
+  await journal.getByRole('tab', { name: /Recovery check/ }).click();
   await journal.getByRole('link', { name: runId }).click();
   const drawer = page.getByRole('dialog', { name: 'qualification' });
   await expect(drawer).toContainText(runId);
@@ -49,9 +52,44 @@ test('follows a reviewed deployment to its exact recovery run and keeps the run 
   await expect(page.getByRole('tab', { name: /Runs/ })).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.goto(url + '/projects/other/deployments?stack=dev');
-  await expect(journal).toContainText('No reviewed deployment receipt reported');
+  await expect(journal).toContainText('No deployment activity is recorded');
+  await page.getByText('Transfers and deployment history', { exact: true }).click();
   await expect(activity).toContainText('No retained incoming transfers.');
   expect(detailReads).toHaveLength(count);
+});
+
+test('follows a native issuer before a manifest exists and retains its exact run after reload', async ({ page, url }) => {
+  const buildId = '075642c6-d608-4146-b921-457d8710342b';
+  const node = { host: 'node.invalid', nodeId: 'destination', role: 'app' };
+  const build = { id: buildId, pipelineId: 'issuer-pipeline', pipelineName: 'release build', status: 'running',
+    triggeredBy: 'builder', startedAt: '2026-01-01T12:00:00Z', completedAt: null, activity: { kind: 'build', project: 'example', stack: 'dev',
+      nodeId: 'issuer', projectCommit: 'c'.repeat(40), omniCommit: 'd'.repeat(40) } };
+  const requests = [];
+  await stubInventory(page, {
+    'OmnitronProject.listStacks': [{ name: 'dev', type: 'remote', config: { type: 'remote', nodes: [node] }, apps: [] }],
+    'OmnitronPipelines.listWorkspace': input => {
+      expect(input.activityOnly).toBe(true);
+      return { definitions: [], runs: [build] }; // Older or broader responses must still be scoped by the Console.
+    },
+    'OmnitronPipelines.getRunStatus': ({ runId }) => {
+      requests.push(runId);
+      return { ...build, params: {}, steps: [{ name: 'build-release', kind: 'shell', status: 'running', duration: 0,
+        stderr: 'qualifying the pinned source', nodeId: 'issuer' }] };
+    },
+    'OmnitronProject.listRemoteReleasePreparations': [],
+  });
+  const location = '/projects/example/deployments?stack=dev&activity=run%2F' + buildId;
+  await page.goto(url + location);
+  const activity = page.getByRole('region', { name: 'Deployment activity' });
+  await expect(activity.getByRole('tab', { name: /Build · Running/ })).toHaveAttribute('aria-selected', 'true');
+  await expect(activity).toContainText('qualifying the pinned source');
+  await page.reload();
+  await expect(activity).toContainText('qualifying the pinned source');
+  await expect(activity.getByRole('link', { name: buildId })).toHaveAttribute('href', '/pipelines?view=runs&run=' + buildId);
+  await page.goto(url + location.replace('example', 'other'));
+  await expect(activity).toContainText('Selected activity has no retained record in this workspace.');
+  await expect(activity.getByRole('link', { name: buildId })).toHaveCount(0);
+  expect(requests.every(id => id === buildId)).toBe(true);
 });
 
 for (const width of [1440, 360]) {

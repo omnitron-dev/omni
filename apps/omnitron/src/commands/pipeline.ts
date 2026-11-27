@@ -5,6 +5,7 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { log } from '@xec-sh/kit';
 import { readFile } from 'node:fs/promises';
 import type { IOmnitronPipelinesService } from '../shared/dto/services.js';
@@ -95,20 +96,43 @@ async function resolveRunTarget(svc: IOmnitronPipelinesService, reference: strin
   return matches[0]!;
 }
 
-export async function pipelineRunCommand(id: string, options: { paramsFile?: string; runId?: string; prepare?: boolean; expectedRevision?: string } = {}): Promise<void> {
+/** Reuse only the original native graph. A lost create reply or concurrent caller must not register another definition. */
+async function issuerPipeline(svc: IOmnitronPipelinesService, definition: PipelineDef) {
+  const existing = async () => (await svc.listPipelines()).find(item => item.name === definition.name);
+  let saved = await existing();
+  if (!saved) {
+    try { saved = await svc.createPipeline(definition); }
+    catch (error) {
+      saved = await existing();
+      if (!saved) throw error;
+    }
+  }
+  if (!isDeepStrictEqual(saved.steps, definition.steps) || !isDeepStrictEqual(saved.triggers, definition.triggers) || saved.description !== definition.description)
+    throw Error('The saved build Pipeline differs from the reviewed issuer command');
+  return saved;
+}
+
+export async function pipelineRunCommand(id: string | PipelineDef, options: { paramsFile?: string; runId?: string; prepare?: boolean; expectedRevision?: string } = {}): Promise<void> {
   const runId = options.runId ?? randomUUID();
   try {
+    if (typeof id !== 'string') {
+      const { validateRunId } = await import('../services/pipeline-admission.js');
+      validateRunId(runId);
+    }
     const params = options.paramsFile ? JSON.parse(await readFile(options.paramsFile, 'utf8')) : undefined;
     const run = await withPipelines(async (svc) => {
-      const target = await resolveRunTarget(svc, id, options.expectedRevision);
+      const target = typeof id === 'string' ? await resolveRunTarget(svc, id, options.expectedRevision) : await issuerPipeline(svc, id);
       const request = {
         runId,
         id: target.id,
         expectedRevision: target.revision,
         ...(params !== undefined ? { params } : {}),
       };
-      const finish = (service: IOmnitronPipelinesService, prepared: PipelineRun) => options.prepare
-        ? prepared : service.startRun({ runId, expectedDigest: prepared.review!.digest, params });
+      const finish = (service: IOmnitronPipelinesService, prepared: PipelineRun) => {
+        if (typeof id !== 'string' && (prepared.activity?.kind !== 'build' || prepared.id !== runId))
+          throw Error('The controller did not confirm the native issuer and build journal. Update it before starting the run');
+        return options.prepare ? prepared : service.startRun({ runId, expectedDigest: prepared.review!.digest, params });
+      };
       let prepared: PipelineRun;
       try {
         prepared = await svc.prepareRun(request);

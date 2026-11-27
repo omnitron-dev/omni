@@ -1189,11 +1189,29 @@ const release = program
   .command('release')
   .description('Build and inspect project releases with verified framework inputs');
 
+release.command('plan-build <project> <stack>').description('Write a reviewable Pipeline for a build on a registered issuer')
+  .requiredOption('--issuer <node-id>', 'Registered build node')
+  .requiredOption('--project-commit <sha>', 'Full project Git revision')
+  .requiredOption('--omni-commit <sha>', 'Full framework Git revision')
+  .requiredOption('--output <file>', 'New JSON definition for pipeline save')
+  .structuredAction(async (projectName: string, stackName: string, options: { issuer: string; projectCommit: string; omniCommit: string; output: string }) => {
+    const { deploymentBuildDefinition } = await import('../services/deployment-build-pipeline.js');
+    const { writeFile } = await import('node:fs/promises');
+    const definition = deploymentBuildDefinition({ project: projectName, stack: stackName, nodeId: options.issuer,
+      projectCommit: options.projectCommit, omniCommit: options.omniCommit });
+    await writeFile(options.output, JSON.stringify(definition, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
+    const { emitJson } = await import('../commands/output.js');
+    if (!emitJson({ name: definition.name, file: options.output })) console.log(options.output);
+  });
+
 release
   .command('build <project>')
   .description('Build a clean project revision with its locked framework, run gates and package the artifacts')
   .option('--detach', 'Submit to the controller and return a build ID for CLI or Console')
   .option('--publish', 'Build on the controller and publish verified artifacts to its configured release store')
+  .option('--journal', 'Stream phases to stderr and return the compact manifest receipt in --json mode')
+  .option('--issuer <node-id>', 'Run the build through a journaled Pipeline on a registered issuer')
+  .option('--run-id <uuid>', 'Stable Pipeline request identity for an issuer build')
   .option('--project-commit <sha>', "The project commit to build (default: the project checkout's HEAD)")
   .option('--omni-commit <sha>', 'SDK revision for linked checkouts. Full upstream Git commit required for vendored archives and optional for registry packages')
   .option('--framework-repository <repository>', 'Override the committed SDK source repository for this build')
@@ -1204,11 +1222,22 @@ release
   .structuredAction(
     async (
       projectName: string,
-      options: { detach?: boolean; publish?: boolean; projectCommit?: string; omniCommit?: string; frameworkRepository?: string; frameworkRef?: string; keepSource?: boolean; skipGates?: boolean; for?: string },
+      options: { detach?: boolean; publish?: boolean; journal?: boolean; issuer?: string; runId?: string; projectCommit?: string; omniCommit?: string; frameworkRepository?: string; frameworkRef?: string; keepSource?: boolean; skipGates?: boolean; for?: string },
     ) => {
       const { releaseBuildCommand } = await import('../commands/release.js');
       const { parseFrameworkSource } = await import('../shared/framework-source.js');
-      const { detach, frameworkRepository, frameworkRef, ...buildOptions } = options;
+      const { detach, frameworkRepository, frameworkRef, issuer, runId, ...buildOptions } = options;
+      if (issuer) {
+        if (!options.for || !options.projectCommit || !options.omniCommit || detach || options.publish || options.journal ||
+            frameworkRepository || frameworkRef || options.keepSource || options.skipGates)
+          throw Error('--issuer requires --for, --project-commit and --omni-commit, committed configuration and full gates');
+        const { deploymentBuildDefinition } = await import('../services/deployment-build-pipeline.js');
+        const { pipelineRunCommand } = await import('../commands/pipeline.js');
+        await pipelineRunCommand(deploymentBuildDefinition({ project: projectName, stack: options.for, nodeId: issuer,
+          projectCommit: options.projectCommit, omniCommit: options.omniCommit }), { ...(runId && { runId }) });
+        return;
+      }
+      if (runId !== undefined) throw Error('--run-id requires --issuer');
       if (frameworkRef && !frameworkRepository) throw new Error('--framework-ref requires --framework-repository; use omnitron.framework in package.json for project defaults');
       const frameworkSource = frameworkRepository ? parseFrameworkSource({ repository: frameworkRepository, ...(frameworkRef ? { ref: frameworkRef } : {}) }) : undefined;
       await releaseBuildCommand(projectName, { ...buildOptions, ...(frameworkSource ? { frameworkSource } : {}), ...(options.for ? { forStack: options.for } : {}) }, detach);

@@ -13,6 +13,7 @@ vi.mock('../../src/daemon/daemon-client.js', async (importOriginal) => ({
 import { pipelineCheckCommand, pipelineListCommand, pipelineStatusCommand, pipelineSaveCommand, pipelineRunCommand, pipelineStartCommand, pipelineReconcileCommand } from '../../src/commands/pipeline.js';
 import { hasEmittedJson } from '../../src/commands/output.js';
 import { pipelineShellReceipt } from '../../data/operations/pipeline-shell-receipt.js';
+import { deploymentBuildDefinition } from '../../src/services/deployment-build-pipeline.js';
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -80,6 +81,23 @@ describe('pipeline CLI uses the shared machine output protocol', () => {
     const old = await capture(() => pipelineRunCommand('pipeline', { runId }));
     expect(JSON.parse(old.err).error).toContain('Method not available');
     expect(service.executePipeline).not.toHaveBeenCalled();
+  });
+
+  it('recovers an issuer definition after a lost creation reply and requires native admission before dispatch', async () => {
+    const scope = { project: 'fixture', stack: 'edge', nodeId: 'issuer', projectCommit: 'a'.repeat(40), omniCommit: 'b'.repeat(40) };
+    const definition = deploymentBuildDefinition(scope);
+    const runId = 'ce9658f5-6225-48b5-a916-b7bb2a01ad70';
+    const graph = { ...definition, id: 'pipeline-id', revision: 'c'.repeat(64) };
+    service.listPipelines.mockResolvedValueOnce([]).mockResolvedValue([graph]);
+    service.createPipeline.mockRejectedValueOnce(new Error('reply lost'));
+    const prepared = { id: runId, status: 'awaiting-review', review: { digest: 'd'.repeat(64) } };
+    service.prepareRun.mockResolvedValueOnce({ ...prepared, activity: { kind: 'build', ...scope } }).mockResolvedValueOnce(prepared);
+    service.startRun.mockResolvedValue({ ...prepared, status: 'running' });
+    expect(JSON.parse((await capture(() => pipelineRunCommand(definition, { runId }))).out).data.id).toBe(runId);
+    expect(service.startRun).toHaveBeenCalledWith({ runId, expectedDigest: prepared.review.digest, params: undefined });
+    expect((await capture(() => pipelineRunCommand(definition, { runId }))).err).toContain('did not confirm the native issuer');
+    expect(service.createPipeline).toHaveBeenCalledTimes(1);
+    expect(service.startRun).toHaveBeenCalledTimes(1);
   });
   it('submits the saved revision directly and leaves a stale revision for the controller to reject', async () => {
     const id = '990fed79-57f3-4af5-857c-340dd29c8937';

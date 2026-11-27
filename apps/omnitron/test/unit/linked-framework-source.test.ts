@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -54,6 +55,7 @@ it('builds from declared and explicit sources when the nominal developer SDK is 
   const { runReleaseBuild } = await import('../../src/release/build-run.js');
   const phases: string[] = [];
   const result = await runReleaseBuild('consumer', { omniCommit: sha, keepSource: true }, phase => phases.push(phase.phase));
+  expect(result.manifestSha256).toBe(createHash('sha256').update(await fs.readFile(result.manifestPath)).digest('hex'));
   expect(result.manifest.omni).toMatchObject({ repo: '../selected-origin', ref: 'refs/heads/stable', commit: sha, onRemote: false });
   expect(result.manifest.artifactFailures).toBeUndefined();
   expect(result.manifest.artifacts).toEqual([expect.objectContaining({ app: 'worker', sha256: expect.stringMatching(/^[a-f0-9]{64}$/) })]);
@@ -67,8 +69,22 @@ it('builds from declared and explicit sources when the nominal developer SDK is 
   const selectedBuild = path.join(selected, 'packages/titan/build.mjs');
   await fs.writeFile(selectedBuild, (await fs.readFile(selectedBuild, 'utf8')).replace('selected', 'explicit-override'));
   const selectedSha = await commit(selected);
-  const override = await runReleaseBuild('consumer', { omniCommit: selectedSha, keepSource: true,
-    frameworkSource: { repository: '../override-origin', ref: 'refs/heads/stable' } });
+  const { releaseBuildCommand } = await import('../../src/commands/release.js');
+  const { loadRelease } = await import('../../src/release/load.js');
+  vi.stubEnv('OMNITRON_OUTPUT', 'json');
+  const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+  const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  let report: { releaseId: string; manifestSha256: string };
+  try {
+    await releaseBuildCommand('consumer', { omniCommit: selectedSha, keepSource: true, forStack: 'production', journal: true,
+      frameworkSource: { repository: '../override-origin', ref: 'refs/heads/stable' } });
+    report = JSON.parse(stdout.mock.calls.map(([chunk]) => String(chunk)).join('')).data;
+    const progress = stderr.mock.calls.map(([chunk]) => JSON.parse(String(chunk)));
+    expect(progress.some(phase => phase.phase === 'Gate 1 of 1: test:release')).toBe(true);
+    expect(progress.some(phase => phase.releaseId === report.releaseId && phase.percent === 100)).toBe(true);
+  } finally { stdout.mockRestore(); stderr.mockRestore(); }
+  const override = await loadRelease(report.releaseId);
+  expect(report).toMatchObject({ protocol: 1, project: 'consumer', stack: 'production', omniCommit: selectedSha, manifestSha256: override.manifestSha256 });
   expect(override.manifest.omni).toMatchObject({ repo: '../override-origin', ref: 'refs/heads/stable', commit: selectedSha, onRemote: false });
   expect(override.manifest.artifactFailures).toBeUndefined();
   expect(await fs.readFile(path.join(override.root, 'src/missing-framework/packages/titan/dist/index.js'), 'utf8')).toContain('explicit-override');

@@ -36,6 +36,7 @@ Thumbs.db
 *~
 .idea/
 .vscode/
+.claude/settings.local.json
 *.code-workspace
 
 # Logs

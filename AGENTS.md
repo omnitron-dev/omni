@@ -1,6 +1,6 @@
 # Repository workflow
 
-- Develop directly on `main` in the primary checkout at `/Users/taaliman/projects/luxquant/omnitron-dev/omni`. The user must be able to inspect committed and in-progress changes there throughout the work.
+- Develop directly on `main` in the primary checkout. Use `git worktree list` to locate it. The user must be able to inspect committed and in-progress changes there throughout the work.
 - Do not start implementation in another branch or worktree unless the user explicitly requests it. Separate checkouts may be used to verify immutable source snapshots; they are not the source of ongoing development.
 - Commit coherent, verified changes regularly. The user performs remote pushes and npm publication unless explicitly instructed otherwise.
 - Use the mounted `/Volumes/AGI-Dev` volume for large builds, qualification checkouts, artifacts and caches. Project work belongs under `/Volumes/AGI-Dev/work/omnitron`; mount/cache instructions are in `/Volumes/AGI/dev/README.md`.

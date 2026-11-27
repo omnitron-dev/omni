@@ -78,8 +78,9 @@ async function fixture(t) {
     await write(root, file, await fs.readFile(path.join(repo, file)));
   }
   await write(root, 'package.json', JSON.stringify({ type: 'module' }));
-  // Load the installed Pipeline API. The fixture owns every directory, including node_modules.
-  await write(root, 'node_modules/@xec-sh/ops/package.json', JSON.stringify({ type: 'module', exports: { './pipeline': './pipeline.js' } }));
+  // Use the installed APIs while keeping the fixture's node_modules isolated.
+  await write(root, 'node_modules/@xec-sh/ops/package.json', JSON.stringify({ type: 'module', exports: { '.': './index.js', './pipeline': './pipeline.js' } }));
+  await write(root, 'node_modules/@xec-sh/ops/index.js', 'export { fs, path } from ' + JSON.stringify(import.meta.resolve('@xec-sh/ops')) + ';\n');
   await write(root, 'node_modules/@xec-sh/ops/pipeline.js', 'export { Pipeline } from ' + JSON.stringify(import.meta.resolve('@xec-sh/ops/pipeline')) + ';\n');
   for (const name of (await fs.readdir(path.join(repo, 'scripts'))).filter(name => name.endsWith('.mjs'))) {
     const file = 'scripts/' + name;

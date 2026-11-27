@@ -1,37 +1,42 @@
+import '@xec-sh/cli/globals';
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
-import * as fs from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import os from 'node:os';
-import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { ExecutionEngine } from '@xec-sh/core';
+import type { Command } from '@xec-sh/core';
+import type { RecoveryQualificationExpected, RecoveryQualificationRelease } from '../../src/services/recovery-qualification.js';
+import type { TargetRuntime } from '../../data/operations/runtime-identity.js';
 import * as tar from 'tar';
 
-const app = fileURLToPath(new URL('../../', import.meta.url));
+const app = path.resolve(__dirname, '../..');
 const repo = path.resolve(app, '../..');
-const fixture = fileURLToPath(new URL('../fixtures/recovery-qualification/', import.meta.url));
+const fixture = path.join(app, 'test/fixtures/recovery-qualification');
 const files = ['recovery-qualification.js', 'recovery-input-store.js', 'recovery-observations.js', 'runtime-identity.js'];
-const hash = bytes => createHash('sha256').update(bytes).digest('hex');
-const encoded = value => Buffer.from(JSON.stringify(value, (_key, item) =>
+const hash = (bytes: string | Buffer) => createHash('sha256').update(bytes).digest('hex');
+const encoded = (value: unknown) => Buffer.from(JSON.stringify(value, (_key, item) =>
   item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) : item));
 
-async function makeImage(root, run) {
+const run = (command: string, args: string[], options: Pick<Command, 'timeout' | 'cwd' | 'env' | 'envMode' | 'nothrow'> = {}) =>
+  $.execute({ command, args, adapter: 'local', shell: false, timeout: 30_000, ...options });
+
+async function makeImage(root: string): Promise<string> {
   const context = path.join(root, 'image');
   const copied = new Set();
-  async function copy(source, absolutePath) {
+  async function copy(source: string, absolutePath: string) {
     if (copied.has(absolutePath)) return;
     assert(path.isAbsolute(absolutePath) && path.normalize(absolutePath) === absolutePath);
     const target = path.join(context, 'fs', absolutePath);
-    await fs.mkdir(path.dirname(target), { recursive: true });
-    await fs.copyFile(source, target);
+    await fs.copy(source, target, { dereference: true });
     await fs.chmod(target, absolutePath.endsWith('.py') ? 0o444 : 0o555);
     copied.add(absolutePath);
   }
-  async function binary(source, absolutePath) {
+  async function binary(source: string, absolutePath: string) {
     await copy(source, absolutePath);
     const { stdout } = await run('/usr/bin/ldd', [source]);
-    for (const match of stdout.matchAll(/(?:=>\s+|^\s*)(\/[^\s]+)\s+\(/gm)) await copy(match[1], match[1]);
+    for (const [, library] of stdout.matchAll(/(?:=>\s+|^\s*)(\/[^\s]+)\s+\(/gm)) {
+      assert(library);
+      await copy(library, library);
+    }
   }
   for (const tool of ['env', 'timeout', 'sleep', 'python3']) await binary('/usr/bin/' + tool, '/usr/bin/' + tool);
   await binary(process.execPath, '/usr/bin/node');
@@ -57,33 +62,32 @@ async function makeImage(root, run) {
   return image;
 }
 
-async function packedInstallation(root, run) {
+async function packedInstallation(root: string) {
   const { stdout } = await run('npm', ['pack', '--offline', '--ignore-scripts', '--silent', '--pack-destination', root], { cwd: app });
   const name = stdout.trim();
   assert.match(name, /^[a-z0-9.-]+\.tgz$/);
   const installation = path.join(root, 'package');
   await fs.mkdir(installation);
   await tar.extract({ cwd: installation, file: path.join(root, name), strip: 1, strict: true });
-  const manifest = JSON.parse(await fs.readFile(path.join(installation, 'package.json'), 'utf8'));
+  const manifest = await fs.readJson(path.join(installation, 'package.json'));
   for (const dependency of Object.keys(manifest.dependencies)) {
     const target = path.join(installation, 'node_modules', dependency);
     const local = path.join(app, 'node_modules', dependency);
     let source;
     try { source = await fs.realpath(local); }
     catch (err) {
-      if (err.code !== 'ENOENT') throw err;
+      if (!(err instanceof Error && 'code' in err && err.code === 'ENOENT')) throw err;
       source = await fs.realpath(path.join(repo, 'node_modules', dependency));
     }
-    await fs.mkdir(path.dirname(target), { recursive: true });
-    await fs.symlink(source, target);
+    await fs.ensureSymlink(source, target);
   }
   return installation;
 }
 
-export async function inputs(root, image, runtime) {
+async function inputs(root: string, image: string, runtime: TargetRuntime): Promise<RecoveryQualificationExpected> {
   const cas = path.join(root, '.omnitron/recovery-inputs');
   await fs.mkdir(cas, { recursive: true, mode: 0o700 });
-  async function retain(bytes) {
+  async function retain(bytes: Buffer) {
     const key = hash(bytes);
     await fs.writeFile(path.join(cas, key), bytes, { mode: 0o600 });
     return key;
@@ -91,9 +95,7 @@ export async function inputs(root, image, runtime) {
   const addedMigrations = ['main/219.sql', 'main/220.sql'];
   const probe = await fs.readFile(path.join(fixture, 'probe.py'));
   const application = await fs.readFile(path.join(fixture, 'app.cjs'));
-  const spec = { project: 'lab', stack: 'fixture', nodeId: 'production-fixture', addedMigrations,
-    probe: { commit: 'f'.repeat(40), sha256: await retain(probe), image, recordSets: ['awards'] } };
-  for (const role of ['incumbent', 'candidate', 'recovery']) {
+  async function release(role: string): Promise<RecoveryQualificationRelease> {
     const source = path.join(root, role);
     await fs.mkdir(source);
     const code = Buffer.concat([Buffer.from('const ROLE=' + JSON.stringify(role) + ';\n'), application]);
@@ -112,36 +114,35 @@ export async function inputs(root, image, runtime) {
         packageSource: { migrations, migrationPrograms: [{ release: 'app.cjs', releaseSha256: hash(code) }] } }],
       statics: { files: 1, bytes: role.length } };
     const index = { 'index.html': { bytes: role.length, sha256: await retain(Buffer.from(role)) } };
-    spec[role] = { id: role, manifestSha256: await retain(encoded(manifest)), commit, tree: commit,
+    return { id: role, manifestSha256: await retain(encoded(manifest)), commit, tree: commit,
       artifacts: { ledger: archiveSha }, staticsIndexSha256: await retain(encoded(index)) };
   }
-  return spec;
+  return { project: 'lab', stack: 'fixture', nodeId: 'production-fixture', addedMigrations,
+    probe: { commit: 'f'.repeat(40), sha256: await retain(probe), image, recordSets: ['awards'] },
+    incumbent: await release('incumbent'), candidate: await release('candidate'), recovery: await release('recovery') };
 }
 
-async function verifier(packageRoot) {
+async function verifier(packageRoot: string) {
   const resolve = createRequire(path.join(packageRoot, 'package.json')).resolve;
-  const fileHash = async file => hash(await fs.readFile(file));
+  const fileHash = async (file: string) => hash(await fs.readFile(file));
   return hash(encoded({ protocol: 3, receiver: await fileHash(path.join(packageRoot, 'dist/services/recovery-qualification.js')),
     files: await Promise.all(files.map(file => fileHash(path.join(packageRoot, 'data/operations', file)))),
     packages: await Promise.all(['@xec-sh/core', 'tar'].map(async name => [name, await fileHash(resolve(name + '/package.json'))])) }));
 }
 
-async function main() {
-  assert.equal(process.platform, 'linux', 'This qualification requires a disposable Linux Docker runner');
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'omni-recovery-fixture-'));
-  const engine = new ExecutionEngine({ defaultShell: false, preferLocal: false, quiet: true, enableEvents: false, retry: { retries: 0 } });
-  const run = (command, args, options = {}) => engine.execute({ adapter: 'local', shell: false, command, args, timeout: 30_000, ...options });
-  let image;
+assert.equal(process.platform, 'linux', 'This qualification requires a disposable Linux Docker runner');
+await $.withTempDir(async root => {
+  let image: string | undefined;
   try {
-    const installed = await packedInstallation(root, run);
-    const fromDist = file => pathToFileURL(path.join(installed, 'dist', file)).href;
+    const installed = await packedInstallation(root);
+    const fromDist = (file: string) => pathToFileURL(path.join(installed, 'dist', file)).href;
     const { targetRuntime } = await import(fromDist('release/target-runtime.js'));
     const { recoveryQualificationDefinition } = await import(fromDist('services/recovery-qualification.js'));
-    image = await makeImage(root, run);
+    image = await makeImage(root);
     const spec = await inputs(root, image, await targetRuntime());
     const nodes = {
-      getNode: id => ({ id, host: id, sshPort: 22, sshUser: 'fixture', createdAt: '2020-01-01' }),
-      nodeToSshTarget: async n => ({ host: n.host, port: n.sshPort, username: n.sshUser,
+      getNode: (id: string) => ({ id, host: id, sshPort: 22, sshUser: 'fixture', createdAt: '2020-01-01' }),
+      nodeToSshTarget: async (n: {id: string; host: string; sshPort: number; sshUser: string}) => ({ host: n.host, port: n.sshPort, username: n.sshUser,
         expectedHostFingerprint: 'SHA256:' + (n.id === 'qa' ? 'Q' : 'P').repeat(43) }),
     };
     const graph = await recoveryQualificationDefinition(spec, 'qa', nodes);
@@ -159,16 +160,15 @@ async function main() {
     assert.equal(reply.data.verifier, args[4]);
     assert.equal(reply.data.phases.length, 10);
     assert.equal(reply.data.inputs, hash(encoded(spec)));
-    await fs.writeFile(path.join(root, '.omnitron/recovery-inputs', spec.candidate.artifacts.ledger), 'damaged');
+    const ledger = spec.candidate.artifacts['ledger'];
+    assert(ledger);
+    await fs.writeFile(path.join(root, '.omnitron/recovery-inputs', ledger), 'damaged');
     const corrupt = await execute();
     assert.notEqual(corrupt.exitCode, 0);
     assert.equal(corrupt.stdout, '');
     assert.match(corrupt.stderr, /admitted bytes/);
-    console.log('All ten isolated recovery phases preserved the expected SQLite history and writes. Corrupt input refused.');
+    log.success('All ten recovery phases preserved SQLite history and new writes. The receiver rejected corrupt input.');
   } finally {
-    try { if (image) await run('docker', ['image', 'rm', image]); }
-    finally { await engine.dispose(); await fs.rm(root, { recursive: true, force: true }); }
+    if (image) await run('docker', ['image', 'rm', image]);
   }
-}
-
-if (import.meta.main) await main();
+}, { prefix: 'omni-recovery-fixture-' });

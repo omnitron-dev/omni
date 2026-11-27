@@ -1,8 +1,6 @@
-import path from 'node:path';
-import fs from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { Pipeline } from '@xec-sh/ops/pipeline';
-import { UserError } from '@xec-sh/ops';
+import { fs, path, UserError } from '@xec-sh/ops';
 import { releaseCommand, ReleaseCommandError } from '@xec-sh/ops/release';
 import { qualifiedRuntimes } from '../qualification.mjs';
 import { githubQualification } from '../github-qualification.mjs';
@@ -94,7 +92,7 @@ async function runUpdate(operation, target, values, options) {
     if (operation === 'local-stage') return call(['backend', 'install', runtime]);
     if (operation === 'local-sync') {
       if (!inspection) {
-        const stamp = JSON.parse(await fs.readFile(path.join(candidate, 'BUILD.json'), 'utf8'));
+        const stamp = await fs.readJson(path.join(candidate, 'BUILD.json'));
         const revision = (await run(root, 'git', ['rev-parse', '--verify', 'HEAD^{commit}'])).trim();
         if (stamp.commit !== revision || stamp.dirty !== false || (await run(root, 'git', ['status', '--porcelain'])).trim())
           throw new UserError('The development checkout changed after runtime preparation. Commit the batch and prepare it again');
@@ -115,7 +113,7 @@ async function runUpdate(operation, target, values, options) {
       if (!runtimes.length) throw Error('No qualified native runtime is available');
       // Reject a mixed candidate before the catalog or any remote node can be changed.
       for (const runtime of runtimes) {
-        const stamp = JSON.parse(await fs.readFile(path.join(runtime, 'packages/0/dist/BUILD.json')));
+        const stamp = await fs.readJson(path.join(runtime, 'packages/0/dist/BUILD.json'));
         if (stamp.commit !== target || stamp.dirty) throw Error('Runtime source differs from the requested candidate');
       }
       progress('Plan ' + id + '. If interrupted, use xec update status ' + id + '; do not replay apply.');

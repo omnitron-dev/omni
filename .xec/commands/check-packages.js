@@ -1,6 +1,4 @@
-import fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
+import { fs, path, tmpdir } from '@xec-sh/ops';
 import * as release from '@xec-sh/ops/release';
 import { checkPackageArchives } from '../release/packages.js';
 import { assertReleaseProducerApi, prepareReleaseArchive } from '../release/build.js';
@@ -12,10 +10,10 @@ export async function checkPackages(root, values = {}) {
   const revision = values.archives ? undefined : await release.releaseCommand(root, 'git', ['rev-parse', 'HEAD']);
   if (revision !== undefined && (!/^[a-f0-9]{40}$/.test(revision) || values.revision && values.revision !== revision))
     throw Error('Package producer source revision differs from HEAD');
-  const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'omnitron-package-check-'));
+  const temporary = await fs.mkdtemp(path.join(tmpdir(), 'omnitron-package-check-'));
   try {
     const artifacts = values.archives
-      ? JSON.parse(await fs.readFile(path.resolve(values.archives), 'utf8'))
+      ? await fs.readJson(path.resolve(values.archives))
       : await release.packReleaseArtifacts(root, temporary, await release.discoverReleasePackages(root), {
         prepareArchive: context => prepareReleaseArchive(context, revision),
       });
@@ -25,7 +23,7 @@ export async function checkPackages(root, values = {}) {
       !/^sha512-[A-Za-z0-9+/]{86}==$/.test(artifact.integrity)))
       throw Error('Invalid release archive inventory');
     await checkPackageArchives(root, artifacts, { consumer: values.installConsumer });
-  } finally { await fs.rm(temporary, { recursive: true, force: true }); }
+  } finally { await fs.remove(temporary); }
 }
 
 export function command(program) {

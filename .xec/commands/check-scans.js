@@ -1,5 +1,4 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
+import { fs, path } from '@xec-sh/ops';
 import { fileURLToPath } from 'node:url';
 import { Pipeline } from '@xec-sh/ops/pipeline';
 import { scanReceiptPrefix } from '../../scripts/lib/scan-receipt.js';
@@ -117,7 +116,7 @@ export function command(program) {
       console.log(gates.length + ' gates, ' + worklists.length + ' worklists. ' + result.gateFindings + ' gates with blocking findings, ' +
         result.worklistFindings + ' worklists with findings, ' + result.unavailable + ' analyzers unavailable');
       if (report) {
-        try { await fs.writeFile(path.resolve(report), JSON.stringify(result, null, 2) + '\n', { flag: 'wx' }); }
+        try { await fs.writeJson(path.resolve(report), result, { spaces: 2, flag: 'wx' }); }
         catch (error) { console.error('Cannot save scan report: ' + error.message); process.exitCode = 2; return; }
       }
       process.exitCode = result.exitCode;

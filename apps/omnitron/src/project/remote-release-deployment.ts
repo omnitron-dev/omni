@@ -1,6 +1,8 @@
 import path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import type { ReleaseManifest } from '../release/manifest.js';
 import { importedMigrationDifferences, changedReleasedMigrations, releaseMigrationSources } from '../release/migrations.js';
+import { verifyRecoveryConsumerSources } from './recovery-consumer-source.js';
 import type { IStackInfo, ReleaseMigrationHistory, RemoteDeploymentPhase, RemoteReleaseDeployment, SelectedRelease } from '../shared/dto/project.js';
 import { readStackRelease, readStackStart } from '../shared/release-reading.js';
 
@@ -75,6 +77,67 @@ export async function verifyDeploymentMigrations(previous: ReleaseSource, next: 
   const unknown = [...imports, ...returns].filter(change => change.kind === 'provenance').map(change => change.detail);
   if (unknown.length) throw new DeploymentMigrationRefusal('provenance-unavailable', unknown, 'Migration producer history cannot be proved');
   compareWorkspaceHistory(before, after, imports.map(change => change.detail), returns.map(change => change.detail));
+}
+
+/** The three-release path admits only complete, first-party, repository-root producers.
+ * Older or composed manifests still use the ordinary bidirectional comparison. */
+async function recoveryInventory({ manifest, root }: ReleaseSource, apps: string[]) {
+  const project = manifest.project;
+  if ((project.directory ?? '.') !== '.' || (project.workspace ?? '.') !== '.' ||
+      !manifest.migrations || manifest.imports?.length || manifest.artifactFailures?.length ||
+      !apps.length || new Set(apps).size !== apps.length ||
+      !isDeepStrictEqual(manifest.artifacts.map(a => a.app).sort(), [...apps].sort()))
+    throw Error('Incomplete repository-root release inventory: ' + manifest.id);
+  const artifacts = manifest.artifacts.map(artifact => {
+    if (artifact.origin || !artifact.packageSource) throw Error('Unverified migration producer: ' + artifact.app);
+    return { app: artifact.app, source: artifact.packageSource };
+  });
+  const directories = artifacts.map(a => a.source.directory);
+  if (new Set(directories).size !== directories.length) throw Error('Ambiguous application package ownership');
+  const programs = artifacts.flatMap(({ source }) =>
+    (source.migrationPrograms ?? []).map(program => ({ ...program, directory: source.directory })));
+  const actual = await releaseMigrationSources(root, project.commit, directories, programs, 'whole-workspace');
+  if (!isDeepStrictEqual(actual.migrations, manifest.migrations)) throw Error('Git migration inventory differs: ' + manifest.id);
+  const producers = new Map<string, { directory: string; programs: string[] }>();
+  const owned = new Set<string>();
+  for (const { app, source } of artifacts) {
+    if (!isDeepStrictEqual(actual.packages.get(source.directory), source)) throw Error('Git package provenance differs: ' + app);
+    for (const file of Object.keys(source.migrations)) {
+      if (!source.migrationPrograms?.length) throw Error('Missing migration program for ' + app);
+      owned.add(path.posix.join(source.directory, file));
+    }
+    producers.set(app, { directory: source.directory, programs: (source.migrationPrograms ?? [])
+      .map(program => JSON.stringify([program.mode, program.source, program.release])).sort() });
+  }
+  if (Object.keys(actual.migrations).some(file => !owned.has(file)))
+    throw Error('Migration history contains files outside the accounted application packages');
+  return { migrations: actual.migrations, producers };
+}
+
+/** Static eligibility for a separately qualified recovery after writes. The application
+ * rehearsal still has to prove that both releases can process each other's records. */
+export async function verifyPostWriteRecoveryMigrations(incumbent: ReleaseSource, candidate: ReleaseSource,
+  recovery: ReleaseSource, apps: string[]): Promise<string[]> {
+  try {
+    if (!incumbent.manifest.project.repo || [candidate, recovery].some(s => s.manifest.project.repo !== incumbent.manifest.project.repo))
+      throw Error('The project repository changed');
+    const [before, next, back] = await Promise.all([recoveryInventory(incumbent, apps),
+      recoveryInventory(candidate, apps), recoveryInventory(recovery, apps)]);
+    if (!isDeepStrictEqual(before.producers, next.producers) || !isDeepStrictEqual(next.producers, back.producers))
+      throw Error('The declared application package or migration program changed');
+    const changed = [...changedReleasedMigrations(before.migrations, next.migrations),
+      ...changedReleasedMigrations(before.migrations, back.migrations)];
+    if (changed.length) throw new DeploymentMigrationRefusal('existing-history-changed', changed, 'Applied migration history changed');
+    compareWorkspaceHistory(next.migrations, back.migrations);
+    const additions = changedReleasedMigrations(next.migrations, before.migrations);
+    if (!additions.length) throw Error('A post-write recovery review requires added migration files');
+    await verifyRecoveryConsumerSources(candidate, recovery);
+    return additions;
+  } catch (error) {
+    if (error instanceof DeploymentMigrationRefusal) throw error;
+    throw new DeploymentMigrationRefusal('provenance-unavailable', [(error as Error).message],
+      'Post-write recovery provenance could not be verified');
+  }
 }
 
 export function confirmsRelease(info: IStackInfo, selection: SelectedRelease): boolean {

@@ -27,6 +27,7 @@ beforeEach(async () => {
   await fs.writeFile(path.join(fixture, '.pnpmfile.cjs'), 'throw Error("pnpmfile must not execute during archive inspection")');
 });
 afterEach(async () => {
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
   for (const server of servers) { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
   servers = [];
@@ -42,8 +43,7 @@ async function server(handler: RequestListener): Promise<string> {
 
 function options(signal?: AbortSignal) {
   return { checkout: fixture, scratch: fixture, ...(signal === undefined ? {} : { signal }), env: {
-    ...process.env,
-    PATH: process.env['PATH'], HOME: path.join(fixture, 'home'), XDG_CONFIG_HOME: path.join(fixture, 'home', '.config'),
+    PATH: path.dirname(process.execPath), HOME: path.join(fixture, 'home'), XDG_CONFIG_HOME: path.join(fixture, 'home', '.config'),
     PNPM_CONFIG_NPMRC_AUTH_FILE: path.join(fixture, 'home', '.npmrc'),
     REGISTRY_FIXTURE_TOKEN: 'secret-never-reported',
   } };
@@ -65,29 +65,24 @@ async function configured(url: string, extra = '') {
 const metadata = (tarball: string) => JSON.stringify({ name, versions: { [version]: { name, version, dist: { tarball } } } });
 
 describe('native pnpm registry configuration and bounded transport', () => {
-  it('refuses omitted ambient loader options before starting a worker or token helper', async () => {
-    const marker = path.join(fixture, 'ambient-loader-ran');
-    const preload = path.join(fixture, 'ambient-loader.mjs');
-    await fs.writeFile(preload, `import fs from 'node:fs';fs.writeFileSync(${JSON.stringify(marker)}, 'unsafe');`);
-    const original = process.env['NODE_OPTIONS'];
-    const injected = `--import=${preload}`;
-    process.env['NODE_OPTIONS'] = injected;
-    const execute = vi.spyOn(ExecutionEngine.prototype, 'execute');
-    try {
-      const env: NodeJS.ProcessEnv = { ...options().env };
-      delete env['NODE_OPTIONS'];
-      const error = await download(pin, { ...options(), env }, async () => bytes).catch(value => value);
-      expect(error).toMatchObject({ code: 'REGISTRY_ARCHIVE_UNAVAILABLE', category: 'environment' });
-      expect(String(error)).toContain('Use a clean build-controller environment');
-      expect(String(error)).not.toContain(injected);
-      expect(execute).not.toHaveBeenCalled();
-      expect(process.env['NODE_OPTIONS']).toBe(injected);
-      await expect(fs.access(marker)).rejects.toThrow();
-    } finally {
-      if (original === undefined) delete process.env['NODE_OPTIONS'];
-      else process.env['NODE_OPTIONS'] = original;
-      execute.mockRestore();
-    }
+  it('runs the worker and its trusted token helper with only the selected environment', async () => {
+    const helper = path.join(fixture, 'environment-check.mjs');
+    await fs.writeFile(helper, `
+      if ('NODE_OPTIONS' in process.env || 'REGISTRY_PARENT_ONLY' in process.env) process.exit(2);
+      process.stdout.write(process.env.REGISTRY_FIXTURE_TOKEN);
+    `);
+    const url = await server((req, res) => {
+      if (req.headers.authorization !== 'Bearer secret-never-reported') res.writeHead(401).end();
+      else res.end(bytes);
+    });
+    await configured(url);
+    await fs.writeFile(path.join(fixture, 'home', '.npmrc'), `${url.slice('http:'.length)}:tokenHelper=${process.execPath} ${helper}\n`);
+    const excluded = '--require=' + path.join(fixture, 'absent-parent-preload.cjs');
+    vi.stubEnv('NODE_OPTIONS', excluded);
+    vi.stubEnv('REGISTRY_PARENT_ONLY', 'synthetic-parent-value');
+    expect(await read({ ...pin, tarball: url + 'blob.tgz' })).toEqual(bytes);
+    expect(process.env['NODE_OPTIONS']).toBe(excluded);
+    expect(process.env['REGISTRY_PARENT_ONLY']).toBe('synthetic-parent-value');
   });
 
   it('uses scoped YAML over npmrc routing and interpolated auth; executes no lifecycle or project hooks', async () => {

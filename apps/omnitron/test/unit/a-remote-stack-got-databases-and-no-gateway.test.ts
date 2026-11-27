@@ -113,7 +113,7 @@ describe('a service a stack turned off', () => {
     const services = { monero: { ports: { rpc: 28082 }, env: {}, docker: { image: 'monero:1' } } } as never;
 
     const containers = resolveInfrastructure({}, services, {
-      monero: { external: { host: '192.168.100.2', ports: { rpc: 28082 } } },
+      monero: { external: { host: '192.168.200.8', ports: { rpc: 28082 } } },
     });
 
     // There is nothing to create; the address reaches the application

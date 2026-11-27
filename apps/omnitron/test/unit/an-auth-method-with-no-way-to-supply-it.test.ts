@@ -8,7 +8,7 @@
  * the registry looked correct. Measured on this console, on the row that
  * names the stack it serves:
  *
- *     16f3dd5a  sample-test  37.27.130.185:22  ○ down  ○ offline
+ *     ab10cd01  sample-test  203.0.113.185:22  ○ down  ○ offline
  *
  * beside a second row for the same machine that did have one and was green.
  *

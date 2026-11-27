@@ -9,7 +9,7 @@
  * the ones that are right on a developer's machine.
  *
  * Measured on the test node, from the config the master had just written to
- * it, beside a `serviceOverrides` naming 192.168.100.2 and mainnet for both
+ * it, beside a `serviceOverrides` naming 192.168.200.8 and mainnet for both
  * chains:
  *
  *     "BITCOIN_RPC_URL":  "http://localhost:18443"
@@ -61,12 +61,12 @@ describe('the network is the stack\'s answer, not the declaration\'s', () => {
   it('uses the network the stack selected', () => {
     const env = resolveCustomServiceEnv(
       bitcoin,
-      { host: '192.168.100.2', ports: { rpc: 8332 }, secrets: { rpc_user: 'sample' } },
+      { host: '192.168.200.8', ports: { rpc: 8332 }, secrets: { rpc_user: 'sample' } },
       'mainnet',
     );
 
     expect(env['BITCOIN_NETWORK']).toBe('mainnet');
-    expect(env['BITCOIN_RPC_URL']).toBe('http://192.168.100.2:8332');
+    expect(env['BITCOIN_RPC_URL']).toBe('http://192.168.200.8:8332');
     expect(env['BITCOIN_RPC_USER']).toBe('sample');
   });
 
@@ -105,7 +105,7 @@ describe('an override names its credentials; the app needs their values', () => 
     'monero-daemon': {
       networkMode: 'mainnet',
       external: {
-        host: '192.168.100.2',
+        host: '192.168.200.8',
         ports: { rpc: 28082 },
         secrets: {
           rpc_user: { secret: 'monero.mainnet.rpc_user' },
@@ -149,7 +149,7 @@ describe('an override names its credentials; the app needs their values', () => 
     >;
 
     expect(out['monero-daemon']!.networkMode).toBe('mainnet');
-    expect(out['monero-daemon']!.external.host).toBe('192.168.100.2');
+    expect(out['monero-daemon']!.external.host).toBe('192.168.200.8');
     expect(out['monero-daemon']!.external.ports).toEqual({ rpc: 28082 });
   });
 

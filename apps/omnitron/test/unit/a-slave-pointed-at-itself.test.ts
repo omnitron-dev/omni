@@ -81,7 +81,7 @@ describe('resolving the address a slave will dial', () => {
     // over SSH when the node's daemon port is closed, and drains its buffer.
     // A master behind NAT — which is where remote stacks are started from —
     // cannot be dialled and does not need to be. Measured while deploying to
-    // the test server: "Refusing to provision 37.27.130.185: this daemon
+    // the test server: "Refusing to provision 203.0.113.185: this daemon
     // listens on 127.0.0.1", from a master that was connected to that node
     // and pulling its metrics as it said so.
     const resolved = await resolveMasterHost({ bindHost: '127.0.0.1' }, node, async () => '127.0.0.1');
@@ -119,7 +119,7 @@ describe('resolving the address a slave will dial', () => {
 
   it('answers "nowhere" for a private master address and a public node', async () => {
     // Measured while building this: the route from this workstation to the
-    // test host at 37.27.130.185 leaves from 10.8.1.1 — a VPN address behind
+    // test host at 203.0.113.185 leaves from 10.9.0.1 — a VPN address behind
     // NAT. Writing it into the slave's config produces a file that looks
     // filled in, parses, starts, and dials an address that does not exist
     // from where the slave stands. Route discovery answers "which of my
@@ -127,8 +127,8 @@ describe('resolving the address a slave will dial', () => {
     // reach", and when ours is private and yours is not, the answer is none.
     const resolved = await resolveMasterHost(
       { bindHost: '0.0.0.0' },
-      { host: '37.27.130.185', sshPort: 22 },
-      async () => '10.8.1.1',
+      { host: '203.0.113.185', sshPort: 22 },
+      async () => '10.9.0.1',
     );
 
     // The distinction the reason has to keep: the address is real, and it is
@@ -136,7 +136,7 @@ describe('resolving the address a slave will dial', () => {
     // config that parses and dials nothing, and the failure would arrive as
     // an empty console days later.
     expect(resolved.host).toBeNull();
-    expect(resolved.reason).toContain('10.8.1.1');
+    expect(resolved.reason).toContain('10.9.0.1');
     expect(resolved.reason).toMatch(/private address a public host cannot reach/i);
   });
 
@@ -144,7 +144,7 @@ describe('resolving the address a slave will dial', () => {
     // Every path that cannot answer returns null. A guess here is the
     // failure this file is named after: a slave pointed at itself, which
     // starts, parses, retries forever and reports nothing.
-    for (const probe of [async () => null, async () => '10.8.1.1', async () => '127.0.0.1']) {
+    for (const probe of [async () => null, async () => '10.9.0.1', async () => '127.0.0.1']) {
       const resolved = await resolveMasterHost({ bindHost: '127.0.0.1' }, node, probe);
       expect(resolved.host).toBeNull();
       expect(resolved.reason).toBeTruthy();
@@ -157,18 +157,18 @@ describe('resolving the address a slave will dial', () => {
     const resolved = await resolveMasterHost(
       { bindHost: '0.0.0.0' },
       { host: '10.8.1.42', sshPort: 22 },
-      async () => '10.8.1.1',
+      async () => '10.9.0.1',
     );
 
-    expect(resolved).toEqual({ host: '10.8.1.1', source: 'route' });
+    expect(resolved).toEqual({ host: '10.9.0.1', source: 'route' });
   });
 
   it('knows which addresses only work inside a network', () => {
-    for (const priv of ['10.8.1.1', '192.168.0.10', '172.16.0.1', '172.31.255.1', '127.0.0.1',
+    for (const priv of ['10.9.0.1', '192.168.0.10', '172.16.0.1', '172.31.255.1', '127.0.0.1',
                         '169.254.1.1', '100.64.0.1', 'localhost', '::1', 'fd00::1', 'fe80::1']) {
       expect(isPrivateAddress(priv), priv).toBe(true);
     }
-    for (const pub of ['37.27.130.185', '8.8.8.8', '172.32.0.1', '100.128.0.1', '192.169.0.1',
+    for (const pub of ['203.0.113.185', '8.8.8.8', '172.32.0.1', '100.128.0.1', '192.169.0.1',
                        'omnitron.example.com']) {
       expect(isPrivateAddress(pub), pub).toBe(false);
     }

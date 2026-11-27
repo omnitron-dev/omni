@@ -46,7 +46,7 @@ beforeEach(async () => {
 const fleet = () => new FleetService(db, { logger: createNullLogger() } as never, undefined);
 
 const self = {
-  hostname: 'MacBook-Pro-Taaliman.local',
+  hostname: 'build-workstation1.example',
   address: '127.0.0.1',
   port: 9700,
   role: 'leader' as const,
@@ -78,7 +78,7 @@ describe.skipIf(!testPg.ok)('a master that forgot its own row', () => {
   });
 
   it('answers a heartbeat for a row that is not there with nothing reached, not with success', async () => {
-    expect(await fleet().heartbeat('40655c07-4824-46b8-b793-af9fce7a383e')).toBe(0);
+    expect(await fleet().heartbeat('ab30cd03-0000-4000-8000-000000000003')).toBe(0);
   });
 
   it('keeps a configured id over the one it registered', async () => {

@@ -6247,7 +6247,7 @@ export class ProjectService extends EventEmitter {
       // on mainnet, at an address only this stack knows. It was left out of
       // the config this resolver was given, so a deployed app was configured
       // with the defaults its own declaration carries. Measured on the test
-      // node, whose chains run at 192.168.100.2 with mainnet credentials:
+      // node, whose chains run at 192.168.200.8 with mainnet credentials:
       //
       //     BITCOIN_RPC_URL  http://localhost:18443   (regtest)
       //     MONERO_DAEMON_URL  http://localhost:38081 (stagenet)
@@ -6464,7 +6464,7 @@ export class ProjectService extends EventEmitter {
 
       // The same target the deployer uses for artifacts — with the node's SSH
       // user and credential. Passing a bare `{ host }` is how the first
-      // attempt failed: `Failed to connect to 37.27.130.185`, an error about
+      // attempt failed: `Failed to connect to 203.0.113.185`, an error about
       // credentials that were sitting in the registry all along.
       const target = leasedTarget ?? await this.targetForStackNode(node);
       // Shared by every stack on the NODE — the literal names no project and

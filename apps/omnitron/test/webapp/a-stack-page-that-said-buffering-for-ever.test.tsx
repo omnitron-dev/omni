@@ -41,7 +41,7 @@ const testStack = (lastSyncAgoMs: number) => ({
   uptime: 60_000,
   nodes: [
     {
-      host: '37.27.130.185',
+      host: '203.0.113.185',
       port: 9700,
       role: 'app',
       label: 'test',

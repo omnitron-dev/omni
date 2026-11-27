@@ -51,12 +51,12 @@ vi.mock('../../src/daemon/daemon-client.js', () => ({
             getStack: async () => ({
               name: 'test',
               type: 'remote',
-              config: { type: 'remote', nodes: [{ host: '37.27.130.185', port: 9700 }] },
+              config: { type: 'remote', nodes: [{ host: '203.0.113.185', port: 9700 }] },
             }),
           }
         : {
             listNodes: async () => [
-              { id: 'node-test', name: 'sample-test', host: '37.27.130.185' },
+              { id: 'node-test', name: 'sample-test', host: '203.0.113.185' },
               { id: 'node-other', name: 'sample-stage', host: '10.0.0.9' },
             ],
           },

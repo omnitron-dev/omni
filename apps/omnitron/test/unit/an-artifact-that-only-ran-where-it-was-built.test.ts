@@ -3,13 +3,13 @@
  *
  * The apps of a remote stack declare omnitron's packages by path:
  *
- *     "@omnitron-dev/titan": "link:/Users/taaliman/projects/.../packages/titan"
+ *     "@omnitron-dev/titan": "link:/Users/operator/projects/.../packages/titan"
  *
  * `pnpm deploy --prod --legacy` was asked to produce a self-contained tree and
  * did, for everything except those. A `link:` range is an instruction to
  * symlink a directory, and pnpm carried it out — relative to where the deploy
  * tree happened to sit, which on the node meant ten `..` segments climbing
- * past `/` into `/Users/taaliman`. Measured on the test node:
+ * past `/` into `/Users/operator`. Measured on the test node:
  *
  *     $ ls node_modules/@omnitron-dev/
  *     common  titan  titan-auth  titan-cache  titan-database  ... (all present)
@@ -67,7 +67,7 @@ const manifest = (name: string, deps: Record<string, string> = {}): PackageManif
 describe('a dependency that names a directory cannot travel', () => {
   it('reads both spellings as one question', () => {
     expect(isWorkspaceRange('workspace:*')).toBe(true);
-    expect(isLinkRange('link:/Users/taaliman/projects/omni/packages/titan')).toBe(true);
+    expect(isLinkRange('link:/Users/operator/projects/omni/packages/titan')).toBe(true);
 
     // The predicate the planner actually asks. `workspace:` was the only one
     // it knew, which is why a `link:` range was not followed, not packed, and
@@ -92,10 +92,10 @@ describe('the closure follows a link out of the repository', () => {
   const workspace: Workspace = new Map([
     ['@sample/main', manifest('@sample/main', {
       '@sample/titan-kit': 'workspace:*',
-      '@omnitron-dev/omnitron': 'link:/Users/taaliman/projects/omni/apps/omnitron',
+      '@omnitron-dev/omnitron': 'link:/Users/operator/projects/omni/apps/omnitron',
       ioredis: '^5.11.1',
     })],
-    ['@sample/titan-kit', manifest('@sample/titan-kit', { '@omnitron-dev/titan-cache': 'link:/Users/taaliman/projects/omni/packages/titan-cache' })],
+    ['@sample/titan-kit', manifest('@sample/titan-kit', { '@omnitron-dev/titan-cache': 'link:/Users/operator/projects/omni/packages/titan-cache' })],
     ['@omnitron-dev/omnitron', manifest('@omnitron-dev/omnitron', { '@omnitron-dev/titan': 'workspace:*' })],
     ['@omnitron-dev/titan-cache', manifest('@omnitron-dev/titan-cache')],
     ['@omnitron-dev/titan', manifest('@omnitron-dev/titan')],
@@ -204,7 +204,7 @@ describe('an artifact is refused before it ships, not after it lands', () => {
     write({ name: '@sample/geo', dependencies: {} });
     fs.mkdirSync(path.join(dir, 'node_modules', '@omnitron-dev'), { recursive: true });
     fs.symlinkSync(
-      '../../../../../../../../../../Users/taaliman/projects/omni/packages/titan',
+      '../../../../../../../../../../Users/operator/projects/omni/packages/titan',
       path.join(dir, 'node_modules', '@omnitron-dev', 'titan'),
     );
 
@@ -212,7 +212,7 @@ describe('an artifact is refused before it ships, not after it lands', () => {
   });
 
   it('refuses a range that still names a directory', () => {
-    write({ name: '@sample/geo', dependencies: { '@omnitron-dev/titan': 'link:/Users/taaliman/omni/packages/titan' } });
+    write({ name: '@sample/geo', dependencies: { '@omnitron-dev/titan': 'link:/Users/operator/omni/packages/titan' } });
 
     expect(() => assertNothingEscapes(dir)).toThrow(/dependency still names a directory/);
   });

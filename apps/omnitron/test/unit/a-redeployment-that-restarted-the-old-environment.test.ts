@@ -8,7 +8,7 @@
  * node never read what it had just been given. Then the app was restarted by
  * name, and a restart starts from the entry the handle captured at the FIRST
  * start. Measured on sample/test, 2026-09-23: payments came back pointed at the
- * bitcoin daemon's previous address (192.168.100.2:8332, refused) with the
+ * bitcoin daemon's previous address (192.168.200.8:8332, refused) with the
  * new one — loopback — sitting in the node's config file; a daemon restart
  * brought it up on the new one in a second.
  *
@@ -26,7 +26,7 @@ import { AppHandle } from '../../src/orchestrator/app-handle.js';
 import { OrchestratorService } from '../../src/orchestrator/orchestrator.service.js';
 import { ProjectService } from '../../src/services/project.service.js';
 
-const OLD = { name: 'sample/deployed/payments', script: 'x', env: { BITCOIN_RPC_URL: 'http://192.168.100.2:8332' } };
+const OLD = { name: 'sample/deployed/payments', script: 'x', env: { BITCOIN_RPC_URL: 'http://192.168.200.8:8332' } };
 const NEW = { name: 'sample/deployed/payments', script: 'x', env: { BITCOIN_RPC_URL: 'http://127.0.0.1:8332' } };
 
 describe('a restart starts from the definition the app was last given', () => {

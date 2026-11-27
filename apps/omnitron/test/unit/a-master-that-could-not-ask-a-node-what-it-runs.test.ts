@@ -10,7 +10,7 @@
  * Measured after the mesh was wired into `fleet health`, against a node that
  * had joined the mesh forty seconds earlier:
  *
- *     fail sample-test (37.27.130.185:9700) — unreachable: Missing required role
+ *     fail sample-test (203.0.113.185:9700) — unreachable: Missing required role
  *
  * `OmnitronDaemon.status`, `getHealth` and `getMetrics` carried
  * `VIEWER_ROLES` — the HUMAN hierarchy, which has no `service_role` in it —

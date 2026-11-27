@@ -68,17 +68,17 @@ describe('a heartbeat for a row called self', () => {
 
   it('beats the row this daemon registered', async () => {
     const heartbeat = vi.fn(async () => 1);
-    const { job, said, scheduler } = heartbeatJob({ heartbeat, selfNodeId: '40655c07-4824-46b8-b793-af9fce7a383e' });
+    const { job, said, scheduler } = heartbeatJob({ heartbeat, selfNodeId: 'ab30cd03-0000-4000-8000-000000000003' });
 
     await job();
 
     expect(scheduler.addInterval).toHaveBeenCalledWith('fleet-heartbeat', 1000, job, { preventOverlap: true });
-    expect(heartbeat).toHaveBeenCalledWith('40655c07-4824-46b8-b793-af9fce7a383e');
+    expect(heartbeat).toHaveBeenCalledWith('ab30cd03-0000-4000-8000-000000000003');
     expect(said('warn')).toEqual([]);
   });
 
   it('says a heartbeat that reached no row', async () => {
-    const { job, said } = heartbeatJob({ heartbeat: vi.fn(async () => 0), selfNodeId: '40655c07-4824-46b8-b793-af9fce7a383e' });
+    const { job, said } = heartbeatJob({ heartbeat: vi.fn(async () => 0), selfNodeId: 'ab30cd03-0000-4000-8000-000000000003' });
 
     await job();
 
@@ -91,7 +91,7 @@ describe('a heartbeat for a row called self', () => {
       if (fail) throw new Error('invalid input syntax for type uuid: "self"');
       return 1;
     });
-    const { job, said } = heartbeatJob({ heartbeat, selfNodeId: '40655c07-4824-46b8-b793-af9fce7a383e' });
+    const { job, said } = heartbeatJob({ heartbeat, selfNodeId: 'ab30cd03-0000-4000-8000-000000000003' });
 
     await job();
     await job();

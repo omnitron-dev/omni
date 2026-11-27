@@ -194,7 +194,7 @@ export class NodeManagerService extends EventEmitter {
    * a hardened node's daemon port is closed to the master — that is why the
    * mesh tunnels over SSH. Measured 2026-09-23 with the health worker
    * detached: `omnitron node check` on sample-test printed `Omnitron: ○
-   * offline` / `Connection timeout to tcp://37.27.130.185:9700` while the
+   * offline` / `Connection timeout to tcp://203.0.113.185:9700` while the
    * mesh held that node `connected via ssh-tunnel, authenticated` and
    * `fleet status` read six apps from it through that connection. The
    * comment above the probe said the SlaveConnector was asked first; the
@@ -410,7 +410,7 @@ export class NodeManagerService extends EventEmitter {
     // edit to either of them, including the one that would have repaired it:
     //
     //     omnitron node update <id> --ssh-auth password
-    //     37.27.130.185:9700 is already registered as "acme-deploy-test"
+    //     203.0.113.185:9700 is already registered as "acme-deploy-test"
     //
     // The guard exists to stop a duplicate being CREATED. Refusing an edit
     // that changes neither the host nor the port cannot prevent one, and it

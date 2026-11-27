@@ -81,7 +81,7 @@ function remoteStackService(deployToStack: RemoteDeployer['deployToStack'] = vi.
 
 const REMOTE = {
   type: 'remote' as const,
-  nodes: [{ host: '37.27.130.185', port: 9700, label: 'test' }],
+  nodes: [{ host: '203.0.113.185', port: 9700, label: 'test' }],
   apps: 'all' as const,
 };
 
@@ -248,13 +248,13 @@ describe('a deployment that reached no node at all', () => {
     const two = {
       ...REMOTE,
       nodes: [
-        { host: '37.27.130.185', port: 9700, label: 'test' },
+        { host: '203.0.113.185', port: 9700, label: 'test' },
         { host: '10.0.0.9', port: 9700, label: 'spare' },
       ],
     };
 
     await expect(svc.startRemoteStack('sample', 'test', two, {})).rejects.toThrow(
-      /37\.27\.130\.185:9700, 10\.0\.0\.9:9700/
+      /203\.0\.113\.185:9700, 10\.0\.0\.9:9700/
     );
   });
 });
@@ -419,7 +419,7 @@ describe('one writer per node', () => {
       script.includes("echo 'ACQUIRED'") ? `HELD 12\t${holder}\n` : 'RELEASED\n';
 
     await expect(svc.startRemoteStack('sample', 'test', REMOTE, {})).rejects.toThrow(
-      /37\.27\.130\.185:9700 is being deployed by laptop-2 pid 4242 \(deploying sample\/test, since .*\); its lease was renewed 12s ago/,
+      /203\.0\.113\.185:9700 is being deployed by laptop-2 pid 4242 \(deploying sample\/test, since .*\); its lease was renewed 12s ago/,
     );
     expect(svc.deployer.provisionSlaveNode).not.toHaveBeenCalled();
     expect(svc.deployer.deployToStack).not.toHaveBeenCalled();

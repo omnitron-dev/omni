@@ -3,7 +3,7 @@
  *
  * Measured twice on 2026-09-23: `fleet status`, `fleet health` and `fleet
  * metrics` took 6.2–6.9 s for one node, and the direct dial to
- * `37.27.130.185:9700` failed at 5.0 s each time before the question went
+ * `203.0.113.185:9700` failed at 5.0 s each time before the question went
  * over the mesh and was answered. The master's own mesh reached that node
  * `via: ssh-tunnel` — its finding that the port is closed to it — and
  * `askMachine` dialled first anyway, for every node, on every command.
@@ -19,7 +19,7 @@ import { describe, it, expect } from 'vitest';
 import { MeshAsker, askMachine } from '../../src/commands/fleet-asking.js';
 
 const STATUS = { apps: [{ name: 'main' }], totalCpu: 1, totalMemory: 2 };
-const NODE = '16f3dd5a-2727-49e5-90a2-d762b57073f6';
+const NODE = 'ab10cd01-0000-4000-8000-000000000001';
 
 /** A daemon port that answers — or holds the caller for as long as it takes to say no. */
 const dialer = (behaviour: 'answers' | 'times out', seen: string[]) =>
@@ -53,7 +53,7 @@ function localDaemon(
           calls.push(`relay:${nodeId}`);
           return relay === 'answers'
             ? { nodeId, reachable: true, error: null, answer: STATUS }
-            : { nodeId, reachable: false, error: 'Slave 37.27.130.185:9700 not connected', answer: null };
+            : { nodeId, reachable: false, error: 'Slave 203.0.113.185:9700 not connected', answer: null };
         },
       };
     },
@@ -61,7 +61,7 @@ function localDaemon(
   })) as never;
 }
 
-const machine = { host: '37.27.130.185', port: 9700, nodeId: NODE };
+const machine = { host: '203.0.113.185', port: 9700, nodeId: NODE };
 
 describe('a node the mesh reaches through a tunnel', () => {
   it('is asked over the mesh, and its shut port is not dialled', async () => {
@@ -81,7 +81,7 @@ describe('a node the mesh reaches through a tunnel', () => {
 
     const r = await askMachine(machine, 'status', new MeshAsker(localDaemon('ssh-tunnel', 'fails', calls)), dialer('times out', dials));
 
-    expect(dials).toEqual(['37.27.130.185:9700']);
+    expect(dials).toEqual(['203.0.113.185:9700']);
     expect(calls.filter((c) => c.startsWith('relay:'))).toHaveLength(1);
     expect(r.via).toBeNull();
     expect(r.error).toMatch(/not connected/);
@@ -104,7 +104,7 @@ describe('everything else keeps the dial first', () => {
     const r = await askMachine(machine, 'status', new MeshAsker(localDaemon('direct', 'answers', calls)), dialer('answers', dials));
 
     expect(r.via).toBe('direct');
-    expect(dials).toEqual(['37.27.130.185:9700']);
+    expect(dials).toEqual(['203.0.113.185:9700']);
     expect(calls).not.toContain(`relay:${NODE}`);
   });
 
@@ -113,7 +113,7 @@ describe('everything else keeps the dial first', () => {
 
     await askMachine(machine, 'status', new MeshAsker(localDaemon('ssh-tunnel', 'answers', [], 'connecting')), dialer('answers', dials));
 
-    expect(dials).toEqual(['37.27.130.185:9700']);
+    expect(dials).toEqual(['203.0.113.185:9700']);
   });
 });
 

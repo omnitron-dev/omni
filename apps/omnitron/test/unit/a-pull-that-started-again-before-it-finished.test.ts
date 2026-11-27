@@ -12,9 +12,9 @@
  * other over each entry's claim, and they advance in lockstep: more work for
  * the same progress, which makes the next pull slower still.
  *
- * Measured in the master's own log, test node 37.27.130.185, 2026-09-22:
+ * Measured in the master's own log, test node 203.0.113.185, 2026-09-22:
  *
- *     17:09:18.237  Sync pull failed  Rate limit exceeded for node 16f3dd5a…  Max 60 batches/min.
+ *     17:09:18.237  Sync pull failed  Rate limit exceeded for node ab10cd01…  Max 60 batches/min.
  *     17:09:18.941 … 17:09:19.063   nine pulls finish within 122 ms —
  *                                   eight of 7 918 entries and one of 7 362
  *
@@ -162,7 +162,7 @@ function connected(peer: unknown, sync: unknown) {
   });
   connectors.push(connector);
   const conn = {
-    config: { host: '203.0.113.7', port: 9700, nodeId: '16f3dd5a-2727-49e5-90a2-d762b57073f6' },
+    config: { host: '203.0.113.7', port: 9700, nodeId: 'ab10cd01-0000-4000-8000-000000000001' },
     status: 'connected' as const,
     netron: null,
     peer,

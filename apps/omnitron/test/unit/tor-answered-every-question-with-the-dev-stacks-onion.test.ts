@@ -13,6 +13,8 @@ vi.mock('@xec-sh/kit', () => ({
   prism: new Proxy({}, { get: () => (s: string) => s }),
 }));
 
+// Both v3 fixtures encode 32 repeated public-key bytes (0x41 or 0x42)
+// followed by the Tor checksum and version. No service lookup is needed.
 const DEV_PORTAL = 'ifaucqkbifaucqkbifaucqkbifaucqkbifaucqkbifaucqkbifa2mryd.onion';
 const OTHER_PORTAL = 'ijbeeqscijbeeqscijbeeqscijbeeqscijbeeqscijbeeqscijbezhid.onion';
 const devId = '1'.repeat(64);

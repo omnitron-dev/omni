@@ -2,10 +2,10 @@
  * One host received the bundle twice, at the same time.
  *
  * A node registry holds NAMES, and nothing stops two of them pointing at the
- * same box. Measured on the console's own registry:
+ * same box. These fixture rows represent two registrations for one endpoint.
  *
- *     16f3dd5a  sample-test          37.27.130.185:22
- *     126457d0  acme-deploy-test   37.27.130.185:22
+ *     ab10cd01  sample-test          203.0.113.185:22
+ *     ab20cd02  acme-deploy-test   203.0.113.185:22
  *
  * `fleet upgrade` listed both as targets, so one machine got the transfer,
  * the `npm install` and the daemon restart twice — the second beginning
@@ -38,8 +38,8 @@ describe('one machine, one upgrade', () => {
   it('upgrades a host once when two names point at it', () => {
     const plan = planUpgrade(
       [
-        node('sample-test', { address: '37.27.130.185:22' }),
-        node('acme-deploy-test', { address: '37.27.130.185:22' }),
+        node('sample-test', { address: '203.0.113.185:22' }),
+        node('acme-deploy-test', { address: '203.0.113.185:22' }),
       ],
       TARGET,
     );
@@ -52,8 +52,8 @@ describe('one machine, one upgrade', () => {
     // would reasonably try again.
     const plan = planUpgrade(
       [
-        node('sample-test', { address: '37.27.130.185:22' }),
-        node('acme-deploy-test', { address: '37.27.130.185:22' }),
+        node('sample-test', { address: '203.0.113.185:22' }),
+        node('acme-deploy-test', { address: '203.0.113.185:22' }),
       ],
       TARGET,
     );
@@ -62,7 +62,7 @@ describe('one machine, one upgrade', () => {
     expect(skipped.decision.action).toBe('skip');
     if (skipped.decision.action !== 'skip') return;
     expect(skipped.decision.because).toContain('sample-test');
-    expect(skipped.decision.because).toContain('37.27.130.185:22');
+    expect(skipped.decision.because).toContain('203.0.113.185:22');
   });
 
   it('keeps upgrading genuinely different machines', () => {

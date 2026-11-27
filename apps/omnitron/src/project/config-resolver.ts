@@ -246,7 +246,7 @@ export function resolveCustomServiceEnv(
     // network its own declaration named. Measured on the test node, where
     // the stack says `mainnet` for both chains:
     //
-    //     BITCOIN_RPC_URL  http://192.168.100.2:8332   (mainnet)
+    //     BITCOIN_RPC_URL  http://192.168.200.8:8332   (mainnet)
     //     BITCOIN_NETWORK  regtest
     //
     // An application that believes it is on regtest while talking to mainnet

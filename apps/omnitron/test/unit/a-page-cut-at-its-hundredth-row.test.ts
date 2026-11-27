@@ -108,7 +108,7 @@ describe('every row of a page is printed whole', () => {
         row({
           action: 'node.bundle.activate',
           resourceType: 'node',
-          resourceId: '16f3dd5a-2727-49e5-90a2-d762b57073f6',
+          resourceId: 'ab10cd01-0000-4000-8000-000000000001',
           details: { version: '0.4.1' },
           createdAt: new Date(Date.UTC(2026, 8, 20, 15, 37, 31) - i * 1000).toISOString(),
         }),
@@ -121,7 +121,7 @@ describe('every row of a page is printed whole', () => {
     expect(lines).toHaveLength(200);
     expect(out, 'no cell was cut').not.toContain('...');
     expect(lines.filter((l) => l.includes('│ node.bundle.activate ')), 'every older action whole').toHaveLength(100);
-    expect(lines.filter((l) => l.includes('node:16f3dd5a-2727-49e5-90a2-d762b57073f6'))).toHaveLength(100);
+    expect(lines.filter((l) => l.includes('node:ab10cd01-0000-4000-8000-000000000001'))).toHaveLength(100);
     expect(lines[199]).toContain('2026-09-20T15:35:52Z');
   });
 });

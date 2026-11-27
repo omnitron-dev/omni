@@ -27,7 +27,7 @@ describe('a closed socket is not a failed call', () => {
     // Every one of these was observed in this fleet's logs.
     for (const m of [
       'Socket closed during RPC',
-      'Slave 37.27.130.185:9700 not connected',
+      'Slave 203.0.113.185:9700 not connected',
       'write EPIPE',
       'read ECONNRESET',
       'Socket is not open',

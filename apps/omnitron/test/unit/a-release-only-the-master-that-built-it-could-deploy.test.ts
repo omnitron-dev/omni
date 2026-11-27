@@ -865,7 +865,7 @@ describe('whose key opens the store', () => {
   it('takes https and loopback http, and refuses http elsewhere, credentials in the address, and fields it does not read', () => {
     expect(parseStoreConfig(configFor({ endpoint: 'https://s3.example.com' }), 'the court').endpoint).toBe('https://s3.example.com');
     expect(parseStoreConfig(configFor({ endpoint: 'http://localhost:9000' }), 'the court').endpoint).toBe('http://localhost:9000');
-    expect(() => parseStoreConfig(configFor({ endpoint: 'http://192.168.100.2:9000' }), 'the court')).toThrow(/plain http to 192\.168\.100\.2/);
+    expect(() => parseStoreConfig(configFor({ endpoint: 'http://192.168.200.8:9000' }), 'the court')).toThrow(/plain http to 192\.168\.200\.8/);
     expect(() => parseStoreConfig(configFor({ endpoint: 'https://user:pass@s3.example.com' }), 'the court')).toThrow(/credentials in the address/);
     expect(() => parseStoreConfig(configFor({ forcePathStlye: false }), 'the court')).toThrow(/'forcePathStlye', which it does not read/);
     expect(() => parseStoreConfig(undefined, 'the court')).toThrow(/No artifact store is configured/);

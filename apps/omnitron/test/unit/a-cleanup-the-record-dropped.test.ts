@@ -54,7 +54,7 @@ function printed(over: Record<string, unknown> = {}): string {
       { name: 'revocation-live', outcome: 'passed', ms: 5776 },
       { name: 'dead-tables:main', outcome: 'failed', ms: 900 },
     ],
-    onNode: { claimed: true, hosts: ['37.27.130.185'], matched: true },
+    onNode: { claimed: true, hosts: ['203.0.113.185'], matched: true },
     cleanup: CLEANUP,
     ...over,
   })}\n`;
@@ -122,7 +122,7 @@ describe('the command says what the run left', () => {
       path: `${root}/${RELEASE}/attestations/test.json`,
       gates: 36,
       passed: 35,
-      node: '37.27.130.185:22',
+      node: '203.0.113.185:22',
       scriptsFrom: 'release',
       sourceFiles: 2635,
       accounts: 'provisioned',

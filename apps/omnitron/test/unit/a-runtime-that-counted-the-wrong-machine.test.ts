@@ -60,7 +60,7 @@ function service(opts: {
   const stackConfig = {
     type: opts.type,
     apps: 'all' as const,
-    nodes: opts.nodes ?? (opts.type === 'remote' ? [{ host: '37.27.130.185', port: 9700 }] : []),
+    nodes: opts.nodes ?? (opts.type === 'remote' ? [{ host: '203.0.113.185', port: 9700 }] : []),
   };
   const svc: any = Object.create(ProjectService.prototype);
   Object.assign(svc, {
@@ -106,7 +106,7 @@ describe('a remote stack is counted where it runs', () => {
     });
     const runtime = await service({
       type: 'remote',
-      nodes: [{ host: '37.27.130.185' }, { host: 'down.example' }],
+      nodes: [{ host: '203.0.113.185' }, { host: 'down.example' }],
       invokeOnSlave: invokeOnSlave as never,
     }).getStackStatus('sample', 'test');
 
@@ -191,7 +191,7 @@ describe('«this stack is already running» is asked of the machine that runs it
     const stackConfig = {
       type: 'remote' as const,
       apps: 'all' as const,
-      nodes: [{ host: '37.27.130.185', port: 9700 }],
+      nodes: [{ host: '203.0.113.185', port: 9700 }],
     };
     const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
     const svc: any = Object.create(ProjectService.prototype);

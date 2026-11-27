@@ -8,7 +8,7 @@
  * master was deploying to that node through the tunnel:
  *
  *     SERVER     HOST                 STATUS   APPS  CPU  MEMORY
- *     sample-test  37.27.130.185:9700   offline  0     -    -
+ *     sample-test  203.0.113.185:9700   offline  0     -    -
  *
  * against a node answering `appsTotal: 6, appsOnline: 6` with 3001–3007
  * listening. The fleet view is where an operator looks to find out whether
@@ -81,15 +81,15 @@ describe('a machine is asked the way it can be reached', () => {
   it('falls back to the mesh for a registered node', async () => {
     const calls: string[] = [];
     const r = await askMachine(
-      { host: '37.27.130.185', port: 9700, nodeId: '16f3dd5a' },
+      { host: '203.0.113.185', port: 9700, nodeId: 'ab10cd01' },
       'status',
-      new MeshAsker(localDaemon({ nodeId: '16f3dd5a', reachable: true, error: null, answer: STATUS }, true, calls)),
+      new MeshAsker(localDaemon({ nodeId: 'ab10cd01', reachable: true, error: null, answer: STATUS }, true, calls)),
       dialer('refuses'),
     );
 
     expect(r.via).toBe('mesh');
     expect(r.value).toEqual(STATUS);
-    expect(calls).toEqual(['status:16f3dd5a']);
+    expect(calls).toEqual(['status:ab10cd01']);
   });
 
   it('does not reach for the mesh when the dial worked', async () => {
@@ -138,7 +138,7 @@ describe('a machine is asked the way it can be reached', () => {
     // Without it there is no mesh at all, and "unreachable" would name the
     // wrong machine.
     const r = await askMachine(
-      { host: '37.27.130.185', port: 9700, nodeId: '16f3dd5a' },
+      { host: '203.0.113.185', port: 9700, nodeId: 'ab10cd01' },
       'status',
       new MeshAsker(localDaemon(null, false)),
       dialer('refuses'),

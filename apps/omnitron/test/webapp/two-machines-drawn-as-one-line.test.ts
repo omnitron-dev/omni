@@ -10,14 +10,14 @@
  * between two values rather than as two machines.
  *
  * Measured on the first node to join the mesh: 785 samples arrived under
- * `app: omnitron`, `node: 16f3dd5a-…`, alongside the master's own.
+ * `app: omnitron`, `node: ab10cd01-…`, alongside the master's own.
  */
 
 import { describe, it, expect } from 'vitest';
 
 import { seriesLabel } from '../../webapp/src/pages/metrics.js';
 
-const NAMES = { '16f3dd5a-2727-49e5-90a2-d762b57073f6': 'sample-test' };
+const NAMES = { 'ab10cd01-0000-4000-8000-000000000001': 'sample-test' };
 
 describe('naming a chart line', () => {
   it("leaves the master's own readings alone", () => {
@@ -26,13 +26,13 @@ describe('naming a chart line', () => {
 
   it('says which machine a remote reading came from', () => {
     expect(
-      seriesLabel({ app: 'omnitron', labels: { node: '16f3dd5a-2727-49e5-90a2-d762b57073f6' } }, NAMES),
+      seriesLabel({ app: 'omnitron', labels: { node: 'ab10cd01-0000-4000-8000-000000000001' } }, NAMES),
     ).toBe('omnitron · sample-test');
   });
 
   it('separates two machines running the same app', () => {
     const master = seriesLabel({ app: 'omnitron', labels: {} }, NAMES);
-    const remote = seriesLabel({ app: 'omnitron', labels: { node: '16f3dd5a-2727-49e5-90a2-d762b57073f6' } }, NAMES);
+    const remote = seriesLabel({ app: 'omnitron', labels: { node: 'ab10cd01-0000-4000-8000-000000000001' } }, NAMES);
 
     expect(master).not.toBe(remote);
   });
@@ -49,7 +49,7 @@ describe('naming a chart line', () => {
     // what a line is called and only one of them knew about nodes.
     expect(seriesLabel({ app: 'sample/payments', labels: {} }, NAMES)).toBe('payments');
     expect(
-      seriesLabel({ app: 'sample/payments', labels: { node: '16f3dd5a-2727-49e5-90a2-d762b57073f6' } }, NAMES),
+      seriesLabel({ app: 'sample/payments', labels: { node: 'ab10cd01-0000-4000-8000-000000000001' } }, NAMES),
     ).toBe('payments · sample-test');
   });
 
@@ -62,7 +62,7 @@ describe('naming a chart line', () => {
     expect(seriesLabel({ app: 'sample/dev/storage/http', labels: {} }, NAMES)).toBe('storage/http');
     expect(seriesLabel({ app: 'sample/dev/main', labels: {} }, NAMES)).toBe('main');
     expect(
-      seriesLabel({ app: 'sample/deployed/main/http', labels: { node: '16f3dd5a-2727-49e5-90a2-d762b57073f6' } }, NAMES),
+      seriesLabel({ app: 'sample/deployed/main/http', labels: { node: 'ab10cd01-0000-4000-8000-000000000001' } }, NAMES),
     ).toBe('main/http · sample-test');
   });
 });

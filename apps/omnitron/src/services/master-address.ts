@@ -108,7 +108,7 @@ export async function localAddressToward(
  * stacks are started from, cannot be dialled by anything and does not need
  * to be. Measured while deploying a stack to the test server:
  *
- *     Refusing to provision 37.27.130.185: this daemon listens on 127.0.0.1
+ *     Refusing to provision 203.0.113.185: this daemon listens on 127.0.0.1
  *
  * — from a master that was, at that moment, connected to that very node and
  * pulling its metrics.
@@ -160,7 +160,7 @@ export async function resolveMasterHost(
     // private and the node is not, it positively cannot.
     //
     // Measured 2026-09-14, provisioning the test host from this workstation:
-    // the route to 37.27.130.185 leaves from 10.8.1.1 — a VPN address behind
+    // the route to 203.0.113.185 leaves from 10.9.0.1 — a VPN address behind
     // NAT. Handing that to the slave produces a config that looks filled in,
     // parses, starts, and dials an address that does not exist from where it
     // stands. The failure would arrive as an empty console, days later.

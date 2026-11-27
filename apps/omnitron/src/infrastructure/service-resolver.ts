@@ -232,11 +232,11 @@ export function applyManagedDefaults(spec: ResolvedContainer): ResolvedContainer
   //
   // Docker's default is every interface, and Docker's iptables rules are
   // inserted ahead of ufw's — so a published port is reachable from the
-  // internet no matter what the host firewall says. Measured on the test
-  // server, whose ufw allows 22/tcp and nothing else:
+  // internet despite the host firewall. This example uses a documentation
+  // address to illustrate a host whose ufw rules allow only 22/tcp.
   //
-  //     nc -vz 37.27.130.185 9700   → timed out (ufw, as configured)
-  //     nc -vz 37.27.130.185 5480   → OPEN      (docker, straight past it)
+  //     nc -vz 203.0.113.185 9700   → timed out (ufw, as configured)
+  //     nc -vz 203.0.113.185 5480   → OPEN      (docker, straight past it)
   //
   // 5480 is omnitron's own Postgres. An operator who reads their firewall
   // rules and concludes the database is private is reading a control that

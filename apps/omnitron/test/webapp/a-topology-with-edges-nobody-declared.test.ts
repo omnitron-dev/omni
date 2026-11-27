@@ -100,7 +100,7 @@ const STACKS: IStackInfo[] = [
     gateway: ['sample-dev-gateway', 8080],
     tor: ['sample-dev-tor', null],
   }),
-  stack('test', 'remote', node('37.27.130.185', 'test', 'slave'), (a) => `sample/deployed/${a}`, {
+  stack('test', 'remote', node('203.0.113.185', 'test', 'slave'), (a) => `sample/deployed/${a}`, {
     postgres: ['sample-test-postgres', 5432],
     gateway: ['sample-test-gateway', 8080],
   }),
@@ -188,7 +188,7 @@ describe('a topology with edges nobody declared', () => {
 
     expect(servers.map((s) => [s.address, s.role, s.stacks])).toEqual([
       ['localhost:9700', 'master', ['dev']],
-      ['37.27.130.185:9700', 'slave', ['test']],
+      ['203.0.113.185:9700', 'slave', ['test']],
       ['10.0.0.9:9700', 'slave', ['staging']],
     ]);
     expect(servers[1]!.apps).toEqual(['test/main', 'test/storage', 'test/payments']);

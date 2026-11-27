@@ -55,9 +55,9 @@ function fakeHost(answers: Record<string, string | null>, files: Record<string, 
 
 const interfaces = (): NodeJS.Dict<NetworkInterfaceInfo[]> => ({
   lo: [{ address: '127.0.0.1', family: 'IPv4', internal: true } as NetworkInterfaceInfo],
-  eth0: [{ address: '37.27.130.185', family: 'IPv4', internal: false } as NetworkInterfaceInfo],
+  eth0: [{ address: '203.0.113.185', family: 'IPv4', internal: false } as NetworkInterfaceInfo],
   br0: [
-    { address: '192.168.100.2', family: 'IPv4', internal: false, mac: 'aa:bb:cc:dd:ee:ff' } as NetworkInterfaceInfo,
+    { address: '192.168.200.8', family: 'IPv4', internal: false, mac: 'aa:bb:cc:dd:ee:ff' } as NetworkInterfaceInfo,
   ],
 });
 
@@ -102,7 +102,7 @@ const bitcoin = {
 const deps = (host: HostRunner, calls: Array<{ url: string; auth: RpcAuth | null }> = []): InspectionDeps => ({
   host,
   interfaces,
-  reach: async (h, port) => h === '192.168.100.2' && port === 28082,
+  reach: async (h, port) => h === '192.168.200.8' && port === 28082,
   jsonRpc: async (url, method, auth) => {
     calls.push({ url, auth });
     return {
@@ -123,7 +123,7 @@ describe('a service the stack reaches elsewhere', () => {
           'monero-daemon': {
             networkMode: 'mainnet',
             external: {
-              host: '192.168.100.2',
+              host: '192.168.200.8',
               ports: { rpc: 28082 },
               secrets: { rpc_user: 'sample', rpc_password: 'from-the-vault' },
             },
@@ -134,13 +134,13 @@ describe('a service the stack reaches elsewhere', () => {
     );
 
     const external = reading.services[0]!.external!;
-    expect(external).toMatchObject({ host: '192.168.100.2', port: 28082, local: true, reachable: true });
+    expect(external).toMatchObject({ host: '192.168.200.8', port: 28082, local: true, reachable: true });
     expect(external.probe?.result).toMatchObject({ synchronized: true, nettype: 'mainnet' });
     expect(external.probe?.report).toEqual(['nettype', 'height', 'target_height', 'synchronized']);
     // As the stack's credentials, not the laptop's the declaration's check names.
     expect(calls).toEqual([
       {
-        url: 'http://192.168.100.2:28082/json_rpc',
+        url: 'http://192.168.200.8:28082/json_rpc',
         auth: { type: 'digest', user: 'sample', password: 'from-the-vault' },
       },
     ]);
@@ -151,7 +151,7 @@ describe('a service the stack reaches elsewhere', () => {
     const reading = await inspectHost(
       {
         services: { bitcoin },
-        overrides: { bitcoin: { networkMode: 'mainnet', external: { host: '192.168.100.2', ports: { rpc: 8332 } } } },
+        overrides: { bitcoin: { networkMode: 'mainnet', external: { host: '192.168.200.8', ports: { rpc: 8332 } } } },
       },
       deps(fakeHost({}).host, calls)
     );

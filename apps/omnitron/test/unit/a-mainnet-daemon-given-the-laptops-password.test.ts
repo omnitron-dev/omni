@@ -89,7 +89,7 @@ describe('how a stack runs a service', () => {
   });
 
   it('not at all when the stack reaches it elsewhere', () => {
-    expect(bindService(bitcoin, { external: { host: '192.168.100.2', ports: { rpc: 8332 } } }).provisioning).toBe(
+    expect(bindService(bitcoin, { external: { host: '192.168.200.8', ports: { rpc: 8332 } } }).provisioning).toBe(
       'external'
     );
   });

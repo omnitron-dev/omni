@@ -99,7 +99,7 @@ describe('a firewall it could not read, called inactive', () => {
     const deployer = new RemoteDeployer(logger, execution);
 
     await (deployer as unknown as { openGatewayPath(t: unknown, p: string, s: string): Promise<void> }).openGatewayPath(
-      { host: '37.27.130.185', username: 'deploy' },
+      { host: '203.0.113.185', username: 'deploy' },
       'sample',
       'test',
     );

@@ -4,8 +4,8 @@ import type { INodeHealthSummary } from '../../src/workers/types.js';
  *
  * Measured 2026-09-23 on the live master:
  *
- *     $ omnitron node check 16f3dd5a          # the id `node list` prints
- *     Failed: Node not found: 16f3dd5a
+ *     $ omnitron node check ab10cd01          # the id `node list` prints
+ *     Failed: Node not found: ab10cd01
  *
  * and at 08:49:56.649Z the master logged «Health monitor worker unavailable —
  * serving this check from the daemon» although the worker was alive and
@@ -22,7 +22,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 import { NodeManagerRpcService } from '../../src/services/node-manager.rpc-service.js';
 
-const REGISTERED = '16f3dd5a-2727-49e5-90a2-d762b57073f6';
+const REGISTERED = 'ab10cd01-0000-4000-8000-000000000001';
 
 const summary: INodeHealthSummary = {
   nodeId: REGISTERED,
@@ -41,7 +41,7 @@ const summary: INodeHealthSummary = {
 /** The registry, holding one node, and the daemon's own answers about it. */
 function registry() {
   return {
-    getNode: vi.fn((id: string) => (id === REGISTERED ? { id, name: 'sample-test', host: '37.27.130.185' } : null)),
+    getNode: vi.fn((id: string) => (id === REGISTERED ? { id, name: 'sample-test', host: '203.0.113.185' } : null)),
     checkNodeStatus: vi.fn(async (id: string) => ({
       nodeId: id, pingReachable: true, pingLatencyMs: 40, sshConnected: null, sshLatencyMs: null,
       omnitronConnected: true, checkedAt: new Date().toISOString(),
@@ -71,7 +71,7 @@ describe('a node id the registry does not hold', () => {
     const rpc = new NodeManagerRpcService(nodes);
     rpc.setHealthWorkerProxy(worker);
 
-    await expect(rpc.checkNodeStatus({ id: '16f3dd5a' })).rejects.toThrow(/Node with id 16f3dd5a not found/);
+    await expect(rpc.checkNodeStatus({ id: 'ab10cd01' })).rejects.toThrow(/Node with id ab10cd01 not found/);
 
     expect(worker.triggerCheck).not.toHaveBeenCalled();
     expect(rpc.hasHealthWorker()).toBe(true);
@@ -92,7 +92,7 @@ describe('a node id the registry does not hold', () => {
     rpc.setHealthWorkerProxy(liveWorker());
 
     expect(await rpc.getNodeHealthSummaries()).toHaveLength(1);
-    await rpc.checkNodeStatus({ id: '16f3dd5a' }).catch(() => undefined);
+    await rpc.checkNodeStatus({ id: 'ab10cd01' }).catch(() => undefined);
     expect(await rpc.getNodeHealthSummaries()).toHaveLength(1);
   });
 });

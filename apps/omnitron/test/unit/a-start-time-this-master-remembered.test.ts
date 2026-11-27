@@ -50,7 +50,7 @@ function service(opts: {
   const stackConfig = {
     type: opts.type,
     apps: 'all' as const,
-    nodes: opts.type === 'remote' ? [{ host: '37.27.130.185', port: 9700 }] : [],
+    nodes: opts.type === 'remote' ? [{ host: '203.0.113.185', port: 9700 }] : [],
   };
   const asked: string[] = [];
   const svc: any = Object.create(ProjectService.prototype);

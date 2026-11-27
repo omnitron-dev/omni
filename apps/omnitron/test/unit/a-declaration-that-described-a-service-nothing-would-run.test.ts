@@ -345,7 +345,7 @@ describe('a service the stack declares external', () => {
           variants: { mainnet: { dataDir: '/var/lib/bitcoind' } },
         },
       },
-      { networkMode: 'mainnet', external: { host: '192.168.100.2', ports: { rpc: 8332 } } },
+      { networkMode: 'mainnet', external: { host: '192.168.200.8', ports: { rpc: 8332 } } },
     );
 
     expect(chosen).toBeNull();

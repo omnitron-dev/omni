@@ -1927,7 +1927,7 @@ export class BackupService {
    *
    * A stack whose infrastructure is not on this host used to be skipped with
    * `if (!infra) continue`, and nothing else ever mentioned it. On the master
-   * that is sample/test, whose database container runs on 37.27.130.185: every
+   * that is sample/test, whose database container runs on 203.0.113.185: every
    * `all` pass was `{"total":6}` — sample/dev's six — while `backup list`
    * printed «Found 380 backup(s)» and `backup schedules` «all hourly».
    * Remote stacks are still not dumped from here; they are now named.

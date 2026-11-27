@@ -228,7 +228,7 @@ export function planBuildRoot(
  *
  * From the REAL path, because that is where pnpm resolves a relative link
  * from. The registry holds `omni/internal/sample`, a symlink to
- * `~/projects/examples/sample`; resolved from the symlink, `../../luxquant/…` named
+ * `~/projects/examples/sample`; resolved from the symlink, `../../platform/…` named
  * a directory that does not exist, and the first `git` run there failed with
  * a bare `spawn git ENOENT`.
  */

@@ -3,7 +3,7 @@
  *
  * Measured 2026-09-23 on the master: `omnitron infra status` printed twelve
  * `sample-dev-*` / `omnitron-*` containers with no host and no stack column,
- * and the six containers of the test stack — on 37.27.130.185 — were
+ * and the six containers of the test stack — on 203.0.113.185 — were
  * invisible, with nothing to say they existed. `omnitron infra logs tor`
  * printed `sample-dev-tor`'s log bare: the first container whose NAME
  * contained «tor», on this machine, whatever stack the operator meant.
@@ -47,7 +47,7 @@ const getStack = vi.fn(async ({ project, stack }: { project: string; stack: stri
     ? {
         name: stack,
         type: 'remote',
-        nodes: [{ host: '37.27.130.185', port: 9700, role: 'worker', label: null, daemonRole: 'slave', connected: true, lastSeen: null, syncStatus: null }],
+        nodes: [{ host: '203.0.113.185', port: 9700, role: 'worker', label: null, daemonRole: 'slave', connected: true, lastSeen: null, syncStatus: null }],
         infrastructure: {
           ready: false,
           services: {
@@ -117,7 +117,7 @@ describe('infra status', () => {
     await infraStatusCommand({ stack: 'sample/test' });
 
     expect(getStack).toHaveBeenCalledWith({ project: 'sample', stack: 'test' });
-    expect(text()).toContain('Containers of sample/test on 37.27.130.185 — asked of the node through the daemon');
+    expect(text()).toContain('Containers of sample/test on 203.0.113.185 — asked of the node through the daemon');
     expect(tables[0]!.map((r) => r['container'])).toEqual(['sample-test-postgres', 'sample-test-tor']);
     expect(tables[0]?.[1]).toMatchObject({ status: 'restarting', health: 'none' });
   });
@@ -230,7 +230,7 @@ describe('infra logs', () => {
     await infraLogsCommand('tor', { stack: 'sample/test', lines: '20' });
 
     expect(getContainerLogs).not.toHaveBeenCalled();
-    expect(text()).toContain('The containers of sample/test run on 37.27.130.185, not on this machine');
+    expect(text()).toContain('The containers of sample/test run on 203.0.113.185, not on this machine');
     expect(text()).toContain('docker logs --tail 20 sample-test-tor');
     expect(process.exitCode).toBe(1);
   });

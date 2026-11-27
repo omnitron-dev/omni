@@ -291,7 +291,7 @@ export interface INodeClusterState {
  *
  * `host` is `host:sshPort`, the MACHINE, and it is here because two registry
  * entries can name one box. Measured: `sample-test` and `acme-deploy-test`,
- * both `37.27.130.185:22`, listed as two targets — one host would have
+ * both `203.0.113.185:22`, listed as two targets — one host would have
  * received the bundle twice, the second install running while the first was
  * still switching `current` underneath it. The plan collapses them and says
  * so in `because`; showing the address is how an operator can see that the

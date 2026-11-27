@@ -2,12 +2,12 @@
  * `omnitron project list` printed two projects under one path.
  *
  * The Path column is 50 wide and the table cuts a cell on the right.
- * Measured 2026-09-23 on the development master:
+ * Example with a common checkout prefix:
  *
- *     │ sample      │ /Users/taaliman/projects/luxquant/omnitron-dev/... │
- *     │ omnitron  │ /Users/taaliman/projects/luxquant/omnitron-dev/... │
+ *     │ sample    │ /Users/operator/projects/platform/omnitron-dev/... │
+ *     │ omnitron  │ /Users/operator/projects/platform/omnitron-dev/... │
  *
- * — `…/omni/internal/sample` and `…/omni/apps/omnitron`, 65 characters each
+ * — `…/omni/internal/sample` and `…/omni/apps/omnitron`, 67 and 65 characters
  * with the first 52 shared, so the 47 the column kept were the same 47. The
  * part that tells two projects apart is the end, and that is the part cut.
  *
@@ -90,7 +90,7 @@ describe('project list', () => {
   it('prints two projects under two paths, each with the end that tells it apart', async () => {
     // A shared prefix longer than the column, outside any home directory, so
     // the outcome does not depend on the machine the court runs on.
-    const shared = '/srv/omnitron-court/projects/luxquant/omnitron-dev/omni';
+    const shared = '/srv/omnitron-court/projects/platform/omnitron-dev/omni';
     answer.projects = [project('sample', `${shared}/internal/sample`), project('omnitron', `${shared}/apps/omnitron`)];
 
     const out = await printed(() => projectListCommand());
@@ -120,27 +120,27 @@ describe('project list', () => {
 });
 
 describe('displayPath', () => {
-  const home = '/Users/taaliman';
-  const sample = '/Users/taaliman/projects/luxquant/omnitron-dev/omni/internal/sample';
-  const omnitron = '/Users/taaliman/projects/luxquant/omnitron-dev/omni/apps/omnitron';
+  const home = '/Users/operator';
+  const sample = '/Users/operator/projects/platform/omnitron-dev/omni/internal/sample';
+  const omnitron = '/Users/operator/projects/platform/omnitron-dev/omni/apps/omnitron';
 
   it('the two measured paths: distinct, within the column, ending where they differ', () => {
     const a = displayPath(sample, 50, home);
     const b = displayPath(omnitron, 50, home);
 
-    expect(a).toBe('.../luxquant/omnitron-dev/omni/internal/sample');
-    expect(b).toBe('.../luxquant/omnitron-dev/omni/apps/omnitron');
+    expect(a).toBe('.../platform/omnitron-dev/omni/internal/sample');
+    expect(b).toBe('.../platform/omnitron-dev/omni/apps/omnitron');
     expect(a.length).toBeLessThanOrEqual(50);
     expect(b.length).toBeLessThanOrEqual(50);
   });
 
   it('shows the home directory as ~, and leaves a path that fits whole', () => {
-    expect(displayPath('/Users/taaliman/projects/omni', 50, home)).toBe('~/projects/omni');
+    expect(displayPath('/Users/operator/projects/omni', 50, home)).toBe('~/projects/omni');
     expect(displayPath('/opt/sample', 50, home)).toBe('/opt/sample');
   });
 
   it('abbreviates the home directory only as a whole segment', () => {
-    expect(displayPath('/Users/taaliman2/projects', 50, home)).toBe('/Users/taaliman2/projects');
+    expect(displayPath('/Users/operator2/projects', 50, home)).toBe('/Users/operator2/projects');
   });
 
   it('keeps the end of a last segment wider than the column on its own', () => {

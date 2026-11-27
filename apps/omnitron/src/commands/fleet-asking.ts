@@ -6,7 +6,7 @@
  * state of a hardened server and the whole reason the mesh tunnels over SSH
  * — so `fleet status` printed
  *
- *     sample-test  37.27.130.185:9700  offline  0 apps
+ *     sample-test  203.0.113.185:9700  offline  0 apps
  *
  * about a machine running six, with every port listening and the master
  * deploying to it over that tunnel minutes earlier.

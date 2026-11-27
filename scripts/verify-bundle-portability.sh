@@ -11,9 +11,7 @@
 # Usage:
 #   ./scripts/verify-bundle-portability.sh [PATH ...]
 #
-# When no PATH is given, scans the standard locations:
-#   apps/*/.omnitron-build, packages/*/.omnitron-build,
-#   and the developer's project tree at /Users/taaliman/projects.
+# With no arguments, scans apps/*/.omnitron-build and packages/*/.omnitron-build.
 #
 # Exit codes:
 #   0 — clean

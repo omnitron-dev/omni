@@ -47,7 +47,7 @@ const testPg = await requiresTestPostgres(TEST_PG_URL);
 const DB_NAME = `omnitron_sync_ingest_${process.pid}`;
 
 /** The registry uuid the master labels a node's rows with. */
-const NODE = '16f3dd5a-2727-49e5-90a2-d762b57073f6';
+const NODE = 'ab10cd01-0000-4000-8000-000000000001';
 
 let own: OwnDatabase | undefined;
 let db: Kysely<OmnitronDatabase>;

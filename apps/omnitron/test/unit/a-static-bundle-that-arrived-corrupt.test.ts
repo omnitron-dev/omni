@@ -32,7 +32,7 @@ import { tmpdir } from 'node:os';
 
 import { RemoteDeployer } from '../../src/services/remote-deployer.service.js';
 
-const TARGET = { host: '37.27.130.185', username: 'root' } as never;
+const TARGET = { host: '203.0.113.185', username: 'root' } as never;
 const ROOT = '/opt/omnitron/stack-static/gateway';
 
 /** A real directory to pack, so the digest under test is a real digest. */

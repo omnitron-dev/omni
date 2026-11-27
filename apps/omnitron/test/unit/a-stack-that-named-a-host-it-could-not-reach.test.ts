@@ -19,8 +19,8 @@ import { describe, it, expect } from 'vitest';
 
 import { withNodeCredentials, stackNodeToDeployTarget } from '../../src/services/remote-deployer.service.js';
 
-const stackNode = { host: '37.27.130.185', port: 9700, role: 'app' as const, label: 'test' };
-const registered = { host: '37.27.130.185', port: 22, username: 'root', password: 'from-the-vault', expectedHostFingerprint: `SHA256:${'a'.repeat(43)}` };
+const stackNode = { host: '203.0.113.185', port: 9700, role: 'app' as const, label: 'test' };
+const registered = { host: '203.0.113.185', port: 22, username: 'root', password: 'from-the-vault', expectedHostFingerprint: `SHA256:${'a'.repeat(43)}` };
 
 describe('a stack node and the registry entry for the same machine', () => {
   it('takes the credential from the registry', () => {

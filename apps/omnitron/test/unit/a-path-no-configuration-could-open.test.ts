@@ -71,7 +71,7 @@ describe('a subnet it cannot explain is not a rule', () => {
     for (const cidr of [
       '0.0.0.0/0',
       '8.8.8.0/24',
-      '37.27.130.0/24',
+      '203.0.113.0/24',
       '172.32.0.0/16',
       '999.1.1.1/16',
       'not-a-subnet',

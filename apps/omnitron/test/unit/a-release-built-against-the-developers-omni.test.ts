@@ -29,8 +29,8 @@ importers:
   .:
     dependencies:
       '@omnitron-dev/omnitron':
-        specifier: link:/Users/dev/projects/luxquant/omnitron-dev/omni/apps/omnitron
-        version: link:../../luxquant/omnitron-dev/omni/apps/omnitron
+        specifier: link:/Users/dev/projects/platform/omnitron-dev/omni/apps/omnitron
+        version: link:../../platform/omnitron-dev/omni/apps/omnitron
 
   apps/main:
     dependencies:
@@ -38,8 +38,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/common
       '@omnitron-dev/titan':
-        specifier: link:/Users/dev/projects/luxquant/omnitron-dev/omni/packages/titan
-        version: link:../../../../luxquant/omnitron-dev/omni/packages/titan
+        specifier: link:/Users/dev/projects/platform/omnitron-dev/omni/packages/titan
+        version: link:../../../../platform/omnitron-dev/omni/packages/titan
 
 packages:
 
@@ -52,7 +52,7 @@ describe('the build root puts omni where the lockfile will look', () => {
     expect(readLinkLayout('---\nlockfileVersion: \"9.0\"\nimporters:\n  .:\n    packageManagerDependencies: {}\npackages: {}\n---\n' + LOCK)).toEqual(readLinkLayout(LOCK));
     const layout = readLinkLayout(LOCK);
     expect(layout).toEqual({
-      omniRel: '../../luxquant/omnitron-dev/omni',
+      omniRel: '../../platform/omnitron-dev/omni',
       climbs: 2,
       // `../../packages/common` from apps/main stays inside the project: its
       // own workspace, not omni.
@@ -66,13 +66,13 @@ describe('the build root puts omni where the lockfile will look', () => {
     const plan = planBuildRoot('/r/src', '/Users/dev/projects/examples/sample', layout);
     if ('refusal' in plan) throw new Error(plan.refusal);
 
-    expect(plan).toEqual({ repositoryDir: '/r/src/examples/sample', projectDir: '/r/src/examples/sample', omniDir: '/r/src/luxquant/omnitron-dev/omni' });
+    expect(plan).toEqual({ repositoryDir: '/r/src/examples/sample', projectDir: '/r/src/examples/sample', omniDir: '/r/src/platform/omnitron-dev/omni' });
     // What pnpm will do with the frozen lockfile, from both importers.
-    expect(path.resolve(plan.projectDir, '../../luxquant/omnitron-dev/omni/apps/omnitron')).toBe(
-      '/r/src/luxquant/omnitron-dev/omni/apps/omnitron',
+    expect(path.resolve(plan.projectDir, '../../platform/omnitron-dev/omni/apps/omnitron')).toBe(
+      '/r/src/platform/omnitron-dev/omni/apps/omnitron',
     );
-    expect(path.resolve(plan.projectDir, 'apps/main', '../../../../luxquant/omnitron-dev/omni/packages/titan')).toBe(
-      '/r/src/luxquant/omnitron-dev/omni/packages/titan',
+    expect(path.resolve(plan.projectDir, 'apps/main', '../../../../platform/omnitron-dev/omni/packages/titan')).toBe(
+      '/r/src/platform/omnitron-dev/omni/packages/titan',
     );
   });
 
@@ -95,17 +95,17 @@ describe('the build root puts omni where the lockfile will look', () => {
   });
 
   it('refuses links into two outside checkouts rather than choose one', () => {
-    const two = LOCK.replace('../../../../luxquant/omnitron-dev/omni/packages/titan', '../../../../elsewhere/omni/packages/titan');
+    const two = LOCK.replace('../../../../platform/omnitron-dev/omni/packages/titan', '../../../../elsewhere/omni/packages/titan');
     expect(readLinkLayout(two)).toEqual({ refusal: expect.stringMatching(/2 outside checkouts/) });
   });
 
   it('refuses a lockfile that links nothing outside the project', () => {
-    const none = LOCK.replace(/version: link:(\.\.\/)+luxquant[^\n]+/g, 'version: 1.0.0');
+    const none = LOCK.replace(/version: link:(\.\.\/)+platform[^\n]+/g, 'version: 1.0.0');
     expect(readLinkLayout(none)).toEqual({ refusal: expect.stringMatching(/links nothing outside/) });
   });
 
   it('refuses an outside link that is not a workspace package', () => {
-    const stray = LOCK.replace('../../luxquant/omnitron-dev/omni/apps/omnitron', '../../vendor/blob');
+    const stray = LOCK.replace('../../platform/omnitron-dev/omni/apps/omnitron', '../../vendor/blob');
     expect(readLinkLayout(stray)).toEqual({ refusal: expect.stringMatching(/not a workspace package/) });
   });
 
@@ -237,18 +237,18 @@ describe('a project registered through a symlink', () => {
     const os = await import('node:os');
     const { resolveCheckouts } = await import('../../src/release/layout.js');
     const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'release-symlink-')));
-    // ~/projects/examples/sample and ~/projects/luxquant/omnitron-dev/omni, and the
+    // ~/projects/examples/sample and ~/projects/platform/omnitron-dev/omni, and the
     // registry's `omni/internal/sample` pointing at the first.
     fs.mkdirSync(path.join(root, 'examples', 'sample'), { recursive: true });
-    fs.mkdirSync(path.join(root, 'luxquant', 'omnitron-dev', 'omni', 'internal'), { recursive: true });
-    const viaLink = path.join(root, 'luxquant', 'omnitron-dev', 'omni', 'internal', 'sample');
+    fs.mkdirSync(path.join(root, 'platform', 'omnitron-dev', 'omni', 'internal'), { recursive: true });
+    const viaLink = path.join(root, 'platform', 'omnitron-dev', 'omni', 'internal', 'sample');
     fs.symlinkSync(path.join(root, 'examples', 'sample'), viaLink);
 
     const layout = readLinkLayout(LOCK);
     if ('refusal' in layout) throw new Error(layout.refusal);
     expect(resolveCheckouts(viaLink, layout)).toEqual({
       projectReal: path.join(root, 'examples', 'sample'),
-      omniPath: path.join(root, 'luxquant', 'omnitron-dev', 'omni'),
+      omniPath: path.join(root, 'platform', 'omnitron-dev', 'omni'),
     });
     fs.rmSync(root, { recursive: true, force: true });
   });

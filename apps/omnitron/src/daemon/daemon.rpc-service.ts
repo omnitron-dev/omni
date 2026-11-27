@@ -383,7 +383,7 @@ export class DaemonRpcService implements IDaemonService {
    * This read the local capture only, so every app on another machine had no
    * logs: `omnitron logs sample/deployed/main` answered «No log entries found»
    * while `OmnitronLogs.queryLogs` on this same daemon returned that app's
-   * rows from node 16f3dd5a. Each stored entry says where it came from in
+   * rows from node ab10cd01. Each stored entry says where it came from in
    * `data.sourceNode` — the node's id, or `null` for this machine's own.
    *
    * Nodes name what they run `<project>/deployed/<app>`; that is the name

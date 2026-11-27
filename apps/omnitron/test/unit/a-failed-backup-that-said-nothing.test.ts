@@ -260,9 +260,9 @@ describe('backup schedules says what each schedule last did', () => {
     rpc['getBackupStatus'] = async () => STATUS;
     rpc['listBackups'] = async () => [
       {
-        id: 'a63dbcf4-8f0e-4b8e-9d7c-2a1b3c4d5e6f',
+        id: 'bc10de01-0000-4000-8000-000000000010',
         database: 'geo',
-        filename: 'geo_2026-09-23T06-16-13-503Z_a63dbcf4.sql.gz',
+        filename: 'geo_2026-09-23T06-16-13-503Z_bc10de01.sql.gz',
         size: 2_294,
         createdAt: '2026-09-23T06:16:17.076Z',
         compressed: true,

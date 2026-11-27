@@ -104,10 +104,10 @@ async function stored(): Promise<Array<{ nodeId: string; omnitronVersion: string
 
 describe.skipIf(!testPg.ok)('a version longer than its column', () => {
   it('records a node that reports a build-stamped version, and the round beside it', async () => {
-    await persist(worker(), [result('local', '0.2.0'), result('16f3dd5a-2727-49e5-90a2-d762b57073f6', BUILD_STAMPED)]);
+    await persist(worker(), [result('local', '0.2.0'), result('ab10cd01-0000-4000-8000-000000000001', BUILD_STAMPED)]);
 
     expect(await stored()).toEqual([
-      { nodeId: '16f3dd5a-2727-49e5-90a2-d762b57073f6', omnitronVersion: BUILD_STAMPED },
+      { nodeId: 'ab10cd01-0000-4000-8000-000000000001', omnitronVersion: BUILD_STAMPED },
       { nodeId: 'local', omnitronVersion: '0.2.0' },
     ]);
     expect(warnings).toEqual([]);
@@ -118,9 +118,9 @@ describe.skipIf(!testPg.ok)('a version longer than its column', () => {
     // whichever it turns out to be.
     const unfit = 'n'.repeat(80);
 
-    await persist(worker(), [result('local', '0.2.0'), result(unfit, '0.2.0'), result('126457d0-e6d3-4366-92f4-b149b3b6864c', null)]);
+    await persist(worker(), [result('local', '0.2.0'), result(unfit, '0.2.0'), result('ab20cd02-0000-4000-8000-000000000002', null)]);
 
-    expect((await stored()).map((r) => r.nodeId)).toEqual(['126457d0-e6d3-4366-92f4-b149b3b6864c', 'local']);
+    expect((await stored()).map((r) => r.nodeId)).toEqual(['ab20cd02-0000-4000-8000-000000000002', 'local']);
     const said = warnings.find((w) => w.msg === 'Health check results refused for some nodes — the others were stored');
     expect(said, 'a refusal that is said').toBeDefined();
     expect(said!.fields['stored']).toBe(2);

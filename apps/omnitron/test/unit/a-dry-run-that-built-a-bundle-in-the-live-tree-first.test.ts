@@ -52,13 +52,13 @@ const plan = {
   refusal: null as string | null,
   rows: [
     { nodeId: 'local', label: 'Local Machine', host: '127.0.0.1:22', currentVersion: '0.2.0', targetVersion: null, action: 'skip', because: 'this is the local daemon' },
-    { nodeId: '16f3dd5a', label: 'sample-test', host: '37.27.130.185:22', currentVersion: '0.2.0+build.old', targetVersion: null, action: 'upgrade', because: 'not compared — no bundle has been built' },
+    { nodeId: 'ab10cd01', label: 'sample-test', host: '203.0.113.185:22', currentVersion: '0.2.0+build.old', targetVersion: null, action: 'upgrade', because: 'not compared — no bundle has been built' },
   ],
 };
 const nodes = {
   listNodes: vi.fn(async () => [
     { id: 'local', name: 'Local Machine', host: '127.0.0.1', sshPort: 22, isLocal: true, status: { omnitronVersion: '0.2.0', sshConnected: true } },
-    { id: '16f3dd5a', name: 'sample-test', host: '37.27.130.185', sshPort: 22, isLocal: false, status: { omnitronVersion: '0.2.0+build.abc', sshConnected: true } },
+    { id: 'ab10cd01', name: 'sample-test', host: '203.0.113.185', sshPort: 22, isLocal: false, status: { omnitronVersion: '0.2.0+build.abc', sshConnected: true } },
   ]),
   planUpgrade: vi.fn(async () => plan),
   installBundleOnNode: vi.fn(),

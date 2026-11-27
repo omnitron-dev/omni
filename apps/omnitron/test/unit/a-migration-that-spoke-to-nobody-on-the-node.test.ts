@@ -17,8 +17,8 @@ import { describe, it, expect, vi } from 'vitest';
 
 import { RemoteDeployer } from '../../src/services/remote-deployer.service.js';
 
-const TARGET = { host: '37.27.130.185', daemonPort: 9700, username: 'root' } as never;
-const NODE = '37.27.130.185:9700';
+const TARGET = { host: '203.0.113.185', daemonPort: 9700, username: 'root' } as never;
+const NODE = '203.0.113.185:9700';
 const MIGRATOR_SAID = [
   'Connecting to PostgreSQL at 127.0.0.1:5432/main',
   'Discovered 203 migration(s): 001_initial_schema, 002_security_role, 195_a_marketplace_that_could_price_nothing',
@@ -91,7 +91,7 @@ describe('a migration that spoke to nobody — on the node', () => {
       '1 migration(s) applied. 202 already applied.',
       'Done',
     ]);
-    expect(lines.every((s) => s.fields['app'] === 'main' && s.fields['node'] === '37.27.130.185')).toBe(true);
+    expect(lines.every((s) => s.fields['app'] === 'main' && s.fields['node'] === '203.0.113.185')).toBe(true);
     const verdict = said.findIndex((s) => s.msg === 'Database migrations applied on the node');
     expect(verdict).toBeGreaterThan(said.lastIndexOf(lines.at(-1)!));
   });

@@ -104,7 +104,7 @@ describe('a boot autostart does not read like a deployment', () => {
         details: {
           source: 'operator',
           outcome: 'failed',
-          error: 'Deployment to 37.27.130.185:9700 failed for 6 of 6 app(s): quotes, main, storage, messaging, geo, payments.',
+          error: 'Deployment to 203.0.113.185:9700 failed for 6 of 6 app(s): quotes, main, storage, messaging, geo, payments.',
         },
       }),
       row({ resourceId: 'sample/dev', createdAt: '2026-09-22T20:50:11.000Z', details: { source: 'boot', type: 'local', outcome: 'ok' } }),
@@ -131,7 +131,7 @@ describe('a boot autostart does not read like a deployment', () => {
     const { out } = await run({});
 
     expect(lineWith(out, 'stack.start.failed')).toMatch(/\bfailed\b/);
-    expect(out).toContain('Deployment to 37.27.130.185:9700 failed for 6 of 6 app(s)');
+    expect(out).toContain('Deployment to 203.0.113.185:9700 failed for 6 of 6 app(s)');
   });
 
   it('names the apps a partial start did not bring up, in the words the console uses', async () => {
@@ -151,7 +151,7 @@ describe('a boot autostart does not read like a deployment', () => {
   });
 
   it('reads an older failure named in its action as a failure — `node.upgrade.failed`', async () => {
-    rows = [row({ action: 'node.upgrade.failed', resourceType: 'node', resourceId: '16f3dd5a', details: { version: '0.4.1', message: 'bundle checksum mismatch' } })];
+    rows = [row({ action: 'node.upgrade.failed', resourceType: 'node', resourceId: 'ab10cd01', details: { version: '0.4.1', message: 'bundle checksum mismatch' } })];
     const { out } = await run({});
 
     expect(lineWith(out, 'node.upgrade.failed')).toMatch(/\bfailed\b/);
@@ -180,8 +180,8 @@ describe('--actor takes what the ACTOR column prints', () => {
     expect(asked[0]).not.toHaveProperty('actorType');
 
     asked.length = 0;
-    await run({ actor: '8c818e98-a0e2-4356-98ea-3263c64df4ab' });
-    expect(asked[0]).toMatchObject({ actorId: '8c818e98-a0e2-4356-98ea-3263c64df4ab' });
+    await run({ actor: 'ab40cd04-0000-4000-8000-000000000004' });
+    expect(asked[0]).toMatchObject({ actorId: 'ab40cd04-0000-4000-8000-000000000004' });
   });
 });
 

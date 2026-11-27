@@ -49,7 +49,7 @@ vi.mock('../../src/infrastructure/container-runtime.js', () => ({
   listManagedContainers: async () => containers,
 }));
 
-const SAMPLE_TEST = '16f3dd5a-2727-49e5-90a2-d762b57073f6';
+const SAMPLE_TEST = 'ab10cd01-0000-4000-8000-000000000001';
 let absence: unknown = null;
 let registered: unknown[] = [];
 const nodesService = {
@@ -84,7 +84,7 @@ const lines = () => out.filter((o) => o.kind === 'log').map((o) => o.text!).join
 beforeEach(() => {
   out.length = 0;
   absence = null;
-  registered = [node('local', 'Local Machine', '127.0.0.1', true), node(SAMPLE_TEST, 'sample-test', '37.27.130.185')];
+  registered = [node('local', 'Local Machine', '127.0.0.1', true), node(SAMPLE_TEST, 'sample-test', '203.0.113.185')];
 });
 
 afterEach(() => {
@@ -115,7 +115,7 @@ describe('the nodes', () => {
 
     const [, rows] = tables();
     expect(rows).toEqual([
-      expect.objectContaining({ name: 'sample-test', address: '37.27.130.185:9700', reached: '<green>mesh via ssh-tunnel, authenticated' }),
+      expect.objectContaining({ name: 'sample-test', address: '203.0.113.185:9700', reached: '<green>mesh via ssh-tunnel, authenticated' }),
     ]);
     // The master is the machine doing the discovering, not a node it found.
     expect(JSON.stringify(rows)).not.toContain('127.0.0.1');

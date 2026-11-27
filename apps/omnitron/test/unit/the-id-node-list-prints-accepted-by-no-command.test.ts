@@ -5,15 +5,15 @@
  * Measured 2026-09-23 on the live master:
  *
  *     $ omnitron node list
- *     │ 16f3dd5a  │ sample-test │ 37.27.130.185:22 │ ● up │ ● v0.2.0+l... │
- *     $ omnitron node check 16f3dd5a
- *     Failed: Node not found: 16f3dd5a            (exit 0)
+ *     │ ab10cd01  │ sample-test │ 203.0.113.185:22 │ ● up │ ● v0.2.0+l... │
+ *     $ omnitron node check ab10cd01
+ *     Failed: Node not found: ab10cd01            (exit 0)
  *     $ omnitron node check sample-test
  *     Failed: Node not found: sample-test           (exit 0)
  *
  * `node list` cuts each id to eight characters; `check`, `update` and
  * `remove` passed the argument through as typed. The same commands printed
- * a status whose node had been removed as a bare id — `126457d0-…: SSH ●
+ * a status whose node had been removed as a bare id — `ab20cd02-…: SSH ●
  * Omnitron ●` — with no age, and printed `○ offline` for a daemon no path
  * had reached. The `node list` comment sent the reader to `omnitron node
  * show` for the daemon port; there is no such command.
@@ -34,8 +34,8 @@ vi.mock('@xec-sh/kit', () => ({
   table: (opts: { data: unknown[] }) => said.push({ level: 'table', text: JSON.stringify(opts.data) }),
 }));
 
-const SAMPLE_TEST = '16f3dd5a-2727-49e5-90a2-d762b57073f6';
-const REMOVED = '126457d0-e6d3-4366-92f4-b149b3b6864c';
+const SAMPLE_TEST = 'ab10cd01-0000-4000-8000-000000000001';
+const REMOVED = 'ab20cd02-0000-4000-8000-000000000002';
 
 const node = (id: string, name: string, host: string, over: Record<string, unknown> = {}) => ({
   id, name, host, sshPort: 22, sshUser: 'root', sshAuthMethod: 'key', runtime: 'node',
@@ -77,7 +77,7 @@ beforeEach(() => {
   absence = null;
   registry = [
     node('local', 'Local Machine', '127.0.0.1'),
-    node(SAMPLE_TEST, 'sample-test', '37.27.130.185'),
+    node(SAMPLE_TEST, 'sample-test', '203.0.113.185'),
   ];
   for (const fn of Object.values(nodes)) fn.mockClear();
 });
@@ -107,7 +107,7 @@ describe('the id node list prints', () => {
   });
 
   it('is accepted by node check', async () => {
-    await nodeCheckCommand('16f3dd5a');
+    await nodeCheckCommand('ab10cd01');
 
     expect(nodes.checkNodeStatus).toHaveBeenCalledWith({ id: SAMPLE_TEST });
     expect(process.exitCode).not.toBe(1);
@@ -121,14 +121,14 @@ describe('the id node list prints', () => {
   });
 
   it('is accepted by node remove, which names the row it deleted', async () => {
-    await nodeRemoveCommand('16f3dd5a');
+    await nodeRemoveCommand('ab10cd01');
 
     expect(nodes.removeNode).toHaveBeenCalledWith({ id: SAMPLE_TEST });
-    expect(text()).toContain(`"sample-test" (${SAMPLE_TEST}, 37.27.130.185) removed`);
+    expect(text()).toContain(`"sample-test" (${SAMPLE_TEST}, 203.0.113.185) removed`);
   });
 
   it('is accepted by node update', async () => {
-    await nodeUpdateCommand('16f3dd5a', { name: 'sample-test-2' });
+    await nodeUpdateCommand('ab10cd01', { name: 'sample-test-2' });
 
     expect(nodes.updateNode).toHaveBeenCalledWith(expect.objectContaining({ id: SAMPLE_TEST, name: 'sample-test-2' }));
   });
@@ -136,9 +136,9 @@ describe('the id node list prints', () => {
 
 describe('an argument that names no single node', () => {
   it('lists the candidates and fails, rather than guessing', async () => {
-    registry.push(node('16f3ffff-0000-4000-8000-000000000000', 'sample-test-b', '203.0.113.9'));
+    registry.push(node('ab10ffff-0000-4000-8000-000000000000', 'sample-test-b', '203.0.113.9'));
 
-    await nodeCheckCommand('16f3');
+    await nodeCheckCommand('ab10');
 
     expect(nodes.checkNodeStatus).not.toHaveBeenCalled();
     expect(text()).toContain('names 2 nodes');
@@ -151,7 +151,7 @@ describe('an argument that names no single node', () => {
 
     expect(nodes.removeNode).not.toHaveBeenCalled();
     expect(text()).toMatch(/No node 'nope'/);
-    expect(text()).toContain('sample-test (16f3dd5a)');
+    expect(text()).toContain('sample-test (ab10cd01)');
     expect(process.exitCode).toBe(1);
   });
 
@@ -166,19 +166,19 @@ describe('an argument that names no single node', () => {
 
 describe('what node check prints', () => {
   it('the daemon port, which nothing else prints', async () => {
-    await nodeCheckCommand('16f3dd5a');
+    await nodeCheckCommand('ab10cd01');
 
-    expect(text()).toContain('37.27.130.185, SSH port 22, daemon port 9700');
+    expect(text()).toContain('203.0.113.185, SSH port 22, daemon port 9700');
   });
 
   it('«unknown», not «offline», when no path reached the daemon', async () => {
     nodes.checkNodeStatus.mockResolvedValueOnce({
       nodeId: SAMPLE_TEST, pingReachable: true, pingLatencyMs: 40, sshConnected: null, sshLatencyMs: null,
       omnitronConnected: null, omnitronVersion: undefined as never, checkedAt: new Date().toISOString(),
-      omnitronError: 'Neither path reached the daemon — mesh: …; direct dial to 37.27.130.185:9700: …',
+      omnitronError: 'Neither path reached the daemon — mesh: …; direct dial to 203.0.113.185:9700: …',
     } as never);
 
-    await nodeCheckCommand('16f3dd5a');
+    await nodeCheckCommand('ab10cd01');
 
     expect(text()).toContain('Omnitron: ? unknown');
     expect(text()).not.toContain('offline');
@@ -202,7 +202,7 @@ describe('a node command that fails', () => {
   it('exits 1 when the daemon refuses the call', async () => {
     nodes.checkNodeStatus.mockRejectedValueOnce(new Error('RPC request timed out after 60000ms'));
 
-    await nodeCheckCommand('16f3dd5a');
+    await nodeCheckCommand('ab10cd01');
 
     expect(text()).toContain('Failed: RPC request timed out');
     expect(process.exitCode).toBe(1);
@@ -211,7 +211,7 @@ describe('a node command that fails', () => {
   it('exits 1 when there is no daemon to ask', async () => {
     absence = { kind: 'stopped' };
 
-    await nodeCheckCommand('16f3dd5a');
+    await nodeCheckCommand('ab10cd01');
 
     expect(nodes.listNodes).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);

@@ -304,7 +304,7 @@ export class SlaveConnector {
    * therefore raced its own connection:
    *
    *     Could not bring up this node's infrastructure:
-   *       Slave 37.27.130.185:9700 not connected
+   *       Slave 203.0.113.185:9700 not connected
    *
    * measured while deploying a stack to a node the master connected to
    * successfully two seconds later.

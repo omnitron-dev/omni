@@ -23,8 +23,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { RemoteDeployer } from '../../src/services/remote-deployer.service.js';
 
-const TARGET = { host: '37.27.130.185', daemonPort: 9700, username: 'root' } as never;
-const NODE = '37.27.130.185:9700';
+const TARGET = { host: '203.0.113.185', daemonPort: 9700, username: 'root' } as never;
+const NODE = '203.0.113.185:9700';
 const APPS = ['main', 'storage', 'payments'];
 const DB = (app: string) => ({ DATABASE_URL: `postgresql://u:p@127.0.0.1:5432/${app}` });
 
@@ -58,7 +58,7 @@ function deployer(migrationFailsFor: Set<string>) {
       if (cmd.startsWith('test -f')) return 'yes';
       const app = APPS.find((a) => cmd.includes(`/${a}/`));
       if (cmd.includes('migrate.js') && app && migrationFailsFor.has(app)) {
-        throw new Error(`ssh root@37.27.130.185: relation "wallets" does not exist`);
+        throw new Error(`ssh root@203.0.113.185: relation "wallets" does not exist`);
       }
       return '';
     },

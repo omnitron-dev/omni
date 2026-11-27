@@ -11,7 +11,7 @@
  * is the only kind a buffer produces when its master has stopped pulling,
  * which is the one situation the bound exists for.
  *
- * Measured on the test node 37.27.130.185, 2026-09-22: 558 passes in a row,
+ * A test node recorded 558 consecutive passes on 2026-09-22,
  * one every 30 s from 13:03 to 17:42 UTC,
  *
  *     WARN  Sync buffer retention pass failed   error: "too many SQL variables"

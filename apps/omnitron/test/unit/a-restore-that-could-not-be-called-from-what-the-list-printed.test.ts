@@ -8,9 +8,9 @@ import { testExecution } from '../fixtures/execution.js';
  *   - `backup list` printed Database, Filename cut to 24 characters, Size and
  *     Created. The id is in the filename — after the cut:
  *     `geo_2026-09-23T08-19-04-` is what showed of
- *     `geo_2026-09-23T08-19-04-290Z_a63dbcf4.sql.gz`.
- *   - `backup create` printed `[a63dbcf4]`, eight characters, which restore
- *     then answered with "Backup 'a63dbcf4' not found".
+ *     `geo_2026-09-23T08-19-04-290Z_bc10de01.sql.gz`.
+ *   - `backup create` printed `[bc10de01]`, eight characters, which restore
+ *     then answered with "Backup 'bc10de01' not found".
  *
  * So the one command whose whole purpose is to be reached for in a hurry had
  * no input the tool itself would give you. Now the list prints the id first,
@@ -74,9 +74,9 @@ function quietLogger(): { module: never; logger: never } {
 /** Three rows as the master lists them. */
 const LISTED = [
   {
-    id: 'a63dbcf4-8f0e-4b8e-9d7c-2a1b3c4d5e6f',
+    id: 'bc10de01-0000-4000-8000-000000000010',
     database: 'geo',
-    filename: 'geo_2026-09-23T08-19-04-290Z_a63dbcf4.sql.gz',
+    filename: 'geo_2026-09-23T08-19-04-290Z_bc10de01.sql.gz',
     size: 2_294,
     createdAt: '2026-09-23T08:19:04.742Z',
     compressed: true,
@@ -90,9 +90,9 @@ const LISTED = [
     compressed: true,
   },
   {
-    id: 'a63d1111-2222-4333-8444-555566667777',
+    id: 'bc101111-2222-4333-8444-555566667777',
     database: 'main',
-    filename: 'main_2026-09-23T08-18-17-763Z_a63d1111.sql.gz',
+    filename: 'main_2026-09-23T08-18-17-763Z_bc101111.sql.gz',
     size: 100_765_511,
     createdAt: '2026-09-23T08:19:00.187Z',
     compressed: true,
@@ -144,17 +144,17 @@ describe('the CLI restores from what it prints', () => {
 
   it('prints the whole filename, not the first 24 characters of it', async () => {
     await backupListCommand();
-    expect(printed.map((p) => p.text).join('\n')).toContain('geo_2026-09-23T08-19-04-290Z_a63dbcf4.sql.gz');
+    expect(printed.map((p) => p.text).join('\n')).toContain('geo_2026-09-23T08-19-04-290Z_bc10de01.sql.gz');
   });
 
   it('refuses an ambiguous prefix, naming every match, and restores nothing', async () => {
-    await backupRestoreCommand('a63d');
+    await backupRestoreCommand('bc10');
 
     expect(restored).toEqual([]);
     expect(process.exitCode).toBe(1);
     const said = printed.filter((p) => p.level === 'error').map((p) => p.text).join('\n');
-    expect(said).toContain('a63dbcf4-8f0e-4b8e-9d7c-2a1b3c4d5e6f');
-    expect(said).toContain('a63d1111-2222-4333-8444-555566667777');
+    expect(said).toContain('bc10de01-0000-4000-8000-000000000010');
+    expect(said).toContain('bc101111-2222-4333-8444-555566667777');
   });
 });
 

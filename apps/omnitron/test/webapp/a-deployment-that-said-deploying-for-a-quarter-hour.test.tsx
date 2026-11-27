@@ -41,7 +41,7 @@ const NOW = new Date('2026-09-20T07:45:30.000Z').getTime();
 
 const record = (over: Partial<Record_> = {}): Record_ =>
   ({
-    node: '37.27.130.185:9700',
+    node: '203.0.113.185:9700',
     app: 'main',
     status: 'installing',
     progress: 60,

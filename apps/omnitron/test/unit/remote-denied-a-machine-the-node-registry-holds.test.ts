@@ -53,14 +53,14 @@ vi.mock('../../src/infrastructure/server-registry.js', () => ({
   },
 }));
 
-const SAMPLE_TEST = '16f3dd5a-2727-49e5-90a2-d762b57073f6';
+const SAMPLE_TEST = 'ab10cd01-0000-4000-8000-000000000001';
 const SIX_APPS = ['main', 'storage', 'quotes', 'payments', 'messaging', 'geo'].map((name) => ({ name, status: 'online' }));
 
 const nodesService = {
   listNodes: vi.fn(async () => [
     { id: 'local', name: 'Local Machine', host: '127.0.0.1', daemonPort: 9700, tags: [], isLocal: true, status: null },
     {
-      id: SAMPLE_TEST, name: 'sample-test', host: '37.27.130.185', daemonPort: 9700, tags: ['test'], isLocal: false,
+      id: SAMPLE_TEST, name: 'sample-test', host: '203.0.113.185', daemonPort: 9700, tags: ['test'], isLocal: false,
       status: { omnitronConnected: true, omnitronVersion: '0.2.0', checkedAt: new Date().toISOString() },
     },
   ]),
@@ -122,7 +122,7 @@ describe('remote list', () => {
     expect(text()).not.toMatch(/No remote/);
     expect(tables).toHaveLength(1);
     expect(tables[0]).toEqual([
-      expect.objectContaining({ alias: 'sample-test', host: '37.27.130.185:9700', registry: 'nodes', status: '● v0.2.0' }),
+      expect.objectContaining({ alias: 'sample-test', host: '203.0.113.185:9700', registry: 'nodes', status: '● v0.2.0' }),
     ]);
   });
 });
@@ -153,7 +153,7 @@ describe('remote status', () => {
     await remoteStatusCommand('sample-test');
 
     expect(nodesService.getNodeDaemonStatus).toHaveBeenCalledWith({ nodeId: SAMPLE_TEST });
-    expect(text()).toContain('sample-test (37.27.130.185:9700) — online');
+    expect(text()).toContain('sample-test (203.0.113.185:9700) — online');
     expect(text()).toContain('main(online), storage(online), quotes(online), payments(online), messaging(online), geo(online)');
     expect(process.exitCode).not.toBe(1);
   });
@@ -172,7 +172,7 @@ describe('remote status', () => {
     await remoteStatusCommand('nope');
 
     expect(text()).toMatch(/No machine 'nope'/);
-    expect(text()).toContain('sample-test (37.27.130.185:9700)');
+    expect(text()).toContain('sample-test (203.0.113.185:9700)');
     expect(process.exitCode).toBe(1);
   });
 

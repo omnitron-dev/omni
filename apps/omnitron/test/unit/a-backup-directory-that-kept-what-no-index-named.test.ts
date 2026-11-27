@@ -162,8 +162,8 @@ describe('what an interrupted pass leaves is removed when the daemon starts', ()
 
   it('keeps what is not provably garbage, and names what no index holds', () => {
     // A good backup, indexed.
-    const good = put('geo_2026-09-23T08-19-04-290Z_a63dbcf4.sql.gz', 2_294);
-    store.insertBackupSync({ id: 'a63dbcf4-0000-4000-8000-000000000001', app: 'geo', path: good, size_bytes: 2_294 });
+    const good = put('geo_2026-09-23T08-19-04-290Z_bc10de01.sql.gz', 2_294);
+    store.insertBackupSync({ id: 'bc10de01-0000-4000-8000-000000000001', app: 'geo', path: good, size_bytes: 2_294 });
     // A sidecar pair beside a backup that still exists: something may hold it.
     put('daemon-state_2026-09-01T14-45-27-942Z_5ed46a02.db', 192_512);
     put('daemon-state_2026-09-01T14-45-27-942Z_5ed46a02.db-shm', 32_768);
@@ -178,7 +178,7 @@ describe('what an interrupted pass leaves is removed when the daemon starts', ()
     new BackupService(module, store, testExecution);
 
     for (const kept of [
-      'geo_2026-09-23T08-19-04-290Z_a63dbcf4.sql.gz',
+      'geo_2026-09-23T08-19-04-290Z_bc10de01.sql.gz',
       'daemon-state_2026-09-01T14-45-27-942Z_5ed46a02.db-shm',
       'daemon-state_2026-09-01T14-45-27-942Z_5ed46a02.db-wal',
       'daemon-state_2026-07-21T11-47-55-830Z_ac32c3cd.db-shm',
@@ -283,9 +283,9 @@ describe('backup list', () => {
   it('prints when a backup was taken in UTC, as its filename does', async () => {
     rpc['listBackups'] = async () => [
       {
-        id: 'a63dbcf4-8f0e-4b8e-9d7c-2a1b3c4d5e6f',
+        id: 'bc10de01-0000-4000-8000-000000000010',
         database: 'geo',
-        filename: 'geo_2026-09-23T08-19-04-290Z_a63dbcf4.sql.gz',
+        filename: 'geo_2026-09-23T08-19-04-290Z_bc10de01.sql.gz',
         size: 2_294,
         createdAt: '2026-09-23T08:19:04.742Z',
         compressed: true,

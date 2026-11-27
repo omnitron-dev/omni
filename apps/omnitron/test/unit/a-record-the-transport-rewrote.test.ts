@@ -120,7 +120,7 @@ describe('a refused deployment names who holds the node', () => {
   const held = `printf '%s\\n' ${shellEscape(`HELD 12\t${RECORD}`)}`;
 
   it('preserves the holder identity and redacts its token in execution output', async () => {
-    const answer = parseAcquire('37.27.130.185:22', (await execution.exec(held)).stdout);
+    const answer = parseAcquire('203.0.113.185:22', (await execution.exec(held)).stdout);
     expect(answer).toEqual({ kind: 'held', idleSec: 12, holder: { ...JSON.parse(RECORD), token: '[REDACTED]' } });
   });
 
@@ -135,11 +135,11 @@ describe('a refused deployment names who holds the node', () => {
       },
     } as never);
 
-    const answer = parseAcquire('37.27.130.185:22', await deployer.leaseRunner({ host: '37.27.130.185' })('the lease script'));
+    const answer = parseAcquire('203.0.113.185:22', await deployer.leaseRunner({ host: '203.0.113.185' })('the lease script'));
 
     expect(answer).toEqual({ kind: 'held', idleSec: 12, holder: JSON.parse(RECORD) });
     if (answer.kind !== 'held') throw new Error('Expected a held deployment lease');
-    const refusal = new LeaseHeldError('37.27.130.185:22', answer.holder, 12, 300);
+    const refusal = new LeaseHeldError('203.0.113.185:22', answer.holder, 12, 300);
     expect(refusal.message).toMatch(/being deployed by omnitron@laptop pid 4242 \(deploying sample\/test, since 2026-09-23T18:04:13Z\)/);
   });
 });

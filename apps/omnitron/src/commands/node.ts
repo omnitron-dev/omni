@@ -83,7 +83,7 @@ export type NodeResolution<T> =
  * `node list` prints the first eight characters of each id, and every
  * command that takes an id passed the argument through as it was typed — so
  * the id the product prints was accepted by no command. Measured
- * 2026-09-23: `node check 16f3dd5a` and `node check sample-test` both answered
+ * 2026-09-23: `node check ab10cd01` and `node check sample-test` both answered
  * «Node not found», exit 0.
  *
  * In order: the whole id; the name exactly; the name ignoring case; a

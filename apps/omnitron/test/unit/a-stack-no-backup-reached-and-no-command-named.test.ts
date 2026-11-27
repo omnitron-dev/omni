@@ -6,7 +6,7 @@ import { testExecution } from '../fixtures/execution.js';
  * 380 backup(s)» and `backup schedules` «all hourly», «full daily». Every
  * `all` pass was `createAllBackups complete {"total":6}` — the six databases
  * of sample/dev, from the local `sample-dev-postgres`. The test stack's database
- * container runs on the node 37.27.130.185, not on the master, and
+ * container runs on the node 203.0.113.185, not on the master, and
  * `buildStackDbMap` skipped it with `if (!infra) continue`: a remote stack has
  * no InfrastructureService here. The index row held id, database, filename,
  * size, createdAt, compressed — no stack — so no listing could have shown it.
@@ -147,7 +147,7 @@ const SIX = ['main', 'storage', 'quotes', 'payments', 'messaging', 'geo'];
 /** The master: sample/dev here, sample/test on the node. */
 const MASTER: StackSpec[] = [
   { project: 'sample', stack: 'dev', type: 'local', databases: SIX },
-  { project: 'sample', stack: 'test', type: 'remote', hosts: ['37.27.130.185'] },
+  { project: 'sample', stack: 'test', type: 'remote', hosts: ['203.0.113.185'] },
 ];
 /** Two local stacks that both have a `main` — `shop` iterated first. */
 const TWO_MAINS: StackSpec[] = [
@@ -268,7 +268,7 @@ describe('a stack whose databases are not here is named, not skipped', () => {
 
     expect(stacks).toEqual([
       { project: 'sample', stack: 'dev', databases: SIX },
-      { project: 'sample', stack: 'test', databases: [], notBackedUp: 'its databases are on 37.27.130.185' },
+      { project: 'sample', stack: 'test', databases: [], notBackedUp: 'its databases are on 203.0.113.185' },
     ]);
   });
 
@@ -280,7 +280,7 @@ describe('a stack whose databases are not here is named, not skipped', () => {
 
     expect(results.filter((r) => r.ok)).toHaveLength(6);
     expect(results).toContainEqual(
-      expect.objectContaining({ database: 'sample/test', ok: false, skipped: true, error: 'not backed up — its databases are on 37.27.130.185' }),
+      expect.objectContaining({ database: 'sample/test', ok: false, skipped: true, error: 'not backed up — its databases are on 203.0.113.185' }),
     );
     const gap = log.lines.find((l) => l.level === 'warn' && /could not back up/.test(l.msg));
     expect(gap?.msg).toContain('sample/test');
@@ -327,17 +327,17 @@ describe('each backup records the stack it came from', () => {
 describe('a restore goes where the backup came from', () => {
   it('a sample/dev backup of main is restored into sample/dev, even when another stack is first', async () => {
     const service = new BackupService(fakeLogger().module, store, testExecution, fakeProjects(TWO_MAINS));
-    const file = path.join(backups, 'main_2026-09-23T08-18-17-763Z_a66402d0.sql.gz');
+    const file = path.join(backups, 'main_2026-09-23T08-18-17-763Z_bc20de02.sql.gz');
     fs.writeFileSync(file, 'dump');
     store.insertBackupSync({
-      id: 'a66402d0-0000-4000-8000-000000000000',
+      id: 'bc20de02-0000-4000-8000-000000000000',
       app: 'main',
       path: file,
       size_bytes: 4,
       metadata: { filename: path.basename(file), compressed: true, type: 'postgres', project: 'sample', stack: 'dev', scope: 'stack' },
     });
 
-    await service.restoreBackup('a66402d0');
+    await service.restoreBackup('bc20de02');
 
     expect(calls.restores.map((r) => r.target)).toEqual(['sample-dev-postgres']);
     expect(calls.restores[0]?.args).toContain('--single-transaction');
@@ -439,7 +439,7 @@ const STATUS = {
   schedules: [{ target: 'all', spec: 'hourly', schedule: 'every 1h', armed: true, lastPass: null, lastBackupAt: null, nextRunAt: null }],
   stacks: [
     { project: 'sample', stack: 'dev', databases: SIX },
-    { project: 'sample', stack: 'test', databases: [], notBackedUp: 'its databases are on 37.27.130.185' },
+    { project: 'sample', stack: 'test', databases: [], notBackedUp: 'its databases are on 203.0.113.185' },
   ],
 };
 
@@ -458,9 +458,9 @@ describe('the commands say which stacks are not backed up', () => {
     rpc['getBackupStatus'] = async () => STATUS;
     rpc['listBackups'] = async () => [
       {
-        id: 'a63dbcf4-8f0e-4b8e-9d7c-2a1b3c4d5e6f',
+        id: 'bc10de01-0000-4000-8000-000000000010',
         database: 'geo',
-        filename: 'geo_2026-09-23T08-19-04-290Z_a63dbcf4.sql.gz',
+        filename: 'geo_2026-09-23T08-19-04-290Z_bc10de01.sql.gz',
         size: 2_294,
         createdAt: '2026-09-23T08:19:04.742Z',
         compressed: true,
@@ -474,9 +474,9 @@ describe('the commands say which stacks are not backed up', () => {
 
     const out = printed.map((p) => p.text).join('\n');
     expect(out).toMatch(/Stack/);
-    expect(out).toMatch(/a63dbcf4\s+sample\/dev\s+geo/);
+    expect(out).toMatch(/bc10de01\s+sample\/dev\s+geo/);
     const warned = printed.filter((p) => p.level === 'warn').map((p) => p.text).join('\n');
-    expect(warned).toContain('sample/test: not backed up — its databases are on 37.27.130.185');
+    expect(warned).toContain('sample/test: not backed up — its databases are on 203.0.113.185');
   });
 
   it('backup schedules names it too', async () => {
@@ -485,13 +485,13 @@ describe('the commands say which stacks are not backed up', () => {
     await backupSchedulesCommand();
 
     const warned = printed.filter((p) => p.level === 'warn').map((p) => p.text).join('\n');
-    expect(warned).toContain('sample/test: not backed up — its databases are on 37.27.130.185');
+    expect(warned).toContain('sample/test: not backed up — its databases are on 203.0.113.185');
   });
 
   it('backup create does not count the stack it skipped as done', async () => {
     rpc['createAllBackups'] = async () => [
-      { database: 'main', project: 'sample', stack: 'dev', ok: true, id: 'a66402d0-x', size: 100_765_511 },
-      { database: 'sample/test', project: 'sample', stack: 'test', ok: false, skipped: true, error: 'not backed up — its databases are on 37.27.130.185' },
+      { database: 'main', project: 'sample', stack: 'dev', ok: true, id: 'bc20de02-x', size: 100_765_511 },
+      { database: 'sample/test', project: 'sample', stack: 'test', ok: false, skipped: true, error: 'not backed up — its databases are on 203.0.113.185' },
     ];
 
     await backupCreateCommand();

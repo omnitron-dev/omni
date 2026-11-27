@@ -48,7 +48,7 @@ const info = (type: 'remote' | 'local') =>
     name: 'test',
     type,
     status: 'running',
-    config: { type, apps: 'all', nodes: [{ host: '37.27.130.185', port: 9700 }] },
+    config: { type, apps: 'all', nodes: [{ host: '203.0.113.185', port: 9700 }] },
     nodes: [],
     apps: [app('main'), app('geo'), app('payments')],
     infrastructure: { ready: true, services: {} },
@@ -288,9 +288,9 @@ describe('a remote stack is read from the machines it runs on', () => {
 
     // The state answered, so the containers are not listed as well.
     expect(calls).toEqual([
-      '37.27.130.185:9700 OmnitronDaemon.status',
-      '37.27.130.185:9700 OmnitronInfra.getState',
-      '37.27.130.185:9700 OmnitronDaemon.getHealth',
+      '203.0.113.185:9700 OmnitronDaemon.status',
+      '203.0.113.185:9700 OmnitronInfra.getState',
+      '203.0.113.185:9700 OmnitronDaemon.getHealth',
     ]);
 
     calls.length = 0;
@@ -302,7 +302,7 @@ describe('a remote stack is read from the machines it runs on', () => {
 
     await service(emptyState).withRemoteAppStatuses('sample', info('remote'));
 
-    expect(calls[3]).toBe('37.27.130.185:9700 OmnitronInfra.listContainers');
+    expect(calls[3]).toBe('203.0.113.185:9700 OmnitronInfra.listContainers');
   });
 
   it('applies only the requested stack’s preservation verdict from a shared node inventory', async () => {

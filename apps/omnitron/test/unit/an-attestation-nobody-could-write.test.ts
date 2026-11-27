@@ -57,7 +57,7 @@ function printed(over: Record<string, unknown> = {}): string {
       { name: 'revocation-live', outcome: 'passed', ms: 5776, detail: 'signing out on main stops the bytes on storage' },
       { name: 'token-binding-live', outcome: 'passed', ms: 2210 },
     ],
-    onNode: { claimed: true, hosts: ['37.27.130.185'], matched: true },
+    onNode: { claimed: true, hosts: ['203.0.113.185'], matched: true },
     total: 2,
     passed: 2,
     ok: true,

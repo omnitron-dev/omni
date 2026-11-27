@@ -95,7 +95,7 @@ function writeRelease(id: string, builtAt: string, attested?: { passed: number; 
     const gates = Array.from({ length: attested.total }, (_, i) => ({ name: `probe-${i}`, status: i < attested.passed ? 'passed' : 'failed' }));
     fs.writeFileSync(
       path.join(dir, 'attestations', 'test.json'),
-      JSON.stringify({ stack: 'test', release: id, gates, at: '2026-09-23T08:39:38.976Z', onNode: { claimed: true, hosts: ['37.27.130.185'], matched: true }, storedAt: '2026-09-23T08:40:00.000Z' }),
+      JSON.stringify({ stack: 'test', release: id, gates, at: '2026-09-23T08:39:38.976Z', onNode: { claimed: true, hosts: ['203.0.113.185'], matched: true }, storedAt: '2026-09-23T08:40:00.000Z' }),
     );
   }
 }

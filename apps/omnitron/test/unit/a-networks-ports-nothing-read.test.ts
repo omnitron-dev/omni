@@ -87,7 +87,7 @@ describe('what stays as it was', () => {
   });
 
   it('an address elsewhere is the stack’s alone', () => {
-    const elsewhere = { networkMode: 'mainnet', external: { host: '192.168.100.2', ports: { rpc: 9332 } } };
+    const elsewhere = { networkMode: 'mainnet', external: { host: '192.168.200.8', ports: { rpc: 9332 } } };
     expect(bindService(bitcoin, elsewhere).ports).toEqual({ rpc: 9332 });
   });
 });

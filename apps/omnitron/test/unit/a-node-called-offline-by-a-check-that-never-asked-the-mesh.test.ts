@@ -4,10 +4,10 @@
  *
  * Measured 2026-09-23 on the live master, with the health worker detached:
  *
- *     $ omnitron node check 16f3dd5a-2727-49e5-90a2-d762b57073f6
+ *     $ omnitron node check ab10cd01-0000-4000-8000-000000000001
  *     SSH: - not checked
  *     Omnitron: ○ offline
- *     Omnitron error: Connection timeout to tcp://37.27.130.185:9700 via tcp
+ *     Omnitron error: Connection timeout to tcp://203.0.113.185:9700 via tcp
  *
  * while the mesh held that node `connected via ssh-tunnel, authenticated`,
  * and `fleet status` read six apps from it through that very connection 35 s

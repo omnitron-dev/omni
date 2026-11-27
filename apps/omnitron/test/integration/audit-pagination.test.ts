@@ -35,12 +35,12 @@ describe('structured audit privacy', () => {
   });
 
   it('handles cycles and repeated references without inventing cycles for siblings', () => {
-    const common = { node: 'console0', count: 3, credentials: 'private-shared' };
+    const common = { node: 'worker-1', count: 3, credentials: 'private-shared' };
     const cycle: Record<string, unknown> = { ok: true };
     cycle['self'] = cycle;
     expect(scrubDetails({ rows: [common, common, cycle] })).toEqual({ rows: [
-      { node: 'console0', count: 3, credentials: '[redacted]' },
-      { node: 'console0', count: 3, credentials: '[redacted]' },
+      { node: 'worker-1', count: 3, credentials: '[redacted]' },
+      { node: 'worker-1', count: 3, credentials: '[redacted]' },
       { ok: true, self: '[circular]' },
     ] });
   });
@@ -218,11 +218,11 @@ describe.skipIf(!postgres.ok)('audit keyset pagination on PostgreSQL', () => {
   });
 
   it('writes cyclic nested details safely and keeps non-secret structured facts in PostgreSQL', async () => {
-    const loop: Record<string, unknown> = { node: 'console0', privateKey: 'new-private', retries: 2 };
+    const loop: Record<string, unknown> = { node: 'worker-1', privateKey: 'new-private', retries: 2 };
     loop['self'] = loop;
     await service.record({ action: 'node.configure', resourceType: 'node', details: { changes: [loop], ok: true } }, true);
     const raw = await own.db.selectFrom('omnitron_audit_log').select('details').executeTakeFirstOrThrow();
-    expect(raw.details).toEqual({ changes: [{ node: 'console0', privateKey: '[redacted]', retries: 2, self: '[circular]' }], ok: true });
+    expect(raw.details).toEqual({ changes: [{ node: 'worker-1', privateKey: '[redacted]', retries: 2, self: '[circular]' }], ok: true });
     expect((await service.list())[0]!.details).toEqual(raw.details);
   });
 });

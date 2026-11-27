@@ -28,7 +28,7 @@ const base = {
     { name: 'dead-tables:main', status: 'failed' as const, detail: '1 table nobody accounted for' },
   ],
   at: '2026-09-25T01:50:00.000Z',
-  onNode: { claimed: true, hosts: ['37.27.130.185'], matched: true },
+  onNode: { claimed: true, hosts: ['203.0.113.185'], matched: true },
   storedAt: '2026-09-25T01:50:05.000Z',
 };
 

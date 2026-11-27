@@ -4,7 +4,7 @@
  * Measured 2026-09-23 on the live master: `omnitron node check` at 08:48:29Z
  * printed
  *
- *     126457d0-e6d3-4366-92f4-b149b3b6864c: SSH ●  Omnitron ●
+ *     ab20cd02-0000-4000-8000-000000000002: SSH ●  Omnitron ●
  *
  * for a node removed at 07:28:00Z. The worker's summary for it read `online,
  * checkedAt 07:27:49.607Z` — 82 minutes old, its age shown nowhere — because:
@@ -32,8 +32,8 @@ const silent: any = {
   child: () => silent,
 };
 
-const REMOVED = '126457d0-e6d3-4366-92f4-b149b3b6864c';
-const KEPT = '16f3dd5a-2727-49e5-90a2-d762b57073f6';
+const REMOVED = 'ab20cd02-0000-4000-8000-000000000002';
+const KEPT = 'ab10cd01-0000-4000-8000-000000000001';
 
 function summary(nodeId: string, checkedAt = '2026-09-23T07:27:49.607Z'): INodeHealthSummary {
   return {

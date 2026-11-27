@@ -469,7 +469,7 @@ describe('one row per daemon', () => {
   it('can still mend a registry that was duplicated before the rule existed', async () => {
     // Two rows for one daemon, made before this guard. Measured on this
     // console: `omnitron node update <id> --ssh-auth password` — an edit
-    // that moves nothing — was refused with `37.27.130.185:9700 is already
+    // that moves nothing — was refused with `203.0.113.185:9700 is already
     // registered as "acme-deploy-test"`, so the row whose SSH key no longer
     // authenticates could not be given the password that would fix it.
     //

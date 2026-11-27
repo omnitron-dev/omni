@@ -99,12 +99,12 @@ describe('a delivery that fails', () => {
     Object.assign(svc, {
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
       deployer: { uploadStaticBundle },
-      targetForStackNode: async () => ({ host: '37.27.130.185' }),
+      targetForStackNode: async () => ({ host: '203.0.113.185' }),
     });
     return { svc, uploadStaticBundle };
   }
   const infra = { services: { gateway: { config: { staticDir: './apps/portal/dist' } } } };
-  const node = { host: '37.27.130.185', role: 'app' };
+  const node = { host: '203.0.113.185', role: 'app' };
 
   it('is tried once more, from nothing, and a second success is a delivery', async () => {
     let calls = 0;

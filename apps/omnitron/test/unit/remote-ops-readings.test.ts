@@ -45,7 +45,7 @@ describe('checkSsh — reading a remote machine', () => {
     sshMock.mockResolvedValue(ok('ok\nLinux\nacme-cpp\nx86_64\n6.8.0-51-generic'));
 
     const ops = new RemoteOpsService(silentLogger);
-    const result = await ops.checkSsh({ host: '37.27.130.185' });
+    const result = await ops.checkSsh({ host: '203.0.113.185' });
 
     expect(result.connected).toBe(true);
     expect(result.os).toEqual({

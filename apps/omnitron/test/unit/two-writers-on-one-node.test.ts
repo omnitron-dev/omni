@@ -339,8 +339,8 @@ describe('two names for one machine are one writer', () => {
 
     await withNodeLeases(
       [
-        { node: 'sample-test', machine: '37.27.130.185:22', run },
-        { node: 'acme-deploy-test', machine: '37.27.130.185:22', run },
+        { node: 'sample-test', machine: '203.0.113.185:22', run },
+        { node: 'acme-deploy-test', machine: '203.0.113.185:22', run },
       ],
       'sample/test',
       silentLogger,
@@ -382,7 +382,7 @@ describe('fleet upgrade is a writer too', () => {
     };
     return new RemoteDeployer(silentLogger, execution as never);
   }
-  const target = { host: '37.27.130.185', sshPort: 22 };
+  const target = { host: '203.0.113.185', sshPort: 22 };
 
   it('takes the lease before the work and gives it back after', async () => {
     const n = node('fleet');
@@ -414,7 +414,7 @@ describe('fleet upgrade is a writer too', () => {
       deployer.underLease(target, 'fleet upgrade: install', async () => {
         worked = true;
       }),
-    ).rejects.toThrow(/37\.27\.130\.185:22 is being deployed by laptop-2 pid 7 \(deploying sample\/test/);
+    ).rejects.toThrow(/203\.0\.113\.185:22 is being deployed by laptop-2 pid 7 \(deploying sample\/test/);
     expect(worked).toBe(false);
   });
 });

@@ -51,7 +51,7 @@ const node = (over: { isLocal?: boolean } = {}) => ({
       currentVersion: '0.2.0',
       isLocal: over.isLocal === true,
       sshReachable: true,
-      address: '37.27.130.185:22',
+      address: '203.0.113.185:22',
     },
   ],
 });
@@ -215,8 +215,8 @@ describe('the trail it leaves', () => {
 describe('one bundle of omnitron itself, two callers', () => {
   it('stages each caller somewhere of its own', () => {
     const fleet = ownBundleStaging('4212');
-    const console1 = ownBundleStaging('4212-16f3dd5a');
-    const console2 = ownBundleStaging('4212-126457d0');
+    const console1 = ownBundleStaging('4212-ab10cd01');
+    const console2 = ownBundleStaging('4212-ab20cd02');
 
     expect(new Set([fleet, console1, console2]).size).toBe(3);
     expect(ownBundleStaging('4212')).toBe(fleet);

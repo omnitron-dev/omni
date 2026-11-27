@@ -48,7 +48,7 @@ describe('a worker that spoke to nobody', () => {
         level: 40,
         time: 1790100955950,
         pid: 47976,
-        hostname: 'MacBook-Pro-Taaliman.local',
+        hostname: 'build-workstation1.example',
         name: 'titan-app',
         error: 'value too long for type character varying(32)',
         msg: 'Failed to persist health check results',

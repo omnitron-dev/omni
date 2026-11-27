@@ -24,8 +24,8 @@ import { describe, it, expect, vi } from 'vitest';
 
 import { RemoteDeployer } from '../../src/services/remote-deployer.service.js';
 
-const TARGET = { host: '37.27.130.185', daemonPort: 9700, username: 'root' } as never;
-const NODE = '37.27.130.185:9700';
+const TARGET = { host: '203.0.113.185', daemonPort: 9700, username: 'root' } as never;
+const NODE = '203.0.113.185:9700';
 const APPS = ['main', 'payments'];
 const DB = (app: string) => ({ DATABASE_URL: `postgresql://u:p@127.0.0.1:5432/${app}` });
 

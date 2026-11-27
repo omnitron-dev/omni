@@ -63,7 +63,7 @@ describe('a deploy that said nothing for fourteen minutes', () => {
     const log = recorder();
     const phases = reportPhases(log, { project: 'sample', stack: 'test' }, 30_000);
 
-    phases.enter('provisioning 37.27.130.185');
+    phases.enter('provisioning 203.0.113.185');
     vi.advanceTimersByTime(60_000);
     phases.done();
 

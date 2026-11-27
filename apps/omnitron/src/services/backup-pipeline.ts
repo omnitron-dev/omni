@@ -67,7 +67,7 @@ export const MIN_BACKUP_ID_PREFIX = 4;
  * `restoreBackup` compared the argument with `===` against a full UUID, and
  * nothing the CLI printed carried one: `backup list` showed Database,
  * Filename cut to 24 characters (`geo_2026-09-23T08-19-04-`, the id is after
- * the cut) and Size; `backup create` printed `[a63dbcf4]`, eight characters
+ * the cut) and Size; `backup create` printed `[bc10de01]`, eight characters
  * that restore then refused as "not found". Shared by the daemon and the CLI,
  * so both sides read a prefix the same way.
  *

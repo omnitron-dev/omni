@@ -56,7 +56,7 @@ export interface UpgradeCandidate {
    *
    * A registry holds names, and nothing stops two of them pointing at the
    * same box. Measured: `sample-test` and `acme-deploy-test`, both
-   * `37.27.130.185:22`, listed by `fleet upgrade` as two targets — so one
+   * `203.0.113.185:22`, listed by `fleet upgrade` as two targets — so one
    * host received the bundle twice, and the second install ran while the
    * first was still switching `current` and restarting the daemon underneath
    * it. Two installs racing on one machine is not a slower upgrade; it is an

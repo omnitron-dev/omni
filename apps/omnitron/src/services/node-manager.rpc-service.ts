@@ -714,7 +714,7 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
    * port listening:
    *
    *     SERVER     HOST                 STATUS   APPS
-   *     sample-test  37.27.130.185:9700   offline  0
+   *     sample-test  203.0.113.185:9700   offline  0
    *
    * Three methods rather than one relay taking a service name: a viewer may
    * ask a node what it is running, and may not use this master as a proxy for
@@ -948,7 +948,7 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
    * The proxy is kept. It used to be dropped on ANY error, and nothing but a
    * respawn ever wired it again — so one call the worker refused, from a
    * worker that was alive and checking, detached it for the life of the
-   * process. Measured 2026-09-23: `omnitron node check 16f3dd5a` (the id
+   * process. Measured 2026-09-23: `omnitron node check ab10cd01` (the id
    * `node list` prints) reached the worker as an unknown id, the worker threw
    * `Node not found`, `getNodeHealthSummaries` fell from 3 entries to 0, and
    * every later check went through the daemon's own path. The same happened

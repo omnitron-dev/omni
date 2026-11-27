@@ -11,7 +11,7 @@
  *     09-22 04:37:24 … 08:27:49   Refusing to deploy sample/test: N file(s) differ   ×5
  *     09-22 15:12:41              Refusing release …: the gate 'scans' failed
  *     09-22 15:32:43              sample/test takes releases only
- *     09-22 21:19:02              Deployment to 37.27.130.185:9700 failed for 6 of 6 app(s)
+ *     09-22 21:19:02              Deployment to 203.0.113.185:9700 failed for 6 of 6 app(s)
  *
  * and the trail holds the redeploy at 21:20:37 — alone, as if the one before
  * it had never been tried.

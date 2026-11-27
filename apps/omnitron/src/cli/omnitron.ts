@@ -929,9 +929,10 @@ program
 program
   .command('metrics [app]')
   .description('Show CPU/memory/latency metrics')
-  .structuredAction(async (app) => {
+  .option('--local-postgres-waits', 'Inspect aggregate waits and table counters using the local control-plane PostgreSQL profile')
+  .structuredAction(async (app, opts) => {
     const { metricsCommand } = await import('../commands/metrics.js');
-    await metricsCommand(app);
+    await metricsCommand(app, opts);
   });
 
 // ============================================================================

@@ -12,7 +12,7 @@ import { requireDaemon } from './daemon-required.js';
 import { metricsStorageReading } from '../shared/metrics-storage-reading.js';
 import type { IOmnitronMetricsService } from '../shared/dto/services.js';
 
-export async function metricsCommand(appName?: string): Promise<void> {
+export async function metricsCommand(appName?: string, options: { localPostgresWaits?: boolean } = {}): Promise<void> {
   const client = createDaemonClient();
 
   if (!(await requireDaemon(client))) {
@@ -21,6 +21,34 @@ export async function metricsCommand(appName?: string): Promise<void> {
   }
 
   try {
+    if (options.localPostgresWaits) {
+      if (appName) throw Error('--local-postgres-waits applies to the control-plane database for all applications');
+      const service = await client.service<IOmnitronMetricsService>('OmnitronMetrics');
+      const storage = await service.getStorageStatus();
+      if (storage.type !== 'postgres') throw Error('The running daemon uses a different metrics storage type: ' + storage.type);
+      const { createOmnitronDb } = await import('../database/connection.js');
+      const { readMetricsWaits } = await import('../database/metrics-waits.js');
+      const db = await createOmnitronDb({ max: 1, connectionTimeoutMillis: 3000, statement_timeout: 3000,
+        options: '-c default_transaction_read_only=on', application_name: 'omnitron-metrics-inspection' });
+      try {
+        const postgres = await readMetricsWaits(db);
+        if (!emitJson({ storage, postgres })) {
+          log.info(`Metrics storage has ${storage.pendingSamples} samples queued and ${storage.writtenSamples} writes confirmed`);
+          log.info(`PostgreSQL estimates ${postgres.table.live} live and ${postgres.table.dead} dead rows in metrics_samples`);
+          if (postgres.waits.length) table({
+            width: 'auto',
+            data: postgres.waits.map(group => ({
+              state: group.state, wait: [group.waitType, group.waitEvent].filter(Boolean).join(' / ') || 'No wait reported',
+              metrics: group.holdsMetricsLock ? 'yes' : 'no', blocked: group.blocked ? 'yes' : 'no', sessions: String(group.sessions),
+            })),
+            columns: [{ key: 'state', header: 'STATE' }, { key: 'wait', header: 'WAIT' }, { key: 'metrics', header: 'METRICS TABLE LOCK' },
+              { key: 'blocked', header: 'BLOCKED' }, { key: 'sessions', header: 'SESSIONS', align: 'right' }],
+          });
+          else log.info('No other non-idle sessions visible in this database');
+        }
+      } finally { await db.destroy(); }
+      return;
+    }
     const metrics = await client.getMetrics(appName ? { name: appName } : {});
     const storageResult = await client.service<IOmnitronMetricsService>('OmnitronMetrics')
       .then(service => service.getStorageStatus()).then(status => ({ status, error: null }))
@@ -28,7 +56,6 @@ export async function metricsCommand(appName?: string): Promise<void> {
     const storageReading = metricsStorageReading(storageResult.status);
 
     if (emitJson({ totals: metrics.totals, apps: metrics.apps, storage: { ...storageResult, ...storageReading } })) {
-      await client.disconnect();
       return;
     }
 
@@ -88,9 +115,7 @@ export async function metricsCommand(appName?: string): Promise<void> {
   } catch (err) {
     emitError((err as Error).message, appName ? { app: appName } : undefined);
     process.exitCode = 1;
-  }
-
-  await client.disconnect();
+  } finally { await client.disconnect(); }
 }
 
 function formatLatency(ms: number): string {

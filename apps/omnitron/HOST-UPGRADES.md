@@ -717,6 +717,14 @@ An alert stage identifies the rule, project configuration, sink transition or
 delivery receipt in progress. An older incumbent can report a generic metric
 timeout for any of these stages, including alert delivery.
 
+When the reported stage is metric storage, `omnitron metrics` shows the pending
+and committed sample counts. On a PostgreSQL controller, run
+`omnitron metrics --local-postgres-waits` with the same local database profile
+as the daemon. It reads PostgreSQL's table estimates and groups visible non-idle
+sessions by wait event, blocking and locks on the metrics table. Compare several
+readings with the queue and committed count to distinguish a transient wait from
+a sustained slowdown. The query reports aggregates and runs in read-only mode.
+
 The infrastructure preflight reports the container and the first mismatch in
 identity, ownership, enforced limits or specification. A saved Docker label
 does not establish that a memory limit is enforced. Preservation also checks

@@ -5,6 +5,7 @@ import { sql } from 'kysely';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import { PostgresMetricsStorage, MetricsService } from '@omnitron-dev/titan-metrics';
 import { SyncService, type SyncBatch } from '../../src/services/sync.service.js';
+import { readMetricsWaits } from '../../src/database/metrics-waits.js';
 import { requiresTestPostgres } from './requires-test-postgres.js';
 import { databaseOfItsOwn, type OwnDatabase } from './a-database-of-its-own.js';
 
@@ -30,6 +31,19 @@ afterAll(async () => { await own?.drop(); });
 beforeEach(async () => { if (available.ok) await sql`TRUNCATE metrics_samples, sync_ingested`.execute(own.db); });
 
 describe.skipIf(!available.ok)('PostgreSQL payload and replication receipt', () => {
+  it('reports a concurrent metrics table lock through bounded aggregate fields', async () => {
+    const before = await count('metrics_samples');
+    await own.db.transaction().execute(async transaction => {
+      await sql`LOCK TABLE metrics_samples IN ROW SHARE MODE`.execute(transaction);
+      const { table, waits } = await readMetricsWaits(own.db);
+      expect(Object.keys(table).sort()).toEqual(['dead', 'deleted', 'inserted', 'live']);
+      const holder = waits.find(group => group.holdsMetricsLock && group.state === 'idle in transaction');
+      expect(holder?.sessions).toBeGreaterThan(0);
+      expect(Object.keys(holder!).sort()).toEqual(['blocked', 'holdsMetricsLock', 'sessions', 'state', 'waitEvent', 'waitType']);
+    });
+    expect(await count('metrics_samples')).toBe(before);
+  });
+
   it('confirms after commit, preserves source time and identity, and replays a lost acknowledgement once', async () => {
     const request = batch();
     const first = await master().receiveBatch(request);

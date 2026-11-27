@@ -28,12 +28,8 @@ const ELLIPSIS = '...';
  * is still wider than the column, its END — whole trailing segments after an
  * ellipsis — because the end is what tells two projects apart.
  *
- * The table cuts a cell on the right. Measured 2026-09-23: both registered
- * projects printed as `/Users/taaliman/projects/luxquant/omnitron-dev/...` —
- * one string twice, for `…/omni/internal/sample` and `…/omni/apps/omnitron`:
- * 65 characters each, the first 52 shared, and the column showed 47. With
- * `~` they are still 51 characters each, so the tail is kept by cutting on
- * the left: `.../luxquant/omnitron-dev/omni/internal/sample`.
+ * Two checkouts can share a prefix longer than the column. Keep their final
+ * segments visible so the operator can distinguish them.
  *
  * Only the table: `--json` carries the full path.
  */

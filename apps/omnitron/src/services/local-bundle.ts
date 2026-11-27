@@ -118,17 +118,9 @@ export function isLinkRange(range: string): boolean {
  * usually a sibling checkout — matters to pnpm and not at all here: a
  * directory cannot be shipped by reference to a machine that does not have it.
  *
- * Measured, and the reason this predicate exists: an artifact built for the
- * test node carried twenty-three symlinks of the form
- *
- *     node_modules/@omnitron-dev/titan
- *       -> ../../../../../../../../../../Users/taaliman/projects/.../packages/titan
- *
- * — ten `..` segments, which climb past `/` and land in a home directory that
- * exists on exactly one computer. `ls` showed every entry present; `ls
- * <entry>/` answered `No such file or directory`. Every app on the node failed
- * at its first import, and the builder's own check — `existsSync(node_modules)`
- * — could not see it, because a dangling symlink is an entry that exists.
+ * A symlink into the build machine's checkout can appear in the archive and
+ * still be dangling on the target. Vendor these packages so their imports
+ * resolve after the artifact is transferred.
  */
 export function isVendorableRange(range: string): boolean {
   return isWorkspaceRange(range) || isLinkRange(range);

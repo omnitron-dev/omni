@@ -162,13 +162,9 @@ export function upgradeWorkspaceRefusal(input: {
 /**
  * Read every workspace package's manifest.
  *
- * The root is resolved to an absolute path first, and every directory
- * recorded below is absolute too. `pnpm --dir` resolves a relative path
- * against ITS OWN working directory, not against the caller's — so a
- * `workspaceRoot` of `../..` produced `/Users/taaliman/projects/luxquant/
- * packages`, two levels above where it meant, and the error named a
- * directory nobody had written down. Paths that cross a process boundary are
- * absolute.
+ * Resolve the root and package directories before passing them to pnpm.
+ * A child started with `--dir` interprets relative paths from its own
+ * working directory.
  */
 /**
  * Read several workspace roots into one map.

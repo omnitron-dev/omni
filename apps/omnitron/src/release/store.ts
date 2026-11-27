@@ -256,6 +256,12 @@ function readManifest(dir: string): ReleaseManifest | null {
   return readManifestRecord(dir).manifest;
 }
 
+/** Check the recorded bytes without walking the release tree or opening its logs. */
+export function readReleaseManifestRecord(id: string, root: string): ManifestReading {
+  if (!isReleaseId(id)) throw Error('Invalid release ID');
+  return readManifestRecord(path.join(root, id));
+}
+
 /** One bounded interpretation shared by CLI JSON/text and Console detail. Archive verification
  * remains part of loadRelease at admission; this view does not claim a process is running it. */
 export function readArtifactSources(manifest: ReleaseManifest): readonly ArtifactSourceReading[] {
@@ -323,16 +329,29 @@ export function readReleaseDetail(id: string, root: string = releasesRoot()): Re
   if (!fs.existsSync(dir)) throw new Error(`No release '${id}' on this machine — ${dir} does not exist`);
   const record = readManifestRecord(dir);
   const manifest = record.manifest;
-  let logs: Array<{ name: string; bytes: number }> = [];
-  try {
-    logs = fs
-      .readdirSync(path.join(dir, 'logs'), { withFileTypes: true })
-      .filter((e) => e.isFile())
-      .map((e) => ({ name: e.name, bytes: fs.statSync(path.join(dir, 'logs', e.name)).size }));
-  } catch {
-    // A build that never reached its first step wrote no logs.
-  }
+  const logs = listReleaseLogs(id, root);
   return { ...summarise(id, dir, manifest, record.manifestError), manifest, manifestSha256: record.sha256, artifactSources: manifest ? readArtifactSources(manifest) : [], logs, root: dir, attestations: loadAttestations(id, root) };
+}
+
+/** Ordinary build logs keep their original names. Gate logs include their directory. */
+export function listReleaseLogs(id: string, root: string): Array<{ name: string; bytes: number }> {
+  if (!isReleaseId(id)) throw Error('Invalid release ID');
+  const dir = path.join(fs.realpathSync(root), id);
+  const result: Array<{ name: string; bytes: number }> = [];
+  for (const group of ['logs', 'gate-logs']) {
+    const folder = path.join(dir, group);
+    try {
+      if (fs.realpathSync(folder) !== folder) continue;
+      for (const entry of fs.readdirSync(folder, { withFileTypes: true })) {
+        if (!entry.isFile()) continue;
+        const stat = fs.lstatSync(path.join(folder, entry.name), { throwIfNoEntry: false });
+        if (stat?.isFile()) result.push({ name: group === 'logs' ? entry.name : group + '/' + entry.name, bytes: stat.size });
+      }
+    } catch (error) {
+      if (!['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error;
+    }
+  }
+  return result.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /**
@@ -348,15 +367,30 @@ export function readReleaseLog(
   lines = 200,
   root: string = releasesRoot(),
 ): { name: string; bytes: number; tail: string } {
-  const detail = readReleaseDetail(id, root);
-  const known = detail.logs.find((l) => l.name === name);
-  if (!known) {
-    throw new Error(`Release ${id} has no log '${name}' — it has ${detail.logs.map((l) => l.name).join(', ') || 'none'}`);
-  }
-  const file = path.join(detail.root, 'logs', name);
-  const text = fs.readFileSync(file, 'utf8');
-  const capped = Math.min(Math.max(1, Math.floor(lines)), 5000);
-  return { name, bytes: known.bytes, tail: text.trimEnd().split('\n').slice(-capped).join('\n') };
+  if (!isReleaseId(id) || typeof name !== 'string' || !Number.isFinite(lines)) throw Error('Invalid release log request');
+  const gate = name.startsWith('gate-logs/');
+  const basename = gate ? name.slice('gate-logs/'.length) : name;
+  if (!basename || basename === '.' || basename === '..' || basename.includes('\0') || /[/\\]/.test(basename))
+    throw Error('Invalid release log name');
+  const file = path.join(fs.realpathSync(root), id, gate ? 'gate-logs' : 'logs', basename);
+  if (fs.realpathSync(file) !== file) throw Error('Release log must be a physical file');
+  const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NONBLOCK | fs.constants.O_NOFOLLOW);
+  try {
+    const stat = fs.fstatSync(fd);
+    const current = fs.lstatSync(file);
+    if (!stat.isFile() || stat.ino !== current.ino || stat.dev !== current.dev || fs.realpathSync(file) !== file)
+      throw Error('Release log changed during opening');
+    // The browser can tail several gigabytes of test output without scanning them on each poll.
+    const length = Math.min(stat.size, 128 * 1024);
+    const offset = stat.size - length;
+    const buffer = Buffer.alloc(length);
+    const read = fs.readSync(fd, buffer, 0, length, offset);
+    let start = 0;
+    while (offset && start < read && (buffer[start]! & 0xc0) === 0x80) start++;
+    const rows = buffer.toString('utf8', start, read).trimEnd().split('\n');
+    const capped = Math.min(5000, Math.max(1, Math.floor(lines)));
+    return { name, bytes: stat.size, tail: rows.slice(-capped).join('\n') };
+  } finally { fs.closeSync(fd); }
 }
 
 export interface PruneResult {

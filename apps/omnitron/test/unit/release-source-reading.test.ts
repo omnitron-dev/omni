@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { readArtifactSources, readReleaseDetail } from '../../src/release/store.js';
+import { listReleaseLogs, readArtifactSources, readReleaseDetail, readReleaseLog } from '../../src/release/store.js';
 import { MAX_RELEASE_MANIFEST_BYTES } from '../../src/release/origin.js';
 import type { ReleaseManifest } from '../../src/release/manifest.js';
 
@@ -35,6 +35,25 @@ function store() {
   return { root, file: path.join(root, 'consumer', 'manifest.json') };
 }
 describe('per-application source presentation', () => {
+  it('reads a bounded tail directly from ordinary and gate logs, including for unfinished builds', () => {
+    const { root } = store();
+    const dir = path.join(root, 'consumer');
+    fs.mkdirSync(path.join(dir, 'logs'));
+    fs.mkdirSync(path.join(dir, 'gate-logs'));
+    fs.writeFileSync(path.join(dir, 'gate-logs', 'tests.log'), 'started\npassed\n');
+    const content = 'x'.repeat(300_000) + '\nрезультат\n';
+    fs.writeFileSync(path.join(dir, 'logs', 'build.log'), content);
+    expect(listReleaseLogs('consumer', root).map(log => log.name)).toEqual(['build.log', 'gate-logs/tests.log']);
+    expect(readReleaseLog('consumer', 'build.log', 1, root)).toEqual({ name: 'build.log', bytes: Buffer.byteLength(content), tail: 'результат' });
+    expect(readReleaseLog('consumer', 'build.log', 300, root).tail.length).toBeLessThanOrEqual(128 * 1024);
+    expect(readReleaseLog('consumer', 'gate-logs/tests.log', 200, root).tail).toBe('started\npassed');
+    fs.symlinkSync(path.join(dir, 'logs', 'build.log'), path.join(dir, 'logs', 'link'));
+    expect(() => readReleaseLog('consumer', 'link', 200, root)).toThrow();
+    fs.renameSync(path.join(dir, 'gate-logs'), path.join(root, 'original'));
+    fs.symlinkSync(path.join(root, 'original'), path.join(dir, 'gate-logs'));
+    expect(() => readReleaseLog('consumer', 'gate-logs/tests.log', 200, root)).toThrow();
+    expect(listReleaseLogs('consumer', root).map(log => log.name)).toEqual(['build.log']);
+  });
   it('reports the actual producer SDK and source in the same detail read used by Console', () => {
     const f = store(); fs.writeFileSync(f.file, JSON.stringify(consumer));
     const detail = readReleaseDetail('consumer', f.root);

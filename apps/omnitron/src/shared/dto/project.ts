@@ -424,6 +424,15 @@ export interface PlanRecoveryQualificationRequest extends RuntimeStackScope {
   recoveryRelease: string;
   probeCommit: string;
   qaNodeId: string;
+  /** Read immutable issuer copies on the controller before recipient admission. */
+  issued?: RecoveryReleaseStores;
+}
+
+export interface RecoveryReleaseStore { storeRoot: string; sourceRoot: string; manifestSha256: string }
+export interface RecoveryReleaseStores {
+  incumbent: RecoveryReleaseStore;
+  candidate: RecoveryReleaseStore;
+  recovery: RecoveryReleaseStore;
 }
 
 export interface CheckReleaseRequest extends RuntimeStackScope {

@@ -493,7 +493,7 @@ export class ProjectRpcService {
   @Public({ auth: { roles: ADMIN_ROLES } })
   async planRecoveryQualification(data: PlanRecoveryQualificationRequest) {
     const scope = await this.projectService.resolveProjectStack(data, { readOnly: true });
-    return this.projectService.planRecoveryQualification(scope.project, scope.stack, data.release, data.recoveryRelease, data.probeCommit, data.qaNodeId);
+    return this.projectService.planRecoveryQualification(scope.project, scope.stack, data.release, data.recoveryRelease, data.probeCommit, data.qaNodeId, data.issued);
   }
 
   /** Operators can verify a release against the same artifact checks used by deployment. */

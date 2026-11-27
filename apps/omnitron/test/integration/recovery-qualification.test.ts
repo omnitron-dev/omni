@@ -16,6 +16,7 @@ import { installedRecoveryCommand, qualifyRecoveryOnHost, recoveryQualificationD
   type RecoveryQualificationExpected } from '../../src/services/recovery-qualification.js';
 import { createPipelineTestDatabase } from '../fixtures/pipeline-database.js';
 import { loadRelease } from '../../src/release/load.js';
+import { loadIssuedRecoverySources } from '../../src/project/recovery-sources.js';
 import { stageRecoveryInputs } from '../../src/services/recovery-inputs.js';
 import { readRecoveryQualificationRelease } from '../../src/services/recovery-qualification.js';
 
@@ -164,6 +165,21 @@ describe('native recovery qualification', () => {
         await writeFile(path.join(dir, 'manifest.json'), JSON.stringify(manifest));
         spec[role] = await readRecoveryQualificationRelease(await loadRelease(id, store), root);
       }
+      const detached = await mkdtemp(path.join(os.tmpdir(), 'omni-issued-source-'));
+      try {
+        const sourceRoot = await realpath(detached);
+        await git('worktree', 'add', '--detach', sourceRoot, candidate);
+        const pointer = (role: 'incumbent' | 'candidate' | 'recovery') => ({ storeRoot: store, sourceRoot, manifestSha256: spec[role].manifestSha256 });
+        const stores = { incumbent: pointer('incumbent'), candidate: pointer('candidate'), recovery: pointer('recovery') };
+        const selected = { release: spec.incumbent.id, manifestSha256: spec.incumbent.manifestSha256 };
+        const open = (input = stores) => loadIssuedRecoverySources(input, root, selected, spec.candidate.id, spec.recovery.id);
+        expect((await open()).map(source => source.release.manifestSha256))
+          .toEqual([spec.incumbent.manifestSha256, spec.candidate.manifestSha256, spec.recovery.manifestSha256]);
+        await expect(open({ ...stores, incumbent: stores.candidate })).rejects.toThrow('selected manifest');
+        await expect(open({ ...stores, recovery: stores.candidate })).rejects.toThrow('manifest changed');
+        await writeFile(path.join(sourceRoot, 'unexpected'), 'new file');
+        await expect(open()).rejects.toThrow('immutable commit');
+      } finally { await rm(detached, { recursive: true, force: true }); }
       const file = path.join(store, 'pipeline.json');
       const definition = await recoveryQualificationDefinition(spec, 'qa', {
         getNode: id => ({ id, host: id, isLocal: false, sshPort: 22, sshUser: 'test', createdAt: '2020-01-01' }) as never,

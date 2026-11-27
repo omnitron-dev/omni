@@ -52,17 +52,17 @@ import { publicLaunchFailure } from '../project/launch-failure.js';
 import { nodeApplicationNames, resolveNodePlacements, stackNodeKey } from '../project/stack-placement.js';
 import { StackTargets, type StackTarget } from '../project/stack-targets.js';
 import { confirmStoppedPlacement, placementProvisionIntent, remotePlacementReview, type PlacementEndpoint, type RemotePlacement } from '../project/remote-placement.js';
-import { cleanRegisteredCommit, committedStackDeclaration, confirmRegisteredReleaseNode, previousStackDeclaration, registeredStackAtCommit, remoteReleaseSourceKey, remoteReleaseSourcePrefix, type ReleaseRecipient } from '../release/remote-source.js';
-import { accountsForPartialStart, confirmsRelease, DeploymentMigrationRefusal, verifyDeploymentMigrations, verifyPostWriteRecoveryMigrations, verifyRegisteredDeploymentMigrations, type RemoteDeploymentOperation } from '../project/remote-release-deployment.js';
+import { cleanRegisteredCommit, committedStackDeclaration, confirmRegisteredReleaseNode, confirmReleaseRecipient, previousStackDeclaration, registeredStackAtCommit, remoteReleaseSourceKey, remoteReleaseSourcePrefix, type ReleaseRecipient } from '../release/remote-source.js';
+import { accountsForPartialStart, confirmsRelease, DeploymentMigrationRefusal, verifyDeploymentMigrations, verifyRegisteredDeploymentMigrations, type RemoteDeploymentOperation } from '../project/remote-release-deployment.js';
 import { checkRehearsalCopy, confirmFirstWriteCopy, inspectFirstWriteOwner, missingFirstWriteAuthorities, rehearsalCopyPlan } from '../project/first-write-inspection.js';
 import { checkMigrationRehearsal, planRehearsalMigrations } from '../project/rehearse-migrations.js';
 import type { MigrationRehearsalPlan, MigrationRehearsalResult, RehearseMigrationsRequest } from '../shared/dto/first-write.js';
 import type { FirstWriteInspection, InspectFirstWrite, PrepareRehearsalRequest, PrepareRehearsalResult, RehearsalCopyPlan, RehearsalCopyReceipt } from '../shared/dto/first-write.js';
 import type { InspectPhysicalRestore, PhysicalRestoreEvidence } from '../shared/dto/physical-restore.js';
 import { validateRunId } from './pipeline-admission.js';
-import type { DeploymentRecoveryInput, PlacementProvisionIntent, RemoteReleaseDeployment } from '../shared/dto/project.js';
+import type { DeploymentRecoveryInput, PlacementProvisionIntent, RecoveryReleaseStores, RemoteReleaseDeployment } from '../shared/dto/project.js';
 import type { PipelineService } from './pipeline.service.js';
-import { readRecoveryQualificationProbe, readRecoveryQualificationRelease } from './recovery-qualification.js';
+import { loadIssuedRecoverySources, recoveryQualificationInputs } from '../project/recovery-sources.js';
 import { defineEcosystem } from '../config/define-ecosystem.js';
 import { readCapturedSourceSync } from '../release/source-data.js';
 
@@ -3421,23 +3421,14 @@ export class ProjectService extends EventEmitter {
 
   private async recoveryQualification(scope: StackExecutionScope, previous: RecoverySource, next: RecoverySource,
     fallback: RecoverySource, probeCommit: string) {
-    if (!/^[a-f0-9]{40}$/.test(probeCommit)) throw Error('An exact qualification probe commit is required');
     const sources = [previous, next, fallback], pin = previous.receipt;
     if (new Set(sources.map(s => s.receipt.release)).size !== 3 ||
         sources.some(({ receipt }) => receipt.project !== scope.project || receipt.stack !== scope.stack ||
           receipt.nodeId !== pin.nodeId || receipt.sshFingerprint !== pin.sshFingerprint))
       throw Error('Qualification requires three distinct immutable releases for the same registered recipient');
-    const migrationSource = (source: RecoverySource) => ({ root: source.opened.sourceRoot, manifest: source.admitted.manifest });
-    const addedMigrations = await verifyPostWriteRecoveryMigrations(migrationSource(previous), migrationSource(next),
-      migrationSource(fallback), next.admitted.files.map(file => file.app));
     const root = this.registeredRemoteScope(scope.project, scope.stack).registration.path;
-    const [probe, incumbent, candidate, recovery] = await Promise.all([
-      readRecoveryQualificationProbe(root, next.receipt.commit, probeCommit),
-      readRecoveryQualificationRelease(previous.admitted, previous.opened.sourceRoot),
-      readRecoveryQualificationRelease(next.admitted, next.opened.sourceRoot),
-      readRecoveryQualificationRelease(fallback.admitted, fallback.opened.sourceRoot),
-    ]);
-    return { project: scope.project, stack: scope.stack, nodeId: pin.nodeId, incumbent, candidate, recovery, probe, addedMigrations };
+    const source = (s: RecoverySource) => ({ release: s.admitted, root: s.opened.sourceRoot });
+    return recoveryQualificationInputs(scope, pin.nodeId, root, probeCommit, source(previous), source(next), source(fallback));
   }
 
   private async inspectRecoveryHistory(scope: StackExecutionScope, selection: string, previous: RecoverySource,
@@ -3472,11 +3463,28 @@ export class ProjectService extends EventEmitter {
     return qualified;
   }
 
-  async planRecoveryQualification(project: string, stack: string, release: string, recoveryRelease: string, probeCommit: string, qaNodeId: string) {
+  async planRecoveryQualification(project: string, stack: string, release: string, recoveryRelease: string, probeCommit: string, qaNodeId: string,
+    issued?: RecoveryReleaseStores) {
     if (!this.recoveryPipelines) throw Error('Native recovery qualification is unavailable');
     const { assertReleaseId } = await import('../release/load.js');
     assertReleaseId(release);
     assertReleaseId(recoveryRelease);
+    if (issued !== undefined) {
+      const scope = { project, stack }, journal = new StackTargets(this.daemonStateStore);
+      const before = journal.inspect(scope), selected = before.placement?.selected;
+      if (!selected) throw Error('An immutable selected deployment is required for recovery qualification');
+      const baseline = this.registeredRemoteScope(project, stack);
+      const recipient = this.placementRecipient(selected.nodeId, selected);
+      confirmReleaseRecipient(baseline.stack, selected.nodeId, recipient);
+      const root = baseline.registration.path;
+      const sources = await loadIssuedRecoverySources(issued, root, selected, release, recoveryRelease);
+      const expected = await recoveryQualificationInputs(scope, selected.nodeId, root, probeCommit, ...sources);
+      const definition = await this.recoveryPipelines.recoveryQualificationDefinition(expected, qaNodeId);
+      if (journal.inspect(scope).revision !== before.revision || this.registeredRemoteScope(project, stack).fingerprint !== baseline.fingerprint ||
+          !isDeepStrictEqual(this.placementRecipient(selected.nodeId, selected), recipient))
+        throw Error('The selected release, registration or recipient changed during qualification planning');
+      return definition;
+    }
     const { scope, previous, next, selected, baseline } = await this.releaseDeploymentSources(project, stack, release);
     const fallback = await this.replacementSource(scope, recoveryRelease, selected.nodeId, baseline.fingerprint);
     const expected = await this.recoveryQualification(scope, previous, next, fallback, probeCommit);

@@ -176,7 +176,7 @@ describe('live session authority across HTTP cache and persistent WebSocket', ()
         expect((await send(credential, 'inspectFirstWrite', { recovery })).status).toBe(400);
         expect((await send(credential, 'prepareRemoteReleaseSource', { recovery })).status).toBe(400);
         expect(planRecoveryQualification).toHaveBeenCalledExactlyOnceWith(scope.project, scope.stack, scope.release,
-          recovery.release, recovery.probeCommit, plan.qaNodeId);
+          recovery.release, recovery.probeCommit, plan.qaNodeId, undefined);
         expect(deployReviewedRelease).toHaveBeenLastCalledWith(scope.project, scope.stack, scope.release, review, recovery);
       }
     }

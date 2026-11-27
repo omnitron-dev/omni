@@ -654,6 +654,7 @@ stack
   .requiredOption('--recovery-release <id>', 'Return release to qualify')
   .requiredOption('--recovery-probe <commit>', 'Full Git commit of the application recovery probe')
   .requiredOption('--qa-node <id>', 'Enrolled isolated qualification node')
+  .option('--issued <file>', 'JSON with controller release stores and exact manifest digests for incumbent, candidate and recovery')
   .structuredAction(async (projectName, stackName, release, options) => {
     const { stackPlanRecoveryCommand } = await import('../commands/stack.js');
     await stackPlanRecoveryCommand(projectName, stackName, release, options);

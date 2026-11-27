@@ -375,6 +375,8 @@ Both the deploy dialog and explicit placement changes require a migration histor
 
 On `main` after 0.4.18, prepare a distinct return release when the incumbent predates the candidate schema. An administrator can generate the native qualification Pipeline for the prepared releases, the application probe at its full Git commit, and an enrolled isolated QA node. Run it through the ordinary Pipeline workflow. Retain the successful run ID with the release and probe commit.
 
+To rehearse before delivery or while Fleet repairs the recipient, add `--issued stores.json` to `stack plan-recovery`. Supply three entries named `incumbent`, `candidate` and `recovery`. Each entry contains `storeRoot` (the controller's physical release store), `sourceRoot` (its separate, clean checkout for that release) and `manifestSha256` (the digest of the issued manifest). Use absolute directory paths. The controller binds the incumbent to its current selection, reads each archive and static asset, and checks the source trees against the registered Git project. An issuer can use a local mirror when the registered origin and commit ancestry confirm its identity. Deployment requires recipient admission for each release and rechecks the saved Pipeline run against those admissions.
+
 ```sh
 omnitron stack plan-recovery acme prod "$next_release" --recovery-release "$return_release" \
   --recovery-probe "$probe_commit" --qa-node "$qa_node" > recovery-pipeline.json

@@ -46,6 +46,46 @@ async function git(checkout: string, args: string[], signal: AbortSignal, stdin 
   } finally { await engine.dispose(); }
 }
 
+async function hasGrafts(checkout: string, signal: AbortSignal): Promise<boolean> {
+  const name = await git(checkout, ['rev-parse', '--git-path', 'info/grafts'], signal);
+  const graft = await fs.stat(path.resolve(checkout, name)).catch(error => {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    return null;
+  });
+  return !!graft && (!graft.isFile() || graft.size > 0);
+}
+
+/** A producer's local transport is never an authority. Use the registered origin,
+ * exact objects and incumbent lineage without contacting or opening a manifest URL. */
+export async function verifyRecoveryRepository(registeredRoot: string | undefined,
+  releases: ReadonlyArray<{ root: string; manifest: { project: ReleaseSource } }>): Promise<void> {
+  const [incumbent, candidate] = releases;
+  if (!incumbent || !candidate || releases.length !== 3) throw Error('Three release sources are required');
+  const origin = incumbent.manifest.project.repo;
+  for (const { manifest } of releases) assertRepositoryIdentity(manifest.project.repo);
+  if (releases.every(({ manifest }) => manifest.project.repo === origin)) return;
+  const localMirror = (repo: string) => path.posix.isAbsolute(repo) || /^file:\/\/\//.test(repo);
+  if (!registeredRoot || !networkRepository(origin) ||
+      releases.some(({ manifest }) => manifest.project.repo !== origin && !localMirror(manifest.project.repo)))
+    throw Error('The project repository changed');
+  const signal = AbortSignal.timeout(TIMEOUT);
+  const read = (args: string[]) => git(registeredRoot, args, signal);
+  if (await read(['config', '--get-all', 'remote.origin.url']) !== origin ||
+      await read(['rev-parse', '--is-shallow-repository']) !== 'false' || await hasGrafts(registeredRoot, signal))
+    throw Error('The registered repository cannot confirm the producer mirror');
+  for (const { root, manifest: { project: { commit } } } of releases) {
+    if (!SHA.test(commit) || await read(['cat-file', '-t', commit]) !== 'commit')
+      throw Error('A release commit is missing from the registered repository');
+    const tree = ['rev-parse', '--verify', commit + '^{tree}'];
+    if (await read(tree) !== await git(root, tree, signal))
+      throw Error('The release source tree differs from the registered repository');
+    await read(['merge-base', '--is-ancestor', incumbent.manifest.project.commit, commit]);
+  }
+  // A return can be a separately issued sibling. The candidate must be from
+  // the registered development line; its exact application closure is compared with the return separately.
+  await read(['merge-base', '--is-ancestor', candidate.manifest.project.commit, 'HEAD']);
+}
+
 /** Current origin advertisement is evidence; cached tracking refs and another
  * remote are not. This probe never fetches objects or writes refs. Unknown ancestry,
  * bounded-out reads and unavailable transport remain unknown instead of becoming false. */
@@ -82,12 +122,7 @@ async function advertisedCommit(checkout: string, repository: string, commit: st
     if (heads.size === 0) return false;
     // An exact advertised object does not require local history. An ancestry proof
     // does: old graft files must never turn an unrelated commit into a parent.
-    const grafts = await git(checkout, ['rev-parse', '--git-path', 'info/grafts'], signal);
-    const graft = await fs.stat(path.resolve(checkout, grafts)).catch(error => {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-      return null;
-    });
-    if (graft && (!graft.isFile() || graft.size > 0)) return null;
+    if (await hasGrafts(checkout, signal)) return null;
     let unknown = (await git(checkout, ['rev-parse', '--is-shallow-repository'], signal)) !== 'false';
     const objects = await git(checkout, ['cat-file', '--batch-check=%(objectname) %(objecttype)'], signal, [...heads].join('\n') + '\n');
     const known: string[] = [];

@@ -17,6 +17,7 @@ import { shellEscape } from '../shared/shell-escape.js';
 import { syncFinding, syncWords, syncSeverity } from '../shared/sync-reading.js';
 import { readDeploymentProgress, readStackStart } from '../shared/release-reading.js';
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import type { BackendControlService } from '../daemon/backend-control.js';
 import type { BackendRpcService } from '../daemon/backend.rpc-service.js';
 import { privateControlClient } from '../daemon/private-control-client.js';
@@ -422,12 +423,13 @@ function declarationRefreshCommand(project: string, stack: string, release?: str
 }
 
 export async function stackPlanRecoveryCommand(project: string, stack: string, release: string,
-  options: { recoveryRelease: string; recoveryProbe: string; qaNode: string }): Promise<void> {
+  options: { recoveryRelease: string; recoveryProbe: string; qaNode: string; issued?: string }): Promise<void> {
   const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
   try {
     const service = await client.service<IProjectRpcService>('OmnitronProject');
+    const issued = options.issued === undefined ? undefined : JSON.parse(await readFile(options.issued, 'utf8'));
     const definition = await service.planRecoveryQualification({ project, stack, release, recoveryRelease: options.recoveryRelease,
-      probeCommit: options.recoveryProbe, qaNodeId: options.qaNode });
+      probeCommit: options.recoveryProbe, qaNodeId: options.qaNode, ...(issued !== undefined && { issued }) });
     if (!emitJson(definition)) process.stdout.write(JSON.stringify(definition, null, 2) + '\n');
   } catch (error) {
     reportLifecycleError(error, 'planning recovery qualification', { project, stack, release });

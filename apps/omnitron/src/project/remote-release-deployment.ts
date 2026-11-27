@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from 'node:util';
 import type { ReleaseManifest } from '../release/manifest.js';
 import { importedMigrationDifferences, changedReleasedMigrations, releaseMigrationSources } from '../release/migrations.js';
 import { verifyRecoveryConsumerSources } from './recovery-consumer-source.js';
+import { verifyRecoveryRepository } from '../release/source.js';
 import type { IStackInfo, ReleaseMigrationHistory, RemoteDeploymentPhase, RemoteReleaseDeployment, SelectedRelease } from '../shared/dto/project.js';
 import { readStackRelease, readStackStart } from '../shared/release-reading.js';
 
@@ -117,10 +118,9 @@ async function recoveryInventory({ manifest, root }: ReleaseSource, apps: string
 /** Static eligibility for a separately qualified recovery after writes. The application
  * rehearsal still has to prove that both releases can process each other's records. */
 export async function verifyPostWriteRecoveryMigrations(incumbent: ReleaseSource, candidate: ReleaseSource,
-  recovery: ReleaseSource, apps: string[]): Promise<string[]> {
+  recovery: ReleaseSource, apps: string[], registeredRoot?: string): Promise<string[]> {
   try {
-    if (!incumbent.manifest.project.repo || [candidate, recovery].some(s => s.manifest.project.repo !== incumbent.manifest.project.repo))
-      throw Error('The project repository changed');
+    await verifyRecoveryRepository(registeredRoot, [incumbent, candidate, recovery]);
     const [before, next, back] = await Promise.all([recoveryInventory(incumbent, apps),
       recoveryInventory(candidate, apps), recoveryInventory(recovery, apps)]);
     if (!isDeepStrictEqual(before.producers, next.producers) || !isDeepStrictEqual(next.producers, back.producers))

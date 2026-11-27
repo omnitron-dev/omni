@@ -76,6 +76,31 @@ describe('separately qualified post-write recovery migration sources', () => {
     await expect(verify(await release('1.0.0', additions, files => { files['modules/jobs/migrations/hidden.sql'] = 'SELECT 1'; })))
       .rejects.toThrow('Git migration inventory differs');
   });
+  it('proves an offline issuer mirror against the selected repository, including a detached return', async () => {
+    const root = fs.mkdtempSync(path.join(temp, 'registered-'));
+    const origin = 'https://example.invalid/team/app.git';
+    apply(root, 'init', '-q', '-b', 'main');
+    apply(root, 'remote', 'add', 'origin', origin);
+    const adopt = (item: typeof incumbent, repo: string, parent?: string) => {
+      apply(root, 'fetch', '-q', '--no-tags', item.root, item.manifest.project.commit);
+      const tree = apply(root, 'rev-parse', 'FETCH_HEAD^{tree}');
+      const commit = apply(root, 'commit-tree', tree, ...(parent ? ['-p', parent] : []), '-m', item.manifest.id);
+      const source = fs.mkdtempSync(path.join(temp, 'issued-'));
+      apply(root, 'worktree', 'add', '--detach', source, commit);
+      return { root: source, manifest: { ...item.manifest, project: { repo, commit } } };
+    };
+    const old = adopt(incumbent, origin), mirror = '/issuer/project.git';
+    const next = adopt(candidate, mirror, old.manifest.project.commit), back = adopt(recovery, mirror, old.manifest.project.commit);
+    apply(root, 'update-ref', 'refs/heads/main', next.manifest.project.commit);
+    apply(root, 'checkout', '-q', 'main');
+    const check = (to = next, fallback = back) => verifyPostWriteRecoveryMigrations(old, to, fallback, ['main'], root);
+    await expect(check()).resolves.toEqual(['apps/main/migrations/219.sql', 'apps/main/migrations/220.sql']);
+    await expect(check(next, adopt(recovery, 'https://example.invalid/other/project.git', old.manifest.project.commit))).rejects.toThrow('repository changed');
+    await expect(check(next, adopt(recovery, mirror))).rejects.toThrow('provenance');
+    await expect(check(back, next)).rejects.toThrow('provenance');
+    apply(root, 'remote', 'set-url', 'origin', 'https://example.invalid/changed.git');
+    await expect(check()).rejects.toThrow('registered repository');
+  });
   it.each(['backend code', 'documentation', 'package scripts', 'third-party lock', 'workspace policy', 'SDK archive', 'SDK index'])(
     'refuses changed %s', async field => {
       const bad = await release('1.0.0', additions, files => {

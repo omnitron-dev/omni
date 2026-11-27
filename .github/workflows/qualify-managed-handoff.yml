@@ -17,6 +17,10 @@ on:
         description: Exact Node version on the target
         required: true
         default: '22.23.4'
+      stage_fence_reboot:
+        description: Inspect a legacy passive-stage record across two boots of a disposable Linux VM
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -153,6 +157,22 @@ jobs:
       - name: Retain the qualified candidate for managed delivery
         working-directory: ${{ runner.temp }}/source-${{ inputs.candidate }}
         run: pnpm exec xec run .xec/native-artifact.mjs "$RUNNER_TEMP/omnitron-handoff-$CANDIDATE" "$RUNNER_TEMP/native-delivery"
+      - name: Observe the same legacy stage before and after a Linux VM reboot
+        if: inputs.stage_fence_reboot
+        working-directory: ${{ runner.temp }}/source-${{ inputs.candidate }}
+        timeout-minutes: 12
+        run: |
+          test -c /dev/kvm
+          if ! snap list lxd >/dev/null 2>&1; then sudo snap install lxd --channel=5.21/stable; fi
+          sudo /snap/bin/lxd waitready --timeout=120
+          sudo /snap/bin/lxd init --auto --storage-backend=dir
+          pnpm exec xec run apps/omnitron/test/runtime/legacy-stage-reboot.ts "$RUNNER_TEMP/native-delivery" "$RUNNER_TEMP/stage-observation.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: inputs.stage_fence_reboot
+        with:
+          name: stage-observation-${{ inputs.candidate }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/stage-observation.json
+          if-no-files-found: error
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-${{ inputs.candidate }}-${{ inputs.node }}-${{ github.run_attempt }}

@@ -32,6 +32,8 @@ import type { BuildRecord } from '@omnitron-dev/omnitron/dto/services';
 import { StopIcon } from 'src/assets/icons';
 
 import { BUILD_STATE, BuildBar, GateStrip, elapsed, gateSentence } from './release-bits';
+import { LiveLogOutput } from './live-log-output';
+import { formatTimestamp } from 'src/utils/formatters';
 
 /** How many phase lines are kept on screen; the rest scroll. */
 const VISIBLE_LINES = 60;
@@ -41,11 +43,13 @@ export function ReleaseBuildPanel({
   onStop,
   onDeploy,
   compact,
+  onPause,
 }: {
   record: BuildRecord;
   onStop?: (buildId: string) => void;
   onDeploy?: (releaseId: string) => void;
   compact?: boolean;
+  onPause?: () => void;
 }) {
   const { can } = useAccess();
   const scope = useWorkspace();
@@ -158,29 +162,8 @@ export function ReleaseBuildPanel({
         {!compact && lines.length > 0 && (
           <>
             <Divider sx={{ my: 1.5 }} />
-            <Box
-              sx={{
-                maxHeight: 220,
-                overflowY: 'auto',
-                fontFamily: 'monospace',
-                fontSize: 12,
-                lineHeight: 1.7,
-              }}
-            >
-              {lines.map((line, i) => (
-                <Box key={`${line.at}-${i}`} sx={{ display: 'flex', gap: 1.5 }}>
-                  <Typography component="span" variant="caption" sx={{ color: 'text.disabled', fontFamily: 'monospace', flexShrink: 0 }}>
-                    {line.at.slice(11, 19)}
-                  </Typography>
-                  <Typography component="span" variant="caption" sx={{ color: 'text.disabled', fontFamily: 'monospace', width: 34, flexShrink: 0, textAlign: 'right' }}>
-                    {line.percent}%
-                  </Typography>
-                  <Typography component="span" variant="caption" sx={{ fontFamily: 'monospace', minWidth: 0, overflowWrap: 'anywhere' }}>
-                    {line.phase}
-                  </Typography>
-                </Box>
-              ))}
-            </Box>
+            <LiveLogOutput label="Build journal" live={running} onPause={onPause}
+              text={lines.map(line => formatTimestamp(line.at) + '  ' + line.percent + '%  ' + line.phase).join('\n')} />
           </>
         )}
       </CardContent>

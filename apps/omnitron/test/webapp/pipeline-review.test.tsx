@@ -41,7 +41,8 @@ vi.mock('src/netron/client', () => ({
 }));
 vi.mock('src/auth/access', () => ({ Can: ({ children }: { children: React.ReactNode }) => children,
   useAccess: () => ({ can: () => true }) }));
-import PipelinesPage, { PipelineRunDetail } from '../../webapp/src/pages/pipelines.js';
+import PipelinesPage from '../../webapp/src/pages/pipelines.js';
+import { PipelineRunDetail } from '../../webapp/src/components/pipeline-run-detail.js';
 
 describe('automation review', () => {
   it('shows a release attempt identity and unconfirmed effects in the existing run detail', () => {

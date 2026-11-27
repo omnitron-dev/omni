@@ -113,6 +113,12 @@ export async function checkPackageArchives(root, artifacts, { consumer, run = re
       const hook = installHooks.find(name => typeof manifest.scripts?.[name] === 'string' && manifest.scripts[name].trim());
       if (hook || (files.has('binding.gyp') && manifest.gypfile !== false))
         throw Error(`${manifest.name}: archive declares an npm installation hook (${hook ?? 'binding.gyp'})`);
+      if (manifest.name === '@omnitron-dev/omnitron') {
+        const declared = new Set(workspace.files.filter(file => file.startsWith('data/')));
+        const archived = [...files].filter(file => file.startsWith('data/'));
+        if (!declared.size || archived.length !== declared.size || archived.some(file => !declared.has(file)))
+          throw Error('Omnitron archive data must match its individually declared runtime files');
+      }
       if (manifest.name === '@omnitron-dev/lumen') {
         const native = [...files].filter(file => file.startsWith('node_modules/') &&
           (file.endsWith('.node') || /node_modules\/(?:@rolldown\/|rolldown\/|lightningcss(?:-|\/)|fsevents\/)/.test(file)));

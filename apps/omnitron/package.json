@@ -198,7 +198,22 @@
     "src/shared/runtime-artifact.ts",
     "dist",
     "webapp/dist",
-    "data"
+    "data/images/minio/Dockerfile",
+    "data/operations/controller-inspection.d.ts",
+    "data/operations/controller-inspection.js",
+    "data/operations/managed-account.mjs",
+    "data/operations/managed-kernel.mjs",
+    "data/operations/physical-restore.py",
+    "data/operations/pipeline-shell-receipt.d.ts",
+    "data/operations/pipeline-shell-receipt.js",
+    "data/operations/recovery-qualification.py",
+    "data/operations/rehearsal-copy.py",
+    "data/operations/rehearsal-migrate.py",
+    "data/operations/rehearsal-sandbox.py",
+    "data/operations/runtime-identity.d.ts",
+    "data/operations/runtime-identity.js",
+    "data/operations/stage-binaries.py",
+    "data/operations/stage-kernel.mjs"
   ],
   "license": "MIT",
   "repository": {

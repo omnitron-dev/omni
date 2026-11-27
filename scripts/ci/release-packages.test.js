@@ -83,3 +83,34 @@ test('archive acceptance checks for npm install hooks before starting a consumer
   const inert = await fixture(t, './index.js', { gypfile: false, scripts: { test: 'echo fixture' } }, true);
   await checkPackageArchives(inert.root, [inert.artifact]);
 });
+
+test('pnpm packs only declared Omnitron runtime data, even with local storage and caches beside it', async t => {
+  const { root } = await fixture(t);
+  const project = path.join(root, 'packages/example');
+  const cli = JSON.parse(await fs.readFile(new URL('../../apps/omnitron/package.json', import.meta.url), 'utf8'));
+  const metadata = { name: cli.name, version: '1.0.0', files: cli.files, main: './index.js' };
+  await fs.writeFile(path.join(project, 'package.json'), JSON.stringify(metadata));
+  await fs.writeFile(path.join(project, 'index.js'), 'export {};');
+  const data = cli.files.filter(file => file.startsWith('data/'));
+  assert.ok(data.includes('data/images/minio/Dockerfile'));
+  for (const file of [...data, 'data/storage/example.sqlite', 'data/operations/local.env', 'data/operations/__pycache__/worker.pyc']) {
+    await fs.mkdir(path.dirname(path.join(project, file)), { recursive: true });
+    await fs.writeFile(path.join(project, file), 'synthetic fixture\n');
+  }
+  await releaseCommand(project, 'pnpm', ['pack', '--pack-destination', root]);
+  const tarball = (await fs.readdir(root)).find(name => name.endsWith('.tgz') && name !== 'example.tgz');
+  assert.ok(tarball);
+  const file = path.join(root, tarball);
+  const listing = (await releaseCommand(root, 'tar', ['-tzf', file])).split(/\r?\n/);
+  assert.deepEqual(listing.filter(name => name.startsWith('package/data/') && !name.endsWith('/')).sort(),
+    data.map(name => 'package/' + name).sort());
+  await checkPackageArchives(root, [{ name: cli.name, version: metadata.version, file, integrity: artifactIntegrity(await fs.readFile(file)) }]);
+
+  await releaseCommand(root, 'tar', ['-xzf', file, '-C', root]);
+  const unwanted = 'package/data/storage/example.sqlite';
+  await fs.mkdir(path.dirname(path.join(root, unwanted)), { recursive: true });
+  await fs.writeFile(path.join(root, unwanted), 'synthetic');
+  await releaseCommand(root, 'tar', ['-czf', file, 'package']);
+  await assert.rejects(checkPackageArchives(root, [{ name: cli.name, version: metadata.version, file,
+    integrity: artifactIntegrity(await fs.readFile(file)) }]), /individually declared runtime files/);
+});

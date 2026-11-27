@@ -174,7 +174,9 @@ Application entries do not replicate a whole application with `instances`. Autho
 
 Set `omnitron.release.frameworkInput` in the workspace root’s committed `package.json` to require a delivery channel for the SDK. Use `registry` for published packages with SHA-512 integrity in the frozen lockfile. Use `vendored` for SDK archives committed alongside the project. Omitting the setting lets the build select the channel from the lockfile.
 
-To obtain the vendored SDK for a published release, run the **Prepare vendored SDK** workflow with its version and full Git commit. It runs `pnpm exec xec vendored-sdk --revision <commit> --out <new-directory>` on Linux. Two clean checkouts independently build the SDK and pack every public workspace. The artifact includes `QUALIFICATION.json`, the package inventory in `sdk/framework-manifest.json`, and the archive checksums in `sdk/SHA512SUMS`. Run `sha512sum -c SHA512SUMS` inside `sdk/` before committing the required archives to your project. Pass the same full commit to `omnitron release build --omni-commit`.
+Run **Prepare vendored SDK** with the package version and full Git commit. By default the workflow verifies the published GitHub Release and its tag. To deploy before publication, select `from_main`. The workflow verifies that the commit belongs to `main` and passed push CI. To reproduce that build on Linux, fetch `origin/main` and run `pnpm exec xec vendored-sdk --from-main --revision <commit> --out <new-directory>`.
+
+Both modes independently build two clean checkouts and compare every packed public workspace byte for byte. The artifact includes the source selection in `QUALIFICATION.json`, the package inventory in `sdk/framework-manifest.json`, and the archive checksums in `sdk/SHA512SUMS`. Run `sha512sum -c SHA512SUMS` inside `sdk/` before committing the required archives to your project. Pass the same full commit to `omnitron release build --omni-commit`.
 
 For a vendored release, commit the `.tgz` files and the pnpm lockfile that resolves every framework package to its project-relative `file:` archive. Supply the full upstream commit when building on the target platform.
 

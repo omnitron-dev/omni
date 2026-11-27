@@ -4,14 +4,40 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { releaseCommand } from '@xec-sh/ops/release';
 import { preserveReproducibilityFailure, sdkDifferences } from '../lib/reproducibility-evidence.mjs';
-import { compareVendoredSdk } from '../../.xec/commands/vendored-sdk.js';
+import { compareVendoredSdk, vendoredSdkSource } from '../../.xec/commands/vendored-sdk.js';
 import './release-build.test.js';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const entry = (filename, contents, files) => ({ name: '@omnitron-dev/example', version: '1.0.0', filename,
   sha256: hash(contents), files });
 const file = (contents, executable = false) => ({ digest: hash(contents), size: Buffer.byteLength(contents), executable });
+
+test('vendored SDK pins the fetched main history and keeps tag selection exact by default', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vendored-source-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const git = (...args) => releaseCommand(root, 'git', args);
+  await git('init', '-q', '-b', 'main');
+  await fs.mkdir(path.join(root, 'apps/omnitron'), { recursive: true });
+  await fs.writeFile(path.join(root, 'apps/omnitron/package.json'), JSON.stringify({ version: '1.0.0' }));
+  await git('add', '.');
+  const commit = () => git('-c', 'user.name=Fixture', '-c', 'user.email=test@example.invalid',
+    '-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-qm', 'SDK fixture');
+  await commit();
+  const base = await git('rev-parse', 'HEAD');
+  await commit();
+  const tip = await git('rev-parse', 'HEAD');
+  await git('update-ref', 'refs/remotes/origin/main', tip);
+  await assert.rejects(vendoredSdkSource(root, base));
+  assert.deepEqual(await vendoredSdkSource(root, base, true), { version: '1.0.0', ref: 'refs/remotes/origin/main', tip });
+  await git('-c', 'tag.gpgSign=false', 'tag', 'v1.0.0', base);
+  assert.deepEqual(await vendoredSdkSource(root, base), { version: '1.0.0', ref: 'refs/tags/v1.0.0', tip: base });
+  await assert.rejects(vendoredSdkSource(root, tip), /tag does not select/);
+  await commit();
+  await assert.rejects(vendoredSdkSource(root, await git('rev-parse', 'HEAD'), true));
+  await assert.rejects(vendoredSdkSource(root, base.slice(0, 8), true), /full release commit/);
+});
 
 test('vendored SDK compares both independent archives to each other and to the recorded SHA-512', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vendored-bytes-'));

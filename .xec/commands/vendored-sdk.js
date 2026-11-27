@@ -67,13 +67,21 @@ export async function compareVendoredSdk(first, second) {
   return checksums.join('\n') + '\n';
 }
 
-export async function prepareVendoredSdk(source, { revision, out }) {
+export async function vendoredSdkSource(source, revision, fromMain = false) {
   assert.match(revision, /^[a-f0-9]{40}$/, 'Expected the full release commit');
   const git = (...args) => releaseCommand(source, 'git', ['--no-replace-objects', ...args]);
   const { version } = JSON.parse(await git('show', revision + ':apps/omnitron/package.json'));
-  assert.equal(await git('rev-parse', '--verify', 'refs/tags/' + releaseTag(version) + '^{commit}'), revision,
-    'The release tag does not select the requested commit');
+  const ref = fromMain ? 'refs/remotes/origin/main' : 'refs/tags/' + releaseTag(version);
+  const tip = await git('rev-parse', '--verify', ref + '^{commit}');
+  if (fromMain) await git('merge-base', '--is-ancestor', revision, tip);
+  else assert.equal(tip, revision, 'The release tag does not select the requested commit');
   await git('merge-base', '--is-ancestor', revision, 'HEAD');
+  return { version, ref, tip };
+}
+
+export async function prepareVendoredSdk(source, { revision, out, fromMain }) {
+  const selection = await vendoredSdkSource(source, revision, fromMain);
+  const { version } = selection;
   const output = path.resolve(out);
   await fs.lstat(output).then(() => { throw Error('Destination already exists: ' + output); },
     error => { if (error.code !== 'ENOENT') throw error; });
@@ -85,7 +93,7 @@ export async function prepareVendoredSdk(source, { revision, out }) {
     const sdk = path.join(stage, 'second');
     const sums = await compareVendoredSdk(path.join(stage, 'first'), sdk);
     await fs.writeFile(path.join(sdk, 'SHA512SUMS'), sums, { flag: 'wx' });
-    const receipt = { ...second, independentBuilds: 2, node: process.version, platform: process.platform, arch: process.arch };
+    const receipt = { ...second, selection, independentBuilds: 2, node: process.version, platform: process.platform, arch: process.arch };
     await fs.mkdir(output, { mode: 0o700 });
     await fs.rename(sdk, path.join(output, 'sdk'));
     await fs.writeFile(path.join(output, 'QUALIFICATION.json'), JSON.stringify(receipt, null, 2) + '\n', { flag: 'wx' });
@@ -96,8 +104,9 @@ export async function prepareVendoredSdk(source, { revision, out }) {
 }
 
 export function command(program) {
-  program.command('vendored-sdk').description('Build a tagged SDK twice and verify every vendored pnpm archive')
-    .requiredOption('--revision <sha>', 'Full tagged release commit')
+  program.command('vendored-sdk').description('Build the selected SDK twice and verify every vendored pnpm archive')
+    .requiredOption('--revision <sha>', 'Full SDK commit')
+    .option('--from-main', 'Select a commit from the fetched origin/main history')
     .requiredOption('--out <directory>', 'New directory for the verified SDK and qualification receipt')
     .allowExcessArguments(false)
     .action(values => prepareVendoredSdk(process.cwd(), values));

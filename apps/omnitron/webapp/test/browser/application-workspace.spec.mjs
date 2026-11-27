@@ -232,6 +232,7 @@ test('release, stack and deployment links carry their public owner across tabs a
   await expect(tab.getByRole('button', { name: 'Switch workspace: alpha' })).toBeVisible();
   await expect(tab.getByRole('heading', { level: 1, name: 'research' })).toBeVisible();
   await page.goto(url + '/projects/alpha/deployments?stack=research');
+  await page.locator('summary').filter({ hasText: 'Transfers and deployment history' }).click();
   await expect(page.getByRole('link', { name: 'alpha-build' })).toHaveAttribute('href', '/projects/alpha/releases/alpha-build?stack=research');
   await expect(page.getByRole('link', { name: 'beta-build' })).toHaveCount(0);
   await page.goto(url + '/releases/alpha-build');

@@ -7,7 +7,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { openSqliteDatabase } from '@omnitron-dev/titan-database/sqlite';
 import { RuntimeInstallation } from '../../src/daemon/runtime-installation.js';
 import { recoverStageUnderGuards } from '../../src/commands/legacy-stage-recovery.js';
-import { lockStageGuards, readLegacyStageRecords } from '../../src/commands/legacy-stage-fence.js';
+import { assertNoStageCompletion, lockStageGuards, readLegacyStageRecords } from '../../src/commands/legacy-stage-fence.js';
 import { guardScript, renewScript, acquireScript, type LeaseRecord } from '../../src/services/node-deploy-lease.js';
 import type { StageRecoveryRequest, StageSelection } from '../../src/shared/dto/nodes.js';
 
@@ -43,8 +43,8 @@ async function fixture() {
     try { return await recoverStageUnderGuards({...request,action,scope:requestScope},{
     uid:process.getuid!(), identity:{bootId:boot,machineIdSha256:machine},
     guard:{directory:dir,check: terminal => {
-      locks?.check(terminal);
-      if (!terminal && fs.lstatSync(join(dir,'deploy.execution.completed'),{throwIfNoEntry:false})) throw Error('Completion present');
+      if (locks) locks.check(terminal);
+      else if (!terminal) assertNoStageCompletion(dir);
     }},
     select: async (scope, work) => runtime.exclusive(async () => {
       const selected = runtime.selection()!;
@@ -64,7 +64,7 @@ it('requires protected preparation on the original boot, exact bytes and a settl
   await expect(f.run('finish',f.bootB)).rejects.toThrow();
   await expect(f.run('prepare',f.bootB)).rejects.toThrow('during the recorded boot');
   fs.symlinkSync('missing',join(f.dir,'deploy.execution.completed'));
-  await expect(f.run('prepare',f.bootA)).rejects.toThrow('Completion');
+  await expect(f.run('prepare',f.bootA)).rejects.toThrow('A completion record is present; use its own reconciliation protocol');
   fs.unlinkSync(join(f.dir,'deploy.execution.completed'));
   const prepared = await f.run('prepare',f.bootA);
   expect(await f.run('prepare',f.bootB)).toEqual(prepared);
@@ -159,6 +159,8 @@ it('sends a fixed administrative command and returns only the reviewed fields or
   expect(run).toHaveBeenCalledTimes(calls);
   run.mockResolvedValueOnce({code:1,stdout:'',stderr:JSON.stringify({ok:false,error:'The runtime registry has an unrelated installation lease'})});
   await expect(recoverRegisteredStageFence(inspector,request,run)).rejects.toThrow('unrelated installation lease');
+  run.mockResolvedValueOnce({code:1,stdout:'',stderr:JSON.stringify({ok:false,error:'Could not open the enrolled service runtime registry'})});
+  await expect(recoverRegisteredStageFence(inspector,request,run)).rejects.toThrow('Could not open the enrolled service runtime registry');
   run.mockResolvedValueOnce({code:1,stdout:'',stderr:JSON.stringify({ok:false,error:f.lease.token})});
   await expect(recoverRegisteredStageFence(inspector,request,run)).rejects.not.toThrow(f.lease.token);
 });

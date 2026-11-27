@@ -163,6 +163,7 @@ jobs:
         timeout-minutes: 15
         run: |
           test -c /dev/kvm
+          node "$GITHUB_WORKSPACE/apps/omnitron/test/runtime/stage-selection-private-runtime.js" "$RUNNER_TEMP/omnitron-handoff-$CANDIDATE/packages/0"
           if ! snap list lxd >/dev/null 2>&1; then sudo snap install lxd --channel=5.21/stable; fi
           sudo /snap/bin/lxd waitready --timeout=120
           sudo /snap/bin/lxd init --auto --storage-backend=dir

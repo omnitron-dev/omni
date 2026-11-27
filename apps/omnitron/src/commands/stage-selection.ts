@@ -4,22 +4,18 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { fork } from 'node:child_process';
 import { isDeepStrictEqual } from 'node:util';
-import { openSqliteDatabase } from '@omnitron-dev/titan-database/sqlite';
 import { RuntimeInstallation } from '../daemon/runtime-installation.js';
 import { managedJobPid, readManagedRuntime, verifyManagedIsolation } from '../daemon/managed-runtime.js';
+import { stageSelectionChecks, stageSelectionRefusals, validStageSelection } from '../shared/stage-selection.js';
+import type { StageSelection } from '../shared/dto/nodes.js';
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const digest = /^[a-f0-9]{64}$/;
-import { validStageSelection } from '../shared/stage-selection.js';
-import type { StageSelection } from '../shared/dto/nodes.js';
 
 // The child never receives a lease bearer, filesystem handle, caller-selected command or root pathname.
 type Request = { stage: 'open'; scope: string } | { stage: 'confirm'; challenge: string } | { stage: 'finished' };
 type Reply = { stage: 'ready' } | { stage: 'selected'; selection: StageSelection; home: string; pids: number[] } |
   { stage: 'confirmed'; challenge: string } | { stage: 'error'; reason: string };
-
-const allowedErrors = ['The runtime registry has an unsettled activation', 'The runtime registry has an unrelated installation lease',
-  'An earlier stage selection holder is still live or unverifiable', 'The enrolled service account has no selected runtime'];
 
 /** The callback confirms a specific incident and fsyncs its root-owned decision while the service UID holds its own selection lease. */
 export async function withStageSelection<T>(scope: string, work: (selection: StageSelection, confirm: (challenge: string) => Promise<void>) => Promise<T>): Promise<T> {
@@ -40,7 +36,7 @@ export async function withStageSelection<T>(scope: string, work: (selection: Sta
         new Promise<Reply>((resolve, reject) => {
           listener = input => {
             const reply = input as Reply;
-            if (reply?.stage === 'error') reject(Error(allowedErrors.includes(reply.reason) ? reply.reason : 'Could not verify the native service selection'));
+            if (reply?.stage === 'error') reject(Error(stageSelectionRefusals.includes(reply.reason) ? reply.reason : 'Could not verify the native service selection'));
             else resolve(reply);
           };
           worker.once('message', listener);
@@ -81,12 +77,11 @@ export async function withStageSelection<T>(scope: string, work: (selection: Sta
   }
 }
 
-async function serve() {
+async function serve(check: (phase: keyof typeof stageSelectionChecks) => void) {
   if (process.platform !== 'linux' || process.getuid!() !== 0 || !process.send) throw Error('Requires the administrative Linux runtime');
   const { enterManagedInstance } = await import(new URL('../../data/operations/managed-account.mjs', import.meta.url).href);
-  // Materialize trusted modules before traversing the administrative installation becomes forbidden.
-  await Promise.all([import('../daemon/daemon-state-store.service.js'), import('@omnitron-dev/titan/module/logger'), import('../daemon/pid-manager.js')]);
-  openSqliteDatabase(':memory:').close();
+  await RuntimeInstallation.preloadExclusive();
+  check('account');
   const { home } = enterManagedInstance('/root/.omnitron') as { home: string };
   process.env['PATH'] = '/usr/bin:/bin';
   const receive = () => new Promise<Request>((resolve, reject) => {
@@ -101,16 +96,20 @@ async function serve() {
   process.send({ stage: 'ready' } satisfies Reply);
   const start = await opened;
   if (start?.stage !== 'open' || !digest.test(start.scope)) throw Error('Invalid stage scope');
+  check('supervisor');
   const config = await readManagedRuntime(home);
   if (!config) throw Error('No enrolled managed supervisor');
+  check('processes');
   const pids = await Promise.all([managedJobPid(config, 'owner'), managedJobPid(config, 'backend')]);
   await verifyManagedIsolation(config, pids[0], pids[1]);
   for (const [job, pid] of [['owner', pids[0]], ['backend', pids[1]]] as const) {
     if (fs.realpathSync('/proc/' + pid + '/exe') !== join(home, 'runtime/releases', config[job].artifact, 'node'))
       throw Error('The managed service process differs from its enrolled runtime');
   }
+  check('registry');
   const runtime = await RuntimeInstallation.open(home, { existing: true });
   if (!runtime) throw Error('No installed runtime');
+  check('lease');
   try {
     await runtime.exclusive(async () => {
       const value = runtime.selection();
@@ -131,8 +130,9 @@ async function serve() {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url) && process.argv[2] === '--stage-selection') {
-  try { await serve(); } catch (error) {
-    const reason = error instanceof Error && allowedErrors.includes(error.message) ? error.message : 'Could not verify the native service selection';
+  let phase: keyof typeof stageSelectionChecks = 'runtime';
+  try { await serve(next => { phase = next; }); } catch (error) {
+    const reason = error instanceof Error && stageSelectionRefusals.includes(error.message) ? error.message : stageSelectionChecks[phase];
     if (process.connected) process.send?.({ stage: 'error', reason } satisfies Reply);
     process.exitCode = 1;
   } finally { if (process.connected) process.disconnect?.(); }

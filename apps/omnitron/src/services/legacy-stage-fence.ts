@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { isStableHostBootIdentity } from '@omnitron-dev/common/process-identity';
 import type { LegacyStageFenceObservation, NativeLegacyStageFence, StageFenceRecipient, StageRecoveryRequest, StageRecoveryReceipt } from '../shared/dto/nodes.js';
-import { validStageSelection } from '../shared/stage-selection.js';
+import { stageSelectionRefusals, validStageSelection } from '../shared/stage-selection.js';
 import { pinnedRolloutEndpoint } from './managed-rollout.js';
 import type { DeployTarget } from './remote-deployer.service.js';
 
@@ -63,8 +63,7 @@ export async function recoverRegisteredStageFence(inspector: string, request: St
   if (result.code !== 0) {
     let reason: unknown;
     try { reason = JSON.parse(result.stderr ?? '').error; } catch { /* Transport diagnostics can contain private data. */ }
-    const publicReasons = ['The runtime registry has an unsettled activation', 'The runtime registry has an unrelated installation lease',
-      'An earlier stage selection holder is still live or unverifiable', 'The enrolled service account or its runtime selection changed',
+    const publicReasons = [...stageSelectionRefusals, 'The enrolled service account or its runtime selection changed',
       'Recovery requires a different Linux boot on the same host', 'A protected preparation must be made during the recorded boot',
       'The registered host machine identity changed', 'The current machine fence differs from the reviewed legacy passive stage',
       'The protected pre-reboot preparation is absent', 'A completion record is present; use its own reconciliation protocol',

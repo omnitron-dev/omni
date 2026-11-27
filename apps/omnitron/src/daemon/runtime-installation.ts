@@ -53,6 +53,8 @@ export interface ColdRecoveryDecision {
   source: 'current-local-registration-and-lifecycle';
 }
 const HASH = /^[a-f0-9]{64}$/;
+const loadWriter = () => Promise.all([import('./daemon-state-store.service.js'), import('@omnitron-dev/titan/module/logger')]);
+const loadPidManager = () => import('./pid-manager.js');
 
 /** Shared refusal for commands that cannot supersede a reviewed attempt. */
 export async function assertOrdinaryRecoveryAllowed(activation: RuntimeActivation | null | undefined): Promise<void> {
@@ -94,6 +96,12 @@ export class RuntimeInstallation {
     return this.writer;
   }
 
+  /** Resolve from the actual importers while the administrative process may still traverse its sealed release. */
+  static async preloadExclusive(): Promise<void> {
+    await Promise.all([loadWriter(), loadPidManager()]);
+    openSqliteDatabase(':memory:').close();
+  }
+
   static async open(home = OMNITRON_HOME, options: { existing?: boolean; readOnly?: boolean } = {}): Promise<RuntimeInstallation | null> {
     if (!path.isAbsolute(home)) throw new Error('Runtime installation requires an absolute instance directory');
     const installation = new RuntimeInstallation(path.resolve(home));
@@ -114,9 +122,7 @@ export class RuntimeInstallation {
     }
     if (options.readOnly) installation.inspection = openSqliteDatabase(database, { readonly: true, fileMustExist: true });
     else {
-      const [{ DaemonStateStore: Store }, { createNullLogger }] = await Promise.all([
-        import('./daemon-state-store.service.js'), import('@omnitron-dev/titan/module/logger'),
-      ]);
+      const [{ DaemonStateStore: Store }, { createNullLogger }] = await loadWriter();
       installation.writer = new Store(createNullLogger(), database);
       installation.store.initSync().pragma('synchronous = FULL');
     }
@@ -382,7 +388,7 @@ export class RuntimeInstallation {
   /** Exclusive across CLI processes; SQLite releases its own write lock even after SIGKILL. */
   async exclusive<T>(operation: () => Promise<T>, options?: { stageFenceScope: string }): Promise<T> {
     if (this.inspection) throw new Error('A read-only runtime inspection cannot claim the installation lease');
-    const { PidManager } = await import('./pid-manager.js');
+    const { PidManager } = await loadPidManager();
     if (this.lease) throw new Error('Runtime operation is already in progress');
     const lease: InstallationLease = { token: randomUUID(), pid: process.pid, acquiredAt: new Date().toISOString() };
     if (options) {

@@ -33,7 +33,17 @@ export function readLegacyStageRecords(leaseBytes: Buffer, executionBytes: Buffe
   return { commandId: intent.id, timeoutMs: intent.timeoutMs, leaseSha256: hash(leaseBytes), executionSha256: hash(executionBytes) };
 }
 
-/** Both advisory locks stay on their original open file descriptions for the entire synchronous observation. */
+export function assertNoStageCompletion(directory: string): void {
+  try {
+    fs.lstatSync(path.join(directory, 'deploy.execution.completed'));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+    throw error;
+  }
+  throw Error('A completion record is present; use its own reconciliation protocol');
+}
+
+/** Both advisory locks stay on their original open file descriptions for the entire observation. */
 export function lockStageGuards(directory: string, uid: number, readingTerminal = false) {
   const descriptors: number[] = [];
   try {
@@ -59,14 +69,7 @@ export function lockStageGuards(directory: string, uid: number, readingTerminal 
         const st = fs.lstatSync(guard.file, { bigint: true });
         if (!safeGuard(st) || st.ino !== guard.ino) throw Error('Machine fence guard changed during inspection');
       }
-      if (terminal) return;
-      try {
-        fs.lstatSync(path.join(directory, 'deploy.execution.completed'));
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
-        throw error;
-      }
-      throw Error('A completion record is present; use its own reconciliation protocol');
+      if (!terminal) assertNoStageCompletion(directory);
     };
     check(readingTerminal);
     return { check, close: () => { for (const fd of descriptors.reverse()) fs.closeSync(fd); } };

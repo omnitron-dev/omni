@@ -113,6 +113,16 @@ function fixture() {
 }
 
 describe('prepared source of one registered remote release', () => {
+  it('resolves file activity only for a registered remote stack at its enrolled endpoint', async () => {
+    const f = fixture();
+    f.registration.path = source;
+    const scope = { project: 'sample', stack: 'test' };
+    await expect(f.service.stackFileRecipient(scope)).resolves.toEqual({ nodeId, registeredAt: f.recipient().registeredAt });
+    await expect(f.service.stackFileRecipient({ ...scope, project: 'other' })).rejects.toThrow(/registered remote stack/);
+    await expect(f.service.stackFileRecipient({ ...scope, stack: 'dev' })).rejects.toThrow(/registered remote stack/);
+    f.service.setReleaseRecipientResolver(() => ({ ...f.recipient(), host: 'unrelated.invalid' }));
+    await expect(f.service.stackFileRecipient(scope)).rejects.toThrow(/enrolled endpoint/);
+  });
   it('reads older migration inventories from the exact source and rejects either incompatible direction', async () => {
     const newer = path.join(root, 'migration-change');
     git(root, 'clone', '-q', '--no-local', original, newer);
@@ -965,6 +975,7 @@ describe('prepared source of one registered remote release', () => {
       const fresh = await service.getStackStatus('sample', 'test');
       expect(fresh).toMatchObject({ connectedNodes: 1, totalNodes: 1, totalApps: 1, onlineApps: 0 });
       expect(service.getStack('sample', 'test').selectedRelease).toEqual({ id, manifestSha256: manifestSha });
+      await expect(service.stackFileRecipient({ project: 'sample', stack: 'test' })).resolves.toMatchObject({ nodeId, registeredAt: f.recipient().registeredAt });
       await service.startStack('sample', 'test', { source: 'boot' });
       expect(pinnedService.mock.calls.length).toBeGreaterThan(1);
       expect(pinnedService.mock.calls.every((args) => (args as unknown[])[2] === nodeId)).toBe(true);

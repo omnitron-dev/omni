@@ -142,7 +142,11 @@ beforeAll(async () => {
         audit.push(entry.action);
       },
     },
-    masterStore
+    masterStore,
+    async ({ project, stack }) => {
+      if (project !== 'example' || !['published', 'isolated', 'reenrolled'].includes(stack)) throw Error('Private diagnostic');
+      return { nodeId: stack === 'isolated' ? 'other' : 'remote', registeredAt: stack === 'reenrolled' ? '2099-01-01Z' : '2000-01-01Z' };
+    }
   );
   master = await host(async (n) => {
     await n.peer.exposeService(service);
@@ -161,6 +165,8 @@ describe('files through real Netron HTTP admission and TCP mesh', () => {
     for (const token of ['viewer', 'operator', 'mesh'])
       for (const method of ['roots', 'archiveFormats'])
         expect((await invoke(method, { nodeId: 'local' }, token)).success).toBe(false);
+    for (const token of ['viewer', 'operator', 'mesh'])
+      expect((await invoke('stackNodeTransfers', { project: 'example', stack: 'published' }, token)).success).toBe(false);
     for (const token of ['alice', 'viewer', 'operator'])
       expect(
         (await rpc(remote, token, 'OmnitronFileNode', 'invoke', [{ actor: 'alice', request: { op: 'roots' } }])).success
@@ -181,6 +187,15 @@ describe('files through real Netron HTTP admission and TCP mesh', () => {
     expect(done.completedFiles).toBe(1);
     expect(await fs.readFile(path.join(directory, 'remote/project/config.json'), 'utf8')).toBe('{"version":1}\n');
     expect((await invoke('transfers', undefined, 'bob')).data).toEqual([]);
+    const observed = await invoke('stackNodeTransfers', { project: 'example', stack: 'published' }, 'bob');
+    expect(observed.data).toEqual({ nodeId: 'remote', transfers: [{
+      id: done.id, state: done.state, ...(done.phase && { phase: done.phase }), bytes: done.bytes, totalBytes: done.totalBytes,
+      completedFiles: 1, totalFiles: 1, createdAt: done.createdAt, updatedAt: done.updatedAt,
+      ...(done.publication && { publication: done.publication }),
+    }] });
+    for (const stack of ['isolated', 'reenrolled'])
+      expect((await invoke('stackNodeTransfers', { project: 'example', stack }, 'bob')).data.transfers).toEqual([]);
+    expect((await invoke('stackNodeTransfers', { project: 'example', stack: 'published', nodeId: 'other' }, 'bob')).success).toBe(false);
     expect((await invoke('controlTransfer', { id: done.id, action: 'resume' }, 'bob')).success).toBe(false);
     expect(audit).toContain('files.copy.completed');
   });
@@ -204,6 +219,10 @@ describe('files through real Netron HTTP admission and TCP mesh', () => {
       destination: { nodeId: 'remote', rootId: 'work', path: '' },
     });
     await enteredPromise;
+    const observation = await invoke('stackNodeTransfers', { project: 'example', stack: 'published' }, 'bob');
+    expect(observation.data.transfers.find((job: FileTransfer) => job.id === copy.data.id)).toMatchObject({
+      state: 'running', totalBytes: data.length, bytes: 0,
+    });
     const paused = invoke('controlTransfer', { id: copy.data.id, action: 'pause' });
     // Let the HTTP control call reach the coordinator before acknowledging the in-flight frame.
     await new Promise((r) => setTimeout(r, 30));

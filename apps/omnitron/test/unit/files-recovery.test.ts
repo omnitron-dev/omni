@@ -55,7 +55,11 @@ describe('durable transfer coordinator recovery', () => {
     }
     expect((await runWithAuth(owner, () => service.transfers()))[0]?.state).toBe('failed');
     await service.dispose();
-    service = new FilesRpcService(source, remote, auth, audit, journal);
+    service = new FilesRpcService(source, remote, auth, audit, journal, async () => ({ nodeId: 'remote', registeredAt: '2000-01-01T00:00:00Z' }));
+    const persisted = await runWithAuth(owner, () => service.stackNodeTransfers({ project: 'example', stack: 'published' }));
+    expect(persisted.transfers).toHaveLength(1);
+    expect(persisted.transfers[0]).toMatchObject({ id: started.id, state: 'failed' });
+    expect(persisted.transfers[0]).not.toHaveProperty('error');
     await runWithAuth(owner, () => service.controlTransfer({ id: started.id, action: 'resume' }));
     for (let i = 0; i < 100; i++) {
       if ((await runWithAuth(owner, () => service.transfers()))[0]?.state === 'completed') break;

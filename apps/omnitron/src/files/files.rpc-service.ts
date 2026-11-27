@@ -11,6 +11,8 @@ import { runWithAuth } from '../services/auth-context.js';
 import type { AuthService } from '../services/auth.service.js';
 import type { AuditService } from '../services/audit.service.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
+import type { RuntimeStackScope } from '../shared/dto/project.js';
+import { stackExecutionKey } from '../shared/dto/stack-execution.js';
 import type {
   FileNodeRequest,
   FileLocation,
@@ -23,6 +25,7 @@ import type {
   FileTrash,
   FileCopyRequest,
   FileTransfer,
+  StackNodeTransfers,
   IOmnitronFilesService,
   FileArchiveCapabilities,
   FileArchiveManifest,
@@ -88,7 +91,8 @@ export class FilesRpcService implements IOmnitronFilesService {
     private readonly remote: FileNodeCall,
     private readonly auth: Pick<AuthService, 'validateSession'>,
     private readonly audit: Pick<AuditService, 'record'>,
-    private readonly store: Store
+    private readonly store: Store,
+    private readonly stackRecipient?: (scope: RuntimeStackScope) => Promise<{ nodeId: string; registeredAt: string }>
   ) {
     for (const id of this.store.kvGetSync<string[]>('files:jobs:index') ?? []) {
       const job = this.store.kvGetSync<Job>(`files:job:${id}`);
@@ -663,6 +667,27 @@ export class FilesRpcService implements IOmnitronFilesService {
       .filter((j) => j.view.ownerId === owner.userId)
       .map((j) => this.view(j))
       .reverse();
+  }
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async stackNodeTransfers(scope: RuntimeStackScope): Promise<StackNodeTransfers> {
+    await this.owner();
+    stackExecutionKey(scope);
+    if (Object.keys(scope).some(key => key !== 'project' && key !== 'stack') || !this.stackRecipient)
+      throw Error('Select a registered remote project and stack');
+    const { nodeId, registeredAt } = await this.stackRecipient(scope).catch(() => {
+      throw Error('The registered remote stack recipient could not be confirmed');
+    });
+    const since = Date.parse(registeredAt);
+    // A Files job records its destination node ID. Paths and other projects on that node do not prove deployment ownership.
+    const transfers = [...this.jobs.values()].map(job => job.view)
+      .filter(view => view.destination.nodeId === nodeId && Date.parse(view.createdAt) >= since)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .map(({ id, state, phase, bytes, totalBytes, completedFiles, totalFiles, preparedBytes, sourceBytes, restoredBytes, publication, createdAt, updatedAt }) => ({
+        id, state, bytes, totalBytes, completedFiles, totalFiles, createdAt, updatedAt,
+        ...(phase && { phase }), ...(publication && { publication }), ...(preparedBytes !== undefined && { preparedBytes }),
+        ...(sourceBytes !== undefined && { sourceBytes }), ...(restoredBytes !== undefined && { restoredBytes }),
+      }));
+    return { nodeId, transfers };
   }
   @RecoveryMutation()
   @Public({ auth: { roles: ADMIN_ROLES } })

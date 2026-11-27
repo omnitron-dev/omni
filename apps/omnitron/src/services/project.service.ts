@@ -3063,6 +3063,26 @@ export class ProjectService extends EventEmitter {
     return target;
   }
 
+  /** Bind a read of Files activity to the enrolled receiver for the requested public stack. */
+  async stackFileRecipient(scope: RuntimeStackScope): Promise<{ nodeId: string; registeredAt: string }> {
+    const { project, stack } = await this.resolveProjectStack(scope, { readOnly: true });
+    const baseline = this.registeredRemoteScope(project, stack);
+    const placement = this.placement(project, stack);
+    const binding = placement?.selected ?? placement?.origin;
+    // If the declaration changed, only its explicit enrollment at the same endpoint can identify the receiver.
+    // An unchanged historical declaration may instead name the source of a verified placement.
+    const changed = placement && placement.registration !== baseline.fingerprint;
+    const declaration = placement?.selected && !changed ? this.placementConfiguration(project, stack, placement)?.stacks?.[stack] : baseline.stack;
+    const node = declaration?.nodes?.[0];
+    const nodeId = binding?.nodeId ?? node?.nodeId;
+    if (!nodeId || !node || declaration?.nodes?.length !== 1 || (changed && !node.nodeId) || (node.nodeId && node.nodeId !== nodeId))
+      throw Error('Files activity requires one registered remote stack recipient');
+    const target = this.placementRecipient(nodeId, binding);
+    if (target.host !== node.host || target.port !== (node.port ?? 9700) || !target.registeredAt || !Number.isFinite(Date.parse(target.registeredAt)))
+      throw Error('Files activity requires the current enrolled endpoint');
+    return { nodeId, registeredAt: target.registeredAt };
+  }
+
   /** Verify a returning receiver before publishing files, reconciling containers or running migrations. */
   private async checkReceiverStart(scope: StackExecutionScope, placement: RemotePlacement,
     runtime: StackExecutionScope | undefined = placement.sourceStop.nodes[0]?.execution): Promise<void> {

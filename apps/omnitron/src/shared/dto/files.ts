@@ -113,6 +113,10 @@ export interface FileTransfer {
   createdAt: string;
   updatedAt: string;
 }
+/** Receiver activity visible to administrators regardless of which account submitted the copy. */
+export type NodeFileTransfer = Pick<FileTransfer, 'id' | 'state' | 'phase' | 'bytes' | 'totalBytes' | 'completedFiles' | 'totalFiles'
+  | 'preparedBytes' | 'sourceBytes' | 'restoredBytes' | 'publication' | 'createdAt' | 'updatedAt'>;
+export interface StackNodeTransfers { nodeId: string; transfers: NodeFileTransfer[] }
 export type FileNodeRequest =
   | { op: 'roots' }
   | { op: 'archiveFormats' }
@@ -162,5 +166,6 @@ export interface IOmnitronFilesService {
   abortUpload(data: { nodeId: string; id: string }): Promise<FileUpload>;
   copy(data: FileCopyRequest): Promise<FileTransfer>;
   transfers(): Promise<FileTransfer[]>;
+  stackNodeTransfers(scope: import('./project.js').RuntimeStackScope): Promise<StackNodeTransfers>;
   controlTransfer(data: { id: string; action: 'pause' | 'resume' | 'cancel' }): Promise<FileTransfer>;
 }

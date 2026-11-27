@@ -4,13 +4,18 @@ import { Pipeline as XecPipeline } from '@xec-sh/ops/pipeline';
 test('follows a reviewed deployment to its exact recovery run and keeps the run outside other workspaces', async ({ page, url }) => {
   const runId = '47b13ec0-e16f-4183-b35a-ffff35bdec09';
   const detailReads = [];
-  const stack = { name: 'dev', type: 'remote', status: 'running', apps: [], nodes: [], config: { type: 'remote' } };
+  const target = { host: 'edge.invalid', nodeId: 'edge-node', port: 9700, role: 'app' };
+  const stack = { name: 'dev', type: 'remote', status: 'running', apps: [], nodes: [], config: { type: 'remote', nodes: [target] } };
   await stubInventory(page, {
     'OmnitronProject.listStacks': ({ project }) => [{ ...stack, ...(project === 'example' && { deploymentOperation: {
       phase: 'starting', release: 'reviewed-candidate', rollbackRelease: 'compatible-return', nodeId: 'edge-node',
       review: 'a'.repeat(64), recoveryRunId: runId, manifestSha256: 'b'.repeat(64), stopId: 'stop-one',
     } }) }],
     'OmnitronProject.getDeployProgress': [],
+    'OmnitronFiles.stackNodeTransfers': ({ project, stack }) => ({ nodeId: 'edge-node', transfers: project === 'example' && stack === 'dev' ? [{
+      id: 'transfer-by-another-account', state: 'running', phase: 'transferring', bytes: 384, totalBytes: 960,
+      completedFiles: 3, totalFiles: 8, updatedAt: '2026-01-01T14:00:00Z', createdAt: '2026-01-01T12:00:00Z',
+    }] : [] }),
     'OmnitronPipelines.listRuns': [], // The qualification is outside the most recent page of runs.
     'OmnitronPipelines.listWorkspace': { definitions: [], runs: [] },
     'OmnitronPipelines.getRunStatus': ({ runId: id }) => {
@@ -25,6 +30,11 @@ test('follows a reviewed deployment to its exact recovery run and keeps the run 
   await expect(journal).toContainText('reviewed-candidate');
   await expect(journal).toContainText('compatible-return');
   await expect(journal).toContainText('edge-node');
+  const activity = page.getByRole('region', { name: 'Node file activity' });
+  await expect(activity).toContainText('edge-node across all projects and accounts');
+  await expect(activity).toContainText('transfer-by-another-account');
+  await expect(activity).toContainText('384 B / 960 B transferred · 3 / 8 files');
+  await expect(activity.getByRole('button')).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Runtime', exact: true })).toHaveAttribute('href', '/projects/example/stacks/dev');
   await journal.getByRole('link', { name: runId }).click();
   const drawer = page.getByRole('dialog', { name: 'qualification' });
@@ -40,6 +50,7 @@ test('follows a reviewed deployment to its exact recovery run and keeps the run 
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.goto(url + '/projects/other/deployments?stack=dev');
   await expect(journal).toContainText('No reviewed deployment receipt reported');
+  await expect(activity).toContainText('No retained incoming transfers.');
   expect(detailReads).toHaveLength(count);
 });
 

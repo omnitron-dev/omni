@@ -1709,7 +1709,7 @@ export class OmnitronDaemon {
           if (node.isLocal) return fileNode.invoke(actor, request);
           if (!this.slaveConnector) throw new Error('File node is not connected to the mesh');
           return this.slaveConnector.invokeOnSlave(node.host, node.daemonPort, 'OmnitronFileNode', 'invoke', [{ actor, request }]);
-        }, authService, audit, fileState);
+        }, authService, audit, fileState, scope => projectService.stackFileRecipient(scope));
         await this.app.netron.peer.exposeService(this.filesRpcService);
       }
 

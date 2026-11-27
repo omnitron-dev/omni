@@ -1,8 +1,8 @@
 import { LinearProgress, Typography } from '@mui/material';
-import type { FileTransfer } from '@omnitron-dev/omnitron/dto/services';
+import type { FileTransfer, NodeFileTransfer } from '@omnitron-dev/omnitron/dto/services';
 import { fileBytes } from './model';
 
-export function fileTransferProgress(job: FileTransfer) {
+export function fileTransferProgress(job: NodeFileTransfer & Pick<FileTransfer, 'archive'>) {
   const phase = job.phase ?? (job.state === 'planning' ? 'planning' : 'transferring');
   const label =
     {
@@ -30,7 +30,7 @@ export function fileTransferProgress(job: FileTransfer) {
         : `${fileBytes(current)} captured`
       : restoring && job.restoredBytes !== undefined
         ? `${fileBytes(current)} / ${fileBytes(total)} restored`
-        : job.archive && !job.totalBytes && job.state !== 'completed'
+        : (job.archive || phase === 'archiving') && !job.totalBytes && job.state !== 'completed'
           ? 'Transfer size is available after the archive is prepared'
           : `${fileBytes(job.bytes)} / ${fileBytes(job.totalBytes)} transferred · ${job.completedFiles} / ${job.totalFiles} files`,
   };

@@ -19,6 +19,8 @@ Console remembers workspace routes separately for each signed-in account. When i
 
 Open **Deployments** in a project and select its stack. **Reviewed deployment** shows the last checkpoint saved by the controller, the execution node and the target and return releases. A recovery qualification ID opens the corresponding run in **Pipelines** when your account can read it. **Runtime** opens the stack's current application and container observations. You can bookmark a stack’s deployment view at `/projects/<project>/deployments?stack=<stack>`.
 
+For a remote stack with one enrolled receiver, administrators can follow **Node file activity** on the same page. It shows retained incoming Files jobs from all accounts, with their IDs, states and byte counts. Other projects can use the same receiver. The account that requested a copy controls it in **Files**.
+
 In **Nodes**, open **Applications** to see the processes reported by a particular node. The address is `/nodes?node=<registry-id>`. The inventory requires `OmnitronNodes.getNodeDaemonStatus`. Health and logs use their respective read permissions. A log link carries the application handle and node ID. Back returns to that node's inventory.
 
 **Pipelines** reads system automation definitions and run history independently. **Alerts** does the same for rules and firing alerts. A zero means the corresponding read succeeded with an empty list. A dash means the count is unavailable. When a refresh fails, the affected list identifies the error and retains its last available rows. A run opens its details when the account can read `OmnitronPipelines.getRunStatus`. The status bar links to `/alerts#firing` for readers of the alert summary and firing list.

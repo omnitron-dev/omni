@@ -15,9 +15,10 @@ import { AdminDataTable, type ColumnDef } from '@omnitron-dev/prism/components/a
 import { Alert } from '@omnitron-dev/prism/components/alert';
 import { Tabs } from '@omnitron-dev/prism/components/tabs';
 import { Breadcrumbs } from 'src/components/page-breadcrumbs';
-import { deploy, project } from 'src/netron/client';
+import { deploy, files, project } from 'src/netron/client';
 import { releaseApi } from 'src/netron/release-wire';
 import { DeployProgressList } from 'src/components/deploy-progress';
+import { fileTransferProgress } from 'src/components/files/transfer-progress';
 import { formatDate, formatDuration } from 'src/utils/formatters';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { useStackContext } from 'src/hooks/use-stack-context';
@@ -49,6 +50,11 @@ function DeploymentWorkspace() {
   const fetchStacks = useProjectStore(s => s.fetchStacks);
   const selectedStack = inventory?.find(item => item.name === activeStack);
   const operation = selectedStack?.deploymentOperation;
+  const fileNode = selectedStack?.type === 'remote' && selectedStack.config?.nodes?.length === 1 ? selectedStack.config.nodes[0] : undefined;
+  const readFiles = Boolean(readStack && fileNode && can('OmnitronFiles.stackNodeTransfers'));
+  const nodeFiles = usePolledResource(() => files.stackNodeTransfers({ project: activeProject!, stack: activeStack! }), {
+    enabled: readFiles, intervalMs: 5_000, resourceKey: JSON.stringify([activeProject, activeStack, fileNode?.nodeId, fileNode?.host, fileNode?.port, readFiles]),
+  });
   const [preferredSection, setSection] = useState('stacks');
   const section = canHistory && (preferredSection === 'stacks' || !canLegacy) ? 'stacks' : canLegacy ? 'legacy' : null;
   const [showUnscoped, setShowUnscoped] = useState(false);
@@ -80,7 +86,7 @@ function DeploymentWorkspace() {
   const refresh = async () => {
     setRefreshing(true);
     try { await Promise.all([section === 'stacks' && history.refresh(), section === 'legacy' && legacy.refresh(),
-      canProgress && progress.refresh(), readStack && fetchStacks(activeProject!)]); }
+      canProgress && progress.refresh(), readStack && fetchStacks(activeProject!), readFiles && nodeFiles.refresh()]); }
     finally { setRefreshing(false); }
   };
   const changePageSize = (size: number) => { setPageSize(size); setPage(0); };
@@ -139,6 +145,22 @@ function DeploymentWorkspace() {
         {operation.manifestSha256 && <Typography variant="caption" color="text.secondary">Selected manifest SHA-256 · {operation.manifestSha256}</Typography>}
       </> : !stackError && <Typography variant="body2" color="text.secondary">{!inventory ? 'Reading stack inventory…'
         : selectedStack ? 'No reviewed deployment receipt reported for this stack.' : 'Selected stack is absent from the latest inventory.'}</Typography>}
+    </Stack>}
+    {readFiles && <Stack component="section" aria-label="Node file activity" spacing={0.75}>
+      <Typography component="h2" variant="subtitle1">Node file activity</Typography>
+      {nodeFiles.error || (fileNode?.nodeId && nodeFiles.data && fileNode.nodeId !== nodeFiles.data.nodeId)
+        ? <Alert severity="warning">File transfer observations are unavailable for this stack’s registered node.</Alert>
+        : !nodeFiles.data ? <Typography variant="body2">Reading file transfers…</Typography> : <>
+          <Typography variant="body2" color="text.secondary">Incoming transfers to {nodeFiles.data.nodeId} across all projects and accounts.</Typography>
+          {nodeFiles.data.transfers.length === 0 && <Typography variant="body2">No retained incoming transfers.</Typography>}
+          {nodeFiles.data.transfers.map(job => {
+            const reading = fileTransferProgress(job);
+            return <Stack key={job.id} spacing={0.25} sx={{ overflowWrap: 'anywhere' }}>
+              <Typography variant="body2"><strong>{job.state}</strong> · {job.id}</Typography>
+              <Typography variant="caption">{job.phase && `${reading.label} · `}{reading.detail} · {formatDate(job.updatedAt)}</Typography>
+            </Stack>;
+          })}
+        </>}
     </Stack>}
     {canProgress && progress.error && <Alert severity="warning" variant="outlined">Transfer observations unavailable: {progress.error}. Retained observations may be stale.</Alert>}
     {canProgress && progress.loading && <Typography role="status" variant="caption">Reading transfer observations…</Typography>}

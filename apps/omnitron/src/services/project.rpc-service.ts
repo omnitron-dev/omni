@@ -475,6 +475,11 @@ export class ProjectRpcService {
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
+  async rehearseMigrations(data: import('../shared/dto/first-write.js').RehearseMigrationsRequest) {
+    return this.projectService.rehearseMigrations(await this.projectService.resolveProjectStack(data, { readOnly: true }));
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
   async deployReviewedRelease(data: { project: string; stack: string; release: string; review: string }): Promise<IStackInfo> {
     const scope = await this.projectService.resolveProjectStack(data);
     const info = await this.projectService.deployReviewedRelease(scope.project, scope.stack, data.release, data.review);

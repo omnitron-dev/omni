@@ -54,6 +54,8 @@ import { confirmStoppedPlacement, placementProvisionIntent, remotePlacementRevie
 import { cleanRegisteredCommit, committedStackDeclaration, confirmRegisteredReleaseNode, previousStackDeclaration, registeredStackAtCommit, remoteReleaseSourceKey, remoteReleaseSourcePrefix, type ReleaseRecipient } from '../release/remote-source.js';
 import { accountsForPartialStart, confirmsRelease, DeploymentMigrationRefusal, verifyDeploymentMigrations, verifyRegisteredDeploymentMigrations, type RemoteDeploymentOperation } from '../project/remote-release-deployment.js';
 import { checkRehearsalCopy, confirmFirstWriteCopy, inspectFirstWriteOwner, missingFirstWriteAuthorities, rehearsalCopyPlan } from '../project/first-write-inspection.js';
+import { checkMigrationRehearsal, planRehearsalMigrations } from '../project/rehearse-migrations.js';
+import type { MigrationRehearsalPlan, MigrationRehearsalResult, RehearseMigrationsRequest } from '../shared/dto/first-write.js';
 import type { FirstWriteInspection, InspectFirstWrite, PrepareRehearsalRequest, PrepareRehearsalResult, RehearsalCopyPlan, RehearsalCopyReceipt } from '../shared/dto/first-write.js';
 import type { InspectPhysicalRestore, PhysicalRestoreEvidence } from '../shared/dto/physical-restore.js';
 import { validateRunId } from './pipeline-admission.js';
@@ -3349,10 +3351,13 @@ export class ProjectService extends EventEmitter {
 
   private physicalRestore?: (request: InspectPhysicalRestore) => Promise<PhysicalRestoreEvidence>;
   private preparePhysicalCopy: ((plan: RehearsalCopyPlan, previous?: RehearsalCopyReceipt) => Promise<RehearsalCopyReceipt>) | undefined;
+  private runPrivateMigrations: ((plan: MigrationRehearsalPlan, archive: string, readOnly: boolean, runtime: () => Promise<number>) => Promise<MigrationRehearsalResult>) | undefined;
   setPhysicalRestoreInspector(inspect: (request: InspectPhysicalRestore) => Promise<PhysicalRestoreEvidence>,
-    prepare?: (plan: RehearsalCopyPlan, previous?: RehearsalCopyReceipt) => Promise<RehearsalCopyReceipt>): void {
+    prepare?: (plan: RehearsalCopyPlan, previous?: RehearsalCopyReceipt) => Promise<RehearsalCopyReceipt>,
+    rehearse?: NonNullable<ProjectService['runPrivateMigrations']>): void {
     this.physicalRestore = inspect;
     this.preparePhysicalCopy = prepare;
+    this.runPrivateMigrations = rehearse;
   }
 
   /** Inspect a possible first write. A closed physical observation cannot issue a start or route decision. */
@@ -3450,6 +3455,76 @@ export class ProjectService extends EventEmitter {
       return { plan, receipt };
     });
     return { state: 'prepared', plan, receipt };
+  }
+
+  async rehearseMigrations(request: RehearseMigrationsRequest): Promise<MigrationRehearsalResult> {
+    if (!request || Object.keys(request).some(key => !['project','stack','release','app','operationId','review'].includes(key)) ||
+      typeof request.app !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$/.test(request.app) ||
+      (request.review !== undefined && (typeof request.review !== 'string' || !/^[a-f0-9]{64}$/.test(request.review))))
+      throw Error('Choose a prepared pair, declared application and exact release');
+    const { project, stack, release, operationId, app, review } = request;
+    validateRunId(operationId);
+    const saved = this.daemonStateStore.kvGetSync<{ plan: RehearsalCopyPlan; receipt?: RehearsalCopyReceipt }>(
+      'release:private-rehearsal:' + operationId, { strict: true });
+    if (!saved?.receipt || saved.plan.project !== project || saved.plan.stack !== stack || saved.plan.release !== release)
+      throw Error('A confirmed private pair for this exact release and stack is required');
+    const { verifyRunId } = saved.plan;
+    const inspect = async () => {
+      const fresh = await this.inspectFirstWrite({ project, stack, release, verifyRunId });
+      if (!isDeepStrictEqual(rehearsalCopyPlan(fresh, operationId), saved.plan)) throw Error('The approved recovery boundary changed');
+      const { previous, next } = await this.releaseDeploymentSources(project, stack, release);
+      if (next.receipt.digest !== fresh.candidate.digest || previous.receipt.digest !== fresh.incumbent.digest)
+        throw Error('Release selection changed during private rehearsal admission');
+      return planRehearsalMigrations(saved.plan, saved.receipt!, app, previous.admitted, next.admitted,
+        next.opened.config, next.opened.stackConfig, fresh.migrationHistory);
+    };
+    const { plan, archive } = await inspect();
+    const key = 'release:private-migration:' + operationId;
+    type Reservation = { plan: MigrationRehearsalPlan; terminal?: MigrationRehearsalResult };
+    const prior = this.daemonStateStore.kvGetSync<Reservation>(key, { strict: true });
+    if (prior && !isDeepStrictEqual(prior.plan, plan)) throw Error('Another migration review already owns this working pair');
+    if (review === undefined && !prior) return { state: 'awaiting-confirmation', writeAdmission: 'withheld', plan };
+    if (review !== undefined && review !== plan.digest) throw Error('The migration trial review changed');
+    const run = this.runPrivateMigrations;
+    if (!run) throw Error('The authenticated private migration executor is unavailable');
+    const runtimePid = async () => {
+      const receiver = plan.copy.receiver;
+      const ssh = await this.resolveNodeCredentials?.(receiver.host, receiver.daemonPort, receiver.nodeId);
+      if (!ssh || ssh.host !== receiver.host) throw Error('The migration rehearsal receiver is not registered');
+      const target = withNodeCredentials({ host: receiver.host, daemonPort: receiver.daemonPort, registrationId: receiver.nodeId }, ssh);
+      if (target.expectedHostFingerprint !== receiver.fingerprint || (target.sshPort ?? 22) !== receiver.sshPort)
+        throw Error('The migration rehearsal receiver registration changed');
+      const runtime = (await this.deployer.inspectInstalledBundle(target)).applicationRuntime;
+      assertResidentApplicationRuntime(runtime);
+      assertReleaseTarget(plan.target, runtime.target);
+      return runtime.execution!.pid;
+    };
+    const observe = async (readOnly: boolean, reservation: Reservation) => {
+      const result = await run(plan, archive, readOnly, runtimePid);
+      if (!isDeepStrictEqual(result.plan, plan) || result.writeAdmission !== 'withheld') throw Error('Private trial returned a different binding');
+      if (reservation.terminal && !isDeepStrictEqual(reservation.terminal, result))
+        throw Error('The receiver no longer confirms the recorded migration outcome');
+      if (result.state === 'verified') {
+        checkMigrationRehearsal(plan, result.receipt);
+        if (!isDeepStrictEqual((await inspect()).plan, plan)) throw Error('Recovery boundary changed while verifying private migrations');
+      }
+      if (!reservation.terminal && (result.state === 'verified' || result.state === 'refused')) {
+        this.daemonStateStore.kvUpdateSync<Reservation>(key, current => {
+          if (!current || !isDeepStrictEqual(current.plan, plan) || (current.terminal && !isDeepStrictEqual(current.terminal, result)))
+            throw Error('The recorded migration outcome changed');
+          return { plan, terminal: result };
+        });
+      }
+      return result;
+    };
+    if (prior && (review === undefined || prior.terminal)) return observe(true, prior);
+    return recoveryState.run('rehearseMigrations', async () => {
+      const reservation = this.daemonStateStore.kvUpdateSync<Reservation>(key, current => {
+        if (current && !isDeepStrictEqual(current.plan, plan)) throw Error('Another migration trial owns this working pair');
+        return current ?? { plan };
+      });
+      return observe(!!reservation.terminal, reservation);
+    });
   }
 
   private async confirmRemoteRelease(scope: StackExecutionScope, release: string, manifest: string): Promise<IStackInfo> {

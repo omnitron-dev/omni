@@ -474,6 +474,29 @@ function releaseDeploymentCommand(project: string, stack: string, release: strin
   return 'omnitron stack start ' + [project, stack].map(shellEscape).join(' ') + ' --release ' + shellEscape(release) + ' --deployment-review ' + shellEscape(digest);
 }
 
+export async function stackRehearseMigrationsCommand(project: string, stack: string, release: string,
+  options: { operation: string; app: string; review?: string }) {
+  const client = createDaemonClient(undefined, FIRST_WRITE_PHYSICAL_TIMEOUT_MS * 4);
+  const scope = { project, stack, release, operationId: options.operation, app: options.app };
+  try {
+    const service = await client.service<IProjectRpcService>('OmnitronProject');
+    const result = await service.rehearseMigrations({ ...scope, ...(options.review !== undefined && { review: options.review }) });
+    if (result.state === 'refused' || result.state === 'unconfirmed') process.exitCode = 1;
+    if (!emitJson(result)) {
+      emitInfo('Private PostgreSQL ' + result.plan.database + ', candidate archive ' + result.plan.archiveSha256);
+      if (result.state === 'awaiting-confirmation') {
+        emitInfo('Expected additions: ' + result.plan.added.join(', '));
+        emitInfo('To execute: omnitron stack rehearse-migrations ' + [project, stack, release].map(shellEscape).join(' ') +
+          ' --operation ' + shellEscape(options.operation) + ' --app ' + shellEscape(options.app) + ' --review ' + shellEscape(result.plan.digest));
+      } else if (result.state === 'verified') emitSuccess('Complete private history verified: ' + result.receipt.after.length + ' migrations. Production writes remain withheld.');
+      else emitError(result.reason, scope);
+    }
+  } catch (error) {
+    emitError('Private migration trial was not confirmed. ' + (error as Error).message, { ...scope, writeAdmission: 'withheld' });
+    process.exitCode = 1;
+  } finally { await client.disconnect(); }
+}
+
 export async function stackStartCommand(
   projectName: string,
   stackName: string,

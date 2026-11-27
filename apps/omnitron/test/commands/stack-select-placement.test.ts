@@ -1,9 +1,9 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { stackPrepareRehearsalCommand, stackReleaseAdmissionCommand, stackSelectPlacementCommand, stackStartCommand } from '../../src/commands/stack.js';
+import { stackPrepareRehearsalCommand, stackRehearseMigrationsCommand, stackReleaseAdmissionCommand, stackSelectPlacementCommand, stackStartCommand } from '../../src/commands/stack.js';
 
 const rpc = vi.hoisted(() => ({
   preflightRemotePlacement: vi.fn(), reviewRemotePlacement: vi.fn(), selectRemotePlacement: vi.fn(),
-  checkRelease: vi.fn(), inspectFirstWrite: vi.fn(), prepareRehearsal: vi.fn(), startStack: vi.fn(), deployReviewedRelease: vi.fn(), reviewStackStart: vi.fn(),
+  checkRelease: vi.fn(), inspectFirstWrite: vi.fn(), prepareRehearsal: vi.fn(), rehearseMigrations: vi.fn(), startStack: vi.fn(), deployReviewedRelease: vi.fn(), reviewStackStart: vi.fn(),
 }));
 const client = vi.hoisted(() => ({ service: vi.fn(async () => rpc), disconnect: vi.fn() }));
 const output = vi.hoisted(() => ({ emitJson: vi.fn(() => true), emitError: vi.fn(), emitInfo: vi.fn(), emitStep: vi.fn(), isJsonMode: () => true }));
@@ -17,6 +17,22 @@ const request = { project: 'sample', stack: 'prod', fromNodeId: options.fromNode
   destination: { release: options.release, prepared: options.prepared } };
 const exitCode = process.exitCode;
 afterEach(() => { vi.clearAllMocks(); process.exitCode = exitCode; });
+
+it('reviews, runs and reads the same private migration operation using the ordinary CLI', async () => {
+  const operation = 'caf62778-98cc-4841-bea1-f0626e0c234a', review = 'b'.repeat(64), app = 'ledger';
+  const input = { project: 'fixture', stack: 'cold', release: 'candidate', operationId: operation, app };
+  for (const state of ['awaiting-confirmation', 'unconfirmed', 'verified']) {
+    const reply = { state, writeAdmission: 'withheld', ...(state === 'verified' && { receipt: { after: [{name:'002_capture'}] } }) };
+    rpc.rehearseMigrations.mockResolvedValueOnce(reply);
+    const confirmation = state === 'unconfirmed' ? {review} : {};
+    await stackRehearseMigrationsCommand('fixture', 'cold', 'candidate', { operation, app, ...confirmation });
+    expect(rpc.rehearseMigrations).toHaveBeenLastCalledWith({ ...input, ...confirmation });
+    expect(output.emitJson).toHaveBeenLastCalledWith(reply);
+    if (state === 'unconfirmed') expect(process.exitCode).toBe(1);
+  }
+  expect(rpc.deployReviewedRelease).not.toHaveBeenCalled();
+  expect(rpc.startStack).not.toHaveBeenCalled();
+});
 
 it('previews private rehearsal data and keeps the operation identifier on an ambiguous acknowledgement', async () => {
   const verifyRun = '90af71d8-df66-4b55-b8fa-d892f4411f0a', review = 'd'.repeat(64);

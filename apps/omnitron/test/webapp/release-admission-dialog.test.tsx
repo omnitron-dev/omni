@@ -30,7 +30,7 @@ it('explains an additive history refusal before allowing a deployment', async ()
 });
 
 it('reads the explicit native verify run while keeping production deployment withheld', async () => {
-  rpc.can.mockImplementation(permission => ['OmnitronProject.inspectFirstWrite', 'OmnitronProject.prepareRehearsal'].includes(permission));
+  rpc.can.mockImplementation(permission => ['OmnitronProject.inspectFirstWrite', 'OmnitronProject.prepareRehearsal', 'OmnitronProject.rehearseMigrations'].includes(permission));
   rpc.list.mockResolvedValue({ releases: [] });
   rpc.check.mockResolvedValueOnce({ ok: false, state: 'replacement-unavailable', because: 'Unproven first write',
     migrationHistory: { kind: 'added-migrations', total: 1, entries: ['003.sql'] } });
@@ -62,6 +62,22 @@ it('reads the explicit native verify run while keeping production deployment wit
   await screen.findByText(/Private data pair prepared/);
   expect(rpc.check).toHaveBeenLastCalledWith('prepareRehearsal',confirmation);
   expect(screen.getByRole('button', { name: 'Deploy' }).hasAttribute('disabled')).toBe(true);
+  const trial = { database:'ledger', archiveSha256:'f'.repeat(64), added:['002_capture'], digest:'e'.repeat(64) };
+  const request = { project:'sample',stack:'test',release:'new',operationId:plan.operationId,app:'ledger' };
+  fireEvent.change(screen.getByLabelText('Migration application'), {target:{value:'ledger'}});
+  rpc.check.mockResolvedValueOnce({state:'awaiting-confirmation',plan:trial});
+  fireEvent.click(screen.getByRole('button',{name:'Review migration rehearsal'}));
+  const execute = await screen.findByRole('button',{name:'Run reviewed migrations on private copy'});
+  expect(rpc.check).toHaveBeenLastCalledWith('rehearseMigrations',request);
+  rpc.check.mockRejectedValueOnce(Error('Migration acknowledgement lost'));
+  fireEvent.click(execute);
+  await screen.findByText('Migration acknowledgement lost');
+  expect(rpc.check).toHaveBeenLastCalledWith('rehearseMigrations',{...request,review:trial.digest});
+  rpc.check.mockResolvedValueOnce({state:'verified',plan:trial,receipt:{after:[{name:'002_capture'}]}});
+  fireEvent.click(screen.getByRole('button',{name:'Read migration rehearsal'}));
+  await screen.findByText(/Verified 1 migrations/);
+  expect(rpc.check).toHaveBeenLastCalledWith('rehearseMigrations',request);
+  expect(screen.queryByRole('button',{name:'Run reviewed migrations on private copy'})).toBeNull();
   fireEvent.change(run, { target: { value: 'another-id' } });
   expect(screen.queryByText(/Closed copy verified/)).toBeNull();
   expect(rpc.start).not.toHaveBeenCalled();

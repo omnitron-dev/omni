@@ -68,7 +68,8 @@ describe('private native physical restore receipts', () => {
     });
     const execute = vi.fn(async (command: Command) => ({ exitCode:0, stdout:command.adapter === 'ssh'
       ? JSON.stringify(f.result, null, 1) : 'checked', stderr:'',duration:1 }));
-    const service = new PipelineService(db, createNullLogger(), {exec,ssh,execute} as unknown as ExecutionService);
+    const uploadFile = vi.fn(async () => {});
+    const service = new PipelineService(db, createNullLogger(), {exec,ssh,execute,uploadFile} as unknown as ExecutionService);
     let receiverPin = f.receiver.pin;
     const nodes = [f.source,f.receiver].map(n => ({id:n.id,host:n.host,isLocal:false,sshPort:22,daemonPort:2310,sshUser:'admin',createdAt:'2000-01-01T00:00:00Z'}));
     service.configure({ getNode: id => nodes.find(n=>n.id===id) as never,
@@ -113,6 +114,37 @@ describe('private native physical restore receipts', () => {
       await expect(service.prepareRehearsalCopy(plan)).resolves.toEqual(receipt);
       remoteCopy(receipt, receipt);
       await expect(service.prepareRehearsalCopy(plan, receipt)).resolves.toEqual(receipt);
+      const trialFacts = { protocol:1 as const, copy:plan, receipt, app:'ledger', producerApp:'ledger', database:'ledger',
+        producerManifest:sha256('producer'), archiveSha256:sha256('archive'), archiveBytes:100, closureSha256:sha256('closure'), nodeOptions:'',
+        program:{path:'dist/database/migrate.js',sha256:sha256('program'),sourceSha256:sha256('source')}, names:['002_capture'],added:['002_capture'],
+        target:{platform:'linux',arch:'x64',node:'v24.10.0',abi:'137',executableSha256:sha256('node'),libc:'2.39'} };
+      const trialPlan = {...trialFacts,digest:canonicalHash(trialFacts)}, runtime = vi.fn(async () => 12345);
+      const trialReply = (phase:string, state:string, values:Record<string,unknown>={}) => ssh.mockImplementationOnce(async (target,cmd,options) => {
+        expect(target).toMatchObject({host:f.receiver.host,expectedHostFingerprint:f.receiver.pin});
+        expect(cmd).toContain('TRIAL_RESERVATION_CHANGED');
+        const wire = JSON.parse(options.stdin);
+        expect(wire).toMatchObject({phase,plan:trialPlan,probe:{seed:f.seed.id}});
+        expect(wire.nodePid).toBe(phase==='run'?12345:undefined);
+        expect(wire.sandbox).toContain('CANDIDATE_PREFLIGHT_FAILED');
+        return {exitCode:0,stdout:JSON.stringify({review:trialPlan.digest,state,...values}),stderr:'',duration:1};
+      });
+      const trial = (readOnly:boolean) => service.rehearsePrivateMigrations(trialPlan,'/controller/ledger.tar.gz',readOnly,runtime);
+      trialReply('status','available');
+      await expect(trial(true)).resolves.toMatchObject({state:'awaiting-confirmation',writeAdmission:'withheld'});
+      expect(uploadFile).not.toHaveBeenCalled();
+      const registry = [{name:'002_capture',checksum:sha256('002')}];
+      const journal = {operationId:plan.operationId,review:trialPlan.digest,registry,before:[],after:registry.map(row=>({...row,executedAt:'2026-11-24T01:02:03.123456Z'})),
+        generations:{postgres:sha256('new generation'),minio:receipt.copies[1]!.generation}};
+      trialReply('reserve','staging'); trialReply('run','verified',{receipt:journal});
+      await expect(trial(false)).resolves.toMatchObject({state:'verified',writeAdmission:'withheld',receipt:journal});
+      expect(uploadFile).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({host:f.receiver.host,expectedHostFingerprint:f.receiver.pin}),
+        '/controller/ledger.tar.gz','/var/lib/omnitron-release-rehearsals/'+plan.operationId+'/candidate-'+trialPlan.archiveSha256+'.tar.gz');
+      trialReply('status','verified',{receipt:{...journal,after:[]}});
+      await expect(trial(true)).rejects.toThrow('Incomplete private migration receipt');
+      expect(runtime).toHaveBeenCalledTimes(1);
+      trialReply('reserve','unconfirmed',{reason:'NATIVE_COMPLETION_UNCONFIRMED'});
+      await expect(trial(false)).resolves.toMatchObject({state:'unconfirmed',writeAdmission:'withheld'});
+      expect(uploadFile).toHaveBeenCalledTimes(1);
       remoteCopy({...receipt,copies:receipt.copies.map((v,i)=>({...v,...plan.volumes[i]!.receiver}))});
       await expect(service.prepareRehearsalCopy(plan)).rejects.toThrow('distinct private roots');
       const attempts = ssh.mock.calls.length;

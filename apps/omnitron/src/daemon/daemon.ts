@@ -1757,6 +1757,12 @@ export class OmnitronDaemon {
         await audit.record({ action: 'release.private-copy.prepare', resourceType: 'rehearsal', resourceId: plan.operationId,
           details: { project: plan.project, stack: plan.stack, review: plan.digest, verifyRunId: plan.verifyRunId } }, true);
         return pipelineService.prepareRehearsalCopy(plan, previous);
+      }, async (plan, archive, readOnly, runtime) => {
+        const { daemonPrincipal } = await import('../services/daemon-principal.js');
+        await daemonPrincipal(authService, 'admin');
+        if (!readOnly) await audit.record({ action: 'release.private-migration.rehearse', resourceType: 'rehearsal', resourceId: plan.copy.operationId,
+          details: { project: plan.copy.project, stack: plan.copy.stack, app: plan.app, review: plan.digest, verifyRunId: plan.copy.verifyRunId } }, true);
+        return pipelineService.rehearsePrivateMigrations(plan, archive, readOnly, runtime);
       });
       await this.app.netron.peer.exposeService(pipelineRpcService);
       if (studio && audit) {

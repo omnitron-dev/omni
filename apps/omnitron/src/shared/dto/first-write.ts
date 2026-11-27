@@ -1,6 +1,7 @@
 import type { PhysicalRestoreEvidence, PhysicalRestoreVolume, PhysicalRestoreNode } from './physical-restore.js';
 import type { PreparedRemoteReleaseSource, ReleaseMigrationHistory } from './project.js';
 import type { StackExecutionScope } from './stack-execution.js';
+import type { TargetRuntime } from '../../release/target-runtime.js';
 
 export interface InspectFirstWrite extends StackExecutionScope {
   release: string;
@@ -62,3 +63,46 @@ export interface RehearsalCopyReceipt {
 }
 export type PrepareRehearsalResult = { state: 'awaiting-confirmation'; plan: RehearsalCopyPlan }
   | { state: 'prepared'; plan: RehearsalCopyPlan; receipt: RehearsalCopyReceipt };
+
+export interface RehearseMigrationsRequest extends StackExecutionScope {
+  release: string;
+  app: string;
+  /** One private working pair is consumed by at most one migration trial. */
+  operationId: string;
+  review?: string;
+}
+
+export interface MigrationRehearsalPlan {
+  protocol: 1;
+  copy: RehearsalCopyPlan;
+  receipt: RehearsalCopyReceipt;
+  app: string;
+  producerApp: string;
+  producerManifest: string;
+  database: string;
+  archiveSha256: string;
+  archiveBytes: number;
+  closureSha256: string;
+  nodeOptions: string;
+  program: { path: string; sha256: string; sourceSha256: string };
+  target: TargetRuntime;
+  /** Names from the complete admitted registry and the exact additions since the incumbent. */
+  names: string[];
+  added: string[];
+  digest: string;
+}
+export interface RehearsalMigrationRow { name: string; checksum: string }
+export interface RehearsalHistoryRow extends RehearsalMigrationRow { executedAt: string }
+export interface MigrationRehearsalReceipt {
+  operationId: string;
+  review: string;
+  registry: RehearsalMigrationRow[];
+  before: RehearsalHistoryRow[];
+  after: RehearsalHistoryRow[];
+  generations: { postgres: string; minio: string };
+}
+export type MigrationRehearsalResult = { writeAdmission: 'withheld'; plan: MigrationRehearsalPlan } & (
+  { state: 'awaiting-confirmation' } |
+  { state: 'verified'; receipt: MigrationRehearsalReceipt } |
+  { state: 'unconfirmed' | 'refused'; reason: string }
+);

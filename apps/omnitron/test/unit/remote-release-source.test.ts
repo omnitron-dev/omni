@@ -1018,7 +1018,7 @@ describe('prepared source of one registered remote release', () => {
 
   it('requires administrator authority for controller paths and permits an operator to recheck only an approved digest', () => {
     for (const name of ['prepareRemoteReleaseSource', 'checkRemoteReleaseSource', 'reviewPreparedHostBindings',
-      'preflightRemotePlacement', 'reviewRemotePlacement', 'selectRemotePlacement', 'deployReviewedRelease', 'inspectFirstWrite', 'prepareRehearsal']) {
+      'preflightRemotePlacement', 'reviewRemotePlacement', 'selectRemotePlacement', 'deployReviewedRelease', 'inspectFirstWrite', 'prepareRehearsal', 'rehearseMigrations']) {
       const rule = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, ProjectRpcService.prototype, name);
       for (const role of ['viewer', 'operator', 'admin'])
         expect(validateAccessRequirements({ roles: [role], permissions: [] }, rule).allowed).toBe(role === 'admin' || (name === 'checkRemoteReleaseSource' && role === 'operator'));

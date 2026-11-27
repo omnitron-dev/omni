@@ -1,5 +1,7 @@
 """Exercise the installed private-copy worker on a disposable Linux filesystem."""
 import os
+import hashlib
+import json
 from pathlib import Path
 import stat
 import struct
@@ -15,6 +17,7 @@ from endpoint_test import ep, load, sample, scope
 channel = load("rehearsal_channel", HERE.parent / "block-preseed/endpoint.py")
 adopt = load("rehearsal_adopt", HERE / "endpoint.py")
 worker = load("private_data_rehearsal", HERE.parents[1] / "apps/omnitron/data/operations/rehearsal-copy.py")
+migrator = load("private_migration_rehearsal", HERE.parents[1] / "apps/omnitron/data/operations/rehearsal-migrate.py")
 
 
 def fixture(paths, scratch, state=None):
@@ -54,14 +57,50 @@ def fixture(paths, scratch, state=None):
     def verify():
         if observed() != held:
             raise ValueError("Sealed receiver changed during preparation")
-    def prepare(selected=plan, verify_current=verify, previous_receipt=None):
-        return worker.prepare_working_pair(selected, mod, vars(adopt), seed, binding, verified, paths,
-                                           {"generation": {t:v["receiverGeneration"] for t,v in held.items()}}, verify_current, state, scratch, previous_receipt)
+    def prepare(selected=plan, verify_current=verify, previous_receipt=None, visit=None):
+        args = (mod, vars(adopt), seed, binding, verified, paths,
+                {"generation": {t:v["receiverGeneration"] for t,v in held.items()}}, verify_current, state)
+        if visit:
+            return visit(*args)
+        return worker.prepare_working_pair(selected, *args, scratch, previous_receipt)
     return plan, prepare, verify
 
 
 @unittest.skipUnless(sys.platform == "linux", "Linux filesystem semantics")
 class RehearsalFiles(unittest.TestCase):
+    def test_export_only_the_pinned_created_postgres_container(self):
+        image, cid, review = "sha256:"+"1"*64, "2"*64, "3"*64
+        row = {"image": image, "target": "/var/lib/postgresql/data"}
+        calls = []
+        status = {"id": cid, "image": image, "state": "created", "label": review}
+        volumes = {row["target"]: {}}
+        def docker(*args, **kwargs):
+            calls.append(args)
+            if args[0] == "image": return json.dumps({"id": image, "volumes": volumes})
+            if args[0] == "create": return cid
+            if args[0] == "inspect": return json.dumps(status)
+            if args[0] in ("export", "rm"): return ""
+            self.fail("unexpected engine call")
+        scratch = Path("/fixture")
+        migrator.export_postgres(docker, row, scratch, review)
+        self.assertEqual([args[0] for args in calls], ["image","create","inspect","export","inspect","rm"])
+        create = calls[1]
+        for flag, value in [("--network", "none"), ("--pull", "never"), ("--cap-drop", "ALL"),
+                            ("--tmpfs", row["target"]+":ro,nodev,nosuid,noexec")]:
+            self.assertEqual(create[create.index(flag)+1], value)
+        self.assertIn("--read-only", create)
+        self.assertEqual(calls[-1], ("rm", cid))
+        calls.clear()
+        status["state"] = "exited"
+        with self.assertRaisesRegex(migrator.TrialRefused, "UNCONFIRMED_EXPORT_CONTAINER"):
+            migrator.export_postgres(docker, row, scratch, review)
+        self.assertEqual([args[0] for args in calls], ["image","create","inspect"])
+        calls.clear()
+        volumes["/other"] = {}
+        with self.assertRaisesRegex(migrator.TrialRefused, "UNSUPPORTED_IMAGE_VOLUMES"):
+            migrator.export_postgres(docker, row, scratch, review)
+        self.assertEqual([args[0] for args in calls], ["image"])
+
     def test_copies_hardlinks_sparse_data_and_metadata_away_from_the_source(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -113,6 +152,47 @@ class ReceiverOperation(unittest.TestCase):
             os.setxattr(file, "system.posix_acl_access", struct.pack("<I",2) + b"".join(struct.pack("<HHI",*r) for r in acl))
         self.scratch = self.root / "private-rehearsals"
         self.plan, self.prepare, self.verify = fixture(self.paths, self.scratch)
+
+    def test_migration_reservation_and_lost_result_never_issue_a_second_execution(self):
+        receipt = self.prepare()
+        content = b"immutable test archive"
+        archive_hash = hashlib.sha256(content).hexdigest()
+        plan = {"copy": self.plan, "receipt": receipt, "app": "ledger", "archiveSha256": archive_hash, "archiveBytes": len(content)}
+        plan["digest"] = scope.sha(plan)
+        wire = {"plan": plan, "phase": "status"}
+        started = []
+        def execute(bound, operation, archive):
+            started.append(operation)
+            self.assertEqual(bound, plan)
+            self.assertEqual(archive.read_bytes(), content)
+            raise OSError("simulated loss after submitting the program")
+        def read():
+            return self.prepare(visit=lambda *args: migrator.perform(wire, vars(worker), *args, root=self.scratch, execute=execute))
+        self.assertEqual(read()["state"], "available")
+        wire["phase"] = "reserve"
+        self.assertEqual(read()["state"], "staging")
+        operation = self.scratch / self.plan["operationId"]
+        archive = operation / ("candidate-" + archive_hash + ".tar.gz")
+        archive.write_bytes(b"changed")
+        wire["phase"] = "run"
+        with self.assertRaisesRegex(migrator.TrialRefused, "ARCHIVE_CHANGED"):
+            read()
+        self.assertEqual(started, [])
+        archive.write_bytes(content)
+        with self.assertRaisesRegex(OSError, "simulated loss"):
+            read()
+        self.assertEqual(started, [operation])
+        self.assertEqual(read()["state"], "unconfirmed")
+        wire["phase"] = "status"
+        self.assertEqual(read()["state"], "unconfirmed")
+        ledger = self.root / "fixture-adoption-state/rehearsals" / (self.plan["operationId"] + ".migration.json")
+        channel.write_record(ledger, {"review": plan["digest"], "state": "staging"})
+        self.assertEqual(read()["state"], "unconfirmed")
+        ledger.unlink()
+        wire["phase"] = "reserve"
+        self.assertEqual(read()["state"], "unconfirmed")
+        self.assertEqual(started, [operation])
+        self.verify()
 
     def test_resume_then_refuse_to_overwrite_a_used_copy(self):
         def lost():

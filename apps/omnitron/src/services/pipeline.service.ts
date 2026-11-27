@@ -2,8 +2,8 @@ import { admitPipeline, assertParameters, pipelineAdmissionCheck, readAdmission,
 import { completedStep, recoverableStep, recoveryReview } from './pipeline-recovery.js';
 import type { InspectPhysicalRestore, PhysicalRestoreEvidence } from '../shared/dto/physical-restore.js';
 import { physicalRestoreRequest } from './physical-restore-graph.js';
-import { inspectPhysicalRestore, preparePhysicalRehearsal } from './physical-restore.js';
-import type { RehearsalCopyPlan, RehearsalCopyReceipt } from '../shared/dto/first-write.js';
+import { inspectPhysicalRestore, preparePhysicalRehearsal, runPhysicalMigrationTrial } from './physical-restore.js';
+import type { MigrationRehearsalPlan, MigrationRehearsalResult, RehearsalCopyPlan, RehearsalCopyReceipt } from '../shared/dto/first-write.js';
 import { pipelineWorkspaceQueries } from './pipeline-workspace.js';
 import { RecoveryMutation } from '../daemon/recovery-state.js';
 /** Durable control-plane state over Xec's execution, graph and cancellation contracts. */
@@ -140,6 +140,7 @@ export class PipelineService {
   activeRunCount(): number { return this.activeRuns.size; }
   private readonly physicalInspections = new Map<string, { abort: AbortController; done: Promise<PhysicalRestoreEvidence> }>();
   private readonly rehearsalCopies = new Map<string, { digest: string; abort: AbortController; done: Promise<RehearsalCopyReceipt> }>();
+  private readonly migrationTrials = new Map<string, { review: string; readOnly: boolean; abort: AbortController; done: Promise<MigrationRehearsalResult> }>();
   private readonly activeRuns = new Map<string, ActiveRun>();
   private readonly pendingCompletions = new Map<string, PipelineCompletion>();
   private initialization: Promise<void> | undefined;
@@ -186,9 +187,11 @@ export class PipelineService {
     this.stopped = true;
     for (const inspection of this.physicalInspections.values()) inspection.abort.abort(new Error('Daemon is stopping'));
     for (const copy of this.rehearsalCopies.values()) copy.abort.abort(new Error('Daemon is stopping'));
+    for (const trial of this.migrationTrials.values()) trial.abort.abort(new Error('Daemon is stopping'));
     for (const run of this.activeRuns.values()) run.abort.abort(new Error('Daemon is stopping'));
     await Promise.allSettled([...this.physicalInspections.values()].map(inspection => inspection.done));
     await Promise.allSettled([...this.rehearsalCopies.values()].map(copy => copy.done));
+    await Promise.allSettled([...this.migrationTrials.values()].map(trial => trial.done));
     while (this.activeRuns.size) await Promise.allSettled([...this.activeRuns.values()].map((run) => run.done));
   }
   async createPipeline(def: PipelineDef): Promise<Pipeline> {
@@ -761,6 +764,27 @@ export class PipelineService {
       throw Error('A pinned native adoption verification and registered nodes are required');
     assertParameters(admission, {});
     return { definition: JSON.parse(admission.definition) as Pipeline, run: this.mapRun(row, admission), nodes: this.nodes };
+  }
+
+  async rehearsePrivateMigrations(plan: MigrationRehearsalPlan, archive: string, readOnly: boolean, runtime: () => Promise<number>): Promise<MigrationRehearsalResult> {
+    await this.assertLifecycle?.();
+    if (this.stopped) throw Error('The controller is stopping');
+    const key = plan.copy.receiver.nodeId;
+    const active = this.migrationTrials.get(key);
+    if (active) {
+      if (active.review !== plan.digest) throw Error('Another migration rehearsal owns this receiver');
+      if (active.readOnly && !readOnly) {
+        await active.done;
+        return this.rehearsePrivateMigrations(plan, archive, false, runtime);
+      }
+      return active.done;
+    }
+    const abort = new AbortController();
+    const done = this.physicalRun(plan.copy).then(({ definition, run, nodes }) =>
+      runPhysicalMigrationTrial(plan, archive, readOnly, runtime, definition, run, nodes, this.execution, abort.signal))
+      .finally(() => this.migrationTrials.delete(key));
+    this.migrationTrials.set(key, { review: plan.digest, readOnly, abort, done });
+    return done;
   }
   async getRunStatus(runId: string): Promise<PipelineRun | null> {
     await this.flushCompletion(runId);

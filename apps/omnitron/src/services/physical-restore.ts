@@ -6,8 +6,9 @@ import type { Pipeline, PipelineRun } from '../shared/dto/pipelines.js';
 import type { NodeManagerService } from './node-manager.service.js';
 import { canonicalHash, checkedPhysicalRestore, object, requireFact } from './physical-restore-graph.js';
 import { shellEscape } from '../shared/shell-escape.js';
-import type { RehearsalCopyPlan, RehearsalCopyReceipt } from '../shared/dto/first-write.js';
+import type { MigrationRehearsalPlan, MigrationRehearsalReceipt, MigrationRehearsalResult, RehearsalCopyPlan, RehearsalCopyReceipt } from '../shared/dto/first-write.js';
 import { checkRehearsalCopy, rehearsalRoles } from '../project/first-write-inspection.js';
+import { checkMigrationRehearsal } from '../project/rehearse-migrations.js';
 
 type Nodes = Pick<NodeManagerService, 'getNode' | 'nodeToSshTarget'>;
 type Execution = Pick<ExecutionService, 'exec' | 'ssh'>;
@@ -88,17 +89,22 @@ except Exception as error:
     if isinstance(error,worker["RehearsalRefusal"]): print(str(error),file=sys.stderr)
     sys.exit(1)`;
 
-export async function preparePhysicalRehearsal(plan: RehearsalCopyPlan, previous: RehearsalCopyReceipt | undefined, definition: Pipeline, run: PipelineRun,
-  nodes: Nodes, execution: Execution, signal: AbortSignal): Promise<RehearsalCopyReceipt> {
+function checkedRehearsalGraph(plan: RehearsalCopyPlan, definition: Pipeline, run: PipelineRun) {
   const { project, stack, verifyRunId } = plan;
   const checked = checkedPhysicalRestore({ project, stack, verifyRunId }, definition, run);
-  const { resolve, fence } = physicalEndpoints(checked, run.startedAt, nodes, execution, signal);
   const { digest: review, ...facts } = plan;
   const reviewedVolumes = rehearsalRoles.map(tag => checked.rows.find(row => row.tag === tag));
   requireFact(review === canonicalHash(facts) && plan.seed === checked.seed && plan.sourceStop === checked.stop &&
     isDeepStrictEqual(reviewedVolumes, plan.volumes.map(({ sourceGeneration, receiverGeneration, ...row }) =>
       digest(sourceGeneration) && digest(receiverGeneration) ? row : null)) && plan.logicalBytes === plan.volumes.reduce((sum, row) => sum + row.bytes, 0),
     'Private rehearsal differs from the original verified graph');
+  return checked;
+}
+
+export async function preparePhysicalRehearsal(plan: RehearsalCopyPlan, previous: RehearsalCopyReceipt | undefined, definition: Pipeline, run: PipelineRun,
+  nodes: Nodes, execution: Execution, signal: AbortSignal): Promise<RehearsalCopyReceipt> {
+  const checked = checkedRehearsalGraph(plan, definition, run);
+  const { resolve, fence } = physicalEndpoints(checked, run.startedAt, nodes, execution, signal);
   if (previous) checkRehearsalCopy(plan, previous);
   const [observer, worker] = await Promise.all([readFile(program, 'utf8'), readFile(new URL('../../data/operations/rehearsal-copy.py', import.meta.url), 'utf8')]);
   await fence();
@@ -119,4 +125,53 @@ export async function preparePhysicalRehearsal(plan: RehearsalCopyPlan, previous
   const current = await resolve('receiver');
   requireFact(isDeepStrictEqual(target.identity, current.identity) && target.ssh.username === current.ssh.username, 'The rehearsal enrollment changed');
   return receipt;
+}
+
+export async function runPhysicalMigrationTrial(plan: MigrationRehearsalPlan, archive: string, readOnly: boolean, runtime: () => Promise<number>,
+  definition: Pipeline, run: PipelineRun, nodes: Nodes, execution: Execution & Pick<ExecutionService, 'uploadFile'>, signal: AbortSignal): Promise<MigrationRehearsalResult> {
+  const checked = checkedRehearsalGraph(plan.copy, definition, run);
+  const { resolve, fence } = physicalEndpoints(checked, run.startedAt, nodes, execution, signal);
+  const { digest: review, ...facts } = plan;
+  requireFact(review === canonicalHash(facts) && digest(plan.archiveSha256), 'Invalid private migration review');
+  checkRehearsalCopy(plan.copy, plan.receipt);
+  await fence();
+  const target = await resolve('receiver');
+  requireFact(isDeepStrictEqual(plan.copy.receiver, target.identity), 'The migration rehearsal receiver changed');
+  const read = (name: string) => readFile(new URL('../../data/operations/' + name, import.meta.url), 'utf8');
+  const [observer, copy, entry, sandbox] = await Promise.all([readFile(program, 'utf8'), read('rehearsal-copy.py'),
+    read('rehearsal-migrate.py'), read('rehearsal-sandbox.py')]);
+  const call = async (phase: 'status' | 'reserve' | 'run', nodePid?: number) => {
+    const result = await execution.ssh(target.ssh, '/usr/bin/python3 -I -c ' + shellEscape(entry), {
+      stdin: JSON.stringify({ observer, copy, sandbox, probe: checked.probe, phase, plan, nodePid }), signal, timeout: 86_400_000,
+    });
+    requireFact(result.exitCode === 0 && Buffer.byteLength(result.stdout) < 3 * 1024 * 1024,
+      'Private migration response was not confirmed. Inspect the same operation ID.');
+    return object(JSON.parse(result.stdout));
+  };
+  let reply = await call(readOnly ? 'status' : 'reserve');
+  if (!readOnly && reply['state'] === 'staging') {
+    const pid = await runtime();
+    signal.throwIfAborted();
+    const destination = '/var/lib/omnitron-release-rehearsals/' + plan.copy.operationId + '/candidate-' + plan.archiveSha256 + '.tar.gz';
+    await execution.uploadFile(target.ssh, archive, destination);
+    signal.throwIfAborted();
+    await fence();
+    reply = await call('run', pid);
+  }
+  requireFact(reply['review'] === plan.digest, 'The receiver returned a different migration review');
+  await fence();
+  const current = await resolve('receiver');
+  requireFact(isDeepStrictEqual(target.identity, current.identity) && target.ssh.username === current.ssh.username, 'The rehearsal receiver was re-enrolled');
+  const base = { plan, writeAdmission: 'withheld' as const };
+  if (reply['state'] === 'verified') {
+    const receipt = reply['receipt'] as MigrationRehearsalReceipt;
+    checkMigrationRehearsal(plan, receipt);
+    return { ...base, state: 'verified', receipt };
+  }
+  if (readOnly && ['available','staging'].includes(String(reply['state']))) return { ...base, state: 'awaiting-confirmation' };
+  if (reply['state'] === 'unconfirmed' || reply['state'] === 'refused') {
+    requireFact(typeof reply['reason'] === 'string' && /^[A-Z_]{1,80}$/.test(reply['reason']), 'Invalid private trial diagnostic');
+    return { ...base, state: reply['state'], reason: reply['reason'] };
+  }
+  throw Error('Unknown native private migration outcome');
 }

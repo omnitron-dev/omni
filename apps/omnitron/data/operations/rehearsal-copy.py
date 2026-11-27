@@ -192,6 +192,15 @@ def mount_location(path):
     return device, address
 
 
+def check_private_mounts(operation, paths):
+    op_device, op_location = mount_location(operation)
+    for point, mount_device, mount_root in mounts():
+        require(not point.is_relative_to(operation) and not (mount_device == op_device and mount_root.is_relative_to(op_location)),
+                "A foreign mount exposes or overlays private rehearsal data")
+        require(not any(point != paths[tag] and point.is_relative_to(paths[tag]) for tag in TAGS),
+                "A separate mount below a reviewed source requires its own rehearsal")
+
+
 def prepare_working_pair(plan, mod, native, seed, binding, verified, paths, observed, verify_current, state, root=ROOT, previous_receipt=None):
     ch = mod["ch"]
     require(os.geteuid() == 0 and UUID.fullmatch(plan["operationId"]) and UUID.fullmatch(plan["verifyRunId"]) and plan["protocol"] == 1
@@ -242,14 +251,7 @@ def prepare_working_pair(plan, mod, native, seed, binding, verified, paths, obse
     root.mkdir(mode=0o700, exist_ok=True)
     private_dir(root)
     operation = root / plan["operationId"]
-    def check_mounts():
-        op_device, op_location = mount_location(operation)
-        for point, mount_device, mount_root in mounts():
-            require(not point.is_relative_to(operation) and not (mount_device == op_device and mount_root.is_relative_to(op_location)),
-                    "A foreign mount exposes or overlays private rehearsal data")
-            require(not any(point != paths[tag] and point.is_relative_to(paths[tag]) for tag in TAGS),
-                    "A separate mount below a reviewed source requires its own rehearsal")
-    check_mounts()
+    check_private_mounts(operation, paths)
     # Publishing the initial intent is serialized even with two controllers.
     with ch.lock(root / ".reservations", create=True):
         if not operation.exists():
@@ -260,7 +262,7 @@ def prepare_working_pair(plan, mod, native, seed, binding, verified, paths, obse
             ch.sync_directory(root)
     private_dir(operation)
     with ch.lock(operation / "copy.lock", create=True):
-        check_mounts()
+        check_private_mounts(operation, paths)
         require(native["record"](operation / "binding.json") == plan, "Another review owns this operation")
         pin = {"review": plan["digest"], "root": identity(root), "operation": identity(operation)}
         if previous is None:
@@ -297,7 +299,7 @@ def prepare_working_pair(plan, mod, native, seed, binding, verified, paths, obse
         result = {"operationId": plan["operationId"], "review": plan["digest"], "copies": copies}
         require(saved is None or result == saved, "Prepared rehearsal data changed; an existing rehearsal cannot be overwritten")
         verify_current()
-        check_mounts()
+        check_private_mounts(operation, paths)
         require(all(copy["generation"] == mod["stage_stamp"](volumes, [{"tag": copy["tag"]}]) for copy in copies),
                 "Private rehearsal data changed during final verification")
         if saved is None:

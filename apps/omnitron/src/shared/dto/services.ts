@@ -7,6 +7,7 @@ import type { TopologyScope, TopologySpec, TopologyDraft, TopologyPlan, Topology
 export type { TopologyScope, TopologySpec, TopologyDraft, TopologyPlan, TopologyInventory, TopologyWorkspace, TopologyChange, TopologyIssue } from './topology.js';
 import type { ProjectTopology } from './project.js';
 export type { FirstWriteInspection, InspectFirstWrite, PrepareRehearsalRequest, PrepareRehearsalResult } from './first-write.js';
+export type { MigrationRehearsalResult, RehearseMigrationsRequest } from './first-write.js';
 export { FIRST_WRITE_PHYSICAL_TIMEOUT_MS } from './first-write.js';
 export type { ProjectStarterNeeds, ProjectStarterManifest, ProjectCreationReview } from './project.js';
 export { defaultProjectStarterNeeds, isProjectStarterNeeds, projectStarterOptions } from './project.js';
@@ -436,6 +437,7 @@ export interface IProjectRpcService {
   checkRelease(data: { project: string; stack: string; release: string; prepare?: boolean }): Promise<import('./project.js').ReleaseAdmission>;
   inspectFirstWrite(data: import('./first-write.js').InspectFirstWrite): Promise<import('./first-write.js').FirstWriteInspection>;
   prepareRehearsal(data: import('./first-write.js').PrepareRehearsalRequest): Promise<import('./first-write.js').PrepareRehearsalResult>;
+  rehearseMigrations(data: import('./first-write.js').RehearseMigrationsRequest): Promise<import('./first-write.js').MigrationRehearsalResult>;
   deployReviewedRelease(data: { project: string; stack: string; release: string; review: string }): Promise<IStackInfo>;
   reviewStackStop(data: { project: string; stack: string; keepInfrastructure?: boolean }): Promise<import('./project.js').StackStopReview>;
   stopStack(data: { project: string; stack: string; review?: string; keepInfrastructure?: boolean }): Promise<IStackInfo>;

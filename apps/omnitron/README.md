@@ -377,7 +377,22 @@ The receiver needs scratch capacity for both logical trees under the root-owned,
 
 Closing the review before confirmation creates no data. After an interruption, submit the same operation ID and digest to resume or confirm the existing pair. An inaccessible receiver leaves the outcome unconfirmed. A used or changed published pair requires a new operation. Root administrators control retention of completed and interrupted directories by their recorded operation ID.
 
-A `prepared` receipt authorizes no activation. Running the candidate still requires an isolated runner bound to its exact artifacts, private SQL and S3 credentials, restricted external effects, and application checks for migration history, references to historical object versions and a new private write. Production admission also requires the actual data owners to hold all writers and the route through a durable write decision and a post-write recovery plan.
+#### Rehearse the candidate's PostgreSQL migrations
+
+Use the operation ID of the prepared pair and the application that owns the declared PostgreSQL migration. In the release dialog, enter **Migration application**, review the expected additions and confirm **Run reviewed migrations on private copy**. The CLI uses the same administrator RPC.
+
+```sh
+omnitron stack rehearse-migrations acme prod "$next_release" --operation "$operation_id" --app ledger --json
+omnitron stack rehearse-migrations acme prod "$next_release" --operation "$operation_id" --app ledger --review "$migration_review" --json
+```
+
+The controller reopens both admitted releases, the selected application archive and closure, the retained source stop and the original verified restore. The review names the program, its immutable producer, the Node target and the complete numbered registry. This profile requires self-contained PostgreSQL 17 primary data, the bootstrap role `postgres`, an enrolled Linux receiver with the recorded Node executable and the PostgreSQL image pinned by adoption. The supported declaration is the stack-owned `postgres.databases.<app>.migrate: true` with `dist/database/migrate.js`, the public numbered migration CLI and its default one-hour budget. The initial profile supports one affected application, up to 2,048 registry entries and all additions listed in the admission's detailed history.
+
+On the third PostgreSQL copy the receiver starts the pinned database in private Linux namespaces. It reads both public history tables through its own connection. It runs the packaged migration definitions offline, then runs the actual compiled program with `--verify`, `up` (the default) and `--verify`. The application gets a private Unix socket and a new, unprivileged SQL login with table and schema grants. The MinIO tree stays closed. Programs needing database ownership, additional services, a differently named bootstrap role or an external effect require their own execution profile.
+
+A `verified` response includes every registry checksum, every baseline and resulting row with its original SQL timestamp, and the final filesystem generations. After a lost response use the first command or **Read migration rehearsal**. The receiver records its only run before launching the candidate. If the attempt cannot confirm completion, preserve its operation ID for inspection and prepare a new pair for another execution. A previously acknowledged result requires the same native journal and data generations. Each confirmed trial consumes its private pair.
+
+All rehearsal states report `writeAdmission: "withheld"`. Releasing production writes still requires application-level SQL and versioned S3 checks, an enforced fence for all writers, an atomic routing and write decision and a recovery path that preserves subsequent writes.
 
 #### Review a placement change explicitly
 

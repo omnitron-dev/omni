@@ -601,6 +601,17 @@ stack
   });
 
 stack
+  .command('rehearse-migrations <project> <stack> <release>')
+  .description('Run one reviewed release migration registry on its prepared private PostgreSQL copy')
+  .requiredOption('--operation <uuid>', 'Confirmed private pair operation ID')
+  .requiredOption('--app <name>', 'Declared migration owner')
+  .option('--review <digest>', 'Execute the reviewed trial or recover its existing receipt')
+  .structuredAction(async (projectName, stackName, release, options) => {
+    const { stackRehearseMigrationsCommand } = await import('../commands/stack.js');
+    await stackRehearseMigrationsCommand(projectName, stackName, release, options);
+  });
+
+stack
   .command('check-release <project> <stack> <release>')
   .description('Read the deployment admission decision for a local or remote stack')
   .option('--prepared <digest>', 'Recheck an exact prepared replacement source')

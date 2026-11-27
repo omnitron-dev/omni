@@ -504,7 +504,7 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
 
   private async revalidateKernelPrincipal() {
     if (!this.auth) throw new Error('Kernel rollout requires session verification');
-    await daemonPrincipal(this.auth, 'admin');
+    return daemonPrincipal(this.auth, 'admin');
   }
 
   private async authorizeKernel(action: string, id: string) {
@@ -522,31 +522,36 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
-  async inspectLegacyStageFence(data: { nodeId: string; inspectorArtifact: string }) {
-    await this.revalidateKernelPrincipal();
+  async inspectLegacyStageFence(data: { nodeId: string; inspectorArtifact: string; recordId?: string }) {
+    const principal = await this.revalidateKernelPrincipal();
+    const actorId = principal.context.userId!;
     const target = await this.nodeManager.nodeToDeployTarget(data.nodeId);
-    const observation = await this.deployer().inspectLegacyStageFence(target, data.inspectorArtifact);
+    const { stageFenceRecipient } = await import('./legacy-stage-fence.js');
+    if (target.registrationId !== data.nodeId) throw Error('Registered recipient changed before machine fence inspection');
+    const scope = { ...stageFenceRecipient(target), inspectorArtifact: data.inspectorArtifact };
+    const retained = data.recordId === undefined ? null : this.kernel().stageFenceEvidence(data.recordId, actorId, scope);
+    const observation = retained ?? await this.deployer().inspectLegacyStageFence(target, data.inspectorArtifact);
     await this.revalidateKernelPrincipal();
-    const current = await this.nodeManager.nodeToDeployTarget(data.nodeId);
-    const { pinnedRolloutEndpoint } = await import('./managed-rollout.js');
-    if (target.registrationId !== data.nodeId || current.registrationId !== data.nodeId ||
-        observation.nodeId !== data.nodeId || observation.sshFingerprint !== current.expectedHostFingerprint ||
-        observation.inspectorArtifact !== data.inspectorArtifact || pinnedRolloutEndpoint(current) !== pinnedRolloutEndpoint(target))
+    const current = stageFenceRecipient(await this.nodeManager.nodeToDeployTarget(data.nodeId));
+    if (current.nodeId !== scope.nodeId || current.endpointSha256 !== scope.endpointSha256 ||
+        observation.nodeId !== scope.nodeId || observation.sshFingerprint !== scope.sshFingerprint ||
+        observation.endpointSha256 !== scope.endpointSha256 || observation.inspectorArtifact !== data.inspectorArtifact)
       throw Error('Registered recipient changed during machine fence inspection');
-    return observation;
+    if (data.recordId === undefined || retained) return observation;
+    return this.kernel().stageFenceEvidence(data.recordId, actorId, scope, observation)!;
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
   async planKernelRollout(data: { commit: string; nodeIds?: string[]; requestId?: string; stage?: boolean }): Promise<KernelRollout> {
     const id = data.requestId ?? randomUUID();
     await this.authorizeKernel(data.stage === true ? 'plan.stage' : 'plan', id);
-    return this.kernel().plan(data.commit, data.nodeIds, id, data.stage, () => this.revalidateKernelPrincipal());
+    return this.kernel().plan(data.commit, data.nodeIds, id, data.stage, async () => { await this.revalidateKernelPrincipal(); });
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
   async startKernelRollout(data: { id: string }): Promise<KernelRollout> {
     await this.authorizeKernel('start', data.id);
-    return this.kernel().start(data.id, () => this.revalidateKernelPrincipal());
+    return this.kernel().start(data.id, async () => { await this.revalidateKernelPrincipal(); });
   }
 
   @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })

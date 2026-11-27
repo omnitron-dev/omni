@@ -8,7 +8,7 @@ import { emitError, emitInfo, emitJson } from './output.js';
 import { resolveNodeArgument } from './node.js';
 
 type Request =
-  | { kind: 'inspect-stage-fence'; node: string; inspector: string }
+  | { kind: 'inspect-stage-fence'; node: string; inspector: string; recordId?: string }
   | { kind: 'plan'; commit: string; nodes: string[]; apply: boolean; wait?: boolean; stage?: boolean; requestId?: string }
   | { kind: 'apply'; id: string; wait?: boolean }
   | { kind: 'reconcile'; id: string }
@@ -74,10 +74,13 @@ export async function fleetRolloutCommand(request: Request): Promise<void> {
     if (request.kind === 'inspect-stage-fence') {
       const match = resolveNodeArgument(request.node, await nodes.listNodes());
       if (match.kind !== 'found' || match.node.isLocal) throw Error('Select one unambiguous registered remote node');
-      const report = await nodes.inspectLegacyStageFence({ nodeId: match.node.id, inspectorArtifact: request.inspector });
-      if (report.nodeId !== match.node.id || report.inspectorArtifact !== request.inspector || report.state !== 'unresolved-legacy-stage')
+      const report = await nodes.inspectLegacyStageFence({ nodeId: match.node.id, inspectorArtifact: request.inspector,
+        ...(request.recordId !== undefined && { recordId: request.recordId }) });
+      if (report.nodeId !== match.node.id || report.inspectorArtifact !== request.inspector || report.state !== 'unresolved-legacy-stage' ||
+          report.record?.id !== request.recordId || !/^[a-f0-9]{64}$/.test(report.endpointSha256))
         throw Error('Controller did not confirm the requested machine fence');
       if (!emitJson(report)) {
+        if (report.record) emitInfo(`Observation ${report.record.id} recorded at ${report.record.at} by ${report.record.actorId}`);
         emitInfo(`Unresolved passive stage on ${report.nodeId}, boot ${report.bootId}, command ${report.commandId}`);
         emitInfo(`Lease SHA-256 ${report.leaseSha256}, execution SHA-256 ${report.executionSha256}`);
       }

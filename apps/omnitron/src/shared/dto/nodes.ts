@@ -431,10 +431,17 @@ export interface NativeLegacyStageFence {
   timeoutMs: number;
 }
 
-export interface LegacyStageFenceObservation extends NativeLegacyStageFence {
+export interface StageFenceRecipient {
   nodeId: string;
   sshFingerprint: string;
+  /** Digest of the enrolled host key, host, SSH port, login and daemon port. */
+  endpointSha256: string;
+}
+
+export interface LegacyStageFenceObservation extends NativeLegacyStageFence, StageFenceRecipient {
   inspectorArtifact: string;
+  /** Present only for an observation durably recorded in the controller Fleet journal. */
+  record?: { id: string; actorId: string; at: string };
 }
 
 /** A transition of a sealed backend under its existing execution owner. */

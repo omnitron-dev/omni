@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
@@ -8,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { METADATA_KEYS } from '@omnitron-dev/titan/decorators';
 import { DaemonStateStore } from '../../src/daemon/daemon-state-store.service.js';
 import { runWithAuth } from '../../src/services/auth-context.js';
+import { stageFenceRecipient } from '../../src/services/legacy-stage-fence.js';
 import { KernelRolloutService } from '../../src/services/kernel-rollout.service.js';
 import { ManagedRolloutFailure, type ManagedRolloutObservation, type ManagedSelection } from '../../src/services/managed-rollout.js';
 import { NodeManagerRpcService } from '../../src/services/node-manager.rpc-service.js';
@@ -430,12 +432,12 @@ describe('durable managed fleet kernel controller', () => {
 
 
 it('rechecks the live administrator and exact registered endpoint after fence inspection', async () => {
-  const target = { registrationId: 'node', host: 'example', sshPort: 22, expectedHostFingerprint: 'test-pin' };
+  const target = { registrationId: 'node', label: 'test node', host: 'example', sshPort: 22, expectedHostFingerprint: 'test-pin' };
   const resolve = vi.fn().mockResolvedValue(target);
   const auth = { validateSession: vi.fn().mockResolvedValue({ id: 'u', role: 'admin' }) };
   const service = new NodeManagerRpcService({ nodeToDeployTarget: resolve } as never, undefined, undefined, auth as never);
   const inspect = vi.fn().mockResolvedValue({
-    nodeId: 'node', sshFingerprint: 'test-pin', inspectorArtifact: 'e'.repeat(64), state: 'unresolved-legacy-stage',
+    ...stageFenceRecipient(target), inspectorArtifact: 'e'.repeat(64), state: 'unresolved-legacy-stage',
   });
   service.setRemoteDeployer({ inspectLegacyStageFence: inspect } as never);
   const principal = { userId: 'u', roles: ['admin'], metadata: { sessionId: 'session' } } as never;
@@ -452,6 +454,50 @@ it('rechecks the live administrator and exact registered endpoint after fence in
   const prior = inspect.mock.calls.length;
   await expect(read()).rejects.toThrow('required role');
   expect(inspect).toHaveBeenCalledTimes(prior);
+});
+
+it('recovers the first fence observation from SQLite after a lost response and binds it to the same administrator and complete endpoint', async () => {
+  const { service, observer, store } = fixture();
+  const target = { registrationId: 'node', label: 'test', host: 'machine.test', sshPort: 22, username: 'root',
+    daemonPort: 9700, expectedHostFingerprint: 'fixture-pin', password: 'fixture-credential' };
+  const resolve = vi.fn().mockResolvedValue(target);
+  const auth = { validateSession: vi.fn().mockResolvedValue({ id: 'u', role: 'admin' }) };
+  const rpc = new NodeManagerRpcService({ nodeToDeployTarget: resolve } as never, undefined, undefined, auth as never);
+  const scope = { ...stageFenceRecipient(target), inspectorArtifact: 'e'.repeat(64) };
+  const live = { ...scope, state: 'unresolved-legacy-stage' as const, machineIdSha256: '3'.repeat(64), bootId: randomUUID(),
+    commandId: randomUUID(), leaseSha256: '1'.repeat(64), executionSha256: '2'.repeat(64), timeoutMs: 500 };
+  const inspect = vi.fn().mockResolvedValue(live);
+  rpc.setRemoteDeployer({ inspectLegacyStageFence: inspect } as never);
+  rpc.setKernelRolloutService(service);
+  const request = { nodeId: target.registrationId, inspectorArtifact: scope.inspectorArtifact, recordId: randomUUID() };
+  const read = (userId = 'u', params = request) => runWithAuth({ userId, roles: ['admin'], metadata: { sessionId: 'session' } } as never,
+    () => rpc.inspectLegacyStageFence(params));
+  const first = await read();
+  expect(first).toEqual({ ...live, record: { id: request.recordId, actorId: 'u', at: expect.any(String) } });
+  expect(JSON.stringify(first)).not.toMatch(/machine\.test|fixture-credential/);
+
+  // A new controller connection can return this evidence even when the machine is unavailable.
+  rpc.setKernelRolloutService(observer);
+  inspect.mockRejectedValue(Error('target unavailable'));
+  await expect(read()).resolves.toEqual(first);
+  await expect(read('u', { ...request, recordId: randomUUID() })).rejects.toThrow('target unavailable');
+  for (const change of [{ host: 'another.test' }, { sshPort: 2200 }, { username: 'other' }, { daemonPort: 9701 }, { expectedHostFingerprint: 'other' }]) {
+    resolve.mockResolvedValueOnce({ ...target, ...change });
+    await expect(read()).rejects.toThrow('another administrator, registered endpoint or inspector');
+  }
+  await expect(read('u', { ...request, inspectorArtifact: 'a'.repeat(64) })).rejects.toThrow('another administrator');
+  auth.validateSession.mockResolvedValueOnce({ id: 'other', role: 'admin' });
+  await expect(read('other')).rejects.toThrow('another administrator');
+  auth.validateSession.mockResolvedValueOnce(null);
+  await expect(read()).rejects.toThrow('Session expired');
+  expect(inspect).toHaveBeenCalledTimes(2);
+
+  // Two initially missing reads can finish on different boots. Only the first insert survives.
+  store.initSync().exec("CREATE TRIGGER no_evidence_update BEFORE UPDATE ON state_kv BEGIN SELECT RAISE(ABORT, 'receipt was rewritten'); END");
+  expect(observer.stageFenceEvidence(request.recordId, 'u', scope, live)).toEqual(first);
+  expect(() => observer.stageFenceEvidence(request.recordId, 'u', scope, { ...live, bootId: randomUUID() })).toThrow('different machine evidence');
+  expect(observer.stageFenceEvidence(request.recordId, 'u', scope)).toEqual(first);
+  expect(service.get()).toBeNull();
 });
 
 it('retains historical rollout evidence without granting missing backup cancellation authority', async () => {

@@ -1704,8 +1704,8 @@ export class RemoteDeployer {
     if (!entry) throw Error('The inspector artifact has not been admitted to the controller Linux catalog');
     const confirmed = await resolveKernelBuild(entry.commit, entry);
     if (confirmed.entry.artifact !== inspectorArtifact) throw Error('The catalog inspector artifact changed during verification');
-    const { inspectRegisteredStageFence } = await import('./legacy-stage-fence.js');
-    return inspectRegisteredStageFence(target.registrationId, target.expectedHostFingerprint!, inspectorArtifact,
+    const { inspectRegisteredStageFence, stageFenceRecipient } = await import('./legacy-stage-fence.js');
+    return inspectRegisteredStageFence(stageFenceRecipient(target), inspectorArtifact,
       command => this.readFromNodeRaw(target, command, 15_000));
   }
 

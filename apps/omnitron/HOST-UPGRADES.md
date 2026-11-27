@@ -112,6 +112,17 @@ returning the report. Only the observation crosses SSH. For an older
 recipient without a preinstalled inspector, use its existing authorized
 read-only diagnostics. A Fleet inspection does not stage software.
 
+Before planned host maintenance, add `--record UUID` to retain the first
+observation in the controller's Fleet journal. Choose the UUID before
+submitting the command. The journal binds it to the authenticated
+administrator, node registration, SHA-256 of the complete registered
+endpoint, inspector artifact and the measured host evidence. The local
+administrator socket records its shared identity, `omnitron-local`.
+If the response is lost, repeat the same command with the same UUID. It
+returns the original observation and recording time even if the node is
+offline. A changed binding is refused. Omit `--record` for a fresh reading
+or choose a second UUID to retain a later reading.
+
 Schema 1 records neither the original selection nor the Fleet request ID.
 The command's exit status is unknown. An observation from a later boot
 cannot authorize another writer. The original lease and rollout receipts

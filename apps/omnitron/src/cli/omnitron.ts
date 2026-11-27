@@ -1061,9 +1061,11 @@ const rollout = fleet.command('rollout').description('Distribute and activate ma
 rollout.command('inspect-stage-fence <node>')
   .description('Read the protected lease and legacy command identity of an interrupted passive staging attempt on a registered Linux node')
   .requiredOption('--inspector <sha256>', 'Qualified Linux runtime already installed in the private host administrator store')
-  .structuredAction(async (node: string, options: { inspector: string }) => {
+  .option('--record <uuid>', 'Keep the first observation under this ID in the controller journal, or retrieve that receipt')
+  .structuredAction(async (node: string, options: { inspector: string; record?: string }) => {
     const { fleetRolloutCommand } = await import('../commands/fleet-rollout.js');
-    await fleetRolloutCommand({ kind: 'inspect-stage-fence', node, inspector: options.inspector });
+    await fleetRolloutCommand({ kind: 'inspect-stage-fence', node, inspector: options.inspector,
+      ...(options.record !== undefined && { recordId: options.record }) });
   });
 rollout.command('import <runtimes...>')
   .description('Admit qualified sealed builds into the local controller catalog for distribution')

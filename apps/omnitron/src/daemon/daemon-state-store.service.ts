@@ -188,22 +188,37 @@ export class DaemonStateStore {
     return row?.updated_at ?? null;
   }
 
-  /** Atomic read/compare/write for control-plane intent; returns only after a FULL WAL commit. */
-  kvUpdateSync<T>(key: string, update: (current: T | null) => T): T {
+  private durableTransaction<T>(operation: () => T): T {
     const db = this.rawSqlite ?? this.initSync();
     if (db.inTransaction) throw new Error('Daemon state is busy in another transaction; retry the operation');
     const previous = db.pragma('synchronous', { simple: true });
     db.pragma('synchronous = FULL');
     try {
-      return db.transaction(() => {
-        const current = this.kvGetSync<T>(key, { strict: true });
-        const next = update(current);
-        this.kvSetSync(key, next);
-        return next;
-      }).immediate();
+      return db.transaction(operation).immediate();
     } finally {
       db.pragma(`synchronous = ${Number(previous)}`);
     }
+  }
+
+  /** Atomic read/compare/write for control-plane intent; returns only after a FULL WAL commit. */
+  kvUpdateSync<T>(key: string, update: (current: T | null) => T): T {
+    return this.durableTransaction(() => {
+      const current = this.kvGetSync<T>(key, { strict: true });
+      const next = update(current);
+      this.kvSetSync(key, next);
+      return next;
+    });
+  }
+
+  /** Store the first receipt and recover that same record after a lost reply or a concurrent submission. */
+  kvInsertOnceSync<T>(key: string, value: T): T {
+    return this.durableTransaction(() => {
+      this.initSync().prepare('INSERT INTO state_kv (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO NOTHING')
+        .run(key, JSON.stringify(value), new Date().toISOString());
+      const retained = this.kvGetSync<T>(key, { strict: true });
+      if (retained === null) throw Error('Missing retained control-plane receipt');
+      return retained;
+    });
   }
 
   /** Sync KV write. Same atomicity as kvSet via SQLite WAL. */

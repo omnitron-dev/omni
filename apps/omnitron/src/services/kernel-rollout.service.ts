@@ -2,13 +2,14 @@ import { readProcessLifetime, compareProcessLifetimes } from '@omnitron-dev/comm
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
-import type { KernelRollout, KernelRolloutTarget } from '../shared/dto/nodes.js';
+import type { KernelRollout, KernelRolloutTarget, LegacyStageFenceObservation, StageFenceRecipient } from '../shared/dto/nodes.js';
+import { readNativeFence } from './legacy-stage-fence.js';
 import type { DeployTarget, RemoteDeployer } from './remote-deployer.service.js';
 import { describeFailure } from './audit.service.js';
 import { ManagedRolloutFailure, pinnedRolloutEndpoint, type ManagedRolloutObservation, type ManagedSelection } from './managed-rollout.js';
 import { assertBackendHandoffAdmission } from '../daemon/backend-handoff-types.js';
 
-type Store = Pick<DaemonStateStore, 'kvGetSync' | 'kvSetSync' | 'kvUpdateSync'>;
+type Store = Pick<DaemonStateStore, 'kvGetSync' | 'kvSetSync' | 'kvUpdateSync' | 'kvInsertOnceSync'>;
 type Revalidate = () => Promise<void>;
 type Driver = Pick<RemoteDeployer, 'inspectManagedRollout'> & {
   activateManagedRollout(target: DeployTarget, preflight: ManagedRolloutObservation, beforeDispatch: () => Promise<void>): Promise<void>;
@@ -69,6 +70,30 @@ export class KernelRolloutService {
     private readonly controllerOwner: () => string | null) {}
 
   activeCount(): number { return this.jobs.size; }
+
+  /** A recorded observation is independent of every rollout and grants no execution authority. */
+  stageFenceEvidence(id: string, actorId: string, scope: StageFenceRecipient & { inspectorArtifact: string },
+    fresh?: LegacyStageFenceObservation): LegacyStageFenceObservation | null {
+    this.assertController();
+    if (!uuid(id) || !actorId || !scope.nodeId || !scope.sshFingerprint || !hash(scope.endpointSha256, 64) || !hash(scope.inspectorArtifact, 64))
+      throw Error('Invalid Fleet observation ID or recipient binding');
+    if (fresh && (fresh.record || fresh.nodeId !== scope.nodeId || fresh.endpointSha256 !== scope.endpointSha256 ||
+        fresh.sshFingerprint !== scope.sshFingerprint || fresh.inspectorArtifact !== scope.inspectorArtifact))
+      throw Error('Live observation differs from the reviewed Fleet recipient');
+    const key = 'fleet:kernel:v1:stage-observation:' + id;
+    const saved = fresh ? this.store.kvInsertOnceSync(key, { ...readNativeFence(fresh), ...scope, record: { id, actorId, at: now() } }) :
+      this.store.kvGetSync<LegacyStageFenceObservation>(key, { strict: true });
+    if (!saved) return null;
+    const record = saved.record;
+    if (record?.id !== id || typeof record.at !== 'string' || !Number.isFinite(Date.parse(record.at))) throw Error('Corrupt Fleet stage observation');
+    if (record.actorId !== actorId || saved.nodeId !== scope.nodeId || saved.sshFingerprint !== scope.sshFingerprint ||
+        saved.endpointSha256 !== scope.endpointSha256 || saved.inspectorArtifact !== scope.inspectorArtifact)
+      throw Error('Fleet observation ID belongs to another administrator, registered endpoint or inspector');
+    const observation = readNativeFence(saved);
+    if (fresh && !isDeepStrictEqual(observation, readNativeFence(fresh)))
+      throw Error('The first observation with this ID recorded different machine evidence');
+    return { ...observation, ...scope, record: { id, actorId, at: record.at } };
+  }
 
   private mayStillRun(id: string, writer: Writer) {
     if (writer.token === this.writer.token) return this.jobs.has(id);

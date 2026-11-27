@@ -5,10 +5,11 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, expect, it, vi } from 'vitest';
 import { readLegacyStageRecords, withExistingStageGuards } from '../../src/commands/legacy-stage-fence.js';
-import { inspectRegisteredStageFence } from '../../src/services/legacy-stage-fence.js';
+import { inspectRegisteredStageFence, stageFenceRecipient } from '../../src/services/legacy-stage-fence.js';
 
 const commandId = randomUUID(), bootId = randomUUID();
 const token = randomUUID(), node = 'registered-example', pin = 'test-pin';
+const recipient = stageFenceRecipient({ registrationId: node, expectedHostFingerprint: pin, host: 'example', label: 'test' });
 const inspectorArtifact = 'f'.repeat(64);
 const lease = { token, holder: 'example pid 11', stack: 'stage managed kernel', startedAt: new Date().toISOString() };
 const intent = { schema: 1, id: commandId, token, timeoutMs: 600000 };
@@ -37,9 +38,9 @@ describe('legacy passive stage', () => {
   });
   it('makes one fixed inspection call, allowlists result fields and suppresses recipient failure details', async () => {
     const read = vi.fn().mockResolvedValue({ code:0, stdout: JSON.stringify({ok:true,data:{ ...native, other:'private-test' }}) });
-    await expect(inspectRegisteredStageFence(node, pin, '../untrusted', read)).rejects.toThrow('Invalid inspector artifact');
+    await expect(inspectRegisteredStageFence(recipient, '../untrusted', read)).rejects.toThrow('Invalid inspector artifact');
     expect(read).not.toHaveBeenCalled();
-    expect(await inspectRegisteredStageFence(node, pin, inspectorArtifact, read)).toEqual({ ...native, nodeId:node, sshFingerprint:pin, inspectorArtifact });
+    expect(await inspectRegisteredStageFence(recipient, inspectorArtifact, read)).toEqual({ ...native, ...recipient, inspectorArtifact });
     expect(read).toHaveBeenCalledTimes(1);
     const command = read.mock.calls[0]![0];
     expect(command).toContain('/root/.omnitron-maintenance/runtime/releases/' + inspectorArtifact + '/node');
@@ -48,7 +49,7 @@ describe('legacy passive stage', () => {
     expect(command).not.toContain(token);
     for (const reply of [{code:127,stdout:'private-test'}, {code:0,stdout:'private-test'}, {code:0,stdout:JSON.stringify({ok:true,data:{...native,bootId:'pid-1'}})}]) {
       read.mockResolvedValueOnce(reply);
-      await expect(inspectRegisteredStageFence(node, pin, inspectorArtifact, read)).rejects.toThrow(/recipient administrative CLI|reply from the installed/);
+      await expect(inspectRegisteredStageFence(recipient, inspectorArtifact, read)).rejects.toThrow(/recipient administrative CLI|reply from the installed/);
     }
   });
   it.skipIf(process.platform !== 'linux')('actually excludes other workers from both kernel guards throughout the parent read, and releases on failure', () => {

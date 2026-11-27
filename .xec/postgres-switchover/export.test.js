@@ -4,6 +4,7 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import test from 'node:test';
 import { checkPipelineDefinition } from '../../apps/omnitron/src/services/pipeline-definition.ts';
@@ -159,11 +160,15 @@ test('ordinary Xec exports both native gates and binds the exact earlier reviewe
     await checkPipelineDefinition(g);
     assert(g.steps.every((step) => Buffer.byteLength(step.run) <= 22 * 1024));
     if (phase !== 'base') assert(g.steps.some((s) => s.name === 'confirm-full-source-stop'));
-    if (['replay', 'promote'].includes(phase))
+    if (['replay', 'promote'].includes(phase)) {
       assert.deepEqual(
         g.steps.slice(-5).map((s) => s.nodeId ?? 'local'),
         ['local', spec.sourceNode, spec.receiverNode, spec.sourceNode, 'local']
       );
+      const checks = g.steps.find(step => step.name === 'confirm-native-site-runs').run.split(' && ');
+      assert.equal(checks.length, phase === 'replay' ? 2 : 3);
+      assert(checks.every(check => check.includes('--shell-receipt') && !check.includes('python')));
+    }
     if (phase !== 'promote') evidence[phase] = run(phase, g);
     else promotedRun = run(phase, g);
     if (phase !== 'promote') continue;
@@ -194,18 +199,7 @@ test('ordinary Xec exports both native gates and binds the exact earlier reviewe
     registered = path.join(dir, 'registered');
   await fs.writeFile(wanted, JSON.stringify(all));
   await fs.writeFile(registered, JSON.stringify(all));
-  await fs.writeFile(
-    path.join(dir, 'omnitron'),
-    `#!/usr/bin/python3
-import json,sys
-from pathlib import Path
-args=sys.argv[1:]
-assert len(args)==5 and args[:3]==['--json','pipeline','status'] and args[4]=='--output'
-run=next(r for r in json.loads(Path(__file__).with_name('registered').read_text()).values() if r['id']==args[3])
-print(json.dumps({'ok':True,'data':run}))
-`,
-    { mode: 0o700 }
-  );
+  await fs.symlink(fileURLToPath(new URL('./test-receipt-cli.mjs', import.meta.url)), path.join(dir, 'omnitron'));
   const collect = () =>
     promisify(execFile)(
       path.resolve('node_modules/.bin/xec'),

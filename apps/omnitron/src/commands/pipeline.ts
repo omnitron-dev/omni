@@ -10,6 +10,7 @@ import { readFile } from 'node:fs/promises';
 import type { IOmnitronPipelinesService } from '../shared/dto/services.js';
 import type { PipelineDef, PipelineRun } from '../shared/dto/pipelines.js';
 import { emitJson, emitError } from './output.js';
+import { pipelineShellReceipt } from '../../data/operations/pipeline-shell-receipt.js';
 
 /**
  * One call to the daemon's pipelines service, through `client.service()` —
@@ -140,12 +141,22 @@ export async function pipelinePhysicalRestoreCommand(verifyRunId: string, projec
   }
 }
 
-export async function pipelineStatusCommand(runId: string, options: { output?: boolean } = {}): Promise<void> {
+export async function pipelineStatusCommand(runId: string, options: { output?: boolean; shellReceipt?: true | string } = {}): Promise<void> {
   try {
+    const expected = options.shellReceipt;
+    if (typeof expected === 'string' && !/^[0-9a-f]{64}$/.test(expected)) throw Error('Expected shell receipt must be a SHA-256 digest');
     const run = await withPipelines((svc) => svc.getRunStatus({ runId }));
     if (!run) {
       emitError(`Run '${runId}' not found`);
       process.exitCode = 1;
+      return;
+    }
+    if (expected !== undefined) {
+      const receipt = pipelineShellReceipt(run);
+      if (receipt.id !== runId || (typeof expected === 'string' && receipt.digest !== expected)) {
+        throw Error('The registered Pipeline shell receipt differs from the requested run or digest');
+      }
+      if (!emitJson(receipt)) log.info(`Run ${runId} shell receipt SHA-256 ${receipt.digest}`);
       return;
     }
     if (['failed', 'cancelled', 'interrupted'].includes(run.status)) process.exitCode = 1;

@@ -12,6 +12,7 @@ vi.mock('../../src/daemon/daemon-client.js', async (importOriginal) => ({
 }));
 import { pipelineCheckCommand, pipelineListCommand, pipelineStatusCommand, pipelineSaveCommand, pipelineRunCommand, pipelineStartCommand, pipelineReconcileCommand } from '../../src/commands/pipeline.js';
 import { hasEmittedJson } from '../../src/commands/output.js';
+import { pipelineShellReceipt } from '../../data/operations/pipeline-shell-receipt.js';
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -166,6 +167,37 @@ describe('pipeline CLI uses the shared machine output protocol', () => {
     expect(output.out).toBe('');
     expect(JSON.parse(output.err)).toMatchObject({ ok: false, error: expect.stringContaining('not found') });
     expect(output.exitCode).toBe(1);
+  });
+  const runId = 'bde9da32-e470-4711-af57-cf78895db7c5';
+  const observedStep = { name: 'observe', nodeId: 'sensor', sourceHash: 'd'.repeat(64), kind: 'shell',
+    status: 'success', exitCode: 0, outputTruncated: false, output: 'fixture Ω\n' };
+  const observedRun = { id: runId, review: { digest: 'e'.repeat(64) }, status: 'success',
+    steps: [observedStep, { ...observedStep, nodeId: 'local', name: 'check' }] };
+
+  it('emits only the stable receipt for a matching set of retained shell outputs', async () => {
+    const expected = pipelineShellReceipt(observedRun);
+    service.getRunStatus.mockResolvedValue({ ...observedRun, steps: [...observedRun.steps].reverse() });
+    const reply = await capture(() => pipelineStatusCommand(runId, { shellReceipt: expected.digest }));
+    expect(JSON.parse(reply.out)).toEqual({ ok: true, data: expected });
+    expect(reply.out).not.toContain(observedStep.output);
+    expect(reply.exitCode).toBeUndefined();
+  });
+
+  it.each([
+    ['wrong run', { ...observedRun, id: '5f844c62-5ed1-448a-a0e7-4d3588704e15' }],
+    ['different review', { ...observedRun, review: { digest: 'c'.repeat(64) } }],
+    ['unfinished run', { ...observedRun, status: 'running' }],
+    ['duplicate step', { ...observedRun, steps: [observedStep, observedStep] }],
+    ...Object.entries({
+      name: 'another', nodeId: 'other', sourceHash: '0'.repeat(64), kind: 'xec',
+      status: 'failed', exitCode: 1, outputTruncated: true, output: 'fixture Ω',
+    }).map(([key, value]) => [key, { ...observedRun, steps: [{ ...observedStep, [key]: value }, observedRun.steps[1]] }]),
+  ])('rejects the registered run when %s differs', async (_case, run) => {
+    service.getRunStatus.mockResolvedValue(run);
+    const reply = await capture(() => pipelineStatusCommand(runId, { shellReceipt: pipelineShellReceipt(observedRun).digest }));
+    expect(reply.exitCode).toBe(1);
+    expect(JSON.parse(reply.err).ok).toBe(false);
+    expect(reply.out).toBe('');
   });
   it('preserves an empty list as data', async () => {
     service.listPipelines.mockResolvedValue([]);

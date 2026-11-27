@@ -28,6 +28,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { ExecutionEngine } from '@xec-sh/core';
+import { pipelineShellReceipt } from '../../data/operations/pipeline-shell-receipt.js';
 
 import { Netron } from '@omnitron-dev/titan/netron';
 import { UnixSocketTransport } from '@omnitron-dev/titan/netron/transport/unix';
@@ -192,6 +195,33 @@ afterEach(async () => {
   await server?.stop();
   server = null;
   for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+});
+
+it('reads and verifies a completed shell receipt through the CLI and registered Netron service', async () => {
+  const run = { id: '70d8b4ec-91e2-4729-954f-d033014f98ff', review: { digest: 'e'.repeat(64) }, status: 'success',
+    steps: [{ name: 'check', kind: 'shell', nodeId: 'site', sourceHash: '2'.repeat(64),
+      status: 'success', exitCode: 0, outputTruncated: false, output: 'synthetic retained output' }] };
+  const expected = pipelineShellReceipt(run);
+  await daemonWith(pipelineRpc({ getRunStatus: (id: string) => id === run.id ? run : null }));
+  const engine = new ExecutionEngine({ quiet: true, enableEvents: false, retry: { retries: 0 }, preferLocal: false });
+  const home = scratchDir();
+  const args = ['--import=tsx/esm', fileURLToPath(new URL('../../src/cli/omnitron.ts', import.meta.url)),
+    '--json', 'pipeline', 'status', run.id, '--shell-receipt'];
+  const command = { adapter: 'local' as const, shell: false, command: process.execPath, timeout: 20_000, nothrow: true,
+    envMode: 'replace' as const, env: { HOME: home, OMNITRON_HOME: home, OMNITRON_SOCKET: stand.socketPath } };
+  try {
+    const actual = await engine.execute({ ...command, args });
+    expect(actual.exitCode, actual.stderr).toBe(0);
+    expect(JSON.parse(actual.stdout)).toEqual({ ok: true, data: expected });
+    const verified = await engine.execute({ ...command, args: [...args, expected.digest] });
+    expect(verified.exitCode, verified.stderr).toBe(0);
+    expect(JSON.parse(verified.stdout)).toEqual({ ok: true, data: expected });
+    run.steps[0]!.output += '\n';
+    const changed = await engine.execute({ ...command, args: [...args, expected.digest] });
+    expect(changed.exitCode).toBe(1);
+    expect(changed.stdout).toBe('');
+    expect(JSON.parse(changed.stderr)).toMatchObject({ ok: false, error: expect.stringContaining('differs') });
+  } finally { await engine.dispose(); }
 });
 
 describe('omnitron pipeline list', () => {

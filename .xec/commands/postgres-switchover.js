@@ -1,10 +1,10 @@
-import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
-import { promisify } from 'node:util';
 import { gzipSync } from 'node:zlib';
+import { ExecutionEngine, quoteForShell } from '@xec-sh/core';
 import { serviceDataDefinition } from './service-data-preseed.js';
 import { fullStopCommand } from '../../apps/omnitron/data/operations/controller-inspection.js';
+import { pipelineShellReceipt } from '../../apps/omnitron/data/operations/pipeline-shell-receipt.js';
 
 const phases = ['base', 'source', 'replay', 'promote'];
 const predecessors = {
@@ -176,33 +176,16 @@ function clusterWitness(phase, name, record, spec, binding, prior) {
 
 function receipt(phase, raw, graph, spec, binding, stop, prior) {
   const run = raw?.ok === true ? raw.data : raw;
-  if (
-    !run ||
-    run.status !== 'success' ||
-    !uuid(run.id) ||
-    !hash(run.review?.digest) ||
-    !Array.isArray(run.steps) ||
-    run.steps.length !== graph.steps.length
-  )
+  const attestation = pipelineShellReceipt(run);
+  if (run.steps.length !== graph.steps.length)
     throw Error('A completed native PostgreSQL witness Pipeline is required');
-  const steps = {};
+  const steps = new Map(run.steps.map(step => [step.name, step]));
   for (const expected of graph.steps) {
-    const matches = run.steps.filter((s) => s.name === expected.name);
-    const s = matches[0];
-    if (
-      matches.length !== 1 ||
-      s.nodeId !== (expected.nodeId ?? 'local') ||
-      s.kind !== 'shell' ||
-      s.status !== 'success' ||
-      s.exitCode !== 0 ||
-      s.outputTruncated !== false ||
-      typeof s.output !== 'string' ||
-      !stepHashes(expected).includes(s.sourceHash)
-    )
+    const s = steps.get(expected.name);
+    if (!s || s.nodeId !== (expected.nodeId ?? 'local') || !stepHashes(expected).includes(s.sourceHash))
       throw Error('A native witness step, node or reviewed command differs');
-    steps[s.name] = [s.nodeId, s.sourceHash, sha(s.output)];
   }
-  const result = JSON.parse(run.steps.find((s) => s.name === names[phase]).output);
+  const result = JSON.parse(steps.get(names[phase]).output);
   if (
     result.protocol !== 'omnitron.postgres-switchover/1' ||
     result.phase !== phase ||
@@ -215,22 +198,10 @@ function receipt(phase, raw, graph, spec, binding, stop, prior) {
     throw Error('Native receipt belongs to another switchover');
   if (!['postgres', 'nominatim'].every((s) => clusterWitness(phase, s, result.clusters[s], spec, binding, prior)))
     throw Error('Native PostgreSQL receipt has a different cluster, physical binding, backup or WAL witness');
-  return { result, attestation: { id: run.id, review: run.review.digest, steps } };
+  return { result, attestation };
 }
 
-const authenticate = `import base64,gzip,hashlib,json,subprocess,sys
-for proof in json.loads(gzip.decompress(base64.b64decode(sys.argv[1]))):
-    cmd=['omnitron','--json','pipeline','status',proof['id'],'--output']
-    q=subprocess.run(cmd,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=60,check=True)
-    reply=json.loads(q.stdout);r=reply.get('data',{})
-    if reply.get('ok') is not True or r.get('id')!=proof['id'] or r.get('status')!='success' or r.get('review',{}).get('digest')!=proof['review']:sys.exit('Native PostgreSQL witness review changed')
-    if len(r['steps'])!=len(proof['steps']):sys.exit('Native PostgreSQL witness graph changed')
-    for name,(node,source,sha) in proof['steps'].items():
-        found=[s for s in r['steps'] if s['name']==name]
-        if len(found)!=1:sys.exit('Missing native PostgreSQL witness step')
-        s=found[0]
-        if s.get('kind')!='shell' or s.get('nodeId')!=node or s.get('sourceHash')!=source or s.get('status')!='success' or s.get('exitCode')!=0 or s.get('outputTruncated') is not False or hashlib.sha256(s['output'].encode()).hexdigest()!=sha:sys.exit('Native PostgreSQL witness differs')
-print('Registered site runs confirm the reviewed native PostgreSQL evidence.')`;
+const receiptArgs = id => ['--json', 'pipeline', 'status', id, '--shell-receipt'];
 
 export async function postgresSwitchoverDefinition(phase, spec, binding, { stop, evidence = {} } = {}) {
   if (
@@ -273,7 +244,9 @@ exec(compile(gzip.decompress(base64.b64decode('${gzipSync(worker).toString('base
     if (attestations.length) {
       local(
         'confirm-native-site-runs',
-        '/usr/bin/python3 -I -c ' + quote(authenticate) + ' ' + pack(attestations),
+        attestations.map(({ id, digest }) =>
+          ['omnitron', ...receiptArgs(id), digest].map(arg => quoteForShell(arg, 'posix')).join(' ')
+        ).join(' && '),
         240000
       );
       native('confirm-source-fence', 'source', 'source', { source: results.source });
@@ -307,11 +280,21 @@ exec(compile(gzip.decompress(base64.b64decode('${gzipSync(worker).toString('base
     throw Error('Distinct PostgreSQL witness runs are required');
   if (phase === 'receipt') {
     const registered = [...checked.values()].map((entry) => entry.attestation);
+    const engine = new ExecutionEngine({ defaultShell: false, preferLocal: false, quiet: true, enableEvents: false, retry: { retries: 0 } });
     try {
-      await promisify(execFile)('/usr/bin/python3', ['-I', '-c', authenticate, pack(registered)], { timeout: 250000 });
+      for (const expected of registered) {
+        const reply = await engine.execute({ adapter: 'local', command: 'omnitron', args: receiptArgs(expected.id),
+          shell: false, timeout: 60000, maxBuffer: 4096, nothrow: true });
+        if (reply.exitCode !== 0) throw Error('Status failed');
+        const { ok, data } = JSON.parse(reply.stdout);
+        if (ok !== true || !keys(data, Object.keys(expected)) || data.protocol !== expected.protocol ||
+            data.id !== expected.id || data.review !== expected.review || data.digest !== expected.digest) {
+          throw Error('Registered shell receipt differs');
+        }
+      }
     } catch {
       throw Error('The registered controller did not confirm all four native PostgreSQL witness runs');
-    }
+    } finally { await engine.dispose(); }
     const final = checked.get('promote').result;
     return {
       protocol: 'omnitron.postgres-private-promotion/1',

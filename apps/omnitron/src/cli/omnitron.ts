@@ -1633,6 +1633,7 @@ pipeline
   .command('status <runId>')
   .description('Check pipeline run status')
   .option('--output', 'Include retained stdout and stderr')
+  .option('--shell-receipt [sha256]', 'Read the digest of the completed shell steps and optionally verify it')
   .structuredAction(async (runId, options) => {
     const { pipelineStatusCommand } = await import('../commands/pipeline.js');
     await pipelineStatusCommand(runId, options);

@@ -51,6 +51,8 @@ The directory needs the image's `sh` and may also contain `postgres`, `psql`, `p
 
 Each command exports a normal manual Omnitron Pipeline definition. Use the installed project's `pipeline check`, reviewed execution and `pipeline status --output` for that definition. Use the same exporter revision and Node runtime for the four graphs. Prerequisite files contain ordinary successful status responses keyed by stage. Later graphs look them up on the controller and compare node identities, reviewed commands, outputs and review digests.
 
+The executor needs an Omnitron CLI that supports `pipeline status <run-id> --shell-receipt`. This reads the registered run through Netron and returns its ID, review digest and a SHA-256 digest covering every completed shell step, its node, reviewed source and full retained output. Supply the expected digest after `--shell-receipt` to check it before continuing. The final export reads each digest independently and compares it against the supplied evidence.
+
 ```sh
 xec postgres-switchover base spec.json --binding receiver.json
 xec postgres-switchover source spec.json --binding receiver.json --stop "$FULL_STOP"

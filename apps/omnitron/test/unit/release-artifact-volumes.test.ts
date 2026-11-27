@@ -382,10 +382,14 @@ it('keeps the ordinary standalone destination installer self-contained after sep
   const seen = new Set<string>();
   async function compile(relative: string): Promise<void> {
     if (seen.has(relative)) return; seen.add(relative);
-    const input = path.join(control, 'src', relative.replace(/\.js$/, '.ts'));
-    const js = transpileModule(await fs.readFile(input, 'utf8'), { compilerOptions: {
-      target: ScriptTarget.ES2022, module: ModuleKind.ESNext, esModuleInterop: true,
-    }, fileName: input }).outputText;
+    const source = path.join(control, 'src', relative);
+    const js = await fs.readFile(source, 'utf8').catch(async error => {
+      if (error.code !== 'ENOENT') throw error;
+      const input = source.replace(/\.js$/, '.ts');
+      return transpileModule(await fs.readFile(input, 'utf8'), { compilerOptions: {
+        target: ScriptTarget.ES2022, module: ModuleKind.ESNext, esModuleInterop: true,
+      }, fileName: input }).outputText;
+    });
     const output = path.join(compiled, relative);
     await fs.mkdir(path.dirname(output), { recursive: true }); await fs.writeFile(output, js);
     for (const dep of preProcessFile(js, true, true).importedFiles) {

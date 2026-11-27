@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.19] - 2026-11-27
+
 ### Added
 
 - Operators can qualify a recovery release that keeps records written after a database migration. Omnitron checks the candidate and recovery migrations on an isolated copy and records the application and portal files covered by the rehearsal.

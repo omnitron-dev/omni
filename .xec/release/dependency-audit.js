@@ -170,6 +170,17 @@ function npmReport(report, status, { root, copies }) {
   assert.deepEqual(Object.keys(report).sort(), ['auditReportVersion', 'metadata', 'vulnerabilities']);
   assert.equal(report.auditReportVersion, 2);
   const issues = report.vulnerabilities, names = Object.keys(issues);
+  // Report the registry finding itself before asserting the totals of the one
+  // reviewed advisory. Both a new origin and a new severity must fail closed.
+  for (const [name, issue] of Object.entries(issues)) {
+    for (const finding of issue.via) {
+      if (typeof finding === 'string') continue;
+      assert.ok(name === 'picomatch' && finding?.source === source && finding?.url === advisory,
+        'Unreviewed npm advisory: ' + JSON.stringify({
+          package: name, severity: finding?.severity, title: finding?.title, url: finding?.url,
+        }));
+    }
+  }
   assert.deepEqual(report.metadata.vulnerabilities, { ...levels(names.length), total: names.length });
   assert.ok(Number.isSafeInteger(report.metadata.dependencies.total) && report.metadata.dependencies.total > 0);
   if (!names.length) { assert.equal(status, 0); return; }

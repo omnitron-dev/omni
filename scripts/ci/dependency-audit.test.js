@@ -116,3 +116,16 @@ test('an unreported alias, a changed entry point or a matcher outside its SDK ar
   rmSync(original, { recursive: true });
   await assert.rejects(audit(root, 'npm', clean, 0), /outside SDK archive/);
 });
+
+test('a new critical registry finding identifies the package and advisory in the failed step', async t => {
+  const root = fixture(t);
+  t.mock.method(console, 'error', () => {});
+  const report = npmReport();
+  const name = '@omnitron-dev/lumen';
+  const finding = { source: 123, dependency: name, severity: 'critical', title: 'Unreviewed finding', url: 'https://example.org/advisory/123' };
+  report.vulnerabilities = { [name]: { name, severity: 'critical', via: [finding], nodes: [owner] } };
+  report.metadata.vulnerabilities = { ...level(0), critical: 1, total: 1 };
+  await assert.rejects(audit(root, 'npm', report), {
+    message: 'Unreviewed npm advisory: ' + JSON.stringify({ package: name, severity: finding.severity, title: finding.title, url: finding.url }),
+  });
+});

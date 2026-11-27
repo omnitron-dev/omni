@@ -77,7 +77,7 @@ export {
   isInTransactionContext,
   getExecutor,
 } from './transaction/transaction.context.js';
-export type { TransactionContextData } from './transaction/transaction.context.js';
+export type { RunInTransactionOptions, TransactionContextData } from './transaction/transaction.context.js';
 
 // ============================================================================
 // Decorators
@@ -160,6 +160,7 @@ export type {
   DatabaseModuleOptions,
   DatabaseModuleAsyncOptions,
   DatabaseOptionsFactory,
+  TransactionIsolationLevel,
   TransactionOptions,
   MigrationOptions,
   MigrationStatus,

@@ -164,19 +164,7 @@ export interface DatabaseModuleOptions {
     plugins?: Array<string | KyseraPlugin | KyseraPluginConfig>;
   };
   plugins?: PluginsConfiguration;
-  /**
-   * NOT IMPLEMENTED — nothing reads this group.
-   *
-   * Transactions are started by `runInTransaction(db, fn, options)`, whose own
-   * option type accepts `name`, `connectionName` and `retry` and nothing else.
-   * So a caller who sets `defaultIsolationLevel: 'serializable'` here gets the
-   * database's default level, and `useSavepoints` and the retry settings are
-   * equally inert. This matters more than the other dead options in this file:
-   * an isolation level that is configured and not applied is a correctness
-   * promise that silently is not kept.
-   *
-   * Kept so existing configurations still type-check.
-   */
+  /** Default isolation for runInTransaction and AutoTransactional. The other settings in this group are reserved. */
   transactionOptions?: {
     defaultIsolationLevel?: TransactionIsolationLevel;
     defaultTimeout?: number;
@@ -239,11 +227,7 @@ export interface DatabaseModuleOptions {
   /** Bounds closeAll(): after this many ms it stops waiting on connections
    *  whose destroy() has not settled and logs which ones they were. */
   shutdownTimeout?: number;
-  /**
-   * NOT IMPLEMENTED — nothing reads this. There is no entry point to apply it
-   * to: `runInTransaction` takes `RunInTransactionOptions`, which has no
-   * isolation level (see the note on `TransactionOptions`).
-   */
+  /** Default transaction isolation across managed connections. Explicit per-call settings take precedence. */
   defaultIsolationLevel?: TransactionIsolationLevel;
   /** NOT IMPLEMENTED — nothing reads this. Kysely has no dialect-independent
    *  query timeout; per-dialect it is a server setting (PostgreSQL
@@ -280,8 +264,7 @@ export type TransactionIsolationLevel = 'read uncommitted' | 'read committed' | 
  * NOT USED — exported, but no function in this package accepts it.
  *
  * The transaction entry point is `runInTransaction`, which takes
- * `RunInTransactionOptions` (name, connectionName, retry). Nothing consumes
- * the isolation level, timeout or savepoint flag declared here.
+ * `RunInTransactionOptions` (name, connectionName, isolationLevel, retry).
  */
 export interface TransactionOptions {
   isolationLevel?: TransactionIsolationLevel;

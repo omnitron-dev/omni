@@ -8,6 +8,7 @@
 
 import { Kysely, PostgresDialect, MysqlDialect, SqliteDialect, CamelCasePlugin, sql } from 'kysely';
 import { describeError } from './utils/describe-error.js';
+import { setTransactionIsolationDefault } from './transaction/transaction.context.js';
 import { openSqliteDatabase } from './exports/sqlite.js';
 
 /**
@@ -393,6 +394,10 @@ export class DatabaseManager implements IDatabaseManager {
 
   constructor(options: DatabaseModuleOptions, logger: ILogger) {
     this.options = options || {};
+    if (options?.defaultIsolationLevel && options.transactionOptions?.defaultIsolationLevel &&
+        options.defaultIsolationLevel !== options.transactionOptions.defaultIsolationLevel) {
+      throw new Error('Conflicting default transaction isolation levels');
+    }
     this.logger = logger.child({ module: 'DatabaseManager' });
     // Allow health check interval override via kysera core options
     this.healthCheckIntervalMs = (this.options.kysera?.core?.healthCheck?.interval) ?? 30000;
@@ -840,6 +845,8 @@ export class DatabaseManager implements IDatabaseManager {
       const { instance, pool } = await this.createKyselyInstance(config);
       info.instance = instance;
       info.pool = pool;
+      const isolationLevel = this.options.transactionOptions?.defaultIsolationLevel ?? this.options.defaultIsolationLevel;
+      if (isolationLevel) setTransactionIsolationDefault(instance, isolationLevel);
 
       // Test connection health (single check — testConnection is redundant)
       const health = await this.validateConnectionHealth(instance, config.dialect);
@@ -927,17 +934,27 @@ export class DatabaseManager implements IDatabaseManager {
   private async createKyselyInstance(
     config: DatabaseConnection
   ): Promise<{ instance: Kysely<unknown>; pool?: Pool | mysql.Pool | Database }> {
-    const connectionConfig = this.parseConnectionConfig(config);
-
     switch (config.dialect) {
       case 'postgres': {
         const { Pool, types: pgTypes } = await loadPg();
         const ResilientPgClient = await resilientPgClient();
 
-        // Create a clean config object without ssl=false
-        const pgConfig = { ...connectionConfig } as Record<string, unknown>;
-        if (pgConfig['ssl'] === false) {
-          delete pgConfig['ssl'];
+        // pg owns URL decoding, socket paths, TLS modes and startup parameters.
+        const pgConfig: Record<string, unknown> = typeof config.connection === 'string'
+          ? { connectionString: config.connection }
+          : { ...this.parseConnectionConfig(config) };
+        if (pgConfig['ssl'] === false) delete pgConfig['ssl'];
+        if (this.options.defaultSchema) {
+          const schema = this.assertValidSchemaName(this.options.defaultSchema);
+          const setting = `-c search_path=${schema},public`;
+          if (typeof config.connection === 'string') {
+            const uri = new URL(config.connection);
+            const previous = uri.searchParams.get('options');
+            uri.searchParams.set('options', previous ? previous + ' ' + setting : setting);
+            pgConfig['connectionString'] = uri.toString();
+          } else {
+            pgConfig['options'] = setting;
+          }
         }
 
         // pg returns int8 (BIGINT, OID 20) as string by default to preserve
@@ -982,14 +999,6 @@ export class DatabaseManager implements IDatabaseManager {
           // pool exhaustion fails fast instead of hanging forever.
           connectionTimeoutMillis:
             pgPoolConfig.connectionTimeoutMillis ?? pgPoolConfig.acquireTimeoutMillis,
-          // defaultSchema must be a per-connection STARTUP parameter — issuing
-          // `SET search_path` through the pool configures only the one client
-          // the pool happened to hand out.
-          ...(this.options.defaultSchema
-            ? {
-                options: `-c search_path=${this.assertValidSchemaName(this.options.defaultSchema)},public`,
-              }
-            : {}),
           Client: ResilientPgClient,
         });
 
@@ -1089,7 +1098,7 @@ export class DatabaseManager implements IDatabaseManager {
         const mysql = await loadMysql();
 
         // Create a clean config object without ssl=false
-        const mysqlConfig = { ...connectionConfig } as Record<string, unknown>;
+        const mysqlConfig = { ...this.parseConnectionConfig(config) } as Record<string, unknown>;
         if (mysqlConfig['ssl'] === false) {
           delete mysqlConfig['ssl'];
         }
@@ -1194,6 +1203,7 @@ export class DatabaseManager implements IDatabaseManager {
       }
 
       case 'sqlite': {
+        const connectionConfig = this.parseConnectionConfig(config);
         const database = openSqliteDatabase(connectionConfig.database || ':memory:', {
           // Enable verbose mode for debugging if requested
           verbose: config.debug ? (msg: unknown) => this.logger.debug({ msg }, 'SQLite verbose') : undefined,
@@ -1253,7 +1263,7 @@ export class DatabaseManager implements IDatabaseManager {
         return { database: config.connection };
       }
 
-      // For PostgreSQL and MySQL, parse the connection string
+      // PostgreSQL URLs are passed directly to pg. MySQL uses discrete connection fields.
       const url = new URL(config.connection);
       const sslParam = url.searchParams.get('ssl');
       const result: ParsedConnectionConfig = {

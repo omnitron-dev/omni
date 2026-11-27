@@ -9,6 +9,8 @@
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { detectDialect } from '@kysera/core';
+import type { TransactionIsolationLevel } from '../database.types.js';
 import type { Transaction, Kysely } from 'kysely';
 
 /**
@@ -20,6 +22,7 @@ export interface TransactionContextData {
   parent?: TransactionContextData;
   connectionName: string;
   depth: number;
+  isolationLevel?: TransactionIsolationLevel;
   startedAt: Date;
   name?: string;
 }
@@ -35,6 +38,15 @@ const TXN_STORAGE_KEY = Symbol.for('titan:database:transaction-storage');
 const transactionStorage: AsyncLocalStorage<TransactionContextData> =
   (globalStore[TXN_STORAGE_KEY] as AsyncLocalStorage<TransactionContextData> | undefined) ??=
     new AsyncLocalStorage<TransactionContextData>();
+
+// Schema and plugin views of one connection share the Kysely adapter.
+const isolationDefaultsKey = Symbol.for('titan:database:transaction-isolation-defaults');
+const isolationDefaults = (globalStore[isolationDefaultsKey] as WeakMap<object, TransactionIsolationLevel> | undefined)
+  ??= new WeakMap();
+
+export function setTransactionIsolationDefault(db: Kysely<unknown>, level: TransactionIsolationLevel): void {
+  isolationDefaults.set(db.getExecutor().adapter, level);
+}
 
 // ============================================================================
 // Transaction Context Accessors
@@ -99,6 +111,7 @@ export function getExecutor<DB>(db: Kysely<DB> | Transaction<DB>): Kysely<DB> | 
  * Work on another database owns an independent transaction.
  */
 export interface RunInTransactionOptions {
+  isolationLevel?: TransactionIsolationLevel;
   name?: string;
   connectionName?: string;
   /**
@@ -123,6 +136,9 @@ export async function runInTransaction<DB, T>(
     if (options?.connectionName && options.connectionName !== existingCtx.connectionName) {
       throw new Error('The same database was requested under a different transaction connection name');
     }
+    if (options?.isolationLevel !== undefined && options.isolationLevel !== existingCtx.isolationLevel) {
+      throw new Error('Cannot change or certify a different isolation level inside an existing transaction');
+    }
     const { withTransaction } = await import('@kysera/dal');
     return withTransaction(existingCtx.transaction, () => transactionStorage.run({
       ...existingCtx,
@@ -137,28 +153,31 @@ export async function runInTransaction<DB, T>(
     });
   }
 
-  const inContext = async (trx: Transaction<DB>): Promise<T> => {
-      const ctx: TransactionContextData = {
-        transaction: trx as Transaction<unknown>,
-        database: db as Kysely<unknown>,
-        parent,
-        connectionName: options?.connectionName ?? 'default',
-        depth: 1,
-        startedAt: new Date(),
-        name: options?.name,
-      };
-      return transactionStorage.run(ctx, fn);
-    };
+  const isolationLevel = options?.isolationLevel ?? isolationDefaults.get(db.getExecutor?.().adapter);
+  if (isolationLevel && detectDialect(db) === 'sqlite') {
+    throw new Error('SQLite does not support selecting isolation per transaction');
+  }
+  const begin = () => {
+    const builder = db.transaction();
+    return isolationLevel === undefined ? builder : builder.setIsolationLevel(isolationLevel);
+  };
+  const inContext = (trx: Transaction<DB>): Promise<T> => transactionStorage.run({
+    transaction: trx as Transaction<unknown>,
+    database: db as Kysely<unknown>,
+    parent,
+    connectionName: options?.connectionName ?? 'default',
+    depth: 1,
+    startedAt: new Date(),
+    name: options?.name,
+    isolationLevel,
+  }, fn);
 
   if (options?.retry) {
     const { withTransactionRetry } = await import('@kysera/infra');
     const maxAttempts = typeof options.retry === 'number' ? options.retry : 3;
-    return withTransactionRetry(db, inContext, {
-      maxAttempts,
-    });
+    return withTransactionRetry({ transaction: begin }, inContext, { maxAttempts });
   }
-
-  return db.transaction().execute(inContext);
+  return begin().execute(inContext);
 }
 
 /**
@@ -170,6 +189,8 @@ export async function runWithTransaction<DB, T>(
   options?: { name?: string; connectionName?: string; database?: Kysely<DB> }
 ): Promise<T> {
   const existingCtx = transactionStorage.getStore();
+  let knownTransaction = existingCtx;
+  while (knownTransaction && !Object.is(knownTransaction.transaction, trx)) knownTransaction = knownTransaction.parent;
   const depth = existingCtx ? existingCtx.depth + 1 : 1;
 
   const ctx: TransactionContextData = {
@@ -180,6 +201,7 @@ export async function runWithTransaction<DB, T>(
     depth,
     startedAt: new Date(),
     name: options?.name,
+    isolationLevel: knownTransaction?.isolationLevel,
   };
 
   return transactionStorage.run(ctx, fn);
@@ -193,7 +215,7 @@ export async function runWithTransaction<DB, T>(
  * Decorator to make a method auto-transactional using AsyncLocalStorage.
  * The class must have a `db` property of type Kysely<DB>.
  */
-export function AutoTransactional(options?: { name?: string; connectionName?: string }): MethodDecorator {
+export function AutoTransactional(options?: RunInTransactionOptions): MethodDecorator {
   return function autoTransactionalDecorator(
     target: object,
     propertyKey: string | symbol,
@@ -212,8 +234,8 @@ export function AutoTransactional(options?: { name?: string; connectionName?: st
       }
 
       return runInTransaction(db, () => originalMethod.apply(this, args), {
+        ...options,
         name: options?.name ?? `${target.constructor.name}.${String(propertyKey)}`,
-        connectionName: options?.connectionName,
       });
     };
 

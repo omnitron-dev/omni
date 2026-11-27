@@ -32,6 +32,13 @@ describe('ambient transaction connection boundaries', () => {
     expect(getTransactionContext()).toBeUndefined();
   });
 
+  it('rejects SQLite per-transaction isolation before the callback', async () => {
+    let entered = false;
+    await expect(runInTransaction(first, async () => { entered = true; }, { isolationLevel: 'read committed' }))
+      .rejects.toThrow('SQLite does not support selecting isolation');
+    expect(entered).toBe(false);
+  });
+
   it('uses a savepoint for the same database, including a schema/plugin view', async () => {
     await runInTransaction(first, async () => {
       await sql`insert into records values ('retained')`.execute(getExecutor(first));

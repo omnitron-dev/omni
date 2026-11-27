@@ -172,7 +172,7 @@ class UserService {
 AsyncLocalStorage-based transaction context. All repositories within the callback automatically use the transaction.
 
 ```typescript
-import { runInTransaction, getExecutor } from '@omnitron-dev/titan/module/database';
+import { runInTransaction, getExecutor } from '@omnitron-dev/titan-database';
 
 // Basic usage
 await runInTransaction(db, async () => {
@@ -187,15 +187,18 @@ await runInTransaction(db, async () => {
 }, { isolationLevel: 'serializable' });
 ```
 
+A new transaction uses the module’s `transactionOptions.defaultIsolationLevel` unless the caller supplies `isolationLevel`. Each retry opens a fresh transaction with the selected isolation. A nested call on the same connection inherits its enclosing transaction’s isolation and rejects a conflicting request before running the callback. SQLite rejects a per-transaction isolation setting.
+
 ### @AutoTransactional
 
-Class decorator that wraps all repository operations in automatic transaction context.
+Apply this decorator to a method on a service with an injected Kysely `db` property.
 
 ```typescript
-import { AutoTransactional } from '@omnitron-dev/titan/module/database';
+import { AutoTransactional } from '@omnitron-dev/titan-database';
 
-@AutoTransactional()
 class OrderService {
+  // The service receives db, orderRepo and inventoryRepo through DI.
+  @AutoTransactional()
   async createOrder(data: CreateOrderDto) {
     // All DB operations here run in a transaction
     const order = await this.orderRepo.insert(data);

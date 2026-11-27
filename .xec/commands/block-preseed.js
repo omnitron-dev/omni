@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import { isIPv4 } from 'node:net';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
+import { registeredPinsStep } from '../../apps/omnitron/data/operations/controller-inspection.js';
 
 const helper = new URL('../block-preseed/endpoint.py', import.meta.url);
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
@@ -43,19 +44,6 @@ function publicOffer(value, spec) {
   return value;
 }
 
-// Old daemons resolve shell targets through the existing node registry. Repeat the explicit pin check
-// inside each reviewed graph, before any privileged endpoint step can run.
-const inspectPins = `import base64,json,subprocess,sys
-s=json.loads(base64.b64decode(sys.argv[1]))
-for side in ('source','receiver'):
-    node=s[side+'Node']; expected=s[side+'Fingerprint']
-    p=subprocess.run(['omnitron','--json','node','ssh-key',node],stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=30)
-    if p.returncode: raise SystemExit('registered SSH host inspection failed')
-    r=json.loads(p.stdout); h=r.get('data',{})
-    if r.get('ok') is not True or h.get('nodeId')!=node or h.get('observed')!=expected or h.get('trusted')!=expected:
-        raise SystemExit('registered SSH fingerprint differs from review')
-print('Both registered SSH identities match the review.')`;
-
 export async function blockPreseedDefinition(phase, spec, offer) {
   validateSpec(spec);
   if (!['offer', 'copy', 'accept', 'revoke'].includes(phase)) throw Error('Use offer, copy, accept or revoke.');
@@ -71,10 +59,6 @@ export async function blockPreseedDefinition(phase, spec, offer) {
     return graph;
   }
   return preseedGraph(phase, spec, value, source, 'block-preseed', 'Direct transfer of reviewed closed public block and undo segments.');
-}
-
-export function registeredPinsStep(spec) {
-  return { name: 'registered-pins', run: 'python3 -I -c ' + quote(inspectPins) + ' ' + encode(spec), timeout: 90000 };
 }
 
 export function preseedGraph(phase, spec, offer, program, name, description, tool) {

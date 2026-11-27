@@ -63,6 +63,8 @@ pnpm exec xec service-data-preseed receiver-helper > receiver.py
 
 ## Run the reviewed Pipelines
 
+The controller CLI on the Pipeline executor must support `node ssh-key --expect` and `stack confirm-stop`. Cold and seal runs check the full stop before and after touching data. To inspect the same receipt directly, run `omnitron --json stack confirm-stop --operation UUID --source-node NODE_ID --source-host HOST -- PROJECT STACK`. The command reads the project and node registry and returns the operation and source only when the stack is still fully stopped and the source acknowledgement matches one registration. An incomplete stop, retained infrastructure or ambiguous endpoint fails the check.
+
 Export, check, save and prepare each definition with the standard CLI. Start the returned run ID using its own review digest and wait for the terminal status. The installed CLI's `pipeline status RUN --output` contains each step's JSON output. [Pipeline review commands](../block-preseed/README.md#prepare-the-source-offer)
 
 ```sh

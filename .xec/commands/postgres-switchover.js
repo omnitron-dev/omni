@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { gzipSync } from 'node:zlib';
 import { serviceDataDefinition } from './service-data-preseed.js';
+import { fullStopCommand } from '../../apps/omnitron/data/operations/controller-inspection.js';
 
 const phases = ['base', 'source', 'replay', 'promote'];
 const predecessors = {
@@ -243,10 +244,9 @@ export async function postgresSwitchoverDefinition(phase, spec, binding, { stop,
   binding = ordered(binding);
   const pins = (await serviceDataDefinition('status', spec)).steps[0];
   // Keep the full preseed specification validation and the existing registered SSH pin check.
-  const [proof, worker, confirm] = await Promise.all([
+  const [proof, worker] = await Promise.all([
     fs.readFile(new URL('../postgres-switchover/proof.py', import.meta.url)),
     fs.readFile(new URL('../postgres-switchover/endpoint.py', import.meta.url)),
-    fs.readFile(new URL('../service-data-preseed/stop_receipt.py', import.meta.url), 'utf8'),
   ]);
   const loader = `import sys,base64,gzip,types
 p=types.ModuleType('pg_switch_proof');sys.modules[p.__name__]=p
@@ -268,8 +268,7 @@ exec(compile(gzip.decompress(base64.b64decode('${gzipSync(worker).toString('base
         dependsOn: [steps.at(-1).name],
       });
     };
-    const stopCheck =
-      '/usr/bin/python3 -I -c ' + quote(confirm) + ' ' + Buffer.from(JSON.stringify([spec, stop])).toString('base64');
+    const stopCheck = stage === 'base' ? undefined : fullStopCommand(spec, stop);
     if (stage !== 'base') local('confirm-full-source-stop', stopCheck);
     if (attestations.length) {
       local(

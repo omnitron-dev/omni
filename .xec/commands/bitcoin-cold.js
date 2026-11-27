@@ -4,7 +4,8 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import path from 'node:path';
-import { preseedGraph, registeredPinsStep, validEndpoints } from './block-preseed.js';
+import { registeredPinsStep } from '../../apps/omnitron/data/operations/controller-inspection.js';
+import { preseedGraph, validEndpoints } from './block-preseed.js';
 import { checkedRunner, installSteps } from './service-data-preseed.js';
 
 const local = (name) => new URL('../bitcoin-cold/' + name, import.meta.url);

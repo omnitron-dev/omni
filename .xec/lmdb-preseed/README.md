@@ -2,6 +2,8 @@
 
 `pnpm exec xec lmdb-preseed` exports manual Omnitron Pipelines for two registered Linux nodes. The controller carries the checked helper, node pins, chain checkpoints and receipts. The database flows directly over SSH from the running source to a new private stage on the receiver.
 
+The Pipeline executor uses its local `omnitron node ssh-key --expect` for both registered IDs before running any endpoint command. Previously reviewed graphs retain their original checks. [Controller requirements](../block-preseed/README.md)
+
 The source uses the LMDB fork from the signed Monero `v0.18.5.1` release. Its `MDB_RDONLY` environment joins the live reader table. `mdb_env_copyfd2` with `MDB_CP_COMPACT` writes a single consistent transaction to a pipe and omits the free-page list. Live named tables include the transaction pool, which can hold unrelayed transactions. Use this operation only for an authorized private transfer of that entire database. Wallet files, daemon configuration, onion keys, logs and other files in the data directory are outside the source selection. No daemon starts or relays staged data. [Monero copy utility](https://github.com/monero-project/monero/blob/v0.18.5.1/external/db_drivers/liblmdb/mdb_copy.c) [Monero LMDB tables](https://github.com/monero-project/monero/blob/v0.18.5.1/src/blockchain_db/lmdb/db_lmdb.cpp)
 
 ## Build the helper

@@ -563,6 +563,17 @@ stack
   });
 
 stack
+  .command('confirm-stop <project> <stack>')
+  .description('Confirm the current full stop of a stack on a registered source node')
+  .requiredOption('--operation <uuid>', 'Reviewed full-stop operation ID')
+  .requiredOption('--source-node <id>', 'Exact registered source node ID')
+  .requiredOption('--source-host <host>', 'Reviewed host of the source node')
+  .structuredAction(async (projectName, stackName, options) => {
+    const { stackConfirmStopCommand } = await import('../commands/stack.js');
+    await stackConfirmStopCommand(projectName, stackName, options);
+  });
+
+stack
   .command('progress <project> [stack]')
   .description('Inspect the latest remote transfer phases in a project or stack')
   .structuredAction(async (projectName, stackName) => {
@@ -1921,8 +1932,9 @@ node
 node.command('ssh <node>').description('Open an audited interactive SSH terminal (Ctrl+] disconnects)')
   .action(async (name: string) => { const { nodeSshCommand } = await import('../commands/terminal.js'); await nodeSshCommand(name); });
 node.command('ssh-key <node>').description('Inspect SSH host fingerprint; trust only after independent verification')
+  .option('--expect <fingerprint>', 'Require the full registered node ID and matching observed and trusted SHA256 fingerprints')
   .option('--trust <fingerprint>', 'Store an independently verified SHA256 fingerprint')
-  .structuredAction(async (name: string, options: { trust?: string }) => { const { nodeHostKeyCommand } = await import('../commands/terminal.js'); await nodeHostKeyCommand(name, options); });
+  .structuredAction(async (name: string, options: { expect?: string; trust?: string }) => { const { nodeHostKeyCommand } = await import('../commands/terminal.js'); await nodeHostKeyCommand(name, options); });
 const fileWorkspace = program.command('files').description('Audited multi-node file workspace');
 for (const [name, signature, description] of [
   ['archive-formats', '', 'Probe archive formats on source and optional destination'],

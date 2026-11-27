@@ -66,8 +66,26 @@ describe('private native physical restore receipts', () => {
       expect(target.expectedHostFingerprint).toBe(pin.pin);
       return {exitCode:0,stdout:JSON.stringify({...observed,controls: target.host === f.source.host ? observed.controls : targetControls}),stderr:'',duration:1};
     });
-    const execute = vi.fn(async (command: Command) => ({ exitCode:0, stdout:command.adapter === 'ssh'
-      ? JSON.stringify(f.result, null, 1) : 'checked', stderr:'',duration:1 }));
+    const scope = { project: f.seed.project, stack: f.seed.stack, sourceNode: f.source.id, sourceIp: f.source.host };
+    const reads = vi.fn((args: string[]) => {
+      for (const n of [f.source, f.receiver]) {
+        if (args.at(-1) === n.id) {
+          expect(args).toEqual(['--json', 'node', 'ssh-key', '--expect', n.pin, '--', n.id]);
+          return { nodeId: n.id, fingerprint: n.pin };
+        }
+      }
+      expect(args).toEqual(['--json', 'stack', 'confirm-stop', '--operation', f.cold.stop, '--source-node', f.source.id,
+        '--source-host', f.source.host, '--', f.seed.project, f.seed.stack]);
+      return { ...scope, operation: f.cold.stop };
+    });
+    const execute = vi.fn(async (command: Command) => {
+      let stdout = command.adapter === 'ssh' ? JSON.stringify(f.result) : 'checked';
+      if (command.command === 'omnitron') {
+        expect(command).toMatchObject({ adapter: 'local', shell: false });
+        stdout = JSON.stringify({ ok: true, data: reads(command.args ?? []) });
+      }
+      return { exitCode: 0, stdout, stderr: '', duration: 1 };
+    });
     const uploadFile = vi.fn(async () => {});
     const service = new PipelineService(db, createNullLogger(), {exec,ssh,execute,uploadFile} as unknown as ExecutionService);
     let receiverPin = f.receiver.pin;
@@ -91,7 +109,8 @@ describe('private native physical restore receipts', () => {
         postgres:{postgres:{systemIdentifier:'123',controlSha256:observed.controls.postgres}},minio:{formatSha256:observed.controls.minio}});
       expect(proof.volumes.map(v=>v.tag)).toEqual(tags);
       expect(ssh).toHaveBeenCalledTimes(2);
-      expect(exec).toHaveBeenCalledTimes(4);
+      expect(exec).not.toHaveBeenCalled();
+      expect(reads).toHaveBeenCalledTimes(6);
       const facts = { protocol: 1 as const, ...request, sourceRevision: 3, ownerDigest: sha256('owner'), operationId: randomUUID(), release: 'next',
         prepared: sha256('approved-next'), manifestSha256: sha256('manifest'), selectionDigest: sha256('serving-release'),
         receiver: proof.receiver, sourceStop: proof.sourceStop, seed: proof.seed, proofDigest: proof.proofDigest, logicalBytes: 40,
@@ -166,7 +185,7 @@ describe('private native physical restore receipts', () => {
       receiverPin = 'SHA256:'+'C'.repeat(43);
       await expect(read()).rejects.toThrow('host key');
       receiverPin = f.receiver.pin;
-      exec.mockResolvedValueOnce({stdout:'unknown',exitCode:1,stderr:'',duration:1});
+      reads.mockReturnValueOnce({ nodeId: f.receiver.id, fingerprint: f.source.pin });
       await expect(read()).rejects.toThrow('source stop');
       const previous = ssh.mock.calls.length;
       const repacked = structuredClone(f.graph);

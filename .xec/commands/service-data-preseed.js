@@ -3,7 +3,8 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
-import { registeredPinsStep, validEndpoints } from './block-preseed.js';
+import { fullStopCommand, registeredPinsStep } from '../../apps/omnitron/data/operations/controller-inspection.js';
+import { validEndpoints } from './block-preseed.js';
 
 const channel = new URL('../block-preseed/endpoint.py', import.meta.url);
 const scope = new URL('../service-data-preseed/scope.py', import.meta.url);
@@ -26,7 +27,6 @@ const digest = (value) =>
   createHash('sha256')
     .update(JSON.stringify(reduce(value)))
     .digest('hex');
-const encode = (value) => Buffer.from(JSON.stringify(value)).toString('base64');
 const quote = (value) => "'" + value.replaceAll("'", "'\\''") + "'";
 const load = async (path) => JSON.parse(await fs.readFile(path, 'utf8'));
 export const replicaFileScope = 'postgres-replicas';
@@ -123,8 +123,6 @@ export async function receiverProgram() {
     program
   );
 }
-
-const fenceFile = new URL('../service-data-preseed/stop_receipt.py', import.meta.url);
 
 const checkedSource = `import hashlib,os,pathlib,re,stat,sys
 d=sys.argv.pop(1)
@@ -281,7 +279,6 @@ export async function serviceDataDefinition(
   );
   const env = packed([stop ?? null, receipt ?? null, grants ?? null]);
   const steps = [pins];
-  const fence = final ? await fs.readFile(fenceFile, 'utf8') : '';
   if (phase.startsWith('bootstrap-') || phase.endsWith('-grant')) {
     const side = phase.startsWith('bootstrap-') ? phase.slice(10) : phase.split('-')[0];
     for (const part of installSteps(await fs.readFile(installer, 'utf8'), program, spec, side)) {
@@ -296,14 +293,7 @@ export async function serviceDataDefinition(
         dependsOn: [previous],
         retries: 0,
         timeout: 90000,
-        run:
-          'python3 -I -c ' +
-          quote(fence) +
-          ' ' +
-          encode([
-            { project: spec.project, stack: spec.stack, sourceNode: spec.sourceNode, sourceIp: spec.sourceIp },
-            stop,
-          ]),
+        run: fullStopCommand(spec, stop),
       });
     } else {
       steps.push({

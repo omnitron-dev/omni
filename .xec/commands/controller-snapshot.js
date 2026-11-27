@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import { gzipSync } from 'node:zlib';
-import { registeredPinsStep, validEndpoints } from './block-preseed.js';
+import { registeredPinsStep } from '../../apps/omnitron/data/operations/controller-inspection.js';
+import { validEndpoints } from './block-preseed.js';
 import { checkedRunner, installSteps } from './service-data-preseed.js';
 
 const bytesSha = (bytes) => createHash('sha256').update(bytes).digest('hex');

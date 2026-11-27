@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { registeredPinsStep } from '../commands/block-preseed.js';
+import { registeredPinsStep } from '../../apps/omnitron/data/operations/controller-inspection.js';
 
 const sha = (input) => createHash('sha256').update(input).digest('hex');
 const hash = (value) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);

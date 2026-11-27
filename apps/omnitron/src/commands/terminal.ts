@@ -1,5 +1,6 @@
 import { once } from 'node:events';
 import { createDaemonClient } from '../daemon/daemon-client.js';
+import { isSshHostFingerprint } from '../services/node-host-key.js';
 import type { IOmnitronNodesService, IOmnitronTerminalService } from '../shared/dto/services.js';
 import { resolveNodeArgument } from './node.js';
 import { emitError, emitJson, isJsonMode } from './output.js';
@@ -13,12 +14,22 @@ async function nodeId(client: ReturnType<typeof createDaemonClient>, name: strin
   return result.node.id;
 }
 
-export async function nodeHostKeyCommand(name: string, options: { trust?: string } = {}): Promise<void> {
-  const client = createDaemonClient();
+export async function nodeHostKeyCommand(name: string, options: { expect?: string; trust?: string } = {}): Promise<void> {
+  const client = createDaemonClient(undefined, options.expect === undefined ? undefined : 30_000);
   try {
-    const id = await nodeId(client, name);
+    if (options.expect !== undefined && (!isSshHostFingerprint(options.expect) || options.trust !== undefined))
+      throw new Error('Use --expect with one SHA256 fingerprint and without --trust');
+    // Reviews bind a full registered ID. Interactive inspection also accepts a name or ID prefix.
+    const id = options.expect === undefined ? await nodeId(client, name) : name;
     const service = await client.service<IOmnitronTerminalService>('OmnitronTerminal');
     const host = await service.inspectHost({ nodeId: id });
+    if (host.nodeId !== id) throw new Error('SSH host inspection returned a different node ID');
+    if (options.expect !== undefined) {
+      if (host.observed !== options.expect || host.trusted !== options.expect)
+        throw new Error('Registered SSH fingerprint differs from the reviewed fingerprint');
+      if (!emitJson({ nodeId: id, fingerprint: options.expect })) process.stdout.write(`Registered SSH identity confirmed for ${id}\n`);
+      return;
+    }
     if (options.trust) {
       if (options.trust !== host.observed)
         throw new Error('Provided fingerprint does not match the observed host key; trust was not changed');

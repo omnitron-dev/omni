@@ -9,7 +9,7 @@ import { migrationHistoryAdvice, observeStackStart, reviewedDeploymentRecovery }
 
 import { log, table, note, prism } from '@xec-sh/kit';
 import { createDaemonClient, LONG_REQUEST_TIMEOUT, isRequestTimeout } from '../daemon/daemon-client.js';
-import { FIRST_WRITE_PHYSICAL_TIMEOUT_MS, isLostRpcAcknowledgement, type IProjectRpcService } from '../shared/dto/services.js';
+import { FIRST_WRITE_PHYSICAL_TIMEOUT_MS, isLostRpcAcknowledgement, type IProjectRpcService, type IOmnitronNodesService } from '../shared/dto/services.js';
 import { stackStartRefusals, type DeploymentRecoveryInput } from '../shared/dto/project.js';
 import { Errors } from '@omnitron-dev/titan/errors';
 import { emitJson, emitError, emitStep, emitSuccess, emitInfo, isJsonMode } from './output.js';
@@ -204,6 +204,39 @@ export async function stackProgressCommand(project: string, stack?: string): Pro
     }
   } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
   finally { await client.disconnect(); }
+}
+
+export async function stackConfirmStopCommand(project: string, stack: string, options: {
+  operation: string; sourceNode: string; sourceHost: string;
+}): Promise<void> {
+  const client = createDaemonClient(undefined, 40_000);
+  try {
+    const { operation, sourceNode, sourceHost } = options;
+    if (!/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(operation) || !sourceNode || !sourceHost)
+      throw Error('A full stop operation ID and the registered source are required');
+    const registry = await client.service<IOmnitronNodesService>('OmnitronNodes');
+    const projects = await client.service<IProjectRpcService>('OmnitronProject');
+    const [nodes, state] = await Promise.all([registry.listNodes(), projects.getStack({ project, stack })]);
+    const stop = state.stopOperation;
+    const [node, ...duplicates] = nodes.filter(n => n.id === sourceNode);
+    if (state.name !== stack || state.status !== 'stopped' || !stop || stop.id !== operation || stop.phase !== 'stopped' ||
+        stop.supersededAt || stop.keepInfrastructure || !stop.nodes.length || stop.nodes.some(n => n.outcome !== 'stopped') ||
+        !node || node.isLocal || duplicates.length || node.host !== sourceHost || !Number.isInteger(node.daemonPort) ||
+        node.daemonPort < 1 || node.daemonPort > 65535 || nodes.filter(n => n.host === node.host && n.daemonPort === node.daemonPort).length !== 1)
+      throw Error('The approved full stack stop and registered source could not be confirmed');
+    const address = sourceHost + ':' + node.daemonPort;
+    const matches = stop.nodes.filter(n => n.nodeId === sourceNode || n.authority?.nodeId === sourceNode || n.node === sourceNode || n.node === address);
+    const [ack] = matches;
+    if (matches.length !== 1 || !ack || ('nodeId' in ack && ack.nodeId !== sourceNode) ||
+        ('authority' in ack && ack.authority?.nodeId !== sourceNode) || !ack.operationId || !ack.observedAt ||
+        !(ack.node === sourceNode || ack.node === address || (ack.node === 'local' && ack.authority?.nodeId === sourceNode)))
+      throw Error('The approved full stack stop has no unique acknowledgement from the registered source');
+    if (!emitJson({ project, stack, sourceNode, sourceIp: sourceHost, operation }))
+      log.success('Confirmed full stop ' + operation + ' on ' + sourceNode);
+  } catch (error) {
+    emitError(error);
+    process.exitCode = 1;
+  } finally { await client.disconnect(); }
 }
 
 export async function stackStatusCommand(projectName: string, stackName: string): Promise<void> {

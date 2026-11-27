@@ -2,7 +2,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { buildHelper, sha } from '../lmdb-preseed/build.js';
-import { preseedGraph, registeredPinsStep, validEndpoints } from './block-preseed.js';
+import { registeredPinsStep } from '../../apps/omnitron/data/operations/controller-inspection.js';
+import { preseedGraph, validEndpoints } from './block-preseed.js';
 
 const shared = new URL('../block-preseed/endpoint.py', import.meta.url);
 const stream = new URL('../lmdb-preseed/stream.py', import.meta.url);

@@ -193,7 +193,7 @@ test('independent grants and a fresh controller stop are necessary for each supp
   await assert.rejects(serviceDataDefinition('source-grant', { ...spec, volumes: spec.volumes.slice(1) }), /volume/);
 });
 
-test('the ordinary CLI emits a complete graph and the full stop gate rejects a resume or retained containers', async (t) => {
+test('the ordinary Xec CLI emits a complete graph and calls the installed full stop check before and after copying', async (t) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'service-data-cli-'));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   const specFile = path.join(dir, 'spec.json');
@@ -215,46 +215,10 @@ test('the ordinary CLI emits a complete graph and the full stop gate rejects a r
     grants: { source, receiver: { ...source, side: 'receiver', stage: contract.stage } },
   });
   const file = path.join(dir, 'omnitron');
-  await fs.writeFile(
-    file,
-    '#!/usr/bin/env python3\nimport os,sys\ncommands={("--json","stack","status","fixture","test"):"FIXTURE",("--json","node","list"):"REGISTRY"}\nprint(os.environ[commands[tuple(sys.argv[1:])]])\n',
-    { mode: 0o700 }
-  );
-  const registered = { id: 'source', host: spec.sourceIp, daemonPort: 9700 };
-  const observed = { node: 'source', outcome: 'stopped', operationId: 'remote-stop', observedAt: '2026-01-03T12:00:00Z' };
-  const byAddress = { ...observed, node: `${spec.sourceIp}:9700` };
-  const gate = (state, registry = [registered]) =>
-    run('/bin/sh', ['-c', graph.steps[1].run], {
-      env: {
-        ...process.env,
-        PATH: dir + path.delimiter + process.env.PATH,
-        REGISTRY: JSON.stringify({ ok: true, data: { nodes: registry } }),
-        FIXTURE: JSON.stringify({
-          ok: true,
-          data: {
-            status: 'stopped',
-            stopOperation: { id: stop, phase: 'stopped', nodes: [observed], ...state },
-          },
-        }),
-      },
-    });
-  await gate({});
-  await gate({ nodes: [byAddress] });
-  await gate({ nodes: [{ ...byAddress, nodeId: 'source' }] });
-  await gate({ nodes: [{ ...observed, node: 'local', authority: { nodeId: 'source' } }] });
-  await assert.rejects(gate({ nodes: [byAddress] }, [registered, { ...registered, id: 'another' }]), /approved full stack stop/);
-  await assert.rejects(gate({ nodes: [byAddress] }, [{ ...registered, host: '192.0.2.12' }]), /approved full stack stop/);
-  for (const state of [
-    { id: 'stale' },
-    { keepInfrastructure: true },
-    { supersededAt: 'now' },
-    { nodes: [{ node: 'elsewhere', outcome: 'stopped' }] },
-    { nodes: [{ ...byAddress, authority: { nodeId: 'elsewhere' } }] },
-    { nodes: [{ ...byAddress, nodeId: 'elsewhere' }] },
-    { nodes: [{ ...byAddress, node: `${spec.sourceIp}:9701` }] },
-    { nodes: [{ ...byAddress, operationId: undefined }] },
-    { nodes: [{ ...byAddress, observedAt: undefined }] },
-    { nodes: [observed, byAddress] },
-  ])
-    await assert.rejects(gate(state), /approved full stack stop/);
+  await fs.writeFile(file, '#!/usr/bin/env node\nconsole.log(JSON.stringify(process.argv.slice(2)))\n', { mode: 0o700 });
+  const command = graph.steps[1].run;
+  assert.equal(command, graph.steps.at(-1).run);
+  const result = await run('/bin/sh', ['-c', command], { env: { ...process.env, PATH: dir + path.delimiter + process.env.PATH } });
+  assert.deepEqual(JSON.parse(result.stdout), ['stack', 'confirm-stop', '--operation', stop, '--source-node', spec.sourceNode,
+    '--source-host', spec.sourceIp, '--', spec.project, spec.stack]);
 });

@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { isDeepStrictEqual } from 'node:util';
+import { fullStopArgs, registeredPinArgs } from '../../data/operations/controller-inspection.js';
 import type { ExecutionService } from '../execution/execution.service.js';
 import type { InspectPhysicalRestore, PhysicalRestoreEvidence } from '../shared/dto/physical-restore.js';
 import type { Pipeline, PipelineRun } from '../shared/dto/pipelines.js';
@@ -11,7 +12,7 @@ import { checkRehearsalCopy, rehearsalRoles } from '../project/first-write-inspe
 import { checkMigrationRehearsal } from '../project/rehearse-migrations.js';
 
 type Nodes = Pick<NodeManagerService, 'getNode' | 'nodeToSshTarget'>;
-type Execution = Pick<ExecutionService, 'exec' | 'ssh'>;
+type Execution = Pick<ExecutionService, 'execute' | 'ssh'>;
 const program = new URL('../../data/operations/physical-restore.py', import.meta.url);
 const digest = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 
@@ -26,10 +27,18 @@ function physicalEndpoints(checked: ReturnType<typeof checkedPhysicalRestore>, s
     return { ssh, identity: { ...pin, sshPort: node.sshPort, daemonPort: node.daemonPort, registeredAt: node.createdAt } };
   };
   const fence = async () => {
-    for (const command of [checked.pinsCommand, checked.stopCommand]) {
-      const result = await execution.exec(command, { timeout: 90_000, signal });
-      requireFact(result.exitCode === 0, 'Current registered SSH keys or the exact full source stop could not be confirmed');
+    const confirm = async (args: string[], expected: Record<string, string>) => {
+      const result = await execution.execute({ adapter: 'local', command: 'omnitron', args: ['--json', ...args],
+        shell: false, timeout: 40_000, signal, nothrow: true });
+      const message = 'Current registered SSH keys or the exact full source stop could not be confirmed';
+      requireFact(result.exitCode === 0 && Buffer.byteLength(result.stdout) <= 4096, message);
+      const reply = object(JSON.parse(result.stdout));
+      requireFact(reply['ok'] === true && isDeepStrictEqual(reply['data'], expected), message);
+    };
+    for (const { nodeId, fingerprint } of [checked.source, checked.receiver]) {
+      await confirm(registeredPinArgs(nodeId, fingerprint), { nodeId, fingerprint });
     }
+    await confirm(fullStopArgs(checked.scope, checked.stop), { ...checked.scope, operation: checked.stop });
   };
   return { resolve, fence };
 }

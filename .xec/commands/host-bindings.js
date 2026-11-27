@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
+import { registeredPinCommand } from '../../apps/omnitron/data/operations/controller-inspection.js';
 
 const sha = /^[0-9a-f]{64}$/;
 const name = /^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}$/;
@@ -36,13 +37,6 @@ export function checkedHostReview(input, expected) {
   return r;
 }
 
-const pinCheck = `import json,subprocess,sys
-node,pin=sys.argv[1:]
-p=subprocess.run(['omnitron','--json','node','ssh-key',node],stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=30)
-r=json.loads(p.stdout) if p.returncode==0 else {}
-h=r.get('data',{})
-if r.get('ok') is not True or h.get('nodeId')!=node or h.get('trusted')!=pin or h.get('observed')!=pin:raise SystemExit('Registered host identity differs')
-print('Registered host identity confirmed')`;
 const quote = s => "'" + s.replaceAll("'", "'\\''") + "'";
 
 export async function hostBindingsInspection(input, expected, stage, expires, now = Date.now()) {
@@ -84,7 +78,7 @@ async function inspectionDefinition(review, basis, stage, expires, now) {
   return { name: 'Inspect passive host bindings ' + review.digest.slice(0, 16),
     description: 'Check the public staged units, service identities and unoccupied target paths.',
     steps: [
-      { name: 'registered-pin', run: `python3 -I -c ${quote(pinCheck)} ${quote(review.nodeId)} ${quote(review.sshFingerprint)}`, retries: 0, timeout: 60000 },
+      { name: 'registered-pin', run: registeredPinCommand(review.nodeId, review.sshFingerprint), retries: 0, timeout: 60000 },
       { name: 'inspect-host-bindings', nodeId: review.nodeId, dependsOn: ['registered-pin'], retries: 0, timeout: 60000,
         run: `python3 -I -c ${quote(source)} ${body}` },
     ] };

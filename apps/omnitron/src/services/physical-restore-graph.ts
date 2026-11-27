@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { gunzipSync } from 'node:zlib';
+import { isIPv4 } from 'node:net';
+import { fullStopCommand, registeredPinsStep } from '../../data/operations/controller-inspection.js';
 import type { InspectPhysicalRestore } from '../shared/dto/physical-restore.js';
 import type { Pipeline, PipelineRun } from '../shared/dto/pipelines.js';
 import { stableJson } from '../shared/canonical-json.js';
@@ -95,21 +97,23 @@ export function checkedPhysicalRestore(request: InspectPhysicalRestore, definiti
   const seedId = seed['id'], stop = cold['stop'];
   requireFact(typeof seedId === 'string' && typeof stop === 'string', 'Missing seed or source stop');
   validateRunId(seedId); validateRunId(stop);
-  const scope = { project: request.project, stack: request.stack, sourceNode: seed['sourceNode'], sourceIp: seed['sourceIp'] };
   const endpoint = (side: 'source' | 'receiver') => {
     const nodeId = seed[side + 'Node'], host = seed[side + 'Ip'], fingerprint = seed[side + 'Fingerprint'];
-    requireFact(label(nodeId) && nodeId !== 'local' && typeof host === 'string' &&
+    requireFact(label(nodeId) && nodeId !== 'local' && typeof host === 'string' && isIPv4(host) &&
       typeof fingerprint === 'string' && /^SHA256:[A-Za-z0-9+/]{43}$/.test(fingerprint), 'Invalid enrolled physical endpoint');
     return { nodeId, host, fingerprint };
   };
   const source = endpoint('source'), target = endpoint('receiver');
+  const scope = { project: request.project, stack: request.stack, sourceNode: source.nodeId, sourceIp: source.host };
   requireFact(seed['project'] === request.project && seed['stack'] === request.stack && source.nodeId !== target.nodeId &&
     source.host !== target.host && source.fingerprint !== target.fingerprint && definition.steps[3]!.nodeId === target.nodeId &&
     definition.name === 'service-data-adopt-' + seedId + '-verify' && hex(seedWorker) &&
     (profile === null || profile === programs.apparmor), 'Physical restore scope, worker, or receiver differs');
   const pins = { sourceNode: source.nodeId, receiverNode: target.nodeId, sourceFingerprint: source.fingerprint, receiverFingerprint: target.fingerprint };
   const namespace = gate(commands[2]!, programs.namespaces, true);
-  requireFact(isDeepStrictEqual(gate(commands[0]!, programs.pins), pins) && isDeepStrictEqual(gate(commands[1]!, programs.stop), [scope,stop]) &&
+  // Historical receipts retain their immutable source hash. Inspect their arguments as data only.
+  requireFact((commands[0] === registeredPinsStep(pins).run || isDeepStrictEqual(gate(commands[0]!, programs.pins), pins)) &&
+    (commands[1] === fullStopCommand(scope, stop) || isDeepStrictEqual(gate(commands[1]!, programs.stop), [scope,stop])) &&
     commands[1] === commands[4] && Array.isArray(namespace) && namespace.length === 3 && isDeepStrictEqual(namespace[0], binding) &&
     isDeepStrictEqual(namespace[1], { sourceNode: source.nodeId, receiverNode: target.nodeId }) && object(namespace[2])['helper'] === seedWorker,
     'Registered pins, namespaces or stop differ from the reviewed pair');
@@ -157,6 +161,6 @@ export function checkedPhysicalRestore(request: InspectPhysicalRestore, definiti
   });
   return { seed: seedId, stop, source, treeHash: cold['sha256'], receiver: target, rows: restoredRows, clusters: { postgres: clusters['postgres'], nominatim: clusters['nominatim'] },
     reviewDigest: run.review.digest, definitionRevision: definition.revision, runCompletedAt: run.completedAt,
-    pinsCommand: commands[0]!, stopCommand: commands[1]!, probe: { seed: seedId, spec, binding: canonicalHash(binding), cold: canonicalHash(cold),
+    scope, probe: { seed: seedId, spec, binding: canonicalHash(binding), cold: canonicalHash(cold),
       sealed: canonicalHash(sealed), journal: canonicalHash(journal), seedWorker, adoptWorker } };
 }

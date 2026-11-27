@@ -19,7 +19,7 @@ The controller reads the application declarations admitted with the exact releas
 
 ## Inspect a public bundle on an earlier controller
 
-An installed controller that supports the registered Pipeline and `node ssh-key` commands can run the public artifact inspection. The newer `stack review-host-bindings` command requires the corresponding backend. Use the previously reviewed public bundle containing a full source `revision` and three `units` rows with `name`, `user`, `sha256` and `text`.
+The Pipeline executor needs a CLI with `node ssh-key --expect`. It can inspect a staged artifact with an earlier backend that supports registered Pipelines and `OmnitronTerminal.inspectHost`. An executor running the earlier CLI can continue a previously reviewed definition from its matching exporter. The newer `stack review-host-bindings` command requires the corresponding backend. Use the previously reviewed public bundle containing a full source `revision` and three `units` rows with `name`, `user`, `sha256` and `text`.
 
 ```sh
 pnpm exec xec host-bindings inspect-staged public-units.json --expect-artifact <bundle-sha256> \

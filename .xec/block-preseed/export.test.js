@@ -7,6 +7,13 @@ import path from 'node:path';
 import test from 'node:test';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
+import { Netron } from '@omnitron-dev/titan/netron';
+import { UnixSocketTransport } from '@omnitron-dev/titan/netron/transport/unix';
+import { createNullLogger } from '@omnitron-dev/titan/module/logger';
+import { quoteForShell } from '@xec-sh/core';
+import { TerminalRpcService } from '../../apps/omnitron/src/services/terminal.rpc-service.ts';
+import { createAuthContextWrapper } from '../../apps/omnitron/src/services/auth-context.ts';
+import { nodeHostPinKey, nodeSshIdentity } from '../../apps/omnitron/src/services/node-host-key.ts';
 import { checkPipelineDefinition } from '../../apps/omnitron/src/services/pipeline-definition.ts';
 import { blockPreseedDefinition } from '../commands/block-preseed.js';
 
@@ -50,22 +57,52 @@ test('only the bounded public contract and exact offers can be exported', async 
 test('the exported registration check requires the exact observed and already trusted key on both nodes', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'block-preseed-pins-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
-  const fixture = path.join(directory, 'omnitron');
-  await fs.writeFile(fixture, `#!/usr/bin/env python3
-import json,os,sys
-n=sys.argv[4]
-assert sys.argv[1:4] == ['--json','node','ssh-key']
-f=json.loads(os.environ['PINS'])[n]
-print(json.dumps({'ok':True,'data':{'nodeId':n,'observed':f[0],'trusted':f[1]}}))
-`, { mode: 0o700 });
-  const graph = await blockPreseedDefinition('offer', spec), run = promisify(execFile);
-  const check = pins => run('/bin/sh', ['-c', graph.steps[0].run], { env: {
-    PATH: directory + path.delimiter + process.env.PATH, PINS: JSON.stringify(pins),
+  const source = { id: spec.sourceNode, host: 'source.invalid', sshPort: 22, sshUser: 'fixture' };
+  const receiver = { ...source, id: spec.receiverNode, host: 'receiver.invalid' };
+  const nodes = new Map([source, receiver].map(n => [n.id, n]));
+  const observed = new Map([[source.host, spec.sourceFingerprint], [receiver.host, spec.receiverFingerprint]]);
+  const keys = new Map([source, receiver].map(n => [nodeHostPinKey(n.id), { target: nodeSshIdentity(n), fingerprint: observed.get(n.host) }]));
+  const probed = [];
+  const terminal = new TerminalRpcService(
+    { getNode: id => nodes.get(id) }, {}, { kvGetSync: id => keys.get(id) }, {}, {},
+    { probe: async ({ host }) => { probed.push(host); return observed.get(host); } },
+  );
+  const socket = path.join(directory, 'rpc.sock');
+  const server = new Netron(createNullLogger(), { id: 'registered-pin-test' });
+  t.after(async () => { terminal.dispose(); await server.stop(); });
+  server.registerTransport('unix', () => new UnixSocketTransport());
+  server.registerTransportServer('unix', { name: 'local', options: {
+    path: socket, mode: 0o600, invocationWrapper: createAuthContextWrapper(),
   } });
-  const source = [spec.sourceFingerprint, spec.sourceFingerprint], receiver = [spec.receiverFingerprint, spec.receiverFingerprint];
-  await check({ [spec.sourceNode]: source, [spec.receiverNode]: receiver });
-  for (const invalid of [[receiver[0], null], [source[0], receiver[1]], [receiver[0], source[1]]])
-    await assert.rejects(check({ [spec.sourceNode]: source, [spec.receiverNode]: invalid }), /fingerprint differs/);
+  server.setTransportAuthContext('unix', {
+    userId: 'omnitron-local', roles: ['admin'], permissions: [], metadata: { source: 'local-unix-socket' },
+  });
+  await server.start();
+  await server.peer.exposeService(terminal);
+  const root = fileURLToPath(new URL('../../', import.meta.url));
+  const q = arg => quoteForShell(arg, 'posix');
+  const file = path.join(directory, 'omnitron');
+  await fs.writeFile(file, `#!/bin/sh\nexec ${q(process.execPath)} --import tsx ${q(path.join(root, 'apps/omnitron/src/cli/omnitron.ts'))} "$@"\n`, { mode: 0o700 });
+  const graph = await blockPreseedDefinition('offer', spec), run = promisify(execFile);
+  const opts = { cwd: root, env: { ...process.env, PATH: directory + path.delimiter + process.env.PATH,
+    OMNITRON_HOME: directory, OMNITRON_SOCKET: socket, OMNITRON_OUTPUT: 'json' } };
+  const check = () => run('/bin/sh', ['-c', graph.steps[0].run], opts);
+  const result = await check();
+  assert.deepEqual(result.stdout.trim().split('\n').map(line => JSON.parse(line).data), [
+    { nodeId: source.id, fingerprint: spec.sourceFingerprint }, { nodeId: receiver.id, fingerprint: spec.receiverFingerprint },
+  ]);
+  assert.deepEqual(probed.splice(0), [source.host, receiver.host]);
+  observed.set(source.host, spec.receiverFingerprint);
+  await assert.rejects(check(), /fingerprint differs/);
+  assert.deepEqual(probed.splice(0), [source.host]);
+  observed.set(source.host, spec.sourceFingerprint);
+  keys.delete(nodeHostPinKey(receiver.id));
+  await assert.rejects(check(), /fingerprint differs/);
+  assert.equal(keys.has(nodeHostPinKey(receiver.id)), false);
+  nodes.set(receiver.id, source);
+  await assert.rejects(check(), /different node ID/);
+  await assert.rejects(run(file, ['node', 'ssh-key', 'node-', '--expect', spec.sourceFingerprint], opts), /registered remote SSH node/);
+  await assert.rejects(run(file, ['node', 'ssh-key', source.id, '--trust', spec.sourceFingerprint, '--expect', spec.sourceFingerprint], opts), /without --trust/);
 });
 
 test('the public Xec process flushes an entire copy definition to a pipe', async t => {

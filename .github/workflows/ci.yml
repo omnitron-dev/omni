@@ -45,7 +45,8 @@ jobs:
       - name: Qualify post-write recovery across isolated Linux processes
         run: |
           pnpm --dir apps/omnitron exec vitest run test/integration/recovery-qualification.test.ts
-          /usr/bin/python3 -I -B apps/omnitron/test/runtime/recovery-qualification-linux.py
+          node --test apps/omnitron/test/runtime/recovery-input-store.test.mjs
+          node apps/omnitron/test/runtime/recovery-qualification-linux.mjs
       - name: Typecheck (all packages + apps)
         run: pnpm -r run typecheck
       - name: Rebuild and compare two independent release archives

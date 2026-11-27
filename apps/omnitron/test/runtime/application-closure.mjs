@@ -42,10 +42,12 @@ try {
   await materializeGraph(graph,locations);
   const ownerPkg=locations[0],options='--max-old-space-size=8192', cfg={name:'api',env:{NODE_OPTIONS:options}};
   // Execute the launch check from the package that the fixture owner actually serves.
-  for (const file of ['release/runtime-provenance.js', 'release/installed-origin.js', 'release/package-resolution.js', 'release/target-runtime.js', 'shared/shell-escape.js']) {
-    const out = path.join(ownerPkg, 'dist', file);
+  for (const file of ['dist/release/runtime-provenance.js', 'dist/release/installed-origin.js', 'dist/release/package-resolution.js',
+    'dist/release/target-runtime.js', 'dist/shared/shell-escape.js', 'data/operations/runtime-identity.js']) {
+    const out = path.join(ownerPkg, file);
     await fs.mkdir(path.dirname(out), {recursive:true});
-    await fs.copyFile(path.join(dist, file), out);
+    const source = file.startsWith('dist/') ? path.join(dist, file.slice(5)) : path.resolve(import.meta.dirname, '../..', file);
+    await fs.copyFile(source, out);
   }
   const live = await import(pathToFileURL(path.join(ownerPkg, 'dist/release/runtime-provenance.js')));
   // A working checkout can supply imports from its workspace root that its release does not ship.

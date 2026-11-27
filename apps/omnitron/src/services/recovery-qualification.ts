@@ -1,9 +1,10 @@
 import { execFile } from 'node:child_process';
 import { constants } from 'node:fs';
-import { chmod, lstat, mkdtemp, open, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual, promisify } from 'node:util';
 import type { LoadedRelease } from '../release/load.js';
 import { isReleaseId } from '../release/load.js';
@@ -41,15 +42,21 @@ const oid = (v: unknown): v is string => typeof v === 'string' && /^(?:[0-9a-f]{
 const label = (v: unknown): v is string => typeof v === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(v);
 const hash = (v: string | Buffer) => createHash('sha256').update(v).digest('hex');
 const exec = promisify(execFile);
-const qualifierFiles = ['recovery-qualification.py', 'runtime-identity.js'] as const;
+const qualifierFiles = ['recovery-qualification.js', 'recovery-input-store.js', 'recovery-observations.js', 'runtime-identity.js'] as const;
+const qualifierPackages = ['@xec-sh/core', 'tar'] as const;
 const qualifierPrefix = 'omnitron pipeline qualify-recovery --json';
 const inputLimit = 96 * 1024;
 
 async function installedQualifier() {
   const files = await Promise.all(qualifierFiles.map(file => readFile(new URL('../../data/operations/' + file, import.meta.url))));
   const receiver = await readFile(new URL(import.meta.url));
-  const verifier = hash(stableJson({ protocol: 2, receiver: hash(receiver), files: files.map(hash) }));
-  return { files, verifier };
+  const packages = await Promise.all(qualifierPackages.map(async name => {
+    const manifest = fileURLToPath(import.meta.resolve(name + '/package.json'));
+    return { name, path: path.dirname(manifest), sha256: hash(await readFile(manifest)) };
+  }));
+  const verifier = hash(stableJson({ protocol: 3, receiver: hash(receiver), files: files.map(hash),
+    packages: packages.map(pkg => [pkg.name, pkg.sha256]) }));
+  return { files, packages, verifier };
 }
 export const recoveryProbePath = 'scripts/rehearse-post-write.py';
 export const recoveryPolicyPath = '.omnitron/recovery-qualification.json';
@@ -243,7 +250,7 @@ export async function qualifyRecoveryOnHost(verifier: string, encoded: string, s
     'QA verifier differs from the controller; install the reviewed Omnitron build');
   requireProof(process.platform === 'linux', 'Linux QA node required');
   const dir = await mkdtemp('/var/tmp/omnitron-qa-verifier-');
-  const engine = new ExecutionEngine({ defaultTimeout: 0 });
+  const engine = new ExecutionEngine({ defaultTimeout: 0, adapters: { local: { forceKillAfterDelay: 90_000 } } });
   try {
     // A package update cannot replace the bytes between verification and use.
     // The image's non-root reader can access the bind-mounted runtime file.
@@ -252,7 +259,13 @@ export async function qualifyRecoveryOnHost(verifier: string, encoded: string, s
       await writeFile(snapshot, installed.files[i]!, { flag: 'wx', mode: 0o400 });
       if (file === 'runtime-identity.js') await chmod(snapshot, 0o444);
     }
-    const result = await engine.execute({ command: '/usr/bin/python3', args: ['-I', '-S', '-B', path.join(dir, qualifierFiles[0])],
+    await writeFile(path.join(dir, 'package.json'), '{"type":"module"}', { flag: 'wx', mode: 0o400 });
+    for (const pkg of installed.packages) {
+      const target = path.join(dir, 'node_modules', pkg.name);
+      await mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
+      await symlink(pkg.path, target);
+    }
+    const result = await engine.execute({ command: process.execPath, args: ['--no-addons', path.join(dir, qualifierFiles[0])],
       envMode: 'replace', env: { HOME: homedir(), PATH: '/usr/bin:/bin', LC_ALL: 'C' },
       stdin: stableJson(spec), shell: false, adapter: 'local', timeout: 0, nothrow: true, maxBuffer: 16 * 1024,
       signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(1_800_000)]) : AbortSignal.timeout(1_800_000) });

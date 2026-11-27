@@ -28,12 +28,6 @@ function fixture(): RecoveryQualificationExpected {
     probe: { commit: hex('probe').slice(0, 40), sha256: hex('probe'), image: 'sha256:' + hex('image'), recordSets: ['award'] } };
 }
 describe('native recovery qualification', () => {
-  it('runs the isolated worker regression with separately reopened synthetic SQL data and immutable inputs', async () => {
-    const file = fileURLToPath(new URL('../runtime/recovery-qualification.py', import.meta.url));
-    const result = await exec('python3', ['-I', '-S', '-B', file]);
-    expect(result.stderr).toContain('OK');
-  });
-
   it('binds an admitted run to its pinned graph, host fingerprint and every release byte identity', async () => {
     const spec = fixture(), db = createPipelineTestDatabase();
     const phases = ['full/baseline', 'full/candidate-write', 'full/recovery-read', 'full/recovery-write', 'full/recovery-replay',
@@ -66,9 +60,12 @@ describe('native recovery qualification', () => {
       expect(requested.args).toEqual(['pipeline', 'qualify-recovery', '--json', expect.stringMatching(/^[a-f0-9]{64}$/), Buffer.from(stableJson(spec)).toString('base64url')]);
       const { verifier, encoded } = requested;
       const packageFiles = await Promise.all(['../../src/services/recovery-qualification.ts',
-        '../../data/operations/recovery-qualification.py', '../../data/operations/runtime-identity.js'].map(async file =>
+        '../../data/operations/recovery-qualification.js', '../../data/operations/recovery-input-store.js',
+        '../../data/operations/recovery-observations.js', '../../data/operations/runtime-identity.js'].map(async file =>
         createHash('sha256').update(await readFile(new URL(file, import.meta.url))).digest('hex')));
-      expect(verifier).toBe(hex(stableJson({ protocol: 2, receiver: packageFiles[0], files: packageFiles.slice(1) })));
+      const packages = await Promise.all(['@xec-sh/core', 'tar'].map(async name => [name,
+        createHash('sha256').update(await readFile(new URL(import.meta.resolve(name + '/package.json')))).digest('hex')]));
+      expect(verifier).toBe(hex(stableJson({ protocol: 3, receiver: packageFiles[0], files: packageFiles.slice(1), packages })));
       await expect(qualifyRecoveryOnHost('0'.repeat(64), encoded)).rejects.toThrow('verifier differs');
       const unreviewed = Buffer.from(stableJson({ ...spec, command: '/example' })).toString('base64url');
       await expect(qualifyRecoveryOnHost(verifier, unreviewed)).rejects.toThrow('unexpected qualification request fields');

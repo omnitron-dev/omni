@@ -45,7 +45,7 @@ export function getTestRedisUrl(db?: number): string {
   }
 
   const defaultPort = process.env.TEST_REDIS_PORT ?? '16379';
-  const baseUrl = process.env['REDIS_URL'] || process.env['TEST_REDIS_URL'] || globalRedis?.url || `redis://localhost:${defaultPort}`;
+  const baseUrl = globalRedis?.url || process.env['REDIS_URL'] || process.env['TEST_REDIS_URL'] || `redis://localhost:${defaultPort}`;
   return db !== undefined ? `${baseUrl}/${toTestDb(db)}` : baseUrl;
 }
 
@@ -72,7 +72,7 @@ export function getTestRedisConfig(db = 0): { url: string; host: string; port: n
 /**
  * Pick this worker's Redis database.
  *
- * Redis logical DBs 0-4 belong to the apps/omnitron suites; rotif gets 5-12.
+ * Workers use databases 5–12 within this package's private Redis instance.
  *
  * The db number a spec asks for is deliberately IGNORED. Nearly every suite
  * here calls `flushdb()` in beforeEach, and 22 of them asked for db 0 with 31

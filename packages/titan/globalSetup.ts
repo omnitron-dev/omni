@@ -247,7 +247,16 @@ function writeRedisInfo(info: RedisInfo): void {
   (globalThis as any).__REDIS_INFO__ = info;
 }
 
-export async function setup(): Promise<void> {
+export function setup(): Promise<void> {
+  return setupRedis(true);
+}
+
+/** A suite that clears keys or databases owns its Redis process through teardown. */
+export function setupIsolatedRedis(): Promise<void> {
+  return setupRedis(false);
+}
+
+async function setupRedis(allowShared: boolean): Promise<void> {
   runDir = mkdtempSync(join(tmpdir(), 'titan-test-redis-'));
   process.env['TITAN_TEST_REDIS_INFO'] = redisInfoPath();
   console.log('[Global Setup] Initializing Redis for tests...');
@@ -259,41 +268,16 @@ export async function setup(): Promise<void> {
     return;
   }
 
-  // Strategy 2: Try existing Redis from docker-compose.test.yml (non-default port)
-  const externalPort = Number(process.env.TEST_REDIS_PORT ?? 16379);
-  try {
-    const ready = await waitForRedis(externalPort, 3);
-    if (ready) {
-      console.log(`[Global Setup] Using existing Redis at localhost:${externalPort}`);
-      writeRedisInfo({ url: `redis://localhost:${externalPort}`, port: externalPort, isDocker: false, isExternal: true });
-      return;
-    }
-  } catch {}
-
-  // Strategy 2b: the DEFAULT port, and only when asked for by name.
-  //
-  // This used to be automatic, and that is a loaded gun. A Redis answering on
-  // 6379 is whatever the developer happens to be running — on this machine it
-  // is the downstream dev stand, holding db0..db5 (main, storage, messaging,
-  // pricing, payments, geo). These suites are not read-only: the rotif specs
-  // in titan-notifications resolve `getTestRedisConfig(0)` and call
-  // `flushdb()`, and `notifications-service.docker.spec.ts` calls `flushall`.
-  // Borrowing 6379 therefore means erasing main's session database, and the
-  // suite would report a clean run while doing it.
-  //
-  // titan-discovery already carries a regression test that says the endpoint
-  // must never fall back to 6379. It was right, and this is the other half of
-  // it: the isolated instance below costs a few seconds; the wrong answer
-  // costs the stand.
-  if (externalPort !== 6379 && process.env.TEST_REDIS_ALLOW_DEFAULT_PORT === 'true') {
-    try {
-      const ready = await waitForRedis(6379, 3);
-      if (ready) {
-        console.log('[Global Setup] Using existing Redis at localhost:6379 (TEST_REDIS_ALLOW_DEFAULT_PORT)');
-        writeRedisInfo({ url: 'redis://localhost:6379', port: 6379, isDocker: false, isExternal: true });
+  if (allowShared) {
+    const ports = new Set([Number(process.env.TEST_REDIS_PORT ?? 16379)]);
+    if (process.env.TEST_REDIS_ALLOW_DEFAULT_PORT === 'true') ports.add(6379);
+    for (const port of ports) {
+      if (await waitForRedis(port, 3)) {
+        console.log(`[Global Setup] Using existing Redis at localhost:${port}`);
+        writeRedisInfo({ url: `redis://localhost:${port}`, port, isDocker: false, isExternal: true });
         return;
       }
-    } catch {}
+    }
   }
 
   // Strategy 3: Native redis-server

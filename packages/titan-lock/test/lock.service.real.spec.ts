@@ -23,7 +23,7 @@ import { resolveTestRedisEndpoint } from '@omnitron-dev/testing/titan';
 import { DistributedLockService } from '../src/lock.service.js';
 import type { ILockModuleOptions } from '../src/lock.types.js';
 
-/** Logical DBs 0-4 belong to the apps/omnitron suites; this package uses 12. */
+/** Exercise a non-default logical database in the suite's own Redis. */
 const TEST_DB = 12;
 
 // Asked for once, from the endpoint `globalSetup` published. It used to be

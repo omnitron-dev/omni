@@ -380,6 +380,34 @@ describe('EnhancedEventEmitter', () => {
       );
     });
 
+    it('starts a fresh batch when a listener emits during delivery', () => {
+      const batches: number[][] = [];
+      emitter.batch('sample', { maxSize: 2, maxWait: 100 });
+      emitter.on('sample:batch', (batch: { data: number }[]) => {
+        batches.push(batch.map(({ data }) => data));
+        if (batches.length === 1) emitter.emitEnhanced('sample', 3);
+      });
+
+      emitter.emitEnhanced('sample', 1);
+      emitter.emitEnhanced('sample', 2);
+      emitter.emitEnhanced('sample', 4);
+      vi.advanceTimersByTime(100);
+      expect(batches).toEqual([[1, 2], [3, 4]]);
+    });
+
+    it('does not replay a delivered batch when a listener throws', () => {
+      emitter.batch('sample', { maxSize: 2 });
+      emitter.once('sample:batch', () => { throw new Error('delivery failed'); });
+      emitter.emitEnhanced('sample', 1);
+      expect(() => emitter.emitEnhanced('sample', 2)).toThrow('delivery failed');
+      const listener = vi.fn();
+      emitter.on('sample:batch', listener);
+      emitter.emitEnhanced('sample', 3);
+      expect(listener).not.toHaveBeenCalled();
+      emitter.emitEnhanced('sample', 4);
+      expect(listener.mock.calls[0]?.[0].map(({ data }: { data: number }) => data)).toEqual([3, 4]);
+    });
+
     it('should batch events by time', () => {
       const batchListener = vi.fn();
 

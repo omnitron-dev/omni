@@ -618,11 +618,9 @@ export class EnhancedEventEmitter<TEventMap extends EventMap = EventMap> extends
       this.batchTimers.delete(event);
     }
 
-    // Emit batch event
+    // A listener may enqueue the next batch synchronously or throw.
+    this.batchBuffers.delete(event);
     super.emit(`${event}:batch`, buffer);
-
-    // Clear buffer
-    this.batchBuffers.set(event, []);
   }
 
   /**
@@ -653,6 +651,7 @@ export class EnhancedEventEmitter<TEventMap extends EventMap = EventMap> extends
       clearTimeout(timer);
     }
     this.batchTimers.clear();
+    this.batchBuffers.clear();
 
     this.removeAllListeners();
   }

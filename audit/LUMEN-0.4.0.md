@@ -5,7 +5,7 @@ Baseline: `3ea505ad` (2026-11-11). This is a verification ledger, not a release 
 ## Release boundaries
 
 - Preserve the sealed 0.3.5 publication at `8bdc660e`. Lumen enters 0.4.0 only after qualification.
-- Develop visibly on `main` in the primary checkout. Use AGI for qualification snapshots and generated artifacts. Do not replace deployed controllers, owner, applications or Atlas.
+- Develop visibly on `main` in the primary checkout. Keep qualification snapshots and generated artifacts in the private evidence directory. Keep running installations available during qualification.
 - Use Netron for transport/authentication, Titan for lifecycle and DI, Prism for shared UI, Xec for release orchestration, Turbo for the package graph and cache.
 - Remove obsolete files, exports and compatibility aliases rather than retaining parallel APIs during this development-stage refactor. `ServiceDescriptor` now belongs only to `netron-protocol`; its old Titan subpath and barrel alias are removed. Server decoration, browser clients and React hooks consume the same typed contract.
 - A test must validate useful behavior. A PDF magic header is not evidence of typesetting; a hydration attribute is not evidence of a working interactive component.
@@ -123,11 +123,11 @@ does not qualify a healthy native runtime.
 The failed run's native jobs, owner/backend/site processes and Docker resources
 were cleaned up, and the fixture's site/source edits were restored. Its output,
 logs and exact inventory difference remain at
-`/Volumes/AGI-Dev/work/omnitron/omnitron-handoff-website-4QG73j`;
+`omnitron-handoff-website-4QG73j`;
 `failure-evidence.json` records the two extra `.vite/deps` files and verified
 cleanup. Build/source logs are `source-refresh-native-build.log`,
 `watch-retarget-{red,green}.log` and `health-loader-{red,green}.log` under
-`/Volumes/AGI-Dev/work/omnitron`. These are local source/native failure evidence,
+the private evidence directory. These are local source/native failure evidence,
 not release qualification, rollback compatibility or remote CI acceptance.
 
 After the Lumen cache and worker-loader fixes, a second ordinary clean Xec/Turbo
@@ -201,7 +201,7 @@ gate. Backend, test and Console typechecks and scoped lint pass. The corrected
 synthetic public fixture was then rechecked with all 31 pipeline integration
 tests. These counts overlap the narrower closure checks; they are not additive.
 The exact source and log digests are recorded in
-`/Volumes/AGI-Dev/work/omnitron/pipeline-release-receipt.json`.
+`pipeline-release-receipt.json`.
 
 This proves the new source contract, not activation of an existing frozen
 caller. An application which still constructs shell definitions from physical
@@ -265,8 +265,8 @@ unchanged earlier Lumen dependency closure; full qualification must rebuild all
 The candidate remains unqualified. CI retains bounded per-file evidence and
 affected public archives, including the [Linux failure artifact](https://github.com/omnitron-dev/omni/actions/runs/43217732489/artifacts/13943709847).
 Local reproductions are under
-`/Volumes/AGI-Dev/work/omnitron/lumen-ast-repro-72cc` and
-`/Volumes/AGI-Dev/work/omnitron/lumen-runtime-repro-72cc`.
+`lumen-ast-repro-72cc` and
+`lumen-runtime-repro-72cc`.
 
 That CI run passes Typecheck (including its delivery, installed-consumer and
 browser checks), workspace lint and standing checks. Its complete test run
@@ -276,7 +276,7 @@ enabled, the real server starts but the fixture times out on the decorated port.
 The exact failure is reproduced with color forced in the child process; the
 corrected test waits for the actual HTTP generation and checks both color modes,
 generation retention and shutdown cleanup. Both native cases and lint pass;
-logs are in `/Volumes/AGI-Dev/work/omnitron/lumen-serve-ci-72cc`. These scoped
+logs are in `lumen-serve-ci-72cc`. These scoped
 results do not qualify a later complete release candidate.
 
 The subsequent `973ab9ed` preparation passes all 35 archive/consumer gates and
@@ -357,7 +357,7 @@ The archive comparator passes 40 checks across four suites on Node 24.13.0 and
 26.12.1, plus source typecheck and lint. Its ordinary Xec invocation also matches
 all 35 retained `1ede1aea` archive pairs and 6,804 files. This confirms the older
 draft's bytes; it does not certify the replacement candidate. Evidence is in
-`/Volumes/AGI-Dev/work/omnitron/archive-equivalence-qa/retained-35-pairs.log`.
+`archive-equivalence-qa/retained-35-pairs.log`.
 The qualification/native-delivery profile passes 35 checks on both Node 24.13.0
 and 26.12.1. A replay of the old implementation rejects a different publisher
 Node and executes a tampered verifier; the corrected implementation preserves
@@ -406,7 +406,7 @@ receipt records the reproducibility stage; native qualification is still empty.
 The replacement candidate requires its own clean preparation and exact-commit
 remote CI/native qualification before release.
 
-Local evidence is retained under `/Volumes/AGI-Dev/work`:
+The private evidence directory contains the following records.
 
 - `omnitron/releases/prepare-0.4.0-1ede1aea.log` records preparation of all 35
   archives.

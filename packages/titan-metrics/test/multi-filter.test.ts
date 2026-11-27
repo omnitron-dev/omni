@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { Kysely, SqliteDialect } from 'kysely';
 import { SQLiteMetricsStorage, type MetricsDatabase } from '../src/sql-storage.js';
+import { MemoryMetricsStorage } from '../src/storage.js';
 
 const databases: Kysely<MetricsDatabase>[] = [];
 afterEach(async () => { for (const db of databases.splice(0)) await db.destroy(); });
@@ -12,6 +13,21 @@ function storage() {
 }
 
 describe('SQL history is filtered before limiting each distinct series', () => {
+  it.each([['memory', () => new MemoryMetricsStorage()], ['sqlite', storage]] as const)(
+    '%s preserves series identity across label order and separators in names', async (_, create) => {
+      const store = create();
+      const timestamp = Date.now() - 100;
+      await store.write([
+        { name: 'rpc|job', labels: { app: 'east', zone: 'a', path: '/' }, value: 1, timestamp },
+        { name: 'rpc|job', labels: { path: '/', zone: 'a', app: 'east' }, value: 2, timestamp: timestamp + 1 },
+        { name: 'rpc', labels: { app: 'job|east', zone: 'a', path: '/' }, value: 3, timestamp },
+      ]);
+      const series = await store.query({});
+      expect(series).toHaveLength(2);
+      expect(series.find(row => row.app === 'east')?.points.map(point => point.value)).toEqual([1, 2]);
+      expect(series.find(row => row.app === 'job|east')?.points.map(point => point.value)).toEqual([3]);
+    });
+
   it('keeps all requested names/apps and separates nodes and label order', async () => {
     const s = storage(); const now = Date.now();
     await s.write([0, 1, 2].flatMap(i => ['cpu', 'memory'].flatMap(name => ['a', 'b'].flatMap(app => ['one', 'two'].map(node => ({

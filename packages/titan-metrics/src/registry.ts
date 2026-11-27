@@ -13,6 +13,7 @@ import type {
   MetricSample,
   HistogramState,
 } from './types.js';
+import { orderedLabels } from './labels.js';
 
 // ---------------------------------------------------------------------------
 // Internal state types
@@ -42,38 +43,12 @@ const DEFAULT_HISTOGRAM_BUCKETS = [
   0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10,
 ];
 
-/**
- * Stable, COLLISION-FREE serialisation of a labels object for map keys.
- *
- * Pre-T#70 the implementation joined `${k}=${v}` pairs with `,` —
- * which corrupts silently the moment ANY label value contained a
- * literal `,` or `=`. A request like
- * `counter('rpc_calls', { route: 'GET,POST /users' }, 1)` produced the
- * key `route=GET,POST /users`, which `parseLabels` then split as
- * `{ route: 'GET', 'POST /users': '' }` — quietly forking the time
- * series in two. Prometheus exposition output then carried both
- * misshapen series side by side.
- *
- * The fix URI-component-encodes both keys and values before joining.
- * `,` and `=` (along with `%` itself) are now safe inside label values;
- * the encoded characters round-trip through `parseLabels` losslessly.
- */
 function labelKey(labels: Record<string, string>): string {
-  const keys = Object.keys(labels).sort();
-  if (keys.length === 0) return '';
-  return keys.map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(labels[k]!)}`).join(',');
+  return JSON.stringify(orderedLabels(labels));
 }
 
-/** Parse a label key produced by `labelKey` back into a labels object. */
 function parseLabels(key: string): Record<string, string> {
-  if (key === '') return {};
-  const out: Record<string, string> = {};
-  for (const part of key.split(',')) {
-    const eq = part.indexOf('=');
-    if (eq < 0) continue;
-    out[decodeURIComponent(part.slice(0, eq))] = decodeURIComponent(part.slice(eq + 1));
-  }
-  return out;
+  return JSON.parse(key) as Record<string, string>;
 }
 
 /** Escape a Prometheus label value */

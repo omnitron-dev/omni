@@ -5,6 +5,7 @@ import type {
   MetricsSnapshot, MetricsStorageCapabilities, MetricsTimeSeries,
 } from './types.js';
 import { buildSnapshot, normaliseAppScope, parseIntervalMs } from './storage.js';
+import { orderedLabels } from './labels.js';
 
 /** Owned by Titan; consumers register this DDL with their migration runner. */
 export const METRICS_POSTGRES_SCHEMA_V1 = [
@@ -68,7 +69,7 @@ export function prepareMetricSample(sample: MetricSample): MetricSample & { id: 
     throw new TypeError('Invalid metric sample: require a name, finite value, epoch milliseconds and bounded string labels');
   }
   const normalized = normaliseAppScope(sample);
-  return { ...normalized, id: sample.id ?? randomUUID(), labels: Object.fromEntries(Object.entries(normalized.labels).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) };
+  return { ...normalized, id: sample.id ?? randomUUID(), labels: orderedLabels(normalized.labels) };
 }
 
 function epoch(value: string | number | undefined, fallback: number): number {

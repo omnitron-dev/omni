@@ -16,6 +16,7 @@ import type {
   IMetricsStorage,
   IMetricsLatestOptions,
 } from './types.js';
+import { orderedLabels } from './labels.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -150,12 +151,12 @@ export class MemoryMetricsStorage implements IMetricsStorage {
 
     for (const s of matched) {
       const app = s.labels['app'] ?? '';
-      const groupLabels = { ...s.labels };
-      delete groupLabels['app'];
-      const gk = `${s.name}|${app}|${JSON.stringify(groupLabels)}`;
+      const labels = orderedLabels(s.labels);
+      const gk = JSON.stringify([s.name, labels]);
       let g = groups.get(gk);
       if (!g) {
-        g = { name: s.name, app, labels: groupLabels, points: [] };
+        delete labels['app'];
+        g = { name: s.name, app, labels, points: [] };
         groups.set(gk, g);
       }
       g.points.push({ timestamp: s.timestamp, value: s.value });

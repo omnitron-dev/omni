@@ -430,7 +430,9 @@ export interface IProjectRpcService {
   preflightRemotePlacement(data: import('./project.js').PlacementRequest): Promise<import('./project.js').PlacementPreflight>;
   reviewRemotePlacement(data: import('./project.js').PlacementRequest): Promise<import('./project.js').PlacementReceipt>;
   selectRemotePlacement(data: import('./project.js').PlacementRequest & { review: string }): Promise<import('./project.js').PlacementReceipt>;
-  prepareRemoteReleaseSource(data: { project: string; stack: string; release: string; input: import('./project.js').RemoteReleaseSourceInput }): Promise<import('./project.js').PreparedRemoteReleaseSource>;
+  prepareRemoteReleaseSource(data: { project: string; stack: string; release: string; input: import('./project.js').RemoteReleaseSourceInput; fileTransferId?: string }): Promise<import('./project.js').RemoteReleasePreparationResult>;
+  listRemoteReleasePreparations(scope: import('./project.js').RuntimeStackScope): Promise<import('./project.js').RemoteReleasePreparationAttempt[]>;
+  readRemoteReleasePreparationLog(data: import('./project.js').RuntimeStackScope & { attemptId: string; name: string; lines?: number }): Promise<{ name: string; bytes: number; tail: string }>;
   checkRemoteReleaseSource(data: { project: string; stack: string; release: string; digest: string }): Promise<import('./project.js').PreparedRemoteReleaseSource>;
   reviewPreparedStackStart(data: { project: string; stack: string; release: string; digest: string }): Promise<import('./project.js').StackStartReview>;
   reviewPreparedHostBindings(data: { project: string; stack: string; release: string; digest: string; nodeId: string }): Promise<import('./host-bindings.js').HostBindingReview>;

@@ -241,6 +241,10 @@ omnitron stack start acme prod --release "$release" --prepared "$prepared_digest
 
 Preparation checks the current project registration, both stack release policies, Git history, source and verified archive bytes, stable node ID, approved SSH host key and the recipient's execution runtime. Subsequent checks repeat admission. Changing the registration, source, manifest, declaration bytes or recipient invalidates the receipt. Operators can inspect an administrator's digest. The prepared source is scoped to this release and logical stack.
 
+Deployments records each remote source preparation for the selected project and stack. Operators can see the producer's gate results even when the receiver subsequently refuses the release. Administrators can read the listed build logs. A retry creates another attempt. If the controller restarted before recording an outcome, the earlier attempt shows as interrupted.
+
+When a Files transfer delivered the release, add `--file-transfer "$transfer_id"` to `stack prepare-release`. The controller checks the completed directory publication, its registered destination node, the release directory in the transfer plan and the SHA-256 of its manifest. The recipient's runtime then performs its own admission checks.
+
 The host-binding review identifies expected units, public template hashes and the recipient. A preservation review also needs a positive observation of each resource from that recipient. For a native host service this includes the running process and service identity, executable, unit, protected configuration and storage bindings. A successful source check alone authorizes no cutover. The prepared start command supports inspection. Switching an existing deployment requires a separately verified handoff from its current owner.
 
 ### Verify an existing Monero wallet before moving a stack

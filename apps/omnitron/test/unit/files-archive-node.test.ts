@@ -3,9 +3,9 @@ import fs from 'node:fs/promises';
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { FileNode } from '../../src/files/file-node.js';
-import { FilesRpcService } from '../../src/files/files.rpc-service.js';
+import { FilesRpcService, verifiedReleasePublication } from '../../src/files/files.rpc-service.js';
 import { runWithAuth } from '../../src/services/auth-context.js';
 import { MemoryFileStore } from '../helpers/memory-file-store.js';
 import type { FileArchiveStatus, FileEntry, FileUpload, FileChunk, FileTransfer } from '../../src/shared/dto/files.js';
@@ -286,12 +286,14 @@ describe('archive source snapshots and durable directory publication', () => {
       journal
     );
     try {
+      const manifest = '{"id":"project"}';
+      await fs.writeFile(path.join(sourceRoot, 'project/manifest.json'), manifest);
       const selected = (await source.invoke(actor, { op: 'stat', rootId: 'work', path: 'project' })) as FileEntry;
       const started = await runWithAuth(owner, () =>
         service.copy({
           sources: [{ nodeId: 'local', rootId: 'work', path: 'project', version: selected.version }],
           destination: { nodeId: 'remote', rootId: 'work', path: '' },
-          archive: { format: 'tar', output, name: output === 'archive' ? 'result.tar' : 'result' },
+          archive: { format: 'tar', output, name: output === 'archive' ? 'result.tar' : 'project' },
         })
       );
       const result = await wait(
@@ -303,9 +305,21 @@ describe('archive source snapshots and durable directory publication', () => {
       );
       expect(result.state, result.error).toBe('completed');
       expect(result.cleanupPending).not.toBe(true);
-      if (output === 'directory')
-        expect(await fs.readFile(path.join(targetRoot, 'result/data.txt'), 'utf8')).toBe('archive contents');
-      else expect((await fs.stat(path.join(targetRoot, 'result.tar'))).size).toBeGreaterThan(16);
+      const sha = createHash('sha256').update(manifest).digest('hex');
+      const verify = (node = 'remote', at = '2020-01-01T00:00:00Z', hash = sha) =>
+        verifiedReleasePublication(journal, started.id, node, at, 'project', hash);
+      if (output === 'directory') {
+        expect(await fs.readFile(path.join(targetRoot, 'project/data.txt'), 'utf8')).toBe('archive contents');
+        expect(verify()).toEqual({ nodeId: 'remote', rootId: 'work', path: 'project' });
+        expect(() => verify('another')).toThrow(); expect(() => verify('remote', '2100-01-01T00:00:00Z')).toThrow();
+        expect(() => verify('remote', '2020-01-01T00:00:00Z', '0'.repeat(64))).toThrow();
+        const key = 'files:plan:' + started.id, plan = journal.kvGetSync<Array<{ destination: { path: string } }>>(key)!;
+        plan[0]!.destination.path = 'different/project'; journal.kvSetSync(key, plan);
+        expect(verify).toThrow();
+      } else {
+        expect((await fs.stat(path.join(targetRoot, 'result.tar'))).size).toBeGreaterThan(16);
+        expect(verify).toThrow();
+      }
       expect(await fs.readdir(path.join(base, 'cache'))).toEqual([]);
     } finally {
       await service.dispose();

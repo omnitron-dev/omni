@@ -56,6 +56,30 @@ interface Job {
   archiveReleased?: boolean;
   pendingReceipts?: Array<{ nodeId: string; id: string }>;
 }
+
+/** A completed Files publication in the controller's own journal. Its destination is a Files locator,
+ * not proof of a receiver-side installation. The caller has already admitted this producer manifest. */
+export function verifiedReleasePublication(store: Pick<DaemonStateStore, 'kvGetSync'>, transferId: string, nodeId: string,
+  enrolledAt: string | undefined, release: string, manifestSha256: string): FileLocation {
+  const refused = () => Error('Files has no matching completed directory publication for this release and recipient');
+  if (typeof transferId !== 'string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(transferId)) throw refused();
+  const job = store.kvGetSync<Job>(`files:job:${transferId}`, { strict: true });
+  const plan = store.kvGetSync<Plan>(`files:plan:${transferId}`, { strict: true });
+  const view = job?.view, step = plan?.[0], archive = step?.archiveSource;
+  if (!view || !step || plan?.length !== 1 || view.id !== transferId || view.state !== 'completed' ||
+      view.publication !== 'complete' || view.destination.nodeId !== nodeId || !enrolledAt ||
+      !(Date.parse(view.createdAt) >= Date.parse(enrolledAt)) || view.source.length !== 1 ||
+      view.archive?.output !== 'directory' || view.archive.name !== release ||
+      !archive || archive.id !== transferId || archive.output !== 'directory' || archive.format !== view.archive.format ||
+      archive.manifest.protocol !== 1 || archive.manifest.rootName !== release) throw refused();
+  const source = view.source[0]!;
+  const destination = location(step.destination);
+  if (!same(source, step.source) || source.path !== step.source.path || !same(destination, view.destination) ||
+      destination.path !== join(view.destination.path, release)) throw refused();
+  const entries = archive.manifest.entries.filter(entry => entry.path === release + '/manifest.json');
+  if (entries.length !== 1 || entries[0]!.kind !== 'file' || entries[0]!.sha256 !== manifestSha256) throw refused();
+  return destination;
+}
 const stepFileCount = (step: Plan[number]) =>
   step.archiveSource?.output === 'directory'
     ? step.archiveSource.manifest.entries.filter((entry) => entry.kind === 'file').length

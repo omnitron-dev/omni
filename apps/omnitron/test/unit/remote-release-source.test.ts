@@ -80,7 +80,7 @@ beforeAll(async () => {
   const body = fs.readFileSync(artifact);
   const manifest = { id, project: { repo: 'qualified-private-mirror', commit: releaseCommit, onRemote: false },
     omni: { repo: 'sdk', commit: 'c'.repeat(40), onRemote: true }, builtWith: { omnitron: '1.0.0', packages: [], target: platform },
-    gates: [{ name: 'build', status: 'passed' }], builtBy: 'producer', builtAt: '2026-01-01T00:00:00.000Z',
+    gates: [{ name: 'build', status: 'passed', durationMs: 42, output: sentinel }], builtBy: 'producer', builtAt: '2026-01-01T00:00:00.000Z',
     artifacts: [{ app: 'main', version: '0.0.1', bytes: body.length, sha256: sha(body),
       launch: { mode: 'bootstrap', file: 'dist/bootstrap.js', closureSha256: 'e'.repeat(64) } }] };
   const raw = JSON.stringify(manifest); manifestSha = sha(raw); fs.writeFileSync(path.join(store, id, 'manifest.json'), raw);
@@ -105,7 +105,9 @@ function fixture() {
     getLoadedConfig: () => ({ apps: [] }), resolveStacks: () => resolveProjectStacks({}, original),
     logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() }, releaseRunningOn: async () => null,
     assertStartAuthority: vi.fn(), resolveNodeCredentials: credentials, deployer: { inspectInstalledBundle: owner },
-    daemonStateStore: { kvGetSync: (key: string) => records.get(key), kvUpdateSync: (key: string, update: (previous: unknown) => unknown) => records.set(key, update(records.get(key))) },
+    daemonStateStore: { kvKeys: async (prefix: string) => [...records.keys()].filter(key => key.startsWith(prefix)),
+      kvGetSync: (key: string) => records.get(key), kvSetSync: (key: string, value: unknown) => records.set(key, value),
+      kvUpdateSync: (key: string, update: (previous: unknown) => unknown) => records.set(key, update(records.get(key))) },
   });
   service.setReleaseRecipientResolver(recipient);
   const input = { sourceRoot: source, storeRoot: store, manifestSha256: manifestSha, declarationsSha256: declarationsSha, nodeId };
@@ -298,7 +300,7 @@ describe('prepared source of one registered remote release', () => {
     expect(fs.readFileSync(marker, 'utf8')).toBe(reads);
     expect(f.credentials.mock.calls.every(call => call[0] === candidateNode.host && call[2] === nodeId)).toBe(true);
     expect(f.owner).toHaveBeenCalledTimes(2);
-    expect(f.records.size).toBe(1);
+    expect([...f.records.keys()].filter(key => key.startsWith('release:remote-source:'))).toHaveLength(1);
     expect(git(original, 'rev-parse', 'HEAD')).toBe(originalCommit);
     expect(git(original, 'status', '--porcelain')).toBe('');
     expect(JSON.parse(fs.readFileSync(path.join(original, 'omnitron.stacks.json'), 'utf8'))).toEqual(stacks(oldNode));
@@ -317,7 +319,7 @@ describe('prepared source of one registered remote release', () => {
     finally { fs.unlinkSync(path.join(source, 'unexpected')); }
     const foreign = path.join(root, 'unrelated'); fs.mkdirSync(foreign); git(foreign, 'init', '-q'); git(foreign, 'commit', '--allow-empty', '-qm', 'unrelated');
     await expect(verifyRemoteSourceTree(source, foreign, releaseCommit)).rejects.toThrow(/no verified history/);
-    expect(f.owner).not.toHaveBeenCalled(); expect(f.records.size).toBe(0);
+    expect(f.owner).not.toHaveBeenCalled(); expect([...f.records.keys()].some(key => key.startsWith('release:remote-source:'))).toBe(false);
     expect(() => confirmReleaseRecipient({ type: 'remote', nodes: [candidateNode, oldNode] }, nodeId, f.recipient())).toThrow(/one declared recipient/);
     expect(() => confirmReleaseRecipient({ type: 'remote', nodes: [candidateNode] }, nodeId, { ...f.recipient(), fingerprint: '' })).toThrow(/SSH host key/);
     expect(() => confirmReleaseRecipient({ type: 'remote', nodes: [{ ...candidateNode, ssh: { privateKey: '/unapproved' } }] }, nodeId, f.recipient())).toThrow();
@@ -345,7 +347,99 @@ describe('prepared source of one registered remote release', () => {
     }
     await expect(f.service.prepareRemoteReleaseSource('sample', 'test', id, { ...f.input, unexpected: sentinel } as typeof f.input)).rejects.toThrow();
     expect(f.owner).not.toHaveBeenCalled();
-    expect(f.records.size).toBe(0);
+    expect([...f.records.keys()].some(key => key.startsWith('release:remote-source:'))).toBe(false);
+  });
+
+  it('retains separate producer and recipient evidence through refusal, retry, and re-enrollment', async () => {
+    const f = fixture(), scope = { project: 'sample', stack: 'test' };
+    const file = path.join(store, id, 'logs', 'gates.log');
+    fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, 'first\nsecond\n');
+    try {
+      let terminate!: () => void, entered!: () => void;
+      const inspecting = new Promise<void>(resolve => { entered = resolve; });
+      f.owner.mockImplementationOnce(async () => {
+        entered();
+        await new Promise<void>(resolve => { terminate = resolve; });
+        throw Error('installation lease ' + sentinel);
+      });
+      const first = f.service.prepareRemoteReleaseSource(scope.project, scope.stack, id, f.input);
+      const rejected = expect(first).rejects.toThrow(/lease/);
+      await inspecting;
+      const pending = await f.service.listRemoteReleasePreparations(scope);
+      expect(pending).toHaveLength(1);
+      expect(pending[0]).toMatchObject({ ...scope, state: 'checking', release: id, nodeId, manifestSha256: manifestSha,
+        producer: { builtAt: '2026-01-01T00:00:00.000Z', gates: [{ name: 'build', status: 'passed', durationMs: 42 }], logs: ['gates.log'] } });
+      terminate(); await rejected;
+      const receipt = await f.service.prepareRemoteReleaseSource(scope.project, scope.stack, id, f.input);
+      const attempts = await f.service.listRemoteReleasePreparations(scope);
+      expect(attempts).toHaveLength(2);
+      expect(attempts[0]).toMatchObject({ state: 'prepared', preparedDigest: receipt.digest });
+      expect(attempts[1]).toMatchObject({ attemptId: pending[0]!.attemptId, state: 'refused', reason: expect.stringMatching(/lease/) });
+      expect(attempts[0]!.attemptId).not.toBe(attempts[1]!.attemptId);
+      expect(JSON.stringify(attempts)).not.toContain(store);
+      expect(JSON.stringify([...f.records.values()])).not.toContain(sentinel);
+      const read = () => f.service.readRemoteReleasePreparationLog(scope, attempts[1]!.attemptId, 'gates.log', 1);
+      expect(read().tail).toBe('second');
+      expect(() => f.service.readRemoteReleasePreparationLog(scope, attempts[1]!.attemptId, '../manifest.json')).toThrow();
+      const manifest = path.join(store, id, 'manifest.json'), raw = fs.readFileSync(manifest);
+      try { fs.appendFileSync(manifest, '\n'); expect(read).toThrow(/source changed/); }
+      finally { fs.writeFileSync(manifest, raw); }
+      const originalRegistration = f.registration.registeredAt;
+      try {
+        f.registration.registeredAt = '2026-02-01T00:00:00Z';
+        expect(await f.service.listRemoteReleasePreparations(scope)).toEqual([]); expect(read).toThrow();
+      } finally { f.registration.registeredAt = originalRegistration; }
+      f.rotate();
+      expect(await f.service.listRemoteReleasePreparations(scope)).toEqual([]); expect(read).toThrow();
+    } finally { fs.unlinkSync(file); }
+  });
+
+  it('retains accepted producer evidence without linking a foreign transfer or issuing a source receipt', async () => {
+    const f = fixture(), scope = { project: 'sample', stack: 'test' };
+    await expect(f.service.prepareRemoteReleaseSource(scope.project, scope.stack, id, f.input, 'unknown')).rejects.toThrow(/Files/);
+    const [row] = await f.service.listRemoteReleasePreparations(scope);
+    expect(row).toMatchObject({ state: 'refused', producer: { gates: [{ name: 'build' }] } });
+    expect(row).not.toHaveProperty('fileTransferId'); expect(f.owner).not.toHaveBeenCalled();
+    expect([...f.records.keys()].some(key => key.startsWith('release:remote-source:'))).toBe(false);
+  });
+
+  it('binds a completed Files publication and commits the prepared digest together with its grant', async () => {
+    const f = fixture(), scope = { project: 'sample', stack: 'test' };
+    const db = new DaemonStateStore({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } as never, path.join(root, 'attempt-files.db'));
+    Object.assign(f.service, { daemonStateStore: db });
+    const [{ FileNode }, { FilesRpcService }, { runWithAuth }] = await Promise.all([
+      import('../../src/files/file-node.js'), import('../../src/files/files.rpc-service.js'), import('../../src/services/auth-context.js'),
+    ]);
+    const output = path.join(root, 'file-publication'); fs.mkdirSync(output);
+    const from = new FileNode([{ id: 'store', label: 'Producer', path: store }], db, path.join(root, 'file-source-cache'));
+    const to = new FileNode([{ id: 'store', label: 'Receiver', path: output }], db, path.join(root, 'file-target-cache'));
+    const admin = { userId: 'tester', roles: ['admin'], permissions: [], metadata: { sessionId: 'session' } };
+    const files = new FilesRpcService(from, async (node, actor, request) => {
+      expect(node).toBe(nodeId); return to.invoke(actor, request);
+    }, { validateSession: async () => ({ id: 'tester', role: 'admin' }) } as never, { record: async () => {} }, db);
+    try {
+      const sourceFile = { nodeId: 'local', rootId: 'store', path: id };
+      const { version } = await runWithAuth(admin, () => files.stat(sourceFile));
+      const transfer = await runWithAuth(admin, () => files.copy({ sources: [{ ...sourceFile, version }],
+        destination: { nodeId, rootId: 'store', path: '' }, archive: { format: 'tar', output: 'directory', name: id } }));
+      await vi.waitFor(async () => {
+        const [row] = await runWithAuth(admin, () => files.transfers());
+        expect(row).toMatchObject({ id: transfer.id, state: 'completed', publication: 'complete' });
+      }, { timeout: 10_000 });
+      expect(sha(fs.readFileSync(path.join(output, id, 'manifest.json')))).toBe(manifestSha);
+      db.initSync().exec("CREATE TRIGGER reject_grant BEFORE INSERT ON state_kv WHEN NEW.key LIKE 'release:remote-source:%' BEGIN SELECT RAISE(ABORT, 'synthetic grant failure'); END;");
+      await expect(f.service.prepareRemoteReleaseSource(scope.project, scope.stack, id, f.input, transfer.id)).rejects.toThrow(/synthetic grant failure/);
+      expect(await db.kvKeys('release:remote-source:')).toEqual([]);
+      const [refusal] = await f.service.listRemoteReleasePreparations(scope);
+      expect(refusal).toMatchObject({ state: 'refused', fileTransferId: transfer.id, manifestSha256: manifestSha });
+      expect(refusal).not.toHaveProperty('preparedDigest');
+      db.initSync().exec('DROP TRIGGER reject_grant');
+      const receipt = await f.service.prepareRemoteReleaseSource(scope.project, scope.stack, id, f.input, transfer.id);
+      const [prepared, retained] = await f.service.listRemoteReleasePreparations(scope);
+      expect(prepared).toMatchObject({ state: 'prepared', fileTransferId: transfer.id, preparedDigest: receipt.digest });
+      expect(receipt.publication).toEqual({ attemptId: prepared!.attemptId, fileTransferId: transfer.id });
+      expect(retained).toEqual(refusal);
+    } finally { await files.dispose(); await from.dispose(); await to.dispose(); await db.dispose(); }
   });
 
   it('uses the candidate archive for the preserve dry run and retains the missing host evidence refusal', async () => {
@@ -1156,11 +1250,27 @@ describe('prepared source of one registered remote release', () => {
   });
 
   it('requires administrator authority for controller paths and permits an operator to recheck only an approved digest', () => {
-    for (const name of ['prepareRemoteReleaseSource', 'checkRemoteReleaseSource', 'reviewPreparedHostBindings',
+    for (const name of ['prepareRemoteReleaseSource', 'listRemoteReleasePreparations', 'readRemoteReleasePreparationLog', 'checkRemoteReleaseSource', 'reviewPreparedHostBindings',
       'preflightRemotePlacement', 'reviewRemotePlacement', 'selectRemotePlacement', 'deployReviewedRelease', 'inspectFirstWrite', 'prepareRehearsal', 'rehearseMigrations']) {
       const rule = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, ProjectRpcService.prototype, name);
       for (const role of ['viewer', 'operator', 'admin'])
-        expect(validateAccessRequirements({ roles: [role], permissions: [] }, rule).allowed).toBe(role === 'admin' || (name === 'checkRemoteReleaseSource' && role === 'operator'));
+        expect(validateAccessRequirements({ roles: [role], permissions: [] }, rule).allowed).toBe(role === 'admin' ||
+          (['checkRemoteReleaseSource', 'listRemoteReleasePreparations'].includes(name) && role === 'operator'));
     }
+  });
+
+  it('shows a pending journal from a previous controller as interrupted without manufacturing a terminal result', async () => {
+    const f = fixture(), scope = { project: 'sample', stack: 'test' };
+    const state = { kvUpdateSync: (key: string, update: (prior: unknown) => unknown) => f.records.set(key, update(f.records.get(key))),
+      kvGetSync: (key: string) => f.records.get(key), kvKeys: async () => [...f.records.keys()] } as unknown as DaemonStateStore;
+    const before = await import('../../src/project/release-preparation.js');
+    before.beginPreparation(state, { ...scope, release: id, nodeId, manifestSha256: manifestSha }, 'registration', 'recipient');
+    const retained = JSON.stringify([...f.records.values()]);
+    vi.resetModules();
+    const after = await import('../../src/project/release-preparation.js');
+    const [row] = await after.listPreparations(state, scope, () => (registration, _node, recipient) => registration === 'registration' && recipient === 'recipient');
+    expect(row).toMatchObject({ state: 'interrupted', reason: expect.stringMatching(/no final outcome/) });
+    expect(row).not.toHaveProperty('finishedAt'); expect(row).not.toHaveProperty('preparedDigest');
+    expect(JSON.stringify([...f.records.values()])).toBe(retained);
   });
 });

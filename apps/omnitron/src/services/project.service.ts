@@ -9,6 +9,7 @@ import { readSavedDaemonConfig } from '../config/saved.js';
 import { observeStackHealth, type HealthAnswers } from '../project/stack-health.js';
 import { LocalReleaseSelection } from '../project/local-release-selection.js';
 import { StackMigrations, migrationReviewDigest, type PreparedStackMigrations } from '../project/stack-migrations.js';
+import { beginPreparation, listPreparations, preparationLog } from '../project/release-preparation.js';
 import type { PreparedRemoteReleaseSource, RemoteReleaseSourceInput, StackMigrationReview, StackMigrationRequest, ProjectStarterNeeds } from '../shared/dto/project.js';
 import { planLocalMigrations, executeMigrationPlan, inspectMigrationDependencies } from './migration-execution.js';
 import { inspectMigrationSdk } from '../../bin/sdk.js';
@@ -2878,7 +2879,8 @@ export class ProjectService extends EventEmitter {
   }
 
   /** Inspect an administrator-approved detached source without changing the registered launch configuration. */
-  private async inspectRemoteReleaseSource(project: string, name: string, releaseId: string, input: RemoteReleaseSourceInput, saved?: PreparedRemoteSourceRecord) {
+  private async inspectRemoteReleaseSource(project: string, name: string, releaseId: string, input: RemoteReleaseSourceInput, saved?: PreparedRemoteSourceRecord,
+    observeSource?: (opened: Awaited<ReturnType<typeof import('../release/remote-source.js').openRemoteReleaseSource>>) => void) {
     const { openRemoteReleaseSource } = await import('../release/remote-source.js');
     const baseline = () => this.registeredRemoteScope(project, name);
     const before = baseline();
@@ -2887,6 +2889,7 @@ export class ProjectService extends EventEmitter {
     if (saved && (before.fingerprint !== saved.registration || saved.recipient !== target.pin))
       throw Error('Prepared stack registration or recipient changed; prepare it again');
     const opened = await openRemoteReleaseSource(before.registration, name, releaseId, input, target);
+    observeSource?.(opened);
     const admitted = await this.admitRelease(project, name, opened.stackConfig, opened.config, releaseId, 'check',
       { ...opened, fingerprint: target.fingerprint, registeredStack: before.stack });
     if (!admitted.remoteDefinitions) throw Error('Remote release has no verified application declarations');
@@ -2904,17 +2907,61 @@ export class ProjectService extends EventEmitter {
   }
 
   @RecoveryMutation()
-  async prepareRemoteReleaseSource(project: string, stack: string, release: string, input: RemoteReleaseSourceInput): Promise<PreparedRemoteReleaseSource> {
+  async prepareRemoteReleaseSource(project: string, stack: string, release: string, input: RemoteReleaseSourceInput, fileTransferId?: string): Promise<import('../shared/dto/project.js').RemoteReleasePreparationResult> {
     // Reject malformed scope before looking up a filesystem input.
     remoteReleaseSourceKey(project, stack, input?.manifestSha256);
-    const { receipt, record } = await this.inspectRemoteReleaseSource(project, stack, release, input);
-    this.rememberRemoteSource(receipt, record);
-    return receipt;
+    const { assertReleaseId } = await import('../release/load.js');
+    assertReleaseId(release);
+    if (typeof input.nodeId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/.test(input.nodeId)) throw Error('Invalid recipient node ID');
+    const registration = this.registeredRemoteScope(project, stack).fingerprint, target = this.releaseRecipient?.(input.nodeId);
+    if (!target) throw Error('Registered recipient proof unavailable');
+    const { verifiedReleasePublication } = await import('../files/files.rpc-service.js');
+    const scope = { project, stack }, identity = { ...scope, release, nodeId: input.nodeId, manifestSha256: input.manifestSha256 };
+    const attempt = beginPreparation(this.daemonStateStore, identity, registration, target.pin);
+    let reason = 'The producer source, declarations or manifest could not be verified';
+    try {
+      const inspected = await this.inspectRemoteReleaseSource(project, stack, release, input, undefined, opened => {
+        if (!this.preparationCurrent(scope)(registration, input.nodeId, target.pin)) throw Error('Registered release preparation target changed');
+        attempt.producer(opened.release, opened.storeRoot);
+        if (fileTransferId !== undefined) {
+          reason = 'Files could not confirm the selected publication for this manifest and recipient';
+          const files = verifiedReleasePublication(this.daemonStateStore, fileTransferId, input.nodeId, target.registeredAt, release, opened.release.manifestSha256);
+          attempt.publication(fileTransferId, files);
+        }
+        reason = 'The registered recipient did not admit this release';
+      });
+      reason = 'The verified source could not be retained under its registration';
+      if (!this.preparationCurrent(scope)(registration, input.nodeId, target.pin)) throw Error('Registered release preparation target changed');
+      this.rememberRemoteSource(inspected.receipt, inspected.record, () => attempt.preparedInTransaction(inspected.receipt.digest));
+      return fileTransferId ? { ...inspected.receipt, publication: { attemptId: attempt.attemptId, fileTransferId } } : inspected.receipt;
+    } catch (error) {
+      if (reason === 'The registered recipient did not admit this release' && error instanceof Error && /\b(lease|fence)\b/i.test(error.message))
+        reason = 'The recipient refused admission at the installation lease';
+      attempt.refused(reason);
+      throw error;
+    }
   }
 
-  private rememberRemoteSource(receipt: PreparedRemoteReleaseSource, record: PreparedRemoteSourceRecord): void {
+  private preparationCurrent(scope: RuntimeStackScope) {
+    const registered = this.findRegisteredRemoteScope(scope.project, scope.stack);
+    return (registration: string, nodeId: string, recipient: string) => {
+      if (registration !== registered?.fingerprint) return false;
+      try { return this.releaseRecipient?.(nodeId).pin === recipient; } catch { return false; }
+    };
+  }
+
+  async listRemoteReleasePreparations(scope: RuntimeStackScope) {
+    return listPreparations(this.daemonStateStore, scope, () => this.preparationCurrent(scope));
+  }
+
+  readRemoteReleasePreparationLog(scope: RuntimeStackScope, attemptId: string, name: string, lines?: number) {
+    return preparationLog(this.daemonStateStore, scope, attemptId, name, lines, this.preparationCurrent(scope));
+  }
+
+  private rememberRemoteSource(receipt: PreparedRemoteReleaseSource, record: PreparedRemoteSourceRecord, onRetain?: () => void): void {
     this.daemonStateStore.kvUpdateSync<PreparedRemoteSourceRecord>(remoteReleaseSourceKey(receipt.project, receipt.stack, receipt.digest), prior => {
       if (prior && !isDeepStrictEqual(prior, record)) throw Error('Conflicting prepared release record');
+      onRetain?.();
       return prior ?? record;
     });
   }

@@ -696,6 +696,7 @@ stack
   .option('--manifest <sha256>', 'SHA-256 of the qualified release manifest')
   .option('--declarations <sha256>', 'SHA-256 of the separately qualified producer declarations')
   .option('--node-id <id>', 'Registered stable identity declared by the candidate remote stack')
+  .option('--file-transfer <id>', 'Verify the completed Files publication for this remote source')
   .structuredAction(async (projectName, stackName, release, options) => {
     const { stackReleaseAdmissionCommand } = await import('../commands/stack.js');
     await stackReleaseAdmissionCommand(projectName, stackName, release, true, options);

@@ -449,10 +449,12 @@ function recoverySelection(options?: RecoveryFlags): DeploymentRecoveryInput | u
 
 export async function stackReleaseAdmissionCommand(project: string, stack: string, release: string, prepare: boolean,
   options: RecoveryFlags & { source?: string; releaseRoot?: string; manifest?: string; declarations?: string; nodeId?: string; prepared?: string;
-    firstWrite?: boolean; verifyRun?: string } = {}): Promise<void> {
+    firstWrite?: boolean; verifyRun?: string; fileTransfer?: string } = {}): Promise<void> {
   const client = createDaemonClient(undefined, options.verifyRun ? FIRST_WRITE_PHYSICAL_TIMEOUT_MS : LONG_REQUEST_TIMEOUT);
   try {
     const recovery = recoverySelection(options);
+    if (options.fileTransfer !== undefined && (!prepare || options.source === undefined || options.prepared !== undefined))
+      throw Error('Use --file-transfer with prepare-release and a complete new remote source');
     if (recovery && (prepare || options.firstWrite || options.verifyRun !== undefined || options.prepared !== undefined ||
       [options.source, options.releaseRoot, options.manifest, options.declarations, options.nodeId].some(value => value !== undefined)))
       throw Error('Use recovery options only for a deployment admission check');
@@ -478,10 +480,13 @@ export async function stackReleaseAdmissionCommand(project: string, stack: strin
         throw Error('Choose a prepared source digest or a complete new source');
       if (options.prepared === undefined && (!prepare || !selection.every(value => typeof value === 'string' && value.length > 0)))
         throw Error('New remote sources require prepare-release with --source, --release-root, --manifest, --declarations and --node-id');
-      const receipt = options.prepared !== undefined
+      const receipt: import('../shared/dto/project.js').RemoteReleasePreparationResult = options.prepared !== undefined
         ? await service.checkRemoteReleaseSource({ project, stack, release, digest: options.prepared })
-        : await service.prepareRemoteReleaseSource({ project, stack, release, input: { sourceRoot: options.source!, storeRoot: options.releaseRoot!,
+        : await service.prepareRemoteReleaseSource({ project, stack, release, ...(options.fileTransfer !== undefined && { fileTransferId: options.fileTransfer }),
+          input: { sourceRoot: options.source!, storeRoot: options.releaseRoot!,
           manifestSha256: options.manifest!, declarationsSha256: options.declarations!, nodeId: options.nodeId! } });
+      if (options.fileTransfer !== undefined && receipt.publication?.fileTransferId !== options.fileTransfer)
+        throw Error('The controller did not confirm the requested Files publication');
       if (!emitJson(receipt)) emitSuccess('Prepared remote release ' + receipt.release + ' on ' + receipt.nodeId + ' (' + receipt.digest + ')');
       return;
     }

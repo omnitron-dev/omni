@@ -341,6 +341,27 @@ export interface PreparedRemoteReleaseSource {
   digest: string;
 }
 
+/** Controller observation of one prepare request. Only a successful admission creates a prepared source. */
+export interface RemoteReleasePreparationAttempt extends RuntimeStackScope {
+  attemptId: string;
+  release: string;
+  nodeId: string;
+  manifestSha256: string;
+  startedAt: string;
+  finishedAt?: string;
+  state: 'checking' | 'prepared' | 'refused' | 'interrupted';
+  reason?: string;
+  preparedDigest?: string;
+  fileTransferId?: string;
+  producer?: {
+    builtAt?: string;
+    gates: Array<Pick<import('../../release/manifest.js').GateOutcome, 'name' | 'status' | 'durationMs'>>;
+    logs: string[];
+  };
+}
+
+export type RemoteReleasePreparationResult = PreparedRemoteReleaseSource & { publication?: { attemptId: string; fileTransferId: string } };
+
 export interface ReleaseAdmission {
   /** File history and producer provenance measured from both immutable release sources. */
   migrationHistory?: ReleaseMigrationHistory;

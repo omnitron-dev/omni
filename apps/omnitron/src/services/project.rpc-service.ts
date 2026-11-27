@@ -450,10 +450,24 @@ export class ProjectRpcService {
 
   /** Local paths can load project code. Only an administrator may introduce a new source. */
   @Public({ auth: { roles: ADMIN_ROLES } })
-  async prepareRemoteReleaseSource(data: { project: string; stack: string; release: string; input: import('../shared/dto/project.js').RemoteReleaseSourceInput }) {
+  async prepareRemoteReleaseSource(data: { project: string; stack: string; release: string; input: import('../shared/dto/project.js').RemoteReleaseSourceInput; fileTransferId?: string }) {
     checkRecoveryOptions(data);
     const scope = await this.projectService.resolveProjectStack(data, { readOnly: true });
-    return this.projectService.prepareRemoteReleaseSource(scope.project, scope.stack, data.release, data.input);
+    return this.projectService.prepareRemoteReleaseSource(scope.project, scope.stack, data.release, data.input, data.fileTransferId);
+  }
+
+  @Public({ auth: { roles: OPERATOR_ROLES } })
+  async listRemoteReleasePreparations(data: import('../shared/dto/project.js').RuntimeStackScope) {
+    const scope = await this.projectService.resolveProjectStack(data, { readOnly: true });
+    return this.projectService.listRemoteReleasePreparations(scope);
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async readRemoteReleasePreparationLog(data: import('../shared/dto/project.js').RuntimeStackScope & { attemptId: string; name: string; lines?: number }) {
+    if (Object.keys(data).some(key => !['project', 'stack', 'attemptId', 'name', 'lines'].includes(key)))
+      throw Error('Select a log from this release preparation');
+    const scope = await this.projectService.resolveProjectStack(data, { readOnly: true });
+    return this.projectService.readRemoteReleasePreparationLog(scope, data.attemptId, data.name, data.lines);
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })

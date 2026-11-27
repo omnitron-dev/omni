@@ -123,10 +123,47 @@ returns the original observation and recording time even if the node is
 offline. A changed binding is refused. Omit `--record` for a fresh reading
 or choose a second UUID to retain a later reading.
 
-Schema 1 records neither the original selection nor the Fleet request ID.
-The command's exit status is unknown. An observation from a later boot
-cannot authorize another writer. The original lease and rollout receipts
-remain the source of incident evidence.
+### Recover an interrupted passive stage across a planned Linux reboot
+
+During the same boot as the recorded observation, use the same Fleet
+administrator, registered node, artifact and observation UUID to prepare
+the recipient. This requires an independently qualified administrative
+runtime with the recovery command installed.
+
+```sh
+omnitron --json fleet rollout recover-stage-fence NODE prepare --record UUID --inspector ARTIFACT_SHA256
+```
+
+The recipient holds both deployment guards. Its private recovery journal
+retains the bytes of the lease and execution record. The account enrolled
+through the administrative login uses the ordinary runtime selection lease
+to confirm its current artifact and revision. Both systemd units must be
+running with that account and see the same registry file. A pending
+activation or an unrelated installation lease requires its own recovery.
+Wait for the `prepared` receipt before starting the approved reboot.
+
+Once the same Linux host has booted again and its two units are ready, run
+
+```sh
+omnitron --json fleet rollout recover-stage-fence NODE finish --record UUID --inspector ARTIFACT_SHA256
+```
+
+The recipient checks the machine identity, both boot IDs, both original
+records and the service account's confirmed selection. It records the
+interruption durably, then retires the old lease before withdrawing its
+execution fence. The command outcome is `unknown`. The authenticated
+receipt can be retrieved by repeating the same request after a lost reply.
+A new Fleet plan can then acquire a fresh lease through its ordinary path.
+The previous Fleet rollout keeps its original terminal result.
+
+The original Fleet passive-stage implementation in `da5c06db` acquired
+one fresh token before dispatch. The contention wait introduced in
+`0ca574d9` retries with a new token and ends at dispatch. The witnessed
+installation protocol added in `5dd53443` rechecks completed installs
+before granting a lease. Each path requires a confirmed acquisition before
+any guarded work. A late renewal or command from the interrupted attempt
+requires its original live lease. Schema 1 contains no historical selection,
+exit status or Fleet request ID.
 
 The plan receipt reports the receiver exit status,
 elapsed time and last observed installation step when available.

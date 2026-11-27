@@ -444,6 +444,22 @@ export interface LegacyStageFenceObservation extends NativeLegacyStageFence, Sta
   record?: { id: string; actorId: string; at: string };
 }
 
+export interface StageSelection {
+  uid: number; gid: number; homeSha256: string; current: string; revision: number; selectionSha256: string;
+}
+
+export interface StageRecoveryRequest { action: 'prepare' | 'finish'; recordId: string; scope: string; observation: NativeLegacyStageFence }
+export interface StageRecoveryReceipt {
+  recordId: string; scope: string; observation: NativeLegacyStageFence; selection: StageSelection; preparedAt: string;
+  decision: { bootId: string; acceptedAt: string; commandOutcome: 'unknown' } | null;
+  state: 'prepared' | 'interrupted';
+}
+
+export interface RegisteredStageRecoveryReceipt extends StageRecoveryReceipt, StageFenceRecipient {
+  inspectorArtifact: string;
+  record: NonNullable<LegacyStageFenceObservation['record']>;
+}
+
 /** A transition of a sealed backend under its existing execution owner. */
 export interface KernelRolloutTarget {
   nodeId: string;

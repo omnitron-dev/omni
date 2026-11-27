@@ -4,6 +4,7 @@ import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { openSqliteDatabase } from '@omnitron-dev/titan-database/sqlite';
+import { compareProcessLifetimes, readProcessLifetime } from '@omnitron-dev/common/process-identity';
 import { OMNITRON_HOME } from '../config/defaults.js';
 import { readRuntimeManifest, verifyRuntimeArtifact } from '../shared/runtime-artifact.js';
 import type { DaemonStateStore } from './daemon-state-store.service.js';
@@ -28,7 +29,7 @@ export interface InstalledRuntimeCli {
   cliEntry: string;
 }
 
-interface InstallationLease { token: string; pid: number; acquiredAt: string }
+interface InstallationLease { token: string; pid: number; acquiredAt: string; stageFence?: { scope: string; lifetime: string } }
 export interface ReviewedRecoveryHold {
   planId: string;
   planFile: string;
@@ -379,14 +380,29 @@ export class RuntimeInstallation {
   }
 
   /** Exclusive across CLI processes; SQLite releases its own write lock even after SIGKILL. */
-  async exclusive<T>(operation: () => Promise<T>): Promise<T> {
+  async exclusive<T>(operation: () => Promise<T>, options?: { stageFenceScope: string }): Promise<T> {
     if (this.inspection) throw new Error('A read-only runtime inspection cannot claim the installation lease');
     const { PidManager } = await import('./pid-manager.js');
     if (this.lease) throw new Error('Runtime operation is already in progress');
-    const lease = { token: randomUUID(), pid: process.pid, acquiredAt: new Date().toISOString() };
+    const lease: InstallationLease = { token: randomUUID(), pid: process.pid, acquiredAt: new Date().toISOString() };
+    if (options) {
+      const lifetime = readProcessLifetime(process.pid);
+      if (!HASH.test(options.stageFenceScope) || lifetime.state !== 'alive') throw Error('Cannot identify the stage selection holder');
+      lease.stageFence = { scope: options.stageFenceScope, lifetime: lifetime.identity };
+    }
     this.store.initSync().transaction(() => {
       const previous = this.read<InstallationLease>('runtime.lease');
-      if (previous && (!Number.isSafeInteger(previous.pid) || previous.pid < 1 || !previous.token || PidManager.isProcessAlive(previous.pid))) {
+      if (options && this.activation()) throw Error('The runtime registry has an unsettled activation');
+      if (previous && options) {
+        if (!previous.stageFence || previous.stageFence.scope !== options.stageFenceScope || !previous.token ||
+            typeof previous.stageFence.lifetime !== 'string' ||
+            compareProcessLifetimes(previous.stageFence.lifetime, previous.stageFence.lifetime) !== 'same' ||
+            !Number.isSafeInteger(previous.pid) || previous.pid < 1) throw Error('The runtime registry has an unrelated installation lease');
+        const lifetime = readProcessLifetime(previous.pid);
+        if (lifetime.state !== 'dead' && !(lifetime.state === 'alive' &&
+            compareProcessLifetimes(previous.stageFence.lifetime, lifetime.identity) === 'different'))
+          throw Error('An earlier stage selection holder is still live or unverifiable');
+      } else if (previous && (!Number.isSafeInteger(previous.pid) || previous.pid < 1 || !previous.token || PidManager.isProcessAlive(previous.pid))) {
         throw new Error(`Another runtime operation holds the installation lease (PID ${previous.pid}); no activation performed`);
       }
       this.store.kvSetSync('runtime.lease', lease);
@@ -404,6 +420,20 @@ export class RuntimeInstallation {
       }).immediate();
       this.lease = null;
     }
+  }
+
+  /** The enrolled instance confirms one challenge while its actual selection lease is held. */
+  confirmStageSelection(scope: string, challenge: string, selection: RuntimeSelection): void {
+    if (!this.lease?.stageFence || this.lease.stageFence.scope !== scope || !HASH.test(challenge)) throw Error('Invalid stage confirmation');
+    this.store.initSync().transaction(() => {
+      if (this.read<InstallationLease>('runtime.lease')?.token !== this.lease!.token || this.activation() ||
+          !isDeepStrictEqual(this.selection(), selection)) throw Error('Runtime selection changed before stage confirmation');
+      const receipt = { scope, challenge, selection };
+      const key = 'runtime.stage-fence:' + challenge;
+      const stored = this.store.kvGetSync<typeof receipt>(key, { strict: true });
+      if (stored === null) this.store.kvSetSync(key, receipt);
+      else if (!isDeepStrictEqual(stored, receipt)) throw Error('Stage confirmation is bound to a different selection');
+    }).immediate();
   }
 
   /** Copies only a prebuilt, sealed dependency closure. Never moves or rewrites a live release. */

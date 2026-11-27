@@ -19,7 +19,7 @@
  * costs is that call, and no more — see `callWorker`.
  */
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { ADMIN_ROLES, VIEWER_ROLES, OPERATOR_ROLES, CONTROL_PLANE_READ_ROLES } from '../shared/roles.js';
 import { Errors } from '@omnitron-dev/titan/errors';
@@ -539,6 +539,30 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
       throw Error('Registered recipient changed during machine fence inspection');
     if (data.recordId === undefined || retained) return observation;
     return this.kernel().stageFenceEvidence(data.recordId, actorId, scope, observation)!;
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async recoverLegacyStageFence(data: { action: 'prepare' | 'finish'; nodeId: string; recordId: string; inspectorArtifact: string }) {
+    if (!['prepare','finish'].includes(data.action)) throw Error('Invalid cold stage recovery action');
+    await this.authorizeKernel('stage-fence.' + data.action, data.recordId);
+    const principal = await this.revalidateKernelPrincipal(), actor = principal.context.userId!;
+    const pin = this.nodeManager.meshIdentity(data.nodeId);
+    const target = await this.nodeManager.nodeToDeployTarget(data.nodeId);
+    const { readNativeFence, stageFenceRecipient } = await import('./legacy-stage-fence.js');
+    const recipient = stageFenceRecipient(target);
+    if (recipient.nodeId !== data.nodeId || this.nodeManager.meshIdentity(data.nodeId) !== pin) throw Error('Registered stage recipient changed');
+    const observed = this.kernel().stageFenceEvidence(data.recordId, actor, { ...recipient, inspectorArtifact: data.inspectorArtifact });
+    if (!observed?.record) throw Error('A recorded observation by this administrator is required before preparing the recipient');
+    const scope = createHash('sha256').update(JSON.stringify([pin, recipient, data.inspectorArtifact, observed.record])).digest('hex');
+    const revalidate = async () => {
+      if ((await this.revalidateKernelPrincipal()).context.userId !== actor || this.nodeManager.meshIdentity(data.nodeId) !== pin)
+        throw Error('Administrator or registered stage recipient changed');
+    };
+    const report = await this.deployer().recoverLegacyStageFence(target, data.inspectorArtifact, {
+      action: data.action, recordId: data.recordId, scope, observation: readNativeFence(observed),
+    }, revalidate);
+    await revalidate();
+    return { ...report, ...recipient, inspectorArtifact: data.inspectorArtifact, record: observed.record };
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })

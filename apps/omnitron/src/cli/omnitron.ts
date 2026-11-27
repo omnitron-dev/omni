@@ -331,6 +331,23 @@ service.command('publish-system-plan <previous-record> <target-record>')
     if (!emitJson(result)) emitInfo(`Active supervision record ${result.active}. Retained predecessor ${result.previous}.`);
   });
 
+service.command('recover-stage-fence <action>')
+  .description('Prepare or finish the exact recorded legacy passive stage after a Linux host reboot')
+  .requiredOption('--record <uuid>').requiredOption('--scope <sha256>').requiredOption('--boot <uuid>')
+  .requiredOption('--machine <sha256>').requiredOption('--command-id <uuid>').requiredOption('--timeout-ms <number>')
+  .requiredOption('--lease <sha256>').requiredOption('--execution <sha256>')
+  .structuredAction(async (action: string, options: { record: string; scope: string; boot: string; machine: string; commandId: string;
+    timeoutMs: string; lease: string; execution: string }) => {
+    if (action !== 'prepare' && action !== 'finish') throw Error('Use prepare or finish');
+    const { recoverLocalStageFence } = await import('../commands/legacy-stage-recovery.js');
+    const { emitJson, emitInfo } = await import('../commands/output.js');
+    const receipt = await recoverLocalStageFence({ action, recordId: options.record, scope: options.scope, observation: {
+      state: 'unresolved-legacy-stage', bootId: options.boot, machineIdSha256: options.machine, commandId: options.commandId,
+      timeoutMs: Number(options.timeoutMs), leaseSha256: options.lease, executionSha256: options.execution,
+    } });
+    if (!emitJson(receipt)) emitInfo('Legacy passive stage ' + receipt.recordId + ': ' + receipt.state);
+  });
+
 service.command('inspect-stage-fence')
   .description('Inspect the existing legacy passive-stage fence as the local Linux host administrator')
   .structuredAction(async () => {
@@ -1058,6 +1075,15 @@ remote
 const fleet = program.command('fleet').description('Fleet-wide operations across remote servers');
 
 const rollout = fleet.command('rollout').description('Distribute and activate managed backends across registered servers');
+rollout.command('recover-stage-fence <node> <action>')
+  .description('Prepare an observed legacy passive stage on the recipient or finish it after a proven reboot')
+  .requiredOption('--inspector <sha256>', 'Qualified administrative Linux runtime')
+  .requiredOption('--record <uuid>', 'Pre-reboot observation recorded by the same administrator')
+  .structuredAction(async (node: string, action: string, options: { inspector: string; record: string }) => {
+    if (action !== 'prepare' && action !== 'finish') throw Error('Use prepare or finish');
+    const { fleetRolloutCommand } = await import('../commands/fleet-rollout.js');
+    await fleetRolloutCommand({ kind: 'recover-stage-fence', node, action, inspector: options.inspector, recordId: options.record });
+  });
 rollout.command('inspect-stage-fence <node>')
   .description('Read the protected lease and legacy command identity of an interrupted passive staging attempt on a registered Linux node')
   .requiredOption('--inspector <sha256>', 'Qualified Linux runtime already installed in the private host administrator store')

@@ -1695,7 +1695,7 @@ export class RemoteDeployer {
     if (!target.expectedHostFingerprint) throw Error('Managed kernel rollout requires a pinned SSH host key');
   }
 
-  async inspectLegacyStageFence(target: DeployTarget, inspectorArtifact: string) {
+  private async admitStageInspector(target: DeployTarget, inspectorArtifact: string) {
     this.assertManagedTarget(target);
     if (!target.registrationId || target[serviceAccount]) throw Error('Fence inspection requires a registered administrative endpoint');
     if (!/^[a-f0-9]{64}$/.test(inspectorArtifact)) throw Error('Select a qualified Linux inspector artifact by SHA-256');
@@ -1704,9 +1704,20 @@ export class RemoteDeployer {
     if (!entry) throw Error('The inspector artifact has not been admitted to the controller Linux catalog');
     const confirmed = await resolveKernelBuild(entry.commit, entry);
     if (confirmed.entry.artifact !== inspectorArtifact) throw Error('The catalog inspector artifact changed during verification');
+  }
+
+  async inspectLegacyStageFence(target: DeployTarget, inspectorArtifact: string) {
+    await this.admitStageInspector(target, inspectorArtifact);
     const { inspectRegisteredStageFence, stageFenceRecipient } = await import('./legacy-stage-fence.js');
     return inspectRegisteredStageFence(stageFenceRecipient(target), inspectorArtifact,
       command => this.readFromNodeRaw(target, command, 15_000));
+  }
+
+  async recoverLegacyStageFence(target: DeployTarget, inspector: string, request: import('../shared/dto/nodes.js').StageRecoveryRequest, beforeDispatch: () => Promise<void>) {
+    await this.admitStageInspector(target, inspector);
+    const { recoverRegisteredStageFence } = await import('./legacy-stage-fence.js');
+    await beforeDispatch();
+    return recoverRegisteredStageFence(inspector, request, command => this.readFromNodeRaw(target, command, 45_000));
   }
 
   private async checkManagedTarget(target: DeployTarget): Promise<void> {

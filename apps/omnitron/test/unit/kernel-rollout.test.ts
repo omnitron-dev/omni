@@ -529,3 +529,34 @@ it('exposes exactly the backup attempts bound by each durable node plan', async 
   expect(service.get(plan.id)?.targets[0]!.backupOperations).toEqual([backup]);
   expect(driver.activateManagedRollout).not.toHaveBeenCalled();
 });
+
+it('authorizes each cold stage phase against the recorded administrator and registered recipient before dispatch', async () => {
+  const { service } = fixture();
+  const target = { registrationId:'node', host:'test.example', expectedHostFingerprint:'fixture-pin', label:'fixture' };
+  const pin = vi.fn().mockReturnValue('pinned-enrollment');
+  const auth = { validateSession: vi.fn().mockResolvedValue({id:'u',role:'admin'}) };
+  const audit = { record:vi.fn(async () => {}) };
+  const rpc = new NodeManagerRpcService({nodeToDeployTarget:vi.fn(async () => target),meshIdentity:pin} as never,audit as never,undefined,auth as never);
+  const request = {action:'prepare' as const, nodeId:target.registrationId, recordId:randomUUID(),inspectorArtifact:'e'.repeat(64)};
+  const scope = {...stageFenceRecipient(target),inspectorArtifact:request.inspectorArtifact};
+  const live = {...scope,state:'unresolved-legacy-stage' as const,machineIdSha256:'3'.repeat(64),bootId:randomUUID(),
+    commandId:randomUUID(),leaseSha256:'1'.repeat(64),executionSha256:'2'.repeat(64),timeoutMs:500};
+  const native = vi.fn(async (_target, _inspector, request, before) => { await before(); return request; });
+  rpc.setRemoteDeployer({recoverLegacyStageFence:native} as never); rpc.setKernelRolloutService(service);
+  const recover = (userId='u') => runWithAuth({userId,roles:['admin'],metadata:{sessionId:'session'}} as never,()=>rpc.recoverLegacyStageFence(request));
+  await expect(recover()).rejects.toThrow('recorded observation');
+  expect(native).not.toHaveBeenCalled();
+  service.stageFenceEvidence(request.recordId,'u',scope,live);
+  auth.validateSession.mockResolvedValue({id:'other',role:'admin'});
+  await expect(recover('other')).rejects.toThrow('another administrator');
+  auth.validateSession.mockResolvedValue({id:'u',role:'admin'});
+  audit.record.mockRejectedValueOnce(Error('audit unavailable'));
+  await expect(recover()).rejects.toThrow('audit unavailable');
+  expect(native).not.toHaveBeenCalled();
+  pin.mockReturnValueOnce('pinned-enrollment').mockReturnValueOnce('pinned-enrollment').mockReturnValueOnce('replacement');
+  await expect(recover()).rejects.toThrow('registered stage recipient changed');
+  const accepted=await recover();
+  expect(accepted).toMatchObject({recordId:request.recordId,scope:expect.stringMatching(/^[0-9a-f]{64}$/),observation:{commandId:live.commandId}});
+  expect(Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH,NodeManagerRpcService.prototype,'recoverLegacyStageFence').roles).toEqual(['admin']);
+  expect(service.get()).toBeNull();
+});

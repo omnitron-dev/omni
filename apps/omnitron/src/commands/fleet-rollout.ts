@@ -8,6 +8,7 @@ import { emitError, emitInfo, emitJson } from './output.js';
 import { resolveNodeArgument } from './node.js';
 
 type Request =
+  | { kind: 'recover-stage-fence'; node: string; inspector: string; action: 'prepare' | 'finish'; recordId: string }
   | { kind: 'inspect-stage-fence'; node: string; inspector: string; recordId?: string }
   | { kind: 'plan'; commit: string; nodes: string[]; apply: boolean; wait?: boolean; stage?: boolean; requestId?: string }
   | { kind: 'apply'; id: string; wait?: boolean }
@@ -71,9 +72,17 @@ export async function fleetRolloutCommand(request: Request): Promise<void> {
   try {
     if (!(await requireDaemon(client, 'cannot inspect the fleet rollout'))) { process.exitCode = 1; return; }
     const nodes = await client.service<IOmnitronNodesService>('OmnitronNodes');
-    if (request.kind === 'inspect-stage-fence') {
+    if (request.kind === 'inspect-stage-fence' || request.kind === 'recover-stage-fence') {
       const match = resolveNodeArgument(request.node, await nodes.listNodes());
       if (match.kind !== 'found' || match.node.isLocal) throw Error('Select one unambiguous registered remote node');
+      if (request.kind === 'recover-stage-fence') {
+        const result = await nodes.recoverLegacyStageFence({ action: request.action, nodeId: match.node.id, inspectorArtifact: request.inspector, recordId: request.recordId });
+        if (result.recordId !== request.recordId || result.nodeId !== match.node.id || result.inspectorArtifact !== request.inspector ||
+            result.record.id !== request.recordId || (request.action === 'finish' && result.state !== 'interrupted'))
+          throw Error('Controller did not confirm stage recovery');
+        if (!emitJson(result)) emitInfo('Legacy passive stage ' + result.recordId + ': ' + result.state + (result.decision ? ', command outcome unknown' : ''));
+        return;
+      }
       const report = await nodes.inspectLegacyStageFence({ nodeId: match.node.id, inspectorArtifact: request.inspector,
         ...(request.recordId !== undefined && { recordId: request.recordId }) });
       if (report.nodeId !== match.node.id || report.inspectorArtifact !== request.inspector || report.state !== 'unresolved-legacy-stage' ||

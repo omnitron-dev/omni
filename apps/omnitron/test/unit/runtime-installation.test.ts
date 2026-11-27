@@ -398,13 +398,14 @@ it('does not treat corrupt selection data as an unconfigured installation', asyn
   } finally { await raw.dispose(); }
 });
 
-it('recovers a durable installation lease after its actual process dies', async () => {
+it.each(['ordinary', 'stage'])('recovers a durable %s installation lease after its actual process dies', async kind => {
   const { root, home, store } = await fixture();
   const script = path.join(root, 'lease.mjs');
   const source = fileURLToPath(new URL('../../src/daemon/runtime-installation.ts', import.meta.url));
+  const options = kind === 'stage' ? { stageFenceScope: 'a'.repeat(64) } : undefined;
   await fs.writeFile(script, `import { RuntimeInstallation } from ${JSON.stringify(source)};
     const store = await RuntimeInstallation.open(${JSON.stringify(home)});
-    await store.exclusive(async () => { process.send({ type: 'locked' }); await new Promise(() => setInterval(() => {}, 1000)); });`);
+    await store.exclusive(async () => { process.send({ type: 'locked' }); await new Promise(() => setInterval(() => {}, 1000)); }, ${JSON.stringify(options)});`);
   const child = spawn(process.execPath, ['--import', 'tsx', script], { stdio: ['ignore', 'ignore', 'pipe', 'ipc'] });
   let errors = '';
   child.stderr?.on('data', data => { errors += String(data); });
@@ -418,7 +419,8 @@ it('recovers a durable installation lease after its actual process dies', async 
     await expect(store.exclusive(async () => undefined)).rejects.toThrow('Another runtime operation');
     child.kill('SIGKILL');
     await exited;
-    await expect(store.exclusive(async () => 'recovered')).resolves.toBe('recovered');
+    await expect(store.exclusive(async () => 'wrong incident', { stageFenceScope: 'b'.repeat(64) })).rejects.toThrow('unrelated installation lease');
+    await expect(store.exclusive(async () => 'recovered', options)).resolves.toBe('recovered');
   } finally { if (child.exitCode === null && child.signalCode === null) { child.kill('SIGKILL'); await exited; } }
 });
 

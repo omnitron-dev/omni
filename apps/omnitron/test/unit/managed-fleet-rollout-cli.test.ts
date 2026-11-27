@@ -3,7 +3,7 @@ import { fleetRolloutCommand } from '../../src/commands/fleet-rollout.js';
 
 const rpc = vi.hoisted(() => ({
   listNodes: vi.fn(), planKernelRollout: vi.fn(), startKernelRollout: vi.fn(), getKernelRollout: vi.fn(), reconcileKernelRollout: vi.fn(),
-  inspectLegacyStageFence: vi.fn(),
+  inspectLegacyStageFence: vi.fn(), recoverLegacyStageFence: vi.fn(),
 }));
 const output = vi.hoisted(() => ({ emitJson: vi.fn(() => true), emitInfo: vi.fn(), emitError: vi.fn() }));
 vi.mock('../../src/commands/output.js', () => output);
@@ -41,6 +41,20 @@ it('inspects only the chosen remote fence without creating or modifying a rollou
   rpc.inspectLegacyStageFence.mockResolvedValue({ ...report, nodeId: 'another-node' });
   await fleetRolloutCommand({ kind: 'inspect-stage-fence', node: 'example', inspector });
   expect(output.emitError).toHaveBeenCalledWith(expect.stringContaining('requested machine fence'));
+});
+
+it('requests cold recovery only for the selected remote and confirms the observation ID and inspector', async () => {
+  const inspector = 'e'.repeat(64), recordId = '120c2036-3b31-42ba-934e-eca027275570';
+  rpc.listNodes.mockResolvedValue([{ id, name: 'fixture' }]);
+  const receipt = { recordId, nodeId: id, inspectorArtifact: inspector, record: { id:recordId }, state:'interrupted' };
+  rpc.recoverLegacyStageFence.mockResolvedValue(receipt);
+  const request = {kind:'recover-stage-fence' as const,action:'finish' as const,recordId,node:'fixture',inspector};
+  await fleetRolloutCommand(request);
+  expect(rpc.recoverLegacyStageFence).toHaveBeenCalledExactlyOnceWith({ action:'finish',recordId,nodeId:id,inspectorArtifact:inspector });
+  expect(output.emitJson).toHaveBeenCalledWith(receipt);
+  rpc.recoverLegacyStageFence.mockResolvedValue({...receipt, nodeId:'different'});
+  await fleetRolloutCommand(request);
+  expect(output.emitError).toHaveBeenCalledWith(expect.stringContaining('did not confirm stage recovery'));
 });
 
 it('submits the reviewed plan in the requested node order', async () => {

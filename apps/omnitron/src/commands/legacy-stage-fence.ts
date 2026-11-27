@@ -34,7 +34,7 @@ export function readLegacyStageRecords(leaseBytes: Buffer, executionBytes: Buffe
 }
 
 /** Both advisory locks stay on their original open file descriptions for the entire synchronous observation. */
-export function withExistingStageGuards<T>(directory: string, uid: number, inspect: () => T): T {
+export function lockStageGuards(directory: string, uid: number, readingTerminal = false) {
   const descriptors: number[] = [];
   try {
     const dev = fs.statSync(directory, { bigint: true }).dev;
@@ -54,11 +54,12 @@ export function withExistingStageGuards<T>(directory: string, uid: number, inspe
       }
       return { file, ino: st.ino };
     });
-    const check = () => {
+    const check = (terminal = false) => {
       for (const guard of guards) {
         const st = fs.lstatSync(guard.file, { bigint: true });
         if (!safeGuard(st) || st.ino !== guard.ino) throw Error('Machine fence guard changed during inspection');
       }
+      if (terminal) return;
       try {
         fs.lstatSync(path.join(directory, 'deploy.execution.completed'));
       } catch (error) {
@@ -67,17 +68,23 @@ export function withExistingStageGuards<T>(directory: string, uid: number, inspe
       }
       throw Error('A completion record is present; use its own reconciliation protocol');
     };
-    check();
-    const observation = inspect();
-    check();
-    return observation;
-  } finally {
+    check(readingTerminal);
+    return { check, close: () => { for (const fd of descriptors.reverse()) fs.closeSync(fd); } };
+  } catch (error) {
     for (const fd of descriptors.reverse()) fs.closeSync(fd);
+    throw error;
   }
 }
 
+export function withExistingStageGuards<T>(directory: string, uid: number, inspect: () => T): T {
+  const guards = lockStageGuards(directory, uid);
+  try { const result = inspect(); guards.check(); return result; }
+  finally { guards.close(); }
+}
+
 /** Pin each physical ancestor before opening the next component. Only deployment's fixed lock directory is inspected. */
-function withMachineGuards<T>(inspect: (opened: string) => T): T {
+export function openMachineStageGuards(readingTerminal = false) {
+  if (process.platform !== 'linux' || process.getuid?.() !== 0) throw Error('Machine fence inspection requires the Linux host administrator');
   const directory = DEFAULT_LEASE_TIMING.dir;
   const descriptors: number[] = [];
   try {
@@ -97,31 +104,39 @@ function withMachineGuards<T>(inspect: (opened: string) => T): T {
       if (fs.realpathSync(directory) !== directory || actual.dev !== current.dev || actual.ino !== current.ino)
         throw Error('Machine fence directory changed during inspection');
     };
-    return withExistingStageGuards(opened, 0, () => {
-      checkDirectory();
-      const observation = inspect(opened);
-      checkDirectory();
-      return observation;
-    });
-  } finally {
+    checkDirectory();
+    const guards = lockStageGuards(opened, 0, readingTerminal);
+    return {
+      directory: opened,
+      check: (terminal = false) => { checkDirectory(); guards.check(terminal); },
+      close: () => { guards.close(); for (const fd of descriptors.reverse()) fs.closeSync(fd); },
+    };
+  } catch (error) {
     for (const fd of descriptors.reverse()) fs.closeSync(fd);
+    throw error;
   }
+}
+
+export function readStageMachineIdentity() {
+  const machine = readOwnedServiceBytes('/etc/machine-id', 0, 64).toString();
+  if (!/^[0-9a-f]{32}\n$/.test(machine) || /^0+\n$/.test(machine)) throw Error('Linux machine identity is unavailable');
+  return { bootId: readHostBootIdentity(), machineIdSha256: hash('omnitron-stage-fence-v1\0' + machine.trim()) };
+}
+
+export function readStageFile(directory: string, name: 'deploy.lease' | 'deploy.execution.json', uid = 0) {
+  const file = path.join(directory, name);
+  if (fs.lstatSync(file, { bigint: true }).dev !== fs.statSync(directory, { bigint: true }).dev)
+    throw Error('Machine fence file is on a different filesystem');
+  return readOwnedServiceBytes(file, uid, 4096);
 }
 
 /** Runs in the installed administrative CLI on Linux. No daemon, lease renewal or installation is involved. */
 export function inspectLocalLegacyStageFence(): NativeLegacyStageFence {
-  if (process.platform !== 'linux' || process.getuid?.() !== 0) throw Error('Machine fence inspection requires the Linux host administrator');
-  return withMachineGuards(opened => {
-    const rootDevice = fs.statSync(opened, { bigint: true }).dev;
-    const read = (name: string) => {
-      const file = path.join(opened, name);
-      if (fs.lstatSync(file, { bigint: true }).dev !== rootDevice) throw Error('Machine fence file is on a different filesystem');
-      return readOwnedServiceBytes(file, 0, 4096);
-    };
-    const records = readLegacyStageRecords(read('deploy.lease'), read('deploy.execution.json'));
-    const machine = readOwnedServiceBytes('/etc/machine-id', 0, 64).toString();
-    if (!/^[0-9a-f]{32}\n$/.test(machine) || /^0+\n$/.test(machine)) throw Error('Linux machine identity is unavailable');
-    return { state: 'unresolved-legacy-stage', ...records, bootId: readHostBootIdentity(),
-      machineIdSha256: hash('omnitron-stage-fence-v1\0' + machine.trim()) };
-  });
+  const guard = openMachineStageGuards();
+  try {
+    const records = readLegacyStageRecords(readStageFile(guard.directory, 'deploy.lease'), readStageFile(guard.directory, 'deploy.execution.json'));
+    const identity = readStageMachineIdentity();
+    guard.check();
+    return { state: 'unresolved-legacy-stage', ...records, ...identity };
+  } finally { guard.close(); }
 }

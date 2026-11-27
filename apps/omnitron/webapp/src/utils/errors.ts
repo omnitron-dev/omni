@@ -5,13 +5,21 @@
  * concise, user-facing strings. Never exposes internal codes or stack traces.
  */
 
-/** Return a human-readable message for any RPC / fetch error. */
+import { errorStatus, isRpcTimeout } from './rpc-error';
+
+/** Return a human-readable message for the sign-in request. */
 export function classifyRpcError(err: unknown): string {
   const msg = extractMessage(err);
+  const status = errorStatus(err);
 
-  // Daemon / proxy unreachable
-  if (/502|503|bad gateway|service unavailable/i.test(msg)) {
-    return 'Service unavailable — the daemon is not running. Start it with omnitron dev.';
+  if (/session store is unavailable/i.test(msg)) {
+    return 'The session database is unavailable. Please try again when it responds.';
+  }
+  if (isRpcTimeout(err) || /timeout|timed out/i.test(msg)) {
+    return 'The sign-in request timed out before Console received a result.';
+  }
+  if (status === 502 || status === 503 || /\b50[23]\b|bad gateway|service unavailable/i.test(msg)) {
+    return 'The sign-in service is temporarily unavailable.';
   }
 
   // Network-level failure (browser couldn't reach the server at all)
@@ -22,23 +30,18 @@ export function classifyRpcError(err: unknown): string {
   }
 
   // Wrong credentials
-  if (/401|unauthorized|invalid.*credential|invalid.*password|incorrect.*password/i.test(msg)) {
+  if (status === 401 || /401|unauthorized|invalid.*credential|invalid.*password|incorrect.*password/i.test(msg)) {
     return 'Invalid username or password.';
   }
 
   // Rate limiting
-  if (/429|too many|rate limit/i.test(msg)) {
+  if (status === 429 || /429|too many|rate limit/i.test(msg)) {
     return 'Too many sign-in attempts. Please wait a moment and try again.';
   }
 
   // Generic server error
   if (/500|internal server error/i.test(msg)) {
     return 'The server encountered an error. Please try again.';
-  }
-
-  // Timeout
-  if (/timeout|timed out/i.test(msg)) {
-    return 'The request timed out. The daemon may be overloaded.';
   }
 
   // Fallback: show the raw message but strip HTTP status prefix noise

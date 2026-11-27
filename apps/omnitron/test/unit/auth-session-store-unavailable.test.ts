@@ -72,6 +72,13 @@ beforeAll(async () => {
     .sign(new TextEncoder().encode(SECRET));
 });
 
+it('reports an unavailable database when sign-in cannot read the account', async () => {
+  const auth = new AuthService(brokenDb, SECRET);
+  await expect(auth.signIn({ username: 'fixture', password: 'fixture' })).rejects.toMatchObject({
+    statusCode: 503, code: 'SESSION_STORE_UNAVAILABLE', cause: { code: 'ECONNREFUSED' },
+  });
+});
+
 describe('validateToken', () => {
   it('uses the current account role when a still-valid token carries the old admin role', async () => {
     const db = { ...(emptyDb as Record<string, unknown>), executeTakeFirst: async () => ({ id: 'session-1', expiresAt: new Date(Date.now() + 60_000), role: 'viewer' }) };

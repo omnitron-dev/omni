@@ -60,6 +60,19 @@ function assertSignInUnlocked(until: Date | null | undefined): void {
   if (remaining > 0) throw new Error(`Account temporarily locked — try again in ${Math.ceil(remaining / 1000)}s`);
 }
 
+function unavailableSessionStore(cause: unknown): Error {
+  return Object.assign(new Error('Session store is unavailable'), { code: 'SESSION_STORE_UNAVAILABLE', statusCode: 503, cause });
+}
+
+function rethrowStorageFailure(error: unknown): never {
+  const code = (error as { code?: string } | null)?.code ?? '';
+  // Connection failures, disk full, exhausted connections, lock and statement timeouts.
+  if (/^(?:08[0-9A-Z]{3}|53100|53300|55P03|57014|57P0[123]|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EPIPE)$/.test(code) ||
+      (error instanceof Error && /^(?:connection terminated (?:unexpectedly|due to connection timeout)|timeout exceeded when trying to connect)$/i.test(error.message))) {
+    throw unavailableSessionStore(error);
+  }
+  throw error;
+}
 
 // =============================================================================
 // Auth Service
@@ -113,7 +126,7 @@ export class AuthService {
     const candidate = await this.db.selectFrom('omnitron_users')
       .select(['id', 'passwordHash', 'lockedUntil'])
       .where('username', '=', username)
-      .executeTakeFirst();
+      .executeTakeFirst().catch(rethrowStorageFailure);
     assertSignInUnlocked(candidate?.lockedUntil);
 
     // Hash outside the transaction so slow password checks never hold a row
@@ -175,7 +188,7 @@ export class AuthService {
         session: { id: sessionId, expiresAt },
         accessToken,
       };
-    });
+    }).catch(rethrowStorageFailure);
 
     // Returning from the transaction first commits a recorded failed attempt.
     if (!result) throw new Error('Invalid credentials');
@@ -294,7 +307,7 @@ export class AuthService {
         .where('omnitron_sessions.id', '=', sessionId).where('omnitron_sessions.userId', '=', userId)
         .executeTakeFirst();
     } catch (error) {
-      throw Object.assign(new Error('Session store is unavailable'), { code: 'SESSION_STORE_UNAVAILABLE', statusCode: 503, cause: error });
+      throw unavailableSessionStore(error);
     }
     if (!session || !Number.isFinite(new Date(session.expiresAt).getTime()) || new Date(session.expiresAt).getTime() <= Date.now()) return null;
     return { userId, sessionId, role: session.role };

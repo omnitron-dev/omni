@@ -150,13 +150,24 @@ const nodes = {getNode:id=>({id,host:id,sshPort:22,sshUser:'fixture',createdAt:'
  nodeToSshTarget:async n=>({host:n.host,port:n.sshPort,username:n.sshUser,expectedHostFingerprint:'SHA256:'+(n.id==='qa'?'Q':'P').repeat(43)})};
 const g=await graph(JSON.parse(process.argv[1]),'qa',nodes);console.log(g.steps[0].run);"""
             command = run(["node", "--input-type=module", "-e", code, encoded(spec).decode()])
+            argv = command.strip().split(" ")
+            assert argv[:4] == ["omnitron", "pipeline", "qualify-recovery", "--json"] and len(argv) == 6
+            operations = repo / "apps/omnitron/data/operations"
+            verifier = sha(encoded({"protocol": 2,
+                                    "receiver": sha((modules / "services/recovery-qualification.js").read_bytes()),
+                                    "files": [sha((operations / name).read_bytes()) for name in
+                                              ("recovery-qualification.py", "runtime-identity.js")]}))
+            assert argv[4] == verifier
             env = {**os.environ, "HOME": str(root)}
             def execute():
-                return subprocess.run(["/bin/sh", "-ec", command], check=False, timeout=300, capture_output=True, env=env)
+                return subprocess.run(["node", str(modules / "cli/omnitron.js"), *argv[1:]], check=False, timeout=300, capture_output=True, env=env)
             ok = execute()
             if ok.returncode != 0:
                 raise RuntimeError(ok.stderr.decode())
-            receipt = json.loads(ok.stdout)
+            result = json.loads(ok.stdout)
+            assert result["ok"] is True
+            receipt = result["data"]
+            assert receipt["protocol"] == 2 and receipt["verifier"] == argv[4]
             assert len(receipt["phases"]) == 10 and receipt["inputs"] == sha(encoded(spec))
             (root / ".omnitron/recovery-inputs" / spec["candidate"]["artifacts"]["ledger"]).write_bytes(b"damaged")
             failed = execute()

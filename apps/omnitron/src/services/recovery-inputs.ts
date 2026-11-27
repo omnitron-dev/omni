@@ -9,7 +9,7 @@ import { loadRelease } from '../release/load.js';
 import { stableJson } from '../shared/canonical-json.js';
 import type { PipelineDef } from '../shared/dto/pipelines.js';
 import { readRecoveryQualificationProbe, readRecoveryQualificationRelease, readRecoveryStaticIndex,
-  recoveryProbePath, validateRecoveryQualification, type RecoveryQualificationExpected } from './recovery-qualification.js';
+  recoveryProbePath, installedRecoveryCommand } from './recovery-qualification.js';
 
 const exec = promisify(execFile);
 const limit = 8 * 1024 ** 3;
@@ -31,8 +31,7 @@ export async function stageRecoveryInputs(definitionFile: string, store: string,
   const step = def.steps?.[0];
   if (def.steps?.length !== 1 || step?.name !== 'qualify-recovery' || step?.kind !== 'shell' || typeof step.run !== 'string')
     throw Error('Expected the exact Pipeline definition emitted by the controller');
-  const spec = JSON.parse(Buffer.from(step.run.split(' ').at(-1)!, 'base64').toString()) as RecoveryQualificationExpected;
-  validateRecoveryQualification(spec);
+  const { spec } = await installedRecoveryCommand(step);
   const roles = ['incumbent', 'candidate', 'recovery'] as const;
   const releases = await Promise.all(roles.map(async role => {
     const loaded = await loadRelease(spec[role].id, store);

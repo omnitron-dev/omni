@@ -1564,6 +1564,25 @@ studio.command('connect [project]').description('Connect a local agent to one Co
 
 const pipeline = program.command('pipeline').description('CI/CD pipeline management');
 
+pipeline.command('qualify-recovery <verifier> <input>')
+  .allowExcessArguments(false)
+  .description('Run the digest-pinned recovery verifier on the enrolled Linux QA host')
+  .structuredAction(async (verifier: string, input: string) => {
+    const { emitJson } = await import('../commands/output.js');
+    const { qualifyRecoveryOnHost } = await import('../services/recovery-qualification.js');
+    const abort = new AbortController();
+    const cancel = () => abort.abort();
+    process.once('SIGINT', cancel);
+    process.once('SIGTERM', cancel);
+    try {
+      const result = await qualifyRecoveryOnHost(verifier, input, abort.signal);
+      if (!emitJson(result)) process.stdout.write(JSON.stringify(result) + '\n');
+    } finally {
+      process.off('SIGINT', cancel);
+      process.off('SIGTERM', cancel);
+    }
+  });
+
 pipeline
   .command('list')
   .description('List all pipelines')

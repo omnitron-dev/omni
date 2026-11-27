@@ -1,12 +1,5 @@
-export interface TargetRuntime {
-  platform: string;
-  arch: string;
-  node: string;
-  abi: string;
-  /** Bind the executable as well as its reported version. */
-  executableSha256: string;
-  libc: string | null;
-}
+import type { TargetRuntime } from '../../data/operations/runtime-identity.js';
+export type { TargetRuntime } from '../../data/operations/runtime-identity.js';
 
 /** Compare all fields, including the actual executable; a version string alone
  * cannot establish native-addon or sealed-runtime compatibility. */
@@ -45,13 +38,4 @@ export function assertReleaseLoaderEnvironment(env?: Readonly<Record<string, unk
   if (key) throw Error('Verified release execution refuses external loader environment: ' + key);
 }
 
-/** Self-contained: run this under the node binary of the actual execution owner. */
-export async function targetRuntime(): Promise<TargetRuntime> {
-  const { createHash } = await import('node:crypto');
-  const { createReadStream } = await import('node:fs');
-  const hash = createHash('sha256');
-  for await (const part of createReadStream(process.execPath)) hash.update(part);
-  const header = (process.report?.getReport() as { header?: { glibcVersionRuntime?: string } } | undefined)?.header;
-  return { platform: process.platform, arch: process.arch, node: process.version, abi: process.versions.modules,
-    executableSha256: hash.digest('hex'), libc: process.platform === 'linux' ? header?.glibcVersionRuntime ?? 'non-glibc' : null };
-}
+export { targetRuntime } from '../../data/operations/runtime-identity.js';

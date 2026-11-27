@@ -1,12 +1,13 @@
 import { execFile } from 'node:child_process';
 import { constants } from 'node:fs';
-import { lstat, open, readFile, readdir, realpath } from 'node:fs/promises';
+import { chmod, lstat, mkdtemp, open, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { homedir } from 'node:os';
 import path from 'node:path';
 import { isDeepStrictEqual, promisify } from 'node:util';
 import type { LoadedRelease } from '../release/load.js';
 import { isReleaseId } from '../release/load.js';
-import { targetRuntime } from '../release/target-runtime.js';
+import { ExecutionEngine } from '@xec-sh/core';
 import { stableJson } from '../shared/canonical-json.js';
 import type { Pipeline, PipelineDef, PipelineRun, PipelineStep } from '../shared/dto/pipelines.js';
 import type { SSHTarget } from '../execution/execution.service.js';
@@ -40,7 +41,16 @@ const oid = (v: unknown): v is string => typeof v === 'string' && /^(?:[0-9a-f]{
 const label = (v: unknown): v is string => typeof v === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(v);
 const hash = (v: string | Buffer) => createHash('sha256').update(v).digest('hex');
 const exec = promisify(execFile);
-const program = new URL('../../data/operations/recovery-qualification.py', import.meta.url);
+const qualifierFiles = ['recovery-qualification.py', 'runtime-identity.js'] as const;
+const qualifierPrefix = 'omnitron pipeline qualify-recovery --json';
+const inputLimit = 96 * 1024;
+
+async function installedQualifier() {
+  const files = await Promise.all(qualifierFiles.map(file => readFile(new URL('../../data/operations/' + file, import.meta.url))));
+  const receiver = await readFile(new URL(import.meta.url));
+  const verifier = hash(stableJson({ protocol: 2, receiver: hash(receiver), files: files.map(hash) }));
+  return { files, verifier };
+}
 export const recoveryProbePath = 'scripts/rehearse-post-write.py';
 export const recoveryPolicyPath = '.omnitron/recovery-qualification.json';
 const phases = ['full/baseline', 'full/candidate-write', 'full/recovery-read', 'full/recovery-write', 'full/recovery-replay',
@@ -139,16 +149,24 @@ export async function readRecoveryQualificationRelease(release: LoadedRelease, s
   return { id, manifestSha256, commit: manifest.project.commit, tree, artifacts, staticsIndexSha256 };
 }
 
+function exactFields(value: unknown, fields: string[]) {
+  return !!value && typeof value === 'object' && !Array.isArray(value) && isDeepStrictEqual(Object.keys(value).sort(), fields.sort());
+}
+
 export function validateRecoveryQualification(spec: RecoveryQualificationExpected) {
+  requireProof(exactFields(spec, ['project', 'stack', 'nodeId', 'incumbent', 'candidate', 'recovery', 'addedMigrations', 'probe']) &&
+    exactFields(spec.probe, ['commit', 'sha256', 'image', 'recordSets']), 'unexpected qualification request fields');
   requireProof(label(spec.project) && label(spec.stack) && label(spec.nodeId) && spec.nodeId !== 'local', 'invalid production scope');
   requireProof(Array.isArray(spec.addedMigrations) && spec.addedMigrations.length >= 2 && spec.addedMigrations.length <= 64 &&
     spec.addedMigrations.every(physicalPath) && new Set(spec.addedMigrations).size === spec.addedMigrations.length,
     'exact ordered migration additions required');
-  requireProof(oid(spec.probe.commit) && sha(spec.probe.sha256) && /^sha256:[a-f0-9]{64}$/.test(spec.probe.image) &&
+  requireProof(oid(spec.probe.commit) && sha(spec.probe.sha256) && typeof spec.probe.image === 'string' && /^sha256:[a-f0-9]{64}$/.test(spec.probe.image) &&
     recordSets(spec.probe.recordSets), 'invalid immutable probe');
   const releases = [spec.incumbent, spec.candidate, spec.recovery];
   for (const release of releases) {
-    requireProof(isReleaseId(release.id) && sha(release.manifestSha256) && oid(release.commit) && oid(release.tree) &&
+    requireProof(exactFields(release, ['id', 'commit', 'tree', 'manifestSha256', 'artifacts', 'staticsIndexSha256']) &&
+      release.artifacts && typeof release.artifacts === 'object' && !Array.isArray(release.artifacts) &&
+      typeof release.id === 'string' && isReleaseId(release.id) && sha(release.manifestSha256) && oid(release.commit) && oid(release.tree) &&
       (release.staticsIndexSha256 === null || sha(release.staticsIndexSha256)) &&
       Object.keys(release.artifacts).length > 0 && Object.keys(release.artifacts).length <= 256 &&
       Object.entries(release.artifacts).every(([app, sum]) => label(app) && sha(sum)), 'invalid release closure');
@@ -167,28 +185,99 @@ function endpoint(node: INode, ssh: SSHTarget) {
 }
 
 const qaIdentity = 'OMNITRON_RECOVERY_QA_ENDPOINT';
-export function requireRecoveryQaEndpoint(step: PipelineStep, node: INode, ssh: SSHTarget) {
-  if (step.env?.[qaIdentity]) requireProof(hash(stableJson(endpoint(node, ssh))) === step.env[qaIdentity],
-    'the execution adapter resolved a different QA endpoint');
+const liveIdentity = 'OMNITRON_RECOVERY_LIVE_ENDPOINT';
+
+function decodeQualificationInput(encoded: string): RecoveryQualificationExpected {
+  requireProof(typeof encoded === 'string' && encoded.length <= inputLimit * 4 / 3 && /^[A-Za-z0-9_-]+$/.test(encoded),
+    'invalid encoded qualification input');
+  const bytes = Buffer.from(encoded, 'base64url');
+  const spec = JSON.parse(bytes.toString('utf8')) as RecoveryQualificationExpected;
+  validateRecoveryQualification(spec);
+  requireProof(Buffer.from(stableJson(spec)).toString('base64url') === encoded, 'expected canonical qualification JSON');
+  return spec;
+}
+
+/** Decode only the installed command, rejecting historical executable-source graphs even before staging any inputs. */
+export async function installedRecoveryCommand(step: PipelineStep) {
+  requireProof(step.kind === 'shell' && step.name === 'qualify-recovery' && typeof step.run === 'string' &&
+    label(step.nodeId) && step.nodeId !== 'local' && step.cwd === undefined && !step.dependsOn && !step.condition &&
+    step.retries === 0 && step.timeout === 1_800_000 &&
+    exactFields(step.env, [qaIdentity, liveIdentity]) && sha(step.env?.[qaIdentity]) && sha(step.env?.[liveIdentity]),
+    'expected the pinned installed QA command on a separate registered node');
+  const [executable, group, action, format, verifier, encoded] = step.run.split(' ');
+  requireProof(executable === 'omnitron' && group === 'pipeline' && action === 'qualify-recovery' && format === '--json' && sha(verifier) && encoded &&
+    step.run === qualifierPrefix + ' ' + verifier + ' ' + encoded, 'unsupported QA command; regenerate the recovery Pipeline');
+  const spec = decodeQualificationInput(encoded);
+  requireProof(step.nodeId !== spec.nodeId && (await installedQualifier()).verifier === verifier,
+    'QA verifier differs; install the reviewed Omnitron build and regenerate the recovery Pipeline');
+  return { spec, verifier, encoded, command: executable, args: [group, action, format, verifier, encoded] };
+}
+
+export function isRecoveryQaStep(step: PipelineStep) {
+  return !!step.env && (Object.hasOwn(step.env, qaIdentity) || Object.hasOwn(step.env, liveIdentity));
+}
+
+async function registeredEndpoint(nodes: Nodes, id: string) {
+  const node = nodes.getNode(id);
+  requireProof(node && node.id === id, 'registered node unavailable: ' + id);
+  return endpoint(node, await nodes.nodeToSshTarget(node));
+}
+
+function requireSeparateEndpoints(qa: ReturnType<typeof endpoint>, live: ReturnType<typeof endpoint>) {
+  requireProof(live.host !== qa.host && live.fingerprint !== qa.fingerprint, 'QA shares the production endpoint or host key');
+}
+
+export async function requireRecoveryQaEndpoint(step: PipelineStep, node: INode, ssh: SSHTarget, liveId: string, nodes: Nodes) {
+  const qa = endpoint(node, ssh);
+  const live = await registeredEndpoint(nodes, liveId);
+  requireSeparateEndpoints(qa, live);
+  requireProof(hash(stableJson(qa)) === step.env?.[qaIdentity] && hash(stableJson(live)) === step.env?.[liveIdentity],
+    'the execution adapter resolved a different QA or production endpoint');
+}
+
+/** Only installed, digest-matched files become executable. SSH supplies two data arguments. */
+export async function qualifyRecoveryOnHost(verifier: string, encoded: string, signal?: AbortSignal) {
+  const spec = decodeQualificationInput(encoded);
+  const installed = await installedQualifier();
+  requireProof(sha(verifier) && verifier === installed.verifier,
+    'QA verifier differs from the controller; install the reviewed Omnitron build');
+  requireProof(process.platform === 'linux', 'Linux QA node required');
+  const dir = await mkdtemp('/var/tmp/omnitron-qa-verifier-');
+  const engine = new ExecutionEngine({ defaultTimeout: 0 });
+  try {
+    // A package update cannot replace the bytes between verification and use.
+    // The image's non-root reader can access the bind-mounted runtime file.
+    for (const [i, file] of qualifierFiles.entries()) {
+      const snapshot = path.join(dir, file);
+      await writeFile(snapshot, installed.files[i]!, { flag: 'wx', mode: 0o400 });
+      if (file === 'runtime-identity.js') await chmod(snapshot, 0o444);
+    }
+    const result = await engine.execute({ command: '/usr/bin/python3', args: ['-I', '-S', '-B', path.join(dir, qualifierFiles[0])],
+      envMode: 'replace', env: { HOME: homedir(), PATH: '/usr/bin:/bin', LC_ALL: 'C' },
+      stdin: stableJson(spec), shell: false, adapter: 'local', timeout: 0, nothrow: true, maxBuffer: 16 * 1024,
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(1_800_000)]) : AbortSignal.timeout(1_800_000) });
+    requireProof(result.exitCode === 0, result.stderr.trim().slice(0, 500) || 'QA worker failed');
+    const receipt = JSON.parse(result.stdout);
+    requireProof(receipt.protocol === 1 && receipt.inputs === hash(stableJson(spec)), 'invalid installed worker reply');
+    return { ...receipt, protocol: 2, verifier };
+  } finally {
+    try { await engine.dispose(); } finally { await rm(dir, { recursive: true, force: true }); }
+  }
 }
 
 export async function recoveryQualificationDefinition(spec: RecoveryQualificationExpected, qaNodeId: string, nodes: Nodes): Promise<PipelineDef> {
   validateRecoveryQualification(spec);
   requireProof(label(qaNodeId) && qaNodeId !== 'local' && qaNodeId !== spec.nodeId, 'separate enrolled QA node required');
-  const pins = await Promise.all([spec.nodeId, qaNodeId].map(async id => {
-    const node = nodes.getNode(id);
-    requireProof(node && node.id === id, 'registered node unavailable: ' + id);
-    return endpoint(node, await nodes.nodeToSshTarget(node));
-  }));
-  const [source, qa] = pins as [typeof pins[number], typeof pins[number]];
-  requireProof(source.host !== qa.host && source.fingerprint !== qa.fingerprint, 'QA shares the production endpoint or host key');
-  const worker = (await readFile(program)).toString('base64');
-  const inputs = Buffer.from(stableJson(spec)).toString('base64');
-  const runtime = Buffer.from('(' + targetRuntime.toString() + ')().then(x=>console.log(JSON.stringify(x)))').toString('base64');
+  const [source, qa] = await Promise.all([registeredEndpoint(nodes, spec.nodeId), registeredEndpoint(nodes, qaNodeId)]);
+  requireSeparateEndpoints(qa, source);
+  const { verifier } = await installedQualifier();
+  const json = stableJson(spec);
+  requireProof(Buffer.byteLength(json) <= inputLimit - 128, 'qualification input exceeds Pipeline size limit');
+  const inputs = Buffer.from(json).toString('base64url');
   return { name: 'recovery-qualification-' + hash(stableJson(spec)), description: 'Verify post-write application recovery on isolated synthetic state.',
     triggers: [{ type: 'manual', config: {} }], steps: [{ name: 'qualify-recovery', kind: 'shell', nodeId: qaNodeId, retries: 0, timeout: 1_800_000,
-      env: { [qaIdentity]: hash(stableJson(qa)), OMNITRON_RECOVERY_LIVE_ENDPOINT: hash(stableJson(source)) },
-      run: "/usr/bin/python3 -I -B -c 'import base64,sys;exec(base64.b64decode(sys.argv.pop(1),validate=True))' " + [worker, runtime, inputs].join(' ') }] };
+      env: { [qaIdentity]: hash(stableJson(qa)), [liveIdentity]: hash(stableJson(source)) },
+      run: qualifierPrefix + ' ' + verifier + ' ' + inputs }] };
 }
 
 /** Rebuild the installed worker and compare to the graph in the durable admission, not the current pipeline. */
@@ -205,8 +294,11 @@ export async function inspectRecoveryQualification(runId: string, spec: Recovery
     saved.name === step.name && saved.nodeId === step.nodeId && saved.status === 'success' && saved.exitCode === 0 &&
     !saved.error && !saved.stderr && saved.outputTruncated === false && saved.output && Buffer.byteLength(saved.output) <= 4096,
     'a complete approved run of the installed QA worker on the registered receiver is required');
-  const result = JSON.parse(saved.output) as { protocol?: number; challenge?: string; inputs?: string; phases?: {phase: string; sha256: string}[] };
-  requireProof(result.protocol === 1 && typeof result.challenge === 'string' && /^[a-f0-9]{48}$/.test(result.challenge) &&
+  const output = JSON.parse(saved.output) as { ok?: boolean; data?: {
+    protocol?: number; verifier?: string; challenge?: string; inputs?: string; phases?: {phase: string; sha256: string}[];
+  } };
+  const result = output?.data;
+  requireProof(output?.ok === true && result?.protocol === 2 && result.verifier === (await installedRecoveryCommand(step)).verifier && typeof result.challenge === 'string' && /^[a-f0-9]{48}$/.test(result.challenge) &&
     result.inputs === hash(stableJson(spec)) && Array.isArray(result.phases) && result.phases.length === phases.length &&
     result.phases.every((entry, i) => entry.phase === phases[i] && sha(entry.sha256)), 'incomplete native qualification receipt');
   return hash(stableJson({ runId, definition: definition.revision, review: run.review.digest, result }));

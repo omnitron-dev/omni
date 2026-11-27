@@ -1,6 +1,6 @@
 import { admitPipeline, assertParameters, pipelineAdmissionCheck, readAdmission, readPrepareRun, readStartRun, type PipelineAdmission } from './pipeline-admission.js';
 import { completedStep, recoverableStep, recoveryReview } from './pipeline-recovery.js';
-import { inspectRecoveryQualification, recoveryQualificationDefinition, requireRecoveryQaEndpoint,
+import { inspectRecoveryQualification, recoveryQualificationDefinition, requireRecoveryQaEndpoint, isRecoveryQaStep, installedRecoveryCommand,
   type RecoveryQualificationExpected } from './recovery-qualification.js';
 import type { InspectPhysicalRestore, PhysicalRestoreEvidence } from '../shared/dto/physical-restore.js';
 import { physicalRestoreRequest } from './physical-restore-graph.js';
@@ -434,6 +434,7 @@ export class PipelineService {
         if (completed.has(step.name)) continue;
         abort.signal.throwIfAborted();
         const dependencies = step.dependsOn?.filter(name => !completed.has(name));
+        const qualification = isRecoveryQaStep(step) ? await installedRecoveryCommand(step) : undefined;
         if (step.kind === 'deploy') {
           if (!this.projects?.resolvePipelineDeployment) throw Error('Native deployment admission is unavailable');
           const operation = await this.projects.resolvePipelineDeployment(step.target);
@@ -451,11 +452,14 @@ export class PipelineService {
           const node = this.nodes?.getNode(step.nodeId);
           if (!node || node.isLocal) throw new Error(`Unknown remote node: ${step.nodeId}`);
           const ssh = await this.nodes!.nodeToSshTarget(node);
-          requireRecoveryQaEndpoint(step, node, ssh);
+          if (qualification) await requireRecoveryQaEndpoint(step, node, ssh, qualification.spec.nodeId, this.nodes!);
           target = { type: 'ssh', ...sshConfig(ssh) };
         }
         let command: Command;
-        if (step.kind === 'release') {
+        if (qualification) {
+          if (!target || Object.keys(params).length) throw Error('Recovery qualification requires the fixed remote QA admission');
+          command = { command: qualification.command, args: qualification.args, shell: false, adapter: 'ssh', adapterOptions: target };
+        } else if (step.kind === 'release') {
           if (!this.projects || !this.assertLifecycle) throw new Error('Release pipeline admission is unavailable on this daemon');
           const operation = await this.projects.resolvePipelineRelease(step.target, {
             ...(step.cwd ? { cwd: step.cwd } : {}), ...(step.args ? { args: step.args } : {}), env,

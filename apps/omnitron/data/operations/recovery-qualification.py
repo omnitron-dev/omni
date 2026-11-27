@@ -1,5 +1,4 @@
 """Native isolated qualification of write-preserving application recovery."""
-import base64
 import hashlib
 import json
 import os
@@ -283,7 +282,7 @@ def verify_runtime(info, target, observed):
           HEX.fullmatch(target["executableSha256"]), "QA executable, platform, ABI or libc differs from the release")
 
 
-def exercise(spec, roles, probe, manifests, runtime_program):
+def exercise(spec, roles, probe, manifests):
     image = spec["probe"]["image"]
     info = parse(docker(["image", "inspect", "--format", "{{json .}}", image]))
     check(info["Id"] == image and info["Os"] == "linux" and not info["Config"].get("Volumes"),
@@ -291,8 +290,9 @@ def exercise(spec, roles, probe, manifests, runtime_program):
     observed = parse(docker(["run", "--rm", "--pull=never", "--network=none", "--read-only", "--cap-drop=ALL",
                              "--security-opt=no-new-privileges", "--user=65532:65532", "--pids-limit=16",
                              "--memory=256m", "--memory-swap=256m", "--cpus=1", "--log-driver=none", "--no-healthcheck",
+                             "--mount", "type=bind,readonly,src=" + str(Path(__file__).with_name("runtime-identity.js")) + ",dst=/runtime.mjs",
                              "--entrypoint=/usr/bin/timeout", image, "--signal=KILL", "15", "/usr/bin/env", "-i",
-                             "PATH=/usr/bin:/bin", "/usr/bin/node", "--input-type=module", "-e", runtime_program], timeout=20))
+                             "PATH=/usr/bin:/bin", "/usr/bin/node", "/runtime.mjs"], timeout=20))
     for manifest in manifests.values():
         verify_runtime(info, manifest["builtWith"]["target"], observed)
     values, summaries = {}, []
@@ -348,7 +348,7 @@ def exercise(spec, roles, probe, manifests, runtime_program):
     return values, {"protocol": 1, "challenge": challenge, "phases": summaries, "inputs": digest(encoded(spec))}
 
 
-def main(spec, runtime_program):
+def main(spec):
     check(sys.platform == "linux", "Linux QA node required")
     os.umask(0o022)
     with tempfile.TemporaryDirectory(prefix="omni-recovery-", dir="/var/tmp") as scratch:
@@ -365,7 +365,7 @@ def main(spec, runtime_program):
         claimed = spec["addedMigrations"]
         check(manifests["recovery"]["migrations"] == candidate and all(candidate.get(k) == h for k, h in live.items()) and
               sorted(set(candidate) - set(live)) == sorted(claimed), "Staged migration inventories differ")
-        values, receipt = exercise(spec, roles, probe, manifests, runtime_program)
+        values, receipt = exercise(spec, roles, probe, manifests)
         compare_observations(values, claimed, live)
         print(json.dumps(receipt, indent=2))
 
@@ -375,7 +375,9 @@ if __name__ == "__main__":
         raise InterruptedError("QA qualification cancelled")
     signal.signal(signal.SIGTERM, cancel)
     try:
-        main(parse(base64.b64decode(sys.argv[2], validate=True)), base64.b64decode(sys.argv[1], validate=True).decode())
+        raw = sys.stdin.buffer.read(96 * 1024 + 1)
+        check(len(raw) <= 96 * 1024 and len(sys.argv) == 1, "Expected one bounded local JSON request")
+        main(parse(raw))
     except (ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError) as error:
         print("Recovery qualification failed: " + str(error)[:300], file=sys.stderr)
         sys.exit(1)

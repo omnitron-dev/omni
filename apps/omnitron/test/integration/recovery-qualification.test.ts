@@ -11,7 +11,7 @@ import type { ExecutionService } from '../../src/execution/execution.service.js'
 import { stableJson } from '../../src/shared/canonical-json.js';
 import type { PipelineDef } from '../../src/shared/dto/pipelines.js';
 import { PipelineService } from '../../src/services/pipeline.service.js';
-import { recoveryPolicyPath, recoveryProbePath, readRecoveryQualificationProbe, readRecoveryStaticIndex,
+import { installedRecoveryCommand, qualifyRecoveryOnHost, recoveryQualificationDefinition, recoveryPolicyPath, recoveryProbePath, readRecoveryQualificationProbe, readRecoveryStaticIndex,
   type RecoveryQualificationExpected } from '../../src/services/recovery-qualification.js';
 import { createPipelineTestDatabase } from '../fixtures/pipeline-database.js';
 import { loadRelease } from '../../src/release/load.js';
@@ -30,7 +30,7 @@ function fixture(): RecoveryQualificationExpected {
 describe('native recovery qualification', () => {
   it('runs the isolated worker regression with separately reopened synthetic SQL data and immutable inputs', async () => {
     const file = fileURLToPath(new URL('../runtime/recovery-qualification.py', import.meta.url));
-    const result = await exec('python3', ['-I', '-B', file]);
+    const result = await exec('python3', ['-I', '-S', '-B', file]);
     expect(result.stderr).toContain('OK');
   });
 
@@ -40,15 +40,16 @@ describe('native recovery qualification', () => {
       'full/recovery-restart', 'partial/baseline', 'partial/candidate-partial', 'partial/recovery-complete', 'partial/recovery-repeat'];
     // A test execution adapter supplies the simulated receiver reply. Real checks inside the worker
     // are exercised separately. Identical stdout from a substituted command must never open admission.
-    const reply = JSON.stringify({ protocol: 1, challenge: 'f'.repeat(48), phases: phases.map(phase => ({ phase, sha256: hex(phase) })),
-      inputs: hex(stableJson(spec)) }, null, 2);
-    const execute = vi.fn(async () => ({ exitCode: 0, stdout: reply, stderr: '', duration: 1 }));
+    const receipt = { protocol: 2, challenge: 'f'.repeat(48), phases: phases.map(phase => ({ phase, sha256: hex(phase) })),
+      inputs: hex(stableJson(spec)) };
+    const execute = vi.fn(async (command: { args: string[] }) => ({ exitCode: 0, stderr: '', duration: 1,
+      stdout: JSON.stringify({ ok: true, data: { ...receipt, verifier: command.args[3] } }) }));
     const service = new PipelineService(db, createNullLogger(), { execute } as unknown as ExecutionService);
     const nodes = ['live', 'qa'].map((id, i) => ({ id, isLocal: false, host: '192.0.2.' + (i + 1),
       sshPort: 22, sshUser: 'qa', createdAt: '2020-01-01T00:00:00Z' }));
-    let qaPin = 'B';
+    let qaPin = 'B', livePin = 'A';
     service.configure({ getNode: id => nodes.find(node => node.id === id) as never, nodeToSshTarget: async node =>
-      ({ host: node.host, port: node.sshPort, username: node.sshUser, expectedHostFingerprint: 'SHA256:' + (node.id === 'qa' ? qaPin : 'A').repeat(43) }) });
+      ({ host: node.host, port: node.sshPort, username: node.sshUser, expectedHostFingerprint: 'SHA256:' + (node.id === 'qa' ? qaPin : livePin).repeat(43) }) });
     async function complete(def: PipelineDef) {
       const registered = await service.createPipeline(def);
       const prepared = await service.prepareRun({ id: registered.id, runId: randomUUID(), expectedRevision: registered.revision }, 'owner');
@@ -59,6 +60,20 @@ describe('native recovery qualification', () => {
     try {
       const def = await service.recoveryQualificationDefinition(spec, 'qa');
       const run = await complete(def);
+      const requested = await installedRecoveryCommand(def.steps[0]!);
+      expect(requested.spec).toEqual(spec);
+      expect(execute).toHaveBeenCalledWith(expect.objectContaining({ command: 'omnitron', args: requested.args, shell: false, adapter: 'ssh' }));
+      expect(requested.args).toEqual(['pipeline', 'qualify-recovery', '--json', expect.stringMatching(/^[a-f0-9]{64}$/), Buffer.from(stableJson(spec)).toString('base64url')]);
+      const { verifier, encoded } = requested;
+      const packageFiles = await Promise.all(['../../src/services/recovery-qualification.ts',
+        '../../data/operations/recovery-qualification.py', '../../data/operations/runtime-identity.js'].map(async file =>
+        createHash('sha256').update(await readFile(new URL(file, import.meta.url))).digest('hex')));
+      expect(verifier).toBe(hex(stableJson({ protocol: 2, receiver: packageFiles[0], files: packageFiles.slice(1) })));
+      await expect(qualifyRecoveryOnHost('0'.repeat(64), encoded)).rejects.toThrow('verifier differs');
+      const unreviewed = Buffer.from(stableJson({ ...spec, command: '/example' })).toString('base64url');
+      await expect(qualifyRecoveryOnHost(verifier, unreviewed)).rejects.toThrow('unexpected qualification request fields');
+      await expect(qualifyRecoveryOnHost(verifier, encoded + '=')).rejects.toThrow('invalid encoded');
+      if (process.platform !== 'linux') await expect(qualifyRecoveryOnHost(verifier, encoded)).rejects.toThrow('Linux QA node');
       const evidence = await service.inspectRecoveryQualification(run, spec);
       expect(evidence).toMatch(/^[a-f0-9]{64}$/);
       expect(await service.inspectRecoveryQualification(run, spec)).toBe(evidence);
@@ -74,11 +89,39 @@ describe('native recovery qualification', () => {
       qaPin = 'C';
       await expect(service.inspectRecoveryQualification(run, spec)).rejects.toThrow('approved run');
       qaPin = 'B';
-      const wrong = await complete({ ...def, name: 'substituted', steps: [{ ...def.steps[0]!, run: 'true' } as PipelineDef['steps'][number]] });
-      await expect(service.inspectRecoveryQualification(wrong, spec)).rejects.toThrow('approved run');
+      for (const [index, changed] of [
+        { run: 'true' },
+        { run: '/usr/bin/python3 -I -B -c historical-body' },
+        { kind: 'xec', run: 'console.log(0)' },
+      ].entries()) {
+        await expect(complete({ ...def, name: 'substituted-' + index,
+          steps: [{ ...def.steps[0]!, ...changed } as PipelineDef['steps'][number]] })).rejects.toThrow(/QA command/);
+      }
+      livePin = 'D';
+      await expect(complete({ ...def, name: 'changed-live-endpoint' })).rejects.toThrow('different QA or production endpoint');
+      livePin = 'A';
+      expect(execute).toHaveBeenCalledTimes(1);
+      receipt.protocol = 1;
+      const current = (await service.getRunStatus(run))!;
+      const prepared = await service.prepareRun({ id: current.pipelineId, runId: randomUUID(), expectedRevision: current.review!.definitionRevision }, 'owner');
+      const legacy = prepared.id;
+      await service.startRun({ runId: legacy, expectedDigest: prepared.review!.digest }, 'owner');
+      await vi.waitFor(async () => expect((await service.getRunStatus(legacy))?.status).toBe('success'));
+      await expect(service.inspectRecoveryQualification(legacy, spec)).rejects.toThrow('incomplete native qualification receipt');
       qaPin = 'A';
       await expect(service.inspectRecoveryQualification(run, spec)).rejects.toThrow('shares the production endpoint');
     } finally { await service.dispose(); await db.destroy(); }
+  });
+
+  it('refuses an incompatible installed verifier through the operator CLI before opening the input store', async () => {
+    const home = await mkdtemp(path.join(os.tmpdir(), 'omni-incompatible-qa-'));
+    try {
+      const cli = fileURLToPath(new URL('../../src/cli/omnitron.ts', import.meta.url));
+      const encoded = Buffer.from(stableJson(fixture())).toString('base64url');
+      await expect(exec(process.execPath, ['--import', 'tsx', cli, 'pipeline', 'qualify-recovery', '--json', '0'.repeat(64), encoded], {
+        env: { ...process.env, HOME: home }, timeout: 20_000,
+      })).rejects.toMatchObject({ code: 1, stdout: '', stderr: expect.stringContaining('verifier differs from the controller') });
+    } finally { await rm(home, { recursive: true, force: true }); }
   });
 
   it('binds immutable probe-only descendants even in a detached checkout; rejects unrelated changes and symlinks', async () => {
@@ -112,8 +155,12 @@ describe('native recovery qualification', () => {
         spec[role] = await readRecoveryQualificationRelease(await loadRelease(id, store), root);
       }
       const file = path.join(store, 'pipeline.json');
-      await writeFile(file, JSON.stringify({ steps: [{ name: 'qualify-recovery', kind: 'shell',
-        run: 'fixture ' + Buffer.from(stableJson(spec)).toString('base64') }] }));
+      const definition = await recoveryQualificationDefinition(spec, 'qa', {
+        getNode: id => ({ id, host: id, isLocal: false, sshPort: 22, sshUser: 'test', createdAt: '2020-01-01' }) as never,
+        nodeToSshTarget: async node => ({ host: node.host, port: 22, username: 'test',
+          expectedHostFingerprint: 'SHA256:' + (node.id === 'qa' ? 'X' : 'Y').repeat(43) }),
+      });
+      await writeFile(file, JSON.stringify(definition));
       const home = path.join(await realpath(root), 'qa-home'); await mkdir(home);
       vi.stubEnv('HOME', home);
       try {

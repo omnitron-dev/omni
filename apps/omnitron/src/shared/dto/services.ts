@@ -752,6 +752,7 @@ export interface IOmnitronSecretsService {
 export type { KernelRollout, KernelRolloutTarget } from './nodes.js';
 
 export interface IOmnitronNodesService {
+  inspectLegacyStageFence(data: { nodeId: string; inspectorArtifact: string }): Promise<import('./nodes.js').LegacyStageFenceObservation>;
   listKernelBuilds(): Promise<import('./kernel-catalog.js').KernelCatalogEntry[]>;
   planKernelRollout(data: { commit: string; nodeIds?: string[]; requestId?: string; stage?: boolean }): Promise<import('./nodes.js').KernelRollout>;
   startKernelRollout(data: { id: string }): Promise<import('./nodes.js').KernelRollout>;

@@ -3,6 +3,7 @@ import { fleetRolloutCommand } from '../../src/commands/fleet-rollout.js';
 
 const rpc = vi.hoisted(() => ({
   listNodes: vi.fn(), planKernelRollout: vi.fn(), startKernelRollout: vi.fn(), getKernelRollout: vi.fn(), reconcileKernelRollout: vi.fn(),
+  inspectLegacyStageFence: vi.fn(),
 }));
 const output = vi.hoisted(() => ({ emitJson: vi.fn(() => true), emitInfo: vi.fn(), emitError: vi.fn() }));
 vi.mock('../../src/commands/output.js', () => output);
@@ -19,6 +20,21 @@ const plan = { id, commit, updatedAt: 'now', state: 'planned', targets: [] };
 const originalExit = process.exitCode;
 beforeEach(() => { vi.resetAllMocks(); output.emitJson.mockReturnValue(true); process.exitCode = 0; });
 afterEach(() => { process.exitCode = originalExit; });
+
+it('inspects only the chosen remote fence without creating or modifying a rollout', async () => {
+  rpc.listNodes.mockResolvedValue([{ id, name: 'example' }]);
+  const inspector = 'f'.repeat(64);
+  const report = { state: 'unresolved-legacy-stage', nodeId: id, inspectorArtifact: inspector };
+  rpc.inspectLegacyStageFence.mockResolvedValue(report);
+  await fleetRolloutCommand({ kind: 'inspect-stage-fence', node: 'example', inspector });
+  expect(rpc.inspectLegacyStageFence).toHaveBeenCalledExactlyOnceWith({ nodeId: id, inspectorArtifact: inspector });
+  expect(output.emitJson).toHaveBeenCalledWith(report);
+  expect(rpc.planKernelRollout).not.toHaveBeenCalled();
+  expect(rpc.reconcileKernelRollout).not.toHaveBeenCalled();
+  rpc.inspectLegacyStageFence.mockResolvedValue({ ...report, nodeId: 'another-node' });
+  await fleetRolloutCommand({ kind: 'inspect-stage-fence', node: 'example', inspector });
+  expect(output.emitError).toHaveBeenCalledWith(expect.stringContaining('requested machine fence'));
+});
 
 it('submits the reviewed plan in the requested node order', async () => {
   rpc.listNodes.mockResolvedValue([{ id: '1', name: 'test' }, { id: '2', name: 'production' }]);

@@ -1695,6 +1695,20 @@ export class RemoteDeployer {
     if (!target.expectedHostFingerprint) throw Error('Managed kernel rollout requires a pinned SSH host key');
   }
 
+  async inspectLegacyStageFence(target: DeployTarget, inspectorArtifact: string) {
+    this.assertManagedTarget(target);
+    if (!target.registrationId || target[serviceAccount]) throw Error('Fence inspection requires a registered administrative endpoint');
+    if (!/^[a-f0-9]{64}$/.test(inspectorArtifact)) throw Error('Select a qualified Linux inspector artifact by SHA-256');
+    const { listKernelBuilds, resolveKernelBuild } = await import('./kernel-catalog.js');
+    const entry = (await listKernelBuilds()).find(build => build.platform === 'linux' && build.artifact === inspectorArtifact);
+    if (!entry) throw Error('The inspector artifact has not been admitted to the controller Linux catalog');
+    const confirmed = await resolveKernelBuild(entry.commit, entry);
+    if (confirmed.entry.artifact !== inspectorArtifact) throw Error('The catalog inspector artifact changed during verification');
+    const { inspectRegisteredStageFence } = await import('./legacy-stage-fence.js');
+    return inspectRegisteredStageFence(target.registrationId, target.expectedHostFingerprint!, inspectorArtifact,
+      command => this.readFromNodeRaw(target, command, 15_000));
+  }
+
   private async checkManagedTarget(target: DeployTarget): Promise<void> {
     await this.assertNoPendingHostOperations(target, '/opt/omnitron');
     const pending = JSON.parse(await this.sshExecData(target, pendingReceiptsCommand('/opt/omnitron'))) as HostUpgradeReceipt[];

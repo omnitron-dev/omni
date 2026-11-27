@@ -80,7 +80,44 @@ An active writer, a missing completion witness or changed evidence keeps the
 machine fenced. Older execution records carry only a token, command ID and
 deadline. An expired lease, an unlocked guard or an existing candidate cannot
 establish when that command finished. These cases require independent host
-inspection before recovery. The plan receipt reports the receiver exit status,
+inspection before recovery. The installed administrative CLI provides
+`omnitron --json service inspect-stage-fence` on Linux. It holds the
+deployment and execution locks together while it reads both original
+records and checks the absence of a completion witness. It verifies the
+passive-stage purpose, matching tokens and original schema-1 encoding on
+the recipient. The output contains the two SHA-256 digests, the historical
+command ID and timeout, the current Linux boot ID and an application-specific
+digest of the machine ID. The reader requires util-linux flock, procfs and
+an existing root-controlled lock directory on ext, XFS or Btrfs. A busy
+lock, a completion entry or unsafe file metadata causes the read to fail.
+
+Fleet can request that observation using a qualified Linux build in the
+controller catalog. Provision the inspector while preparing the host. Use
+the reviewed Linux runtime from the normal Git build and a root-controlled
+copy of its complete tree. As the host administrator, use a separate instance
+to install the inspector passively:
+
+```sh
+OMNITRON_HOME=/root/.omnitron-maintenance \
+  "$verified_runtime/node" "$verified_runtime/packages/0/dist/cli/omnitron.js" \
+  --json backend install "$verified_runtime"
+```
+
+Match the returned `id` to the catalog artifact and verify `selected: false`.
+The server needs a private physical `/root` (UID 0, mode 0700). Run
+`omnitron --json fleet rollout inspect-stage-fence NODE --inspector ARTIFACT_SHA256`
+on the controller. It executes the exact sealed CLI under the pinned
+administrator SSH login and rechecks the registration and session before
+returning the report. Only the observation crosses SSH. For an older
+recipient without a preinstalled inspector, use its existing authorized
+read-only diagnostics. A Fleet inspection does not stage software.
+
+Schema 1 records neither the original selection nor the Fleet request ID.
+The command's exit status is unknown. An observation from a later boot
+cannot authorize another writer. The original lease and rollout receipts
+remain the source of incident evidence.
+
+The plan receipt reports the receiver exit status,
 elapsed time and last observed installation step when available.
 After the machine fence is settled, a service owner with the verified runtime
 tree already on the node can use `omnitron --json backend install <runtime>`

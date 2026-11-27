@@ -419,6 +419,24 @@ export interface INodeReconciliationResult {
   restored: boolean;
 }
 
+/** Protected bytes observed on the current Linux boot; schema 1 contains no Fleet request or installation result. */
+export interface NativeLegacyStageFence {
+  state: 'unresolved-legacy-stage';
+  bootId: string;
+  /** App-specific digest of /etc/machine-id. */
+  machineIdSha256: string;
+  leaseSha256: string;
+  executionSha256: string;
+  commandId: string;
+  timeoutMs: number;
+}
+
+export interface LegacyStageFenceObservation extends NativeLegacyStageFence {
+  nodeId: string;
+  sshFingerprint: string;
+  inspectorArtifact: string;
+}
+
 /** A transition of a sealed backend under its existing execution owner. */
 export interface KernelRolloutTarget {
   nodeId: string;

@@ -331,6 +331,15 @@ service.command('publish-system-plan <previous-record> <target-record>')
     if (!emitJson(result)) emitInfo(`Active supervision record ${result.active}. Retained predecessor ${result.previous}.`);
   });
 
+service.command('inspect-stage-fence')
+  .description('Inspect the existing legacy passive-stage fence as the local Linux host administrator')
+  .structuredAction(async () => {
+    const { inspectLocalLegacyStageFence } = await import('../commands/legacy-stage-fence.js');
+    const { emitInfo, emitJson } = await import('../commands/output.js');
+    const report = inspectLocalLegacyStageFence();
+    if (!emitJson(report)) emitInfo(`Unresolved passive stage, boot ${report.bootId}, command ${report.commandId}`);
+  });
+
 service.command('system-pair <action>')
   .description('Review, install or start an existing dedicated Linux systemd pair as its root operator')
   .requiredOption('--account <name>', 'Dedicated service account')
@@ -1049,6 +1058,13 @@ remote
 const fleet = program.command('fleet').description('Fleet-wide operations across remote servers');
 
 const rollout = fleet.command('rollout').description('Distribute and activate managed backends across registered servers');
+rollout.command('inspect-stage-fence <node>')
+  .description('Read the protected lease and legacy command identity of an interrupted passive staging attempt on a registered Linux node')
+  .requiredOption('--inspector <sha256>', 'Qualified Linux runtime already installed in the private host administrator store')
+  .structuredAction(async (node: string, options: { inspector: string }) => {
+    const { fleetRolloutCommand } = await import('../commands/fleet-rollout.js');
+    await fleetRolloutCommand({ kind: 'inspect-stage-fence', node, inspector: options.inspector });
+  });
 rollout.command('import <runtimes...>')
   .description('Admit qualified sealed builds into the local controller catalog for distribution')
   .structuredAction(async (runtimes: string[]) => {

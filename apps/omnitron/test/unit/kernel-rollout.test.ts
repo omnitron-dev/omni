@@ -411,7 +411,7 @@ describe('durable managed fleet kernel controller', () => {
     const auth = { validateSession: vi.fn(async () => ({ id: 'u', role: 'operator' })) };
     const rpc = new NodeManagerRpcService({} as never, audit as never, undefined, auth as never);
     rpc.setKernelRolloutService(service);
-    for (const method of ['listKernelBuilds','planKernelRollout','startKernelRollout','reconcileKernelRollout']) {
+    for (const method of ['listKernelBuilds','planKernelRollout','startKernelRollout','reconcileKernelRollout','inspectLegacyStageFence']) {
       expect(Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, NodeManagerRpcService.prototype, method)?.roles).toEqual(['admin']);
     }
     expect(Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, NodeManagerRpcService.prototype, 'getKernelRollout')?.roles).toEqual(['admin','operator','viewer','service_role']);
@@ -428,6 +428,31 @@ describe('durable managed fleet kernel controller', () => {
   });
 });
 
+
+it('rechecks the live administrator and exact registered endpoint after fence inspection', async () => {
+  const target = { registrationId: 'node', host: 'example', sshPort: 22, expectedHostFingerprint: 'test-pin' };
+  const resolve = vi.fn().mockResolvedValue(target);
+  const auth = { validateSession: vi.fn().mockResolvedValue({ id: 'u', role: 'admin' }) };
+  const service = new NodeManagerRpcService({ nodeToDeployTarget: resolve } as never, undefined, undefined, auth as never);
+  const inspect = vi.fn().mockResolvedValue({
+    nodeId: 'node', sshFingerprint: 'test-pin', inspectorArtifact: 'e'.repeat(64), state: 'unresolved-legacy-stage',
+  });
+  service.setRemoteDeployer({ inspectLegacyStageFence: inspect } as never);
+  const principal = { userId: 'u', roles: ['admin'], metadata: { sessionId: 'session' } } as never;
+  const read = () => runWithAuth(principal, () => service.inspectLegacyStageFence({ nodeId: 'node', inspectorArtifact: 'e'.repeat(64) }));
+  await expect(read()).resolves.toMatchObject({ nodeId: 'node' });
+  expect(auth.validateSession).toHaveBeenCalledTimes(2);
+  for (const changed of [{ sshPort: 23 }, { expectedHostFingerprint: 'different' }, { registrationId: 'different' }]) {
+    resolve.mockResolvedValueOnce(target).mockResolvedValueOnce({ ...target, ...changed });
+    await expect(read()).rejects.toThrow('Registered recipient changed');
+  }
+  auth.validateSession.mockResolvedValueOnce({ id: 'u', role: 'admin' }).mockResolvedValueOnce(null);
+  await expect(read()).rejects.toThrow('Session expired');
+  auth.validateSession.mockResolvedValueOnce({ id: 'u', role: 'operator' });
+  const prior = inspect.mock.calls.length;
+  await expect(read()).rejects.toThrow('required role');
+  expect(inspect).toHaveBeenCalledTimes(prior);
+});
 
 it('retains historical rollout evidence without granting missing backup cancellation authority', async () => {
   const { service, store, driver } = fixture();

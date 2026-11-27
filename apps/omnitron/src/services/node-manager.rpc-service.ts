@@ -522,6 +522,21 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
+  async inspectLegacyStageFence(data: { nodeId: string; inspectorArtifact: string }) {
+    await this.revalidateKernelPrincipal();
+    const target = await this.nodeManager.nodeToDeployTarget(data.nodeId);
+    const observation = await this.deployer().inspectLegacyStageFence(target, data.inspectorArtifact);
+    await this.revalidateKernelPrincipal();
+    const current = await this.nodeManager.nodeToDeployTarget(data.nodeId);
+    const { pinnedRolloutEndpoint } = await import('./managed-rollout.js');
+    if (target.registrationId !== data.nodeId || current.registrationId !== data.nodeId ||
+        observation.nodeId !== data.nodeId || observation.sshFingerprint !== current.expectedHostFingerprint ||
+        observation.inspectorArtifact !== data.inspectorArtifact || pinnedRolloutEndpoint(current) !== pinnedRolloutEndpoint(target))
+      throw Error('Registered recipient changed during machine fence inspection');
+    return observation;
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
   async planKernelRollout(data: { commit: string; nodeIds?: string[]; requestId?: string; stage?: boolean }): Promise<KernelRollout> {
     const id = data.requestId ?? randomUUID();
     await this.authorizeKernel(data.stage === true ? 'plan.stage' : 'plan', id);

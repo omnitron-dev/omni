@@ -37,7 +37,13 @@ afterEach(async () => {
 async function server(handler: RequestListener): Promise<string> {
   const listener = createServer(handler);
   servers.push(listener);
-  await new Promise<void>(resolve => listener.listen(0, '127.0.0.1', resolve));
+  await new Promise<void>((resolve, reject) => {
+    listener.once('error', reject);
+    listener.listen(0, '127.0.0.1', () => {
+      listener.off('error', reject);
+      resolve();
+    });
+  });
   return 'http://127.0.0.1:' + (listener.address() as { port: number }).port + '/';
 }
 

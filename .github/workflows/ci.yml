@@ -151,6 +151,15 @@ jobs:
           python3 -B .xec/bitcoin-cold/scope_test.py
           python3 -B .xec/lmdb-preseed/stream_test.py
           python3 -B .xec/lmdb-preseed/offline_probe_test.py
+      - name: Verify service-account group membership and directory access on Linux
+        working-directory: apps/omnitron
+        env:
+          OMNITRON_DISPOSABLE_HOST_CONFIG_TEST: '1'
+          OMNITRON_LINUX_ACL_TEST: '1'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends attr acl
+          pnpm exec vitest run test/unit/private-host-service-groups.test.ts test/unit/private-host-acl.test.ts
       - name: Console publication, recovery and runtime fixture cleanup
         run: >-
           node --test
@@ -258,10 +267,20 @@ jobs:
           pnpm exec playwright install --only-shell chromium
           pnpm run test:browser
 
-  workspace-tests:
-    name: Full workspace tests
+  workspace-suites:
+    name: Workspace tests (${{ matrix.suite }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: application
+            filter: '@omnitron-dev/omnitron'
+            timeout: 55
+          - suite: packages
+            filter: '!@omnitron-dev/omnitron'
+            timeout: 35
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: ${{ matrix.timeout }}
     env:
       TURBO_CONCURRENCY: '2'
       TURBO_FORCE: 'true'
@@ -279,9 +298,10 @@ jobs:
       # Owns a unique Compose project and tears it down on success or failure.
       # The Console test command selects UI tests already included by the Omnitron suite.
       # Packages are already built; keep forced tests without rebuilding prerequisites.
-      # Keep the last observation from unfinished suites when the job times out.
-      - run: pnpm test:ci --only --filter='!@omnitron/console' --log-order=stream --log-prefix=task
+      # Start the serial application suite immediately on an independent runner.
+      - run: pnpm test:ci --only --filter="$SUITE_FILTER" --filter='!@omnitron/console' --log-order=stream --log-prefix=task
         env:
+          SUITE_FILTER: ${{ matrix.filter }}
           OMNITRON_HOME: ${{ runner.temp }}/omnitron-test-home
           OMNITRON_TEST_EVIDENCE_DIR: ${{ runner.temp }}/omnitron-verification
           OMNITRON_TEST_SOURCE_COMMIT: ${{ github.sha }}
@@ -289,10 +309,38 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          name: verification-receipts-${{ matrix.suite }}
+          overwrite: true
+          path: ${{ runner.temp }}/omnitron-verification/*.json
+          if-no-files-found: error
+          retention-days: 14
+
+  workspace-tests:
+    name: Full workspace tests
+    needs: workspace-suites
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    steps:
+      - name: Require both suites and collect their model verification receipts
+        env:
+          SUITES_RESULT: ${{ needs.workspace-suites.result }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$SUITES_RESULT" = success
+          for suite in application packages; do
+            gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+              --name "verification-receipts-$suite" --dir "$RUNNER_TEMP/omnitron-verification"
+          done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
           name: verification-receipts
           path: ${{ runner.temp }}/omnitron-verification/*.json
           if-no-files-found: error
           retention-days: 14
+          overwrite: true
 
   lint:
     name: Workspace lint

@@ -7,7 +7,7 @@ describe('Tier 4: Scenario 03 — Typst Academic PDF Multi-Paper Generation', ()
   it('compiles multi-section mathematical paper from .pdx AST to Typst and generates PDF buffer', async () => {
     const paperPdx = `---
 title: Non-Commutative Spectral Measures on Von Neumann Algebras
-authors: ["LuxQuant Research"]
+authors: ["Example Research Group"]
 abstract: We establish rigorous bounds on spectral rigidity for unbounded self-adjoint operators.
 ---
 
@@ -50,12 +50,12 @@ Observables converge under discrete Trotter-Suzuki expansions.
     const typstSource = toTypst(ast, {
       title: 'Non-Commutative Spectral Measures',
       paperSize: 'a4',
-      author: 'LuxQuant Research',
+      author: 'Example Research Group',
     });
 
     expect(typstSource).toContain('#set page(paper: "a4")');
     expect(typstSource).toContain('= Non\\-Commutative Spectral Measures');
-    expect(typstSource).toContain('LuxQuant Research');
+    expect(typstSource).toContain('Example Research Group');
     expect(typstSource).toContain('Spectral Projector Completeness');
     expect(typstSource).toContain('Von Neumann Entropy Bound');
 

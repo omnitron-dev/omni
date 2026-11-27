@@ -68,11 +68,11 @@ describe('Feature 13: Documentation Navigation System', () => {
   it('TC-F13-05: renders LumenFooter with copyright notice', () => {
     const html = renderToStaticMarkup(
       React.createElement(LumenFooter, {
-        copyright: '© 2026 LuxQuant Omnitron. All rights reserved.',
+        copyright: '© 2026 Example Documentation. All rights reserved.',
       })
     );
 
     expect(html).toContain('class="lumen-footer"');
-    expect(html).toContain('© 2026 LuxQuant Omnitron');
+    expect(html).toContain('© 2026 Example Documentation');
   });
 });

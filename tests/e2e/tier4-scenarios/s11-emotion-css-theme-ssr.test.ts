@@ -32,7 +32,7 @@ describe('Tier 4: Scenario 11 — Dark/Light Mode Critical Emotion CSS SSR', () 
             prev: { label: 'Installation', href: '/docs/installation' },
             next: { label: 'Configuration', href: '/docs/configuration' },
           }),
-          React.createElement(LumenFooter, { copyright: '© 2026 LuxQuant Omnitron' })
+          React.createElement(LumenFooter, { copyright: '© 2026 Example Documentation' })
         )
       )
     );
@@ -45,7 +45,7 @@ describe('Tier 4: Scenario 11 — Dark/Light Mode Critical Emotion CSS SSR', () 
     expect(htmlDark).toContain('class="lumen-pagination"');
     expect(htmlDark).toContain('Installation');
     expect(htmlDark).toContain('Configuration');
-    expect(htmlDark).toContain('© 2026 LuxQuant Omnitron');
+    expect(htmlDark).toContain('© 2026 Example Documentation');
   });
 
   it('renders complete page layout in light mode and preserves structural and attribute parity', () => {
@@ -72,7 +72,7 @@ describe('Tier 4: Scenario 11 — Dark/Light Mode Critical Emotion CSS SSR', () 
               'Trace condition $\\operatorname{Tr}(\\rho^2) \\le 1$.'
             )
           ),
-          React.createElement(LumenFooter, { copyright: '© 2026 LuxQuant Omnitron' })
+          React.createElement(LumenFooter, { copyright: '© 2026 Example Documentation' })
         )
       )
     );

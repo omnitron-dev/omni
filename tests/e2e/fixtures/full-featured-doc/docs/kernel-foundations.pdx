@@ -5,7 +5,7 @@ description: Formal verification of mathematical statements and environments
 sidebar_position: 1
 paper: true
 authors:
-  - LuxQuant Research Team
+  - Example Research Group
 abstract: A rigorous formulation of spectral properties in infinite-dimensional vector spaces.
 ---
 

@@ -58,12 +58,12 @@ Preprint body text.
     const buffer = await compileTypst(ast, {
       title: 'Configured Academic Paper',
       paperSize: 'us-letter',
-      author: 'LuxQuant Research',
+      author: 'Example Research Group',
     });
 
     const pdf = await inspectPdf(buffer);
     expect(pdf.text).toContain('Configured Academic Paper');
-    expect(pdf.text).toContain('LuxQuant Research');
+    expect(pdf.text).toContain('Example Research Group');
     expect(pdf.pages[0]!.width).toBeCloseTo(612, 1);
     expect(pdf.pages[0]!.height).toBeCloseTo(792, 1);
   });

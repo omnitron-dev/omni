@@ -32,7 +32,7 @@ Here is the substantive theoretical description of the engine.
   it('TC-X09-02: /llms.txt manifest lists canonical public documentation URLs', async () => {
     const config = defineLumenConfig({
       title: 'Quantum Theory Documentation',
-      url: 'https://docs.luxquant.io',
+      url: 'https://docs.example.org',
       baseUrl: '/theory/',
     });
 
@@ -47,8 +47,8 @@ Here is the substantive theoretical description of the engine.
     const llmsTxt = generateLlmsTxt(graph, config);
     expect(llmsTxt).not.toContain('Secret');
     expectValidLlmsTxt(llmsTxt);
-    expect(llmsTxt).toContain('https://docs.luxquant.io/theory/intro.md');
-    expect(llmsTxt).toContain('https://docs.luxquant.io/theory/foundations/algebra.md');
+    expect(llmsTxt).toContain('https://docs.example.org/theory/intro.md');
+    expect(llmsTxt).toContain('https://docs.example.org/theory/foundations/algebra.md');
   });
 
   it('TC-X09-03: /llms-full.txt concatenates corpus documents in topological dependency order', async () => {

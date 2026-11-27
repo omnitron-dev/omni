@@ -9,7 +9,7 @@
 ## Code Analysis
 
 ### File Structure
-The `HttpTransportClient` class (`/Users/taaliman/projects/omnitron-dev/omni/packages/titan/src/netron/transport/http/client.ts`) contains:
+The [HttpTransportClient](../../../../src/netron/transport/http/client.ts) class contains:
 
 **Methods:**
 1. `constructor()` - Lines 28-35 (partially covered)

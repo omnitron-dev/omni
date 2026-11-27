@@ -4,6 +4,8 @@ Omnitron can check prepared Bitcoin Core, Monero daemon and Monero wallet RPC sy
 
 ## Review an admitted release
 
+On Linux, private host configuration requires the distribution's `attr` package (`/usr/bin/getfattr`). On APT-managed hosts it can be declared in the service's `bareMetal.apt.latest` package list and installed through the normal reviewed package plan. The installer checks for named access and default ACL attributes before writing credentials, including on the parent of a new configuration directory. It requests attribute names only. A missing utility or a filesystem inspection error stops the operation.
+
 Run the native admin command on the controller with a registered release and a node explicitly pinned in that stack.
 
 ```sh

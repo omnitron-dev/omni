@@ -97,8 +97,11 @@ async function preflight(grant: HostConfigGrant, journal: Journal | null) {
     const dir = dirname(config);
     await rootDirectories(dirname(dir));
     const exists = await entry(dir);
-    if (exists) { await rootDirectories(dir); await requireModeOnly([dir]); }
-    const account = await serviceGroups(user, { dedicated: true, directory: exists ? dir : dirname(dir) });
+    const traversalPath = exists ? dir : dirname(dir);
+    if (exists) await rootDirectories(dir);
+    // A new directory would inherit its parent's default ACL.
+    await requireModeOnly([traversalPath]);
+    const account = await serviceGroups(user, { dedicated: true, directory: traversalPath });
     required(!uids.has(account.serviceUid) && !groups.has(account.serviceGid));
     uids.add(account.serviceUid); groups.add(account.serviceGid);
     const current = await entry(config), f = journal?.files[profile];

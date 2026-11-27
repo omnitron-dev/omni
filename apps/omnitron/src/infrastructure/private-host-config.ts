@@ -2,8 +2,11 @@ import { execFile } from 'node:child_process';
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { constants, type BigIntStats } from 'node:fs';
 import { chmod, lstat, mkdir, open, readdir, rename, unlink } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
+import { createInterface } from 'node:readline';
+import { PassThrough } from 'node:stream';
 import { promisify } from 'node:util';
+import { ExecutionEngine } from '@xec-sh/core';
 import { OMNITRON_CONFIG_MARKER, withMarker, type BareMetalSpec } from './bare-metal-plan.js';
 import { HOST_BINDING_NAMES, type HostBindingProfile } from '../shared/dto/host-bindings.js';
 import { HOST_BINDING_PROFILES } from './host-binding-review.js';
@@ -26,41 +29,89 @@ export async function rootDirectories(path: string): Promise<void> {
   requireEvidence(s.isDirectory() && s.uid === 0n && (s.mode & 0o022n) === 0n);
 }
 
+function hostInspectionEngine() {
+  return new ExecutionEngine({ defaultShell: false, preferLocal: false, quiet: true, enableEvents: false, retry: { retries: 0 } });
+}
+
 export async function serviceGroups(user: string, options: { dedicated?: boolean; directory?: string } = {}) {
-  const check = [
-    'import grp,os,pwd,sys',
-    's=pwd.getpwnam(sys.argv[1]); r=pwd.getpwnam("omnitron")',
-    'sg=set(os.getgrouplist(s.pw_name,s.pw_gid)); rg=set(os.getgrouplist(r.pw_name,r.pw_gid))',
-    'if s.pw_uid == r.pw_uid or r.pw_gid in sg or s.pw_gid in rg: sys.exit(1)',
-    'if sys.argv[2] == "dedicated":',
-    ' group=grp.getgrgid(s.pw_gid)',
-    ' if sg != {s.pw_gid} or group.gr_name != s.pw_name or any(m != s.pw_name for m in group.gr_mem): sys.exit(1)',
-    ' if any(p.pw_name != s.pw_name and (p.pw_gid == s.pw_gid or p.pw_uid == s.pw_uid) for p in pwd.getpwall()): sys.exit(1)',
-    'if sys.argv[3]:',
-    ' for account in (s,r):',
-    '  child=os.fork()',
-    '  if child == 0:',
-    '   try:',
-    '    os.initgroups(account.pw_name,account.pw_gid); os.setgid(account.pw_gid); os.setuid(account.pw_uid)',
-    '    os._exit(0 if os.access(sys.argv[3],os.X_OK) else 1)',
-    '   except OSError: os._exit(1)',
-    '  if os.waitpid(child,0)[1] != 0: sys.exit(1)',
-    'print(s.pw_uid,s.pw_gid,r.pw_uid,r.pw_gid)',
-  ].join('\n');
-  let output: string;
-  try { output = (await run('/usr/bin/python3', ['-I', '-c', check, user, options.dedicated ? 'dedicated' : 'separate', options.directory ?? ''], { timeout: 3000 })).stdout.trim(); }
-  catch { throw Error('The service identity and group could not be verified'); }
-  requireEvidence(/^[1-9]\d*( [1-9]\d*){3}$/.test(output));
-  const [serviceUid, serviceGid, readerUid, readerGid] = output.split(' ').map(BigInt) as [bigint, bigint, bigint, bigint];
-  return { serviceUid, serviceGid, readerUid, readerGid };
+  const engine = hostInspectionEngine();
+  const signal = AbortSignal.timeout(3000);
+  async function inspect(command: '/usr/bin/getent' | '/usr/bin/id' | '/usr/bin/setpriv', args: string[], stdout?: PassThrough) {
+    const result = await engine.execute({ adapter: 'local', shell: false, command, args, envMode: 'replace',
+      env: { LC_ALL: 'C', PATH: '/usr/bin:/bin' }, signal, timeout: 0, maxBuffer: 1024 * 1024, nothrow: true,
+      stdout: stdout ?? 'pipe', redactOutput: false });
+    requireEvidence(result.exitCode === 0);
+    return result.stdout.trimEnd();
+  }
+  async function inventory(database: 'group' | 'passwd', accept: (fields: string[]) => boolean) {
+    // NSS enumeration can be large. Validate each record while the local utility writes it.
+    const output = new PassThrough();
+    const records = createInterface({ input: output });
+    let valid = true;
+    records.on('line', line => { valid &&= accept(line.split(':')); });
+    const closed = new Promise<void>(resolve => records.once('close', resolve));
+    try { await inspect('/usr/bin/getent', [database], output); }
+    finally { output.end(); await closed; }
+    requireEvidence(valid);
+  }
+  async function account(name: string) {
+    const [passwd, groups] = await Promise.all([
+      inspect('/usr/bin/getent', ['passwd', name]),
+      inspect('/usr/bin/id', ['-G', '--', name]),
+    ]);
+    const [login, , uid, gid, , , shell, ...extra] = passwd.split(':');
+    requireEvidence(login === name && uid && gid && /^[1-9]\d*$/.test(uid) && /^[1-9]\d*$/.test(gid) &&
+      shell !== undefined && !extra.length);
+    requireEvidence(/^\d+( +\d+)*$/.test(groups));
+    const memberships = new Set(groups.split(/ +/).map(BigInt));
+    requireEvidence(memberships.has(BigInt(gid)));
+    return { uid: BigInt(uid), gid: BigInt(gid), memberships };
+  }
+  try {
+    requireEvidence(Object.values(HOST_BINDING_PROFILES).some(profile => profile.user === user));
+    const [service, owner] = await Promise.all([account(user), account('omnitron')]);
+    requireEvidence(service.uid !== owner.uid && !service.memberships.has(owner.gid) && !owner.memberships.has(service.gid));
+    if (options.dedicated) {
+      requireEvidence(service.memberships.size === 1);
+      const uid = String(service.uid), gid = String(service.gid);
+      let groups = 0, users = 0;
+      await Promise.all([
+        inventory('group', ([name, , id, members]) => {
+          if (id !== gid) return true;
+          groups++;
+          return name === user && members !== undefined && (members === '' || members.split(',').every(member => member === user));
+        }),
+        inventory('passwd', ([name, , accountUid, accountGid]) => {
+          if (name !== user) return accountUid !== uid && accountGid !== gid;
+          users++;
+          return accountUid === uid && accountGid === gid;
+        }),
+      ]);
+      requireEvidence(groups === 1 && users === 1);
+    }
+    if (options.directory) {
+      const directory = options.directory;
+      await Promise.all([service, owner].map(identity => inspect('/usr/bin/setpriv', [
+        '--reuid=' + identity.uid, '--regid=' + identity.gid, '--groups=' + [...identity.memberships].join(','),
+        '--', '/usr/bin/test', '-x', directory,
+      ])));
+    }
+    return { serviceUid: service.uid, serviceGid: service.gid, readerUid: owner.uid, readerGid: owner.gid };
+  } catch { throw Error('The service identity and group could not be verified'); }
+  finally { await engine.dispose(); }
 }
 
 /** The Linux installer checks ACL metadata. A group mask alone can hide additional named readers. */
 export async function requireModeOnly(paths: string[]) {
-  const check = 'import os,sys\n' +
-    'sys.exit(any(set(os.listxattr(p, follow_symlinks=False)) & {"system.posix_acl_access","system.posix_acl_default"} for p in sys.argv[1:]))';
-  try { await run('/usr/bin/python3', ['-I', '-c', check, ...paths], { timeout: 3000 }); }
-  catch { throw Error('The private host binding access policy could not be verified'); }
+  requireEvidence(paths.length && paths.every(path => isAbsolute(path) && !path.includes('\0')));
+  const engine = hostInspectionEngine();
+  try {
+    const result = await engine.execute({ command: '/usr/bin/getfattr', adapter: 'local', shell: false,
+      args: ['--no-dereference', '--absolute-names', '--match=^system[.]posix_acl_(access|default)$', '--', ...paths],
+      envMode: 'replace', env: { LC_ALL: 'C', PATH: '/usr/bin:/bin' }, timeout: 3000, maxBuffer: 16 * 1024, nothrow: true });
+    requireEvidence(result.exitCode === 0 && result.stdout === '' && result.stderr === '');
+  } catch { throw Error('The private host binding requires a successful Linux getfattr check with no access or default ACL'); }
+  finally { await engine.dispose(); }
 }
 
 /** Linux ctime also changes on in-place writes, permission changes and link changes. */
@@ -162,7 +213,7 @@ export async function attestInstalledHostConfig(name: string, expected?: { stamp
         // A concurrent explicit attestation can occupy the path after the check above.
         const publish = 'import ctypes,os,sys\n' +
           'sys.exit(ctypes.CDLL(None).renameat2(-100, os.fsencode(sys.argv[1]), -100, os.fsencode(sys.argv[2]), 1) != 0)';
-        try { await run('/usr/bin/python3', ['-I', '-c', publish, temp, recordPath], { timeout: 3000 }); }
+        try { await run('/usr/bin/python3', ['-I', '-S', '-B', '-c', publish, temp, recordPath], { timeout: 3000, env: { LC_ALL: 'C' } }); }
         catch { throw Error('Initial private configuration evidence could not be published exclusively'); }
       } else await rename(temp, recordPath);
       const directory = await open(DIRECTORY, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);

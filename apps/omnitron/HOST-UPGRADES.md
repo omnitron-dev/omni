@@ -142,6 +142,23 @@ running with that account and see the same registry file. A pending
 activation or an unrelated installation lease requires its own recovery.
 Wait for the `prepared` receipt before starting the approved reboot.
 
+If the enrolled runtime still reports an installation PID, the Linux service
+operator can review that instance from a verified administrative image.
+
+```sh
+omnitron --json service recover-installation --check
+omnitron --json service recover-installation --review REVIEW_SHA256
+```
+
+Compare the reported UID, Linux boot, PID, installation time and selected
+artifact and revision with the deployment record before submitting the review.
+This operation requires an ordinary installation lease whose PID has exited.
+A live or indeterminate PID, a scoped Fleet lease, a pending activation or
+changed evidence prevents retirement. The instance archives the original
+record and removes that lease in one transaction. Retrying the same digest
+returns its original decision even if another installer has since started.
+The Fleet machine observation still needs its own `prepare` and `finish`.
+
 Once the same Linux host has booted again and its two units are ready, run
 
 ```sh

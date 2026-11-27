@@ -160,7 +160,7 @@ jobs:
       - name: Recover a prepared legacy stage after a Linux VM reboot and a lost reply
         if: inputs.stage_fence_reboot
         working-directory: ${{ runner.temp }}/source-${{ inputs.candidate }}
-        timeout-minutes: 15
+        timeout-minutes: 25
         run: |
           test -c /dev/kvm
           node "$GITHUB_WORKSPACE/apps/omnitron/test/runtime/stage-selection-private-runtime.js" "$RUNNER_TEMP/omnitron-handoff-$CANDIDATE/packages/0"
@@ -171,16 +171,24 @@ jobs:
           qa="$(mktemp -d "$RUNNER_TEMP/stage-qualification.XXXXXXXX")"
           cp "$GITHUB_WORKSPACE/apps/omnitron/test/runtime/legacy-stage-reboot.ts" "$qa/"
           ln -s "$PWD/node_modules" "$qa/node_modules"
-          pnpm exec xec run "$qa/legacy-stage-reboot.ts" "$RUNNER_TEMP/native-delivery" "$RUNNER_TEMP/stage-observation.json" \
-            "$GITHUB_WORKSPACE/apps/omnitron/test/runtime/fixture-stage-recovery.js"
-          jq -e --arg sha "$CANDIDATE" '.commit == $sha and .resumed.state == "interrupted" and
-            .resumed.decision.commandOutcome == "unknown" and .undelivered.code == "EPIPE" and
-            .resumed.decision.bootId == .after.bootId and .before.bootId != .after.bootId' "$RUNNER_TEMP/stage-observation.json"
+          recovery=legacy
+          if test -f apps/omnitron/src/commands/recover-installation.ts; then recovery=reviewed; fi
+          for scope in system user; do
+            report="$RUNNER_TEMP/stage-observation.json"
+            if test "$scope" = user; then report="$RUNNER_TEMP/stage-observation-user.json"; fi
+            pnpm exec xec run "$qa/legacy-stage-reboot.ts" "$RUNNER_TEMP/native-delivery" "$report" \
+              "$GITHUB_WORKSPACE/apps/omnitron/test/runtime/fixture-stage-recovery.js" "$scope" "$recovery"
+            jq -e --arg sha "$CANDIDATE" --arg scope "$scope" --arg recovery "$recovery" \
+              '.commit == $sha and .serviceScope == $scope and .resumed.state == "interrupted" and
+              ($recovery == "legacy" or .installerDecision.state == "retired") and
+              .resumed.decision.commandOutcome == "unknown" and .undelivered.code == "EPIPE" and
+              .resumed.decision.bootId == .after.bootId and .before.bootId != .after.bootId' "$report"
+          done
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: inputs.stage_fence_reboot
         with:
           name: stage-observation-${{ inputs.candidate }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/stage-observation.json
+          path: ${{ runner.temp }}/stage-observation*.json
           if-no-files-found: error
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

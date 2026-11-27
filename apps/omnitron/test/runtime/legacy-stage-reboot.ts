@@ -7,8 +7,10 @@ import type { NativeLegacyStageFence, StageRecoveryReceipt } from '../../src/sha
 // Exercise the installed administrative CLI and a separately enrolled service
 // account across two genuine kernel boots of one disposable guest.
 assert.equal(process.platform, 'linux', 'Run on a disposable Linux LXD host with KVM');
-const [delivery, receipt, fixture] = args;
+const [delivery, receipt, fixture, serviceScope = 'system', installationRecovery = 'reviewed'] = args;
 assert(delivery && receipt && fixture, 'Expected native delivery, a new receipt path and the reviewed guest fixture');
+assert(['system', 'user'].includes(serviceScope));
+assert(['reviewed', 'legacy'].includes(installationRecovery));
 const manifest = await fs.readJson(path.join(delivery, 'NATIVE.json'));
 const hash = (bytes: string) => createHash('sha256').update(bytes).digest('hex');
 const instance = 'local:omnitron-stage-' + randomUUID();
@@ -70,6 +72,13 @@ await $.withTempDir(async temp => {
     await guest('useradd', '--system', '--user-group', '--create-home', '--home-dir', home, '--shell', '/usr/sbin/nologin', account);
     const uid = (await guest('id', '-u', account)).stdout.trim();
     const gid = (await guest('id', '-g', account)).stdout.trim();
+    const userUnits = serviceScope === 'user';
+    if (userUnits) {
+      await guest('loginctl', 'enable-linger', account);
+      await guest('systemctl', 'start', 'user@' + uid + '.service');
+      asService.push('XDG_RUNTIME_DIR=/run/user/' + uid, 'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/' + uid + '/bus');
+    }
+    const manager = userUnits ? [...asService, 'systemctl', '--user'] : ['systemctl'];
     const source = home + '/source';
     await guest('chmod', '0700', home);
     await guest('install', '-d', '-m', '0700', '-o', account, '-g', account, source, serviceHome, serviceHome + '/execution');
@@ -84,14 +93,17 @@ await $.withTempDir(async temp => {
     await guest(...serviceCli(source), '--json', 'backend', 'install', source);
     const selected = JSON.parse((await guest(...serviceCli(serviceInstalled), '--json', 'backend', 'select', manifest.runtime)).stdout).data.selection;
     assert.equal(selected.current, manifest.runtime);
-    await guest(...serviceCli(serviceInstalled), 'service', 'install', '--scope', 'system', '--prepare');
+    await guest(...serviceCli(serviceInstalled), 'service', 'install', '--scope', serviceScope, '--prepare');
     const plan = serviceHome + '/runtime/supervision-plan';
     await guest(...asService, 'install', '-m', '0600', plan + '/supervision.json', serviceHome + '/runtime/supervision.json');
-    await guest('install', '-m', '0644', plan + '/owner.unit', '/etc/systemd/system/' + units[0]);
-    await guest('install', '-m', '0644', plan + '/backend.unit', '/etc/systemd/system/' + units[1]);
-    await guest('systemctl', 'daemon-reload');
-    await guest('systemctl', 'enable', '--now', ...units);
-    for (const unit of units) await waitGuest('systemctl', 'is-active', '--quiet', unit);
+    const unitDirectory = userUnits ? home + '/.config/systemd/user/' : '/etc/systemd/system/';
+    const installUnit = userUnits ? [...asService, 'install'] : ['install'];
+    if (userUnits) await guest(...installUnit, '-d', '-m', '0700', unitDirectory);
+    await guest(...installUnit, '-m', '0644', plan + '/owner.unit', unitDirectory + units[0]);
+    await guest(...installUnit, '-m', '0644', plan + '/backend.unit', unitDirectory + units[1]);
+    await guest(...manager, 'daemon-reload');
+    await guest(...manager, 'enable', '--now', ...units);
+    for (const unit of units) await waitGuest(...manager, 'is-active', '--quiet', unit);
 
     const token = randomUUID(), commandId = randomUUID();
     const lease = JSON.stringify({ token, holder: 'qualification', stack: 'stage managed kernel', startedAt: new Date().toISOString() });
@@ -137,6 +149,26 @@ await $.withTempDir(async temp => {
       return reason;
     };
     const prepareWithForeignLease = await checkForeignLease('prepare', before);
+    let installerDecision;
+    if (installationRecovery === 'reviewed') {
+      await guest(...asService, serviceInstalled + '/node', probe, 'hold-selection', 'abandoned');
+      const abandonedPid = Number((await guest('cat', serviceHome + '/foreign-abandoned-ready')).stdout);
+      await expectRefusal('The runtime registry has an unrelated installation lease', ...recover('prepare'));
+      const recoverInstaller = [...cli(installed), 'service', 'recover-installation'];
+      const reviewed = JSON.parse((await guest(...recoverInstaller, '--check')).stdout).data;
+      assert.equal(reviewed.state, 'reviewed');
+      assert.equal(reviewed.evidence.uid, Number(uid));
+      assert.equal(reviewed.evidence.pid, abandonedPid);
+      assert.deepEqual(reviewed.evidence.selection, selected);
+      assert.equal(reviewed.evidence.bootId, before.bootId);
+      await expectRefusal('The installation lease or its reviewed instance changed', ...recoverInstaller, '--review', '0'.repeat(64));
+      const apply = [...recoverInstaller, '--review', reviewed.review];
+      installerDecision = JSON.parse((await guest(...apply)).stdout).data;
+      assert.equal(installerDecision.state, 'retired');
+      assert.deepEqual(installerDecision.evidence, reviewed.evidence);
+      assert.deepEqual(JSON.parse((await guest(...apply)).stdout).data, installerDecision);
+      assert.deepEqual(await observe(), before);
+    }
     const prepared = await readRecovery('prepare');
     assert.equal(prepared.state, 'prepared');
     assert.equal(prepared.decision, null);
@@ -156,7 +188,7 @@ await $.withTempDir(async temp => {
     assert.deepEqual(after, { ...before, bootId: after.bootId });
     assert.deepEqual(await observe(), after);
     const restartToObservationMs = Math.ceil(performance.now() - start);
-    for (const unit of units) await waitGuest('systemctl', 'is-active', '--quiet', unit);
+    for (const unit of units) await waitGuest(...manager, 'is-active', '--quiet', unit);
     const finishWithForeignLease = await checkForeignLease('finish', after);
     await guest('install', '-d', '-m', '0700', transport);
     const request = path.join(temp, 'recovery.json');
@@ -187,8 +219,8 @@ await $.withTempDir(async temp => {
       leaseSha256: hash(lease), executionSha256: hash(intent) });
     for (const file of ['deploy.lease', 'deploy.execution.json']) await guest('test', '!', '-e', '/opt/omnitron/locks/' + file);
     await fs.writeFile(receipt, JSON.stringify({ commit: manifest.commit, runtime: manifest.runtime,
-      guestImage: image, before, after, restartToObservationMs, prepareWithForeignLease, finishWithForeignLease, sameBootRefusal,
-      prepared, undelivered, resumed, archive }, null, 2) + '\n',
+      guestImage: image, serviceScope, before, after, restartToObservationMs, prepareWithForeignLease, finishWithForeignLease, sameBootRefusal,
+      installerDecision, prepared, undelivered, resumed, archive }, null, 2) + '\n',
     { flag: 'wx', mode: 0o600 });
   } finally {
     await lxc('delete', '--force', instance);

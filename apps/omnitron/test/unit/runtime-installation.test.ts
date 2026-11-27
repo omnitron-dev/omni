@@ -424,6 +424,45 @@ it.each(['ordinary', 'stage'])('recovers a durable %s installation lease after i
   } finally { if (child.exitCode === null && child.signalCode === null) { child.kill('SIGKILL'); await exited; } }
 });
 
+it('archives just the reviewed dead installer and returns its decision after a lost acknowledgement', async () => {
+  const { store, home, make } = await fixture();
+  const installed = await make('first');
+  await store.exclusive(async () => { await store.install(installed.source); await store.select(installed.hash, 0); });
+  const selected = store.selection()!;
+  const child = spawn(process.execPath, ['--version'], { stdio: 'ignore' });
+  await new Promise<void>((resolve, reject) => { child.once('error', reject); child.once('exit', () => resolve()); });
+  const raw = new DaemonStateStore(createNullLogger(), path.join(store.directory, 'state.db'));
+  const observer = await RuntimeInstallation.openReadOnly(home);
+  if (!observer) throw Error('Expected an installed instance');
+  try {
+    const key = 'runtime.lease', original = { pid: child.pid!, acquiredAt: new Date().toISOString(), token: randomUUID() };
+    raw.kvSetSync(key, { ...original, pid: process.pid });
+    expect(() => observer.recoverAbandonedInstallation()).toThrow('still live or unverifiable');
+    raw.kvSetSync(key, { ...original, stageFence: { scope: 'a'.repeat(64), lifetime: 'specific-incident' } });
+    expect(() => observer.recoverAbandonedInstallation()).toThrow('ordinary installation lease');
+    raw.kvSetSync(key, original);
+    const { review, evidence } = observer.recoverAbandonedInstallation();
+    expect(evidence.selection).toEqual(selected);
+    expect(JSON.stringify(evidence)).not.toContain(original.token);
+    expect(() => observer.recoverAbandonedInstallation(review)).toThrow('writable registry');
+    raw.kvSetSync('runtime.selection', { ...selected, revision: selected.revision + 1 });
+    expect(() => store.recoverAbandonedInstallation(review)).toThrow('reviewed instance changed');
+    raw.kvSetSync('runtime.selection', selected);
+    raw.kvSetSync('runtime.activation', { candidate: selected.current, previous: selected.current, checkpoint: path.join(home, 'test'), startedAt: original.acquiredAt });
+    expect(() => store.recoverAbandonedInstallation(review)).toThrow('pending runtime activation');
+    raw.kvDeleteSync('runtime.activation');
+    expect(raw.kvGetSync(key)).toEqual(original);
+    const retired = store.recoverAbandonedInstallation(review);
+    expect(retired).toMatchObject({ state: 'retired', review, evidence });
+    expect(store.settledSelection()).toEqual(selected);
+    expect(raw.kvGetSync<{ raw: string }>('runtime.interrupted-installation:' + review)?.raw).toBe(JSON.stringify(original));
+    const next = { ...original, token: randomUUID(), pid: process.pid };
+    raw.kvSetSync(key, next);
+    expect(store.recoverAbandonedInstallation(review)).toEqual(retired);
+    expect(raw.kvGetSync(key)).toEqual(next);
+  } finally { await observer.close(); await raw.dispose(); }
+});
+
 it('rejects a resealed replacement before executing its preflight under an existing identity', async () => {
   const { root, store, make } = await fixture(); const first = await make('first');
   await store.exclusive(() => store.install(first.source));

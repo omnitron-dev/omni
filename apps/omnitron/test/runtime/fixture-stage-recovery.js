@@ -39,7 +39,7 @@ async function run(mode) {
     assert(process.getuid() > 0);
     const home = process.env.OMNITRON_HOME;
     const action = process.argv[3];
-    assert(['prepare', 'finish'].includes(action));
+    assert(['prepare', 'finish', 'abandoned'].includes(action));
     const marker = join(home, 'foreign-' + action);
     const { RuntimeInstallation } = await import(pathToFileURL(join(dist, 'daemon/runtime-installation.js')).href);
     const registry = await RuntimeInstallation.open(home, { existing: true });
@@ -47,6 +47,7 @@ async function run(mode) {
     try {
       await registry.exclusive(async () => {
         writeFileSync(marker + '-ready', String(process.pid), { mode: 0o600, flag: 'wx' });
+        if (action === 'abandoned') process.exit(0); // Exit while holding the actual committed installation lease.
         await waitForFile(marker + '-release');
       });
     } finally { await registry.close(); }

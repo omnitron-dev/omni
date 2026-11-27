@@ -348,6 +348,17 @@ service.command('recover-stage-fence <action>')
     if (!emitJson(receipt)) emitInfo('Legacy passive stage ' + receipt.recordId + ': ' + receipt.state);
   });
 
+service.command('recover-installation')
+  .description('Review a dead installer or retire its exact lease in the enrolled Linux instance')
+  .option('--check', 'Read the selected runtime and the abandoned installation review')
+  .option('--review <sha256>', 'Retire the reviewed lease and retain its original record')
+  .structuredAction(async (options: { check?: boolean; review?: string }) => {
+    const { recoverEnrolledInstallation } = await import('../commands/recover-installation.js');
+    const { emitJson, emitInfo } = await import('../commands/output.js');
+    const report = await recoverEnrolledInstallation(options);
+    if (!emitJson(report)) emitInfo(`Installation PID ${report.evidence.pid}, ${report.state}, review ${report.review}`);
+  });
+
 service.command('inspect-stage-fence')
   .description('Inspect the existing legacy passive-stage fence as the local Linux host administrator')
   .structuredAction(async () => {

@@ -1,10 +1,10 @@
 import fs from 'node:fs/promises';
-import { constants, type BigIntStats } from 'node:fs';
+import { constants, statSync, type BigIntStats } from 'node:fs';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { openSqliteDatabase } from '@omnitron-dev/titan-database/sqlite';
-import { compareProcessLifetimes, readProcessLifetime } from '@omnitron-dev/common/process-identity';
+import { compareProcessLifetimes, readHostBootIdentity, readProcessLifetime } from '@omnitron-dev/common/process-identity';
 import { OMNITRON_HOME } from '../config/defaults.js';
 import { readRuntimeManifest, verifyRuntimeArtifact } from '../shared/runtime-artifact.js';
 import type { DaemonStateStore } from './daemon-state-store.service.js';
@@ -30,6 +30,11 @@ export interface InstalledRuntimeCli {
 }
 
 interface InstallationLease { token: string; pid: number; acquiredAt: string; stageFence?: { scope: string; lifetime: string } }
+export interface AbandonedInstallation {
+  protocol: 1; bootId: string; uid: number; instanceSha256: string; database: string;
+  pid: number; acquiredAt: string; leaseSha256: string; selection: RuntimeSelection;
+}
+const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 export interface ReviewedRecoveryHold {
   planId: string;
   planFile: string;
@@ -132,6 +137,46 @@ export class RuntimeInstallation {
   /** No schema initialization or writer lease. SQLite may coordinate readers through WAL/SHM sidecars. */
   static openReadOnly(home = OMNITRON_HOME): Promise<RuntimeInstallation | null> {
     return RuntimeInstallation.open(home, { readOnly: true });
+  }
+
+  /** Retire an ordinary dead installer by exact review. Fleet fences and activations have their own recovery protocols. */
+  recoverAbandonedInstallation(review?: string) {
+    if (review !== undefined && (!HASH.test(review) || this.inspection)) throw Error('A writable registry and full installation review are required');
+    const db = this.inspection ?? this.store.initSync();
+    const key = 'runtime.interrupted-installation:' + review;
+    const reconcile = db.transaction(() => {
+      if (review) {
+        const prior = this.read<{ evidence: AbandonedInstallation; raw: string; updatedAt: string; retiredAt: string }>(key);
+        if (prior) {
+          if (sha256(JSON.stringify(prior.evidence)) !== review || sha256(JSON.stringify([prior.raw, prior.updatedAt])) !== prior.evidence.leaseSha256 ||
+              !Number.isFinite(Date.parse(prior.retiredAt))) throw Error('Invalid retained installation recovery');
+          return { state: 'retired' as const, review, evidence: prior.evidence, retiredAt: prior.retiredAt };
+        }
+      }
+      if (this.activation()) throw Error('Recover the pending runtime activation before reviewing an installation lease');
+      const row = db.prepare("SELECT value, updated_at FROM state_kv WHERE key = 'runtime.lease'").get() as { value: string; updated_at: string } | undefined;
+      if (!row) throw Error('No installation lease is present for this review');
+      const lease: InstallationLease = JSON.parse(row.value);
+      if (!lease || Object.keys(lease).sort().join(',') !== 'acquiredAt,pid,token' || !Number.isSafeInteger(lease.pid) || lease.pid < 1 ||
+          typeof lease.token !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(lease.token) ||
+          typeof lease.acquiredAt !== 'string' || !Number.isFinite(Date.parse(lease.acquiredAt))) throw Error('Expected an ordinary installation lease');
+      if (readProcessLifetime(lease.pid).state !== 'dead') throw Error('The installation holder is still live or unverifiable');
+      const selection = this.selection();
+      if (!selection) throw Error('No installed runtime is selected');
+      const database = statSync(path.join(this.directory, 'state.db'), { bigint: true });
+      const evidence: AbandonedInstallation = { protocol: 1, bootId: readHostBootIdentity(), uid: process.getuid!(), instanceSha256: sha256(this.home),
+        database: database.dev + ':' + database.ino, pid: lease.pid, acquiredAt: lease.acquiredAt,
+        leaseSha256: sha256(JSON.stringify([row.value, row.updated_at])), selection };
+      const digest = sha256(JSON.stringify(evidence));
+      if (!review) return { state: 'reviewed' as const, review: digest, evidence };
+      if (digest !== review) throw Error('The installation lease or its reviewed instance changed');
+      const retiredAt = new Date().toISOString();
+      this.store.kvSetSync(key, { evidence, raw: row.value, updatedAt: row.updated_at, retiredAt });
+      if (db.prepare("DELETE FROM state_kv WHERE key = 'runtime.lease' AND value = ? AND updated_at = ?").run(row.value, row.updated_at).changes !== 1)
+        throw Error('The reviewed installation lease changed before retirement');
+      return { state: 'retired' as const, review, evidence, retiredAt };
+    });
+    return review ? reconcile.immediate() : reconcile.deferred();
   }
 
   private read<T extends object>(key: string): T | null {

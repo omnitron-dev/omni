@@ -30,15 +30,16 @@ test('release recipe commands use native strict argument schemas and generated h
   }
 });
 
-async function fixture(t, exported = './index.js') {
+async function fixture(t, exported = './index.js', packedFields = {}, nativeBuild = false) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'release-archive-check-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const metadata = { name: '@fixture/archive', version: '1.0.0', type: 'module', main: exported };
   await fs.mkdir(path.join(root, 'packages/example'), { recursive: true });
   await fs.mkdir(path.join(root, 'apps'));
   await fs.mkdir(path.join(root, 'package'));
-  for (const target of ['packages/example/package.json', 'package/package.json'])
-    await fs.writeFile(path.join(root, target), JSON.stringify(metadata));
+  await fs.writeFile(path.join(root, 'packages/example/package.json'), JSON.stringify(metadata));
+  await fs.writeFile(path.join(root, 'package/package.json'), JSON.stringify({ ...metadata, ...packedFields }));
+  if (nativeBuild) await fs.writeFile(path.join(root, 'package/binding.gyp'), '{"targets":[]}');
   await fs.writeFile(path.join(root, 'package/index.js'), 'export const accepted = true;\n');
   const file = path.join(root, 'example.tgz');
   await releaseCommand(root, 'tar', ['-czf', file, 'package']);
@@ -67,4 +68,18 @@ test('changed bytes, missing exports and different inventories are rejected with
   const foreign = await fixture(t);
   await assert.rejects(checkPackageArchives(foreign.root, [{ ...foreign.artifact, version: '2.0.0' }]), /inventory differs/);
   await assert.rejects(checkPackageArchives(foreign.root, [foreign.artifact, foreign.artifact]), /Duplicate archive/);
+});
+
+test('archive acceptance checks for npm install hooks before starting a consumer', async t => {
+  for (const [fields, native, reason] of [
+    [{ scripts: { postinstall: 'echo fixture' } }, false, 'postinstall'],
+    [{ scripts: { prepare: 'echo fixture' } }, false, 'prepare'],
+    [{}, true, 'binding.gyp'],
+  ]) {
+    const { root, artifact } = await fixture(t, './index.js', fields, native);
+    await assert.rejects(checkPackageArchives(root, [artifact]), error =>
+      error.message.includes('npm installation hook') && error.message.includes(reason));
+  }
+  const inert = await fixture(t, './index.js', { gypfile: false, scripts: { test: 'echo fixture' } }, true);
+  await checkPackageArchives(inert.root, [inert.artifact]);
 });

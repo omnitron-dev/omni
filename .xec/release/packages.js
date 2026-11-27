@@ -106,6 +106,13 @@ export async function checkPackageArchives(root, artifacts, { consumer, run = re
       // Read the selected archive, never another workspace pack.
       const files = new Set((await execute(root, 'tar', ['-tzf', packed.filename])).split(/\r?\n/)
         .filter(file => file && !file.endsWith('/')).map(file => file.replace(/^package\//, '')));
+      // Public Omnitron packages arrive built. Check the manifest in the tarball
+      // before npm installs it, including npm's implicit node-gyp install.
+      const installHooks = ['preinstall', 'install', 'postinstall', 'prepublish', 'preprepare', 'prepare', 'postprepare',
+        'predependencies', 'dependencies', 'postdependencies'];
+      const hook = installHooks.find(name => typeof manifest.scripts?.[name] === 'string' && manifest.scripts[name].trim());
+      if (hook || (files.has('binding.gyp') && manifest.gypfile !== false))
+        throw Error(`${manifest.name}: archive declares an npm installation hook (${hook ?? 'binding.gyp'})`);
       if (manifest.name === '@omnitron-dev/lumen') {
         const native = [...files].filter(file => file.startsWith('node_modules/') &&
           (file.endsWith('.node') || /node_modules\/(?:@rolldown\/|rolldown\/|lightningcss(?:-|\/)|fsevents\/)/.test(file)));

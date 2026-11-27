@@ -794,6 +794,9 @@ describe('prepared source of one registered remote release', () => {
         await expect(rpc.deployReviewedRelease(confirm)).rejects.toThrow(/qualification evidence changed/);
         expect(stopCount()).toBe(1);
         expect(journal.inspect(scope).placement?.selected?.release).toBe(id);
+        const stopped = (await rpc.getStack(scope)).deploymentOperation;
+        expect(stopped).toEqual({ review: confirm.review, phase: 'stopped', nodeId, release: name,
+          rollbackRelease: fallback, recoveryRunId: runId, stopId: expect.any(String) });
         await expect(rpc.deployReviewedRelease({ ...confirm, recovery: { ...recovery, runId: wrongRun } })).rejects.toThrow(/recovery/i);
         const change = { ...scope, fromNodeId: nodeId, destination: { release: name, prepared: next.digest } };
         const injected = { ...change, recovery, deployment: confirm.review };
@@ -1005,6 +1008,7 @@ describe('prepared source of one registered remote release', () => {
           nodeId, release: second, rollback: { release: id }, stop: { applications: ['sample/deployed/main'], containers: [] } } });
         expect(stopCount()).toBe(0);
         const confirmation = { ...request, review: checked.deployment!.digest };
+        expect((await rpc.getStack(scope)).deploymentOperation).toBeUndefined();
         const previousFile = path.join(originalRelease, 'manifest.json');
         const bytes = fs.readFileSync(previousFile);
         try {
@@ -1023,10 +1027,21 @@ describe('prepared source of one registered remote release', () => {
         // The controller also missed the launch reply. Recover the original generation without another start.
         expect(journal.inspect(scope).placement!.activated).toBe(false);
         const placement = journal.inspect(scope).placement!;
+        const progress = { review: confirmation.review, nodeId, release: second, rollbackRelease: id, stopId: placement.sourceStop.id,
+          manifestSha256: sha(raw) };
+        expect((await rpc.getStack(scope)).deploymentOperation).toEqual({ ...progress, phase: 'starting' });
         expect(launches[1]!.provisioning).toEqual({ placementDigest: placement.receipt.digest, stopOperationId: placement.sourceStop.nodes[0]!.operationId });
         await expect(rpc.checkRelease(request)).resolves.toMatchObject({ ok: true, deploymentPhase: 'starting', deployment: { digest: confirmation.review } });
         await expect(service.startStack(scope.project, scope.stack, { release: second })).rejects.toThrow(/unconfirmed release deployment/i);
-        await expect(rpc.deployReviewedRelease(confirmation)).resolves.toMatchObject({ selectedRelease: { id: second } });
+        await expect(rpc.deployReviewedRelease(confirmation)).resolves.toMatchObject({
+          selectedRelease: { id: second }, deploymentOperation: { ...progress, phase: 'confirmed' },
+        });
+        expect((await rpc.getStack(scope)).deploymentOperation).toEqual({ ...progress, phase: 'confirmed' });
+        const registeredAt = f.registration.registeredAt;
+        try {
+          f.registration.registeredAt = '2026-02-01T00:00:00Z';
+          expect((await rpc.getStack(scope)).deploymentOperation).toBeUndefined();
+        } finally { f.registration.registeredAt = registeredAt; }
         expect(journal.inspect(scope).placement!.activated).toBe(true);
         await expect(rpc.deployReviewedRelease(confirmation)).resolves.toMatchObject({ status: 'running' });
         expect(stopCount()).toBe(1);
@@ -1045,6 +1060,10 @@ describe('prepared source of one registered remote release', () => {
         expect(stopCount()).toBe(2);
         await expect(rpc.deployReviewedRelease(confirmation)).rejects.toThrow(/superseded/i);
         expect(stopCount()).toBe(2);
+        const final = (await rpc.getStack(scope)).stopOperation!;
+        expect((await rpc.getStack(scope)).deploymentOperation?.review).toBe(recover.deployment!.digest);
+        store.kvSetSync(stopKey, { ...final, deploymentReview: confirmation.review });
+        expect((await rpc.getStack(scope)).deploymentOperation).toBeUndefined();
         return;
       }
       const restore = { project: 'sample', stack: 'test', fromNodeId: nodeId, destination: { registered: true as const } };

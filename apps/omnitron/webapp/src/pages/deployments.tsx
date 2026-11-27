@@ -1,5 +1,5 @@
 import { deploymentWorkspace } from 'src/utils/project-scope';
-import { stackHref, releaseHref, workspaceHref } from 'src/routes/workspace';
+import { pipelineRunHref, stackHref, releaseHref, workspaceHref } from 'src/routes/workspace';
 import { useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import Link from '@mui/material/Link';
@@ -42,6 +42,13 @@ function DeploymentWorkspace() {
   const canHistory = can('OmnitronRelease.deployments');
   const canLegacy = can('OmnitronDeploy.getHistory');
   const canProgress = can('OmnitronProject.getDeployProgress');
+  const readStack = Boolean(activeProject && activeStack && can('OmnitronProject.listStacks'));
+  // The Console status bar refreshes the shared inventory for the current project.
+  const inventory = useProjectStore(s => readStack ? s.stacksByProject?.[activeProject!] : undefined);
+  const stackError = useProjectStore(s => readStack ? s.stackReadErrors?.[activeProject!] : null);
+  const fetchStacks = useProjectStore(s => s.fetchStacks);
+  const selectedStack = inventory?.find(item => item.name === activeStack);
+  const operation = selectedStack?.deploymentOperation;
   const [preferredSection, setSection] = useState('stacks');
   const section = canHistory && (preferredSection === 'stacks' || !canLegacy) ? 'stacks' : canLegacy ? 'legacy' : null;
   const [showUnscoped, setShowUnscoped] = useState(false);
@@ -72,7 +79,8 @@ function DeploymentWorkspace() {
   const historyError = history.error;
   const refresh = async () => {
     setRefreshing(true);
-    try { await Promise.all([section === 'stacks' && history.refresh(), section === 'legacy' && legacy.refresh(), canProgress && progress.refresh()]); }
+    try { await Promise.all([section === 'stacks' && history.refresh(), section === 'legacy' && legacy.refresh(),
+      canProgress && progress.refresh(), readStack && fetchStacks(activeProject!)]); }
     finally { setRefreshing(false); }
   };
   const changePageSize = (size: number) => { setPageSize(size); setPage(0); };
@@ -109,9 +117,29 @@ function DeploymentWorkspace() {
   return <Stack spacing={2} sx={{ minWidth: 0 }}>
     <Breadcrumbs links={[{ name: 'Deployments' }]} action={<Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap', alignItems: 'center' }}>
       <IconButton data-console-command="refresh" aria-label="Refresh deployments" size="small" onClick={refresh} disabled={refreshing} aria-busy={refreshing}><RefreshIcon /></IconButton>
-      {activeProject && can('OmnitronProject.listStacks') && <Button component={RouterLink} to={workspaceHref({ project: activeProject, stack: activeStack }, '/stacks')} size="small">Stacks</Button>}
+      {activeProject && can('OmnitronProject.listStacks') && <Button component={RouterLink}
+        to={activeStack ? stackHref(activeProject, activeStack) : workspaceHref({ project: activeProject, stack: null }, '/stacks')} size="small">{activeStack ? 'Runtime' : 'Stacks'}</Button>}
       {can('OmnitronRelease.list') && <Button component={RouterLink} to={workspaceHref({ project: activeProject, stack: activeStack }, '/releases')} size="small" variant="outlined">{can('OmnitronProject.startStack') ? 'Deploy a release' : 'Releases'}</Button>}
     </Stack>} />
+    {activeProject && !activeStack && can('OmnitronProject.listStacks') &&
+      <Typography variant="body2" color="text.secondary">Select a stack to view its reviewed deployment.</Typography>}
+    {readStack && <Stack component="section" aria-label="Reviewed deployment" spacing={0.75} sx={{ overflowWrap: 'anywhere' }}>
+      <Typography component="h2" variant="subtitle1">Reviewed deployment</Typography>
+      {stackError && <Alert severity="warning">Stack observations unavailable. {stackError}</Alert>}
+      {operation ? <>
+        <Typography variant="body2">Last recorded phase · <strong>{operation.phase}</strong></Typography>
+        <Typography variant="body2">Target release · {operation.release}</Typography>
+        <Typography variant="body2">Return release · {operation.rollbackRelease}</Typography>
+        <Typography variant="body2">Execution node · {operation.nodeId}</Typography>
+        {operation.error && <Alert severity="error">{operation.error}</Alert>}
+        {operation.recoveryRunId && <Typography variant="body2">Recovery qualification · {can('OmnitronPipelines.getRunStatus')
+          ? <Link component={RouterLink} to={pipelineRunHref(operation.recoveryRunId)}>{operation.recoveryRunId}</Link> : operation.recoveryRunId}</Typography>}
+        <Typography variant="caption" color="text.secondary">Deployment review · {operation.review}</Typography>
+        {operation.stopId && <Typography variant="caption" color="text.secondary">Stop receipt · {operation.stopId}</Typography>}
+        {operation.manifestSha256 && <Typography variant="caption" color="text.secondary">Selected manifest SHA-256 · {operation.manifestSha256}</Typography>}
+      </> : !stackError && <Typography variant="body2" color="text.secondary">{!inventory ? 'Reading stack inventory…'
+        : selectedStack ? 'No reviewed deployment receipt reported for this stack.' : 'Selected stack is absent from the latest inventory.'}</Typography>}
+    </Stack>}
     {canProgress && progress.error && <Alert severity="warning" variant="outlined">Transfer observations unavailable: {progress.error}. Retained observations may be stale.</Alert>}
     {canProgress && progress.loading && <Typography role="status" variant="caption">Reading transfer observations…</Typography>}
     {canProgress && !progress.loading && !progress.error && transfers.length === 0 && <Typography role="status" variant="caption" color="text.secondary">No attributed transfer observations for this workspace.</Typography>}

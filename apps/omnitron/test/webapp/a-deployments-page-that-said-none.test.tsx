@@ -3,9 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { MemoryRouter } from 'react-router-dom';
+import type { IStackInfo } from '../../src/shared/dto/project.js';
 import '@testing-library/jest-dom/vitest';
 const mocks = vi.hoisted(() => ({ history: vi.fn(), starts: vi.fn(), progress: vi.fn(), deploy: vi.fn(), can: vi.fn(),
   state: { activeProject: 'sample', activeStack: null as string | null,
+    stacksByProject: {} as Record<string, Pick<IStackInfo, 'name' | 'deploymentOperation'>[]>,
     projects: [{ name: 'sample', configurations: [{ runtimeProject: 'sample-extra', stacks: { prodA: 'prod' } }] }] },
 }));
 vi.mock('src/netron/client', () => ({ deploy: { getHistory: mocks.history, deployApp: mocks.deploy }, project: { getDeployProgress: mocks.progress } }));
@@ -16,12 +18,27 @@ const { default: DeploymentsPage } = await import('../../webapp/src/pages/deploy
 const draw = () => render(<ThemeProvider theme={createTheme()}><MemoryRouter initialEntries={['/projects/sample/deployments' + (mocks.state.activeStack ? '?stack=' + mocks.state.activeStack : '')]}><DeploymentsPage /></MemoryRouter></ThemeProvider>);
 const start = (project: string, stack: string, release: string) => ({ project, stack, release, releaseUnnamed: false, at: '2026-10-01T00:00:00Z', source: 'operator', actorId: 'operator', projectCommit: null, omniCommit: null });
 beforeEach(() => { vi.resetAllMocks(); mocks.state.activeProject = 'sample'; mocks.state.activeStack = null;
+  mocks.state.stacksByProject = {};
   mocks.can.mockReturnValue(true);
   mocks.history.mockResolvedValue([]); mocks.starts.mockResolvedValue({ known: true, deployments: [] }); mocks.progress.mockResolvedValue([]);
 });
 afterEach(cleanup);
 
 describe('deployment operations workspace', () => {
+  it('reads a saved stack receipt from the existing inventory for a viewer without Pipeline access', async () => {
+    mocks.state.activeStack = 'prod';
+    mocks.can.mockImplementation(permission => permission === 'OmnitronProject.listStacks');
+    mocks.state.stacksByProject.sample = [{ name: 'prod', deploymentOperation: {
+      phase: 'stopping', review: 'a'.repeat(64), nodeId: 'edge', release: 'target', rollbackRelease: 'previous',
+      recoveryRunId: 'qualified-run', error: 'The receiver could not confirm the stop',
+    } }];
+    draw();
+    expect(screen.getByRole('alert')).toHaveTextContent('The receiver could not confirm the stop');
+    expect(screen.getByText(/qualified-run/)).toBeVisible();
+    expect(screen.queryByRole('link', { name: 'qualified-run' })).not.toBeInTheDocument();
+    expect(mocks.progress).not.toHaveBeenCalled();
+    expect(mocks.starts).not.toHaveBeenCalled();
+  });
   it('points to the actual release workflow and makes history coverage explicit', async () => {
     draw();
     expect(await screen.findByText('No stack start recorded for this workspace')).toBeInTheDocument();

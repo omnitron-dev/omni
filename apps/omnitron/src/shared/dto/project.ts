@@ -368,6 +368,21 @@ export interface ReleaseMigrationHistory {
 
 export type RemoteDeploymentPhase = 'stopping' | 'stopped' | 'selecting' | 'selected' | 'starting';
 
+/** Last journal checkpoint for the reviewed deployment on this stack's selected recipient. */
+export interface StackDeploymentProgress {
+  review: string;
+  phase: RemoteDeploymentPhase | 'confirmed';
+  nodeId: string;
+  release: string;
+  rollbackRelease: string;
+  recoveryRunId?: string;
+  stopId?: string;
+  /** Available once the target release has a matching selection receipt. */
+  manifestSha256?: string;
+  /** An error recorded by the stop associated with this deployment. */
+  error?: string;
+}
+
 /** The native qualification run for a return release that can process post-migration writes. */
 export interface DeploymentRecoveryInput {
   release: string;
@@ -453,6 +468,7 @@ export interface IStackInfo {
   resumeOperation?: InstalledStackResumeResult | undefined;
   /** Last durable stop operation; failures and unreachable peers remain visible. */
   stopOperation?: StackStopProgress | undefined;
+  deploymentOperation?: StackDeploymentProgress;
   /** Execution/history identity, which can predate this stack's public project/name. */
   runtimeScope?: RuntimeStackScope;
   /** Stack name (e.g., 'dev', 'test', 'prod') */

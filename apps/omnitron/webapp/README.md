@@ -17,6 +17,8 @@ Console remembers workspace routes separately for each signed-in account. When i
 
 **Projects** lists the workspaces registered with the connected controller. Each card counts stacks in the primary configuration and its imports, including stopped stacks. The active count includes stacks that are starting. In **Stacks**, expand **Imported stacks** to see stopped imports. A selected stack opens directly, including when its project was imported.
 
+Open **Deployments** in a project and select its stack. **Reviewed deployment** shows the last checkpoint saved by the controller, the execution node and the target and return releases. A recovery qualification ID opens the corresponding run in **Pipelines** when your account can read it. **Runtime** opens the stack's current application and container observations. You can bookmark a stack’s deployment view at `/projects/<project>/deployments?stack=<stack>`.
+
 In **Nodes**, open **Applications** to see the processes reported by a particular node. The address is `/nodes?node=<registry-id>`. The inventory requires `OmnitronNodes.getNodeDaemonStatus`. Health and logs use their respective read permissions. A log link carries the application handle and node ID. Back returns to that node's inventory.
 
 **Pipelines** reads system automation definitions and run history independently. **Alerts** does the same for rules and firing alerts. A zero means the corresponding read succeeded with an empty list. A dash means the count is unavailable. When a refresh fails, the affected list identifies the error and retains its last available rows. A run opens its details when the account can read `OmnitronPipelines.getRunStatus`. The status bar links to `/alerts#firing` for readers of the alert summary and firing list.

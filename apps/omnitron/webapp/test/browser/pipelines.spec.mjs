@@ -1,6 +1,48 @@
 import { test, expect, stubInventory } from './fixtures.mjs';
 import { Pipeline as XecPipeline } from '@xec-sh/ops/pipeline';
 
+test('follows a reviewed deployment to its exact recovery run and keeps the run outside other workspaces', async ({ page, url }) => {
+  const runId = '47b13ec0-e16f-4183-b35a-ffff35bdec09';
+  const detailReads = [];
+  const stack = { name: 'dev', type: 'remote', status: 'running', apps: [], nodes: [], config: { type: 'remote' } };
+  await stubInventory(page, {
+    'OmnitronProject.listStacks': ({ project }) => [{ ...stack, ...(project === 'example' && { deploymentOperation: {
+      phase: 'starting', release: 'reviewed-candidate', rollbackRelease: 'compatible-return', nodeId: 'edge-node',
+      review: 'a'.repeat(64), recoveryRunId: runId, manifestSha256: 'b'.repeat(64), stopId: 'stop-one',
+    } }) }],
+    'OmnitronProject.getDeployProgress': [],
+    'OmnitronPipelines.listRuns': [], // The qualification is outside the most recent page of runs.
+    'OmnitronPipelines.listWorkspace': { definitions: [], runs: [] },
+    'OmnitronPipelines.getRunStatus': ({ runId: id }) => {
+      detailReads.push(id);
+      return { id, pipelineId: 'qualification', status: 'success',
+        triggeredBy: 'operator', startedAt: '2026-01-01T12:00:00Z', steps: [], params: {} };
+    },
+  });
+  await page.goto(url + '/projects/example/deployments?stack=dev');
+  const journal = page.getByRole('region', { name: 'Reviewed deployment' });
+  await expect(journal).toContainText('Last recorded phase · starting');
+  await expect(journal).toContainText('reviewed-candidate');
+  await expect(journal).toContainText('compatible-return');
+  await expect(journal).toContainText('edge-node');
+  await expect(page.getByRole('link', { name: 'Runtime', exact: true })).toHaveAttribute('href', '/projects/example/stacks/dev');
+  await journal.getByRole('link', { name: runId }).click();
+  const drawer = page.getByRole('dialog', { name: 'qualification' });
+  await expect(drawer).toContainText(runId);
+  await page.reload();
+  await expect(drawer).toContainText(runId);
+  await drawer.getByRole('button', { name: 'Close run details' }).click();
+  await expect(page.getByRole('tab', { name: /Runs/ })).toHaveAttribute('aria-selected', 'true');
+  await expect(page).not.toHaveURL(/run=/);
+  const count = detailReads.length;
+  await page.goto(url + '/projects/other/pipelines?stack=dev&view=runs&run=' + runId);
+  await expect(page.getByRole('tab', { name: /Runs/ })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.goto(url + '/projects/other/deployments?stack=dev');
+  await expect(journal).toContainText('No reviewed deployment receipt reported');
+  expect(detailReads).toHaveLength(count);
+});
+
 for (const width of [1440, 360]) {
   test(`author dependency graph, save and reopen at ${width}px`, async ({ page, url }, testInfo) => {
     const revision = 'a'.repeat(64);

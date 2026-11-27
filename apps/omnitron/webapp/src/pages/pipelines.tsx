@@ -1,4 +1,4 @@
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useSearchParams } from 'react-router-dom';
 import { flowHref, useWorkspace } from 'src/routes/workspace';
 import { useState, type ReactNode } from 'react';
 import Box from '@mui/material/Box';
@@ -167,25 +167,48 @@ export default function PipelinesPage() {
   const { project, stack } = useWorkspace();
   const { can, snapshot } = useAccess();
   const reads = { definitions: can('OmnitronPipelines.listPipelines'), runs: can('OmnitronPipelines.listRuns'), detail: can('OmnitronPipelines.getRunStatus') };
-  const [section, setSection] = useState(() => !project && !reads.definitions && reads.runs ? 'runs' : 'definitions');
+  const [workspaceSection, setWorkspaceSection] = useState('definitions');
   const workspace = project ? { project, ...(stack && { stack }) } : null;
   if (workspace && !can('OmnitronPipelines.listWorkspace')) return <Stack spacing={2}>
     <Breadcrumbs links={[{ name: 'Pipelines' }]} />
     <Alert severity="warning">Workspace pipeline history is unavailable on this controller for this account.</Alert>
   </Stack>;
   return <PipelineInventory key={JSON.stringify([workspace, snapshot?.userId, reads])}
-    workspace={workspace} reads={reads} section={section} setSection={setSection} />;
+    workspace={workspace} reads={reads} workspaceSection={workspaceSection} setWorkspaceSection={setWorkspaceSection} />;
 }
 
-function PipelineInventory({ workspace, reads, section, setSection }: {
+function PipelineInventory({ workspace, reads, workspaceSection, setWorkspaceSection }: {
   workspace: PipelineWorkspace | null;
   reads: { definitions: boolean; runs: boolean; detail: boolean };
-  section: string;
-  setSection: (section: string) => void;
+  workspaceSection: string;
+  setWorkspaceSection: (value: string) => void;
 }) {
   const { can } = useAccess();
+  const [search, setSearch] = useSearchParams();
+  const [localRun, changeRun] = useState<string | null>(null);
+  const selectedRun = workspace ? localRun : reads.detail ? search.get('run') : null;
+  const showGlobalRuns = selectedRun || search.get('view') === 'runs' || (!reads.definitions && reads.runs);
+  const section = workspace ? workspaceSection : showGlobalRuns ? 'runs' : 'definitions';
+  const setSection = (next: string) => {
+    if (workspace) setWorkspaceSection(next);
+    else setSearch(current => {
+      const params = new URLSearchParams(current);
+      params.set('view', next);
+      if (next !== 'runs') params.delete('run');
+      return params;
+    });
+  };
+  const setSelectedRun = (id: string | null) => {
+    if (workspace) changeRun(id);
+    else setSearch(current => {
+      const params = new URLSearchParams(current);
+      params.set('view', 'runs');
+      if (id) params.set('run', id);
+      else params.delete('run');
+      return params;
+    });
+  };
   const [editor, setEditor] = useState<Pipeline | 'new' | null>(null);
-  const [selectedRun, setSelectedRun] = useState<string | null>(null);
   const [runDefinition, setRunDefinition] = useState<Pipeline | null>(null);
   const [params, setParams] = useState('{}');
   const [requestId, setRequestId] = useState('');
@@ -479,7 +502,7 @@ function PipelineInventory({ workspace, reads, section, setSection }: {
                   return;
                 }
                 if (readDetail) setSelectedRun(preparedRun.id);
-                setSection('runs');
+                if (workspace || !readDetail) setSection('runs');
                 setPage(0);
                 const result = await pipelines.startRun({
                   runId: preparedRun.id, expectedDigest: preparedRun.review!.digest, params: JSON.parse(params),
@@ -504,7 +527,7 @@ function PipelineInventory({ workspace, reads, section, setSection }: {
       >
         <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
           <Box sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
-            <Typography id="pipeline-run-title" component="h2" variant="subtitle1">{selected ? runLabel(selected) : 'Run details'}</Typography>
+            <Typography id="pipeline-run-title" component="h2" variant="subtitle1">{selected ? runLabel(selected) : run?.pipelineId ?? 'Run details'}</Typography>
             {workspace && <Typography variant="caption" color="text.secondary">{[workspace.project, workspace.stack].filter(Boolean).join(' / ')}</Typography>}
           </Box>
           <IconButton title="Close run details" onClick={() => setSelectedRun(null)}>

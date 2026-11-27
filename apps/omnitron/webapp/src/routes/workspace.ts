@@ -49,6 +49,10 @@ export function releaseHref(project: string | null, id: string, stack: string | 
   return workspaceHref({ project, stack }, '/releases/' + encodeURIComponent(id));
 }
 
+export function pipelineRunHref(run: string) {
+  return '/pipelines?' + new URLSearchParams({ view: 'runs', run });
+}
+
 export function flowHref(
   workspace: { project: string | null; stack?: string | null },
   params: Record<string, string> = {}

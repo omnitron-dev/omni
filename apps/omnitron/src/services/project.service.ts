@@ -124,6 +124,7 @@ import type { InfrastructureConfig, IServiceRequirement, PostgresDatabaseConfig 
 import type {
   IProjectInfo,
   IStackInfo,
+  StackDeploymentProgress,
   StackRuntime,
   StackStatus,
   IStackNodeStatus,
@@ -3125,11 +3126,17 @@ export class ProjectService extends EventEmitter {
     return config;
   }
 
-  private registeredRemoteScope(project: string, stack: string) {
+  private findRegisteredRemoteScope(project: string, stack: string) {
     const registration = this.registry.get(project), config = this.getLoadedConfig(project);
     const declaration = registration && config && resolveProjectStacks(config, registration.path, project)[stack];
-    if (!registration || !config || declaration?.type !== 'remote') throw Error('A currently registered remote stack is required');
+    if (!registration || !config || declaration?.type !== 'remote') return undefined;
     return { registration, config, stack: declaration, fingerprint: stackDefinitionFingerprint([registration.name, registration.path, registration.registeredAt, declaration]) };
+  }
+
+  private registeredRemoteScope(project: string, stack: string) {
+    const scope = this.findRegisteredRemoteScope(project, stack);
+    if (!scope) throw Error('A currently registered remote stack is required');
+    return scope;
   }
 
   /** Repeating this check in the SQLite transaction closes races with local starts, stops, registration and recovery. */
@@ -3640,14 +3647,47 @@ export class ProjectService extends EventEmitter {
     return info;
   }
 
+  private recordedDeployment(project: string, stack: string, digest: string) {
+    const key = stackExecutionKey({ project, stack });
+    const op = this.daemonStateStore.kvGetSync<RemoteDeploymentOperation>('release:deployment:' + key + ':' + digest, { strict: true });
+    if (op?.review?.digest === digest && op.review.project === project && op.review.stack === stack) return op;
+    return null;
+  }
+
+  private deploymentProgress(project: string, stack: string, placement: RemotePlacement, stop: StackStopProgress | null): StackDeploymentProgress | undefined {
+    const active = this.remoteDeployments?.get(stackExecutionKey({ project, stack }));
+    const digest = active?.digest ?? stop?.deploymentReview;
+    if (!digest) return undefined;
+    const op = this.recordedDeployment(project, stack, digest);
+    const selected = placement.selected;
+    if (!op || !selected || selected.nodeId !== op.review.nodeId) return undefined;
+    // A removed registration can leave historical receipts under the same project and stack names.
+    const source = this.daemonStateStore.kvGetSync<PreparedRemoteSourceRecord>(remoteReleaseSourceKey(project, stack, op.review.prepared), { strict: true });
+    if (!source || source.release !== op.review.release || source.input.nodeId !== selected.nodeId || source.recipient !== selected.pin ||
+        source.registration !== this.findRegisteredRemoteScope(project, stack)?.fingerprint) return undefined;
+    const currentStop = stop?.deploymentReview === digest ? stop : undefined;
+    if (op.stopId && currentStop?.id !== op.stopId) return undefined;
+    if (!currentStop && (op.phase !== 'stopping' || (stop?.id ?? null) !== op.priorStop)) return undefined;
+    const targetSelected = placement.receipt.digest === op.selectionDigest && selected.release === op.review.release &&
+      selected.prepared === op.review.prepared && placement.sourceStop.id === op.stopId;
+    if (!targetSelected && (placement.receipt.digest !== op.priorSelection || ['selected', 'starting', 'confirmed'].includes(op.phase)))
+      return undefined;
+    return {
+      review: digest, phase: op.phase, nodeId: selected.nodeId, release: op.review.release, rollbackRelease: op.review.rollback.release,
+      ...(currentStop && { stopId: currentStop.id }),
+      ...(currentStop?.phase === 'failed' && currentStop.error && { error: currentStop.error }),
+      ...(op.review.postWriteRecovery && { recoveryRunId: op.review.postWriteRecovery.runId }),
+      ...(targetSelected && { manifestSha256: selected.manifestSha256 }),
+    };
+  }
+
   /** Reopening the deploy dialog must lead back to the same durable stop and selection. */
   private pendingReleaseDeployment(project: string, stack: string, placement: RemotePlacement) {
     const key = stackExecutionKey({ project, stack });
     const stop = this.daemonStateStore.kvGetSync<StackStopProgress>('stack:' + key + ':last-stop', { strict: true });
     if (!stop?.deploymentReview) return null;
-    const op = this.daemonStateStore.kvGetSync<RemoteDeploymentOperation>('release:deployment:' + key + ':' + stop.deploymentReview, { strict: true });
-    if (!op || op.review.digest !== stop.deploymentReview || op.review.project !== project || op.review.stack !== stack)
-      throw Error('The stop receipt refers to a missing or conflicting release deployment');
+    const op = this.recordedDeployment(project, stack, stop.deploymentReview);
+    if (!op) throw Error('The stop receipt refers to a missing or conflicting release deployment');
     if (op.phase === 'confirmed' || (op.stopId && op.stopId !== stop.id) ||
         (op.priorSelection !== placement.receipt.digest && op.selectionDigest !== placement.receipt.digest)) return null;
     return { review: op.review, phase: op.phase };
@@ -3763,6 +3803,9 @@ export class ProjectService extends EventEmitter {
     if (!live || live.receipt.digest !== op.selectionDigest) throw Error('The deployment has been superseded');
     if (!live.activated) await this.confirmUnacknowledgedStart(scope, live, info);
     if (op.phase !== 'confirmed') advance({ phase: 'confirmed' });
+    const deploymentOperation = this.deploymentProgress(project, stack, live, currentStop());
+    if (deploymentOperation) info.deploymentOperation = deploymentOperation;
+    else delete info.deploymentOperation;
     return info;
   }
 
@@ -7672,6 +7715,8 @@ export class ProjectService extends EventEmitter {
     const selectedRelease = placement?.selected ? { id: placement.selected.release, manifestSha256: placement.selected.manifestSha256 } :
       config.type === 'local' && !config.managedOrigin ? this.localSelection(projectName, stackName).read().release : null;
     const policy = this.infrastructurePolicy(projectName, stackName, config);
+    const stopOperation = this.daemonStateStore.kvGetSync<StackStopProgress>(`stack:${stateKey}:last-stop`, { strict: true });
+    const deploymentOperation = placement && this.deploymentProgress(projectName, stackName, placement, stopOperation);
     return {
       name: stackName,
       infrastructureMode: policy?.mode ?? 'reconcile',
@@ -7681,7 +7726,8 @@ export class ProjectService extends EventEmitter {
       status,
       ...(notUp.length > 0 && { notUp }),
       resumeOperation: this.daemonStateStore.kvGetSync<InstalledStackResumeResult>(`stack:${stateKey}:last-resume`, { strict: true }) ?? undefined,
-      stopOperation: this.daemonStateStore.kvGetSync<import('../shared/dto/project.js').StackStopProgress>(`stack:${projectName}/${stackName}:last-stop`, { strict: true }) ?? undefined,
+      stopOperation: stopOperation ?? undefined,
+      ...(deploymentOperation && { deploymentOperation }),
       config,
       nodes,
       apps,

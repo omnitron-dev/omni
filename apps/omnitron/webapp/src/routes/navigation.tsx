@@ -79,6 +79,7 @@ const sections: { title: string; items: Destination[] }[] = [
         title: 'Deployments',
         icon: <DeployIcon />,
         permission: ['OmnitronProject.getDeployProgress', 'OmnitronRelease.deployments', 'OmnitronDeploy.getHistory'],
+        projectPermission: ['OmnitronProject.listStacks', 'OmnitronProject.getDeployProgress', 'OmnitronRelease.deployments', 'OmnitronDeploy.getHistory'],
         stackFilter: true,
       },
       { path: '/flows', title: 'Flows', icon: <TopologyIcon />, permission: ['OmnitronFlows.list', 'OmnitronFlows.catalog'], stackFilter: true },
@@ -165,6 +166,7 @@ export function consoleRoute(pathname: string, search = '') {
   let permission = project ? item?.projectPermission ?? item?.permission : item?.permission;
   if (appDetail || process) permission = 'OmnitronDaemon.getApp';
   else if (page === 'nodes' && !project && params.has('node')) permission = 'OmnitronNodes.getNodeDaemonStatus';
+  else if (page === 'pipelines' && !project && params.get('run')) permission = 'OmnitronPipelines.getRunStatus';
   else if (release) permission = 'OmnitronRelease.get';
   else if (proposal) permission = 'OmnitronStudio.flowProposal';
   else if (page === 'flows' && params.get('flow')) permission = 'OmnitronFlows.get';

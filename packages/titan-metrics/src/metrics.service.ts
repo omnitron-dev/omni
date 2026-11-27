@@ -76,6 +76,7 @@ export class MetricsService implements IMetricsService {
   private flushTimer: ReturnType<typeof setInterval> | null = null;
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
   private flushing: Promise<void> | null = null;
+  private cleaning: Promise<void> | null = null;
   private readonly durableWrites = new Set<Promise<MetricsWriteReceipt>>();
   private readonly capacity: number;
   private readonly capacityBytes: number;
@@ -262,9 +263,10 @@ export class MetricsService implements IMetricsService {
       this.enqueue(collectorSamples);
     }
 
-    // Final flush
-    await this.flush();
-    await Promise.all(this.durableWrites);
+    const operations = await Promise.allSettled([this.flush(), this.cleaning, ...this.durableWrites]);
+    for (const result of operations) {
+      if (result.status === 'rejected') throw result.reason;
+    }
   }
 
   /** Titan disposes dependents before their storage/connection providers. */
@@ -287,7 +289,12 @@ export class MetricsService implements IMetricsService {
     }
   }
 
-  async cleanup(): Promise<void> {
+  cleanup(): Promise<void> {
+    this.cleaning ??= this.runCleanup().finally(() => { this.cleaning = null; });
+    return this.cleaning;
+  }
+
+  private async runCleanup(): Promise<void> {
     try {
       await this.storage.cleanup(this.maxAgeMs);
       this.cleanupError = null;

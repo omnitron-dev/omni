@@ -42,6 +42,29 @@ function armedIntervals(run: () => void): number[] {
 describe('MetricsService interval options', () => {
   afterEach(() => vi.restoreAllMocks());
 
+  it('joins overlapping retention passes and drains them before releasing storage', async () => {
+    let finish!: () => void;
+    const cleanup = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+    const service = new MetricsService({ appName: 'test', collection: { enabled: false } }, { ...storage, cleanup });
+    const first = service.cleanup();
+    const concurrent = service.cleanup();
+    let stopped = false;
+    const stop = service.stop().then(() => { stopped = true; });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    try {
+      expect(cleanup).toHaveBeenCalledTimes(1);
+      expect(stopped).toBe(false);
+    } finally {
+      finish();
+    }
+    await Promise.all([first, concurrent, stop]);
+    cleanup.mockImplementationOnce(async () => { throw new Error('storage failed'); });
+    await expect(service.cleanup()).rejects.toThrow('storage failed');
+    cleanup.mockResolvedValueOnce(undefined);
+    await service.cleanup();
+    expect(cleanup).toHaveBeenCalledTimes(3);
+  });
+
   it('uses the documented defaults when nothing is configured', () => {
     const service = new MetricsService(
       { appName: 'test', collection: { enabled: false }, storage: { type: 'memory' } },

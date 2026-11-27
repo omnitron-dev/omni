@@ -71,6 +71,29 @@ describe('MemoryMetricsStorage.getLatest staleness filter', () => {
 });
 
 describe('MemoryMetricsStorage.evictApp', () => {
+  it('keeps the newest observation when a mesh peer delivers older samples later', async () => {
+    const store = new MemoryMetricsStorage(5);
+    await store.write([statusSample('api', 'online', 100), cpuSample('api', 25, 100)]);
+    await store.write([statusSample('api', 'offline', 90_000), cpuSample('api', 99, 90_000)]);
+    const snapshot = await store.getLatest(undefined, { staleAfterMs: 30_000 });
+    expect(snapshot.apps.api).toMatchObject({ status: 'online', cpu: 25 });
+  });
+
+  it('applies retention throughout a wrapped ring and reuses the released capacity', async () => {
+    const store = new MemoryMetricsStorage(4);
+    await store.write([0, 1, 2, 3, 4, 5].map(index =>
+      cpuSample('api', index, index % 2 === 0 ? 90_000 : 1000)));
+    await store.cleanup(30_000);
+    const values = async () => (await store.query({})).flatMap(series => series.points.map(point => point.value)).sort((a, b) => a - b);
+    expect(await values()).toEqual([3, 5]);
+    await store.write([cpuSample('api', 6, 500), cpuSample('api', 7, 400), cpuSample('api', 8, 300)]);
+    expect(await values()).toEqual([5, 6, 7, 8]);
+    await store.evictApp('api');
+    expect(await values()).toEqual([]);
+    await store.write([cpuSample('api', 9, 200)]);
+    expect(await values()).toEqual([9]);
+  });
+
   it('drops every sample for the named app from the ring', async () => {
     const s = new MemoryMetricsStorage();
     await s.write([

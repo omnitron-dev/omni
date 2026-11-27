@@ -98,12 +98,13 @@ const DEFAULT_RING_CAPACITY = 10_000;
 
 export class MemoryMetricsStorage implements IMetricsStorage {
   readonly capabilities = { type: 'memory', durability: 'volatile' } as const;
-  private readonly ring: MetricSample[];
+  private readonly ring: Array<MetricSample | undefined>;
   private readonly capacity: number;
   private head = 0;
   private size = 0;
 
   constructor(capacity = DEFAULT_RING_CAPACITY) {
+    if (!Number.isSafeInteger(capacity) || capacity < 1) throw new RangeError('Metrics ring capacity must be a positive integer');
     this.capacity = capacity;
     this.ring = new Array<MetricSample>(capacity);
   }
@@ -193,7 +194,8 @@ export class MemoryMetricsStorage implements IMetricsStorage {
         metrics = new Map();
         appMap.set(app, metrics);
       }
-      if (!metrics.has(s.name)) {
+      const latest = metrics.get(s.name);
+      if (!latest || s.timestamp > latest.timestamp) {
         metrics.set(s.name, s);
       }
     }
@@ -221,36 +223,28 @@ export class MemoryMetricsStorage implements IMetricsStorage {
   }
 
   async evictApp(app: string): Promise<void> {
-    if (this.size === 0) return;
-    // Compact the ring in-place: walk all live samples, copy only the ones
-    // that aren't from the evicted app back into a fresh buffer.
-    const surviving: MetricSample[] = [];
-    for (let i = 0; i < this.size; i++) {
-      const idx = (this.head - this.size + i + this.capacity) % this.capacity;
-      const s = this.ring[idx]!;
-      if ((s.labels['app'] ?? '') !== app) surviving.push(s);
-    }
-    this.head = 0;
-    this.size = 0;
-    for (const s of surviving) {
-      this.ring[this.head] = s;
-      this.head = (this.head + 1) % this.capacity;
-      if (this.size < this.capacity) this.size++;
-    }
+    this.retain(sample => sample.labels['app'] !== app);
   }
 
   async cleanup(maxAgeMs: number): Promise<void> {
+    if (!Number.isSafeInteger(maxAgeMs) || maxAgeMs <= 0) throw new RangeError('Metrics retention must be positive milliseconds');
     const cutoff = Date.now() - maxAgeMs;
-    // In a ring buffer we can't truly delete — we mark old entries as expired
-    // by resetting size. We walk from tail and shrink.
-    while (this.size > 0) {
-      const tailIdx = (this.head - this.size + this.capacity) % this.capacity;
-      if (this.ring[tailIdx]!.timestamp < cutoff) {
-        this.size--;
-      } else {
-        break;
+    this.retain(sample => sample.timestamp >= cutoff);
+  }
+
+  private retain(keep: (sample: MetricSample) => boolean): void {
+    const tail = (this.head - this.size + this.capacity) % this.capacity;
+    let kept = 0;
+    for (let i = 0; i < this.size; i++) {
+      const sample = this.ring[(tail + i) % this.capacity]!;
+      if (keep(sample)) {
+        if (kept < i) this.ring[(tail + kept) % this.capacity] = sample;
+        kept++;
       }
     }
+    for (let i = kept; i < this.size; i++) this.ring[(tail + i) % this.capacity] = undefined;
+    this.head = (tail + kept) % this.capacity;
+    this.size = kept;
   }
 }
 

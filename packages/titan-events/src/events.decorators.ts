@@ -5,7 +5,7 @@
  */
 
 import { createDecorator, createMethodInterceptor } from '@omnitron-dev/titan/decorators';
-import { EVENT_HANDLER_METADATA, EVENT_ONCE_METADATA, EVENT_EMITTER_METADATA } from './event-discovery.service.js';
+import { EVENT_BATCH_METADATA, EVENT_HANDLER_METADATA, EVENT_ONCE_METADATA, EVENT_EMITTER_METADATA } from './event-discovery.service.js';
 
 /**
  * Event handler decorator - listens for events
@@ -293,21 +293,8 @@ export const ScheduleEvent = createDecorator<{
   .build();
 
 /**
- * Batch event handling — DECLARATIVE ONLY.
- *
- * This records `maxSize` / `maxWait` and nothing collects, buffers or delays
- * anything: the handler is invoked per event exactly as `@OnEvent` would
- * invoke it, and the `Symbol.for('event:batch')` entry it writes has no reader
- * in this repo. Kept because the metadata is there for an application that
- * wants to implement batching over it; do NOT read the name as a guarantee
- * that events arrive in batches.
- *
- * The same note is on `@Public({ transports })`, which is the other decorator
- * here that records an intention rather than enforcing one. A marker that
- * reads like a control is how a queue quietly runs unbatched at a thousand
- * times the rate its author designed for.
- *
- * Original description: collect multiple events and process as batch
+ * Collect payloads for this method until maxSize or maxWait is reached.
+ * Each decorated method owns its own buffer. Destroying its subscription discards pending payloads.
  *
  * @example
  * ```typescript
@@ -339,9 +326,8 @@ export const BatchEvents = createDecorator<{
   .withHooks({
     afterApply: (context: any) => {
       // Store metadata for batch processing
-      const BATCH_HANDLER_METADATA = Symbol.for('event:batch');
       Reflect.defineMetadata(
-        BATCH_HANDLER_METADATA,
+        EVENT_BATCH_METADATA,
         {
           event: `${context.options?.event}:batch`,
           options: context.options,

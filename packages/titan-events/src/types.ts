@@ -98,6 +98,8 @@ export interface IEventListenerOptions {
  * Event handler metadata
  */
 export interface IEventHandlerMetadata {
+  batch?: { maxSize: number; maxWait: number };
+
   /**
    * Event pattern to listen for
    */

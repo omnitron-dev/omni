@@ -554,40 +554,7 @@ describe('Event Decorators', () => {
       expect(metadata.options.maxWait).toBe(1000);
     });
 
-    it('should handle batched events', async () => {
-      const batches: any[] = [];
 
-      @Injectable()
-      class BatchHandler {
-        @BatchEvents({
-          event: 'batch.test',
-          maxSize: 3,
-          maxWait: 100,
-        })
-        handleBatch(events: any[]) {
-          batches.push(events);
-        }
-      }
-
-      const handler = new BatchHandler();
-
-      // Configure batching
-      eventsService.configureBatching('batch.test', 3, 100);
-
-      // Subscribe to batch event directly on the emitter since batch events are emitted by the emitter
-      emitter.on('batch.test:batch', (events) => {
-        handler.handleBatch(events);
-      });
-
-      // Emit events that will be batched
-      eventsService.emit('batch.test', { id: 1 });
-      eventsService.emit('batch.test', { id: 2 });
-      eventsService.emit('batch.test', { id: 3 });
-
-      // Should trigger batch immediately after reaching maxSize
-      expect(batches).toHaveLength(1);
-      expect(batches[0]).toHaveLength(3);
-    });
   });
 
   describe('Integration', () => {

@@ -1184,7 +1184,9 @@ export class Container implements IContainer {
     // - Class instances (useClass): lifecycle methods detected and called correctly
     // - useValue with real class instances (e.g., ConfigService): lifecycle methods called
     // - useValue with JS Proxy (e.g., TopologyProxy): safely skipped (no real methods)
-    const postConstructMethods = this.lifecycleService.getPostConstructMethods(instance);
+    // The container is injectable. Its own startup and teardown belong to Application.
+    const ownsLifecycle = !Object.is(instance, this);
+    const postConstructMethods = ownsLifecycle ? this.lifecycleService.getPostConstructMethods(instance) : [];
     if (postConstructMethods.length > 0) {
       type InstanceWithMethod = { [key: string]: (() => unknown) | undefined };
       const instanceWithMethod = instance as InstanceWithMethod;
@@ -1212,7 +1214,7 @@ export class Container implements IContainer {
           throw wrappedError;
         }
       }
-    } else if (this.lifecycleService.isAsyncInitializable(instance)) {
+    } else if (ownsLifecycle && this.lifecycleService.isAsyncInitializable(instance)) {
       try {
         await instance.onInit();
       } catch (error: unknown) {
@@ -1231,13 +1233,13 @@ export class Container implements IContainer {
 
     // Initialize if needed (sync initialization)
     // Skip if @PostConstruct already called the same method (e.g., @PostConstruct on initialize())
-    if (this.lifecycleService.isInitializable(instance) && !postConstructMethods.includes('initialize')) {
+    if (ownsLifecycle && this.lifecycleService.isInitializable(instance) && !postConstructMethods.includes('initialize')) {
       await instance.initialize();
     }
 
     // Track instances for lifecycle management
     // Only track singleton and scoped instances to prevent memory leak for transient instances
-    const shouldTrackLifecycle = registration.scope !== Scope.Transient;
+    const shouldTrackLifecycle = ownsLifecycle && registration.scope !== Scope.Transient;
 
     // NOTE: Do NOT add to initializableInstances here — lifecycle methods
     // (@PostConstruct / onInit) were already called above during async resolution.
@@ -2242,6 +2244,11 @@ export class Container implements IContainer {
       scopes: this.scopedInstances.size,
       parent: this.parent as IContainer | undefined,
     };
+  }
+
+  /** Inspect already-resolved local providers without constructing lazy services. */
+  iterateResolvedInstances(): IterableIterator<unknown> {
+    return this.instances.values();
   }
 
   /**

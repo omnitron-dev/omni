@@ -26,6 +26,35 @@ import type {
   ErrorHandlingOptions,
 } from './types.js';
 
+/** One timer and one detachable buffer per batch destination. */
+class EventBatch<T> {
+  private items: T[] = [];
+  private timer?: ReturnType<typeof setTimeout>;
+
+  constructor(public options: BatchOptions, private readonly deliver: (items: T[]) => void) {}
+
+  add(item: T): void {
+    this.items.push(item);
+    if (this.options.maxSize && this.items.length >= this.options.maxSize) {
+      this.flush();
+    } else if (this.options.maxWait && this.timer === undefined) {
+      this.timer = setTimeout(() => this.flush(), this.options.maxWait);
+    }
+  }
+
+  clear(): void {
+    clearTimeout(this.timer);
+    this.timer = undefined;
+    this.items = [];
+  }
+
+  private flush(): void {
+    const items = this.items;
+    this.clear();
+    this.deliver(items);
+  }
+}
+
 /**
  * Enhanced EventEmitter with advanced features
  */
@@ -48,9 +77,8 @@ export class EnhancedEventEmitter<TEventMap extends EventMap = EventMap> extends
   private schemas: Map<string, ValidationSchema> = new Map();
 
   // Batching configuration
-  private batchConfigs: Map<string, BatchOptions> = new Map();
-  private batchBuffers: Map<string, any[]> = new Map();
-  private batchTimers: Map<string, NodeJS.Timeout> = new Map();
+  private batches = new Map<string, EventBatch<{ data: unknown; metadata: EventMetadata }>>();
+  private batchSubscriptions = new Map<() => void, string>();
 
   // Throttle/Debounce configurations
   private throttleConfigs: Map<string, { interval: number; lastEmit: number }> = new Map();
@@ -175,8 +203,9 @@ export class EnhancedEventEmitter<TEventMap extends EventMap = EventMap> extends
       data = this.applyBeforeInterceptors(event, data, metadata);
 
       // Check if event should be batched
-      if (this.batchConfigs.has(event)) {
-        this.addToBatch(event, data, metadata);
+      const batch = this.batches.get(event);
+      if (batch) {
+        batch.add({ data, metadata });
         return true;
       }
 
@@ -236,6 +265,12 @@ export class EnhancedEventEmitter<TEventMap extends EventMap = EventMap> extends
    * Enhanced on with options
    */
   onEnhanced(event: string, listener: ListenerLike, options?: ListenerOptions): this {
+    this.subscribeEnhanced(event, listener, options);
+    return this;
+  }
+
+  /** Subscribe with listener options and detach the exact installed wrapper. */
+  subscribeEnhanced(event: string, listener: ListenerLike, options?: ListenerOptions): () => void {
     // Wrap listener with error boundary if requested
     if (options?.errorBoundary) {
       const originalListener = listener;
@@ -262,7 +297,7 @@ export class EnhancedEventEmitter<TEventMap extends EventMap = EventMap> extends
         ]);
     }
 
-    return super.on(event, listener);
+    return super.subscribe(event, listener);
   }
 
   /**
@@ -425,7 +460,9 @@ export class EnhancedEventEmitter<TEventMap extends EventMap = EventMap> extends
    * Configure event batching
    */
   batch(event: string, options: BatchOptions): this {
-    this.batchConfigs.set(event, options);
+    const existing = this.batches.get(event);
+    if (existing) existing.options = options;
+    else this.batches.set(event, new EventBatch(options, items => super.emit(`${event}:batch`, items)));
     return this;
   }
 
@@ -578,49 +615,30 @@ export class EnhancedEventEmitter<TEventMap extends EventMap = EventMap> extends
     }
   }
 
-  /**
-   * Add to batch buffer
-   */
-  private addToBatch(event: string, data: any, metadata: EventMetadata): void {
-    const config = this.batchConfigs.get(event)!;
-
-    // Initialize buffer if needed
-    if (!this.batchBuffers.has(event)) {
-      this.batchBuffers.set(event, []);
+  /** Batch payloads for one listener while other subscribers continue receiving individual events. */
+  subscribeBatch<T>(event: string, options: Pick<BatchOptions, 'maxSize' | 'maxWait'>, listener: (items: T[]) => void): () => void {
+    if (options.maxSize === undefined && options.maxWait === undefined)
+      throw new RangeError('Batch subscriptions require maxSize or maxWait');
+    for (const limit of [options.maxSize, options.maxWait]) {
+      if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1))
+        throw new RangeError('Batch limits must be positive integers');
     }
-
-    const buffer = this.batchBuffers.get(event)!;
-    buffer.push({ data, metadata });
-
-    // Check if should flush
-    if (config.maxSize && buffer.length >= config.maxSize) {
-      this.flushBatch(event);
-    } else if (config.maxWait && !this.batchTimers.has(event)) {
-      // Set timer for max wait
-      const timer = setTimeout(() => {
-        this.flushBatch(event);
-      }, config.maxWait);
-      this.batchTimers.set(event, timer);
-    }
+    const batch = new EventBatch<T>({ ...options }, listener);
+    const detach = super.subscribe(event, (data: T) => batch.add(data));
+    const unsubscribe = () => {
+      detach();
+      batch.clear();
+      this.batchSubscriptions.delete(unsubscribe);
+    };
+    this.batchSubscriptions.set(unsubscribe, event);
+    return unsubscribe;
   }
 
-  /**
-   * Flush batch buffer
-   */
-  private flushBatch(event: string): void {
-    const buffer = this.batchBuffers.get(event);
-    if (!buffer || buffer.length === 0) return;
-
-    // Clear timer if exists
-    const timer = this.batchTimers.get(event);
-    if (timer) {
-      clearTimeout(timer);
-      this.batchTimers.delete(event);
+  override removeAllListeners(event?: string | symbol): this {
+    for (const [unsubscribe, source] of this.batchSubscriptions) {
+      if (event === undefined || source === event) unsubscribe();
     }
-
-    // A listener may enqueue the next batch synchronously or throw.
-    this.batchBuffers.delete(event);
-    super.emit(`${event}:batch`, buffer);
+    return super.removeAllListeners(event);
   }
 
   /**
@@ -646,12 +664,8 @@ export class EnhancedEventEmitter<TEventMap extends EventMap = EventMap> extends
     this.history.disable();
     this.metrics.disable();
 
-    // Clear batch timers
-    for (const timer of this.batchTimers.values()) {
-      clearTimeout(timer);
-    }
-    this.batchTimers.clear();
-    this.batchBuffers.clear();
+    for (const batch of this.batches.values()) batch.clear();
+    this.batches.clear();
 
     this.removeAllListeners();
   }

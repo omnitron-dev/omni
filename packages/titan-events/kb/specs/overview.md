@@ -26,7 +26,7 @@ export class OrderHandler {
   @ScheduleEvent('cleanup', { cron: '0 3 * * *' })
   async dailyCleanup(): Promise<void> { /* ... */ }
 
-  @BatchEvents('metrics.collect', { batchSize: 100, flushInterval: 5000 })
+  @BatchEvents({ event: 'metrics.collect', maxSize: 100, maxWait: 5000 })
   async processBatch(events: MetricEvent[]): Promise<void> { /* ... */ }
 }
 ```

@@ -45,10 +45,8 @@
  *   - `METHOD_RATE_LIMIT_METADATA_KEY` — deliberate. `@RateLimit` enforces by
  *     wrapping the descriptor; the key exists so introspection can SEE a
  *     declared limit. Its own comment says so.
- *   - `Symbol.for(event:batch)` — `@BatchEvents` records `maxSize`/`maxWait`
- *     and nothing batches. Now documented as declarative-only at the decorator
- *     and in the package's index, alongside `@Public({ transports })`, which
- *     carries the same kind of note.
+ *   - `Symbol.for(event:batch)` is consumed by the runtime discovery service
+ *     to subscribe decorated methods with independent buffers.
  *   - `'logger'` — written, in the source, "to set metadata that tests expect".
  *     The decorator's real work is its returned metadata and its hooks.
  *   - `'health-check'` — kept deliberately. `@HealthCheck` used to write ONLY

@@ -352,6 +352,17 @@ Use the `deployment.digest` from the first command. The controller records the s
 
 Both the deploy dialog and explicit placement changes require a migration history the candidate and return release can each preserve. `omnitron stack check-release acme prod "$next_release" --json` reports the migration paths and the reason in `migrationHistory`. Editing or removing a recorded file invalidates the candidate. An added file permits forward migration but can prevent the previous application from handling later writes. A mismatch between a release's inventory and its Git source leaves the comparison unverified. For a move from or back to the original registered working tree, the controller compares every conventionally named migration in both exact Git revisions, including workspace packages outside `apps/`.
 
+On `main` after 0.4.18, prepare a distinct return release when the incumbent predates the candidate schema. An administrator can generate the native qualification Pipeline for the prepared releases, the application probe at its full Git commit, and an enrolled isolated QA node. Run it through the ordinary Pipeline workflow. Retain the successful run ID with the release and probe commit.
+
+```sh
+omnitron stack plan-recovery acme prod "$next_release" --recovery-release "$return_release" \
+  --recovery-probe "$probe_commit" --qa-node "$qa_node" > recovery-pipeline.json
+omnitron stack check-release acme prod "$next_release" --recovery-release "$return_release" \
+  --recovery-probe "$probe_commit" --recovery-run "$run_id" --json
+```
+
+In Console, enter the same three values under **Review recovery release**. The review identifies the incumbent, the release qualified for post-migration writes and the proof digest. In the CLI, `action` contains the exact confirmation command. After a lost acknowledgement, reopen the candidate release to read the recorded review and continue with its original inputs.
+
 Keep the serving release running when an added migration blocks a reviewed deployment. A first release that changes which application can write requires a data owner that can identify and fence every writer, demonstrate a consistent physical return point and rehearse the candidate against an isolated copy. The data owner must durably commit the decision before it opens writes. After that decision or an ambiguous acknowledgement, returning requires a release that can handle the new data or verified reverse synchronization. A full stack stop names the supervised applications and containers. Private restoration proves specific data and volume identities. Write admission requires the data owner's separate decision. [Physical restoration](../../.xec/service-data-adopt/README.md) · [PostgreSQL write admission and recovery](../../.xec/postgres-switchover/README.md#write-admission-and-recovery)
 
 An administrator can choose **Inspect first-write admission** in the release dialog or use the same check from the CLI.

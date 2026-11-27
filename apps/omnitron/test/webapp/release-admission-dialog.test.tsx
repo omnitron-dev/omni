@@ -225,3 +225,35 @@ it('discards a release declaration reply after the workspace changes', async () 
   expect(rpc.check.mock.calls.filter(([, input]) => input.project === 'sample')).toHaveLength(1);
   expect(rpc.start).not.toHaveBeenCalled();
 });
+
+it.each([false, true])('confirms the exact qualified recovery from the review (reopened=%s)', async reopened => {
+  const digest = 'd'.repeat(64);
+  const recovery = { release: 'compatible', runId: '31f297a8-93eb-455f-8267-19cdf415bd3f', probeCommit: 'b'.repeat(40) };
+  rpc.can.mockReturnValue(true);
+  rpc.list.mockResolvedValue({ releases: [] });
+  rpc.progress.mockResolvedValue([]);
+  rpc.start.mockResolvedValue({ state: 'confirmed' });
+  if (!reopened) rpc.check.mockResolvedValueOnce({ ok: false, state: 'replacement-unavailable', because: 'Choose a compatible return release',
+    migrationHistory: { kind: 'added-migrations', total: 1, entries: ['003.sql'] } });
+  rpc.check.mockResolvedValue({ ok: true, ...(reopened && { deploymentPhase: 'starting' }), deployment: {
+    digest, nodeId: 'receiver', stop: { applications: ['ledger'], containers: [] }, rollback: { release: recovery.release },
+    postWriteRecovery: { incumbent: { release: 'previous' }, runId: recovery.runId, probeCommit: recovery.probeCommit, proofDigest: 'c'.repeat(64) },
+  } });
+  render(renderRelease());
+  fireEvent.change(screen.getByRole('combobox', { name: 'Release ID' }), { target: { value: 'candidate' } });
+  if (!reopened) {
+    fireEvent.change(await screen.findByLabelText('Recovery release ID'), { target: { value: recovery.release } });
+    const review = screen.getByRole('button', { name: 'Review recovery release' });
+    expect(review.hasAttribute('disabled')).toBe(true);
+    fireEvent.change(screen.getByLabelText('Recovery qualification run ID'), { target: { value: recovery.runId } });
+    fireEvent.change(screen.getByLabelText('Recovery probe commit'), { target: { value: recovery.probeCommit } });
+    fireEvent.click(review);
+  }
+  expect(await screen.findByText('Verified return release · compatible')).toBeTruthy();
+  expect(screen.getByText('Currently selected release · previous')).toBeTruthy();
+  expect(screen.getByText(new RegExp(recovery.runId))).toBeTruthy();
+  if (!reopened) expect(rpc.check).toHaveBeenLastCalledWith('checkRelease', { project: 'sample', stack: 'test', release: 'candidate', recovery });
+  expect(rpc.start).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: reopened ? 'Continue deployment' : 'Stop and deploy' }));
+  await waitFor(() => expect(rpc.start).toHaveBeenCalledExactlyOnceWith('sample', 'test', { release: 'candidate', deploymentReview: digest, recovery }));
+});

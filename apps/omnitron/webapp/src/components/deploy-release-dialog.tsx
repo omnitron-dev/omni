@@ -32,8 +32,8 @@ import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 
-import type { DeployProgressRecord, IStackInfo, ReleaseAdmission, ReleaseSummary } from '@omnitron-dev/omnitron/dto/services';
-import { migrationHistoryAdvice, observeStackStart } from '@omnitron-dev/omnitron/release-reading';
+import type { DeploymentRecoveryInput, DeployProgressRecord, IStackInfo, ReleaseAdmission, ReleaseSummary } from '@omnitron-dev/omnitron/dto/services';
+import { migrationHistoryAdvice, observeStackStart, reviewedDeploymentRecovery } from '@omnitron-dev/omnitron/release-reading';
 import { useAccess } from 'src/auth/access';
 import { invokeStackLifecycle, project as projectRpc } from 'src/netron/client';
 import { releaseApi } from 'src/netron/release-wire';
@@ -76,6 +76,7 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
   const [loadingReleases, setLoadingReleases] = useState(false);
   const [available, setAvailable] = useState<ReleaseSummary[]>([]);
   const [picked, setPicked] = useState('');
+  const [selectedRecovery, setSelectedRecovery] = useState<(DeploymentRecoveryInput & { scope: string }) | null>(null);
   const [target, setTarget] = useState(stack ?? '');
   const [answer, setVerdict] = useState<(ReleaseAdmission & { key: string }) | null>(null);
   const [checking, setChecking] = useState(false);
@@ -119,18 +120,26 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
   // new array from every poll would otherwise re-ask the daemon for a
   // verdict it has already given.
   const releaseId = given?.id ?? picked.trim();
-  const key = JSON.stringify([project,target,releaseId]);
+  const scope = JSON.stringify([project, target, releaseId]);
+  const recovery = selectedRecovery?.scope === scope ? selectedRecovery : null;
+  const recoveryId = recovery?.release;
+  const runId = recovery?.runId;
+  const probeCommit = recovery?.probeCommit;
+  const key = JSON.stringify([scope, recoveryId, runId, probeCommit]);
   const verdict = answer?.key === key ? answer : null;
   const deployment = verdict?.deployment;
   const canDeploy = !deployment || can('OmnitronProject.deployReviewedRelease');
 
   useEffect(() => {
     if (open) {
+      setSelectedRecovery(null);
       setTarget(stack ?? '');
       setVerdict(null);
       setFailure(null);
     }
   }, [open, stack, given?.id]);
+
+  useEffect(() => { setSelectedRecovery(null); }, [scope]);
 
   // The verdict belongs to one (release, stack) pair; changing either drops
   // it rather than leaving the previous answer under the new question.
@@ -148,9 +157,13 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
     let current = true;
     setChecking(true);
     const timeout = window.setTimeout(() => {
-      void invokeStackLifecycle('checkRelease', { project, stack: target, release: releaseId })
+      const requested = recoveryId && runId && probeCommit ? { release: recoveryId, runId, probeCommit } : undefined;
+      void invokeStackLifecycle('checkRelease', { project, stack: target, release: releaseId, ...(requested && { recovery: requested }) })
       .then((response) => {
-        if (current) setVerdict({ ...response, key });
+        if (current) {
+          reviewedDeploymentRecovery(response, requested);
+          setVerdict({ ...response, key });
+        }
       })
       .catch((err: Error) => {
         if (current) setVerdict({ key, ok: false, because: `The daemon could not answer: ${err.message}` });
@@ -160,7 +173,7 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
       });
     }, 250);
     return () => { current = false; selection.current = generation + 1; window.clearTimeout(timeout); };
-  }, [open, project, target, releaseId, key]);
+  }, [open, project, target, releaseId, recoveryId, runId, probeCommit, key]);
 
   const checkAfterAction = async (prepare: boolean) => {
     const request = selection.current;
@@ -169,7 +182,11 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
     setVerdict(null);
     setFailure(null);
     try {
-      const response = await invokeStackLifecycle('checkRelease', { project, stack: target, release: releaseId, ...(prepare && { prepare }) });
+      const requested = recoveryId && runId && probeCommit ? { release: recoveryId, runId, probeCommit } : undefined;
+      if (prepare && requested) throw Error('Prepare the release separately before reviewing recovery.');
+      const response = await invokeStackLifecycle('checkRelease', { project, stack: target, release: releaseId,
+        ...(prepare && { prepare }), ...(requested && { recovery: requested }) });
+      reviewedDeploymentRecovery(response, requested);
       if (request === selection.current) setVerdict({ ...response, key });
     } catch (err) {
       if (request === selection.current) setFailure((err as Error).message);
@@ -184,8 +201,9 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
     setFailure(null);
     const attempt = selection.current;
     try {
+      const confirmed = reviewedDeploymentRecovery(verdict);
       const outcome = await observeStackStart({ project, stack: target, release: releaseId },
-        () => startStack(project, target, { release: releaseId, ...(deployment && { deploymentReview: deployment.digest }) }),
+        () => startStack(project, target, { release: releaseId, ...(deployment && { deploymentReview: deployment.digest }), ...(confirmed && { recovery: confirmed }) }),
         () => projectRpc.getDeployProgress({ project, stack: target }),
         (records, _changed, observable) => {
           if (selection.current === attempt) setActivity({ records, available: observable });
@@ -205,7 +223,7 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
   };
 
   const chosen = stacks.find((s) => s.name === target);
-  const needsPreparation = verdict?.state === 'unprepared' || verdict?.state === 'missing';
+  const needsPreparation = !recovery && (verdict?.state === 'unprepared' || verdict?.state === 'missing');
   const needsDeclarations = verdict?.declarations === 'refresh-required';
   const needsInspection = inspectTarget || verdict?.state === 'requires-stop';
   const requiresRelease = chosen?.config?.release?.mode === 'required';
@@ -319,6 +337,12 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
                   <Typography variant="body2">Containers to remove · {deployment.stop.containers.join(', ') || 'None'}</Typography>
                 </Box>
                 <Typography variant="body2">Verified return release · {deployment.rollback.release}</Typography>
+                {deployment.postWriteRecovery && <>
+                  <Typography variant="body2">Currently selected release · {deployment.postWriteRecovery.incumbent.release}</Typography>
+                  <Typography variant="body2">New writes verified by qualification run · {deployment.postWriteRecovery.runId}</Typography>
+                  <Typography variant="caption">Application probe commit · {deployment.postWriteRecovery.probeCommit}</Typography>
+                  <Typography variant="caption">Proof SHA-256 · {deployment.postWriteRecovery.proofDigest}</Typography>
+                </>}
                 {deployment.recoveryOf && <Typography variant="body2">Recover the previous release after an incomplete start.</Typography>}
                 {!canDeploy && <Typography variant="body2">An administrator must confirm this replacement.</Typography>}
               </Stack> : <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{verdict.because}</Typography>}
@@ -329,7 +353,13 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
                 <Typography variant="body2">An administrator must update this release’s application declarations.</Typography>}
             </Alert>
           )}
-          {verdict?.migrationHistory?.kind === 'added-migrations' && open && can('OmnitronProject.inspectFirstWrite') &&
+          {chosen?.type === 'remote' && !deployment && (recovery || verdict?.migrationHistory?.kind === 'added-migrations') &&
+            <RecoverySelection key={scope} disabled={checking || preparing || deploying}
+              onReview={selected => {
+                if (recoveryId === selected.release && runId === selected.runId && probeCommit === selected.probeCommit) void checkAfterAction(false);
+                else setSelectedRecovery({ scope, ...selected });
+              }} />}
+          {!recovery && verdict?.migrationHistory?.kind === 'added-migrations' && open && can('OmnitronProject.inspectFirstWrite') &&
             <FirstWriteInspector key={key} project={project} stack={target} release={releaseId} />}
 
           {stackError && <Alert severity="warning">Stack inventory unavailable · {stackError}</Alert>}
@@ -372,4 +402,19 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
         onUpdated={() => checkAfterAction(false)} />}
     </Dialog>
   );
+}
+
+function RecoverySelection({ disabled, onReview }: { disabled: boolean; onReview: (recovery: DeploymentRecoveryInput) => void }) {
+  const [release, setRelease] = useState('');
+  const [runId, setRunId] = useState('');
+  const [commit, setCommit] = useState('');
+  return <Stack spacing={1.5}>
+    <Typography variant="body2">Review a return release qualified to preserve new writes on the migrated schema.</Typography>
+    <TextField size="small" label="Recovery release ID" value={release} disabled={disabled} onChange={event => setRelease(event.target.value)} />
+    <TextField size="small" label="Recovery qualification run ID" value={runId} disabled={disabled} onChange={event => setRunId(event.target.value)} />
+    <TextField size="small" label="Recovery probe commit" value={commit} disabled={disabled}
+      helperText="Full Git SHA used to qualify the application’s new writes" onChange={event => setCommit(event.target.value)} />
+    <Button size="small" sx={{ alignSelf: 'flex-start' }} disabled={disabled || !release.trim() || !runId.trim() || !/^[a-f0-9]{40}$/.test(commit.trim())}
+      onClick={() => onReview({ release: release.trim(), runId: runId.trim(), probeCommit: commit.trim() })}>Review recovery release</Button>
+  </Stack>;
 }

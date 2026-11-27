@@ -22,7 +22,7 @@ import { withClosureLibraryPath } from '../release/closure-library-path.js';
 import { resolveAppPath } from '../config/app-path.js';
 import { infrastructureOwnership, ownsStackInfrastructure } from '../project/infrastructure-ownership.js';
 import { Errors } from '@omnitron-dev/titan/errors';
-import { stackStartRefusals } from '../shared/dto/project.js';
+import { isDeploymentRecoveryInput, recoveryFromDeployment, stackStartRefusals } from '../shared/dto/project.js';
 import { InstalledStackResume, resumeDestinations, type InstalledResumeExecution, type InstalledResumeRequest, type InstalledResumeReceipt, type ResumeDestination } from '../project/installed-stack-resume.js';
 import type { InstalledStackResumeResult, StackStopProgress, StackStartOptions, StackStartReview } from '../shared/dto/project.js';
 import type { ClusterPermit, StackEffectPlan } from '../cluster/stop-authority.js';
@@ -52,14 +52,16 @@ import { nodeApplicationNames, resolveNodePlacements, stackNodeKey } from '../pr
 import { StackTargets, type StackTarget } from '../project/stack-targets.js';
 import { confirmStoppedPlacement, placementProvisionIntent, remotePlacementReview, type PlacementEndpoint, type RemotePlacement } from '../project/remote-placement.js';
 import { cleanRegisteredCommit, committedStackDeclaration, confirmRegisteredReleaseNode, previousStackDeclaration, registeredStackAtCommit, remoteReleaseSourceKey, remoteReleaseSourcePrefix, type ReleaseRecipient } from '../release/remote-source.js';
-import { accountsForPartialStart, confirmsRelease, DeploymentMigrationRefusal, verifyDeploymentMigrations, verifyRegisteredDeploymentMigrations, type RemoteDeploymentOperation } from '../project/remote-release-deployment.js';
+import { accountsForPartialStart, confirmsRelease, DeploymentMigrationRefusal, verifyDeploymentMigrations, verifyPostWriteRecoveryMigrations, verifyRegisteredDeploymentMigrations, type RemoteDeploymentOperation } from '../project/remote-release-deployment.js';
 import { checkRehearsalCopy, confirmFirstWriteCopy, inspectFirstWriteOwner, missingFirstWriteAuthorities, rehearsalCopyPlan } from '../project/first-write-inspection.js';
 import { checkMigrationRehearsal, planRehearsalMigrations } from '../project/rehearse-migrations.js';
 import type { MigrationRehearsalPlan, MigrationRehearsalResult, RehearseMigrationsRequest } from '../shared/dto/first-write.js';
 import type { FirstWriteInspection, InspectFirstWrite, PrepareRehearsalRequest, PrepareRehearsalResult, RehearsalCopyPlan, RehearsalCopyReceipt } from '../shared/dto/first-write.js';
 import type { InspectPhysicalRestore, PhysicalRestoreEvidence } from '../shared/dto/physical-restore.js';
 import { validateRunId } from './pipeline-admission.js';
-import type { PlacementProvisionIntent, RemoteReleaseDeployment } from '../shared/dto/project.js';
+import type { DeploymentRecoveryInput, PlacementProvisionIntent, RemoteReleaseDeployment } from '../shared/dto/project.js';
+import type { PipelineService } from './pipeline.service.js';
+import { readRecoveryQualificationProbe, readRecoveryQualificationRelease } from './recovery-qualification.js';
 import { defineEcosystem } from '../config/define-ecosystem.js';
 import { readCapturedSourceSync } from '../release/source-data.js';
 
@@ -192,6 +194,22 @@ type AdmittedRelease = LoadedRelease & {
 
 class LocalReleaseStopRequired extends Error {}
 class DeclarationRefreshRequired extends Error {}
+
+type RecoverySource = { receipt: PreparedRemoteReleaseSource; admitted: AdmittedRelease; opened: { sourceRoot: string } };
+type QualifiedPlacementHistory = {
+  selection: string;
+  incumbent: PreparedRemoteReleaseSource;
+  candidate: PreparedRemoteReleaseSource;
+  recovery: PreparedRemoteReleaseSource;
+  proofDigest: string;
+};
+
+async function validateDeploymentRecovery(recovery: DeploymentRecoveryInput): Promise<void> {
+  if (!isDeploymentRecoveryInput(recovery))
+    throw Error('Provide the recovery release, native qualification run ID and exact probe commit');
+  (await import('../release/load.js')).assertReleaseId(recovery.release);
+  validateRunId(recovery.runId);
+}
 
 function deploymentArtifacts(release: LoadedRelease, apps: readonly { name: string }[]) {
   const files = new Map(release.files.map(file => [file.app, file]));
@@ -435,7 +453,7 @@ export class ProjectService extends EventEmitter {
   private installedResume?: InstalledStackResume;
   private coordinatingResume = false;
   private placementConfigurations?: Map<string, IEcosystemConfig>;
-  private remoteDeployments?: Map<string, { release: string; digest: string; result: Promise<IStackInfo> }>;
+  private remoteDeployments?: Map<string, { release: string; digest: string; recovery?: DeploymentRecoveryInput; result: Promise<IStackInfo> }>;
 
   private assertDeploymentOwner(scope: StackExecutionScope, digest?: string): void {
     const active = this.remoteDeployments?.get(stackExecutionKey(scope));
@@ -2940,7 +2958,7 @@ export class ProjectService extends EventEmitter {
         operation.selectionDigest === placement.receipt.digest && operation.review.nodeId === placement.from.nodeId &&
         operation.review.prepared === selected.prepared && operation.review.release === selected.release &&
         ['selecting', 'selected', 'starting', 'confirmed'].includes(operation.phase)) {
-      const rollback = operation.review.rollback;
+      const rollback = operation.review.postWriteRecovery?.incumbent ?? operation.review.rollback;
       previous = await this.preparedRemoteRelease(scope.project, scope.stack, rollback.release, rollback.prepared);
       if (previous.receipt.nodeId !== placement.from.nodeId || previous.target.pin !== placement.from.pin)
         throw Error('The recorded previous release belongs to a different recipient');
@@ -2984,9 +3002,19 @@ export class ProjectService extends EventEmitter {
   }
 
   private async verifyPlacementHistory(scope: StackExecutionScope, intent: Awaited<ReturnType<ProjectService['inspectPlacementIntent']>>,
-    inspectedPrior?: Awaited<ReturnType<ProjectService['inspectRemoteReleaseSource']>>) {
+    inspectedPrior?: Awaited<ReturnType<ProjectService['inspectRemoteReleaseSource']>>, qualification?: QualifiedPlacementHistory) {
     const prior = intent.current.placement, candidate = intent.candidate;
     if (prior) await this.verifyPendingPlacementHistory(scope, prior);
+    if (qualification) {
+      const verified = qualification.incumbent;
+      if (!prior?.selected || !candidate || prior.receipt.digest !== qualification.selection ||
+          prior.selected.release !== verified.release || prior.selected.manifestSha256 !== verified.manifestSha256 ||
+          verified.project !== scope.project || verified.stack !== scope.stack ||
+          !isDeepStrictEqual(intent.from, intent.to) || intent.from.nodeId !== verified.nodeId ||
+          ![qualification.candidate, qualification.recovery].some(receipt => isDeepStrictEqual(receipt, candidate.receipt)))
+        throw Error('The qualified recovery does not cover this source, recipient or destination');
+      return;
+    }
     if (prior?.selected && candidate && prior.selected.manifestSha256 === candidate.admitted.manifestSha256) return;
     const before = prior?.selected ? inspectedPrior ?? await this.selectedReturnSource(scope, prior) : undefined;
     if (!before || !candidate) {
@@ -3185,11 +3213,11 @@ export class ProjectService extends EventEmitter {
   }
 
   private async placementPreflight(request: PlacementRequest, inspected?: Awaited<ReturnType<ProjectService['inspectRemoteReleaseSource']>>,
-    inspectedPrior?: Awaited<ReturnType<ProjectService['inspectRemoteReleaseSource']>>): Promise<PlacementPreflight> {
+    inspectedPrior?: Awaited<ReturnType<ProjectService['inspectRemoteReleaseSource']>>, qualification?: QualifiedPlacementHistory): Promise<PlacementPreflight> {
     const { project, stack } = request, scope = { project, stack };
     const intent = await this.inspectPlacementIntent(request, inspected);
     const { from, to, current, registration, registrationChange } = intent;
-    await this.verifyPlacementHistory(scope, intent, inspectedPrior);
+    await this.verifyPlacementHistory(scope, intent, inspectedPrior, qualification);
     if (current.nodes.some(node => node.host !== from.host || node.port !== from.port || node.nodeId && node.nodeId !== from.nodeId))
       throw Error('A single-recipient placement requires resolving all other deployment targets first');
     const observed = await intent.inspectSource(), execution = observed.execution;
@@ -3204,7 +3232,7 @@ export class ProjectService extends EventEmitter {
       source: { definition: observed.definition, project: execution.project, stack: execution.stack, revision: execution.revision } };
   }
 
-  private async inspectRemotePlacement(request: PlacementRequest) {
+  private async inspectRemotePlacement(request: PlacementRequest, deployment?: string) {
     const { project, stack, fromNodeId } = request, scope = { project, stack };
     this.placementIdle(scope);
     const intent = await this.inspectPlacementIntent(request);
@@ -3225,7 +3253,9 @@ export class ProjectService extends EventEmitter {
     }
     if (!stop || stop.phase !== 'stopped' || stop.supersededAt || stop.keepInfrastructure || current.nodes.length)
       throw Error('Complete a full stop on every source recipient before changing placement');
-    await this.verifyPlacementHistory(scope, intent);
+    const qualification = deployment && stop.deploymentReview === deployment
+      ? await this.qualificationAtStop(scope, deployment, stop, previous, candidate) : undefined;
+    await this.verifyPlacementHistory(scope, intent, undefined, qualification);
     const observation = await inspectSource();
     const migrationBaseline = previous?.selected ? { release: previous.selected.release, manifestSha256: previous.selected.manifestSha256 }
       : { registeredCommit: originCommit! }; // verifyPlacementHistory checked the exact registered Git source.
@@ -3305,12 +3335,84 @@ export class ProjectService extends EventEmitter {
     return { scope, scopeKey, journal, before, placement, selected, baseline, previous, next, requestFor, previousDeclarationCommit };
   }
 
-  private async reviewReleaseDeployment(project: string, stack: string, release: string) {
+  private recoveryPipelines?: Pick<PipelineService, 'inspectRecoveryQualification' | 'recoveryQualificationDefinition'>;
+
+  setRecoveryQualificationProvider(provider: NonNullable<ProjectService['recoveryPipelines']>): void {
+    this.recoveryPipelines = provider;
+  }
+
+  private async recoveryQualification(scope: StackExecutionScope, previous: RecoverySource, next: RecoverySource,
+    fallback: RecoverySource, probeCommit: string) {
+    if (!/^[a-f0-9]{40}$/.test(probeCommit)) throw Error('An exact qualification probe commit is required');
+    const sources = [previous, next, fallback], pin = previous.receipt;
+    if (new Set(sources.map(s => s.receipt.release)).size !== 3 ||
+        sources.some(({ receipt }) => receipt.project !== scope.project || receipt.stack !== scope.stack ||
+          receipt.nodeId !== pin.nodeId || receipt.sshFingerprint !== pin.sshFingerprint))
+      throw Error('Qualification requires three distinct immutable releases for the same registered recipient');
+    const migrationSource = (source: RecoverySource) => ({ root: source.opened.sourceRoot, manifest: source.admitted.manifest });
+    const addedMigrations = await verifyPostWriteRecoveryMigrations(migrationSource(previous), migrationSource(next),
+      migrationSource(fallback), next.admitted.files.map(file => file.app));
+    const root = this.registeredRemoteScope(scope.project, scope.stack).registration.path;
+    const [probe, incumbent, candidate, recovery] = await Promise.all([
+      readRecoveryQualificationProbe(root, next.receipt.commit, probeCommit),
+      readRecoveryQualificationRelease(previous.admitted, previous.opened.sourceRoot),
+      readRecoveryQualificationRelease(next.admitted, next.opened.sourceRoot),
+      readRecoveryQualificationRelease(fallback.admitted, fallback.opened.sourceRoot),
+    ]);
+    return { project: scope.project, stack: scope.stack, nodeId: pin.nodeId, incumbent, candidate, recovery, probe, addedMigrations };
+  }
+
+  private async inspectRecoveryHistory(scope: StackExecutionScope, selection: string, previous: RecoverySource,
+    next: RecoverySource, fallback: RecoverySource, input: DeploymentRecoveryInput): Promise<QualifiedPlacementHistory> {
+    if (!this.recoveryPipelines || input.release !== fallback.receipt.release)
+      throw Error('The native recovery qualification is unavailable for the requested release');
+    const expected = await this.recoveryQualification(scope, previous, next, fallback, input.probeCommit);
+    const proofDigest = await this.recoveryPipelines.inspectRecoveryQualification(input.runId, expected);
+    if (!/^[a-f0-9]{64}$/.test(proofDigest)) throw Error('The recovery qualification has no verified result');
+    return { selection, incumbent: previous.receipt, candidate: next.receipt, recovery: fallback.receipt, proofDigest };
+  }
+
+  /** Reopen the immutable sources and the native Pipeline receipt before committing a post-stop selection. */
+  private async qualificationAtStop(scope: StackExecutionScope, digest: string, stop: StackStopProgress,
+    previous: RemotePlacement | null | undefined, candidate: RecoverySource | null) {
+    const op = this.daemonStateStore.kvGetSync<RemoteDeploymentOperation>(
+      'release:deployment:' + stackExecutionKey(scope) + ':' + digest, { strict: true });
+    if (!op) throw Error('The recorded release deployment is missing');
+    const plan = op.review, proof = plan.postWriteRecovery;
+    if (!proof) return undefined;
+    if (!candidate || !previous?.selected || plan.digest !== digest || plan.project !== scope.project || plan.stack !== scope.stack ||
+        plan.nodeId !== previous.selected.nodeId || op.priorSelection !== previous.receipt.digest ||
+        !['stopped', 'selecting'].includes(op.phase) || op.stopId !== stop.id || !stop.intentCommitted ||
+        plan.release !== candidate.receipt.release || plan.prepared !== candidate.receipt.digest)
+      throw Error('The qualification is not bound to this deployment and completed stop');
+    const reopen = (source: RemoteReleaseDeployment['rollback']) =>
+      this.preparedRemoteRelease(scope.project, scope.stack, source.release, source.prepared);
+    const [incumbent, fallback] = await Promise.all([reopen(proof.incumbent), reopen(plan.rollback)]);
+    const qualified = await this.inspectRecoveryHistory(scope, op.priorSelection, incumbent, candidate, fallback,
+      { release: plan.rollback.release, runId: proof.runId, probeCommit: proof.probeCommit });
+    if (qualified.proofDigest !== proof.proofDigest) throw Error('The original recovery qualification evidence changed');
+    return qualified;
+  }
+
+  async planRecoveryQualification(project: string, stack: string, release: string, recoveryRelease: string, probeCommit: string, qaNodeId: string) {
+    if (!this.recoveryPipelines) throw Error('Native recovery qualification is unavailable');
+    const { assertReleaseId } = await import('../release/load.js');
+    assertReleaseId(release);
+    assertReleaseId(recoveryRelease);
+    const { scope, previous, next, selected, baseline } = await this.releaseDeploymentSources(project, stack, release);
+    const fallback = await this.replacementSource(scope, recoveryRelease, selected.nodeId, baseline.fingerprint);
+    const expected = await this.recoveryQualification(scope, previous, next, fallback, probeCommit);
+    return this.recoveryPipelines.recoveryQualificationDefinition(expected, qaNodeId);
+  }
+
+  private async reviewReleaseDeployment(project: string, stack: string, release: string, recovery?: DeploymentRecoveryInput) {
     const { scope, scopeKey, journal, before, placement, selected, baseline, previous, next, requestFor, previousDeclarationCommit } =
       await this.releaseDeploymentSources(project, stack, release);
-    const forward = await this.placementPreflight(requestFor(next.receipt), next, previous);
+    const fallback = recovery ? await this.replacementSource(scope, recovery.release, selected.nodeId, baseline.fingerprint) : previous;
+    const qualified = recovery ? await this.inspectRecoveryHistory(scope, placement.receipt.digest, previous, next, fallback, recovery) : undefined;
+    const forward = await this.placementPreflight(requestFor(next.receipt), next, previous, qualified);
     await this.checkReceiverStart(scope, placement, forward.source);
-    const reverse = next === previous ? forward : await this.placementPreflight(requestFor(previous.receipt), previous);
+    const reverse = next === fallback ? forward : await this.placementPreflight(requestFor(fallback.receipt), fallback, previous, qualified);
     const stop = await this.reviewStackStop(project, stack);
     const target = stop.targets[0], runtime = target?.runtime;
     if (forward.toNodeId !== selected.nodeId || reverse.toNodeId !== selected.nodeId || !isDeepStrictEqual(forward.source, reverse.source) ||
@@ -3340,13 +3442,17 @@ export class ProjectService extends EventEmitter {
     if (journal.inspect(scope).revision !== before.revision || this.registeredRemoteScope(project, stack).fingerprint !== baseline.fingerprint)
       throw Error('Release selection or registration changed during deployment admission');
     const values = { ...scope, nodeId: selected.nodeId, release, prepared: next.receipt.digest,
-      rollback: { release: selected.release, prepared: previous.receipt.digest },
+      rollback: { release: fallback.receipt.release, prepared: fallback.receipt.digest },
+      ...(qualified && recovery && { postWriteRecovery: {
+        incumbent: { release: selected.release, prepared: previous.receipt.digest },
+        runId: recovery.runId, probeCommit: recovery.probeCommit, proofDigest: qualified.proofDigest,
+      } }),
       stop: { digest: stop.digest, applications: target.applications ?? [], containers: target.containers ?? [] },
       ...(previousDeclarationCommit && { previousDeclarationCommit }), ...(recoveryOf && { recoveryOf }) };
     const review: RemoteReleaseDeployment = { ...values, digest: stackDefinitionFingerprint([
       'omnitron/remote-release-deployment/v1', before.revision, placement.receipt.digest, forward, reverse, values,
     ]) };
-    return { review, priorSelection: placement.receipt.digest, next, previous };
+    return { review, priorSelection: placement.receipt.digest, next, previous, fallback };
   }
 
   private physicalRestore?: (request: InspectPhysicalRestore) => Promise<PhysicalRestoreEvidence>;
@@ -3572,21 +3678,23 @@ export class ProjectService extends EventEmitter {
   }
 
   @RecoveryMutation()
-  async deployReviewedRelease(project: string, stack: string, release: string, digest: string): Promise<IStackInfo> {
+  async deployReviewedRelease(project: string, stack: string, release: string, digest: string, recovery?: DeploymentRecoveryInput): Promise<IStackInfo> {
     const scope = { project, stack }, key = stackExecutionKey(scope);
     if (!/^[a-f0-9]{64}$/.test(digest)) throw Error('An exact deployment review from check-release is required');
+    if (recovery !== undefined) await validateDeploymentRecovery(recovery);
     const inFlight = this.remoteDeployments ??= new Map();
     const active = inFlight.get(key);
     if (active) {
       if (active.digest !== digest || active.release !== release) throw Error('Another release deployment owns this stack');
+      if (recovery && !isDeepStrictEqual(active.recovery, recovery)) throw Error('Conflicting recovery qualification for an active deployment');
       return active.result;
     }
-    const result = this.runReviewedRelease(scope, release, digest).finally(() => inFlight.delete(key));
-    inFlight.set(key, { release, digest, result });
+    const result = this.runReviewedRelease(scope, release, digest, recovery).finally(() => inFlight.delete(key));
+    inFlight.set(key, { release, digest, ...(recovery && { recovery }), result });
     return result;
   }
 
-  private async runReviewedRelease(scope: StackExecutionScope, release: string, digest: string): Promise<IStackInfo> {
+  private async runReviewedRelease(scope: StackExecutionScope, release: string, digest: string, recovery?: DeploymentRecoveryInput): Promise<IStackInfo> {
     await this.requireNoColdBatch();
     const { project, stack } = scope, scopeKey = stackExecutionKey(scope);
     const key = 'release:deployment:' + scopeKey + ':' + digest;
@@ -3595,10 +3703,11 @@ export class ProjectService extends EventEmitter {
     let op = this.daemonStateStore.kvGetSync<RemoteDeploymentOperation>(key, { strict: true });
     const needsNewStopReview = Boolean(op);
     if (!op) {
-      const proof = await this.reviewReleaseDeployment(project, stack, release);
+      const proof = await this.reviewReleaseDeployment(project, stack, release, recovery);
       if (proof.review.digest !== digest) throw Error('The deployment review changed. Check the release again before stopping');
       this.rememberRemoteSource(proof.previous.receipt, proof.previous.record);
       this.rememberRemoteSource(proof.next.receipt, proof.next.record);
+      if (proof.review.postWriteRecovery) this.rememberRemoteSource(proof.fallback.receipt, proof.fallback.record);
       op = this.daemonStateStore.kvUpdateSync<RemoteDeploymentOperation>(key, prior => prior ?? {
         review: proof.review, priorSelection: proof.priorSelection, priorStop: currentStop()?.id ?? null, phase: 'stopping',
       });
@@ -3606,6 +3715,8 @@ export class ProjectService extends EventEmitter {
     if (op.review.release !== release || op.review.project !== project || op.review.stack !== stack || op.review.digest !== digest)
       throw Error('Release does not match the reviewed operation');
     const plan = op.review;
+    const originalRecovery = recoveryFromDeployment(plan);
+    if (recovery && !isDeepStrictEqual(recovery, originalRecovery)) throw Error('Recovery does not match the original deployment review');
     const advance = (change: Partial<RemoteDeploymentOperation>) => {
       op = this.daemonStateStore.kvUpdateSync<RemoteDeploymentOperation>(key, prior => {
         if (!prior || !isDeepStrictEqual(prior, op)) throw Error('Concurrent deployment progress changed; inspect the original operation');
@@ -3620,7 +3731,7 @@ export class ProjectService extends EventEmitter {
       if (stop?.deploymentReview !== digest) {
         if ((stop?.id ?? null) !== op.priorStop) throw Error('Another stop superseded this deployment review');
         // A retry of an interrupted request must still prove both sources before the first stop.
-        if (needsNewStopReview && (await this.reviewReleaseDeployment(project, stack, release)).review.digest !== digest)
+        if (needsNewStopReview && (await this.reviewReleaseDeployment(project, stack, release, originalRecovery)).review.digest !== digest)
           throw Error('Release, return source or recipient changed before stopping');
         await this.stopStack(project, stack, plan.stop.digest, false, undefined, digest);
         stop = currentStop();
@@ -3631,7 +3742,7 @@ export class ProjectService extends EventEmitter {
     }
     if (op.phase === 'stopped') {
       if (route()?.receipt.digest !== op.priorSelection) throw Error('Placement changed after stopping');
-      const placement = await this.reviewRemotePlacement(request);
+      const placement = originalRecovery ? (await this.inspectRemotePlacement(request, digest)).value.receipt : await this.reviewRemotePlacement(request);
       if (placement.stopId !== op.stopId) throw Error('The stop receipt changed before release selection');
       advance({ phase: 'selecting', selectionDigest: placement.digest });
     }
@@ -3668,7 +3779,7 @@ export class ProjectService extends EventEmitter {
       await this.verifyPendingPlacementHistory(request, previous);
       return previous.receipt;
     }
-    const { value, revision, recheck } = await this.inspectRemotePlacement(request);
+    const { value, revision, recheck } = await this.inspectRemotePlacement(request, deployment);
     if (value.receipt.digest !== request.review) throw Error('Remote placement review changed; inspect the current stop and recipient again');
     new StackTargets(this.daemonStateStore).select(request, revision, value, () => {
       this.assertDeploymentOwner(request, deployment);
@@ -3773,6 +3884,7 @@ export class ProjectService extends EventEmitter {
     stackName: string,
     releaseId: string,
     prepare = false,
+    recovery?: DeploymentRecoveryInput,
   ): Promise<import('../shared/dto/project.js').ReleaseAdmission> {
     let preparedArtifactVolumes: import('../shared/dto/project.js').PreparedArtifactVolume[] | undefined;
     let declarationReason: string | undefined;
@@ -3780,6 +3892,13 @@ export class ProjectService extends EventEmitter {
     try {
       const placement = this.placement(projectName, stackName), selected = placement?.selected;
       const pending = placement?.selected && this.pendingReleaseDeployment(projectName, stackName, placement);
+      if (recovery !== undefined) {
+        await validateDeploymentRecovery(recovery);
+        if (prepare || !selected || (pending?.review.release !== releaseId && selected.release === releaseId))
+          throw Error('Recovery qualification applies only to a reviewed immutable remote release replacement');
+        if (pending?.review.release === releaseId && !isDeepStrictEqual(recoveryFromDeployment(pending.review), recovery))
+          throw Error('The supplied recovery differs from the original deployment review');
+      }
       replacing = Boolean(placement && !placement.activated && !placement.receipt.migrationBaseline);
       if (replacing && placement && !(pending?.phase === 'starting' && releaseId === pending.review.release))
         await this.verifyPendingPlacementHistory({ project: projectName, stack: stackName }, placement);
@@ -3789,7 +3908,7 @@ export class ProjectService extends EventEmitter {
       }
       if (selected && (selected.release !== releaseId || placement.registration !== this.registeredRemoteScope(projectName, stackName).fingerprint)) {
         replacing = true;
-        const { review } = await this.reviewReleaseDeployment(projectName, stackName, releaseId);
+        const { review } = await this.reviewReleaseDeployment(projectName, stackName, releaseId, recovery);
         return { ok: true, deployment: review, because: 'The full stop, release selection and return source have been verified on the selected node.' };
       }
       const bound = selected ? await this.preparedRemoteRelease(projectName, stackName, releaseId, selected.prepared) : undefined;

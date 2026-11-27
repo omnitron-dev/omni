@@ -2,15 +2,28 @@
 
 import type { GateOutcome, ReleaseManifest } from '../release/manifest.js';
 import type { DeployProgressRecord, ReleaseDeploymentDto } from './dto/services.js';
-import type { IProjectInfo, IStackInfo, ReleaseMigrationHistory } from './dto/project.js';
+import { recoveryFromDeployment } from './dto/project.js';
+import type { DeploymentRecoveryInput, IProjectInfo, IStackInfo, ReleaseAdmission, ReleaseMigrationHistory } from './dto/project.js';
 import type { RuntimeReleaseEvidence } from '../config/types.js';
 
 const migrationAdvice: Record<ReleaseMigrationHistory['kind'], string> = {
-  'added-migrations': 'The return release predates these migrations. First-write admission requires the data owner to fence every writer, verify a physical return point, test the candidate on an isolated copy and record the writer decision before opening access.',
+  'added-migrations': 'The return release predates these migrations. To preserve post-migration writes, review a compatible return release with its successful qualification run and probe commit. First-write admission requires the data owner to fence every writer, verify a physical return point, test the candidate on an isolated copy and record the writer decision before opening access.',
   'existing-history-changed': 'Preserve each applied migration in the candidate and add a new migration for the next change.',
   'provenance-unavailable': 'Prepare the immutable source of each producer package and the previous release before changing placement.',
 };
 export function migrationHistoryAdvice(history: ReleaseMigrationHistory): string { return migrationAdvice[history.kind]; }
+
+/** Read the qualified pair from the controller review, including when resuming after a lost reply. */
+export function reviewedDeploymentRecovery(admission: ReleaseAdmission, requested?: DeploymentRecoveryInput): DeploymentRecoveryInput | undefined {
+  const plan = admission.deployment;
+  const proof = plan?.postWriteRecovery;
+  if (admission.ok && proof && (!plan?.rollback.release || !proof.incumbent?.release || !proof.runId ||
+      !/^[a-f0-9]{40}$/.test(proof.probeCommit) || !/^[a-f0-9]{64}$/.test(proof.proofDigest)))
+    throw Error('The controller returned an incomplete post-write recovery review.');
+  if (admission.ok && requested && (!proof || plan?.rollback.release !== requested.release || proof.runId !== requested.runId || proof.probeCommit !== requested.probeCommit))
+    throw Error('The controller did not confirm the requested recovery release, qualification run and probe commit. Review the deployment again.');
+  return plan && recoveryFromDeployment(plan);
+}
 
 /** Retried and concurrent builds can carry a private-directory suffix. */
 export function readReleaseId(id: string) {

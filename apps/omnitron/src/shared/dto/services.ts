@@ -5,13 +5,13 @@ export type * from './flow-runtime.js';
 export type { InstalledReleaseInspection, InstalledArtifactObservation, InstalledReleaseCandidate } from './installed-release.js';
 import type { TopologyScope, TopologySpec, TopologyDraft, TopologyPlan, TopologyInventory, TopologyWorkspace } from './topology.js';
 export type { TopologyScope, TopologySpec, TopologyDraft, TopologyPlan, TopologyInventory, TopologyWorkspace, TopologyChange, TopologyIssue } from './topology.js';
-import type { ProjectTopology } from './project.js';
+import type { CheckReleaseRequest, PlanRecoveryQualificationRequest, ProjectTopology, ReviewedReleaseRequest } from './project.js';
 export type { FirstWriteInspection, InspectFirstWrite, PrepareRehearsalRequest, PrepareRehearsalResult } from './first-write.js';
 export type { MigrationRehearsalResult, RehearseMigrationsRequest } from './first-write.js';
 export { FIRST_WRITE_PHYSICAL_TIMEOUT_MS } from './first-write.js';
 export type { ProjectStarterNeeds, ProjectStarterManifest, ProjectCreationReview } from './project.js';
 export { defaultProjectStarterNeeds, isProjectStarterNeeds, projectStarterOptions } from './project.js';
-export type { PreparedArtifactVolume, ReleaseAdmission, InstalledStackResumeResult, ConfigurationImport, ProjectConfigurationInfo, RuntimeStackScope, ProjectDependency, ProjectTopology, TopologyMetadataRefresh, StackStopReview } from './project.js';
+export type { DeploymentRecoveryInput, PreparedArtifactVolume, ReleaseAdmission, InstalledStackResumeResult, ConfigurationImport, ProjectConfigurationInfo, RuntimeStackScope, ProjectDependency, ProjectTopology, TopologyMetadataRefresh, StackStopReview } from './project.js';
 import type { LogIngestionStats } from './logs.js';
 /**
  * Omnitron Daemon RPC Service Interfaces
@@ -434,11 +434,12 @@ export interface IProjectRpcService {
   checkRemoteReleaseSource(data: { project: string; stack: string; release: string; digest: string }): Promise<import('./project.js').PreparedRemoteReleaseSource>;
   reviewPreparedStackStart(data: { project: string; stack: string; release: string; digest: string }): Promise<import('./project.js').StackStartReview>;
   reviewPreparedHostBindings(data: { project: string; stack: string; release: string; digest: string; nodeId: string }): Promise<import('./host-bindings.js').HostBindingReview>;
-  checkRelease(data: { project: string; stack: string; release: string; prepare?: boolean }): Promise<import('./project.js').ReleaseAdmission>;
+  planRecoveryQualification(data: PlanRecoveryQualificationRequest): Promise<PipelineDef>;
+  checkRelease(data: CheckReleaseRequest): Promise<import('./project.js').ReleaseAdmission>;
   inspectFirstWrite(data: import('./first-write.js').InspectFirstWrite): Promise<import('./first-write.js').FirstWriteInspection>;
   prepareRehearsal(data: import('./first-write.js').PrepareRehearsalRequest): Promise<import('./first-write.js').PrepareRehearsalResult>;
   rehearseMigrations(data: import('./first-write.js').RehearseMigrationsRequest): Promise<import('./first-write.js').MigrationRehearsalResult>;
-  deployReviewedRelease(data: { project: string; stack: string; release: string; review: string }): Promise<IStackInfo>;
+  deployReviewedRelease(data: ReviewedReleaseRequest): Promise<IStackInfo>;
   reviewStackStop(data: { project: string; stack: string; keepInfrastructure?: boolean }): Promise<import('./project.js').StackStopReview>;
   stopStack(data: { project: string; stack: string; review?: string; keepInfrastructure?: boolean }): Promise<IStackInfo>;
   stopStackForRuntime(data: { project: string; stack: string; review: string; backupWindowId: string }): Promise<IStackInfo>;

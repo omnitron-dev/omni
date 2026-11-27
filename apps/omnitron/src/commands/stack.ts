@@ -1,6 +1,6 @@
 import { stackHealthReading, healthLabel } from '../shared/stack-reading.js';
 import { reviewTargetFailures } from '../shared/command-result.js';
-import { migrationHistoryAdvice, observeStackStart } from '../shared/release-reading.js';
+import { migrationHistoryAdvice, observeStackStart, reviewedDeploymentRecovery } from '../shared/release-reading.js';
 /**
  * Stack CLI Commands — manage stacks on the running daemon
  *
@@ -10,7 +10,7 @@ import { migrationHistoryAdvice, observeStackStart } from '../shared/release-rea
 import { log, table, note, prism } from '@xec-sh/kit';
 import { createDaemonClient, LONG_REQUEST_TIMEOUT, isRequestTimeout } from '../daemon/daemon-client.js';
 import { FIRST_WRITE_PHYSICAL_TIMEOUT_MS, isLostRpcAcknowledgement, type IProjectRpcService } from '../shared/dto/services.js';
-import { stackStartRefusals } from '../shared/dto/project.js';
+import { stackStartRefusals, type DeploymentRecoveryInput } from '../shared/dto/project.js';
 import { Errors } from '@omnitron-dev/titan/errors';
 import { emitJson, emitError, emitStep, emitSuccess, emitInfo, isJsonMode } from './output.js';
 import { shellEscape } from '../shared/shell-escape.js';
@@ -388,11 +388,41 @@ function declarationRefreshCommand(project: string, stack: string, release?: str
     (release ? ' --release ' + shellEscape(release) : '');
 }
 
+export async function stackPlanRecoveryCommand(project: string, stack: string, release: string,
+  options: { recoveryRelease: string; recoveryProbe: string; qaNode: string }): Promise<void> {
+  const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
+  try {
+    const service = await client.service<IProjectRpcService>('OmnitronProject');
+    const definition = await service.planRecoveryQualification({ project, stack, release, recoveryRelease: options.recoveryRelease,
+      probeCommit: options.recoveryProbe, qaNodeId: options.qaNode });
+    if (!emitJson(definition)) process.stdout.write(JSON.stringify(definition, null, 2) + '\n');
+  } catch (error) {
+    reportLifecycleError(error, 'planning recovery qualification', { project, stack, release });
+  } finally { await client.disconnect(); }
+}
+
+interface RecoveryFlags {
+  recoveryRelease?: string;
+  recoveryRun?: string;
+  recoveryProbe?: string;
+}
+
+function recoverySelection(options?: RecoveryFlags): DeploymentRecoveryInput | undefined {
+  if (options?.recoveryRelease === undefined && options?.recoveryRun === undefined && options?.recoveryProbe === undefined) return undefined;
+  if (!options.recoveryRelease?.trim() || !options.recoveryRun?.trim() || !options.recoveryProbe || !/^[a-f0-9]{40}$/.test(options.recoveryProbe))
+    throw Error('Supply --recovery-release, --recovery-run and a full Git SHA for --recovery-probe');
+  return { release: options.recoveryRelease, runId: options.recoveryRun, probeCommit: options.recoveryProbe };
+}
+
 export async function stackReleaseAdmissionCommand(project: string, stack: string, release: string, prepare: boolean,
-  options: { source?: string; releaseRoot?: string; manifest?: string; declarations?: string; nodeId?: string; prepared?: string;
+  options: RecoveryFlags & { source?: string; releaseRoot?: string; manifest?: string; declarations?: string; nodeId?: string; prepared?: string;
     firstWrite?: boolean; verifyRun?: string } = {}): Promise<void> {
   const client = createDaemonClient(undefined, options.verifyRun ? FIRST_WRITE_PHYSICAL_TIMEOUT_MS : LONG_REQUEST_TIMEOUT);
   try {
+    const recovery = recoverySelection(options);
+    if (recovery && (prepare || options.firstWrite || options.verifyRun !== undefined || options.prepared !== undefined ||
+      [options.source, options.releaseRoot, options.manifest, options.declarations, options.nodeId].some(value => value !== undefined)))
+      throw Error('Use recovery options only for a deployment admission check');
     if ((options.firstWrite || options.verifyRun !== undefined) && (!options.firstWrite || prepare || options.prepared !== undefined))
       throw Error('Use check-release --first-write with an optional --verify-run ID');
     const service = await client.service<IProjectRpcService>('OmnitronProject');
@@ -422,10 +452,11 @@ export async function stackReleaseAdmissionCommand(project: string, stack: strin
       if (!emitJson(receipt)) emitSuccess('Prepared remote release ' + receipt.release + ' on ' + receipt.nodeId + ' (' + receipt.digest + ')');
       return;
     }
-    const report = await service.checkRelease({ project, stack, release, prepare });
+    const report = await service.checkRelease({ project, stack, release, prepare, ...(recovery && { recovery }) });
+    const confirmed = reviewedDeploymentRecovery(report, recovery);
     const accepted = report.ok || (prepare && report.state === 'requires-stop');
     if (!accepted) process.exitCode = 1;
-    const action = report.deployment ? releaseDeploymentCommand(project, stack, release, report.deployment.digest)
+    const action = report.deployment ? releaseDeploymentCommand(project, stack, release, report.deployment.digest, confirmed)
       : report.declarations === 'refresh-required' ? declarationRefreshCommand(project, stack, release) : undefined;
     if (!emitJson({ project, stack, release, ...(prepare && { prepared: accepted }), ...report, ...(action && { action }) })) {
       if (accepted) emitSuccess(report.because);
@@ -470,8 +501,10 @@ export async function stackPrepareRehearsalCommand(project: string, stack: strin
   } finally { await client.disconnect(); }
 }
 
-function releaseDeploymentCommand(project: string, stack: string, release: string, digest: string): string {
-  return 'omnitron stack start ' + [project, stack].map(shellEscape).join(' ') + ' --release ' + shellEscape(release) + ' --deployment-review ' + shellEscape(digest);
+function releaseDeploymentCommand(project: string, stack: string, release: string, digest: string, recovery?: DeploymentRecoveryInput): string {
+  return 'omnitron stack start ' + [project, stack].map(shellEscape).join(' ') + ' --release ' + shellEscape(release) + ' --deployment-review ' + shellEscape(digest) +
+    (recovery ? ' --recovery-release ' + shellEscape(recovery.release) + ' --recovery-run ' + shellEscape(recovery.runId) +
+      ' --recovery-probe ' + shellEscape(recovery.probeCommit) : '');
 }
 
 export async function stackRehearseMigrationsCommand(project: string, stack: string, release: string,
@@ -500,23 +533,29 @@ export async function stackRehearseMigrationsCommand(project: string, stack: str
 export async function stackStartCommand(
   projectName: string,
   stackName: string,
-  opts?: import('../shared/dto/project.js').StackStartOptions & { dryRun?: boolean; prepared?: string; deploymentReview?: string },
+  opts?: import('../shared/dto/project.js').StackStartOptions & RecoveryFlags & { dryRun?: boolean; prepared?: string; deploymentReview?: string },
 ): Promise<void> {
   // Starting a stack boots every app in it; a minute is not enough.
   const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
   try {
     const svc = await client.service<IProjectRpcService>('OmnitronProject');
+    const recovery = recoverySelection(opts);
+    if (recovery && (!opts?.release || (!opts.dryRun && !opts.deploymentReview) || opts.prepared !== undefined ||
+      opts.review !== undefined || opts.workingTree || opts.allowDirty || opts.reinstall || opts.infrastructure !== undefined))
+      throw Error('Use recovery options with --release and either --dry-run or --deployment-review');
     if (opts?.deploymentReview !== undefined && (!opts.release || !/^[a-f0-9]{64}$/.test(opts.deploymentReview) || opts.dryRun ||
         opts.review || opts.prepared || opts.workingTree || opts.allowDirty || opts.reinstall || opts.infrastructure))
       throw Error('Use --deployment-review only with the exact --release from check-release');
     if (opts?.dryRun && opts.release && !opts.infrastructure && !opts.prepared && !opts.workingTree && !opts.allowDirty && !opts.reinstall && !opts.review) {
-      const admitted = await svc.checkRelease({ project: projectName, stack: stackName, release: opts.release });
-      if (admitted.deployment || admitted.state === 'replacement-unavailable') {
+      const admitted = await svc.checkRelease({ project: projectName, stack: stackName, release: opts.release, ...(recovery && { recovery }) });
+      const confirmed = reviewedDeploymentRecovery(admitted, recovery);
+      if (recovery || admitted.deployment || admitted.state === 'replacement-unavailable') {
         if (!admitted.ok) process.exitCode = 1;
-        if (!emitJson(admitted)) {
+        const action = confirmed && admitted.deployment && releaseDeploymentCommand(projectName, stackName, opts.release, admitted.deployment.digest, confirmed);
+        if (!emitJson(action ? { ...admitted, action } : admitted)) {
           if (admitted.deployment) {
             emitInfo(`Node ${admitted.deployment.nodeId}. Return release: ${admitted.deployment.rollback.release}.`);
-            emitInfo(releaseDeploymentCommand(projectName, stackName, opts.release, admitted.deployment.digest));
+            emitInfo(action ?? releaseDeploymentCommand(projectName, stackName, opts.release, admitted.deployment.digest));
           } else {
             emitError(admitted.because);
             if (admitted.migrationHistory) emitInfo(migrationHistoryAdvice(admitted.migrationHistory));
@@ -559,7 +598,7 @@ export async function stackStartCommand(
 
     const scope = { project: projectName, stack: stackName, ...(opts?.release && { release: opts.release }) };
     const start = () => opts?.deploymentReview
-      ? svc.deployReviewedRelease({ project: projectName, stack: stackName, release: opts.release!, review: opts.deploymentReview })
+      ? svc.deployReviewedRelease({ project: projectName, stack: stackName, release: opts.release!, review: opts.deploymentReview, ...(recovery && { recovery }) })
       : svc.startStack({
       project: projectName,
       stack: stackName,

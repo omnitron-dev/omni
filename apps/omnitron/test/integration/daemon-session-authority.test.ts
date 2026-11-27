@@ -33,6 +33,8 @@ describe('live session authority across HTTP cache and persistent WebSocket', ()
     digest: null, targets: [], ...(keepInfrastructure && { keepInfrastructure: true }),
   }));
   const stopStack = vi.fn(() => ({ status: 'stopped', config: {}, apps: [], nodes: [] }));
+  const checkRelease = vi.fn(() => ({ ok: true }));
+  const planRecoveryQualification = vi.fn(() => ({ name: 'recovery-trial', steps: [] }));
   const deployReviewedRelease = vi.fn(() => ({ status: 'running', config: { type: 'remote' }, apps: [], nodes: [] }));
   const reviewStackMigrations = vi.fn(() => ({ digest: null })), migrateStack = vi.fn(() => ({ state: 'succeeded' })), getStackMigration = vi.fn(() => null);
   let role: string | null = 'admin', unavailable = false;
@@ -61,7 +63,7 @@ describe('live session authority across HTTP cache and persistent WebSocket', ()
     await netron.peer.exposeService(new ClusterRpcService({ isLeader: false, getClusterState: () => ({ state: 'follower' }) } as never));
     await netron.peer.exposeService(new ProjectRpcService({
       resolveProjectStack: (scope: unknown) => scope, reviewStackStop, stopStack, reviewStackMigrations, migrateStack, getStackMigration, assertSdkMutable: migrateStack,
-      checkRelease: () => ({ ok: true }), deployReviewedRelease,
+      checkRelease, deployReviewedRelease, planRecoveryQualification,
       inspectNodeStackStop: () => 'observed', prepareNodeStackStop: () => 'prepared', executeNodeStackStop: () => 'executed',
       resumeInstalledStack: () => ({ outcome: 'running' }), prepareNodeInstalledResume: () => 'prepared',
       executeNodeInstalledResume: () => 'executed', getNodeInstalledResumeReceipt: () => 'observed',
@@ -152,6 +154,32 @@ describe('live session authority across HTTP cache and persistent WebSocket', ()
       }
     }
     expect(deployReviewedRelease).toHaveBeenCalledExactlyOnceWith(input.project, input.stack, input.release, input.review);
+  });
+  it('binds the recovery inputs to operator admission and administrator confirmation over Netron', async () => {
+    const scope = { project: 'sample', stack: 'prod', release: 'candidate' };
+    const recovery = { release: 'compatible', runId: randomUUID(), probeCommit: 'c'.repeat(40) };
+    const send = (credential: string, method: string, extra: object) =>
+      request(credential, method, { service: 'OmnitronProject', input: [{ ...scope, ...extra }] });
+    for (const principal of ['operator', 'admin']) {
+      role = principal;
+      const credential = await mint({ role: principal, sid: 'active' });
+      const plan = { recoveryRelease: recovery.release, probeCommit: recovery.probeCommit, qaNodeId: 'isolated' };
+      expect((await send(credential, 'planRecoveryQualification', plan)).status).toBe(principal === 'admin' ? 200 : 403);
+      expect((await send(credential, 'checkRelease', { recovery })).status).toBe(200);
+      expect(checkRelease).toHaveBeenLastCalledWith(scope.project, scope.stack, scope.release, false, recovery);
+      expect((await send(credential, 'checkRelease', { recovery, prepare: true })).status).toBe(400);
+      expect((await send(credential, 'checkRelease', { recovery: { ...recovery, probeCommit: 'short' } })).status).toBe(400);
+      expect((await send(credential, 'startStack', { recovery })).status).toBe(400);
+      const review = 'e'.repeat(64);
+      expect((await send(credential, 'deployReviewedRelease', { review, recovery })).status).toBe(principal === 'admin' ? 200 : 403);
+      if (principal === 'admin') {
+        expect((await send(credential, 'inspectFirstWrite', { recovery })).status).toBe(400);
+        expect((await send(credential, 'prepareRemoteReleaseSource', { recovery })).status).toBe(400);
+        expect(planRecoveryQualification).toHaveBeenCalledExactlyOnceWith(scope.project, scope.stack, scope.release,
+          recovery.release, recovery.probeCommit, plan.qaNodeId);
+        expect(deployReviewedRelease).toHaveBeenLastCalledWith(scope.project, scope.stack, scope.release, review, recovery);
+      }
+    }
   });
   it('requires live administrator authority for migration review, execution and receipts', async () => {
     const input = { project: 'sample', stack: 'dev', review: 'a'.repeat(64), operationId: randomUUID() };

@@ -368,15 +368,60 @@ export interface ReleaseMigrationHistory {
 
 export type RemoteDeploymentPhase = 'stopping' | 'stopped' | 'selecting' | 'selected' | 'starting';
 
+/** The native qualification run for a return release that can process post-migration writes. */
+export interface DeploymentRecoveryInput {
+  release: string;
+  runId: string;
+  probeCommit: string;
+}
+
+export function isDeploymentRecoveryInput(value: unknown): value is DeploymentRecoveryInput {
+  if (!value || typeof value !== 'object') return false;
+  const input = value as Record<string, unknown>;
+  return Object.keys(input).length === 3 && ['release', 'runId', 'probeCommit'].every(key => Object.hasOwn(input, key)) &&
+    typeof input['release'] === 'string' && input['release'].trim().length > 0 && typeof input['runId'] === 'string' && input['runId'].trim().length > 0 &&
+    typeof input['probeCommit'] === 'string' && /^[a-f0-9]{40}$/.test(input['probeCommit']);
+}
+
+export interface PlanRecoveryQualificationRequest extends RuntimeStackScope {
+  release: string;
+  recoveryRelease: string;
+  probeCommit: string;
+  qaNodeId: string;
+}
+
+export interface CheckReleaseRequest extends RuntimeStackScope {
+  release: string;
+  prepare?: boolean;
+  recovery?: DeploymentRecoveryInput;
+}
+
+export interface ReviewedReleaseRequest extends RuntimeStackScope {
+  release: string;
+  review: string;
+  recovery?: DeploymentRecoveryInput;
+}
+
 export interface RemoteReleaseDeployment extends RuntimeStackScope {
   digest: string;
   nodeId: string;
   release: string;
   prepared: string;
   rollback: { release: string; prepared: string };
+  postWriteRecovery?: {
+    incumbent: { release: string; prepared: string };
+    runId: string;
+    proofDigest: string;
+    probeCommit: string;
+  };
   stop: { digest: string; applications: string[]; containers: string[] };
   previousDeclarationCommit?: string;
   recoveryOf?: string;
+}
+
+export function recoveryFromDeployment(review: RemoteReleaseDeployment): DeploymentRecoveryInput | undefined {
+  const proof = review.postWriteRecovery;
+  return proof && { release: review.rollback.release, runId: proof.runId, probeCommit: proof.probeCommit };
 }
 
 export interface SelectedRelease {

@@ -16,9 +16,14 @@ import { publicStackName, type ConfigurationImport } from '../project/configurat
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { Errors } from '@omnitron-dev/titan/errors';
 import { VIEWER_ROLES, OPERATOR_ROLES, ADMIN_ROLES } from '../shared/roles.js';
+import { isDeploymentRecoveryInput } from '../shared/dto/project.js';
 import type { ProjectService } from './project.service.js';
 import type { DeployProgressRecord } from './remote-deployer.service.js';
 import type {
+  CheckReleaseRequest,
+  PlanRecoveryQualificationRequest,
+  ReviewedReleaseRequest,
+  RuntimeStackScope,
   IProjectInfo,
   ProjectStarterNeeds,
   IStackInfo,
@@ -32,6 +37,16 @@ import type {
   IStackLeftoversCensus,
   IStackMaintenance,
 } from '../shared/dto/project.js';
+
+function checkRecoveryOptions(data: RuntimeStackScope & { recovery?: unknown; prepare?: boolean }, allowed?: string[]) {
+  if (data.recovery === undefined) return;
+  if (!allowed) throw Errors.badRequest('Use recovery only for a reviewed remote release deployment');
+  if (!isDeploymentRecoveryInput(data.recovery))
+    throw Errors.badRequest('A qualified recovery requires a release, runId and full probe commit');
+  if (Object.keys(data).some(key => !['project', 'stack', 'release', 'recovery', ...allowed].includes(key)) ||
+      (data.prepare !== false && data.prepare !== undefined))
+    throw Errors.badRequest('Recovery selection belongs to the reviewed deployment of an immutable release');
+}
 
 @Service({ name: 'OmnitronProject' })
 export class ProjectRpcService {
@@ -378,7 +393,7 @@ export class ProjectRpcService {
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async startStack(data: { project: string; stack: string } & import('../shared/dto/project.js').StackStartOptions): Promise<IStackInfo> {
-    if (Object.hasOwn(data, 'deploymentReview')) throw Errors.badRequest('Use the administrator-reviewed release deployment');
+    if (Object.hasOwn(data, 'deploymentReview') || Object.hasOwn(data, 'recovery')) throw Errors.badRequest('Use the administrator-reviewed release deployment');
     if (Object.hasOwn(data, 'prepared') || Object.hasOwn(data, 'preparedSource'))
       throw Errors.badRequest('A prepared remote source is for inspection; it cannot activate a replacement');
     const logicalName = data.stack;
@@ -408,6 +423,7 @@ export class ProjectRpcService {
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async reviewStackStart(data: { project: string; stack: string } & import('../shared/dto/project.js').StackStartOptions): Promise<import('../shared/dto/project.js').StackStartReview> {
+    checkRecoveryOptions(data);
     const scope = await this.projectService.resolveProjectStack(data, { readOnly: true });
     const report = await this.projectService.reviewStackStart(scope.project, scope.stack, data);
     return { ...report, project: data.project, stack: data.stack };
@@ -435,18 +451,21 @@ export class ProjectRpcService {
   /** Local paths can load project code. Only an administrator may introduce a new source. */
   @Public({ auth: { roles: ADMIN_ROLES } })
   async prepareRemoteReleaseSource(data: { project: string; stack: string; release: string; input: import('../shared/dto/project.js').RemoteReleaseSourceInput }) {
+    checkRecoveryOptions(data);
     const scope = await this.projectService.resolveProjectStack(data, { readOnly: true });
     return this.projectService.prepareRemoteReleaseSource(scope.project, scope.stack, data.release, data.input);
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async checkRemoteReleaseSource(data: { project: string; stack: string; release: string; digest: string }) {
+    checkRecoveryOptions(data);
     const scope = await this.projectService.resolveProjectStack(data, { readOnly: true });
     return this.projectService.checkRemoteReleaseSource(scope.project, scope.stack, data.release, data.digest);
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async reviewPreparedStackStart(data: { project: string; stack: string; release: string; digest: string }) {
+    checkRecoveryOptions(data);
     const scope = await this.projectService.resolveProjectStack(data, { readOnly: true });
     return this.projectService.reviewPreparedStackStart(scope.project, scope.stack, data.release, data.digest);
   }
@@ -457,15 +476,24 @@ export class ProjectRpcService {
     return this.projectService.reviewPreparedHostBindings(scope.project, scope.stack, data.release, data.digest, data.nodeId);
   }
 
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async planRecoveryQualification(data: PlanRecoveryQualificationRequest) {
+    const scope = await this.projectService.resolveProjectStack(data, { readOnly: true });
+    return this.projectService.planRecoveryQualification(scope.project, scope.stack, data.release, data.recoveryRelease, data.probeCommit, data.qaNodeId);
+  }
+
   /** Operators can verify a release against the same artifact checks used by deployment. */
   @Public({ auth: { roles: OPERATOR_ROLES } })
-  async checkRelease(data: { project: string; stack: string; release: string; prepare?: boolean }): Promise<import('../shared/dto/project.js').ReleaseAdmission> {
+  async checkRelease(data: CheckReleaseRequest): Promise<import('../shared/dto/project.js').ReleaseAdmission> {
+    checkRecoveryOptions(data, ['prepare']);
     data = await this.projectService.resolveProjectStack(data, { readOnly: data.prepare !== true });
-    return this.projectService.checkRelease(data.project, data.stack, data.release, data.prepare === true);
+    return this.projectService.checkRelease(data.project, data.stack, data.release, data.prepare === true,
+      ...(data.recovery === undefined ? [] as const : [data.recovery] as const));
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
   async inspectFirstWrite(data: import('../shared/dto/first-write.js').InspectFirstWrite) {
+    checkRecoveryOptions(data);
     return this.projectService.inspectFirstWrite(await this.projectService.resolveProjectStack(data, { readOnly: true }));
   }
 
@@ -480,9 +508,11 @@ export class ProjectRpcService {
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
-  async deployReviewedRelease(data: { project: string; stack: string; release: string; review: string }): Promise<IStackInfo> {
+  async deployReviewedRelease(data: ReviewedReleaseRequest): Promise<IStackInfo> {
+    checkRecoveryOptions(data, ['review']);
     const scope = await this.projectService.resolveProjectStack(data);
-    const info = await this.projectService.deployReviewedRelease(scope.project, scope.stack, data.release, data.review);
+    const info = await this.projectService.deployReviewedRelease(scope.project, scope.stack, data.release, data.review,
+      ...(data.recovery === undefined ? [] as const : [data.recovery] as const));
     return { ...publicStack(info), name: data.stack, runtimeScope: { project: scope.project, stack: scope.stack } };
   }
 

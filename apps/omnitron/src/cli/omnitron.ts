@@ -612,9 +612,23 @@ stack
   });
 
 stack
+  .command('plan-recovery <project> <stack> <release>')
+  .description('Read the native Pipeline definition for testing post-migration recovery on an isolated node')
+  .requiredOption('--recovery-release <id>', 'Return release to qualify')
+  .requiredOption('--recovery-probe <commit>', 'Full Git commit of the application recovery probe')
+  .requiredOption('--qa-node <id>', 'Enrolled isolated qualification node')
+  .structuredAction(async (projectName, stackName, release, options) => {
+    const { stackPlanRecoveryCommand } = await import('../commands/stack.js');
+    await stackPlanRecoveryCommand(projectName, stackName, release, options);
+  });
+
+stack
   .command('check-release <project> <stack> <release>')
   .description('Read the deployment admission decision for a local or remote stack')
   .option('--prepared <digest>', 'Recheck an exact prepared replacement source')
+  .option('--recovery-release <id>', 'Review a return release qualified for writes on the migrated schema')
+  .option('--recovery-run <uuid>', 'Native qualification run for the recovery release')
+  .option('--recovery-probe <commit>', 'Full Git commit of the qualified application recovery probe')
   .option('--first-write', 'Inspect supervised applications and first-write admission for an additive migration')
   .option('--verify-run <uuid>', 'Re-read a native closed physical copy during first-write inspection')
   .structuredAction(async (projectName, stackName, release, options) => {
@@ -666,6 +680,9 @@ stack
   .option('--infrastructure <mode>', 'preserve: verify existing resources and forbid provisioning/setup/migrations; reconcile: explicitly authorize normal infrastructure deployment')
   .option('--dry-run', 'Review launch admission and existing native infrastructure without startup effects')
   .option('--prepared <digest>', 'Inspect the candidate source and recipient with --release and --dry-run')
+  .option('--recovery-release <id>', 'Return release for the dry run or exact deployment review')
+  .option('--recovery-run <uuid>', 'Native qualification run for the recovery release')
+  .option('--recovery-probe <commit>', 'Full Git commit of the qualified application recovery probe')
   .option('--deployment-review <digest>', 'Replace a release on the selected recipient using the complete deployment review')
   .option('--review <digest>', 'Start in preserve mode only if launch and infrastructure still match this review')
   // For an operator who doubts a node's record of what an app runs: every
@@ -678,6 +695,9 @@ stack
       ...(typeof options.release === 'string' ? { release: options.release } : {}),
       ...(options.workingTree === true ? { workingTree: true } : {}),
       ...(typeof options.prepared === 'string' ? { prepared: options.prepared } : {}),
+      ...(typeof options.recoveryRelease === 'string' && { recoveryRelease: options.recoveryRelease }),
+      ...(typeof options.recoveryProbe === 'string' && { recoveryProbe: options.recoveryProbe }),
+      ...(typeof options.recoveryRun === 'string' && { recoveryRun: options.recoveryRun }),
       ...(typeof options.deploymentReview === 'string' ? { deploymentReview: options.deploymentReview } : {}),
       ...(typeof options.infrastructure === 'string' ? { infrastructure: options.infrastructure as 'preserve' | 'reconcile' } : {}),
       ...(options.dryRun === true ? { dryRun: true } : {}),

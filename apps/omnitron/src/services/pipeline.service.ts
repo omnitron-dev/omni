@@ -1,5 +1,7 @@
 import { admitPipeline, assertParameters, pipelineAdmissionCheck, readAdmission, readPrepareRun, readStartRun, type PipelineAdmission } from './pipeline-admission.js';
 import { completedStep, recoverableStep, recoveryReview } from './pipeline-recovery.js';
+import { inspectRecoveryQualification, recoveryQualificationDefinition, requireRecoveryQaEndpoint,
+  type RecoveryQualificationExpected } from './recovery-qualification.js';
 import type { InspectPhysicalRestore, PhysicalRestoreEvidence } from '../shared/dto/physical-restore.js';
 import { physicalRestoreRequest } from './physical-restore-graph.js';
 import { inspectPhysicalRestore, preparePhysicalRehearsal, runPhysicalMigrationTrial } from './physical-restore.js';
@@ -449,6 +451,7 @@ export class PipelineService {
           const node = this.nodes?.getNode(step.nodeId);
           if (!node || node.isLocal) throw new Error(`Unknown remote node: ${step.nodeId}`);
           const ssh = await this.nodes!.nodeToSshTarget(node);
+          requireRecoveryQaEndpoint(step, node, ssh);
           target = { type: 'ssh', ...sshConfig(ssh) };
         }
         let command: Command;
@@ -757,13 +760,28 @@ export class PipelineService {
   }
 
   private async physicalRun(request: InspectPhysicalRestore) {
-    await this.flushCompletion(request.verifyRunId);
-    const row = await this.db.selectFrom('pipeline_runs').selectAll().where('id', '=', request.verifyRunId).executeTakeFirst();
+    return this.approvedRun(request.verifyRunId);
+  }
+
+  private async approvedRun(runId: string) {
+    await this.flushCompletion(runId);
+    const row = await this.db.selectFrom('pipeline_runs').selectAll().where('id', '=', runId).executeTakeFirst();
     const admission = row && readAdmission(row.admission);
     if (!row || !admission?.approvedBy || !admission.definition || !this.nodes)
-      throw Error('A pinned native adoption verification and registered nodes are required');
+      throw Error('A pinned and approved native verification and registered nodes are required');
     assertParameters(admission, {});
-    return { definition: JSON.parse(admission.definition) as Pipeline, run: this.mapRun(row, admission), nodes: this.nodes };
+    return { definition: JSON.parse(admission.definition) as Pipeline, run: this.mapRun(row, admission), nodes: this.nodes, admission };
+  }
+
+  recoveryQualificationDefinition(expected: RecoveryQualificationExpected, qaNodeId: string): Promise<PipelineDef> {
+    if (!this.nodes) throw Error('Recovery qualification requires registered nodes');
+    return recoveryQualificationDefinition(expected, qaNodeId, this.nodes);
+  }
+
+  async inspectRecoveryQualification(runId: string, expected: RecoveryQualificationExpected): Promise<string> {
+    const { definition, run, nodes, admission } = await this.approvedRun(runId);
+    if (admission.resumedFrom) throw Error('Recovery qualification requires an uninterrupted approved rehearsal');
+    return inspectRecoveryQualification(runId, expected, definition, run, nodes);
   }
 
   async rehearsePrivateMigrations(plan: MigrationRehearsalPlan, archive: string, readOnly: boolean, runtime: () => Promise<number>): Promise<MigrationRehearsalResult> {

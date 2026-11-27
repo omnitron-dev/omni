@@ -1750,6 +1750,7 @@ export class OmnitronDaemon {
       });
       await pipelineService.initialize();
       this.pipelineService = pipelineService;
+      projectService.setRecoveryQualificationProvider(pipelineService);
       const pipelineRpcService = new PipelineRpc(pipelineService, authService, audit);
       projectService.setPhysicalRestoreInspector(request => pipelineRpcService.inspectPhysicalRestore(request), async (plan, previous) => {
         const { daemonPrincipal } = await import('../services/daemon-principal.js');

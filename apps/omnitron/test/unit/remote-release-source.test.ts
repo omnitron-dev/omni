@@ -18,6 +18,8 @@ import { METADATA_KEYS } from '@omnitron-dev/titan/decorators';
 import { validateAccessRequirements } from '@omnitron-dev/titan/netron/auth';
 import { captureRemoteSource, readCapturedSource, sourceFileDigest } from '../../src/release/source-capture.js';
 import { loadRelease } from '../../src/release/load.js';
+import { releaseMigrationSources } from '../../src/release/migrations.js';
+import { validateRecoveryQualification } from '../../src/services/recovery-qualification.js';
 import { confirmRegisteredReleaseNode, confirmReleaseRecipient, verifyRemoteSourceTree } from '../../src/release/remote-source.js';
 import { resolveProjectStacks } from '../../src/config/project-stacks.js';
 import type { PlacementProvisionIntent, PreparedRemoteReleaseSource } from '../../src/shared/dto/project.js';
@@ -444,7 +446,7 @@ describe('prepared source of one registered remote release', () => {
     expect(fs.existsSync(path.join(scope, '.remote-sources'))).toBe(false);
   });
 
-  it.each(['original', 'changed', 'deployment', 'migration', 'legacy'])('routes a selected placement with a %s registered declaration', async (registrationMode) => {
+  async function exercisePlacement(registrationMode: string) {
     const f = fixture();
     const service = f.service;
     const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
@@ -512,7 +514,7 @@ describe('prepared source of one registered remote release', () => {
         config: { type: 'local', managedOrigin: { project: 'sample', stack: 'test' }, infrastructureOwnership: 'controller' } };
       if (method === 'inspectNodeStackStop') return { ...structuredClone(inv), ...(body?.stoppedReleaseFor && retained && { stoppedRelease: retained }) };
       if (method === 'prepareNodeStackStop') return { ...structuredClone(inv),
-        operationId: registrationMode === 'deployment' ? 'reviewed-stop-' + inv.execution.revision : 'replacement-stop' };
+        operationId: ['deployment', 'qualified'].includes(registrationMode) ? 'reviewed-stop-' + inv.execution.revision : 'replacement-stop' };
       if (method === 'executeNodeStackStop') {
         inv.execution.revision++;
         inv.execution.phase = 'stopped';
@@ -567,7 +569,7 @@ describe('prepared source of one registered remote release', () => {
           manifest: { id: string; project: { commit: string }; artifacts: { sha256: string }[] } },
       ) => {
         await release.placement.recheck();
-        if (['deployment', 'migration', 'legacy'].includes(registrationMode)) {
+        if (['deployment', 'migration', 'legacy', 'qualified'].includes(registrationMode)) {
           inv.execution.phase = 'running';
           inv.execution.revision++;
           inv.execution.apps[0]!.generation = 'launch-' + inv.execution.revision;
@@ -606,6 +608,41 @@ describe('prepared source of one registered remote release', () => {
       ],
     });
     const stopKey = 'stack:sample/test:last-stop';
+    async function qualifiedSource(name: string, dir: string) {
+      const target = path.join(f.input.storeRoot, name);
+      fs.cpSync(path.join(storeRoot, id), target, { recursive: true });
+      const file = path.join(target, 'manifest.json'), manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const commit = git(dir, 'rev-parse', 'HEAD');
+      const built = path.join(root, 'packed-' + name), program = 'export const migrate = () => 220;';
+      fs.cpSync(path.join(root, 'built'), built, { recursive: true });
+      fs.mkdirSync(path.join(built, 'dist'));
+      fs.writeFileSync(path.join(built, 'dist/bootstrap.js'), 'export const build = ' + JSON.stringify(name) + ';');
+      fs.writeFileSync(path.join(built, 'dist/migrate.js'), program);
+      const archive = path.join(target, 'artifacts/main-0.0.1.tar.gz');
+      await create({ file: archive, cwd: built, gzip: true }, ['config', 'dist']);
+      const packed = fs.readFileSync(archive);
+      const inventory = await releaseMigrationSources(dir, commit, ['apps/main'], [{ directory: 'apps/main',
+        mode: 'script', source: 'src/bootstrap.mjs', release: 'dist/migrate.js', releaseSha256: sha(program) }]);
+      manifest.project.commit = commit;
+      manifest.id = name;
+      manifest.migrations = inventory.migrations;
+      manifest.artifacts[0].packageSource = inventory.packages.get('apps/main');
+      manifest.artifacts[0].bytes = packed.length;
+      manifest.artifacts[0].sha256 = sha(packed);
+      const raw = JSON.stringify(manifest);
+      fs.writeFileSync(file, raw);
+      const captured = await captureRemoteSource('sample', 'test', name, dir, f.input.storeRoot);
+      return { ...f.input, sourceRoot: dir, manifestSha256: sha(raw), declarationsSha256: captured.declarationsSha256 };
+    }
+    const storeRoot = f.input.storeRoot;
+    if (registrationMode === 'qualified') {
+      f.input.storeRoot = path.join(root, 'qualified-release-store');
+      const dir = path.join(root, 'qualified-incumbent');
+      git(root, 'clone', '-q', '--no-local', source, dir);
+      fs.writeFileSync(path.join(dir, 'apps/main/package.json'), '{"name":"main","version":"0.0.1"}');
+      git(dir, 'add', '.'); git(dir, 'commit', '-qm', 'attribute package');
+      Object.assign(f.input, await qualifiedSource(id, dir));
+    }
     try {
       const ready = await service.prepareRemoteReleaseSource('sample', 'test', id, f.input);
       const req = {
@@ -709,6 +746,73 @@ describe('prepared source of one registered remote release', () => {
         expect(check, check.because).toMatchObject({ ok: true });
         await service.startStack(scope.project, scope.stack, { source: 'operator', release: registeredRelease, infrastructure: 'reconcile' });
         expect(launches[1]).toMatchObject({ root: registeredSource, commit: manifest.project.commit, host: oldNode.host });
+        return;
+      }
+      if (registrationMode === 'qualified') {
+        const scope = { project: 'sample', stack: 'test' }, rpc = new ProjectRpcService(service);
+        await service.startStack(scope.project, scope.stack, { source: 'operator', infrastructure: 'reconcile' });
+        const name = 'schema-220', fallback = 'schema-220-return', added = ['apps/main/migrations/219.sql', 'apps/main/migrations/220.sql'];
+        const dir = path.join(root, 'qualified-migrated');
+        git(root, 'clone', '-q', '--no-local', f.input.sourceRoot, dir);
+        fs.mkdirSync(path.dirname(path.join(dir, added[0]!)), { recursive: true });
+        for (const file of added) fs.writeFileSync(path.join(dir, file), 'SELECT 1;');
+        fs.mkdirSync(path.join(dir, '.omnitron'), { recursive: true });
+        fs.mkdirSync(path.join(dir, 'scripts'), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'scripts/rehearse-post-write.py'), 'print("probe fixture")');
+        fs.writeFileSync(path.join(dir, '.omnitron/recovery-qualification.json'), JSON.stringify({
+          protocol: 1, image: 'sha256:' + 'a'.repeat(64), recordSets: ['awards'] }));
+        git(dir, 'add', '.'); git(dir, 'commit', '-qm', 'new schema');
+        const probeCommit = git(dir, 'rev-parse', 'HEAD');
+        git(registeredSource, 'switch', '-qc', 'registered');
+        git(registeredSource, 'fetch', '--no-tags', dir, 'HEAD');
+        git(registeredSource, 'update-ref', 'refs/heads/main', probeCommit);
+        const next = await service.prepareRemoteReleaseSource(scope.project, scope.stack, name, await qualifiedSource(name, dir));
+        const back = await service.prepareRemoteReleaseSource(scope.project, scope.stack, fallback, await qualifiedSource(fallback, dir));
+        const runId = '25de7711-0c0e-4c40-bf90-2e96844fd674', wrongRun = '25de7711-0c0e-4c40-bf90-2e96844fd675';
+        const recovery = { runId, release: fallback, probeCommit };
+        const request = { ...scope, release: name, recovery };
+        const stopCount = () => read.mock.calls.filter(([method]) => method === 'executeNodeStackStop').length;
+        let expireAfterStop = true;
+        const proof = '5'.repeat(64);
+        service.setRecoveryQualificationProvider({ recoveryQualificationDefinition: vi.fn(),
+          inspectRecoveryQualification: vi.fn(async (run, expected) => {
+            validateRecoveryQualification(expected);
+            expect(expected.candidate.artifacts.main).not.toBe(expected.recovery.artifacts.main);
+            if (run !== runId || expected.incumbent.id !== id || expected.candidate.id !== name || expected.recovery.id !== fallback)
+              throw Error('The Pipeline journal does not cover this run and release triple');
+            expect(expected).toMatchObject({ ...scope, nodeId, addedMigrations: added,
+              candidate: { manifestSha256: next.manifestSha256 }, recovery: { manifestSha256: back.manifestSha256 } });
+            return expireAfterStop && inv.execution.phase === 'stopped' ? 'e'.repeat(64) : proof;
+          }) });
+        await expect(rpc.checkRelease({ ...scope, release: name })).resolves.toMatchObject({ ok: false, migrationHistory: { kind: 'added-migrations' } });
+        await expect(rpc.checkRelease({ ...request, recovery: { ...recovery, runId: wrongRun } })).resolves.toMatchObject({ ok: false });
+        await expect(rpc.checkRelease({ ...request, release: fallback, recovery: { ...recovery, release: name } })).resolves.toMatchObject({ ok: false });
+        const checked = await rpc.checkRelease(request);
+        expect(checked, checked.because).toMatchObject({ ok: true, deployment: { release: name, prepared: next.digest,
+          rollback: { release: fallback, prepared: back.digest }, postWriteRecovery: { incumbent: { release: id, prepared: ready.digest }, runId, proofDigest: proof } } });
+        const confirm = { ...request, review: checked.deployment!.digest };
+        await expect(rpc.deployReviewedRelease(confirm)).rejects.toThrow(/qualification evidence changed/);
+        expect(stopCount()).toBe(1);
+        expect(journal.inspect(scope).placement?.selected?.release).toBe(id);
+        await expect(rpc.deployReviewedRelease({ ...confirm, recovery: { ...recovery, runId: wrongRun } })).rejects.toThrow(/recovery/i);
+        const change = { ...scope, fromNodeId: nodeId, destination: { release: name, prepared: next.digest } };
+        const injected = { ...change, recovery, deployment: confirm.review };
+        await expect(rpc.reviewRemotePlacement(injected)).rejects.toThrow(/return release cannot preserve/);
+        await expect(rpc.selectRemotePlacement({ ...change, review: confirm.review })).rejects.toThrow();
+        expect(journal.inspect(scope).placement?.selected?.release).toBe(id);
+        expireAfterStop = false;
+        loseLaunchReply = true;
+        await expect(rpc.deployReviewedRelease(confirm)).rejects.toThrow(/reply/);
+        expect(launches).toHaveLength(2);
+        await expect(rpc.deployReviewedRelease(confirm)).resolves.toMatchObject({ selectedRelease: { id: name } });
+        expect(stopCount()).toBe(1);
+        expect(launches).toHaveLength(2);
+        const returning = await rpc.checkRelease({ ...scope, release: fallback });
+        expect(returning, returning.because).toMatchObject({ ok: true, deployment: { release: fallback } });
+        await expect(rpc.deployReviewedRelease({ ...scope, release: fallback, review: returning.deployment!.digest }))
+          .resolves.toMatchObject({ selectedRelease: { id: fallback }, status: 'running' });
+        expect(stopCount()).toBe(2);
+        expect(launches).toHaveLength(3);
         return;
       }
       if (registrationMode === 'migration') {
@@ -1005,7 +1109,12 @@ describe('prepared source of one registered remote release', () => {
     } finally {
       await store.dispose();
     }
-  });
+  }
+
+  it.each(['original', 'changed', 'deployment', 'migration', 'legacy'])(
+    'routes a selected placement with a %s registered declaration', exercisePlacement);
+  it('routes a selected placement with a qualified registered declaration',
+    () => exercisePlacement('qualified'), 120_000);
 
   it('refuses a source digest on the mutating public start before resolving the incumbent stack', async () => {
     const resolveProjectStack = vi.fn(), startStack = vi.fn();

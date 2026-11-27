@@ -1,9 +1,9 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { stackPrepareRehearsalCommand, stackRehearseMigrationsCommand, stackReleaseAdmissionCommand, stackSelectPlacementCommand, stackStartCommand } from '../../src/commands/stack.js';
+import { stackPlanRecoveryCommand, stackPrepareRehearsalCommand, stackRehearseMigrationsCommand, stackReleaseAdmissionCommand, stackSelectPlacementCommand, stackStartCommand } from '../../src/commands/stack.js';
 
 const rpc = vi.hoisted(() => ({
   preflightRemotePlacement: vi.fn(), reviewRemotePlacement: vi.fn(), selectRemotePlacement: vi.fn(),
-  checkRelease: vi.fn(), inspectFirstWrite: vi.fn(), prepareRehearsal: vi.fn(), rehearseMigrations: vi.fn(), startStack: vi.fn(), deployReviewedRelease: vi.fn(), reviewStackStart: vi.fn(),
+  planRecoveryQualification: vi.fn(), checkRelease: vi.fn(), inspectFirstWrite: vi.fn(), prepareRehearsal: vi.fn(), rehearseMigrations: vi.fn(), startStack: vi.fn(), deployReviewedRelease: vi.fn(), reviewStackStart: vi.fn(),
 }));
 const client = vi.hoisted(() => ({ service: vi.fn(async () => rpc), disconnect: vi.fn() }));
 const output = vi.hoisted(() => ({ emitJson: vi.fn(() => true), emitError: vi.fn(), emitInfo: vi.fn(), emitStep: vi.fn(), isJsonMode: () => true }));
@@ -144,4 +144,65 @@ it('returns a verified closed copy and a refused first write from the ordinary c
   expect(rpc.checkRelease).not.toHaveBeenCalled();
   expect(rpc.startStack).not.toHaveBeenCalled();
   expect(rpc.deployReviewedRelease).not.toHaveBeenCalled();
+});
+
+it('carries the qualified return and run through admission, dry run, continuation and confirmation', async () => {
+  const recovery = { release: 'schema-compatible', runId: '31f297a8-93eb-455f-8267-19cdf415bd3f', probeCommit: 'a'.repeat(40) };
+  const flags = { recoveryRelease: recovery.release, recoveryRun: recovery.runId, recoveryProbe: recovery.probeCommit };
+  const scope = { project: 'sample', stack: 'prod', release: 'candidate' };
+  const digest = 'b'.repeat(64);
+  const admission = { ok: true, deployment: { digest, rollback: { release: recovery.release },
+    postWriteRecovery: { incumbent: { release: 'incumbent' }, runId: recovery.runId, probeCommit: recovery.probeCommit, proofDigest: 'a'.repeat(64) } } };
+  rpc.checkRelease.mockResolvedValue(admission);
+  await stackReleaseAdmissionCommand(scope.project, scope.stack, scope.release, false, flags);
+  expect(rpc.checkRelease).toHaveBeenLastCalledWith({ ...scope, prepare: false, recovery });
+  const generated = expect.stringContaining('--recovery-release');
+  expect(output.emitJson).toHaveBeenLastCalledWith(expect.objectContaining({ action: generated }));
+  await stackStartCommand(scope.project, scope.stack, { release: scope.release, dryRun: true, ...flags });
+  expect(rpc.checkRelease).toHaveBeenLastCalledWith({ ...scope, recovery });
+  expect(output.emitJson).toHaveBeenLastCalledWith(expect.objectContaining({ action: expect.stringContaining(recovery.runId) }));
+  // A fresh terminal can reopen the journal with just the target release.
+  await stackStartCommand(scope.project, scope.stack, { release: scope.release, dryRun: true });
+  expect(output.emitJson).toHaveBeenLastCalledWith(expect.objectContaining({ action: generated }));
+  rpc.deployReviewedRelease.mockResolvedValue({ status: 'running', apps: [{ name: 'main', status: 'online' }] });
+  await stackStartCommand(scope.project, scope.stack, { release: scope.release, deploymentReview: digest, ...flags });
+  expect(rpc.deployReviewedRelease).toHaveBeenCalledExactlyOnceWith({ ...scope, review: digest, recovery });
+  expect(rpc.startStack).not.toHaveBeenCalled();
+});
+
+it('refuses incomplete and mixed recovery options before requesting any lifecycle operation', async () => {
+  const flags = { recoveryRelease: 'compatible', recoveryRun: 'd1dbed83-2652-4aeb-be5a-87d943d05b68', recoveryProbe: 'a'.repeat(40) };
+  for (const extra of [{ firstWrite: true }, { prepared: 'a'.repeat(64) }, { source: '/source' }])
+    await stackReleaseAdmissionCommand('sample', 'prod', 'next', false, { ...flags, ...extra });
+  await stackReleaseAdmissionCommand('sample', 'prod', 'next', true, flags);
+  await stackReleaseAdmissionCommand('sample', 'prod', 'next', false, { recoveryRun: flags.recoveryRun });
+  for (const extra of [{}, { dryRun: true, infrastructure: 'preserve' as const }, { dryRun: true, allowDirty: true },
+    { deploymentReview: 'a'.repeat(64), reinstall: true }, { dryRun: true, review: 'a'.repeat(64) }])
+    await stackStartCommand('sample', 'prod', { release: 'next', ...flags, ...extra });
+  expect(process.exitCode).toBe(1);
+  expect(rpc.checkRelease).not.toHaveBeenCalled();
+  expect(rpc.reviewStackStart).not.toHaveBeenCalled();
+  expect(rpc.deployReviewedRelease).not.toHaveBeenCalled();
+  expect(rpc.startStack).not.toHaveBeenCalled();
+});
+
+it('keeps an unconfirmed recovery request out of the ordinary start and preserve paths', async () => {
+  const recovery = { recoveryRelease: 'compatible', recoveryRun: '31f297a8-93eb-455f-8267-19cdf415bd3f', recoveryProbe: 'a'.repeat(40) };
+  rpc.checkRelease.mockResolvedValue({ ok: true, because: 'Old controller admitted an ordinary release' });
+  await stackStartCommand('sample', 'prod', { release: 'next', dryRun: true, ...recovery });
+  expect(process.exitCode).toBe(1);
+  expect(output.emitError).toHaveBeenCalledWith(expect.stringContaining('did not confirm'), expect.anything());
+  expect(rpc.reviewStackStart).not.toHaveBeenCalled();
+  expect(rpc.startStack).not.toHaveBeenCalled();
+});
+
+it('prints the server-generated native qualification definition without starting the pipeline or the stack', async () => {
+  const options = { recoveryRelease: 'compatible', recoveryProbe: 'a'.repeat(40), qaNode: 'isolated' };
+  const definition = { name: 'recovery-trial', steps: [] };
+  rpc.planRecoveryQualification.mockResolvedValueOnce(definition);
+  await stackPlanRecoveryCommand('sample', 'prod', 'candidate', options);
+  expect(rpc.planRecoveryQualification).toHaveBeenCalledExactlyOnceWith({ project: 'sample', stack: 'prod', release: 'candidate',
+    recoveryRelease: 'compatible', probeCommit: options.recoveryProbe, qaNodeId: 'isolated' });
+  expect(output.emitJson).toHaveBeenCalledWith(definition);
+  expect(rpc.startStack).not.toHaveBeenCalled();
 });

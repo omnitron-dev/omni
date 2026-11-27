@@ -5,12 +5,35 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { preserveReproducibilityFailure, sdkDifferences } from '../lib/reproducibility-evidence.mjs';
+import { compareVendoredSdk } from '../../.xec/commands/vendored-sdk.js';
 import './release-build.test.js';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const entry = (filename, contents, files) => ({ name: '@omnitron-dev/example', version: '1.0.0', filename,
   sha256: hash(contents), files });
 const file = (contents, executable = false) => ({ digest: hash(contents), size: Buffer.byteLength(contents), executable });
+
+test('vendored SDK compares both independent archives to each other and to the recorded SHA-512', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vendored-bytes-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const first = path.join(root, 'first'), second = path.join(root, 'second');
+  const contents = Buffer.from('deterministic pnpm archive');
+  const digest = createHash('sha512').update(contents).digest();
+  const item = { name: '@omnitron-dev/example', filename: 'example.tgz', sha256: hash(contents),
+    integrity: 'sha512-' + digest.toString('base64') };
+  for (const directory of [first, second]) {
+    await fs.mkdir(directory);
+    await fs.writeFile(path.join(directory, 'framework-manifest.json'), JSON.stringify([item]));
+    await fs.writeFile(path.join(directory, item.filename), contents);
+  }
+  assert.equal(await compareVendoredSdk(first, second), digest.toString('hex') + '  example.tgz\n');
+  await fs.appendFile(path.join(second, item.filename), '!');
+  await assert.rejects(compareVendoredSdk(first, second), /packs differ/);
+  await fs.appendFile(path.join(first, item.filename), '!');
+  await assert.rejects(compareVendoredSdk(first, second), /SHA-512 differs/);
+  await fs.writeFile(path.join(second, 'framework-manifest.json'), '[]');
+  await assert.rejects(compareVendoredSdk(first, second), /manifests differ/);
+});
 
 test('distinguishes changed archive bytes from changed files without weakening either digest', () => {
   const a = entry('one.tgz', 'compressed-one', { 'index.js': file('same source') });

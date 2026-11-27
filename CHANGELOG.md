@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Operators can qualify a recovery release that keeps records written after a database migration. Omnitron checks the candidate and recovery migrations on an isolated copy and records the application and portal files covered by the rehearsal.
+- The vendored SDK workflow builds archives twice from the tagged source on Linux and compares them before producing the consumer manifest.
+
+### Fixed
+
+- Titan Database applies the requested PostgreSQL transaction isolation and connection settings. Titan Events cancels queued deliveries when a batch handler is removed. Titan Metrics handles delayed samples and uses consistent label keys in storage and queries.
+- CLI examples, documentation and tests use sample paths and identifiers. Operator verification records are kept outside the shared repository.
+
 ## [0.4.18] - 2026-11-26
 
 ### Added

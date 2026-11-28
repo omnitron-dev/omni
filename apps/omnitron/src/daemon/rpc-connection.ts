@@ -40,6 +40,7 @@ export class RpcConnection {
     private readonly options: {
       logger?: ILogger;
       peerName?: string;
+      connectTimeout?: number;
       beforeConnect?: () => Promise<void>;
       /** Validate using this peer directly, before any retained handle can invoke it. */
       afterConnect?: (peer: RemotePeer) => Promise<void>;
@@ -72,6 +73,7 @@ export class RpcConnection {
       if (this.session === session) this.session = undefined;
       void this.close(session);
     });
+    const connectTimeout = this.options.connectTimeout ?? CONNECT_TIMEOUT;
     session.ready = withRpcDeadline(
       Promise.resolve().then(async () => {
         await this.options.beforeConnect?.();
@@ -88,8 +90,8 @@ export class RpcConnection {
         if (this.session !== session) throw new Error('RPC connection was closed during peer validation');
         return remote;
       }),
-      CONNECT_TIMEOUT,
-      `the ${this.options.peerName ?? 'daemon'} did not complete a connection within ${CONNECT_TIMEOUT / 1000}s`,
+      connectTimeout,
+      `the ${this.options.peerName ?? 'daemon'} did not complete a connection within ${connectTimeout / 1000}s`,
     ).catch(error => {
       if (this.session === session) this.session = undefined;
       void this.close(session);

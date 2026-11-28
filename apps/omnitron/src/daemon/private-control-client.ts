@@ -22,15 +22,15 @@ export async function assertPrivateControlSocket(socket: string): Promise<void> 
 }
 
 /** Local UID authority only; never turns a public bearer token into host execution rights. */
-export async function privateControlClient<T>(socket: string, service: string, requestTimeout = 150_000): Promise<{ service: T; close(): Promise<void> }> {
+export async function privateControlClient<T>(socket: string, service: string, requestTimeout = 150_000, connectTimeout?: number): Promise<{ service: T; close(): Promise<void> }> {
   await assertPrivateControlSocket(socket);
   const netron = new Netron(createNullLogger(), { id: `local-control-${randomUUID()}` });
   netron.registerTransport('unix', () => new UnixSocketTransport());
-  netron.setTransportOptions('unix', { requestTimeout });
+  netron.setTransportOptions('unix', { requestTimeout, ...(connectTimeout !== undefined && { connectTimeout }) });
   const close = () => withControlDeadline(netron.stop(), 2000, 'Private control disconnect timed out').catch(() => undefined);
   try {
     await netron.start();
-    const peer = await withControlDeadline(netron.connect(`unix://${socket}`, false), 15_000, 'Private backend control handshake timed out') as RemotePeer;
+    const peer = await withControlDeadline(netron.connect(`unix://${socket}`, false), connectTimeout ?? 15_000, 'Private backend control handshake timed out') as RemotePeer;
     return { service: await peer.queryInterface<T>(service), close };
   } catch (error) { await close(); throw error; }
 }

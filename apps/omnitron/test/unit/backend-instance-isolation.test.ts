@@ -217,10 +217,21 @@ it('keeps offline historical evidence distinct from certified evidence', async (
 it('uses the selected socket identity even when its location differs from instance home', async () => {
   const target = await fixture();
   await expect(replaceBackend('/candidate', { socket: target.socket, checkOnly: true })).resolves.toMatchObject({ build: { commit: 'fixture' } });
-  expect(mocks.daemon).toHaveBeenCalledWith(target.socket, 15000);
+  expect(mocks.daemon).toHaveBeenCalledWith(target.socket, 45_000, 45_000);
   expect(mocks.control.mock.calls.map(call => call[0])).toEqual([target.control]);
   expect(mocks.installation).not.toHaveBeenCalled();
   expect(mocks.migrations.mock.calls[0]?.[2]).toBe('all');
+});
+
+it.each([404, 403])('queries legacy status only when discovery reports a missing backend (%s)', async code => {
+  const target = await fixture();
+  const discovery = Object.assign(Error('service discovery failed'), { code });
+  const status = vi.fn(async () => ({ execution: { handoffSupported: false, reason: 'legacy owner' } }));
+  mocks.daemon.mockReturnValue({ status, service: vi.fn().mockRejectedValue(discovery), disconnect: vi.fn() });
+  await expect(replaceBackend('/candidate', { socket: target.socket, checkOnly: true }))
+    .rejects.toThrow(code === 404 ? 'legacy owner' : 'service discovery failed');
+  expect(status).toHaveBeenCalledTimes(code === 404 ? 1 : 0);
+  expect(mocks.control).not.toHaveBeenCalled();
 });
 
 it.each(['unavailable', 'pid', 'owner', 'epoch'])('refuses a %s handoff review before candidate adoption or lifecycle changes', async changed => {

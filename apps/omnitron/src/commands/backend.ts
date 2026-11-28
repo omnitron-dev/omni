@@ -1,6 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import { createDaemonClient } from '../daemon/daemon-client.js';
+import { createDaemonClient, isRequestTimeout } from '../daemon/daemon-client.js';
 import type { BackendRpcService } from '../daemon/backend.rpc-service.js';
 import { replaceBackend, recoverBackend, abortBackendReplacement, type BackendReplacementPreflight } from '../daemon/backend-upgrade.js';
 import { emitJson, emitError, emitInfo, emitStep } from './output.js';
@@ -16,6 +16,7 @@ import { BackendRecoveryJournal } from '../daemon/backend-recovery-journal.js';
 import { assertBackendHandoffAdmission, assertBackendHandoffReview, checkpointInstanceHome } from '../daemon/backend-handoff-types.js';
 import { readPrivateRecord } from '../daemon/execution-journal.js';
 import { privateControlClient } from '../daemon/private-control-client.js';
+import { observeRuntimeUntil, RuntimeObservationPending } from '../daemon/runtime-observation.js';
 import type { BackendControlService } from '../daemon/backend-control.js';
 import { readManagedRuntime } from '../daemon/managed-runtime.js';
 import { recoverBackendAfterCrash } from '../daemon/backend-crash-recovery.js';
@@ -265,7 +266,7 @@ export async function backendStatusCommand(): Promise<void> {
 
 export async function backendUpgradeCommand(directory: string, options: { check?: boolean; fromCheck?: string; schemaPlan?: string }): Promise<void> {
   try {
-    let admission;
+    let admission: BackendReplacementPreflight['admission'] | undefined;
     if (options.fromCheck) {
       if (options.check) throw Error('Use --check to prepare or --from-check to apply the saved review');
       const saved = await readPrivateRecord<{ ok: boolean; data?: BackendReplacementPreflight }>(path.resolve(options.fromCheck));
@@ -281,19 +282,19 @@ export async function backendUpgradeCommand(directory: string, options: { check?
       try { await assertOrdinaryRecoveryAllowed(installation?.activation()); }
       finally { await installation?.close(); }
     }
-    // Legacy versions have no OmnitronBackend service. Ask their stable
-    // status first to explain the capability boundary without draining them.
-    const client = createDaemonClient();
-    try {
-      const status = await client.status();
-      if (!status.execution?.handoffSupported) throw new Error(status.execution?.reason ??
-        'The running daemon directly owns application processes. One initial controlled restart is required to enable resident execution. Nothing was stopped.');
-      const backend = await client.service<BackendRpcService>('OmnitronBackend');
-      await backend.status();
-    } finally { await client.disconnect(); }
-    const result = await replaceBackend(path.resolve(directory), { checkOnly: options.check === true, progress: emitStep,
-      ...(admission && { admission }),
-      ...(options.schemaPlan ? { schemaPlan: path.resolve(options.schemaPlan) } : {}) });
+    const run = () => replaceBackend(path.resolve(directory), { checkOnly: options.check === true, progress: emitStep,
+      ...(admission && { admission }), ...(options.schemaPlan ? { schemaPlan: path.resolve(options.schemaPlan) } : {}) });
+    // The native fleet command bounds this child to 150s. Retry only its
+    // read-only preflight. Never resubmit an activation after a lost reply.
+    const result = options.check ? await observeRuntimeUntil(async () => {
+      try { return await run(); }
+      catch (error) {
+        if (error instanceof RuntimeObservationPending) throw error;
+        if (error instanceof Error && (isRequestTimeout(error) || error.message === 'Execution mutations have not settled'))
+          throw new RuntimeObservationPending('controller', error.message);
+        throw error;
+      }
+    }, 120_000, 'Backend handoff review did not settle', 1000, emitStep) : await run();
     if (!emitJson(result)) emitInfo('checked' in result ? `Candidate ${result.build.commit} verified; no activation performed`
       : `Backend PID ${result.pid}; execution owner PID ${result.ownerPid} retained; epoch ${result.epoch}`);
   } catch (error) { emitError(error); process.exitCode = 1; }

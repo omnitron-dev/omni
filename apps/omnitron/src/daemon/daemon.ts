@@ -448,8 +448,18 @@ export class OmnitronDaemon {
 
   async reviewBackendHandoff(): Promise<BackendHandoffReview> {
     const { value: record, backups } = await this.observeRuntimeState(true, (projects, owner) => {
-      if (!this.recoveryMonitor) throw Error('Backend snapshot provenance is unavailable');
-      return observeRecoveryState(() => this.recoveryMonitor!.snapshotRecord(owner, { watchConfig: this.watchConfig!, projects, infrastructure: this.infraService }));
+      const monitor = this.recoveryMonitor, execution = this.execution;
+      if (!monitor || !execution) throw Error('Backend snapshot provenance is unavailable');
+      let first = true;
+      return observeRecoveryState(async () => {
+        // A read that caught a periodic sample drain keeps its inFlight count
+        // forever. Reobserve the same grant while retaining the original fence.
+        const current = first ? owner : await execution.controlledOwnerSnapshot(owner.status.controller);
+        first = false;
+        if (this.recoveryMonitor !== monitor || this.execution !== execution || current.inventoryDigest !== owner.inventoryDigest)
+          throw Error('Effective configuration or application ownership changed during backend handoff review');
+        return monitor.snapshotRecord(current, { watchConfig: this.watchConfig!, projects, infrastructure: this.infraService });
+      });
     });
     return { record, admission: { backend: { pid: record.previousPid, controller: structuredClone(record.controller) }, backups, configuration: {
       registryDigest: record.registryDigest, sha256: backendConfigurationDigest(record, record.registryDigest),

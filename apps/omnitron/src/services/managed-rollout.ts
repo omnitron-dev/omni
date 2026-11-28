@@ -7,6 +7,7 @@ import type { InstalledBundle, ManagedApplicationAccount } from './host-upgrade.
 import type { DeployTarget } from './remote-deployer.service.js';
 import { remoteNode } from './host-upgrade.js';
 import { targetRuntime } from '../release/target-runtime.js';
+import { EXECUTION_INVENTORY } from '../orchestrator/execution-contract.js';
 import { assertBackendHandoffAdmission, type BackendHandoffAdmission } from '../daemon/backend-handoff-types.js';
 
 /** This function travels with the controller. The enrolled guardian supplies its sealed-tree reader. */
@@ -128,6 +129,7 @@ export function managedHostCommand(request: ManagedHostRequest): string {
   const source = [
     'const commandFailure=' + commandFailure.toString() + ';',
     'const targetRuntime=' + targetRuntime.toString() + ';',
+    'const executionInventory=' + JSON.stringify(EXECUTION_INVENTORY) + ';',
     'const inspectServingArtifact=' + inspectServingArtifact.toString() + ';',
     'const assertReviewableBackendActivity=' + assertReviewableBackendActivity.toString() + ';',
     program,

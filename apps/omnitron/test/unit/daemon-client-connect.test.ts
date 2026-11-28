@@ -86,6 +86,21 @@ async function freshClients() {
 }
 
 describe('DaemonClient.ensureConnected', () => {
+  it('uses the requested handshake budget in both Netron and its caller', async () => {
+    const { createDaemonClient } = await freshClients();
+    const client = createDaemonClient('/tmp/review.sock', 15_000, 45_000);
+    vi.useFakeTimers();
+    try {
+      const first = client.service('A');
+      const complete = await nextHandshake();
+      expect(netron.setTransportOptions).toHaveBeenLastCalledWith('unix', { requestTimeout: 15_000, connectTimeout: 45_000 });
+      await vi.advanceTimersByTimeAsync(30_000);
+      complete();
+      await first;
+      await client.disconnect();
+    } finally { vi.useRealTimers(); }
+  });
+
   it('opens one connection for two concurrent callers', async () => {
     const { DaemonClient } = await freshClients();
     const client = new DaemonClient('/tmp/does-not-matter.sock');

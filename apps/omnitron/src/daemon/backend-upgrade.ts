@@ -192,15 +192,25 @@ export async function replaceBackend(directory: string, options: {
     if (!supervisesBackendChildren()) throw Error('Fenced handoff requires the native guardian');
   }
   const progress = options.progress ?? (() => {});
-  const client = createDaemonClient(options.socket, 15_000);
+  // Handoff has its own bounded review window. A busy but serving node can
+  // take longer than an interactive CLI greeting to answer its private socket.
+  const observationTimeout = 45_000;
+  const client = createDaemonClient(options.socket, observationTimeout, observationTimeout);
   let address: { socket: string };
   try {
-    const rpc = await client.service<BackendRpcService>('OmnitronBackend');
+    const rpc = await client.service<BackendRpcService>('OmnitronBackend').catch(async (error: unknown) => {
+      if ((error as { code?: unknown } | null)?.code === 404) {
+        const legacy = await client.status();
+        if (!legacy.execution?.handoffSupported) throw Error(legacy.execution?.reason ??
+          'The running daemon directly owns application processes. One initial controlled restart is required to enable resident execution. Nothing was stopped.');
+      }
+      throw error;
+    });
     const capability = await rpc.status();
     if (!capability.handoffSupported) throw new Error(capability.reason ?? 'This backend cannot transfer execution ownership');
     address = await rpc.controlAddress();
   } finally { await client.disconnect(); }
-  const control = await privateControlClient<BackendControlService>(address.socket, 'OmnitronBackendControl');
+  const control = await privateControlClient<BackendControlService>(address.socket, 'OmnitronBackendControl', undefined, observationTimeout);
   try {
     const previous = await control.service.status();
     if (typeof previous.instanceHome !== 'string' || !path.isAbsolute(previous.instanceHome)) {
@@ -252,7 +262,7 @@ export async function replaceBackend(directory: string, options: {
     if (admission.targetRuntimeHash && admission.targetRuntimeHash !== artifact.runtimeHash)
       throw Error('Reviewed journal compatibility targets a different runtime');
     admission.targetRuntimeHash = artifact.runtimeHash;
-    const reader = createDaemonClient(options.socket, 15_000);
+    const reader = createDaemonClient(options.socket, observationTimeout, observationTimeout);
     try {
       admission.backups = await retainReviewedBackups(reviewed.admission.backups, expected?.backups, async id =>
         (await reader.service<IOmnitronBackupsService>('OmnitronBackups')).getOperation({ id }));
@@ -260,7 +270,7 @@ export async function replaceBackend(directory: string, options: {
     if (managed && !supervisesBackendChildren()) {
       const compatibility = options.schemaPlan ? null : await assertBackendMigrationsCompatible(
         path.dirname(path.dirname(previous.entry)), artifact.directory, previous.schemaScope === 'node' || previous.schemaScope === 'enrolled-node' ? previous.schemaScope : 'all');
-      const supervisor = await privateControlClient<BackendSupervisorService>(managedSupervisorSocket(managed), 'OmnitronSupervisor', 600_000);
+      const supervisor = await privateControlClient<BackendSupervisorService>(managedSupervisorSocket(managed), 'OmnitronSupervisor', 600_000, observationTimeout);
       try {
         const guardian = await supervisor.service.status();
         if (guardian.infrastructureAdoptionPreflight !== 1) {

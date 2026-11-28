@@ -83,7 +83,7 @@ export class RecoveryBusyError extends Error {}
 
 /** Wait only for transient read-side ownership observations. The caller keeps
  * its revision fence; native mutations and payload verification are not retried. */
-export function observeRecoveryState<T>(capture: () => T): Promise<T> {
+export function observeRecoveryState<T>(capture: () => T | Promise<T>): Promise<T> {
   const deadline = performance.now() + 30_000;
   return retry(async () => capture(), {
     maxRetries: 120, initialDelay: 250, maxDelay: 250,

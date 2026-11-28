@@ -1,5 +1,5 @@
 // Executed with the verified Node binary of the OS-managed guardian over the pinned SSH connection.
-/* global commandFailure, targetRuntime, inspectServingArtifact, assertReviewableBackendActivity -- supplied by managedHostCommand */
+/* global commandFailure, targetRuntime, inspectServingArtifact, assertReviewableBackendActivity, executionInventory -- supplied by managedHostCommand */
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -116,7 +116,7 @@ try {
   const channel = await privateControlClient(path.join(config.directory, 'owner.sock'), 'OmnitronExecution');
   let snap;
   try {
-    snap = await channel.service.snapshot();
+    snap = await channel.service.snapshot(executionInventory);
   } finally {
     await channel.close();
   }
@@ -157,7 +157,7 @@ try {
     if (owner !== current) await owner.assertUnchanged();
     const finalChannel = await privateControlClient(path.join(config.directory, 'owner.sock'), 'OmnitronExecution');
     try {
-      const final = await finalChannel.service.snapshot();
+      const final = await finalChannel.service.snapshot(executionInventory);
       if (final.protocol !== snap.protocol || final.status.phase !== 'active' ||
           JSON.stringify(final.status.owner) !== JSON.stringify(snap.status.owner) ||
           final.status.controller.epoch !== snap.status.controller.epoch ||

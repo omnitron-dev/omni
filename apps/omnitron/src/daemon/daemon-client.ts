@@ -100,11 +100,11 @@ export class DaemonClient implements IDaemonService {
   private readonly connection: RpcConnection;
   private proxy: IDaemonService | null = null;
 
-  constructor(socketPath: string = DEFAULT_SOCKET_PATH, requestTimeout: number = CLI_REQUEST_TIMEOUT) {
+  constructor(socketPath: string = DEFAULT_SOCKET_PATH, requestTimeout: number = CLI_REQUEST_TIMEOUT, connectTimeout?: number) {
     this.connection = new RpcConnection(`unix://${socketPath}`, netron => {
       netron.registerTransport('unix', () => new UnixSocketTransport());
-      netron.setTransportOptions('unix', { requestTimeout });
-    });
+      netron.setTransportOptions('unix', { requestTimeout, ...(connectTimeout !== undefined && { connectTimeout }) });
+    }, connectTimeout === undefined ? {} : { connectTimeout });
   }
 
   private async ensureConnected(): Promise<void> {
@@ -392,8 +392,8 @@ export class RemoteDaemonClient {
 // Factory functions
 // =============================================================================
 
-export function createDaemonClient(socketPath?: string, requestTimeout?: number): DaemonClient {
-  return new DaemonClient(socketPath ?? getEnv().OMNITRON_SOCKET ?? DEFAULT_SOCKET_PATH, requestTimeout);
+export function createDaemonClient(socketPath?: string, requestTimeout?: number, connectTimeout?: number): DaemonClient {
+  return new DaemonClient(socketPath ?? getEnv().OMNITRON_SOCKET ?? DEFAULT_SOCKET_PATH, requestTimeout, connectTimeout);
 }
 
 export function createRemoteDaemonClient(host: string, port: number): RemoteDaemonClient {

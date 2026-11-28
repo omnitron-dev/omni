@@ -6,7 +6,9 @@ import { backendUpgradeCommand } from '../../src/commands/backend.js';
 
 const api = vi.hoisted(() => ({ replace: vi.fn(), error: vi.fn(), connect: vi.fn() }));
 vi.mock('../../src/daemon/backend-upgrade.js', () => ({ replaceBackend: api.replace }));
-vi.mock('../../src/daemon/daemon-client.js', () => ({ createDaemonClient: api.connect }));
+vi.mock('../../src/daemon/daemon-client.js', async original => ({
+  ...await original<typeof import('../../src/daemon/daemon-client.js')>(), createDaemonClient: api.connect,
+}));
 vi.mock('../../src/commands/output.js', () => ({ emitJson: () => true, emitError: api.error, emitStep: vi.fn() }));
 vi.mock('../../src/daemon/runtime-installation.js', () => ({
   RuntimeInstallation: { openReadOnly: async () => null }, assertOrdinaryRecoveryAllowed: async () => undefined,
@@ -37,6 +39,26 @@ it('hands the saved check to the native supervisor with its original cancellatio
   await backendUpgradeCommand(directory, { fromCheck: file });
   expect(api.error).not.toHaveBeenCalled();
   expect(api.replace).toHaveBeenCalledWith(directory, expect.objectContaining({ checkOnly: false, admission }));
+});
+
+it('repeats a passive check after a busy owner or an expired observation', async () => {
+  api.replace.mockRejectedValueOnce(Error('Execution mutations have not settled'))
+    .mockRejectedValueOnce(Object.assign(Error('request timeout'), { code: 408 }));
+  await backendUpgradeCommand(directory, { check: true });
+  expect(api.error).not.toHaveBeenCalled();
+  expect(api.replace).toHaveBeenCalledTimes(3);
+  expect(api.replace.mock.calls.every(([, options]) => options.checkOnly === true)).toBe(true);
+  expect(api.connect).not.toHaveBeenCalled();
+});
+
+it.each([
+  [true, Error('Planned execution owner or application inventory changed')],
+  [false, Object.assign(Error('response lost'), { code: 408 })],
+])('returns the first non-retryable result (check %s)', async (check, error) => {
+  api.replace.mockRejectedValueOnce(error);
+  await backendUpgradeCommand(directory, { check });
+  expect(api.error).toHaveBeenCalledWith(error);
+  expect(api.replace).toHaveBeenCalledOnce();
 });
 
 it.each([

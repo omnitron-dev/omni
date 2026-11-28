@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { afterEach, expect, it, vi } from 'vitest';
 import { BackendRecoveryMonitor } from '../../src/daemon/backend-recovery-monitor.js';
 import { BackendRecoveryJournal } from '../../src/daemon/backend-recovery-journal.js';
+import { OmnitronDaemon } from '../../src/daemon/daemon.js';
 import { RecoveryState, recoveryState } from '../../src/daemon/recovery-state.js';
 
 const fixtures: Array<{ root: string; monitor: BackendRecoveryMonitor; journal: BackendRecoveryJournal }> = [];
@@ -26,6 +27,29 @@ function fixture(inFlight: () => number) {
   fixtures.push({ root, monitor, journal });
   return { monitor, journal, snapshot };
 }
+
+it.each([false, true])('re-reads the same owner after a busy snapshot (inventory changed: %s)', async changed => {
+  const { monitor } = fixture(() => 0);
+  const grant = { ownerId: 'owner', controllerId: 'backend', epoch: 1 };
+  const busy = { status: { phase: 'active', inFlight: 1, controller: grant }, inventoryDigest: 'c'.repeat(64) };
+  const idle = { status: { ...busy.status, inFlight: 0 }, inventoryDigest: changed ? 'd'.repeat(64) : busy.inventoryDigest };
+  const readOwner = vi.fn().mockResolvedValueOnce(busy).mockResolvedValue(idle);
+  const projects = { recoveryRegistryDigest: () => 'b'.repeat(64), captureRecoveryState: () => ({
+    projects: [], stacks: [], infrastructure: [], resumeBackoff: [], reconciling: false,
+  }) };
+  const daemon: OmnitronDaemon = Object.assign(Object.create(OmnitronDaemon.prototype), {
+    recoveryMonitor: monitor, execution: { controlledOwnerSnapshot: readOwner }, watchConfig: { apps: [] },
+    app: { container: { resolveAsync: async () => projects } },
+    backendRuntimeStatus: () => ({ phase: 'active', blockers: {}, recovery: { status: 'ready' } }),
+  });
+  const review = daemon.reviewBackendHandoff();
+  const assertion = changed ? expect(review).rejects.toThrow('ownership changed') :
+    expect(review).resolves.toMatchObject({ admission: { backend: { controller: grant }, backups: [] } });
+  await vi.advanceTimersByTimeAsync(250);
+  await assertion;
+  expect(readOwner.mock.calls.slice(1).every(([expected]) => expected === grant)).toBe(true);
+  expect(readOwner).toHaveBeenCalledTimes(changed ? 2 : 3);
+});
 
 it('certifies between brief mutations aligned with the normal sampling period', async () => {
   const { monitor, journal, snapshot } = fixture(() => Date.now() % 5000 < 100 ? 1 : 0);

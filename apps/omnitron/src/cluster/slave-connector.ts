@@ -537,7 +537,8 @@ export class SlaveConnector {
       if (beforeSend) await beforeSend();
       checkRegistration();
       const fn = (proxy as any)[method];
-      if (typeof fn !== 'function') throw new Error(`Method ${method} not found on service ${service}`);
+      if (typeof fn !== 'function') throw Object.assign(new Error(`Method ${method} not found on service ${service}`),
+        { code: 'PEER_METHOD_NOT_FOUND', service, method });
       const result = await fn.call(proxy, ...args);
       checkRegistration();
       return result;

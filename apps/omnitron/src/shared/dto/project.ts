@@ -184,6 +184,17 @@ export interface PlacementProvisionIntent {
   stopOperationId: string;
 }
 
+/** The registered origin and its actual allocation can have different stack names. */
+export interface NodeStartPolicyRequest {
+  origin: RuntimeStackScope;
+  runtime: RuntimeStackScope;
+}
+
+export type NodeStartPolicy = NodeStartPolicyRequest & { protocol: 1 } & (
+  | { mode: 'reconcile' }
+  | { mode: 'preserve'; saved: string | null; current: string | null; refreshDeclarations: boolean }
+);
+
 /** The existing node infrastructure transport, with an explicit effect authority. */
 export interface StackInfrastructureInput {
   placement?: PlacementProvisionIntent | undefined;
@@ -206,6 +217,7 @@ export const stackStartRefusals = {
   'infrastructure-review-required': 'Preserved infrastructure requires a successful stack start review; inspect --dry-run --infrastructure preserve',
   'infrastructure-review-changed': 'Stack launch or native infrastructure changed since review; no startup effects were admitted',
   'declarations-refresh-required': 'The recipient requires a topology declaration refresh before it can review the start',
+  'receiver-policy-unsupported': 'The enrolled node does not expose the start-policy check. Update its management backend before deploying this release',
   'receiver-admission-unknown': 'The selected node could not confirm the start policy of its registered application allocation',
 } as const;
 

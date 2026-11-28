@@ -193,6 +193,11 @@ describe('prepared source of one registered remote release', () => {
         fs.writeFileSync(path.join(p, 'omnitron.config.mjs'), 'export default ' + JSON.stringify(config));
         await node.addProject(scope.project, p); await node.listProjects();
       }
+      const allocation = { project: scope.project, stack: 'deployed' };
+      const policyInput = { origin: scope, runtime: allocation };
+      await expect(receiver.inspectNodeStartPolicy(policyInput)).resolves.toEqual({ protocol: 1, ...policyInput, mode: 'reconcile' });
+      await expect(receiver.inspectNodeStartPolicy({ origin: allocation, runtime: allocation })).rejects.toThrow();
+      await expect(receiver.inspectNodeStartPolicy({ origin: scope, runtime: scope })).rejects.toThrow();
       const invoke = (node: ProjectService, method: string, payload: unknown) => {
         if (!['inspectNodeStackStop', 'prepareNodeStackStop', 'executeNodeStackStop'].includes(method)) throw Error('unexpected node method ' + method);
         return Reflect.get(node, method).call(node, payload);
@@ -613,9 +618,9 @@ describe('prepared source of one registered remote release', () => {
         }] : [] };
       }
       if (method === 'getState') return { services: {} };
-      if (method === 'getStack') return { type: 'local', name: 'deployed', infrastructureMode: receiverMode,
-        runtimeScope: { project: 'sample', stack: 'deployed' },
-        config: { type: 'local', managedOrigin: { project: 'sample', stack: 'test' }, infrastructureOwnership: 'controller' } };
+      if (method === 'inspectNodeStartPolicy') return { protocol: 1, mode: receiverMode,
+        origin: { project: 'sample', stack: 'test' }, runtime: { project: 'sample', stack: 'deployed' },
+        ...(receiverMode === 'preserve' && { saved: null, current: null, refreshDeclarations: false }) };
       if (method === 'inspectNodeStackStop') return { ...structuredClone(inv), ...(body?.stoppedReleaseFor && retained && { stoppedRelease: retained }) };
       if (method === 'prepareNodeStackStop') return { ...structuredClone(inv),
         operationId: ['deployment', 'qualified'].includes(registrationMode) ? 'reviewed-stop-' + inv.execution.revision : 'replacement-stop' };

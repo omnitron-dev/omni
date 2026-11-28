@@ -30,26 +30,49 @@ function fixture() {
   return { service, config, bootstrap, metadata, plan };
 }
 describe('read-only readiness contract', () => {
+  it('binds a preservation review to the unique local allocation and its current saved policy', async () => {
+    const { service, config } = fixture();
+    const origin = { project: 'sample', stack: 'production' }, runtime = { project: 'sample', stack: 'dev' };
+    const input = { origin, runtime }, digest = 'a'.repeat(64);
+    Object.assign(config.stacks.dev, { managedOrigin: origin, infrastructureOwnership: 'controller' });
+    const policy = vi.fn<() => { mode: 'preserve'; review: string | null } | null>().mockReturnValue({ mode: 'preserve', review: digest });
+    Object.assign(service, { infrastructurePolicy: policy, registry: {
+      get: () => ({ registeredAt: 'fixture' }), registrations: () => [{ name: 'sample' }],
+    } });
+    const review = vi.spyOn(service, 'reviewStackStart');
+    const report = { ...runtime, protocol: 1 as const, infrastructure: 'preserve' as const, checkedAt: new Date().toISOString(), digest,
+      targets: [{ node: 'local', applicationOnly: true as const }], deferred: [] };
+    review.mockResolvedValue(report);
+    await expect(service.inspectNodeStartPolicy(input)).resolves.toEqual({ protocol: 1, ...input, mode: 'preserve',
+      saved: digest, current: digest, refreshDeclarations: false });
+    expect(review).toHaveBeenCalledWith(runtime.project, runtime.stack, { infrastructure: 'preserve' });
+    review.mockResolvedValueOnce({ ...report, targets: [{ node: 'preflight', refreshDeclarations: {} }] });
+    await expect(service.inspectNodeStartPolicy(input)).resolves.toMatchObject({ saved: digest, current: null, refreshDeclarations: true });
+    policy.mockReturnValueOnce({ mode: 'preserve', review: digest }).mockReturnValueOnce(null);
+    await expect(service.inspectNodeStartPolicy(input)).rejects.toThrow('changed during inspection');
+    Object.assign(config.stacks.dev, { infrastructureOwnership: 'stack' });
+    await expect(service.inspectNodeStartPolicy(input)).rejects.toThrow('does not own');
+    expect(review).toHaveBeenCalledTimes(3);
+  });
   it('reports the returning recipient’s own start authority through stack diagnosis', async () => {
     const f = fixture(), origin = { project: 'sample', stack: 'dev' }, runtime = { project: 'sample', stack: 'deployed' };
     const node = { nodeId: 'enrolled-node', host: 'node.invalid', port: 9700 };
     const route = { selected: node, from: node, sourceStop: { nodes: [{ execution: { ...runtime, revision: 7 } }] } };
-    const result = { type: 'local', name: 'deployed', runtimeScope: runtime, infrastructureMode: 'preserve', infrastructureReview: null,
-      config: { type: 'local', managedOrigin: origin, infrastructureOwnership: 'controller' } };
-    const digest = 'a'.repeat(64), held = { ...result, infrastructureReview: digest };
-    const review = { ...runtime, protocol: 1, infrastructure: 'preserve', digest, targets: [{ node: 'local', applicationOnly: true }] };
-    const call = vi.fn().mockResolvedValueOnce(result).mockResolvedValueOnce({ ...result, runtimeScope: origin })
-      .mockResolvedValueOnce({ ...result, infrastructureMode: 'reconcile' })
-      .mockResolvedValueOnce(held).mockResolvedValueOnce({ ...review, digest: 'b'.repeat(64) })
-      .mockResolvedValueOnce(held).mockResolvedValueOnce({ ...review, project: 'another' })
-      .mockResolvedValueOnce(held).mockResolvedValueOnce(review);
+    const result = { protocol: 1, origin, runtime, mode: 'preserve', saved: null, current: null, refreshDeclarations: false };
+    const digest = 'a'.repeat(64), held = { ...result, saved: digest };
+    const call = vi.fn().mockResolvedValueOnce(result).mockResolvedValueOnce({ ...result, runtime: origin })
+      .mockResolvedValueOnce({ protocol: 1, origin, runtime, mode: 'reconcile' })
+      .mockResolvedValueOnce({ ...held, current: 'b'.repeat(64) }).mockResolvedValueOnce({ ...held, origin: runtime })
+      .mockResolvedValueOnce({ ...held, current: digest }).mockResolvedValueOnce({ ...held, refreshDeclarations: true })
+      .mockRejectedValueOnce(Error('Connection lost'))
+      .mockRejectedValueOnce(Object.assign(Error('Missing method'), { code: 'PEER_METHOD_NOT_FOUND', service: 'OmnitronProject', method: 'inspectNodeStartPolicy' }));
     Object.assign(f.service, { placement: () => route, callStackTarget: call });
-    for (const state of ['blocked', 'unknown', 'pass', 'blocked', 'unknown', 'pass']) {
+    for (const state of ['blocked', 'unknown', 'pass', 'blocked', 'unknown', 'pass', 'blocked', 'unknown', 'blocked']) {
       const report = await f.service.diagnoseStack(origin.project, origin.stack);
       expect(report.checks).toContainEqual(expect.objectContaining({ code: 'receiver.start-policy', state }));
     }
-    expect(call).toHaveBeenCalledWith(origin, node, 'OmnitronProject', 'getStack', runtime);
-    expect(call).toHaveBeenCalledWith(origin, node, 'OmnitronProject', 'reviewStackStart', { ...runtime, infrastructure: 'preserve' });
+    expect(call.mock.calls.every(args => args[3] === 'inspectNodeStartPolicy')).toBe(true);
+    expect(call).toHaveBeenCalledWith(origin, node, 'OmnitronProject', 'inspectNodeStartPolicy', { origin, runtime });
   });
   it('uses persisted declarations without importing bootstrap code or executing a lifecycle operation', async () => {
     const f = fixture(); const report = await f.service.diagnoseStack('sample', 'dev');

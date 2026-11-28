@@ -65,6 +65,7 @@ describe('live session authority across HTTP cache and persistent WebSocket', ()
       resolveProjectStack: (scope: unknown) => scope, reviewStackStop, stopStack, reviewStackMigrations, migrateStack, getStackMigration, assertSdkMutable: migrateStack,
       checkRelease, deployReviewedRelease, planRecoveryQualification,
       inspectNodeStackStop: () => 'observed', prepareNodeStackStop: () => 'prepared', executeNodeStackStop: () => 'executed',
+      inspectNodeStartPolicy: (input: object) => ({ ...input, protocol: 1, mode: 'reconcile' }),
       resumeInstalledStack: () => ({ outcome: 'running' }), prepareNodeInstalledResume: () => 'prepared',
       executeNodeInstalledResume: () => 'executed', getNodeInstalledResumeReceipt: () => 'observed',
     } as never));
@@ -135,10 +136,26 @@ describe('live session authority across HTTP cache and persistent WebSocket', ()
       expect((await request(credential, 'stopStack', stack)).status).toBe(['operator','admin'].includes(principal) ? 200 : 403);
       expect((await request(credential, 'resumeInstalledStack', stack)).status).toBe(['operator','admin'].includes(principal) ? 200 : 403);
       for (const method of ['inspectNodeStackStop', 'prepareNodeStackStop', 'executeNodeStackStop',
-        'prepareNodeInstalledResume', 'executeNodeInstalledResume', 'getNodeInstalledResumeReceipt']) {
+        'inspectNodeStartPolicy', 'prepareNodeInstalledResume', 'executeNodeInstalledResume', 'getNodeInstalledResumeReceipt']) {
         expect((await request(credential, method, { service: 'OmnitronProject', input: [{}] })).status).toBe(principal === 'service_role' ? 200 : 403);
       }
     }
+  });
+  it('reads the allocated start policy with a machine session on the persistent mesh connection', async () => {
+    const peer = await client.connect(ws);
+    if (!(peer instanceof RemotePeer)) throw Error('Expected native Netron peer');
+    try {
+      const credential = await mint({ role: 'service_role' });
+      expect((await peer.runTask('authenticate', { token: credential })).success).toBe(true);
+      const service = await peer.queryInterface<ProjectRpcService>('OmnitronProject');
+      const origin = { project: 'sample', stack: 'production' }, runtime = { project: 'sample', stack: 'allocation' };
+      await expect(service.inspectNodeStartPolicy({ origin, runtime })).resolves.toEqual({ protocol: 1, origin, runtime, mode: 'reconcile' });
+      await expect(service.getStack(runtime)).rejects.toThrow();
+      await expect(service.reviewStackStart({ ...runtime, infrastructure: 'preserve' })).rejects.toThrow();
+      for (const method of ['getStack', 'reviewStackStart']) {
+        expect((await request(credential, method, { service: 'OmnitronProject', input: [runtime] })).status).toBe(403);
+      }
+    } finally { await peer.disconnect(); }
   });
   it('publishes replacement admission to operators and limits confirmation to a live administrator', async () => {
     const input = { project: 'sample', stack: 'prod', release: 'second-release', review: 'e'.repeat(64) };

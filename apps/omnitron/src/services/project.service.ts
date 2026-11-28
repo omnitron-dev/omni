@@ -25,7 +25,7 @@ import { infrastructureOwnership, ownsStackInfrastructure } from '../project/inf
 import { Errors } from '@omnitron-dev/titan/errors';
 import { isDeploymentRecoveryInput, recoveryFromDeployment, stackStartRefusals } from '../shared/dto/project.js';
 import { InstalledStackResume, resumeDestinations, type InstalledResumeExecution, type InstalledResumeRequest, type InstalledResumeReceipt, type ResumeDestination } from '../project/installed-stack-resume.js';
-import type { InstalledStackResumeResult, StackStopProgress, StackStartOptions, StackStartReview } from '../shared/dto/project.js';
+import type { InstalledStackResumeResult, NodeStartPolicy, NodeStartPolicyRequest, StackStopProgress, StackStartOptions, StackStartReview } from '../shared/dto/project.js';
 import type { ClusterPermit, StackEffectPlan } from '../cluster/stop-authority.js';
 import { isDeepStrictEqual } from 'node:util';
 import { diagnoseContainers } from '../project/stack-diagnosis.js';
@@ -715,6 +715,37 @@ export class ProjectService extends EventEmitter {
   inspectNodeStackStop(scope: NodeStackStopRequest & { stoppedReleaseFor?: string }): Promise<NodeStackStopInventory> {
     return scope.stoppedReleaseFor === undefined ? this.nodeStackStop.inspect(scope)
       : this.nodeStackStop.inspectStoppedRelease(scope, scope.stoppedReleaseFor, (...args) => this.orchestrator.inspectInstalledStack(...args));
+  }
+
+  /** Machine-only observation of the same allocation and preserve authority that will govern startup. */
+  async inspectNodeStartPolicy({ origin, runtime }: NodeStartPolicyRequest): Promise<NodeStartPolicy> {
+    stackExecutionKey(origin);
+    stackExecutionKey(runtime);
+    const { project, stack } = runtime;
+    const inspect = async () => {
+      const definition = await this.stopDefinition({ project: origin.project, stack: origin.stack, applications: true }, true);
+      if (!isDeepStrictEqual(definition.runtime, runtime)) throw Errors.forbidden('The requested origin does not own this local application allocation');
+      const config = this.getLoadedConfig(project);
+      const allocation = config && this.resolveStacks(config, project)[stack];
+      const registration = this.registry.get(project);
+      if (!registration?.registeredAt || !config || !allocation || allocation.type !== 'local' ||
+          !isDeepStrictEqual(allocation.managedOrigin, origin) || allocation.infrastructureOwnership !== 'controller' ||
+          ownsStackInfrastructure(allocation) || definition.fingerprint !== stackDefinitionFingerprint([project, stack, allocation, config.apps]))
+        throw Errors.forbidden('The requested origin does not own this local application allocation');
+      return { registeredAt: registration.registeredAt, definition: definition.fingerprint, policy: this.infrastructurePolicy(project, stack, allocation) };
+    };
+    const before = await inspect();
+    const receipt = { protocol: 1 as const, origin: { project: origin.project, stack: origin.stack }, runtime: { project, stack } };
+    if (!before.policy) return { ...receipt, mode: 'reconcile' };
+    const saved = before.policy.review;
+    if (!saved) return { ...receipt, mode: 'preserve', saved: null, current: null, refreshDeclarations: false };
+    const review = await this.reviewStackStart(project, stack, { infrastructure: 'preserve' });
+    if (!isDeepStrictEqual(before, await inspect()) || review.protocol !== 1 || review.project !== project ||
+        review.stack !== stack || review.infrastructure !== 'preserve')
+      throw Errors.conflict('The registered allocation or its start policy changed during inspection');
+    const current = review.targets.length === 1 && review.targets[0]?.node === 'local' && review.targets[0].applicationOnly === true
+      ? review.digest : null;
+    return { ...receipt, mode: 'preserve', saved, current, refreshDeclarations: review.targets.some(target => Boolean(target.refreshDeclarations)) };
   }
 
   preparePlacementProvision(...args: Parameters<NodeStackStop['preparePlacementProvision']>): ReturnType<NodeStackStop['preparePlacementProvision']> {
@@ -3141,23 +3172,21 @@ export class ProjectService extends EventEmitter {
     const request = runtime && { project: runtime.project, stack: runtime.stack };
     try {
       if (!request || !placement.selected) throw Error();
-      const allocation = await this.callStackTarget(scope, placement.selected, 'OmnitronProject', 'getStack', request) as IStackInfo;
-      if (allocation?.type !== 'local' || allocation.name !== request.stack ||
-          !isDeepStrictEqual(allocation.runtimeScope, request) || allocation.config?.infrastructureOwnership !== 'controller' ||
-          !isDeepStrictEqual(allocation.config.managedOrigin, scope) ||
-          !['reconcile', 'preserve'].includes(allocation.infrastructureMode ?? '')) throw Error();
-      if (allocation.infrastructureMode === 'reconcile') return;
+      const policy = await this.callStackTarget(scope, placement.selected, 'OmnitronProject', 'inspectNodeStartPolicy',
+        { origin: scope, runtime: request }) as NodeStartPolicy;
+      if (policy?.protocol !== 1 || !isDeepStrictEqual(policy.origin, scope) || !isDeepStrictEqual(policy.runtime, request)) throw Error();
+      if (policy.mode === 'reconcile') return;
+      if (policy.mode !== 'preserve' || typeof policy.refreshDeclarations !== 'boolean' ||
+          ![policy.saved, policy.current].every(value => value === null || (typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)))) throw Error();
       reason = 'infrastructure-review-required';
-      if (/^[a-f0-9]{64}$/.test(allocation.infrastructureReview ?? '')) {
-        const review = await this.callStackTarget(scope, placement.selected, 'OmnitronProject', 'reviewStackStart',
-          { ...request, infrastructure: 'preserve' }) as StackStartReview;
-        if (review?.protocol !== 1 || review.project !== request.project || review.stack !== request.stack ||
-            review.infrastructure !== 'preserve' || !Array.isArray(review.targets)) throw Error();
-        if (review.digest === allocation.infrastructureReview && review.targets.length) return;
-        reason = review.targets.some(target => target.refreshDeclarations) ? 'declarations-refresh-required' : 'infrastructure-review-changed';
+      if (policy.saved !== null) {
+        if (policy.current === policy.saved && !policy.refreshDeclarations) return;
+        reason = policy.refreshDeclarations ? 'declarations-refresh-required' : 'infrastructure-review-changed';
       }
-    } catch {
-      reason = 'receiver-admission-unknown';
+    } catch (error) {
+      const failure = error as { code?: string; service?: string; method?: string } | null;
+      reason = failure?.code === 'PEER_METHOD_NOT_FOUND' && failure.service === 'OmnitronProject' && failure.method === 'inspectNodeStartPolicy'
+        ? 'receiver-policy-unsupported' : 'receiver-admission-unknown';
     }
     throw Errors.conflict(stackStartRefusals[reason], { reason });
   }

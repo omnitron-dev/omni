@@ -623,6 +623,11 @@ export class ProjectRpcService {
   }
 
   @Public({ auth: { roles: ['service_role'] } })
+  async inspectNodeStartPolicy(data: import('../shared/dto/project.js').NodeStartPolicyRequest) {
+    return this.projectService.inspectNodeStartPolicy(data);
+  }
+
+  @Public({ auth: { roles: ['service_role'] } })
   async prepareNodeStackStop(data: import('../project/node-stack-stop.js').NodeStackStopRequest) {
     return this.projectService.prepareNodeStackStop(data);
   }

@@ -673,7 +673,7 @@ describe('prepared source of one registered remote release', () => {
           manifest: { id: string; project: { commit: string }; artifacts: { sha256: string }[] } },
       ) => {
         await release.placement.recheck();
-        if (['deployment', 'migration', 'legacy', 'qualified'].includes(registrationMode)) {
+        if (['deployment', 'migration', 'legacy', 'qualified', 'unacknowledged'].includes(registrationMode)) {
           inv.execution.phase = 'running';
           inv.execution.revision++;
           inv.execution.apps[0]!.generation = 'launch-' + inv.execution.revision;
@@ -772,22 +772,22 @@ describe('prepared source of one registered remote release', () => {
       await expect(service.selectRemotePlacement({ ...req, review: review.digest })).resolves.toEqual(route);
       expect(new StackTargets(store).inspect(req).placement?.receipt).toEqual(route);
       expect(journal.inspect({ project: 'sample', stack: 'dev' })).toEqual({ version: 1, revision: 0, nodes: [] });
+      // Recreate the exact old digest and stored shape from the actual full stop and selection.
+      const legacy = (prepared: PreparedRemoteReleaseSource | null) => {
+        const state = journal.inspect(req), placement = state.placement!, stop = placement.sourceStop, [ack] = stop.nodes;
+        const { migrationBaseline, ...receipt } = placement.receipt;
+        expect(migrationBaseline).toBeDefined();
+        const { nodeId, host, port, pin } = placement.selected ?? placement.origin;
+        const contents = [req.project, req.stack, receipt.generation - 1, placement.registration, placement.originCommit,
+          placement.from, { nodeId, host, port, pin }, prepared, stop.id, stop.completedAt, ack!.operationId, ack!.definition,
+          ack!.execution!.project, ack!.execution!.stack, ack!.execution!.revision, inv.execution.apps.map(a => [a.name, a.generation])];
+        receipt.digest = sha(JSON.stringify(['omnitron/remote-placement/v1', contents]));
+        store.kvSetSync('lifecycle:stack-targets:sample/test', { ...state, placement: { ...placement, receipt } });
+        return ack!;
+      };
       if (registrationMode === 'legacy') {
         const scope = { project: 'sample', stack: 'test' }, rpc = new ProjectRpcService(service);
         const selected = { ...scope, release: id }, repeat = { ...req, fromNodeId: nodeId };
-        // Recreate the exact old digest and stored shape from the actual full stop and selection.
-        const legacy = (prepared: PreparedRemoteReleaseSource | null) => {
-          const state = journal.inspect(scope), placement = state.placement!, stop = placement.sourceStop, [ack] = stop.nodes;
-          const { migrationBaseline, ...receipt } = placement.receipt;
-          expect(migrationBaseline).toBeDefined();
-          const { nodeId, host, port, pin } = placement.selected ?? placement.origin;
-          const contents = [scope.project, scope.stack, receipt.generation - 1, placement.registration, placement.originCommit,
-            placement.from, { nodeId, host, port, pin }, prepared, stop.id, stop.completedAt, ack!.operationId, ack!.definition,
-            ack!.execution!.project, ack!.execution!.stack, ack!.execution!.revision, inv.execution.apps.map(a => [a.name, a.generation])];
-          receipt.digest = sha(JSON.stringify(['omnitron/remote-placement/v1', contents]));
-          store.kvSetSync('lifecycle:stack-targets:sample/test', { ...state, placement: { ...placement, receipt } });
-          return ack!;
-        };
         const sourceStop = legacy(ready);
         const adopt = (ack: typeof sourceStop, release: string, manifestSha256: string, artifactSha256: string) => ({
           operationId: ack.operationId!, observedAt: ack.observedAt!, release, manifestSha256,
@@ -1079,6 +1079,39 @@ describe('prepared source of one registered remote release', () => {
       expect(launches[0]).toMatchObject({ root: source, host: candidateNode.host, commit: releaseCommit });
       expect(launches[0]!.provisioning).toBeUndefined();
       expect(fs.readFileSync(marker, 'utf8')).toBe(before);
+      if (registrationMode === 'unacknowledged') {
+        const scope = { project: 'sample', stack: 'test' }, rpc = new ProjectRpcService(service);
+        const confirmation = { ...scope, release: id, manifestSha256: manifestSha, nodeId };
+        await expect(rpc.confirmServingRelease(confirmation)).rejects.toThrow(/original enrolled recipient/);
+        const stop = await service.reviewStackStop(scope.project, scope.stack);
+        await service.stopStack(scope.project, scope.stack, stop.digest!);
+        const same = { ...req, fromNodeId: nodeId };
+        const next = await rpc.reviewRemotePlacement(same);
+        await rpc.selectRemotePlacement({ ...same, review: next.digest });
+        const prior = legacy(ready);
+        retained = { operationId: prior.operationId!, observedAt: prior.observedAt!, release: id, manifestSha256: manifestSha,
+          apps: inv.execution.apps.map(app => ({ ...app, artifactSha256: launched!.artifactSha256 })) };
+        loseLaunchReply = true;
+        await expect(service.startStack(scope.project, scope.stack, { source: 'operator', release: id })).rejects.toThrow(/lost the reply/);
+        const unconfirmed = journal.inspect(scope);
+        expect(unconfirmed.placement?.activated).toBe(false);
+        expect((await rpc.checkRelease({ ...scope, release: id })).ok).toBe(false);
+        await expect(rpc.confirmServingRelease({ ...confirmation, manifestSha256: 'f'.repeat(64) })).rejects.toThrow(/exact immutable/);
+        const actual = launched!.artifactSha256;
+        launched!.artifactSha256 = '0'.repeat(64);
+        await expect(rpc.confirmServingRelease(confirmation)).rejects.toThrow(/selected artifact/);
+        expect(journal.inspect(scope)).toEqual(unconfirmed);
+        launched!.artifactSha256 = actual;
+        await expect(rpc.confirmServingRelease(confirmation)).resolves.toMatchObject({ selectedRelease: { id, manifestSha256: manifestSha } });
+        const complete = journal.inspect(scope);
+        expect(complete.placement?.activated).toBe(true);
+        expect((await rpc.checkRelease({ ...scope, release: id })).ok).toBe(true);
+        await rpc.confirmServingRelease(confirmation);
+        expect(journal.inspect(scope)).toEqual(complete);
+        expect(launches).toHaveLength(2);
+        expect(read.mock.calls.filter(([method]) => method === 'executeNodeStackStop')).toHaveLength(1);
+        return;
+      }
       if (registrationMode === 'deployment') {
         const second = 'sample-next', secondSource = path.join(root, 'second-release');
         git(root, 'clone', '-q', '--no-local', source, secondSource);
@@ -1235,7 +1268,7 @@ describe('prepared source of one registered remote release', () => {
     }
   }
 
-  it.each(['original', 'changed', 'deployment', 'migration', 'legacy'])(
+  it.each(['original', 'changed', 'deployment', 'migration', 'legacy', 'unacknowledged'])(
     'routes a selected placement with a %s registered declaration', exercisePlacement);
   it('routes a selected placement with a qualified registered declaration',
     () => exercisePlacement('qualified'), 120_000);
@@ -1251,7 +1284,7 @@ describe('prepared source of one registered remote release', () => {
 
   it('requires administrator authority for controller paths and permits an operator to recheck only an approved digest', () => {
     for (const name of ['prepareRemoteReleaseSource', 'listRemoteReleasePreparations', 'readRemoteReleasePreparationLog', 'checkRemoteReleaseSource', 'reviewPreparedHostBindings',
-      'preflightRemotePlacement', 'reviewRemotePlacement', 'selectRemotePlacement', 'deployReviewedRelease', 'inspectFirstWrite', 'prepareRehearsal', 'rehearseMigrations']) {
+      'preflightRemotePlacement', 'reviewRemotePlacement', 'selectRemotePlacement', 'deployReviewedRelease', 'confirmServingRelease', 'inspectFirstWrite', 'prepareRehearsal', 'rehearseMigrations']) {
       const rule = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, ProjectRpcService.prototype, name);
       for (const role of ['viewer', 'operator', 'admin'])
         expect(validateAccessRequirements({ roles: [role], permissions: [] }, rule).allowed).toBe(role === 'admin' ||

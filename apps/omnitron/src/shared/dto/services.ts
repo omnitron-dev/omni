@@ -413,6 +413,7 @@ export interface IProjectRpcService {
   refreshTopologyMetadata(data: { project: string; stack?: string; release?: string }): Promise<import('./project.js').TopologyMetadataRefresh>;
   listStacks(data: { project: string }): Promise<IStackInfo[]>;
   getStack(data: { project: string; stack: string }): Promise<IStackInfo>;
+  confirmServingRelease(data: import('./project.js').ConfirmServingRelease): Promise<IStackInfo>;
   inspectInstalledArtifacts(data: { project: string; stack: string }): Promise<import('./installed-release.js').InstalledReleaseInspection>;
   diagnoseStack(data: { project: string; stack: string }): Promise<import('./stack-diagnosis.js').StackDiagnosis>;
   getStackStatus(data: { project: string; stack: string }): Promise<StackRuntime>;

@@ -522,6 +522,13 @@ export class ProjectRpcService {
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
+  async confirmServingRelease(data: import('../shared/dto/project.js').ConfirmServingRelease): Promise<IStackInfo> {
+    const resolved = await this.projectService.resolveProjectStack(data, { readOnly: true });
+    const info = await this.projectService.confirmServingRelease(resolved);
+    return { ...publicStack(info), name: data.stack, runtimeScope: { project: resolved.project, stack: resolved.stack } };
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
   async deployReviewedRelease(data: ReviewedReleaseRequest): Promise<IStackInfo> {
     checkRecoveryOptions(data, ['review']);
     const scope = await this.projectService.resolveProjectStack(data);

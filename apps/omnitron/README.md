@@ -360,6 +360,12 @@ Use `omnitron stack diagnose PROJECT STACK` to check the enrolled receiver's sta
 
 When a release returns to the same node, the receiver records the Docker container IDs it verified during provisioning, together with the placement and full-stop operation. If application registration then fails or the provisioning reply is lost, retry the selected release with the ordinary stack start command. The controller compares the live container inventory and stopped execution generation with that receipt. A missing receipt or a changed inventory requires a fresh full-stop review and release selection.
 
+If a standalone start lost its reply after the applications began serving, confirm that launch while the original generations are still running. Use the release ID, manifest SHA-256 and node ID from the selected deployment. Omnitron checks every running application's archive and generation against the immutable release and the enrolled node's execution owner. A successful confirmation records the launch and preserves the processes and infrastructure policy.
+
+```sh
+omnitron stack confirm-start acme prod --release "$release" --manifest "$manifest_sha256" --node-id "$selected_id"
+```
+
 On `main` after 0.4.17, open **Configuration & actions → Deploy release** in the stack workspace. Choose an immutable release prepared for the selected recipient. While the current applications are still running, Console verifies their launch evidence, both release archives and migration histories, the enrolled node, and the exact scope of the stop. If the registered node declaration changed, Omnitron finds its previous fingerprint in the project's Git history. Commit the current declaration before reviewing the change.
 
 The dialog shows the recipient, how many applications and containers will stop, and which release it verified for return. An administrator can press **Stop and deploy** once. In the CLI, review the release and confirm its digest.

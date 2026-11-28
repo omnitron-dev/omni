@@ -362,6 +362,12 @@ export interface RemoteReleasePreparationAttempt extends RuntimeStackScope {
 
 export type RemoteReleasePreparationResult = PreparedRemoteReleaseSource & { publication?: { attemptId: string; fileTransferId: string } };
 
+export interface ConfirmServingRelease extends RuntimeStackScope {
+  release: string;
+  manifestSha256: string;
+  nodeId: string;
+}
+
 export interface ReleaseAdmission {
   /** File history and producer provenance measured from both immutable release sources. */
   migrationHistory?: ReleaseMigrationHistory;

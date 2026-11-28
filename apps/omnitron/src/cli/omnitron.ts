@@ -600,6 +600,17 @@ stack
   });
 
 stack
+  .command('confirm-start <project> <stack>')
+  .description('Confirm a previously selected release from its current recipient and running application generations')
+  .requiredOption('--release <id>', 'Selected immutable release ID')
+  .requiredOption('--manifest <sha256>', 'Selected release manifest SHA-256')
+  .requiredOption('--node-id <id>', 'Enrolled recipient of the original selection')
+  .structuredAction(async (projectName, stackName, options) => {
+    const { stackConfirmStartCommand } = await import('../commands/stack.js');
+    await stackConfirmStartCommand(projectName, stackName, options);
+  });
+
+stack
   .command('confirm-stop <project> <stack>')
   .description('Confirm the current full stop of a stack on a registered source node')
   .requiredOption('--operation <uuid>', 'Reviewed full-stop operation ID')

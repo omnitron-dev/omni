@@ -1,11 +1,20 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { stackPlanRecoveryCommand, stackPrepareRehearsalCommand, stackRehearseMigrationsCommand, stackReleaseAdmissionCommand, stackSelectPlacementCommand, stackStartCommand } from '../../src/commands/stack.js';
+import { stackConfirmStartCommand, stackPlanRecoveryCommand, stackPrepareRehearsalCommand, stackRehearseMigrationsCommand, stackReleaseAdmissionCommand, stackSelectPlacementCommand, stackStartCommand } from '../../src/commands/stack.js';
 
 const rpc = vi.hoisted(() => ({
-  preflightRemotePlacement: vi.fn(), reviewRemotePlacement: vi.fn(), selectRemotePlacement: vi.fn(),
+  preflightRemotePlacement: vi.fn(), reviewRemotePlacement: vi.fn(), selectRemotePlacement: vi.fn(), confirmServingRelease: vi.fn(),
   planRecoveryQualification: vi.fn(), checkRelease: vi.fn(), inspectFirstWrite: vi.fn(), prepareRehearsal: vi.fn(), rehearseMigrations: vi.fn(), startStack: vi.fn(), deployReviewedRelease: vi.fn(), reviewStackStart: vi.fn(),
 }));
 const client = vi.hoisted(() => ({ service: vi.fn(async () => rpc), disconnect: vi.fn() }));
+
+it('confirms a named serving release through Netron without issuing another start', async () => {
+  const manifest = 'c'.repeat(64);
+  rpc.confirmServingRelease.mockResolvedValueOnce({ status: 'running' });
+  await stackConfirmStartCommand('sample', 'prod', { release: 'sample-release', manifest, nodeId: 'receiver' });
+  expect(rpc.confirmServingRelease).toHaveBeenCalledWith({ project: 'sample', stack: 'prod', release: 'sample-release', manifestSha256: manifest, nodeId: 'receiver' });
+  expect(rpc.startStack).not.toHaveBeenCalled();
+  expect(output.emitJson).toHaveBeenCalledWith({ status: 'running' });
+});
 const output = vi.hoisted(() => ({ emitJson: vi.fn(() => true), emitError: vi.fn(), emitInfo: vi.fn(), emitStep: vi.fn(), isJsonMode: () => true }));
 vi.mock('../../src/daemon/daemon-client.js', async original => ({
   ...await original<typeof import('../../src/daemon/daemon-client.js')>(), createDaemonClient: () => client,

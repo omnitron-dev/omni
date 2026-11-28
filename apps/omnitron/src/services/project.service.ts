@@ -3560,7 +3560,7 @@ export class ProjectService extends EventEmitter {
     stackExecutionKey(request);
     (await import('../release/load.js')).assertReleaseId(release);
     if (verifyRunId !== undefined) validateRunId(verifyRunId);
-    const { scope, scopeKey, journal, before, placement, selected, previous, next, requestFor } =
+    const { scope, journal, before, placement, selected, previous, next, requestFor } =
       await this.releaseDeploymentSources(project, stack, release);
     if (!placement.activated || previous.receipt.release === next.receipt.release)
       throw Error('First-write inspection requires an activated incumbent and a separate prepared candidate');
@@ -3575,23 +3575,8 @@ export class ProjectService extends EventEmitter {
       migrationHistory = error.history;
     }
     if (!migrationHistory) throw Error('Use the standard deployment review for a release with compatible migration history');
-    const declared = previous.opened.stackConfig;
-    const names = nodeApplicationNames(declared, declared.nodes![0]!,
-      this.resolveStackApps(declared, previous.opened.config).map(app => app.name));
-    const expected = new Map(names.map(name => {
-      const files = previous.admitted.files.filter(file => file.app === name);
-      if (files.length !== 1) throw Error('The selected release lacks a unique artifact for application ' + name);
-      return [name, files[0]!.sha256];
-    }));
-    const recipient = this.placementRecipient(selected.nodeId, selected);
-    const rpc = this.getSlaveConnector().pinnedService(selected.host, selected.port, selected.nodeId, recipient.managementIdentity, 'OmnitronProject');
-    const observe = () => inspectFirstWriteOwner(request, selected, expected, async stoppedReleaseFor => {
-      const input = { ...scope, applications: true, ...(stoppedReleaseFor && { stoppedReleaseFor }) };
-      const observed = await rpc('inspectNodeStackStop', input) as NodeStackStopInventory;
-      this.validateStopInventory(input, observed);
-      return observed;
-    }, () => this.withRemoteAppStatuses(project, this.getStack(project, stack)),
-    () => this.daemonStateStore.kvGetSync<StackStopProgress>('stack:' + scopeKey + ':last-stop', { strict: true }));
+    const observe = () => this.observeSelectedOwner(scope, selected, previous,
+      () => this.withRemoteAppStatuses(project, this.getStack(project, stack)));
     const owner = await observe();
     let physical: FirstWriteInspection['physical'] = { state: 'unverified', reason: owner.stop
       ? 'Supply the completed native service-data-adopt verify run ID to re-read the stopped source and reserved receiver.'
@@ -3726,6 +3711,68 @@ export class ProjectService extends EventEmitter {
     return info;
   }
 
+  private async observeSelectedOwner(scope: StackExecutionScope, selected: NonNullable<RemotePlacement['selected']>,
+    source: Awaited<ReturnType<ProjectService['selectedReturnSource']>>, running: () => Promise<IStackInfo>) {
+    const declared = source.opened.stackConfig;
+    const names = nodeApplicationNames(declared, declared.nodes![0]!, this.resolveStackApps(declared, source.opened.config).map(app => app.name));
+    const expected = new Map(names.map(name => {
+      const files = source.admitted.files.filter(file => file.app === name);
+      if (files.length !== 1) throw Error('The selected release lacks a unique artifact for application ' + name);
+      return [name, files[0]!.sha256];
+    }));
+    const target = this.placementRecipient(selected.nodeId, selected);
+    const rpc = this.getSlaveConnector().pinnedService(selected.host, selected.port, selected.nodeId, target.managementIdentity, 'OmnitronProject');
+    return inspectFirstWriteOwner({ ...scope, release: selected.release }, selected, expected, async stoppedReleaseFor => {
+      const input = { ...scope, applications: true, ...(stoppedReleaseFor && { stoppedReleaseFor }) };
+      const observed = await rpc('inspectNodeStackStop', input) as NodeStackStopInventory;
+      this.validateStopInventory(input, observed);
+      return observed;
+    }, running, () => this.daemonStateStore.kvGetSync<StackStopProgress>('stack:' + stackExecutionKey(scope) + ':last-stop', { strict: true }));
+  }
+
+  /** Reconcile a lost standalone start reply while the selected applications can still prove their launch. */
+  @RecoveryMutation()
+  async confirmServingRelease(request: import('../shared/dto/project.js').ConfirmServingRelease): Promise<IStackInfo> {
+    await this.requireNoColdBatch();
+    const scope = { project: request.project, stack: request.stack };
+    const key = stackExecutionKey(scope), journal = new StackTargets(this.daemonStateStore);
+    const before = journal.inspect(scope), placement = before.placement, selected = placement?.selected;
+    const [node] = before.nodes;
+    if (!placement || !selected || selected.release !== request.release || selected.manifestSha256 !== request.manifestSha256 ||
+        selected.nodeId !== request.nodeId || before.nodes.length !== 1 || node?.nodeId !== selected.nodeId ||
+        node.host !== selected.host || node.port !== selected.port || !node.applications || !isDeepStrictEqual(placement.from, {
+          host: selected.host, port: selected.port, nodeId: selected.nodeId, pin: selected.pin,
+        })) throw Error('Confirm the exact immutable release and its original enrolled recipient');
+    const target = this.placementRecipient(selected.nodeId, selected);
+    const registration = this.registeredRemoteScope(scope.project, scope.stack).fingerprint;
+    const stop = () => this.daemonStateStore.kvGetSync<StackStopProgress>('stack:' + key + ':last-stop', { strict: true });
+    const original = stop();
+    if (!original || original.id !== placement.sourceStop.id || original.phase !== 'stopped' || !original.intentCommitted ||
+        original.keepInfrastructure || original.deploymentReview || original.nodes.length !== 1)
+      throw Error('A standalone selection with its original completed full stop is required');
+    const assertCurrent = () => {
+      this.assertDeploymentOwner(scope);
+      this.migrations.assertIdle(scope);
+      if (this.startsInFlight.has(key) || this.stopsInFlight.has(key) || this.rereading?.has(scope.project) ||
+          this.ownershipFrozen || this.reconcilingStacks || this.resumingInstalled || this.clusterStop ||
+          journal.inspect(scope).revision !== before.revision || !isDeepStrictEqual(original, stop()) ||
+          this.registeredRemoteScope(scope.project, scope.stack).fingerprint !== registration ||
+          !isDeepStrictEqual(target, this.placementRecipient(selected.nodeId, selected)))
+        throw Error('The selected release, recipient or lifecycle operation changed during confirmation');
+    };
+    assertCurrent();
+    const source = await this.selectedReturnSource(scope, placement);
+    const info = await this.confirmRemoteRelease(scope, selected.release, selected.manifestSha256);
+    const owner = await this.observeSelectedOwner(scope, selected, source, async () => info);
+    const stopped = placement.sourceStop.nodes[0]?.execution;
+    if (!stopped || owner.phase !== 'running' || owner.project !== stopped.project || owner.stack !== stopped.stack || owner.revision <= stopped.revision)
+      throw Error('The running allocation must be newer than the selected full stop');
+    await this.requireNoColdBatch();
+    assertCurrent();
+    if (!placement.activated) this.acknowledgeServingPlacement(scope, placement);
+    return info;
+  }
+
   private recordedDeployment(project: string, stack: string, digest: string) {
     const key = stackExecutionKey({ project, stack });
     const op = this.daemonStateStore.kvGetSync<RemoteDeploymentOperation>('release:deployment:' + key + ':' + digest, { strict: true });
@@ -3790,10 +3837,14 @@ export class ProjectService extends EventEmitter {
           other.name === app.process!.name && other.generation === app.process!.generation)) ||
         !isDeepStrictEqual(target, this.placementRecipient(selected.nodeId, selected)))
       throw Error('The recipient has not confirmed the reviewed application generations');
-    this.updateEnabledStacks(scope.project, scope.stack, true);
     this.setInfrastructurePolicy(scope.project, scope.stack, null, true);
+    this.acknowledgeServingPlacement(scope, placement);
+  }
+
+  private acknowledgeServingPlacement(scope: StackExecutionScope, placement: RemotePlacement): void {
+    this.updateEnabledStacks(scope.project, scope.stack, true);
     this.markPriorStopSuperseded(scope.project, scope.stack, placement.sourceStop.id);
-    journal.activated(scope, placement.receipt.digest);
+    new StackTargets(this.daemonStateStore).activated(scope, placement.receipt.digest);
   }
 
   @RecoveryMutation()

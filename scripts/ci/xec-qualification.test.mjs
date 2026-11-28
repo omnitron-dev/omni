@@ -71,6 +71,23 @@ test('a lost dispatch response is reconciled without sending another workflow', 
   await assert.rejects(driver.native({ ...context, node: '24.10.0' }, saved, save), /input identity differs/);
 });
 
+test('the qualified artifact transfer uses the configured time budget and propagates cancellation', async () => {
+  const context = { commit, node: '22.23.4', signal: new AbortController().signal };
+  const name = 'native-' + commit + '-22.23.4-1';
+  const artifact = { name, size_in_bytes: 116_000_000, workflow_run: { head_sha: commit } };
+  const transfers = [];
+  const driver = githubQualification({ root: '/unused', policy, progress() {}, run: async (_root, _cmd, args, options) => {
+    if (args[0] === 'api') return JSON.stringify({ artifacts: [artifact] });
+    transfers.push({ args, options });
+  } });
+  await driver.downloadNative(context, { id: 7, attempt: 1 }, '/receiver');
+  assert.deepEqual(transfers, [{ args: ['run', 'download', '7', '--repo', policy.repository, '--name', name, '--dir', '/receiver'],
+    options: { timeoutMs: policy.qualification.timeoutMs, signal: context.signal } }]);
+  artifact.size_in_bytes = 0;
+  await assert.rejects(driver.downloadNative(context, { id: 7, attempt: 1 }, '/receiver'), /Qualified artifact/);
+  assert.equal(transfers.length, 1);
+});
+
 test('read-only inspection cannot dispatch a new native job', async () => {
   const driver = githubQualification({ root: '/unused', policy, progress() {}, run() { throw Error('unexpected API'); } });
   await assert.rejects(driver.native({ name: 'native', commit, previous, node: '22.23.4', observeOnly: true },

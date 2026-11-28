@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 
 /** GitHub is one explicitly selected executor, never the source of release identity. */
-export function githubQualification({ root, policy, run, progress, poll = delay }) {
+export function githubQualification({ root, policy, run, progress = () => {}, poll = delay }) {
   const repo = policy.repository;
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw Error('Invalid GitHub repository in release policy');
   const api = async (route, args = []) => JSON.parse(await run(root, 'gh', ['api', 'repos/' + repo + '/' + route, ...args]) || 'null');
@@ -102,9 +102,13 @@ export function githubQualification({ root, policy, run, progress, poll = delay 
   async function downloadArtifact(context, evidence, directory, name, limit) {
     const reply = await api('actions/runs/' + evidence.id + '/artifacts?per_page=100');
     const matches = reply.artifacts.filter(artifact => artifact.name === name);
-    if (matches.length !== 1 || matches[0].expired || matches[0].size_in_bytes > limit ||
-        matches[0].workflow_run?.head_sha !== context.commit) throw Error('Qualified artifact is missing, expired or ambiguous');
-    await run(root, 'gh', ['run', 'download', String(evidence.id), '--repo', repo, '--name', name, '--dir', directory], { timeoutMs: 10 * 60_000 });
+    const artifact = matches[0];
+    if (matches.length !== 1 || artifact.expired || !Number.isSafeInteger(artifact.size_in_bytes) ||
+        artifact.size_in_bytes < 1 || artifact.size_in_bytes > limit || artifact.workflow_run?.head_sha !== context.commit)
+      throw Error('Qualified artifact is missing, expired or ambiguous');
+    progress('Receiving ' + name + ' · ' + artifact.size_in_bytes + ' bytes');
+    await run(root, 'gh', ['run', 'download', String(evidence.id), '--repo', repo, '--name', name, '--dir', directory],
+      { timeoutMs: policy.qualification.timeoutMs, signal: context.signal });
   }
   async function downloadNative(context, evidence, directory) {
     return downloadArtifact(context, evidence, directory,

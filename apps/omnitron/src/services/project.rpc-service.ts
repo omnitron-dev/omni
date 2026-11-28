@@ -18,6 +18,7 @@ import { Errors } from '@omnitron-dev/titan/errors';
 import { VIEWER_ROLES, OPERATOR_ROLES, ADMIN_ROLES } from '../shared/roles.js';
 import { isDeploymentRecoveryInput } from '../shared/dto/project.js';
 import type { ProjectService } from './project.service.js';
+import type { IProjectRpcService } from '../shared/dto/services.js';
 import type { DeployProgressRecord } from './remote-deployer.service.js';
 import type {
   CheckReleaseRequest,
@@ -87,6 +88,12 @@ export class ProjectRpcService {
   @Public({ auth: { roles: VIEWER_ROLES } })
   async getDeployProgress(scope?: { project: string; stack?: string }): Promise<DeployProgressRecord[]> {
     return this.projectService.getDeployProgress(scope);
+  }
+
+  @Public({ auth: { roles: OPERATOR_ROLES } })
+  async getReleaseLaunchAttempts(data: import('../shared/dto/project.js').ReleaseLaunchAttempts) {
+    const scope = await this.projectService.resolveProjectStack({ project: data.project, stack: data.stack }, { readOnly: true });
+    return this.projectService.getReleaseLaunchAttempts({ ...data, ...scope });
   }
 
   @Public({ auth: { roles: VIEWER_ROLES } })
@@ -463,11 +470,11 @@ export class ProjectRpcService {
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
-  async readRemoteReleasePreparationLog(data: import('../shared/dto/project.js').RuntimeStackScope & { attemptId: string; name: string; lines?: number }) {
-    if (Object.keys(data).some(key => !['project', 'stack', 'attemptId', 'name', 'lines'].includes(key)))
+  async readRemoteReleasePreparationLog(data: Parameters<IProjectRpcService['readRemoteReleasePreparationLog']>[0]) {
+    if (Object.keys(data).some(key => !['project', 'stack', 'attemptId', 'name', 'lines', 'page'].includes(key)))
       throw Error('Select a log from this release preparation');
     const scope = await this.projectService.resolveProjectStack(data, { readOnly: true });
-    return this.projectService.readRemoteReleasePreparationLog(scope, data.attemptId, data.name, data.lines);
+    return this.projectService.readRemoteReleasePreparationLog(scope, data.attemptId, data.name, data.lines, data.page);
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })

@@ -54,7 +54,7 @@
  * Those callers fail closed when the database is absent or the insert fails.
  */
 
-import type { Kysely } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import { redactDiagnosticText } from '@omnitron-dev/titan/diagnostics';
 
@@ -267,6 +267,14 @@ export class AuditService {
 
     if (query.action) q = q.where('action', '=', query.action);
     if (query.resourceType) q = q.where('resourceType', '=', query.resourceType);
+    if (query.launch) {
+      const { resource, release, manifestSha256, nodeId } = query.launch;
+      q = q.where('resourceType', '=', 'stack').where('resourceId', '=', resource)
+        .where('action', 'in', ['stack.start', 'stack.start.failed'])
+        .where(sql<string>`details ->> 'release'`, '=', release)
+        .where(sql<boolean>`(details ->> 'releaseManifestSha256' IS NULL OR details ->> 'releaseManifestSha256' = ${manifestSha256})`)
+        .where(sql<boolean>`(details ->> 'nodeId' IS NULL OR details ->> 'nodeId' = ${nodeId})`);
+    }
     if (query.actorId) q = q.where('actorId', '=', query.actorId);
     if (query.actorType) q = q.where('actorType', '=', query.actorType);
     if (before) q = q.where('createdAt', '<', before as never);

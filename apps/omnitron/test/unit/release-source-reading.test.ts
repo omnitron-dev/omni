@@ -46,6 +46,14 @@ describe('per-application source presentation', () => {
     expect(listReleaseLogs('consumer', root).map(log => log.name)).toEqual(['build.log', 'gate-logs/tests.log']);
     expect(readReleaseLog('consumer', 'build.log', 1, root)).toEqual({ name: 'build.log', bytes: Buffer.byteLength(content), tail: 'результат' });
     expect(readReleaseLog('consumer', 'build.log', 300, root).tail.length).toBeLessThanOrEqual(128 * 1024);
+    let page = readReleaseLog('consumer', 'build.log', 1, root, {});
+    let restored = page.tail;
+    while (page.previousByte !== undefined) {
+      page = readReleaseLog('consumer', 'build.log', 1, root, { beforeByte: page.previousByte, version: page.version! });
+      restored = page.tail + restored;
+    }
+    expect(restored).toBe(content);
+    expect(() => readReleaseLog('consumer', 'build.log', 5, root, { beforeByte: 6, version: 'changed' })).toThrow('stale');
     expect(readReleaseLog('consumer', 'gate-logs/tests.log', 200, root).tail).toBe('started\npassed');
     fs.symlinkSync(path.join(dir, 'logs', 'build.log'), path.join(dir, 'logs', 'link'));
     expect(() => readReleaseLog('consumer', 'link', 200, root)).toThrow();

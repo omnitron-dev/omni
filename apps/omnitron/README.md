@@ -368,6 +368,8 @@ If a standalone start lost its reply after the applications began serving, confi
 omnitron stack confirm-start acme prod --release "$release" --manifest "$manifest_sha256" --node-id "$selected_id"
 ```
 
+Open **Deployments → Launch** to see the confirmed application generations, their health, the time of observation and earlier start requests. The Build tab lists the producer's retained logs. Launch includes paginated application output from the full stop through confirmation. If an administrator used additional Pipelines during the rollout, pass their completed run IDs with `--journal-run` to include their step output in the card. Access to each journal follows its existing Netron permission.
+
 On `main` after 0.4.17, open **Configuration & actions → Deploy release** in the stack workspace. Choose an immutable release prepared for the selected recipient. While the current applications are still running, Console verifies their launch evidence, both release archives and migration histories, the enrolled node, and the exact scope of the stop. If the registered node declaration changed, Omnitron finds its previous fingerprint in the project's Git history. Commit the current declaration before reviewing the change.
 
 The dialog shows the recipient, how many applications and containers will stop, and which release it verified for return. An administrator can press **Stop and deploy** once. In the CLI, review the release and confirm its digest.

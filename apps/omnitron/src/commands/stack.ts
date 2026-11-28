@@ -207,11 +207,12 @@ export async function stackProgressCommand(project: string, stack?: string): Pro
   finally { await client.disconnect(); }
 }
 
-export async function stackConfirmStartCommand(project: string, stack: string, options: { release: string; manifest: string; nodeId: string }): Promise<void> {
+export async function stackConfirmStartCommand(project: string, stack: string, options: { release: string; manifest: string; nodeId: string; journalRun?: string[] }): Promise<void> {
   const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
   try {
     const service = await client.service<IProjectRpcService>('OmnitronProject');
-    const result = await service.confirmServingRelease({ project, stack, release: options.release, manifestSha256: options.manifest, nodeId: options.nodeId });
+    const result = await service.confirmServingRelease({ project, stack, release: options.release, manifestSha256: options.manifest, nodeId: options.nodeId,
+      ...(options.journalRun?.length && { journalRuns: options.journalRun }) });
     if (!emitJson(result)) emitSuccess(`Confirmed ${options.release} on ${options.nodeId} for ${project}/${stack}`);
   } catch (error) { reportLifecycleError(error, 'confirming the serving release', { project, stack, release: options.release }); }
   finally { await client.disconnect(); }

@@ -88,7 +88,8 @@ function directoryIdentity(storeRoot: string, release: string): string {
   return stat.dev + ':' + stat.ino;
 }
 
-export function preparationLog(store: Store, scope: RuntimeStackScope, attemptId: string, name: string, lines: number | undefined, current: Current) {
+export function preparationLog(store: Store, scope: RuntimeStackScope, attemptId: string, name: string, lines: number | undefined, current: Current,
+  page?: { beforeByte?: number; version?: string }) {
   const record = typeof attemptId === 'string' && uuid.test(attemptId) ? readAttempt(store, scope, prefix(scope) + attemptId, current) : undefined;
   if (!record?.source || !record.view.producer?.logs.includes(name)) throw Error('Unknown release preparation log in this registration');
   const { storeRoot, directory } = record.source, { release, manifestSha256 } = record.view;
@@ -97,7 +98,7 @@ export function preparationLog(store: Store, scope: RuntimeStackScope, attemptId
       throw Error('The recorded preparation source changed');
   };
   check();
-  const log = readReleaseLog(release, name, lines, storeRoot);
+  const log = readReleaseLog(release, name, lines, storeRoot, page);
   check();
   return log;
 }

@@ -13,6 +13,8 @@ export interface AuditRow {
 }
 
 export interface AuditQuery {
+  /** Immutable release history scoped to its registered stack. Earlier failed starts recorded only the release ID. */
+  readonly launch?: { resource: string; release: string; manifestSha256: string; nodeId: string };
   /** Newest first. Capped by `MAX_AUDIT_PAGE`. */
   readonly limit?: number | undefined;
   readonly action?: string | undefined;

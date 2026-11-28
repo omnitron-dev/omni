@@ -53,7 +53,7 @@ import { nodeApplicationNames, resolveNodePlacements, stackNodeKey } from '../pr
 import { StackTargets, type StackTarget } from '../project/stack-targets.js';
 import { confirmStoppedPlacement, placementProvisionIntent, remotePlacementReview, type PlacementEndpoint, type RemotePlacement } from '../project/remote-placement.js';
 import { cleanRegisteredCommit, committedStackDeclaration, confirmRegisteredReleaseNode, confirmReleaseRecipient, previousStackDeclaration, registeredStackAtCommit, remoteReleaseSourceKey, remoteReleaseSourcePrefix, type ReleaseRecipient } from '../release/remote-source.js';
-import { accountsForPartialStart, confirmsRelease, DeploymentMigrationRefusal, verifyDeploymentMigrations, verifyRegisteredDeploymentMigrations, type RemoteDeploymentOperation } from '../project/remote-release-deployment.js';
+import { accountsForPartialStart, confirmsRelease, launchConfirmation, DeploymentMigrationRefusal, verifyDeploymentMigrations, verifyRegisteredDeploymentMigrations, type RemoteDeploymentOperation } from '../project/remote-release-deployment.js';
 import { checkRehearsalCopy, confirmFirstWriteCopy, inspectFirstWriteOwner, missingFirstWriteAuthorities, rehearsalCopyPlan } from '../project/first-write-inspection.js';
 import { checkMigrationRehearsal, planRehearsalMigrations } from '../project/rehearse-migrations.js';
 import type { MigrationRehearsalPlan, MigrationRehearsalResult, RehearseMigrationsRequest } from '../shared/dto/first-write.js';
@@ -298,6 +298,8 @@ interface StackStartKnown {
   attach: boolean;
   type?: IStackConfig['type'];
   release?: string;
+  releaseManifestSha256?: string;
+  nodeId?: string;
   /** The project tree's commit once it was read; `null` when it could not be. */
   commit?: string | null;
 }
@@ -866,6 +868,25 @@ export class ProjectService extends EventEmitter {
 
   listWorkspaceNames(): string[] {
     return this.registry.list().filter(project => !isControlPlaneWorkspace(project.path)).map(project => project.name);
+  }
+
+  async getReleaseLaunchAttempts(request: import('../shared/dto/project.js').ReleaseLaunchAttempts) {
+    const scope = { project: request.project, stack: request.stack };
+    const selected = this.placement(scope.project, scope.stack)?.selected;
+    if (!(selected && selected.release === request.id && selected.manifestSha256 === request.manifestSha256 && selected.nodeId === request.nodeId) &&
+        !(await this.listRemoteReleasePreparations(scope)).some(attempt => attempt.release === request.id &&
+          attempt.manifestSha256 === request.manifestSha256 && attempt.nodeId === request.nodeId))
+      throw Error('The release and recipient have no matching selection or preparation for this stack');
+    if (!this.audit?.available) throw Error('The deployment request journal is unavailable');
+    const rows = await this.audit.list({ limit: 41, beforeId: request.beforeId, launch: {
+      resource: scope.project + '/' + scope.stack, release: request.id, manifestSha256: request.manifestSha256, nodeId: request.nodeId,
+    } });
+    const page = rows.slice(0, 40);
+    return { attempts: page.map(row => ({
+      id: row.id, at: row.createdAt, outcome: String(row.details?.['outcome'] ?? (row.action === 'stack.start.failed' ? 'failed' : 'recorded')),
+      ...(typeof row.details?.['error'] === 'string' && { message: row.details['error'] }),
+      manifestVerified: row.details?.['releaseManifestSha256'] === request.manifestSha256,
+    })), next: rows.length > page.length ? page[page.length - 1]!.id : null };
   }
 
   listProjects(): Promise<IProjectInfo[]> {
@@ -2162,6 +2183,8 @@ export class ProjectService extends EventEmitter {
               : infrastructure?.explicitReconcile ? { infrastructureMode: 'reconcile' } : {}),
             ...(known.type ? { type: known.type } : {}),
             ...((releaseId ?? known.release) ? { release: releaseId ?? known.release } : {}),
+            ...(known.releaseManifestSha256 && { releaseManifestSha256: known.releaseManifestSha256 }),
+            ...(known.nodeId && { nodeId: known.nodeId }),
             ...(known.commit !== undefined ? { commit: known.commit } : {}),
           },
         });
@@ -2247,10 +2270,12 @@ export class ProjectService extends EventEmitter {
       release = bound?.admitted ?? (infrastructure?.retained ? await this.retainedRelease(projectName, stackName, stackConfig, infrastructure.retained)
         : await this.admitRelease(projectName, stackName, stackConfig, config, requested));
       if (!release) throw Error('Retained restart has lost its selected release');
+      known.releaseManifestSha256 = release.manifestSha256;
       if (route) {
         const endpoint = route.selected ?? route.origin;
         const root = bound?.opened.sourceRoot ?? this.registry.get(projectName)!.path;
         const target = this.placementRecipient(endpoint.nodeId, endpoint);
+        known.nodeId = endpoint.nodeId;
         const manifest = release.manifestSha256;
         const recheck = async () => {
           await this.verifyPlacementDonor({ project: projectName, stack: stackName }, route);
@@ -2548,6 +2573,7 @@ export class ProjectService extends EventEmitter {
             ? {
                 release: release.id,
                 releaseManifestSha256: release.manifestSha256,
+                ...(known.nodeId && { nodeId: known.nodeId }),
                 releaseProjectCommit: release.manifest.project.commit.slice(0, 8),
                 releaseOmniCommit: release.manifest.omni.commit.slice(0, 8),
               }
@@ -2989,8 +3015,8 @@ export class ProjectService extends EventEmitter {
     return listPreparations(this.daemonStateStore, scope, () => this.preparationCurrent(scope));
   }
 
-  readRemoteReleasePreparationLog(scope: RuntimeStackScope, attemptId: string, name: string, lines?: number) {
-    return preparationLog(this.daemonStateStore, scope, attemptId, name, lines, this.preparationCurrent(scope));
+  readRemoteReleasePreparationLog(scope: RuntimeStackScope, attemptId: string, name: string, lines?: number, page?: { beforeByte?: number; version?: string }) {
+    return preparationLog(this.daemonStateStore, scope, attemptId, name, lines, this.preparationCurrent(scope), page);
   }
 
   private rememberRemoteSource(receipt: PreparedRemoteReleaseSource, record: PreparedRemoteSourceRecord, onRetain?: () => void): void {
@@ -3442,7 +3468,7 @@ export class ProjectService extends EventEmitter {
     return { scope, scopeKey, journal, before, placement, selected, baseline, previous, next, requestFor, previousDeclarationCommit };
   }
 
-  private recoveryPipelines?: Pick<PipelineService, 'inspectRecoveryQualification' | 'recoveryQualificationDefinition'>;
+  private recoveryPipelines?: Pick<PipelineService, 'inspectRecoveryQualification' | 'recoveryQualificationDefinition'> & Partial<Pick<PipelineService, 'getRunStatus'>>;
 
   setRecoveryQualificationProvider(provider: NonNullable<ProjectService['recoveryPipelines']>): void {
     this.recoveryPipelines = provider;
@@ -3779,6 +3805,17 @@ export class ProjectService extends EventEmitter {
     if (!original || original.id !== placement.sourceStop.id || original.phase !== 'stopped' || !original.intentCommitted ||
         original.keepInfrastructure || original.deploymentReview || original.nodes.length !== 1)
       throw Error('A standalone selection with its original completed full stop is required');
+    const journals = request.journalRuns ?? [];
+    if (!Array.isArray(journals) || journals.length > 16) throw Error('Select up to 16 retained deployment journals');
+    for (const id of new Set(journals)) {
+      validateRunId(id);
+      const run = await this.recoveryPipelines?.getRunStatus?.(id);
+      if (!run?.review || !run.completedAt || (run.review.projects.length && !run.review.projects.includes(scope.project)) ||
+          (run.activity && (run.activity.project !== scope.project || run.activity.stack !== scope.stack ||
+            run.activity.releaseId !== selected.release || run.activity.manifestSha256 !== selected.manifestSha256 ||
+            (run.activity.kind !== 'build' && run.activity.nodeId !== selected.nodeId))))
+        throw Error('The requested Pipeline journal is unfinished, unavailable or belongs to another release');
+    }
     const assertCurrent = () => {
       this.assertDeploymentOwner(scope);
       this.migrations.assertIdle(scope);
@@ -3798,8 +3835,10 @@ export class ProjectService extends EventEmitter {
       throw Error('The running allocation must be newer than the selected full stop');
     await this.requireNoColdBatch();
     assertCurrent();
-    if (!placement.activated) this.acknowledgeServingPlacement(scope, placement);
-    return info;
+    let confirmed = placement.confirmation;
+    if (!confirmed || journals.some(id => !confirmed?.journalRuns?.includes(id)))
+      confirmed = this.acknowledgeServingPlacement(scope, placement, info, original.supersededAt, journals);
+    return { ...info, launchConfirmation: confirmed };
   }
 
   private recordedDeployment(project: string, stack: string, digest: string) {
@@ -3867,13 +3906,21 @@ export class ProjectService extends EventEmitter {
         !isDeepStrictEqual(target, this.placementRecipient(selected.nodeId, selected)))
       throw Error('The recipient has not confirmed the reviewed application generations');
     this.setInfrastructurePolicy(scope.project, scope.stack, null, true);
-    this.acknowledgeServingPlacement(scope, placement);
+    this.acknowledgeServingPlacement(scope, placement, info);
   }
 
-  private acknowledgeServingPlacement(scope: StackExecutionScope, placement: RemotePlacement): void {
-    this.updateEnabledStacks(scope.project, scope.stack, true);
-    this.markPriorStopSuperseded(scope.project, scope.stack, placement.sourceStop.id);
-    new StackTargets(this.daemonStateStore).activated(scope, placement.receipt.digest);
+  private acknowledgeServingPlacement(scope: StackExecutionScope, placement: RemotePlacement, info: IStackInfo, at?: string, journals: string[] = []) {
+    const selected = placement.selected!;
+    const proof = { ...(placement.confirmation ?? launchConfirmation(info, { id: selected.release, manifestSha256: selected.manifestSha256 },
+      selected.nodeId, at ?? new Date().toISOString())) };
+    if (journals.length) proof.journalRuns = [...new Set([...(proof.journalRuns ?? []), ...journals])];
+    if (placement.sourceStop.completedAt) proof.startAfter = placement.sourceStop.completedAt;
+    if (!placement.activated) {
+      this.updateEnabledStacks(scope.project, scope.stack, true);
+      this.markPriorStopSuperseded(scope.project, scope.stack, placement.sourceStop.id);
+    }
+    new StackTargets(this.daemonStateStore).activated(scope, placement.receipt.digest, proof);
+    return proof;
   }
 
   @RecoveryMutation()
@@ -7884,6 +7931,7 @@ export class ProjectService extends EventEmitter {
       infrastructureReview: policy?.review ?? null,
       type: config.type,
       ...(selectedRelease && { selectedRelease }),
+      ...(placement?.confirmation && { launchConfirmation: placement.confirmation }),
       status,
       ...(notUp.length > 0 && { notUp }),
       resumeOperation: this.daemonStateStore.kvGetSync<InstalledStackResumeResult>(`stack:${stateKey}:last-resume`, { strict: true }) ?? undefined,

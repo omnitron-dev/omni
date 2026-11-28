@@ -552,11 +552,15 @@ export class SyncService {
   private async enforceBufferBounds(): Promise<void> {
     try {
       const cutoff = new Date(Date.now() - SYNCED_RETENTION_MS);
-      await this.db
-        .deleteFrom('sync_buffer')
-        .where('syncedAt', 'is not', null)
-        .where('syncedAt', '<', cutoff)
-        .execute();
+      // Let acknowledgements and incoming writes acquire the connection between expiry batches.
+      const batchSize = 2048;
+      const expired = this.db.selectFrom('sync_buffer').select('id').where('syncedAt', '<', cutoff)
+        .orderBy('syncedAt').orderBy('createdAt').limit(batchSize);
+      while (!this.disposed) {
+        const result = await this.db.deleteFrom('sync_buffer').where('id', 'in', expired).executeTakeFirst();
+        if (Number(result.numDeletedRows) < batchSize) break;
+      }
+      if (this.disposed) return;
 
       const stats = await this.bufferStats();
       if (!stats) return;

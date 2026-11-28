@@ -1,4 +1,4 @@
-import type { PlacementProvisionIntent, PlacementReceipt, PreparedRemoteReleaseSource, StackStopProgress } from '../shared/dto/project.js';
+import type { PlacementProvisionIntent, PlacementReceipt, PreparedRemoteReleaseSource, StackLaunchConfirmation, StackStopProgress } from '../shared/dto/project.js';
 import type { StackExecutionScope } from '../shared/dto/stack-execution.js';
 import { provisionedInventory, stackDefinitionFingerprint, type NodeStackStopInventory } from './node-stack-stop.js';
 import { stackNodeKey } from './stack-placement.js';
@@ -14,6 +14,7 @@ export interface RemotePlacement {
   from: PlacementEndpoint;
   sourceStop: StackStopProgress;
   activated: boolean;
+  confirmation?: StackLaunchConfirmation;
   selected: RemotePlacementSource | null;
   receipt: PlacementReceipt;
 }

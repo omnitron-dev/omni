@@ -378,6 +378,8 @@ export interface ConfirmServingRelease extends RuntimeStackScope {
   release: string;
   manifestSha256: string;
   nodeId: string;
+  /** Additional retained Pipeline journals identified by the deployment administrator. */
+  journalRuns?: string[];
 }
 
 export interface ReleaseAdmission {
@@ -492,6 +494,30 @@ export interface SelectedRelease {
   manifestSha256: string;
 }
 
+/** A launch observation retained with the recipient's exact selected placement. */
+export interface StackLaunchConfirmation extends SelectedRelease {
+  nodeId: string;
+  node: string;
+  confirmedAt: string;
+  startAfter?: string;
+  journalRuns?: string[];
+  observedAt: string | null;
+  apps: Array<{ name: string; handle: string; generation: string; pid: number | null; health: StackHealthObservation['status'] }>;
+}
+
+export interface ReleaseLaunchAttempts extends RuntimeStackScope, SelectedRelease {
+  nodeId: string;
+  beforeId?: string;
+}
+
+export interface ReleaseLaunchAttempt {
+  id: string;
+  at: string;
+  outcome: string;
+  message?: string;
+  manifestVerified: boolean;
+}
+
 /** Application health is an observation, separate from process lifecycle and start prerequisites. */
 export interface StackHealthObservation {
   status: 'healthy' | 'degraded' | 'unhealthy' | 'unknown' | 'not-running';
@@ -512,6 +538,7 @@ export interface IStackInfo {
   health?: StackHealthObservation;
   /** Desired release for the next local launch. Runtime evidence is reported separately. */
   selectedRelease?: SelectedRelease;
+  launchConfirmation?: StackLaunchConfirmation;
   /** Last explicit recovery of the applications retained by their process owners. */
   resumeOperation?: InstalledStackResumeResult | undefined;
   /** Last durable stop operation; failures and unreachable peers remain visible. */

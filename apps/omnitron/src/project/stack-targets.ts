@@ -1,4 +1,5 @@
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
+import type { StackLaunchConfirmation } from '../shared/dto/project.js';
 import { stackExecutionKey, type StackExecutionScope } from '../shared/dto/stack-execution.js';
 import { validateRemotePlacement, type RemotePlacement } from './remote-placement.js';
 import { stackNodeKey } from './stack-placement.js';
@@ -67,13 +68,23 @@ export class StackTargets {
       return { ...state, version: 2, revision: state.revision + 1, placement };
     });
   }
-  activated(scope: StackExecutionScope, digest: string): void {
+  activated(scope: StackExecutionScope, digest: string, confirmation?: StackLaunchConfirmation): void {
     this.store.kvUpdateSync<TargetState>(this.key(scope), current => {
       const state = read(current, scope);
       if (state.placement?.receipt.digest !== digest) throw Error('Remote placement changed before confirming activation');
-      if (state.placement.activated) return state;
+      const selected = state.placement.selected;
+      if (confirmation && (!selected || confirmation.id !== selected.release || confirmation.manifestSha256 !== selected.manifestSha256 ||
+          confirmation.nodeId !== selected.nodeId || confirmation.node !== stackNodeKey(selected.host, selected.port)))
+        throw Error('Launch confirmation does not match the selected release and recipient');
+      const retained = state.placement.confirmation;
+      if (retained && confirmation) {
+        const ids = [...new Set([...(retained.journalRuns ?? []), ...(confirmation.journalRuns ?? [])])];
+        if (ids.length === (retained.journalRuns?.length ?? 0)) return state;
+        if (ids.length > 16) throw Error('A launch can reference up to 16 related Pipeline journals');
+        confirmation = { ...retained, journalRuns: ids };
+      } else if (state.placement.activated && !confirmation) return state;
       if (state.revision === Number.MAX_SAFE_INTEGER) throw Error('Stack target revision exhausted');
-      return { ...state, revision: state.revision + 1, placement: { ...state.placement, activated: true } };
+      return { ...state, revision: state.revision + 1, placement: { ...state.placement, activated: true, ...(confirmation && { confirmation }) } };
     });
   }
   confirmStopped(scope: StackExecutionScope, revision: number): void {

@@ -80,6 +80,17 @@ describe.skipIf(!postgres.ok)('audit keyset pagination on PostgreSQL', () => {
       await insert(n, instant(us));
   }
 
+  it('retains the first failed request and scopes later requests by their immutable release and recipient', async () => {
+    const launch = { resource: 'example/dev', release: 'candidate', manifestSha256: 'a'.repeat(64), nodeId: 'recipient' };
+    await insert(1, instant('111111'), { action: 'stack.start.failed', details: { release: 'candidate', error: 'reply lost' } });
+    await insert(2, instant('222222'), { details: { release: 'candidate', releaseManifestSha256: launch.manifestSha256, nodeId: launch.nodeId } });
+    await insert(3, instant('333333'), { details: { release: 'candidate', releaseManifestSha256: 'b'.repeat(64) } });
+    await insert(4, instant('444444'), { details: { release: 'candidate', nodeId: 'different' } });
+    await insert(5, instant('555555'), { details: { release: 'previous' } });
+    expect((await service.list({ launch })).map(row => row.id)).toEqual([id(2), id(1)]);
+    expect(await service.list({ launch: { ...launch, resource: 'other/dev' } })).toEqual([]);
+  });
+
   async function pages(query: AuditQuery = {}) {
     const found: string[] = [];
     let beforeId: string | undefined;

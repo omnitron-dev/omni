@@ -19,11 +19,11 @@ import { OMNITRON_HOME } from '../config/defaults.js';
  *   - Zero Docker dependency
  */
 
-import fs from 'node:fs';
+import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
-import { Kysely, SqliteDialect, sql } from 'kysely';
-import { openSqliteDatabase } from '@omnitron-dev/titan-database/sqlite';
-import { withDateBinding } from '../database/sqlite-date-binding.js';
+import { Kysely, sql } from 'kysely';
+import { WorkerSqliteDialect } from '@omnitron-dev/titan-database/sqlite-worker';
+import { serialiseDates } from '../database/sqlite-date-binding.js';
 import { DEFAULT_ALERT_RULES } from '../database/migrations/011_alerts_nobody_had_to_write.js';
 import { DISK_ALERT_RULE } from '../database/migrations/012_a_disk_nobody_watched.js';
 import { STORAGE_ALERT_RULE } from '../database/migrations/018_host_storage_alert.js';
@@ -141,27 +141,12 @@ export class SlaveStorageService {
 
   private async initialize(): Promise<Kysely<SlaveDatabase>> {
 
-    // Ensure directory exists
-    fs.mkdirSync(path.dirname(this.dbPath), { recursive: true });
-
-    const database = openSqliteDatabase(this.dbPath);
-
-    // Enable WAL mode for concurrent access
-    database.pragma('journal_mode = WAL');
-    database.pragma('busy_timeout = 5000');
-    database.pragma('synchronous = FULL');
-    // An alert rule's events go with it (`alert_events.ruleId … ON DELETE
-    // CASCADE`). SQLite enforces a foreign key only when asked, per
-    // connection; better-sqlite3 13 is built asking by default, and this keeps
-    // it so under a build that is not. No other table here declares one.
-    database.pragma('foreign_keys = ON');
-
-    // Every `Date` bound to this database becomes an ISO string on the way
-    // in. The daemon runs the same services against Postgres and SQLite, and
-    // only one of the two drivers accepts a Date — see
-    // `database/sqlite-date-binding.ts` for what that cost before this.
-    const dialect = new SqliteDialect({ database: withDateBinding(database) });
-    this.db = new Kysely<SlaveDatabase>({ dialect });
+    await mkdir(path.dirname(this.dbPath), { recursive: true });
+    this.db = new Kysely<SlaveDatabase>({ dialect: new WorkerSqliteDialect(this.dbPath, serialiseDates) });
+    await sql`PRAGMA busy_timeout = 5000`.execute(this.db);
+    await sql`PRAGMA journal_mode = WAL`.execute(this.db);
+    await sql`PRAGMA synchronous = FULL`.execute(this.db);
+    await sql`PRAGMA foreign_keys = ON`.execute(this.db);
 
     // Auto-create tables
     if (!this.initialized) {

@@ -13,11 +13,13 @@ export interface DeploymentActivityChoice {
   rehearsal?: PipelineRunSummary;
   preparation?: RemoteReleasePreparationAttempt;
   operation?: StackDeploymentProgress;
+  confirmation?: IStackInfo['launchConfirmation'];
 }
 
 /** Each unfinished producer remains selectable by its own ID after a manifest is issued. */
 export function deploymentActivityChoices(builds: BuildRecord[], runs: PipelineRunSummary[],
-  preparations: RemoteReleasePreparationAttempt[], operation?: StackDeploymentProgress, selected?: string | null) {
+  preparations: RemoteReleasePreparationAttempt[], operation?: StackDeploymentProgress, selected?: string | null,
+  confirmation?: IStackInfo['launchConfirmation']) {
   const choices = new Map<string, DeploymentActivityChoice>();
   function entry(id: string, at: string, releaseId?: string | null, digest?: string) {
     const key = releaseId && digest ? releaseId + '/' + digest : id;
@@ -52,6 +54,10 @@ export function deploymentActivityChoices(builds: BuildRecord[], runs: PipelineR
     group.operation = operation;
     if (operation.recoveryRunId && group.rehearsal?.id !== operation.recoveryRunId) delete group.rehearsal;
   }
-  const inProgress = (item: DeploymentActivityChoice) => item.operation && item.operation.phase !== 'confirmed' ? 1 : 0;
+  if (confirmation) {
+    const group = entry('launch/' + confirmation.nodeId + '/' + confirmation.manifestSha256, confirmation.confirmedAt, confirmation.id, confirmation.manifestSha256);
+    group.confirmation = confirmation;
+  }
+  const inProgress = (item: DeploymentActivityChoice) => item.operation && item.operation.phase !== 'confirmed' && !item.confirmation ? 1 : 0;
   return [...choices.values()].sort((a, b) => inProgress(b) - inProgress(a) || b.at.localeCompare(a.at) || a.key.localeCompare(b.key));
 }

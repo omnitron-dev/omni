@@ -50,6 +50,33 @@ for (const width of [390, 1280]) test('shows completed delivery and blocked regi
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
 });
 
+test('shows confirmed health, the original failed request and launch output in the saved deployment', async ({ page, url }) => {
+  const apps = Array.from({ length: 6 }, (_, i) => ({ name: 'service-' + i, generation: 'generation-' + i,
+    handle: 'example/runtime/service-' + i, pid: 100 + i, health: 'healthy' }));
+  const confirmation = { id: release, manifestSha256: preparation.manifestSha256, nodeId: node.nodeId, node: node.host + ':9700',
+    confirmedAt: at, observedAt: at, startAfter: '2026-08-04T12:22:00Z', apps };
+  await stubInventory(page, {
+    'OmnitronProject.listStacks': [{ ...stack, launchConfirmation: confirmation, selectedRelease: { id: release, manifestSha256: preparation.manifestSha256 },
+      placements: [{ nodeKey: confirmation.node, appsObserved: true, apps: apps.map(app => ({ name: app.name, expected: true, process: app })) }],
+      health: { observedAt: at, apps: apps.map(app => ({ name: app.name, node: confirmation.node, status: 'healthy' })) } }],
+    'OmnitronProject.listRemoteReleasePreparations': [{ ...preparation, state: 'prepared', reason: undefined }],
+    'OmnitronProject.getReleaseLaunchAttempts': { attempts: [{ id: 'initial', outcome: 'failed', at, message: 'Registration reply unavailable' }], next: null },
+    'OmnitronProject.getDeployProgress': [{ operationId: 'earlier', project: 'example', stack: 'dev', releaseId: release,
+      manifestSha256: preparation.manifestSha256, node: confirmation.node, app: apps[0].name, at, status: 'unconfirmed', message: 'Waiting for the owner', progress: 85 }],
+    'OmnitronLogs.queryLogs': input => ({ entries: input.nodeId === node.nodeId && input.appPrefixes.includes('example/runtime/') ?
+      [{ app: apps[0].handle, timestamp: at, level: 'info', message: 'Ready to serve' }] : [], hasMore: false, total: 1 }),
+    'OmnitronProject.readRemoteReleasePreparationLog': () => ({ name: 'gates.log', bytes: 16, tail: 'Producer finished' }),
+  });
+  await page.goto(url + path + '&activity=preparation%2Fprepare-one');
+  const card = page.getByRole('region', { name: 'Deployment activity' });
+  await expect(card.getByRole('status').filter({ hasText: '6/6 healthy' })).toBeVisible();
+  await expect(card.getByRole('tab', { name: 'Launch · Launch confirmed' })).toHaveAttribute('aria-selected', 'true');
+  await expect(card).toContainText('Registration reply unavailable');
+  await expect(card).toContainText('Ready to serve');
+  await card.getByRole('tab', { name: 'Build · Built' }).click();
+  await expect(card.getByLabel('Saved build output')).toHaveText('Producer finished');
+});
+
 test('keeps a live producer log still while reading and resumes at the latest output', async ({ page, url }) => {
   let output = 'first build line';
   const run = { id: 'producer-run', pipelineId: 'build-pipeline', status: 'running', startedAt: at, completedAt: null,

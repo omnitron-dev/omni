@@ -4,7 +4,7 @@ import type { ReleaseManifest } from '../release/manifest.js';
 import { importedMigrationDifferences, changedReleasedMigrations, releaseMigrationSources } from '../release/migrations.js';
 import { verifyRecoveryConsumerSources } from './recovery-consumer-source.js';
 import { verifyRecoveryRepository } from '../release/source.js';
-import type { IStackInfo, ReleaseMigrationHistory, RemoteDeploymentPhase, RemoteReleaseDeployment, SelectedRelease } from '../shared/dto/project.js';
+import type { IStackInfo, ReleaseMigrationHistory, RemoteDeploymentPhase, RemoteReleaseDeployment, SelectedRelease, StackLaunchConfirmation } from '../shared/dto/project.js';
 import { readStackRelease, readStackStart } from '../shared/release-reading.js';
 
 /** Only immutable identities and native operation receipts belong in the controller journal. */
@@ -145,6 +145,19 @@ export function confirmsRelease(info: IStackInfo, selection: SelectedRelease): b
   const [actual] = releaseEvidence.releases;
   return info.apps.length > 0 && readStackStart(info).confirmed && runningRelease === 'confirmed' &&
     releaseEvidence.releases.length === 1 && actual?.releaseId === selection.id && actual.manifestSha256 === selection.manifestSha256;
+}
+
+export function launchConfirmation(info: IStackInfo, selection: SelectedRelease, nodeId: string, confirmedAt: string): StackLaunchConfirmation {
+  const [node] = info.placements ?? [];
+  if (!node?.appsObserved || info.placements?.length !== 1 || !confirmsRelease(info, selection))
+    throw Error('A launch confirmation requires the selected release on its observed recipient');
+  const apps = node.apps.map(({ name, expected, process }) => {
+    if (!expected || !process?.generation || process.status !== 'online')
+      throw Error('Missing confirmed launch generation for ' + name);
+    const health = info.health?.apps.find(app => app.name === name && app.node === node.nodeKey);
+    return { name, handle: process.name, generation: process.generation, pid: process.pid, health: health?.status ?? 'unknown' as const };
+  });
+  return { ...selection, nodeId, node: node.nodeKey, confirmedAt, observedAt: info.health?.observedAt ?? null, apps };
 }
 
 /** A missing app can be recovered only when the pinned owner accounted for every remaining process. */

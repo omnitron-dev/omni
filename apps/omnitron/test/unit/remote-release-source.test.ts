@@ -1110,9 +1110,24 @@ describe('prepared source of one registered remote release', () => {
         await expect(rpc.confirmServingRelease(confirmation)).resolves.toMatchObject({ selectedRelease: { id, manifestSha256: manifestSha } });
         const complete = journal.inspect(scope);
         expect(complete.placement?.activated).toBe(true);
+        expect(complete.placement?.confirmation).toMatchObject({ id, manifestSha256: manifestSha, nodeId,
+          apps: [expect.objectContaining({ name: 'main', generation: expect.any(String) })] });
+        expect(service.getStack(scope.project, scope.stack).launchConfirmation).toEqual(complete.placement?.confirmation);
         expect((await rpc.checkRelease({ ...scope, release: id })).ok).toBe(true);
         await rpc.confirmServingRelease(confirmation);
         expect(journal.inspect(scope)).toEqual(complete);
+        const runId = 'defa97f2-5c50-43b4-a174-af903b6a22fc';
+        const run = { id: runId, review: { projects: [] }, completedAt: new Date().toISOString() };
+        const getRunStatus = vi.fn(async () => run as never);
+        service.setRecoveryQualificationProvider({ getRunStatus, inspectRecoveryQualification: vi.fn(), recoveryQualificationDefinition: vi.fn() });
+        await rpc.confirmServingRelease({ ...confirmation, journalRuns: [runId] });
+        const linked = journal.inspect(scope);
+        expect(linked.placement?.confirmation).toEqual({ ...complete.placement!.confirmation, journalRuns: [runId] });
+        await rpc.confirmServingRelease({ ...confirmation, journalRuns: [runId] });
+        expect(journal.inspect(scope)).toEqual(linked);
+        getRunStatus.mockResolvedValueOnce({ ...run, review: { projects: ['other'] } } as never);
+        await expect(rpc.confirmServingRelease({ ...confirmation, journalRuns: [runId] })).rejects.toThrow('another release');
+        expect(journal.inspect(scope)).toEqual(linked);
         expect(launches).toHaveLength(2);
         expect(read.mock.calls.filter(([method]) => method === 'executeNodeStackStop')).toHaveLength(1);
         return;

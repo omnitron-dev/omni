@@ -605,6 +605,7 @@ stack
   .requiredOption('--release <id>', 'Selected immutable release ID')
   .requiredOption('--manifest <sha256>', 'Selected release manifest SHA-256')
   .requiredOption('--node-id <id>', 'Enrolled recipient of the original selection')
+  .option('--journal-run <ids...>', 'Retained Pipeline runs to show in this deployment')
   .structuredAction(async (projectName, stackName, options) => {
     const { stackConfirmStartCommand } = await import('../commands/stack.js');
     await stackConfirmStartCommand(projectName, stackName, options);

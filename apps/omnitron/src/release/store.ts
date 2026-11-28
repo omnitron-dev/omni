@@ -366,7 +366,8 @@ export function readReleaseLog(
   name: string,
   lines = 200,
   root: string = releasesRoot(),
-): { name: string; bytes: number; tail: string } {
+  page?: { beforeByte?: number; version?: string },
+): { name: string; bytes: number; tail: string; previousByte?: number; version?: string } {
   if (!isReleaseId(id) || typeof name !== 'string' || !Number.isFinite(lines)) throw Error('Invalid release log request');
   const gate = name.startsWith('gate-logs/');
   const basename = gate ? name.slice('gate-logs/'.length) : name;
@@ -381,14 +382,26 @@ export function readReleaseLog(
     if (!stat.isFile() || stat.ino !== current.ino || stat.dev !== current.dev || fs.realpathSync(file) !== file)
       throw Error('Release log changed during opening');
     // The browser can tail several gigabytes of test output without scanning them on each poll.
-    const length = Math.min(stat.size, 128 * 1024);
-    const offset = stat.size - length;
+    const version = [stat.dev, stat.ino, stat.size, stat.mtimeMs].join(':');
+    const end = page?.beforeByte ?? stat.size;
+    if (!Number.isSafeInteger(end) || end < 0 || end > stat.size || (page?.beforeByte !== undefined && page.version !== version))
+      throw Error('Release log cursor is stale or invalid. Reopen the log.');
+    const length = Math.min(end, 128 * 1024);
+    const offset = end - length;
     const buffer = Buffer.alloc(length);
     const read = fs.readSync(fd, buffer, 0, length, offset);
     let start = 0;
     while (offset && start < read && (buffer[start]! & 0xc0) === 0x80) start++;
-    const rows = buffer.toString('utf8', start, read).trimEnd().split('\n');
     const capped = Math.min(5000, Math.max(1, Math.floor(lines)));
+    if (page) {
+      let separators = 0;
+      for (let pos = read - 2; pos >= start; pos--) {
+        if (buffer[pos] === 10 && ++separators === capped) { start = pos + 1; break; }
+      }
+      return { name, bytes: stat.size, tail: buffer.toString('utf8', start, read), version,
+        ...(offset + start > 0 && { previousByte: offset + start }) };
+    }
+    const rows = buffer.toString('utf8', start, read).trimEnd().split('\n');
     return { name, bytes: stat.size, tail: rows.slice(-capped).join('\n') };
   } finally { fs.closeSync(fd); }
 }

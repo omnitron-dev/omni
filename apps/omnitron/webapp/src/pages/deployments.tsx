@@ -73,12 +73,13 @@ function DeploymentWorkspace() {
   const choices = deploymentActivityChoices((builds.data ?? []).filter(record => record.request.forStack && visibleStackName(record.request.project, record.request.forStack)),
     (pipelineRuns.data?.runs ?? []).filter(run => run.activity && visibleStackName(run.activity.project, run.activity.stack) &&
       (run.activity.kind === 'build' || !destination || run.activity.nodeId === destination)),
-    (preparations.data ?? []).filter(attempt => visibleStackName(attempt.project, attempt.stack) && (!destination || destination === attempt.nodeId)), operation, activityId);
+    (preparations.data ?? []).filter(attempt => visibleStackName(attempt.project, attempt.stack) && (!destination || destination === attempt.nodeId)), operation, activityId,
+    destination && selectedStack?.launchConfirmation?.nodeId === destination ? selectedStack.launchConfirmation : undefined);
   const choice = activityId ? choices.find(item => item.key === activityId || item.aliases.has(activityId)) : choices[0];
   const loadingActivity = !choice && ((readStack && !inventory && !stackError) ||
     (readBuilds && builds.loading) || (readRuns && pipelineRuns.loading) || (readPreparations && preparations.loading));
   const readFiles = Boolean(readStack && fileNode && (detailsOpen || choice?.preparation?.fileTransferId) && can('OmnitronFiles.stackNodeTransfers'));
-  const readProgress = canProgress && (detailsOpen || Boolean(choice?.operation));
+  const readProgress = canProgress && (detailsOpen || Boolean(choice?.operation || choice?.manifestSha256));
   const nodeFiles = usePolledResource(() => files.stackNodeTransfers({ project: activeProject!, stack: activeStack! }), {
     enabled: readFiles, intervalMs: 5_000, resourceKey: JSON.stringify([activeProject, activeStack, fileNode?.nodeId, fileNode?.host, fileNode?.port, readFiles]),
   });
@@ -170,11 +171,13 @@ function DeploymentWorkspace() {
         : <DeploymentActivity key={choice?.key ?? 'unrecorded'} project={scope.project} stack={scope.stack}
         nodeLabel={fileNode?.label ?? fileNode?.nodeId} releaseId={choice?.releaseId} producer={choice?.producer}
         build={choice?.build} rehearsal={choice?.rehearsal} preparation={choice?.preparation} operation={choice?.operation}
-        progress={choice?.operation && transfers.filter(row => row.deploymentReview === choice.operation!.review &&
-          row.releaseId === choice.operation!.release && (!choice.manifestSha256 || row.manifestSha256 === choice.manifestSha256))}
+        confirmation={choice?.confirmation} runtime={selectedStack} runtimeUnavailable={Boolean(stackError)}
+        progress={choice && transfers.filter(row => row.operationId && row.releaseId === choice.releaseId &&
+          (choice.operation && row.deploymentReview === choice.operation.review || choice.manifestSha256 && row.manifestSha256 === choice.manifestSha256 &&
+            row.node === (choice.confirmation?.node ?? (fileNode && fileNode.host + ':' + (fileNode.port ?? 9700)))))}
         transfer={choice?.preparation?.fileTransferId && nodeFiles.data?.nodeId === choice.preparation.nodeId
           ? nodeFiles.data.transfers.find(job => job.id === choice.preparation!.fileTransferId) : undefined}
-        observationError={[stackError, readBuilds && builds.error, readRuns && pipelineRuns.error,
+        observationError={[stackError, readProgress && progress.error, readBuilds && builds.error, readRuns && pipelineRuns.error,
           readPreparations && preparations.error, !readPreparations && selectedStack?.type === 'remote' && can('OmnitronProject.prepareRemoteReleaseSource') &&
             'This controller does not provide readable preparation attempts for this account.',
           activityId && !choice && 'Selected activity has no retained record in this workspace.']

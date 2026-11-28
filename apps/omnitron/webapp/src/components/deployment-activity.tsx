@@ -168,7 +168,7 @@ function ActivityPanel({ project, stack, nodeLabel, releaseId, build, producer, 
         </>}
         {progress.length > 0 && <DeployProgressList records={progress} unavailable={Boolean(observationError)} />}
         {!confirmation && !operation && !progress.length && muted('No launch confirmation has been recorded for this release.')}
-        {confirmation && <LaunchLogs confirmation={confirmation} />}
+        {confirmation && <LaunchLogs project={project} stack={stack} confirmation={confirmation} />}
         {!!confirmation?.journalRuns?.length && can('OmnitronPipelines.getRunStatus') && <Stack spacing={1}>
           <TextField select size="small" label="Deployment run journal" value={runIndex} onChange={event => selectRun(Number(event.target.value))}>
             {confirmation.journalRuns.map((id, index) => <MenuItem value={index} key={id}>{id}</MenuItem>)}

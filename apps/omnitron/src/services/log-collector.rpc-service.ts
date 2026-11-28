@@ -1,4 +1,4 @@
-import type { LogIngestionStats } from '../shared/dto/logs.js';
+import type { LaunchLogPage, LocalLaunchLogQuery, LogIngestionStats } from '../shared/dto/logs.js';
 /**
  * Omnitron Logs RPC Service
  *
@@ -19,6 +19,11 @@ import type {
 @Service({ name: 'OmnitronLogs' })
 export class LogsRpcService {
   constructor(private readonly logCollector: LogCollectorService) {}
+
+  @Public({ auth: { roles: ['service_role'] } })
+  async readLocalLaunchLogs(data: LocalLaunchLogQuery): Promise<LaunchLogPage> {
+    return this.logCollector.readLocalLaunchLogs(data);
+  }
 
   // ===========================================================================
   // Query endpoints

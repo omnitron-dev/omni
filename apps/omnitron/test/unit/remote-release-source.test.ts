@@ -1113,6 +1113,15 @@ describe('prepared source of one registered remote release', () => {
         expect(complete.placement?.confirmation).toMatchObject({ id, manifestSha256: manifestSha, nodeId,
           apps: [expect.objectContaining({ name: 'main', generation: expect.any(String) })] });
         expect(service.getStack(scope.project, scope.stack).launchConfirmation).toEqual(complete.placement?.confirmation);
+        const launchScope = { ...scope, id, manifestSha256: manifestSha, nodeId };
+        await expect(rpc.getReleaseStartupLogs({ ...launchScope, nodeId: 'another-node' })).rejects.toThrow(/confirmed release/);
+        await expect(rpc.getReleaseStartupLogs({ ...launchScope, manifestSha256: 'f'.repeat(64) })).rejects.toThrow(/confirmed release/);
+        const logPage = { entries: [], earlier: null };
+        read.mockResolvedValueOnce(logPage as never);
+        await expect(rpc.getReleaseStartupLogs(launchScope)).resolves.toEqual(logPage);
+        expect(pinnedService).toHaveBeenLastCalledWith(candidateNode.host, 9700, nodeId, 'fixture-management', 'OmnitronLogs');
+        expect(read).toHaveBeenLastCalledWith('readLocalLaunchLogs', { handles: ['sample/deployed/main'],
+          from: complete.placement!.sourceStop.completedAt, to: complete.placement!.confirmation!.confirmedAt, before: undefined });
         expect((await rpc.checkRelease({ ...scope, release: id })).ok).toBe(true);
         await rpc.confirmServingRelease(confirmation);
         expect(journal.inspect(scope)).toEqual(complete);

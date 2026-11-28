@@ -87,6 +87,21 @@ export interface LogQueryResult {
   hasMore: boolean;
 }
 
+/** The database's timestamp text preserves precision beyond a JavaScript Date. */
+export interface LaunchLogCursor { timestamp: string; id: string }
+
+export interface LocalLaunchLogQuery {
+  handles: string[];
+  from: string;
+  to: string;
+  before?: LaunchLogCursor;
+}
+
+export interface LaunchLogPage {
+  entries: Array<Pick<LogEntryRow, 'id' | 'timestamp' | 'app' | 'level' | 'message'>>;
+  earlier: LaunchLogCursor | null;
+}
+
 export interface LogStats {
   byApp: Array<{ app: string; count: number }>;
   byLevel: LevelCount[];

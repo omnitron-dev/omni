@@ -505,8 +505,11 @@ export interface StackLaunchConfirmation extends SelectedRelease {
   apps: Array<{ name: string; handle: string; generation: string; pid: number | null; health: StackHealthObservation['status'] }>;
 }
 
-export interface ReleaseLaunchAttempts extends RuntimeStackScope, SelectedRelease {
+export interface ReleaseLaunchScope extends RuntimeStackScope, SelectedRelease {
   nodeId: string;
+}
+
+export interface ReleaseLaunchAttempts extends ReleaseLaunchScope {
   beforeId?: string;
 }
 

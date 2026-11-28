@@ -63,8 +63,11 @@ test('shows confirmed health, the original failed request and launch output in t
     'OmnitronProject.getReleaseLaunchAttempts': { attempts: [{ id: 'initial', outcome: 'failed', at, message: 'Registration reply unavailable' }], next: null },
     'OmnitronProject.getDeployProgress': [{ operationId: 'earlier', project: 'example', stack: 'dev', releaseId: release,
       manifestSha256: preparation.manifestSha256, node: confirmation.node, app: apps[0].name, at, status: 'unconfirmed', message: 'Waiting for the owner', progress: 85 }],
-    'OmnitronLogs.queryLogs': input => ({ entries: input.nodeId === node.nodeId && input.appPrefixes.includes('example/runtime/') ?
-      [{ app: apps[0].handle, timestamp: at, level: 'info', message: 'Ready to serve' }] : [], hasMore: false, total: 1 }),
+    'OmnitronProject.getReleaseStartupLogs': input => ({
+      entries: input.nodeId === node.nodeId && input.id === confirmation.id && input.manifestSha256 === confirmation.manifestSha256
+        ? [{ app: apps[0].handle, timestamp: at, level: 'info', message: input.before ? 'Starting worker' : 'Ready to serve' }] : [],
+      earlier: input.before ? null : { timestamp: at, id: 'row-200' },
+    }),
     'OmnitronProject.readRemoteReleasePreparationLog': () => ({ name: 'gates.log', bytes: 16, tail: 'Producer finished' }),
   });
   await page.goto(url + path + '&activity=preparation%2Fprepare-one');
@@ -72,6 +75,10 @@ test('shows confirmed health, the original failed request and launch output in t
   await expect(card.getByRole('status').filter({ hasText: '6/6 healthy' })).toBeVisible();
   await expect(card.getByRole('tab', { name: 'Launch · Launch confirmed' })).toHaveAttribute('aria-selected', 'true');
   await expect(card).toContainText('Registration reply unavailable');
+  await expect(card).toContainText('Ready to serve');
+  await card.getByRole('button', { name: 'Earlier output' }).click();
+  await expect(card).toContainText('Starting worker');
+  await card.getByRole('button', { name: 'Later output' }).click();
   await expect(card).toContainText('Ready to serve');
   await card.getByRole('tab', { name: 'Build · Built' }).click();
   await expect(card.getByLabel('Saved build output')).toHaveText('Producer finished');

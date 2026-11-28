@@ -870,6 +870,23 @@ export class ProjectService extends EventEmitter {
     return this.registry.list().filter(project => !isControlPlaneWorkspace(project.path)).map(project => project.name);
   }
 
+  async getReleaseStartupLogs(request: Parameters<import('../shared/dto/services.js').IProjectRpcService['getReleaseStartupLogs']>[0]) {
+    const placement = this.placement(request.project, request.stack);
+    const selected = placement?.selected, proof = placement?.confirmation;
+    if (!selected || !proof?.startAfter || selected.release !== request.id || selected.nodeId !== request.nodeId ||
+        selected.manifestSha256 !== request.manifestSha256 || proof.id !== selected.release ||
+        proof.nodeId !== selected.nodeId || proof.manifestSha256 !== selected.manifestSha256)
+      throw Error('Select the confirmed release and enrolled recipient to read startup logs');
+    const target = this.placementRecipient(selected.nodeId, selected);
+    const read = this.getSlaveConnector().pinnedService(selected.host, selected.port, selected.nodeId, target.managementIdentity, 'OmnitronLogs');
+    const page = await read('readLocalLaunchLogs', { handles: proof.apps.map(app => app.handle),
+      from: proof.startAfter, to: proof.confirmedAt, before: request.before });
+    if (!isDeepStrictEqual(this.placement(request.project, request.stack)?.selected, selected) ||
+        !isDeepStrictEqual(this.placementRecipient(selected.nodeId, selected), target))
+      throw Error('The selected release or its enrolled recipient changed during the log read');
+    return page as import('../shared/dto/logs.js').LaunchLogPage;
+  }
+
   async getReleaseLaunchAttempts(request: import('../shared/dto/project.js').ReleaseLaunchAttempts) {
     const scope = { project: request.project, stack: request.stack };
     const selected = this.placement(scope.project, scope.stack)?.selected;

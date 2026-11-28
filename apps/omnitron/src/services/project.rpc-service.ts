@@ -97,6 +97,12 @@ export class ProjectRpcService {
   }
 
   @Public({ auth: { roles: VIEWER_ROLES } })
+  async getReleaseStartupLogs(data: Parameters<IProjectRpcService['getReleaseStartupLogs']>[0]) {
+    const scope = await this.projectService.resolveProjectStack({ project: data.project, stack: data.stack }, { readOnly: true });
+    return this.projectService.getReleaseStartupLogs({ ...data, ...scope });
+  }
+
+  @Public({ auth: { roles: VIEWER_ROLES } })
   async scanRequirements(data: { project: string }): Promise<IProjectRequirements> {
     return this.projectService.scanRequirements(data.project);
   }

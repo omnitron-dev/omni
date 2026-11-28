@@ -28,6 +28,7 @@ import { EventEmitter } from 'node:events';
 import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
 import { OMNITRON_DB_TOKEN } from '../shared/tokens.js';
 import type { LogEntry, LogQueryFilter, LogEntryRow, LogQueryResult, LogStats } from '../shared/dto/logs.js';
+import type { LaunchLogPage, LocalLaunchLogQuery } from '../shared/dto/logs.js';
 import type { LogEntryDto } from '../config/types.js';
 import { LineAssembler, type LogRecord } from '../monitoring/log-line.js';
 
@@ -414,6 +415,31 @@ export class LogCollectorService extends EventEmitter {
       byLevel,
       hasMore: offset + limit < total,
     };
+  }
+
+  /** Read on the recipient. Replication lag and log retention on the controller are independent. */
+  async readLocalLaunchLogs(query: LocalLaunchLogQuery): Promise<LaunchLogPage> {
+    if (!query || !Array.isArray(query.handles) || !query.handles.length || query.handles.length > 1000 ||
+        query.handles.some(handle => typeof handle !== 'string' || handle.length > 512 ||
+          !/^[\w.-]+\/[\w.-]+\/[\w.-]+$/.test(handle)) ||
+        typeof query.from !== 'string' || typeof query.to !== 'string')
+      throw Error('Select the confirmed application handles and launch interval');
+    validateLogQuery({ from: query.from, to: query.to });
+    let rows = this.db.selectFrom('logs').select(['id', 'timestamp', 'app', 'level', 'message'])
+      .select(sql<string>`cast(timestamp as text)`.as('position'))
+      .where('nodeId', 'is', null).where('app', 'in', query.handles)
+      .where('timestamp', '>=', new Date(query.from)).where('timestamp', '<=', new Date(query.to));
+    const { before } = query;
+    if (before !== undefined) {
+      if (!before || typeof before.timestamp !== 'string' || before.timestamp.length > 64 || !Number.isFinite(Date.parse(before.timestamp)) ||
+          typeof before.id !== 'string' || !before.id || before.id.length > 256) throw Error('Invalid launch log cursor');
+      rows = rows.where(sql<SqlBool>`(timestamp, id) < (${before.timestamp}, ${before.id})`);
+    }
+    const pageSize = 200;
+    const result = await rows.orderBy('timestamp', 'desc').orderBy('id', 'desc').limit(pageSize + 1).execute();
+    const last = result[pageSize - 1];
+    return { entries: result.slice(0, pageSize).map(({ position: _position, ...entry }) => entry),
+      earlier: result.length > pageSize && last ? { timestamp: last.position, id: last.id } : null };
   }
 
   /**

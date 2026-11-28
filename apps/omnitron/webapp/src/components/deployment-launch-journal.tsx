@@ -4,7 +4,7 @@ import { Alert } from '@omnitron-dev/prism/components/alert';
 import type { IStackInfo } from '@omnitron-dev/omnitron/dto/services';
 import { useAccess } from 'src/auth/access';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
-import { logs, project as projectRpc } from 'src/netron/client';
+import { project as projectRpc } from 'src/netron/client';
 import { formatDate } from 'src/utils/formatters';
 import { LiveLogOutput } from './live-log-output';
 
@@ -38,14 +38,14 @@ export function LaunchAttempts({ project, stack, release, manifest, nodeId }: {
   </Stack>;
 }
 
-export function LaunchLogs({ confirmation }: { confirmation: Confirmation }) {
+export function LaunchLogs({ project, stack, confirmation }: { project: string; stack: string; confirmation: Confirmation }) {
   const { can } = useAccess();
-  const [page, setPage] = useState(0);
-  const namespaces = [...new Set(confirmation.apps.map(app => app.handle.slice(0, app.handle.lastIndexOf('/') + 1)))];
-  const allowed = can('OmnitronLogs.queryLogs') && Boolean(confirmation.startAfter) && namespaces.every(Boolean);
-  const result = usePolledResource(() => logs.queryLogs({ appPrefixes: namespaces, nodeId: confirmation.nodeId,
-    from: confirmation.startAfter!, to: confirmation.confirmedAt, limit: 200, offset: page * 200 }), {
-    enabled: allowed, paused: true, intervalMs: 5000, resourceKey: JSON.stringify([confirmation, page]),
+  const [pages, setPages] = useState<Array<{ timestamp: string; id: string }>>([]);
+  const before = pages.at(-1);
+  const scope = { project, stack, id: confirmation.id, manifestSha256: confirmation.manifestSha256, nodeId: confirmation.nodeId };
+  const allowed = can('OmnitronProject.getReleaseStartupLogs') && Boolean(confirmation.startAfter);
+  const result = usePolledResource(() => projectRpc.getReleaseStartupLogs({ ...scope, ...(before && { before }) }), {
+    enabled: allowed, paused: true, intervalMs: 5000, resourceKey: JSON.stringify([scope, confirmation.confirmedAt, before]),
   });
   if (!allowed) return null;
   return <Stack spacing={0.75} component="section" aria-label="Startup logs">
@@ -55,8 +55,8 @@ export function LaunchLogs({ confirmation }: { confirmation: Confirmation }) {
       <LiveLogOutput label="Startup logs" live={false} text={result.data.entries.slice().reverse().map(row =>
         [formatDate(row.timestamp), row.app, row.level, row.message].join('  ')).join('\n') || 'No application output was retained for this launch interval.'} />
       <Stack direction="row" spacing={1}>
-        {result.data.hasMore && <Button size="small" onClick={() => setPage(page + 1)}>Earlier output</Button>}
-        {page > 0 && <Button size="small" onClick={() => setPage(page - 1)}>Later output</Button>}
+        {result.data.earlier && <Button size="small" onClick={() => setPages([...pages, result.data!.earlier!])}>Earlier output</Button>}
+        {pages.length > 0 && <Button size="small" onClick={() => setPages(pages.slice(0, -1))}>Later output</Button>}
       </Stack>
     </>}
   </Stack>;

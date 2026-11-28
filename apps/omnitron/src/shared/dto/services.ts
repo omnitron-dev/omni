@@ -256,6 +256,7 @@ export interface IOmnitronAuthService {
 // ============================================================================
 
 export interface IOmnitronLogsService {
+  readLocalLaunchLogs(data: import('./logs.js').LocalLaunchLogQuery): Promise<import('./logs.js').LaunchLogPage>;
   queryLogs(data: {
     app?: string;
     appPrefixes?: string[];
@@ -395,6 +396,9 @@ export interface IProjectRpcService {
   listProjects(): Promise<IProjectInfo[]>;
   getProject(data: { name: string }): Promise<IProjectInfo>;
   getDeployProgress(scope?: { project: string; stack?: string }): Promise<DeployProgressRecord[]>;
+  getReleaseStartupLogs(data: import('./project.js').ReleaseLaunchScope & {
+    before?: import('./logs.js').LaunchLogCursor;
+  }): Promise<import('./logs.js').LaunchLogPage>;
   getReleaseLaunchAttempts(data: import('./project.js').ReleaseLaunchAttempts): Promise<{
     attempts: import('./project.js').ReleaseLaunchAttempt[]; next: string | null;
   }>;
